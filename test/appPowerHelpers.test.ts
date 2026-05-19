@@ -18,7 +18,11 @@ import {
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
 } from '../lib/app/appPowerHelpers';
-import { PowerCalibrationStore } from '../lib/app/appPowerCalibrationWiring';
+import {
+  PowerCalibrationStore,
+  createCalibrationSnapshotMutationHook,
+} from '../lib/app/appPowerCalibrationWiring';
+import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
@@ -2089,63 +2093,103 @@ describe('recordPowerSampleForApp', () => {
     }));
   });
 
-  it('emits power calibration ingest stats with dropped sample details', async () => {
-    let tracker: PowerTrackerState = {};
-    const debugStructured = vi.fn();
+});
+
+describe('createCalibrationSnapshotMutationHook', () => {
+  const start = Date.UTC(2025, 0, 1, 0, 0, 0);
+  const makeSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+    id: 'hoiax-1',
+    name: 'Connected 300',
+    targets: [],
+    controlModel: 'stepped_load',
+    steppedLoadProfile: {
+      model: 'stepped_load',
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'medium', planningPowerW: 1750 },
+      ],
+    },
+    reportedStepId: 'low',
+    actualStepId: 'low',
+    actualStepSource: 'reported',
+    measuredPowerKw: 1.1,
+    currentOn: true,
+    lastFreshDataMs: start,
+    ...overrides,
+  } as TargetDeviceSnapshot);
+
+  it('emits a per-sample accepted event when the sample lands inside the band', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-    const getLatestTargetSnapshot = () => ([
-      {
-        id: 'hoiax-1',
-        name: 'Connected 300',
-        targets: [],
-        controlModel: 'stepped_load' as const,
-        steppedLoadProfile: {
-          model: 'stepped_load' as const,
-          steps: [
-            { id: 'off', planningPowerW: 0 },
-            { id: 'low', planningPowerW: 1250 },
-            { id: 'medium', planningPowerW: 1750 },
-          ],
-        },
-        reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported' as const,
-        measuredPowerKw: 1.81,
-        lastFreshDataMs: start,
-      },
-    ]);
-
-    await recordPowerSampleForApp({
-      currentPowerW: 1810,
-      nowMs: start,
-      capacitySettings: { limitKw: 10, marginKw: 0.2 },
-      getLatestTargetSnapshot,
-      powerTracker: tracker,
-      powerCalibrationStore: store,
-      powerCalibrationDebugStructured: debugStructured,
-      schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
-      saveState: (nextState) => {
-        tracker = nextState;
-      },
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
     });
-
+    hook(makeSnapshot({ measuredPowerKw: 1.1 }), start);
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'power_calibration_ingest',
-      accepted: 0,
-      skipped: 1,
-      reset: 0,
-      skippedByReason: { above_step_ceiling: 1 },
-      rejectedSamples: [expect.objectContaining({
-        deviceId: 'hoiax-1',
-        deviceName: 'Connected 300',
-        stepId: 'low',
-        measuredPowerKw: 1.81,
-        nameplateKw: 1.25,
-        lowerStepCeilingKw: 0,
-        reason: 'above_step_ceiling',
-      })],
-      rejectedSamplesTruncated: 0,
+      event: 'power_calibration_sample_accepted',
+      deviceId: 'hoiax-1',
+      stepId: 'low',
+      measuredPowerKw: 1.1,
     }));
+  });
+
+  it('emits a per-sample skipped event when the sample exceeds the configured step', () => {
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+    });
+    hook(makeSnapshot({ measuredPowerKw: 1.81 }), start);
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'power_calibration_sample_skipped',
+      deviceId: 'hoiax-1',
+      reason: 'above_step_ceiling',
+    }));
+  });
+
+  it('stays silent when the snapshot is ineligible for calibration', () => {
+    const store = new PowerCalibrationStore();
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+    });
+    hook(makeSnapshot({ actualStepSource: 'assumed' }), start);
+    expect(debugStructured).not.toHaveBeenCalled();
+  });
+
+  it('debounces repeat samples for the same (device, step) inside the cadence floor', () => {
+    // EV chargers and inverter heaters can publish measure_power every 1-2 s;
+    // without this debounce, EMA `alpha` would saturate to MIN_ALPHA within
+    // ~30 s of operation and stop responding to legitimate drift.
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+      minIntervalMs: 30_000,
+    });
+    hook(makeSnapshot({ measuredPowerKw: 1.1 }), start);
+    hook(makeSnapshot({ measuredPowerKw: 1.12 }), start + 1_000);
+    hook(makeSnapshot({ measuredPowerKw: 1.15 }), start + 5_000);
+    expect(debugStructured).toHaveBeenCalledTimes(1);
+    hook(makeSnapshot({ measuredPowerKw: 1.2 }), start + 31_000);
+    expect(debugStructured).toHaveBeenCalledTimes(2);
+  });
+
+  it('debounces per (device, step) independently', () => {
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const debugStructured = vi.fn();
+    const hook = createCalibrationSnapshotMutationHook({
+      getStore: () => store,
+      debugStructured,
+      minIntervalMs: 30_000,
+    });
+    hook(makeSnapshot({ reportedStepId: 'low', actualStepId: 'low', measuredPowerKw: 1.1 }), start);
+    hook(makeSnapshot({ reportedStepId: 'medium', actualStepId: 'medium', measuredPowerKw: 1.6 }), start + 1_000);
+    expect(debugStructured).toHaveBeenCalledTimes(2);
   });
 });

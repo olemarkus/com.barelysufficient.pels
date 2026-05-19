@@ -53,214 +53,110 @@ const mockHomey = (store: Map<string, unknown> = new Map()): { settings: MockSet
   },
 });
 
-describe('PowerCalibrationStore.ingestDevices', () => {
+describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
   it('records a sample for a confirmed stepped-load snapshot', () => {
-    const store = new PowerCalibrationStore({
-      persistDebounceMs: 0,
-    });
-    const stats = store.ingestDevices([baseDeviceSnapshot({ lastFreshDataMs: 0 })], 0);
-    expect(stats.accepted).toBe(1);
-    expect(stats.skipped).toBe(0);
-    const snapshot = store.getSnapshot();
-    expect(snapshot.devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.75);
-  });
-
-  it('skips when reportedStepId does not match actualStepId', () => {
-    const store = new PowerCalibrationStore();
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({ actualStepId: 'medium' })],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-  });
-
-  it('skips when a step command is pending', () => {
-    const store = new PowerCalibrationStore();
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({ stepCommandPending: true })],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-  });
-
-  it('skips off-step reports (planning 0W)', () => {
-    const store = new PowerCalibrationStore();
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({
-        reportedStepId: 'off',
-        actualStepId: 'off',
-        measuredPowerKw: 0,
-      })],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-  });
-
-  it('skips samples above the reported step configured power', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({
-        reportedStepId: 'low',
-        actualStepId: 'low',
-        measuredPowerKw: 1.81,
-      })],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-    expect(stats.skippedByReason.above_step_ceiling).toBe(1);
-    expect(stats.rejectedSamples).toEqual([expect.objectContaining({
-      deviceId: 'hoiax-1',
-      deviceName: 'Hoiax',
-      stepId: 'low',
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ lastFreshDataMs: 0 }), 0);
+    expect(outcome?.accepted).toBe(true);
+    expect(store.getSnapshot().devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.75);
+  });
+
+  it('returns null when reportedStepId does not match actualStepId', () => {
+    const store = new PowerCalibrationStore();
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ actualStepId: 'medium' }), 0);
+    expect(outcome).toBeNull();
+  });
+
+  it('returns null when a step command is pending', () => {
+    const store = new PowerCalibrationStore();
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ stepCommandPending: true }), 0);
+    expect(outcome).toBeNull();
+  });
+
+  it('returns null for off-step reports (planning 0W)', () => {
+    const store = new PowerCalibrationStore();
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
+      reportedStepId: 'off',
+      actualStepId: 'off',
+      measuredPowerKw: 0,
+    }), 0);
+    expect(outcome).toBeNull();
+  });
+
+  it('rejects samples above the reported step configured power', () => {
+    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
+      reportedStepId: 'low',
+      actualStepId: 'low',
       measuredPowerKw: 1.81,
-      nameplateKw: 1.25,
-      lowerStepCeilingKw: 0,
-      reason: 'above_step_ceiling',
-    })]);
-    expect(stats.rejectedSamplesTruncated).toBe(0);
+    }), 0);
+    expect(outcome?.accepted).toBe(false);
+    if (outcome && !outcome.accepted) expect(outcome.reason).toBe('above_step_ceiling');
     expect(store.getSnapshot().devices['hoiax-1']).toBeUndefined();
   });
 
-  it('skips samples at or below the configured power for the step underneath', () => {
+  it('rejects samples at or below the configured power for the step underneath', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({
-        reportedStepId: 'medium',
-        actualStepId: 'medium',
-        measuredPowerKw: 1.25,
-      })],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-    expect(stats.skippedByReason.below_lower_step).toBe(1);
-    expect(stats.rejectedSamples).toEqual([expect.objectContaining({
-      deviceId: 'hoiax-1',
-      deviceName: 'Hoiax',
-      stepId: 'medium',
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
+      reportedStepId: 'medium',
+      actualStepId: 'medium',
       measuredPowerKw: 1.25,
-      nameplateKw: 1.75,
-      lowerStepCeilingKw: 1.25,
-      reason: 'below_lower_step',
-    })]);
-    expect(stats.rejectedSamplesTruncated).toBe(0);
+    }), 0);
+    expect(outcome?.accepted).toBe(false);
+    if (outcome && !outcome.accepted) expect(outcome.reason).toBe('below_lower_step');
     expect(store.getSnapshot().devices['hoiax-1']).toBeUndefined();
-  });
-
-  it('can skip rejected-sample detail collection on the hot path', () => {
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({
-        reportedStepId: 'low',
-        actualStepId: 'low',
-        measuredPowerKw: 1.81,
-      })],
-      0,
-      { collectRejectedSamples: false },
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
-    expect(stats.skippedByReason.above_step_ceiling).toBe(1);
-    expect(stats.rejectedSamples).toEqual([]);
-    expect(stats.rejectedSamplesTruncated).toBe(0);
-  });
-
-  it('caps rejected-sample details and reports truncation', () => {
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [
-        baseDeviceSnapshot({
-          id: 'hoiax-1',
-          reportedStepId: 'low',
-          actualStepId: 'low',
-          measuredPowerKw: 1.81,
-        }),
-        baseDeviceSnapshot({
-          id: 'hoiax-2',
-          reportedStepId: 'low',
-          actualStepId: 'low',
-          measuredPowerKw: 1.82,
-        }),
-      ],
-      0,
-      { rejectedSampleLimit: 1 },
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(2);
-    expect(stats.skippedByReason.above_step_ceiling).toBe(2);
-    expect(stats.rejectedSamples).toHaveLength(1);
-    expect(stats.rejectedSamplesTruncated).toBe(1);
   });
 
   it('records samples inside the reported step power band', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({
-        reportedStepId: 'medium',
-        actualStepId: 'medium',
-        measuredPowerKw: 1.5,
-      })],
-      0,
-    );
-    expect(stats.accepted).toBe(1);
-    expect(stats.skipped).toBe(0);
-    expect(stats.skippedByReason).toEqual({});
-    expect(stats.rejectedSamples).toEqual([]);
-    expect(stats.rejectedSamplesTruncated).toBe(0);
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
+      reportedStepId: 'medium',
+      actualStepId: 'medium',
+      measuredPowerKw: 1.5,
+    }), 0);
+    expect(outcome?.accepted).toBe(true);
     expect(store.getSnapshot().devices['hoiax-1'].steps.medium.observedKw).toBeCloseTo(1.5);
   });
 
-  it('skips snapshots without a stepped-load profile', () => {
+  it('returns null for snapshots without a stepped-load profile', () => {
     const store = new PowerCalibrationStore();
-    const stats = store.ingestDevices(
-      [{
-        id: 'binary-1',
-        name: 'Lamp',
-        targets: [],
-        currentOn: true,
-        measuredPowerKw: 0.05,
-      } as unknown as TargetDeviceSnapshot],
-      0,
-    );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
+    const outcome = store.ingestDeviceSnapshot({
+      id: 'binary-1',
+      name: 'Lamp',
+      targets: [],
+      currentOn: true,
+      measuredPowerKw: 0.05,
+    } as unknown as TargetDeviceSnapshot, 0);
+    expect(outcome).toBeNull();
   });
 
-  it('skips snapshots whose actualStepSource is not "reported"', () => {
+  it('returns null when actualStepSource is not "reported"', () => {
     // Sampling on an assumed step would attribute measured power to a step
-    // the device may never have visited; the wiring layer must filter these
-    // out before the EMA is touched.
+    // the device may never have visited.
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({ actualStepSource: 'assumed' })],
+    const outcome = store.ingestDeviceSnapshot(
+      baseDeviceSnapshot({ actualStepSource: 'assumed' }),
       0,
     );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
+    expect(outcome).toBeNull();
   });
 
-  it('skips snapshots without a finite lastFreshDataMs', () => {
+  it('returns null without a finite lastFreshDataMs', () => {
     // Without freshness, the per-sample freshness gate inside `recordSample`
-    // short-circuits — bypassing the documented 60-second window. The wiring
-    // layer must reject these before they reach the store.
+    // would short-circuit; the eligibility predicate must filter these out.
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const stats = store.ingestDevices(
-      [baseDeviceSnapshot({ lastFreshDataMs: undefined })],
+    const outcome = store.ingestDeviceSnapshot(
+      baseDeviceSnapshot({ lastFreshDataMs: undefined }),
       0,
     );
-    expect(stats.accepted).toBe(0);
-    expect(stats.skipped).toBe(1);
+    expect(outcome).toBeNull();
   });
 });
 
 describe('PowerCalibrationStore persistence flow', () => {
   it('snapshotForPersist honors the debounce window without mutating state', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 60_000 });
-    store.ingestDevices([baseDeviceSnapshot()], 0);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     // Even though dirty, the first call uses lastPersistMs=0 and (0-0)=0 < 60_000.
     expect(store.snapshotForPersist(0)).toBe(null);
     expect(store.snapshotForPersist(60_000)).not.toBe(null);
@@ -275,7 +171,7 @@ describe('PowerCalibrationStore persistence flow', () => {
 
   it('snapshotForFlush returns the snapshot regardless of debounce', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 60_000 });
-    store.ingestDevices([baseDeviceSnapshot()], 0);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     expect(store.snapshotForFlush(0)).not.toBe(null);
     expect(store.isDirty()).toBe(true);
     store.markPersisted(0);
@@ -291,7 +187,7 @@ describe('PowerCalibrationStore persistence flow', () => {
       nowMs: 1_000,
       loadGraceMs: 60_000,
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     expect(store.snapshotForFlush(1_500)).toBe(null);
     expect(store.isDirty()).toBe(true);
     // Past the grace window, flush returns the snapshot as usual.
@@ -310,7 +206,7 @@ describe('write-failure recovery', () => {
       },
     } as never;
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    store.ingestDevices([baseDeviceSnapshot()], 0);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     const errors: Array<[string, Error]> = [];
     const wrote = persistPowerCalibrationIfDue({
       homey,
@@ -329,7 +225,7 @@ describe('write-failure recovery', () => {
     const homeyStore = new Map<string, unknown>();
     const homey = mockHomey(homeyStore);
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    store.ingestDevices([baseDeviceSnapshot()], 0);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -359,7 +255,7 @@ describe('loadPowerCalibrationStore', () => {
 
   it('round-trips through settings', () => {
     const seed = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    seed.ingestDevices([baseDeviceSnapshot()], 0);
+    seed.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     const seedSnapshot = seed.snapshotForFlush(0);
     expect(seedSnapshot).not.toBe(null);
     if (seedSnapshot === null) return;
@@ -385,7 +281,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000, loadGraceMs: 60_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     expect(store.isDirty()).toBe(true);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
@@ -404,7 +300,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000, loadGraceMs: 60_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -424,7 +320,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -446,7 +342,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -466,7 +362,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -500,7 +396,7 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -524,7 +420,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -548,7 +444,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -566,7 +462,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -601,7 +497,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       // marker-write path is exercised.
       options: { persistDebounceMs: 0, nowMs: 1_000, loadGraceMs: 0 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -640,7 +536,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -668,7 +564,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -698,7 +594,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -730,7 +626,7 @@ describe('fresh-install vs transient-miss discriminator', () => {
       options: { persistDebounceMs: 0, nowMs: 1_000 },
     });
     expect(getCallCount).toBeGreaterThanOrEqual(2);
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
@@ -757,7 +653,7 @@ describe('persistPowerCalibrationFlush', () => {
       homey: homey as never,
       options: { persistDebounceMs: 60_000, nowMs: 1_000 },
     });
-    reloaded.ingestDevices([baseDeviceSnapshot()], 1_500);
+    reloaded.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationFlush({
       homey: homey as never,
       store: reloaded,
@@ -782,7 +678,7 @@ describe('persistPowerCalibrationFlush', () => {
       homey: homey as never,
       options: { persistDebounceMs: 0, nowMs: 1_000, loadGraceMs: 60_000 },
     });
-    store.ingestDevices([baseDeviceSnapshot()], 1_500);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 1_500);
     const wrote = persistPowerCalibrationFlush({
       homey: homey as never,
       store,
@@ -812,7 +708,7 @@ describe('persistPowerCalibrationIfDue', () => {
     const homeyStore = new Map<string, unknown>();
     const homey = mockHomey(homeyStore);
     const store = new PowerCalibrationStore({ persistDebounceMs: 1_000 });
-    store.ingestDevices([baseDeviceSnapshot()], 0);
+    store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
     const errors: Array<[string, Error]> = [];
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,

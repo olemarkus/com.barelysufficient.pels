@@ -58,6 +58,7 @@ import {
 } from './lib/app/appPowerHelpers';
 import {
   PowerCalibrationStore,
+  createCalibrationSnapshotMutationHook,
   loadPowerCalibrationStore,
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
@@ -762,6 +763,17 @@ class PelsApp extends Homey.App {
       () => this.initDeviceDiagnosticsService(),
       logStartupStepFailure,
     );
+    // Load the calibration store before the device manager so the
+    // event-driven `onSnapshotMutated` hook is bound to the persisted store
+    // from the first observation. Otherwise any live-feed event arriving
+    // between `initDeviceManager` and `loadPowerCalibrationStore` would land
+    // on the placeholder store and be discarded when the persisted snapshot
+    // replaces it.
+    await runStartupStep(
+      'loadPowerCalibrationStore',
+      () => this.loadPowerCalibrationStore(),
+      logStartupStepFailure,
+    );
     await runStartupStep('initDeviceManager', () => this.initDeviceManager(), logStartupStepFailure);
     let snapshotPlanBootstrapDelayMs = 0;
     if (deferStartupBootstrap) {
@@ -780,11 +792,6 @@ class PelsApp extends Homey.App {
     await runStartupStep('initCapacityGuardProviders', () => this.initCapacityGuardProviders(), logStartupStepFailure);
     await runStartupStep('initSettingsHandler', () => this.initSettingsHandler(), logStartupStepFailure);
     this.lastNotifiedOperatingMode = this.operatingMode;
-    await runStartupStep(
-      'loadPowerCalibrationStore',
-      () => this.loadPowerCalibrationStore(),
-      logStartupStepFailure,
-    );
     await runStartupStep('startAppServices', () => startAppServices(this.ctx), logStartupStepFailure);
     await runStartupStep(
       'startPriceLowestTriggerChecker',
@@ -843,6 +850,10 @@ class PelsApp extends Homey.App {
     }, {
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
       getFlowTriggerCard: (cardId) => this.homey.flow?.getTriggerCard?.(cardId),
+      onSnapshotMutated: createCalibrationSnapshotMutationHook({
+        getStore: () => this.powerCalibrationStore,
+        debugStructured: this.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
+      }),
     });
     await this.deviceManager.init();
     this.deviceManager.on(
@@ -1444,9 +1455,7 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
-        powerCalibrationStore: this.powerCalibrationStore,
         objectiveProfileDebugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
-        powerCalibrationDebugStructured: this.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({
             scheduler: this.planRebuildScheduler,

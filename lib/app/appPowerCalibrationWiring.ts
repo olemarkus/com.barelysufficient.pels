@@ -1,15 +1,14 @@
 /**
  * App-layer wiring for {@link PowerCalibrationStore}.
  *
- * Holds the calibration snapshot in memory, dispatches samples from
- * `appPowerSampleIngest`, debounces writes back to Homey settings, and
- * periodically prunes stale entries. Pure-store logic lives in
- * `lib/observer/devicePowerCalibration.ts`.
+ * Holds the calibration snapshot in memory, accepts per-device samples that
+ * the device manager dispatches whenever an observation actually mutated the
+ * snapshot, debounces writes back to Homey settings, and periodically prunes
+ * stale entries. Pure-store logic lives in `lib/observer/devicePowerCalibration.ts`.
  */
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import {
-  type RecordSampleSkipReason,
   type RecordSampleConfig,
   type RecordSampleInput,
   type RecordSampleOutcome,
@@ -24,6 +23,7 @@ import {
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 const DEFAULT_PERSIST_DEBOUNCE_MS = 60_000;
 const DEFAULT_PRUNE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -50,31 +50,13 @@ export type PowerCalibrationStoreOptions = {
   nowMs?: number;
 };
 
-export type IngestStats = {
-  accepted: number;
-  skipped: number;
-  reset: number;
-  skippedByReason: Partial<Record<PowerCalibrationSkipReason, number>>;
-  rejectedSamples: PowerCalibrationRejectedSample[];
-  rejectedSamplesTruncated: number;
-};
-
-export type PowerCalibrationSkipReason = RecordSampleSkipReason | 'ineligible_snapshot';
-
-export type PowerCalibrationRejectedSample = {
-  deviceId: string;
-  deviceName: string;
-  stepId: string;
-  measuredPowerKw: number;
-  nameplateKw: number;
-  lowerStepCeilingKw: number | null;
-  reason: RecordSampleSkipReason;
-};
-
-export type IngestDevicesOptions = {
-  collectRejectedSamples?: boolean;
-  rejectedSampleLimit?: number;
-};
+/**
+ * Outcome of {@link PowerCalibrationStore.ingestDeviceSnapshot}. `null` means
+ * the snapshot was ineligible (not stepped-load, no fresh data, off-step) and
+ * the caller should silently no-op — there is no useful debug payload for an
+ * event-driven trigger that simply does not apply.
+ */
+export type IngestDeviceSnapshotOutcome = RecordSampleOutcome | null;
 
 /**
  * Mutable in-memory cache around the immutable {@link recordSample} pipeline.
@@ -123,52 +105,21 @@ export class PowerCalibrationStore {
     return outcome;
   }
 
-  /** Walk a TargetDeviceSnapshot batch and dispatch samples for eligible
-   * stepped-load devices. Honors freshness, materialization, and floor gates;
-   * delegates the per-sample EMA / nameplate / cadence gates to `recordSample`. */
-  ingestDevices(
-    snapshots: readonly TargetDeviceSnapshot[],
+  /**
+   * Event-driven entrypoint: evaluate a single device snapshot when the device
+   * manager has just observed a mutation that may yield a new calibration
+   * sample (measure_power value changed, or reportedStepId changed). Returns
+   * `null` when the snapshot is ineligible — caller treats that as a silent
+   * no-op. Eligibility, freshness, and band gates are handled here and inside
+   * `recordSample`.
+   */
+  ingestDeviceSnapshot(
+    snapshot: TargetDeviceSnapshot,
     nowMs: number,
-    options: IngestDevicesOptions = {},
-  ): IngestStats {
-    const collectRejectedSamples = options.collectRejectedSamples ?? true;
-    const rejectedSampleLimit = normalizeRejectedSampleLimit(options.rejectedSampleLimit);
-    let accepted = 0;
-    let skipped = 0;
-    let reset = 0;
-    let rejectedSamplesTruncated = 0;
-    const skippedByReason = new Map<PowerCalibrationSkipReason, number>();
-    const rejectedSamples: PowerCalibrationRejectedSample[] = [];
-    for (const snapshot of snapshots) {
-      const sample = buildSampleFromDeviceSnapshot(snapshot, nowMs);
-      if (!sample) {
-        skipped += 1;
-        incrementSkipReason(skippedByReason, 'ineligible_snapshot');
-        continue;
-      }
-      const outcome = this.recordSample(sample);
-      if (outcome.accepted) {
-        accepted += 1;
-        if (outcome.reset) reset += 1;
-        continue;
-      }
-      skipped += 1;
-      incrementSkipReason(skippedByReason, outcome.reason);
-      if (!collectRejectedSamples) continue;
-      if (rejectedSamples.length >= rejectedSampleLimit) {
-        rejectedSamplesTruncated += 1;
-        continue;
-      }
-      rejectedSamples.push(buildRejectedSample(snapshot, sample, outcome.reason));
-    }
-    return {
-      accepted,
-      skipped,
-      reset,
-      skippedByReason: Object.fromEntries(skippedByReason.entries()),
-      rejectedSamples,
-      rejectedSamplesTruncated,
-    };
+  ): IngestDeviceSnapshotOutcome {
+    const sample = buildSampleFromDeviceSnapshot(snapshot, nowMs);
+    if (!sample) return null;
+    return this.recordSample(sample);
   }
 
   /** Drop devices that haven't been touched in `pruneMaxAgeMs`. Returns true
@@ -459,12 +410,6 @@ function buildSampleFromDeviceSnapshot(
   };
 }
 
-function normalizeRejectedSampleLimit(limit: number | undefined): number {
-  if (limit === undefined) return Number.POSITIVE_INFINITY;
-  if (!Number.isFinite(limit) || limit <= 0) return 0;
-  return Math.floor(limit);
-}
-
 function isEligiblePowerCalibrationSnapshot(
   snapshot: TargetDeviceSnapshot,
 ): snapshot is TargetDeviceSnapshot & {
@@ -520,26 +465,71 @@ function isLowerPowerStep(
     && entry.planningPowerW < stepPlanningPowerW;
 }
 
-function incrementSkipReason(
-  counts: Map<PowerCalibrationSkipReason, number>,
-  reason: PowerCalibrationSkipReason,
-): void {
-  counts.set(reason, (counts.get(reason) ?? 0) + 1);
-}
+/**
+ * Default per-(device, step) debounce for the event-driven hook. Telemetry
+ * from EV chargers and inverter-style heaters can publish `measure_power`
+ * every 1–2 s; without this floor the EMA inside `recordSample` would saturate
+ * its `alpha` term to MIN_ALPHA within ~30 s of operation and stop responding
+ * to legitimate drift. Mirrors the prior `DEFAULT_CADENCE_MIN_INTERVAL_MS` that
+ * the retired periodic sweep applied inside the store.
+ */
+const DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
 
-function buildRejectedSample(
-  snapshot: TargetDeviceSnapshot,
-  sample: RecordSampleInput,
-  reason: RecordSampleSkipReason,
-): PowerCalibrationRejectedSample {
-  return {
-    deviceId: sample.deviceId,
-    deviceName: snapshot.name,
-    stepId: sample.stepId,
-    measuredPowerKw: sample.measuredPowerKw,
-    nameplateKw: sample.nameplateKw,
-    lowerStepCeilingKw: sample.lowerStepCeilingKw ?? null,
-    reason,
+/**
+ * Build a `DeviceManager.onSnapshotMutated` callback that forwards each
+ * eligible mutation to the calibration store. Emits a single per-sample
+ * structured debug record (one device, one outcome) when an emitter is
+ * supplied — never the bulk aggregate that the retired periodic sweep used
+ * to produce.
+ *
+ * Holds a per-(device, step) debounce so a chatty device that publishes
+ * measure_power every second does not flood the EMA with samples that all
+ * reflect the same underlying steady-state draw.
+ */
+export function createCalibrationSnapshotMutationHook(params: {
+  /** Resolved on every invocation — the app replaces its store reference after
+   *  the initial DeviceManager construction, so the callback must not capture
+   *  it. */
+  getStore: () => PowerCalibrationStore;
+  debugStructured?: StructuredDebugEmitter;
+  /** Override the per-(device, step) debounce. Defaults to 30 s. Set to 0 to
+   *  disable, primarily for tests. */
+  minIntervalMs?: number;
+}): (snapshot: TargetDeviceSnapshot, nowMs: number) => void {
+  const { getStore, debugStructured } = params;
+  const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
+  const lastIngestMsByDeviceStep = new Map<string, number>();
+  return (snapshot, nowMs) => {
+    if (minIntervalMs > 0) {
+      const stepId = snapshot.reportedStepId;
+      if (typeof stepId === 'string' && stepId.length > 0) {
+        const key = `${snapshot.id} ${stepId}`;
+        const previous = lastIngestMsByDeviceStep.get(key);
+        if (previous !== undefined && nowMs - previous < minIntervalMs) return;
+        lastIngestMsByDeviceStep.set(key, nowMs);
+      }
+    }
+    const outcome = getStore().ingestDeviceSnapshot(snapshot, nowMs);
+    if (!outcome || !debugStructured) return;
+    if (outcome.accepted) {
+      debugStructured({
+        event: 'power_calibration_sample_accepted',
+        deviceId: snapshot.id,
+        deviceName: snapshot.name,
+        stepId: snapshot.reportedStepId,
+        measuredPowerKw: snapshot.measuredPowerKw,
+        reset: outcome.reset,
+      });
+      return;
+    }
+    debugStructured({
+      event: 'power_calibration_sample_skipped',
+      deviceId: snapshot.id,
+      deviceName: snapshot.name,
+      stepId: snapshot.reportedStepId,
+      measuredPowerKw: snapshot.measuredPowerKw,
+      reason: outcome.reason,
+    });
   };
 }
 

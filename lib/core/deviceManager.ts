@@ -141,6 +141,12 @@ type SteppedLoadFlowTriggerCard = {
 type DeviceManagerOptions = {
     debugStructured?: StructuredDebugEmitter;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
+    /**
+     * Fired after a snapshot mutation that may yield a new calibration sample
+     * for a stepped-load device (measure_power value changed, or reportedStepId
+     * changed). Consumers are responsible for their own eligibility checks.
+     */
+    onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
 };
 
 export class DeviceManager extends EventEmitter {
@@ -164,6 +170,7 @@ export class DeviceManager extends EventEmitter {
     private lastSnapshotRefreshMetricsKey: string | null = null;
     private providers: DeviceManagerParseProviders = {};
     private getFlowTriggerCard: DeviceManagerOptions['getFlowTriggerCard'] | undefined;
+    private onSnapshotMutated: DeviceManagerOptions['onSnapshotMutated'] | undefined;
     private readonly handleRealtimeCapabilityUpdate = (
         deviceId: string,
         capabilityId: string,
@@ -421,6 +428,9 @@ export class DeviceManager extends EventEmitter {
             value: result.normalizedValue,
             source: 'realtime_capability',
         });
+        if (capabilityId === 'measure_power' && snapshot) {
+            this.onSnapshotMutated?.(snapshot, Date.now());
+        }
         const cursor = this.nextObservationCursor(deviceId);
         this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
             source: 'realtime_capability',
@@ -650,6 +660,7 @@ export class DeviceManager extends EventEmitter {
                 previousReportedStepId,
                 nextReportedStepId,
             });
+            this.onSnapshotMutated?.(currentSnapshot, Date.now());
         }
     }
 
@@ -939,7 +950,58 @@ export class DeviceManager extends EventEmitter {
                 result,
             });
         }
+        if (currentSnapshot && this.didSnapshotChangeCalibrationInputs({
+            previousSnapshot,
+            currentSnapshot,
+            observedCapabilityIds: result.observedCapabilityIds,
+        })) {
+            this.onSnapshotMutated?.(currentSnapshot, Date.now());
+        }
     };
+
+    private commitRefreshedSnapshot(params: {
+        snapshot: TargetDeviceSnapshot[];
+        previousSnapshot: readonly TargetDeviceSnapshot[];
+    }): void {
+        const { snapshot, previousSnapshot } = params;
+        this.setSnapshot(snapshot);
+        this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
+        this.fireSnapshotMutatedForRefresh(snapshot, previousSnapshot);
+    }
+
+    private fireSnapshotMutatedForRefresh(
+        snapshot: readonly TargetDeviceSnapshot[],
+        previousSnapshot: readonly TargetDeviceSnapshot[],
+    ): void {
+        if (!this.onSnapshotMutated) return;
+        const previousByDeviceId = new Map(previousSnapshot.map((entry) => [entry.id, entry]));
+        const nowMs = Date.now();
+        for (const entry of snapshot) {
+            if (this.didSnapshotChangeCalibrationInputs({
+                previousSnapshot: previousByDeviceId.get(entry.id),
+                currentSnapshot: entry,
+                observedCapabilityIds: [],
+            })) {
+                this.onSnapshotMutated(entry, nowMs);
+            }
+        }
+    }
+
+    private didSnapshotChangeCalibrationInputs(params: {
+        previousSnapshot: TargetDeviceSnapshot | undefined;
+        currentSnapshot: TargetDeviceSnapshot;
+        observedCapabilityIds: readonly string[];
+    }): boolean {
+        const { previousSnapshot, currentSnapshot, observedCapabilityIds } = params;
+        if (observedCapabilityIds.includes('measure_power')) return true;
+        if (!previousSnapshot) {
+            return typeof currentSnapshot.measuredPowerKw === 'number'
+                || typeof currentSnapshot.reportedStepId === 'string';
+        }
+        if (!Object.is(previousSnapshot.measuredPowerKw, currentSnapshot.measuredPowerKw)) return true;
+        if (previousSnapshot.reportedStepId !== currentSnapshot.reportedStepId) return true;
+        return false;
+    }
 
     private syncRealtimeDeviceUpdateSnapshot(params: {
         deviceId: string;
@@ -1351,6 +1413,7 @@ export class DeviceManager extends EventEmitter {
         this.logger = logger;
         this.debugStructured = options?.debugStructured;
         this.getFlowTriggerCard = options?.getFlowTriggerCard;
+        this.onSnapshotMutated = options?.onSnapshotMutated;
         if (providers) this.providers = providers;
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -1497,8 +1560,7 @@ export class DeviceManager extends EventEmitter {
                 logger: this.logger,
             });
             this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
-            this.setSnapshot(snapshot);
-            this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
+            this.commitRefreshedSnapshot({ snapshot, previousSnapshot });
             recordSnapshotRefreshObservations({
                 state: this.observationState,
                 snapshot,

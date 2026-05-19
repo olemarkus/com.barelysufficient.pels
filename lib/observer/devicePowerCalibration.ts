@@ -38,7 +38,6 @@ const MAX_ALPHA = 1;
 const CONFIDENCE_MIN_SAMPLES = 5;
 const CONFIDENCE_MIN_SUSTAINED_SECONDS = 300;
 const DEFAULT_FRESHNESS_WINDOW_MS = 60_000;
-const DEFAULT_CADENCE_MIN_INTERVAL_MS = 30_000;
 const SUSTAINED_SECONDS_GAP_CAP_MS = 60_000;
 const NAMEPLATE_TOLERANCE_RATIO = 0.02;
 const ANOMALY_MULTIPLIER = 3;
@@ -58,7 +57,6 @@ export type RecordSampleSkipReason =
   | 'invalid_input'
   | 'no_nameplate'
   | 'stale_observation'
-  | 'cadence_throttled'
   | 'below_floor'
   | 'below_lower_step'
   | 'above_step_ceiling'
@@ -79,7 +77,6 @@ export type RecordSampleOutcome =
 
 export type RecordSampleConfig = {
   freshnessWindowMs?: number;
-  cadenceMinIntervalMs?: number;
   minActiveFloorKw?: number;
 };
 
@@ -122,7 +119,7 @@ export function recordSample(
 ): RecordSampleOutcome {
   const existingDevice = snapshot.devices[input.deviceId];
   const existingStep = existingDevice?.steps[input.stepId];
-  const gateResult = evaluateRecordSampleGates({ input, existingStep, config });
+  const gateResult = evaluateRecordSampleGates({ input, config });
   if (gateResult !== null) {
     return { accepted: false, snapshot, reason: gateResult };
   }
@@ -248,16 +245,12 @@ export function pruneStale(
 
 function evaluateRecordSampleGates(params: {
   input: RecordSampleInput;
-  existingStep: StepCalibration | undefined;
   config: RecordSampleConfig;
 }): RecordSampleSkipReason | null {
-  const { input, existingStep, config } = params;
+  const { input, config } = params;
   if (!isValidInput(input)) return 'invalid_input';
   if (input.nameplateKw <= 0) return 'no_nameplate';
   if (isStaleObservation(input, config.freshnessWindowMs)) return 'stale_observation';
-  if (isCadenceThrottled(input, existingStep, config.cadenceMinIntervalMs)) {
-    return 'cadence_throttled';
-  }
   if (isBelowActiveFloor(input, config.minActiveFloorKw)) return 'below_floor';
   if (isBelowLowerStep(input)) return 'below_lower_step';
   if (isAboveStepCeiling(input)) return 'above_step_ceiling';
@@ -271,16 +264,6 @@ function isStaleObservation(
   if (typeof input.dataObservedAtMs !== 'number') return false;
   const window = freshnessWindowMs ?? DEFAULT_FRESHNESS_WINDOW_MS;
   return (input.nowMs - input.dataObservedAtMs) > window;
-}
-
-function isCadenceThrottled(
-  input: RecordSampleInput,
-  existingStep: StepCalibration | undefined,
-  cadenceMs: number | undefined,
-): boolean {
-  if (existingStep === undefined) return false;
-  const cadence = cadenceMs ?? DEFAULT_CADENCE_MIN_INTERVAL_MS;
-  return (input.nowMs - existingStep.lastSampleMs) < cadence;
 }
 
 function isBelowActiveFloor(
@@ -441,7 +424,6 @@ export const POWER_CALIBRATION_CONSTANTS = {
   CONFIDENCE_MIN_SAMPLES,
   CONFIDENCE_MIN_SUSTAINED_SECONDS,
   DEFAULT_FRESHNESS_WINDOW_MS,
-  DEFAULT_CADENCE_MIN_INTERVAL_MS,
   SUSTAINED_SECONDS_GAP_CAP_MS,
   NAMEPLATE_TOLERANCE_RATIO,
   ANOMALY_MULTIPLIER,
