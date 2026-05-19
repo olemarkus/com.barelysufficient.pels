@@ -1,3 +1,8 @@
+---
+title: Price Tags in Flow and HomeyScript
+description: Subscribe to PELS adjusted hourly prices from Homey Flow or HomeyScript using the price_list_updated trigger and its prices_json token.
+---
+
 # Using PELS price tags in Flow and HomeyScript
 
 PELS publishes its **adjusted** electricity prices — the all-in price you see inside the app, i.e. spot + grid tariff + provider surcharge + tax + VAT + electricity support + Norgespris adjustment, depending on your configuration — as a JSON token on a single trigger card. Flows subscribe to the card and react to the data as it changes.
@@ -29,7 +34,12 @@ Run this from a "Then" card on a Flow triggered by **PELS price list was updated
 ```javascript
 const data = JSON.parse(args[0]);
 
-const deadline = new Date('2026-05-18T07:00:00+02:00').getTime();
+// Tomorrow at 07:00 local time
+const deadlineDate = new Date();
+deadlineDate.setDate(deadlineDate.getDate() + 1);
+deadlineDate.setHours(7, 0, 0, 0);
+const deadline = deadlineDate.getTime();
+
 const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
 const startOfTomorrow = startOfToday.getTime() + 24 * 3600 * 1000;
 

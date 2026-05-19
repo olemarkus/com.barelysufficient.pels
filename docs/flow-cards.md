@@ -35,7 +35,8 @@ Without whole-home power data, the planner cannot behave correctly.
 | **Desired stepped load changed for** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS re-evaluates a Smart task for a device and the status changes, such as **On track** to **At risk**. |
 | **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
-| **Smart task missed** | Legacy trigger that fires when the selected time passes before the task target is reached. Prefer **Smart task status changed** for new notification Flows unless you specifically need the missed-task trigger. |
+| **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
+| **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
 
 Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
 
