@@ -326,8 +326,21 @@ const skipFingerprint = (deviceId: string, mode: string, reason: string): string
   `${deviceId}::${mode}::${reason}`
 );
 
+// Per-process record of (mode, deviceId) entries we've already auto-seeded.
+// Once an entry has been seeded, we don't re-seed it again in this process
+// even if the user later clears it from the UI — otherwise the next snapshot
+// refresh would race the user-clear and re-populate it. Persistence across
+// restarts is intentionally not provided; if the entry is still missing on
+// the next boot, seeding it again is the correct behaviour (and the user
+// hasn't had a chance to clear it post-restart).
+const seededEntryFingerprints = new Set<string>();
+const seededEntryFingerprint = (mode: string, deviceId: string): string => (
+  `${mode}::${deviceId}`
+);
+
 export function __resetSeedSkipDedupeForTests(): void {
   skipEmissionFingerprints.clear();
+  seededEntryFingerprints.clear();
 }
 
 function resolveSeedValue(device: TargetDeviceSnapshot): number | null {
@@ -355,6 +368,14 @@ function findMissingModesForDevice(
   existing: ModeTargetsBlob,
 ): string[] {
   return Object.keys(existing).filter((mode) => {
+    // Edge-trigger: if we've already auto-seeded this (mode, device) once in
+    // this process, never re-seed it — even if it's currently missing. A
+    // user-clear from the settings UI must stick within the session;
+    // otherwise the snapshot refresh races the clear and brings the value
+    // back. On process restart we lose this memory, which is acceptable: if
+    // the entry is still missing the user hasn't had a chance to clear it
+    // post-restart, so re-seeding is the right call.
+    if (seededEntryFingerprints.has(seededEntryFingerprint(mode, device.id))) return false;
     const value = existing[mode]?.[device.id];
     return !(typeof value === 'number' && Number.isFinite(value));
   });
@@ -438,6 +459,9 @@ export function seedMissingModeTargets(params: {
 
   settings.set('mode_device_targets', next);
   plans.forEach((entry) => {
+    entry.modes.forEach((mode) => {
+      seededEntryFingerprints.add(seededEntryFingerprint(mode, entry.device.id));
+    });
     structuredLog?.({
       event: 'mode_target_auto_seeded',
       deviceId: entry.device.id,

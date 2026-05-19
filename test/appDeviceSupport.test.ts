@@ -415,6 +415,90 @@ describe('seedMissingModeTargets', () => {
     });
   });
 
+  it('does not re-seed an entry the user cleared after we already seeded it', () => {
+    // Race regression: the snapshot refresh used to re-seed any missing
+    // (mode, device) entry. If the user cleared an auto-seeded entry from
+    // the settings UI between refreshes, the next cycle would silently put
+    // it back. Edge-trigger the seeder per (mode, deviceId) so a user-clear
+    // sticks within the session.
+    const initial = baseSettings({ Home: {}, Away: {} });
+    const structuredLog = vi.fn();
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: initial as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+    expect(initial.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21 },
+      Away: { 't-1': 21 },
+    });
+
+    // Simulate a user-clear of the Home entry between snapshot refreshes:
+    // the entry is now missing again but we've already seeded it once.
+    const afterClear = baseSettings({ Home: {}, Away: { 't-1': 21 } });
+    structuredLog.mockClear();
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: afterClear as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+
+    expect(afterClear.set).not.toHaveBeenCalled();
+    expect(structuredLog).not.toHaveBeenCalled();
+  });
+
+  it('seeds a freshly added device whose entries have never been seeded', () => {
+    // Positive case alongside the user-clear regression: a brand-new device
+    // appearing mid-session (no prior fingerprint) must still be seeded on
+    // the next snapshot refresh. Ensures the dedupe is keyed per device, not
+    // applied process-wide.
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 't-1': true, 't-new': true },
+      [CONTROLLABLE_DEVICES]: { 't-1': true, 't-new': true },
+      mode_device_targets: { Home: {}, Away: {} },
+    });
+    const structuredLog = vi.fn();
+
+    // First pass seeds the original device, recording its fingerprints.
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+    settings.set.mockClear();
+    structuredLog.mockClear();
+
+    // A new device appears in the snapshot — never seeded — and must be
+    // seeded normally even though the prior device's fingerprints exist.
+    seedMissingModeTargets({
+      snapshot: [
+        buildThermostat(),
+        buildThermostat({ id: 't-new', name: 'Bad', targets: [
+          { id: 'target_temperature', value: 19, unit: '°C', min: 5, max: 35, step: 0.5 },
+        ] }),
+      ],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21, 't-new': 19 },
+      Away: { 't-1': 21, 't-new': 19 },
+    });
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_auto_seeded',
+      deviceId: 't-new',
+      seededModes: ['Home', 'Away'],
+      seededValue: 19,
+    }));
+  });
+
   it('emits each seed_skipped event only once per (device, mode, reason) across cycles', () => {
     const settings = baseSettings({ Home: {}, Away: {} });
     const structuredLog = vi.fn();
