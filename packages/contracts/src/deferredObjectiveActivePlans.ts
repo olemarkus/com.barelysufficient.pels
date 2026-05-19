@@ -29,6 +29,11 @@ export type DeferredObjectiveActivePlanHourV1 = {
   plannedKWh: number;
 };
 
+export type DeferredObjectiveActivePlanCommitmentV1 = {
+  committedAtMs: number;
+  hours: DeferredObjectiveActivePlanHourV1[];
+};
+
 // Mirrors `DeferredObjectiveHorizonStatus` in `lib/plan/deferredObjectives/types`.
 // Duplicated here because contracts must stay browser-safe and cannot import
 // from `lib/`.
@@ -152,6 +157,12 @@ export type DeferredObjectiveActivePlanV1 = {
   // at first-revision time alongside the speed so the meta-line surface stays
   // consistent across revisions. Optional for backward compatibility.
   initialEstimatedDurationText?: string;
+  // First full-horizon allocation accepted for this objective. Runtime uses
+  // this as the committed schedule envelope on later plan cycles; fresh
+  // optimizer output may update diagnostics, but it must not move the selected
+  // hours unless the user abandons/replaces the objective. Optional so older
+  // persisted plans continue to load as legacy advisory plans.
+  commitment?: DeferredObjectiveActivePlanCommitmentV1;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
 };

@@ -330,6 +330,21 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Add explicit backup-hour reservations for committed smart-task schedules.
+      Day-zero committed schedules now keep the first full-horizon allocation
+      stable and ignore later optimizer hour swaps. There is still no separate
+      backup-hour model: if the device cannot deliver inside the committed
+      hours, the plan degrades to `cannot_meet` rather than spilling into
+      reserved backup capacity. Future work should model backup hours as
+      distinct from committed delivery hours, surface the assumption in the
+      plan detail, and decide how daily-budget capacity is reserved so backup
+      hours do not silently steal energy from other tasks.
+      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/plan/deferredObjectives/bucketAllocation.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `notes/deferred-load-objectives/`.
+
 - [ ] Smart-task history receipt + chip helpers in
       `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline
       every user-facing string (Started, Ready, Largest planned hour, Delivered,

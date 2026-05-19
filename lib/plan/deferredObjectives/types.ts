@@ -59,7 +59,13 @@ export type DeferredObjectiveHorizonInput = {
   objective: DeferredObjective;
   steps: DeferredObjectiveStep[];
   buckets: DeferredObjectiveHorizonBucket[];
+  committedHours?: DeferredObjectiveCommittedHour[];
   epsilonKWh?: number;
+};
+
+export type DeferredObjectiveCommittedHour = {
+  startsAtMs: number;
+  plannedKWh: number;
 };
 
 export type DeferredObjectivePlannedBucket = {

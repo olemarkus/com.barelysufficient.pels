@@ -55,10 +55,9 @@ const seedFromEntry = (
  * - Clear: finalize the prior history run as `'abandoned'`, drop the active plan.
  * - New: just seed the active plan; nothing to finalize.
  *
- * Same-deadline target changes are deliberately treated as two history entries (each with a
- * stable target to judge outcome against) while the active-plan recorder keeps a single record
- * across the change via its `objective_changed` revision. The asymmetry is intentional: live
- * hero vs. audit trail.
+ * Same-deadline target changes are deliberately treated as two separate runs: the prior
+ * committed plan is finalized for history, the active record is abandoned, and a new pending
+ * active plan is seeded for the replacement objective.
  *
  * Caller responsibility: pass the entries actually persisted in settings before/after the
  * write, so this helper does not need to read settings itself. The runtime auto-disable path
@@ -92,6 +91,7 @@ export const applyDeferredObjectiveChange = (
   }
   if (prevActive && nextActive && !objectivesMatch(prevEntry, nextEntry)) {
     planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'replaced');
+    activePlanRecorder.clearForDevice(deviceId);
     activePlanRecorder.markPending(seedFromEntry(deviceId, deviceName, nextEntry), nowMs);
     return;
   }

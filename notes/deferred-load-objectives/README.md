@@ -180,6 +180,10 @@ type ActivePlan = {
   pending: boolean;            // flow card fired, no revision yet
   pendingReason?: 'awaiting_horizon_plan' | 'price_feature_disabled' | 'device_data_missing';
   objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement)
+  commitment?: {               // first full-horizon allocation accepted for runtime execution
+    committedAtMs: number;
+    hours: { startsAtMs: number; plannedKWh: number }[];
+  };
   original: Revision | null;   // first non-pending revision
   latest:   Revision | null;   // current revision (== original until replanned)
 };
@@ -189,8 +193,8 @@ type Revision = {
   revisedAtMs: number;
   computedFromPricesUpTo: number | null;
   reason: 'flow_card' | 'prices_arrived' | 'objective_changed'
-        | 'prices_revised' | 'rate_refined' | 'device_unavailable'
-        | 'measured_deviation';
+        | 'prices_revised' | 'schedule_revised' | 'rate_refined'
+        | 'device_unavailable' | 'measured_deviation';
   hours: { startsAtMs: number; plannedKWh: number }[];
   energyNeededKWh: number;
   planStatus: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
@@ -204,27 +208,28 @@ once per plan cycle with the diagnostic stream, alongside the history recorder).
 
 #### Replan policy
 
-The recorder treats the per-cycle horizon plan as advisory and only writes a new
-revision on these triggers:
+The first plannable full-horizon allocation is the committed schedule. The recorder
+persists it as `commitment.hours`, and the diagnostics bridge feeds those hours back into
+`planDeferredObjectiveHorizon` on later cycles so admission executes the committed envelope
+instead of re-sorting by fresh price or daily-budget optimizer output. A committed plan may
+still revise status/source metadata, but optimizer churn alone must not move selected hours
+or fire `deadline_plan_changed`.
+
+The recorder treats the per-cycle horizon plan as advisory and only writes a new revision on
+these triggers:
 
 1. **`flow_card`** — A deadline flow card fires. If prices for the horizon are already
    available, the next plan cycle stamps `original` + `latest`. Otherwise the record is
    created with `pending: true` until the next trigger fires.
 2. **`prices_arrived`** — `pending` flips to false because the planner produced its
    first horizon plan. Stamps `original` + `latest`.
-3. **`objective_changed`** — The objective signature (kind, target value, deadline
-   timestamp, enforcement) differs from the stored signature, mid-flight. Replaces
-   `latest`; `original` is preserved unless the deadline timestamp itself changed.
-4. **`prices_revised`** — The hour signature of the planner's allocation differs from
-   the stored `latest.hours` while the objective signature is unchanged. (The most
-   common cause is Nordpool publishing a revised series that shifts which hours are
-   cheapest.) Replaces `latest`. The user-facing `deadline_plan_changed` flow trigger
-   is gated further: it only fires when the *number* of planned hours changes and the
-   new schedule is non-empty. Same-count hour swaps still persist a revision (Settings
-   UI needs fresh metadata) but stay quiet on the flow bus, and empty schedules
-   (satisfied / cannot_meet / invalid) are surfaced via `deadline_status_changed`
-   instead, since the plan-changed notification template needs `projectedFinishAtMs`
-   to render.
+3. **`objective_changed`** — Legacy fallback for an already-persisted plan that predates
+   commitments and then observes a different signature mid-flight. User-initiated changes
+   now finalize the prior history run, clear the active record, and seed a new pending plan.
+4. **`prices_revised` / `schedule_revised`** — Legacy fallback for pre-commitment active
+   records. For committed plans, changed optimizer-selected hours are ignored; only metadata
+   changes such as status or budget-exhaustion drift can write a `schedule_revised` revision,
+   and the revision keeps `commitment.hours`.
 5. **`rate_refined`** — A learned kWh-per-unit value replaces a conservative bootstrap fallback,
    or otherwise changes the energy basis enough to produce a different stable allocation.
 6. **`device_unavailable`** — The diagnostic stops appearing for an extended period
@@ -234,9 +239,10 @@ revision on these triggers:
 7. **`measured_deviation`** — Reserved for the future per-device metering work. Not
    yet emitted.
 
-A normal plan cycle whose output happens to match the stored `latest.hours` does **not**
-mutate the record. This is what makes the plan stable: the runtime can re-evaluate every
-cycle, but only listed triggers produce a new revision.
+A normal plan cycle whose output does not change committed-plan metadata does **not** mutate
+the record. This is what makes the plan stable: the runtime can re-evaluate every cycle, but
+only listed triggers produce a new revision, and committed hours remain the execution source
+until the user clears/replaces the objective or the deadline passes.
 
 Records are dropped automatically when:
 - The deadline passes (the history recorder records the outcome from its own observation).
@@ -277,10 +283,10 @@ as an in-page route off `index.html`.):
   window. The runtime auto-disable path (`statusTransitions.deadlineJustPassed`) stays on
   the `deadline_passed` classification — only user-initiated changes produce `replaced` or
   the prompt `abandoned`.
-- Same-deadline target changes finalize the prior history entry as `replaced` and start a
-  fresh entry. The active-plan recorder is intentionally asymmetric here: it keeps a single
-  record across the change and writes an `objective_changed` revision, because the hero is a
-  live view of intent while history is an audit trail with one stable target per entry.
+- Same-deadline target changes finalize the prior history entry as `replaced`, clear the old
+  active plan, and start a fresh pending active plan. History and the current-plan hero now
+  both treat a target/deadline edit as abandoning the committed schedule and starting a new
+  run.
 - Entries are persisted to `deferred_objective_plan_history` with a 30-entry rolling cap.
   Throttled writes happen on finalize (rare); `onUninit` flushes any pending entries.
 - The Settings UI fetches this via `/ui_deferred_objective_history` and renders
