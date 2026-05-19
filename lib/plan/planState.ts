@@ -31,6 +31,14 @@ export type ActivationAttemptState = {
   startedMs?: number;
   source?: ActivationAttemptSource;
   observedActivePowerAtMs?: number;
+  /**
+   * Set to the timestamp of the first clean whole-home sample seen after the
+   * attempt started. Used as evidence at window expiry that the household
+   * total was actually known and within limits during the attribution window,
+   * not just that no overshoot was attributed (which would also be true if
+   * the main meter was stale for the entire window).
+   */
+  cleanWholeHomeSampleAtMs?: number;
 };
 
 export type HeadroomCardState = {

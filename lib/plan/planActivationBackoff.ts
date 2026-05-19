@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Activation backoff state transitions and countdown metadata share private helpers. */
 import type {
   ActivationAttemptState,
   ActivationAttemptSource,
@@ -89,6 +90,11 @@ const getObservedActivePowerAtMs = (state: PlanEngineState, deviceId: string): n
   return isFiniteNumber(observedActivePowerAtMs) ? observedActivePowerAtMs : null;
 };
 
+const getCleanWholeHomeSampleAtMs = (state: PlanEngineState, deviceId: string): number | null => {
+  const cleanWholeHomeSampleAtMs = getAttempt(state, deviceId)?.cleanWholeHomeSampleAtMs;
+  return isFiniteNumber(cleanWholeHomeSampleAtMs) ? cleanWholeHomeSampleAtMs : null;
+};
+
 const getLastSetbackMs = (state: PlanEngineState, deviceId: string): number | null => {
   const lastSetbackMs = getAttempt(state, deviceId)?.lastSetbackMs;
   return isFiniteNumber(lastSetbackMs) ? lastSetbackMs : null;
@@ -109,6 +115,10 @@ const closeAttempt = (state: PlanEngineState, deviceId: string): boolean => {
   }
   if ('observedActivePowerAtMs' in entry) {
     delete entry.observedActivePowerAtMs;
+    changed = true;
+  }
+  if ('cleanWholeHomeSampleAtMs' in entry) {
+    delete entry.cleanWholeHomeSampleAtMs;
     changed = true;
   }
 
@@ -309,12 +319,19 @@ export function syncActivationPenaltyState(params: {
 
   if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
     // The full attribution window elapsed without an overshoot being attributed
-    // back to this device. If we also observed the device drawing meaningful
-    // power during the window, treat that as the cautious admission proving
-    // itself — clear the accumulated penalty so the next admission starts at
-    // the base bar. Without observed draw, we have no evidence the restore
-    // actually landed, so leave the penalty intact.
-    const cautiousAdmissionProved = getObservedActivePowerAtMs(state, deviceId) !== null;
+    // back to this device. Clear the accumulated penalty iff we have positive
+    // evidence the cautious admission landed cleanly:
+    //   - the device drew meaningful power during the window
+    //     (`observedActivePowerAtMs` was set), AND
+    //   - at least one clean whole-home sample arrived during the window
+    //     (`cleanWholeHomeSampleAtMs` was set).
+    // Without observed draw, we have no evidence the restore actually landed.
+    // Without a clean whole-home sample, "no overshoot attributed" could just
+    // mean the main meter was stale for the full window — absence of attribution
+    // is not evidence of capacity compliance.
+    const observedDraw = getObservedActivePowerAtMs(state, deviceId);
+    const cleanSampleAtMs = getCleanWholeHomeSampleAtMs(state, deviceId);
+    const cautiousAdmissionProved = observedDraw !== null && cleanSampleAtMs !== null;
     const elapsed = elapsedMs(attemptStartedMs, nowTs);
     const closeResult = closeActivationAttempt({
       state,
@@ -373,6 +390,17 @@ const updateObservedActivePowerAtMs = (
   return true;
 };
 
+const recordCleanWholeHomeSampleAtMs = (
+  state: PlanEngineState,
+  deviceId: string,
+  cleanSampleAtMs: number,
+): boolean => {
+  const entry = ensureAttempt(state, deviceId);
+  if (entry.cleanWholeHomeSampleAtMs !== undefined) return false;
+  entry.cleanWholeHomeSampleAtMs = cleanSampleAtMs;
+  return true;
+};
+
 const shouldTrackObservedActivePower = (
   observation: ActivationBackoffObservation | undefined,
   attemptStartedMs: number,
@@ -394,6 +422,8 @@ export function syncConfirmedRestoreAttributionState(params: {
   deviceId: string;
   nowTs?: number;
   observation?: ActivationBackoffObservation;
+  wholeHomePowerSampleAtMs?: number | null;
+  cleanWholeHomeSample: boolean;
 }): {
   stateChanged: boolean;
   attemptOpen: boolean;
@@ -412,15 +442,26 @@ export function syncConfirmedRestoreAttributionState(params: {
   let stateChanged = false;
 
   // Capture when this device first drew meaningful power after the attempt
-  // started. The canonical close-and-clear path lives in
-  // `syncActivationPenaltyState`'s window-expiry branch — it consults this
-  // timestamp as the "cautious admission proved itself" evidence and clears
-  // penalty when the full attribution window passes without an overshoot.
+  // started, and the first clean whole-home sample seen during the window.
+  // The canonical close-and-clear path lives in `syncActivationPenaltyState`'s
+  // window-expiry branch — it consults both timestamps as the "cautious
+  // admission proved itself" evidence. Clearing requires both signals so a
+  // stale main meter (no clean sample for the full window) cannot silently
+  // release penalty just because no overshoot was attributable.
   if (
     shouldTrackObservedActivePower(observation, attemptStartedMs, nowTs)
     && getObservedActivePowerAtMs(state, deviceId) === null
   ) {
     stateChanged = updateObservedActivePowerAtMs(state, deviceId, observation.lastFreshDataMs) || stateChanged;
+  }
+
+  if (
+    params.cleanWholeHomeSample
+    && isFiniteNumber(params.wholeHomePowerSampleAtMs)
+    && params.wholeHomePowerSampleAtMs > attemptStartedMs
+    && getCleanWholeHomeSampleAtMs(state, deviceId) === null
+  ) {
+    stateChanged = recordCleanWholeHomeSampleAtMs(state, deviceId, params.wholeHomePowerSampleAtMs) || stateChanged;
   }
 
   return { stateChanged, attemptOpen: true };
