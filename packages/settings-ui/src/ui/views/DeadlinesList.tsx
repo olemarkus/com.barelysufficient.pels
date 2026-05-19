@@ -202,32 +202,104 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
   );
 };
 
+// Baseline header rendered in loading / error / empty states. The four sibling
+// panels (Overview / Budget / Usage / Settings) all keep a persistent header
+// when their body is in a non-populated state; Smart tasks lost that header
+// when the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>` (TODO
+// #1041). Reusing the `.pels-hero` / `.plan-hero` primitive keeps the rhythm
+// identical to the populated hero (which already supplies eyebrow + headline),
+// so the header height stays consistent as the body swaps below.
+//
+// Eyebrow is the section label ("Smart tasks", matching the populated hero's
+// fixed `eyebrow` literal) and the headline is a short state-context line so
+// the two slots don't render the same word twice — sibling panels (Modes /
+// Usage / Budget) follow the same eyebrow=section / headline=descriptive
+// rhythm. `data-tone` is omitted so the baseline picks up the default
+// neutral `.pels-hero` styling (the tone enum is `good | warn | alert | info`
+// — see `style.css` `.pels-hero[data-tone="…"]` rules — and the baseline
+// intentionally renders no tonal accent).
+const BASELINE_HEADLINE_BY_STATE: Record<'loading' | 'error' | 'empty', string> = {
+  loading: 'Loading your smart tasks…',
+  error: 'Smart tasks unavailable',
+  empty: 'Schedule a ready-by deadline',
+};
+
+const BaselineHeader = ({ state }: { state: 'loading' | 'error' | 'empty' }) => (
+  <header
+    class="plan-hero pels-hero deadlines-list-hero"
+    aria-labelledby="deadlines-list-baseline-headline"
+  >
+    <div class="plan-hero__section">
+      <p class="eyebrow plan-hero__section-label">Smart tasks</p>
+      <h2 class="plan-hero__headline" id="deadlines-list-baseline-headline">
+        {BASELINE_HEADLINE_BY_STATE[state]}
+      </h2>
+    </div>
+  </header>
+);
+
+const LoadingBody = () => (
+  <div class="deadlines-list-body" data-state="loading">
+    <div class="pels-skeleton-stack" aria-hidden="true">
+      <span class="pels-skeleton pels-skeleton--card"></span>
+      <span class="pels-skeleton pels-skeleton--card"></span>
+    </div>
+    <span class="visually-hidden">Loading smart tasks…</span>
+  </div>
+);
+
+const ErrorBody = ({ message }: { message: string }) => (
+  <p class="muted deadlines-list-body" data-state="error">{message}</p>
+);
+
+const EmptyBody = () => (
+  <p class="muted deadlines-list-body" data-state="empty">
+    No smart tasks yet. Open the Flow editor and add the
+    {' '}<strong>Add heating task</strong> action
+    (<em>Heat … to … °C by Ready by</em>) or the
+    {' '}<strong>Add charging task</strong> action
+    (<em>Charge … to … % by Ready by</em>) to schedule a device
+    for a specific ready-by time.
+  </p>
+);
+
 const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.status === 'loading') {
-    return <p class="muted">Loading smart tasks…</p>;
+    return (
+      <>
+        <BaselineHeader state="loading" />
+        <LoadingBody />
+      </>
+    );
   }
   if (state.status === 'error') {
-    return <p class="muted">{state.message}</p>;
+    return (
+      <>
+        <BaselineHeader state="error" />
+        <ErrorBody message={state.message} />
+      </>
+    );
   }
   if (state.cards.length === 0) {
     return (
-      <p class="muted">
-        No smart tasks yet. Open the Flow editor and add the
-        {' '}<strong>Add heating task</strong> action
-        (<em>Heat … to … °C by Ready by</em>) or the
-        {' '}<strong>Add charging task</strong> action
-        (<em>Charge … to … % by Ready by</em>) to schedule a device
-        for a specific ready-by time.
-      </p>
+      <>
+        <BaselineHeader state="empty" />
+        <EmptyBody />
+      </>
     );
   }
   const heroCopy = resolveDeadlinesListHero({
     cards: state.cards,
     formatTime: formatHourMinute,
   });
+  // Populated hero already owns the eyebrow "Smart tasks" + headline slot, so
+  // the baseline header is suppressed here to avoid a double-header. If the
+  // resolver returns `null` for any future card shape, fall back to the
+  // baseline header (reusing the `empty` headline copy — it reads as a calm
+  // "you have smart tasks; here they are" prompt without claiming a state).
   return (
     <>
-      {heroCopy !== null && <Hero copy={heroCopy} />}
+      {heroCopy !== null ? <Hero copy={heroCopy} /> : <BaselineHeader state="empty" />}
       <div class="deadline-list">
         {state.cards.map((card) => (
           <Card key={card.deviceId} card={card} />

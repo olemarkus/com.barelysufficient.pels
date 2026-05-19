@@ -180,7 +180,17 @@ describe('DeadlinesList', () => {
   it('does not render the populated-state hero on the empty state', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, { status: 'ready', cards: [] });
-    expect(mount.querySelector('.deadlines-list-hero')).toBeNull();
+    // The populated hero (with a status-derived headline and the navigation
+    // subline button) must not mount on the empty state — only the baseline
+    // header variant is allowed there. Per TODO #1041 the panel still keeps
+    // a visible "Smart tasks" header in every state, so we assert specifically
+    // that the populated-hero affordance is absent rather than the entire
+    // `.deadlines-list-hero` shell.
+    expect(mount.querySelector('.deadlines-list-hero__nav-target')).toBeNull();
+    // No tone escalation — the baseline header stays neutral.
+    expect(mount.querySelector('.deadlines-list-hero[data-tone="warn"]')).toBeNull();
+    expect(mount.querySelector('.deadlines-list-hero[data-tone="alert"]')).toBeNull();
+    expect(mount.querySelector('.deadlines-list-hero[data-tone="good"]')).toBeNull();
   });
 
   // Subline affordance: when the resolver emits a sublineTarget, the subline
@@ -199,6 +209,59 @@ describe('DeadlinesList', () => {
     const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-card-id')).toBe('dev_water_heater');
+  });
+
+  // Header-persistence parity: the panel must keep a visible title/header in
+  // every state (loading / error / empty / ready) so the Smart tasks tab
+  // matches the Overview / Budget / Usage / Settings rhythm. Regression guard
+  // for TODO #1041 — the v2.7.2 hero PR dropped the static `<h2>Smart tasks</h2>`
+  // and left the panel headerless in non-populated states.
+  describe('header persistence across states', () => {
+    const expectHeaderVisible = (mount: HTMLElement): void => {
+      // A persistent header has both the eyebrow ("Smart tasks") and a
+      // non-empty headline (`<h2>`), mounted inside a `.pels-hero` / `.plan-hero`
+      // shell — matches the populated hero shape so the panel keeps its
+      // section label and title in every state.
+      const headlines = Array.from(
+        mount.querySelectorAll<HTMLElement>('.plan-hero__headline'),
+      );
+      expect(headlines.length).toBeGreaterThan(0);
+      expect(headlines.some((el) => (el.textContent ?? '').trim().length > 0)).toBe(true);
+      const eyebrows = Array.from(
+        mount.querySelectorAll<HTMLElement>('.eyebrow'),
+      ).map((el) => el.textContent ?? '');
+      expect(eyebrows).toContain('Smart tasks');
+    };
+
+    it('renders the header in the loading state', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, { status: 'loading' });
+      expectHeaderVisible(mount);
+    });
+
+    it('renders the header in the error state', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, { status: 'error', message: 'Network error.' });
+      expectHeaderVisible(mount);
+      expect(mount.textContent).toContain('Network error.');
+    });
+
+    it('renders the header in the empty state', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, { status: 'ready', cards: [] });
+      expectHeaderVisible(mount);
+      // Empty-state copy still mounts below the header.
+      expect(mount.textContent).toContain('No smart tasks yet');
+    });
+
+    it('renders the header in the ready (populated) state', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, {
+        status: 'ready',
+        cards: [buildCard({ statusId: 'on_track' })],
+      });
+      expectHeaderVisible(mount);
+    });
   });
 
   it('scrolls the named card into view when the subline affordance is clicked', () => {

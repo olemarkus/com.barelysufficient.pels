@@ -303,11 +303,12 @@
     </section>
 
     <section class="card panel hidden" id="deadlines-panel" data-panel="deadlines" aria-label="Smart tasks">
-      <!-- Populated-state hero is rendered into #deadlines-list-root by
-           `DeadlinesList.tsx`; the empty state renders an explanatory
-           paragraph instead. The previous `<h2>Smart tasks</h2>` header was
-           dropped per TODO #1041 — it duplicated the tab label and the
-           populated-state hero already owns the eyebrow+headline slot. -->
+      <!-- `DeadlinesList.tsx` owns the header inside #deadlines-list-root:
+           the populated-state hero renders eyebrow+headline when cards are
+           present, and a baseline `.pels-hero` (eyebrow + `<h2>Smart tasks</h2>`)
+           renders in loading / error / empty states so the panel keeps a
+           visible title in every state (matches Overview / Budget / Usage /
+           Settings rhythm). -->
       <div id="deadlines-list-root"></div>
       <div id="deadlines-history-root"></div>
     </section>
