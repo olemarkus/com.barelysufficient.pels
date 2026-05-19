@@ -314,7 +314,7 @@ md-filled-text-field,
 md-filled-select {
   width: 100%;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--pels-touch-target-min);
   --md-filled-text-field-container-color: var(--color-surface-4);
   --md-filled-text-field-container-shape: var(--radius-md);
   --md-filled-text-field-input-text-color: var(--text);
@@ -1086,8 +1086,12 @@ md-primary-tab.tab[active]:hover {
 
 .btn {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
+  min-height: var(--pels-touch-target-min);
   padding: var(--spacing-3) var(--spacing-4);
   font-weight: var(--font-weight-bold);
   cursor: pointer;
@@ -5896,7 +5900,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .price-aware-grid__head,
 .price-aware-grid__row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 116px 116px;
+  grid-template-columns: minmax(0, 1fr) 144px 144px;
   gap: var(--spacing-3);
   align-items: center;
 }
@@ -5999,8 +6003,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: inline-flex;
   align-items: center;
   width: 100%;
-  max-width: 116px;
-  height: 36px;
+  max-width: 144px;
+  min-height: var(--pels-touch-target-min);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
   border-radius: 999px;
@@ -6014,8 +6018,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .value-adjuster__btn {
-  width: 28px;
-  height: 28px;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -6099,15 +6103,15 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * view. Styled as a quiet inline affordance — no chrome that competes with
  * the headline; just a hover/focus underline and a chevron suffix that
  * signals tappability. The negative-margin / padding pattern keeps the
- * visual line tight while expanding the touch target to ≥ 48 px tall, in
- * line with the Android Material touch-target floor. */
+ * visual line tight while expanding the touch target to the shared
+ * Android Material touch-target floor. */
 .deadlines-list-hero__nav-target {
   display: inline-flex;
   align-items: baseline;
   gap: var(--spacing-1);
   margin: calc(-1 * var(--spacing-2)) calc(-1 * var(--spacing-2));
   padding: var(--spacing-2) var(--spacing-2);
-  min-height: 48px;
+  min-height: var(--pels-touch-target-min);
   border: 0;
   background: transparent;
   color: inherit;
@@ -6746,17 +6750,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--pels-text-muted);
   font-size: var(--font-size-sm);
   line-height: var(--font-line-height-normal);
-}
-
-:where(
-  #limits-panel,
-  #modes-panel,
-  #advanced-panel,
-  #electricity-prices-panel,
-  #price-aware-devices-panel,
-  #device-detail-panel
-) :where(md-filled-text-field, md-filled-select) {
-  min-height: 44px;
 }
 
 :where(
