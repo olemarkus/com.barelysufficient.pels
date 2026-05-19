@@ -25,6 +25,10 @@ import { getApiReadModel, getHomeyTimezone } from './homey.ts';
 import { createToggleGroup } from './components.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext.ts';
+import {
+  formatPowerUsageEmptyAwaitingSamples,
+  formatPowerUsageEmptyForWeek,
+} from '../../../shared-domain/src/powerUsageStrings.ts';
 import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView.ts';
 import { resolveUsageSplit } from './powerUsageSplit.ts';
 import {
@@ -589,8 +593,8 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
     powerList.replaceChildren();
     if (powerEmpty) {
       powerEmpty.textContent = entries.length
-        ? 'No hourly usage for the selected week.'
-        : 'No power samples received yet. Wire the "Report power usage" Flow action.';
+        ? formatPowerUsageEmptyForWeek()
+        : formatPowerUsageEmptyAwaitingSamples();
       powerEmpty.hidden = false;
     }
     return;
