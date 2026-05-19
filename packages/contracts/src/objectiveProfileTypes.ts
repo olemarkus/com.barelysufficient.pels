@@ -28,6 +28,14 @@ export type DeviceObjectiveProfile = {
   // back to that pre-drop level or the 24h safety timeout elapses.
   recoveryTargetValue?: number;
   recoveryArmedAtMs?: number;
+  // Count of consecutive armed-window samples that showed no positive movement
+  // toward `recoveryTargetValue`. Disarms the window once this hits
+  // `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` so a capacity-shed thermostat cooling
+  // *away* from the pre-drop value doesn't sit rejected for the full 24h
+  // safety timeout. Resets to 0 whenever a sample shows forward progress.
+  // Optional for backward compatibility — legacy profiles missing the field
+  // are treated as 0.
+  recoveryNoProgressSamples?: number;
   // Recent (input, kWh/unit) samples kept verbatim so the band fitter can
   // re-bucket data when the value distribution shifts. Bounded ring buffer
   // (newest at the end); legacy profiles without this field still load.

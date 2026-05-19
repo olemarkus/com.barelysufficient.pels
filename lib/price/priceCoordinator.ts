@@ -23,6 +23,7 @@ export type PriceCoordinatorDeps = {
   logDebug: (...args: unknown[]) => void;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
+  onCombinedPricesUpdated?: (reason: string) => void;
 };
 
 export class PriceCoordinator {
@@ -49,6 +50,9 @@ export class PriceCoordinator {
       deps.error,
       deps.getHomeyEnergyApi,
     );
+    if (deps.onCombinedPricesUpdated) {
+      this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);
+    }
   }
 
   getPriceOptimizationEnabled(): boolean {
