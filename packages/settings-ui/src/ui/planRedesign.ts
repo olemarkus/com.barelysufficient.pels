@@ -113,6 +113,15 @@ const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | nul
   }
 };
 
+// Refreshes the overview hero's price-dependent state (e.g. the "Cheapest hour
+// ahead …" anticipation subline) when the runtime broadcasts `prices_updated`.
+// The plan snapshot itself is not re-fetched — only the cached prices are
+// refreshed and the surface is re-rendered against the current plan.
+export const updatePlanPrices = async (): Promise<void> => {
+  cachedPrices = await readPricesForPlanRefresh();
+  doRender();
+};
+
 export const refreshPlan = async () => {
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
