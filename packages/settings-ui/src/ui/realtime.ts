@@ -52,7 +52,14 @@ import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDev
 import { refreshDailyBudgetPlan, updateBudgetPower } from './dailyBudget.ts';
 import { discardBudgetAdjust, refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
-import { parsePlanSnapshot, refreshPlan, renderPlan, updatePlanPower, type PlanSnapshot } from './plan.ts';
+import {
+  parsePlanSnapshot,
+  refreshPlan,
+  renderPlan,
+  updatePlanPower,
+  updatePlanPrices,
+  type PlanSnapshot,
+} from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
@@ -326,6 +333,17 @@ const handlePlanUpdated = (plan: unknown) => {
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   refreshPricesIfVisible('realtime prices_updated');
+  // The overview hero anticipation subline ("Cheapest hour ahead …") depends on
+  // cached prices. Keep it in sync with realtime price updates without forcing a
+  // plan re-fetch — the cached plan snapshot is still current. Skip the fetch
+  // when the overview is hidden; switching to it triggers refreshPlanForUi and
+  // pulls fresh prices alongside the plan.
+  if (!isPanelVisible('#overview-panel')) return;
+  runLoggedTask(
+    updatePlanPrices(),
+    'Failed to refresh overview prices',
+    'realtime prices_updated',
+  );
 };
 
 const handleDevicesUpdated = () => {
