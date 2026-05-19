@@ -87,6 +87,7 @@ import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
+  seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
@@ -307,6 +308,12 @@ class PelsApp extends Homey.App {
     disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
       snapshot,
       settings: this.homey.settings,
+      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+    }),
+    seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
+      snapshot,
+      settings: this.homey.settings,
+      structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
       logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
     }),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),

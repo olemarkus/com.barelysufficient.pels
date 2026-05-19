@@ -1,6 +1,8 @@
 import {
   disableUnsupportedDevices,
   isManagedFilterActive,
+  seedMissingModeTargets,
+  __resetSeedSkipDedupeForTests,
 } from '../lib/app/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
@@ -204,5 +206,239 @@ describe('isManagedFilterActive', () => {
   it('reports active when at least one device is explicitly enabled', () => {
     expect(isManagedFilterActive({ 'ev1': true })).toBe(true);
     expect(isManagedFilterActive({ 'ev1': true, 'vt-1': false })).toBe(true);
+  });
+});
+
+describe('seedMissingModeTargets', () => {
+  beforeEach(() => {
+    __resetSeedSkipDedupeForTests();
+  });
+
+  const buildThermostat = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+    id: 't-1',
+    name: 'Stue',
+    deviceType: 'temperature',
+    powerCapable: true,
+    targets: [{ id: 'target_temperature', value: 21, unit: '°C', min: 5, max: 35, step: 0.5 }],
+    ...overrides,
+  });
+
+  const baseSettings = (modeTargets: Record<string, Record<string, number>>) => makeSettings({
+    [MANAGED_DEVICES]: { 't-1': true },
+    [CONTROLLABLE_DEVICES]: { 't-1': true },
+    mode_device_targets: modeTargets,
+  });
+
+  it('seeds missing entries from the device current setpoint', () => {
+    const settings = baseSettings({ Home: {}, Away: {}, Night: {} });
+    const structuredLog = vi.fn();
+    const logDebug = vi.fn();
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog,
+      logDebug,
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21 },
+      Away: { 't-1': 21 },
+      Night: { 't-1': 21 },
+    });
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_auto_seeded',
+      deviceId: 't-1',
+      seededModes: ['Home', 'Away', 'Night'],
+      seededValue: 21,
+      source: 'device_setpoint',
+    }));
+  });
+
+  it('is a no-op when every entry is already populated', () => {
+    const settings = baseSettings({ Home: { 't-1': 19 }, Away: { 't-1': 17 } });
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  it('only seeds the missing modes, leaving existing entries intact', () => {
+    const settings = baseSettings({ Home: { 't-1': 19 }, Away: {}, Night: { 't-1': 16 } });
+    const structuredLog = vi.fn();
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 19 },
+      Away: { 't-1': 21 },
+      Night: { 't-1': 16 },
+    });
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_auto_seeded',
+      seededModes: ['Away'],
+    }));
+  });
+
+  it('normalizes the seed value through the target capability bounds and step', () => {
+    const settings = baseSettings({ Home: {} });
+    // Capability step=0.5, min=5, max=35; raw current 21.34 should snap to 21.5
+    const thermostat = buildThermostat({
+      targets: [{ id: 'target_temperature', value: 21.34, unit: '°C', min: 5, max: 35, step: 0.5 }],
+    });
+
+    seedMissingModeTargets({
+      snapshot: [thermostat],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 21.5 },
+    });
+  });
+
+  it('skips devices that lack a finite current setpoint and emits skip events', () => {
+    const settings = baseSettings({ Home: {}, Away: {} });
+    const structuredLog = vi.fn();
+    const thermostat = buildThermostat({
+      targets: [{ id: 'target_temperature', value: Number.NaN, unit: '°C' }],
+    });
+
+    seedMissingModeTargets({
+      snapshot: [thermostat],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_target_seed_skipped',
+      deviceId: 't-1',
+      reason: 'no_seed_source',
+      mode: 'Home',
+    }));
+    expect(structuredLog).toHaveBeenCalledWith(expect.objectContaining({
+      mode: 'Away',
+      reason: 'no_seed_source',
+    }));
+  });
+
+  it('ignores non-temperature, non-managed, non-controllable, and no-target devices', () => {
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 't-managed': true, 't-unmanaged': false, 't-uncontrollable': true },
+      [CONTROLLABLE_DEVICES]: { 't-managed': true, 't-unmanaged': true, 't-uncontrollable': false },
+      mode_device_targets: { Home: {} },
+    });
+
+    seedMissingModeTargets({
+      snapshot: [
+        buildThermostat({ id: 't-unmanaged' }),
+        buildThermostat({ id: 't-uncontrollable' }),
+        buildThermostat({ id: 't-notemp', deviceType: 'onoff' }),
+        buildThermostat({ id: 't-notargets', targets: [] }),
+      ],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when no modes are configured', () => {
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 't-1': true },
+      [CONTROLLABLE_DEVICES]: { 't-1': true },
+      mode_device_targets: {},
+    });
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when mode_device_targets is missing or malformed', () => {
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 't-1': true },
+      [CONTROLLABLE_DEVICES]: { 't-1': true },
+    });
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  it('preserves mode keys whose stored value is null/primitive and seeds them', () => {
+    // Mimic corrupted settings where a mode key exists but its value is not a
+    // plain object (e.g. legacy/import path wrote `null`). Dropping the mode
+    // would silently lose user configuration on the next write.
+    const settings = makeSettings({
+      [MANAGED_DEVICES]: { 't-1': true },
+      [CONTROLLABLE_DEVICES]: { 't-1': true },
+      mode_device_targets: { Home: { 't-1': 19 }, Borte: null, Natt: 'oops' },
+    });
+
+    seedMissingModeTargets({
+      snapshot: [buildThermostat()],
+      settings: settings as any,
+      structuredLog: vi.fn(),
+      logDebug: vi.fn(),
+    });
+
+    expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
+      Home: { 't-1': 19 },
+      Borte: { 't-1': 21 },
+      Natt: { 't-1': 21 },
+    });
+  });
+
+  it('emits each seed_skipped event only once per (device, mode, reason) across cycles', () => {
+    const settings = baseSettings({ Home: {}, Away: {} });
+    const structuredLog = vi.fn();
+    const thermostat = buildThermostat({
+      targets: [{ id: 'target_temperature', value: Number.NaN, unit: '°C' }],
+    });
+
+    seedMissingModeTargets({
+      snapshot: [thermostat],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+    seedMissingModeTargets({
+      snapshot: [thermostat],
+      settings: settings as any,
+      structuredLog,
+      logDebug: vi.fn(),
+    });
+
+    const skippedEvents = structuredLog.mock.calls
+      .map(([event]) => event)
+      .filter((event: any) => event.event === 'mode_target_seed_skipped');
+    expect(skippedEvents).toHaveLength(2);
+    expect(skippedEvents.map((e: any) => e.mode).sort()).toEqual(['Away', 'Home']);
   });
 });

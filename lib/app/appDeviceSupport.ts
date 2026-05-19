@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../utils/types';
-import { isBooleanMap } from '../utils/appTypeGuards';
+import { isBooleanMap, isModeDeviceTargets } from '../utils/appTypeGuards';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -13,7 +13,9 @@ import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
 } from '../utils/airtreatmentShedTemperature';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
+import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+
+type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 
 type BooleanMap = Record<string, boolean>;
 type PriceSettings = Record<string, { enabled?: boolean }>;
@@ -289,4 +291,162 @@ export function disableUnsupportedDevices(params: {
     const suffix = shedBehaviorUpdated === 1 ? '' : 's';
     logDebug(`Enforced temperature shedding for ${shedBehaviorUpdated} non-onoff temperature device${suffix}`);
   }
+}
+
+type ModeTargetsBlob = Record<string, Record<string, number>>;
+type SeedPlan = { device: TargetDeviceSnapshot; modes: string[]; value: number };
+
+function parseModeDeviceTargets(value: unknown): ModeTargetsBlob | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([mode, entries]) => {
+      // Preserve the mode key even when its value is missing/null/primitive
+      // — dropping it would silently delete a user-configured mode from the
+      // blob on the next write. Coerce to an empty entry instead so the
+      // mode survives and the seed pass can still populate it.
+      if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+        return [mode, {} as Record<string, number>] as const;
+      }
+      const cleaned = Object.fromEntries(
+        Object.entries(entries as Record<string, unknown>)
+          .filter(([, raw]) => typeof raw === 'number' && Number.isFinite(raw)),
+      ) as Record<string, number>;
+      return [mode, cleaned] as const;
+    }),
+  );
+}
+
+// Per-process dedupe so a permanently-broken device (no finite setpoint)
+// doesn't emit `mode_target_seed_skipped` on every snapshot refresh. Once a
+// (device, mode, reason) tuple has been logged, we stay quiet until the app
+// restarts — by which point the user has either fixed the device, removed
+// it, or the operator has a fresh signal to act on.
+const skipEmissionFingerprints = new Set<string>();
+const skipFingerprint = (deviceId: string, mode: string, reason: string): string => (
+  `${deviceId}::${mode}::${reason}`
+);
+
+export function __resetSeedSkipDedupeForTests(): void {
+  skipEmissionFingerprints.clear();
+}
+
+function resolveSeedValue(device: TargetDeviceSnapshot): number | null {
+  const target = getPrimaryTargetCapability(device.targets);
+  const current = target?.value;
+  if (typeof current !== 'number' || !Number.isFinite(current)) return null;
+  const normalized = normalizeTargetCapabilityValue({ target, value: current });
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function isSeedCandidate(
+  device: TargetDeviceSnapshot,
+  managed: BooleanMap,
+  controllable: BooleanMap,
+): boolean {
+  if (!supportsTemperatureControl(device)) return false;
+  if (getPrimaryTargetCapability(device.targets) === null) return false;
+  if (managed[device.id] !== true) return false;
+  if (controllable[device.id] !== true) return false;
+  return true;
+}
+
+function findMissingModesForDevice(
+  device: TargetDeviceSnapshot,
+  existing: ModeTargetsBlob,
+): string[] {
+  return Object.keys(existing).filter((mode) => {
+    const value = existing[mode]?.[device.id];
+    return !(typeof value === 'number' && Number.isFinite(value));
+  });
+}
+
+function applySeedPlans(existing: ModeTargetsBlob, plans: SeedPlan[]): ModeTargetsBlob {
+  return Object.fromEntries(
+    Object.entries(existing).map(([mode, entries]) => {
+      const additions = Object.fromEntries(
+        plans
+          .filter((plan) => plan.modes.includes(mode))
+          .map((plan) => [plan.device.id, plan.value] as const),
+      );
+      return [mode, { ...entries, ...additions }];
+    }),
+  );
+}
+
+function emitSeedSkipped(
+  plan: { device: TargetDeviceSnapshot; modes: string[] },
+  reason: 'no_seed_source' | 'normalize_failed',
+  structuredLog?: StructuredEventEmitter,
+): void {
+  plan.modes.forEach((mode) => {
+    const fingerprint = skipFingerprint(plan.device.id, mode, reason);
+    if (skipEmissionFingerprints.has(fingerprint)) return;
+    skipEmissionFingerprints.add(fingerprint);
+    structuredLog?.({
+      event: 'mode_target_seed_skipped',
+      deviceId: plan.device.id,
+      deviceName: plan.device.name,
+      mode,
+      reason,
+    });
+  });
+}
+
+function buildSeedPlans(
+  candidates: TargetDeviceSnapshot[],
+  existing: ModeTargetsBlob,
+  structuredLog?: StructuredEventEmitter,
+): SeedPlan[] {
+  return candidates.flatMap((device) => {
+    const modes = findMissingModesForDevice(device, existing);
+    if (modes.length === 0) return [];
+    const value = resolveSeedValue(device);
+    if (value === null) {
+      emitSeedSkipped({ device, modes }, 'no_seed_source', structuredLog);
+      return [];
+    }
+    return [{ device, modes, value }];
+  });
+}
+
+export function seedMissingModeTargets(params: {
+  snapshot: TargetDeviceSnapshot[];
+  settings: Homey.App['homey']['settings'];
+  structuredLog?: StructuredEventEmitter;
+  logDebug: (...args: unknown[]) => void;
+}): void {
+  const { snapshot, settings, structuredLog, logDebug } = params;
+  const existing = parseModeDeviceTargets(settings.get('mode_device_targets') as unknown);
+  // No modes configured at all → nothing to seed against. A fresh install
+  // with no operating mode is handled by the first UI write rather than
+  // fabricating a mode here.
+  if (!existing || Object.keys(existing).length === 0) return;
+
+  const managed = parseBooleanMap(settings.get(MANAGED_DEVICES) as unknown);
+  const controllable = parseBooleanMap(settings.get(CONTROLLABLE_DEVICES) as unknown);
+  const candidates = snapshot.filter((device) => isSeedCandidate(device, managed, controllable));
+  if (candidates.length === 0) return;
+
+  const plans = buildSeedPlans(candidates, existing, structuredLog);
+  if (plans.length === 0) return;
+
+  const next = applySeedPlans(existing, plans);
+  if (!isModeDeviceTargets(next)) {
+    plans.forEach((plan) => emitSeedSkipped(plan, 'normalize_failed', structuredLog));
+    return;
+  }
+
+  settings.set('mode_device_targets', next);
+  plans.forEach((entry) => {
+    structuredLog?.({
+      event: 'mode_target_auto_seeded',
+      deviceId: entry.device.id,
+      deviceName: entry.device.name,
+      seededModes: entry.modes,
+      seededValue: entry.value,
+      source: 'device_setpoint',
+    });
+  });
+  const names = plans.map((entry) => entry.device.name).join(', ');
+  logDebug(`Seeded mode targets for ${plans.length} device${plans.length === 1 ? '' : 's'}: ${names}`);
 }
