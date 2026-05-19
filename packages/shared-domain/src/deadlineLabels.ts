@@ -986,6 +986,33 @@ export const resolveMissedHistoryRecourse = (params: {
   return { ...MISSED_HISTORY_RECOURSE_SHORTFALL, deviceId: params.deviceId };
 };
 
+// Resolve the smart-task chip's underlying confidence value from the persisted
+// provenance + the live profile. Producer-side resolution lives here, not in
+// the UI consumer, per `feedback_layering_resolution_in_producer.md`.
+//
+// Preference order:
+//   1. `provenance.displayConfidence` — band-aware aggregate the recorder
+//      writes today. Drives `Estimating` / `Refining` honestly because it
+//      reflects the bands actually integrated, not raw per-sample CV.
+//   2. `provenance.confidence` — legacy raw-CV stat. Kept on the provenance
+//      for log/diagnostic parity; covers plans persisted after provenance
+//      shipped but before `displayConfidence` shipped.
+//   3. Live profile's `kwhPerUnit.confidence` — final fallback for plans
+//      persisted before provenance existed at all. Drainable population.
+//   4. `null` — no signal; the chip suppresses.
+//
+// Returning a single flat value lets the UI consumer treat the result as
+// opaque — it never sees `provenance` / `kind` / `source`.
+export const resolveChipConfidence = (params: {
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
+  profileConfidence: 'low' | 'medium' | 'high' | null | undefined;
+}): 'low' | 'medium' | 'high' | null => (
+  params.provenance?.displayConfidence
+    ?? params.provenance?.confidence
+    ?? params.profileConfidence
+    ?? null
+);
+
 // Resolve display rows for the kWhPerUnit provenance snapshot. The caller
 // supplies `formatAcceptedAt` because shared-domain stays free of locale and
 // timezone helpers — the UI passes a browser-side formatter, while runtime

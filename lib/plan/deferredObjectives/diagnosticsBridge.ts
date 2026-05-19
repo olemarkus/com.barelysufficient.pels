@@ -70,6 +70,11 @@ type BaseDeferredObjectiveDiagnostic = {
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
+  // Band-aware aggregated confidence for the smart-task chip. Honest about
+  // whether the *model in use* (bands integrated for this resolution) is
+  // well-supported, instead of the raw per-sample CV which sits at "low" on
+  // thermal devices effectively forever. Null on bootstrap / unresolved.
+  displayConfidence: 'low' | 'medium' | 'high' | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
   // Number of accepted samples that produced the learned profile mean. Zero
   // when `kwhPerUnitSource` is `bootstrap` or null. Surfaced so the UI can
@@ -251,6 +256,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     kWhPerPercent: null,
     kWhPerDegreeC: null,
     rateConfidence: null,
+    displayConfidence: null,
     kwhPerUnitSource: null,
   });
   if (!device) return withUnknown(base, 'objective_missing_device');
@@ -353,6 +359,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       energyNeededKWh: 0,
       kWhPerUnit: null,
       rateConfidence: null,
+      displayConfidence: null,
       kwhPerUnitSource: null,
       reasonCode: null,
     };
@@ -372,6 +379,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
       kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
       rateConfidence: profileEnergy.rateConfidence,
+      displayConfidence: profileEnergy.displayConfidence,
       kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
       horizonBucketCount: policyHorizon.horizonBucketCount,
       dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
@@ -405,6 +413,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
     kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
     rateConfidence: profileEnergy.rateConfidence,
+    displayConfidence: profileEnergy.displayConfidence,
     kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
     horizonBucketCount: policyHorizon.horizonBucketCount,
     dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
@@ -444,6 +453,7 @@ const buildDiagnosticBase = (params: {
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
+  displayConfidence: 'low' | 'medium' | 'high' | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
 }): DeferredObjectiveDiagnostic => {
   const deadlineAtMs = Number.isFinite(params.objective.deadlineAtMs) && params.objective.deadlineAtMs > 0
@@ -469,6 +479,7 @@ const buildDiagnosticBase = (params: {
     kWhPerPercent: params.kWhPerPercent,
     kWhPerDegreeC: params.kWhPerDegreeC,
     rateConfidence: params.rateConfidence,
+    displayConfidence: params.displayConfidence,
     kwhPerUnitSource: params.kwhPerUnitSource,
     kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
     kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
@@ -525,12 +536,13 @@ const buildKnownEnergyFields = (params: {
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
 }): Pick<
   DeferredObjectiveDiagnostic,
-  'energyNeededKWh' | 'kWhPerPercent' | 'kWhPerDegreeC' | 'rateConfidence' | 'kwhPerUnitSource'
+  'energyNeededKWh' | 'kWhPerPercent' | 'kWhPerDegreeC' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
   kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
   kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
   rateConfidence: params.profileEnergy.rateConfidence,
+  displayConfidence: params.profileEnergy.displayConfidence,
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
 });
 

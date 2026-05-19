@@ -68,6 +68,22 @@ Consequence: **two plans for the same device starting from different SoCs or tem
 
 If a UI surface needs the stable learned mean separately, it can read `objectiveProfiles[deviceId].kwhPerUnit.mean` directly from `power_tracker_state`.
 
+## `displayConfidence` for the smart-task chip
+
+The active-plan provenance carries two confidence values:
+
+- `confidence` — the raw per-sample CV-based stat from `objectiveProfileStats.resolveProfileConfidence`. Honest about per-sample noise. On thermal devices this sits at `low` effectively forever (stratification + ambient drift + draw history pushes CV above 0.75 regardless of sample count). Kept for logs and diagnostics.
+- `displayConfidence` — the band-aware aggregate driving the "Estimating" / "Refining" chip. Reflects whether the bands actually integrated for this resolution are well-supported.
+
+`resolveDisplayConfidence` aggregates per the rule:
+
+1. No bands, or no `currentValue`, or non-positive `remainingUnits` → fall back to global.
+2. An overlapping band has `sampleCount < MIN_BAND_SAMPLES_FOR_INTEGRATION` → fall back to global (we'd lean on the global mean for that slice anyway).
+3. Bands don't fully cover `[current, target]` (within a 1e-6 tolerance) → fall back to global.
+4. Otherwise → `min(confidence)` across overlapping bands.
+
+The UI consumer in `packages/settings-ui/src/ui/deadlinePlanResolvers.ts` reads `provenance.displayConfidence` first, falls back to `provenance.confidence`, then to the live profile's stat. Producer-resolved per `feedback_layering_resolution_in_producer.md`: the UI never branches on bands or per-band fields.
+
 ## Tunables
 
 If estimation regresses for a specific device shape, the relevant constants are:
