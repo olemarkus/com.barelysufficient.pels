@@ -32,13 +32,17 @@ PELS publishes its **adjusted** electricity prices — the all-in price you see 
 
 Local token: `prices_json` (string) — the same payload as the global tag.
 
-## Example (paste into a HomeyScript card) — pick the N cheapest upcoming hours before a deadline
+## Example (paste into a HomeyScript) — pick the N cheapest upcoming hours before a deadline
 
-This script uses HomeyScript-only APIs (`tag()`, top-level `await`, `log()`). Paste it into a Flow's "Run code" HomeyScript card or the HomeyScript IDE; it will not run as a plain Node script.
+This script uses HomeyScript-only APIs (`Homey.flowtoken`, top-level `await`, `console.log()`). Paste it into a HomeyScript in the HomeyScript app or IDE — then reference that script from a Flow's "Run code" card. It will not run as a plain Node script.
+
+The HomeyScript `tag()` helper only resolves Homey Logic variables and built-in tokens — it does **not** read app-published flow tokens. To read PELS' price tag from a script, call `Homey.flowtoken.getFlowTokenValue({ id })` with the fully-qualified token id and unwrap `.value`.
 
 ```javascript
-const RAW = await tag('homey:manager:flow:pels_prices_json');
-const data = JSON.parse(RAW);
+const result = await Homey.flowtoken.getFlowTokenValue({
+  id: 'homey:app:com.barelysufficient.pels:pels_prices_json',
+});
+const data = JSON.parse(result.value);
 
 // Tomorrow at 07:00 local time
 const deadlineDate = new Date();
@@ -62,13 +66,13 @@ data.tomorrow.forEach((price, hour) => {
 });
 
 const cheapest = upcoming.sort((a, b) => a.price - b.price).slice(0, 3);
-log(`Cheapest hours (in ${data.unit}):`);
-for (const e of cheapest) log(`  ${new Date(e.time).toISOString()} — ${e.price.toFixed(2)}`);
+console.log(`Cheapest hours (in ${data.unit}):`);
+for (const e of cheapest) console.log(`  ${new Date(e.time).toISOString()} — ${e.price.toFixed(2)}`);
 ```
 
 ## Notes
 
-- The token value is standard JSON — double-quoted keys and strings, no trailing commas, no single quotes. `JSON.parse(tag)` works directly in HomeyScript without preprocessing.
+- The token value is standard JSON — double-quoted keys and strings, no trailing commas, no single quotes. In HomeyScript, `Homey.flowtoken.getFlowTokenValue({ id })` returns an object whose `.value` field is the JSON string; pass that to `JSON.parse` directly. In Flow, drop `[[prices_json]]` into a card argument and Homey substitutes the JSON string at execution time.
 - Prices are **post-adjustment**. Grid tariff, VAT, Norgespris, etc. are already baked into each number — there is no separate component breakdown in this payload.
 - Apply your own cheap/expensive thresholds (percentile, "lowest N hours", below-average, …) directly on the arrays. PELS' internal classification is intentionally **not** exported; choose the policy that suits your flow.
 - On DST fall-back days the day array contains 25 entries; on spring-forward, 23. Iterate by index; don't assume 24.
