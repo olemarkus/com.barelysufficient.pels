@@ -1,6 +1,7 @@
 /**
- * Shared price-export contract. The `price_list_updated` trigger card's
- * `prices_json` local token serializes this shape.
+ * Shared price-export contract. The global `pels_prices_json` Flow tag
+ * and the `price_list_updated` trigger card's `prices_json` local token
+ * both serialize this shape from the same publisher.
  *
  * `today` / `tomorrow` are PELS' adjusted hourly totals (the all-in
  * price you see inside the app — post grid tariff, surcharge, tax,
