@@ -16,7 +16,11 @@ import {
 } from './dom.ts';
 import { renderUsageHero } from './usageHero.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
-import { renderPowerWeekChart, disposePowerWeekChart } from './powerWeekChartEcharts.ts';
+import {
+  disposePowerWeekChart,
+  renderPowerWeekChart,
+  resolvePowerWeekChartValueRange,
+} from './powerWeekChartEcharts.ts';
 import { getApiReadModel, getHomeyTimezone } from './homey.ts';
 import { createToggleGroup } from './components.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
@@ -36,6 +40,7 @@ import {
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
+  shiftDateKey,
 } from './timezone.ts';
 
 export type PowerTracker = PowerTrackerState;
@@ -268,8 +273,11 @@ const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
 
 const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) => {
   const weekStart = getWeekStartInTimeZone(now, timeZone);
-  const startMs = weekStart + weekOffset * 7 * 24 * 60 * 60 * 1000;
-  const endMs = startMs + 7 * 24 * 60 * 60 * 1000;
+  const currentWeekStartKey = getDateKeyInTimeZone(new Date(weekStart), timeZone);
+  const startKey = shiftDateKey(currentWeekStartKey, weekOffset * 7);
+  const endKey = shiftDateKey(startKey, 7);
+  const startMs = getDateKeyStartMs(startKey, timeZone);
+  const endMs = getDateKeyStartMs(endKey, timeZone);
   return { startMs, endMs };
 };
 
@@ -577,15 +585,18 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   if (!powerList) return;
 
   if (!filtered.length) {
-    disposePowerWeekChart();
+    disposePowerWeekChart(powerList);
     powerList.replaceChildren();
-    if (powerEmpty) powerEmpty.hidden = false;
+    if (powerEmpty) {
+      powerEmpty.textContent = entries.length
+        ? 'No hourly usage for the selected week.'
+        : 'No power samples received yet. Wire the "Report power usage" Flow action.';
+      powerEmpty.hidden = false;
+    }
     return;
   }
 
-  const kWhValues = entries.map((e) => e.kWh);
-  const globalMinKWh = kWhValues.length > 0 ? Math.min(...kWhValues) : 0;
-  const globalMaxKWh = Math.max(0.1, ...kWhValues);
+  const globalRange = resolvePowerWeekChartValueRange(entries, timeZone);
   if (powerEmpty) powerEmpty.hidden = true;
   const rendered = renderPowerWeekChart({
     container: powerList,
@@ -593,8 +604,8 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
     startMs: range.startMs,
     endMs: range.endMs,
     timeZone,
-    globalMinKWh,
-    globalMaxKWh,
+    globalMinKWh: globalRange.minKWh,
+    globalMaxKWh: globalRange.maxKWh,
   });
   if (!rendered) {
     powerList.replaceChildren();

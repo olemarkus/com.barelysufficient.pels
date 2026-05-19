@@ -370,5 +370,8 @@
   },
   "2.7.3": {
     "en": "Improved step learning algoritm."
+  },
+  "2.7.4": {
+    "en": "Improved smart task plan stability."
   }
 }

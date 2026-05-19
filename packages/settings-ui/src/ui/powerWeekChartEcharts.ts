@@ -1,7 +1,12 @@
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { readChartPalette } from './dayViewChart.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
-import { formatDateInTimeZone } from './timezone.ts';
+import {
+  formatDateInTimeZone,
+  getDateKeyInTimeZone,
+  getDateKeyStartMs,
+  shiftDateKey,
+} from './timezone.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
 
 type PowerUsageEntry = UsageDayEntry;
@@ -20,6 +25,8 @@ type HeatmapPalette = {
 
 const DEFAULT_CHART_HEIGHT = 240;
 const DEFAULT_CHART_WIDTH = 480;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MAX_POWER_HEATMAP_DATE_KEYS = 370;
 
 let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
@@ -66,7 +73,14 @@ const resolveCellRadius = (container: HTMLElement): number => {
 
 let detachTabShownResize: (() => void) | null = null;
 
-export const disposePowerWeekChart = () => {
+const clearPlotInlineStyles = (container: HTMLElement | null) => {
+  if (!container) return;
+  container.style.removeProperty('height');
+  container.style.removeProperty('min-height');
+  container.style.removeProperty('-webkit-tap-highlight-color');
+};
+
+export const disposePowerWeekChart = (container?: HTMLElement) => {
   if (plotResizeObserver) {
     plotResizeObserver.disconnect();
     plotResizeObserver = null;
@@ -79,6 +93,7 @@ export const disposePowerWeekChart = () => {
     plot.dispose();
     plot = null;
   }
+  clearPlotInlineStyles(container ?? plotContainer);
   plotContainer = null;
 };
 
@@ -121,13 +136,28 @@ const getLocalHour = (date: Date, timeZone: string): number => {
   return Number.isFinite(hour) ? hour % 24 : 0;
 };
 
-const buildDayLabels = (startMs: number, numDays: number, timeZone: string): string[] => {
-  const labels: string[] = [];
-  for (let i = 0; i < numDays; i += 1) {
-    const day = new Date(startMs + i * 24 * 60 * 60 * 1000);
-    labels.push(formatDateInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone));
+const buildDateKeysForRange = (startMs: number, endMs: number, timeZone: string): string[] => {
+  if (endMs <= startMs) return [];
+  const nominalDayCount = Math.ceil((endMs - startMs) / MS_PER_DAY) + 2;
+  if (nominalDayCount > MAX_POWER_HEATMAP_DATE_KEYS) {
+    throw new RangeError(`Power week chart range spans ${nominalDayCount} days`);
   }
-  return labels;
+  const keys: string[] = [];
+  let dateKey = getDateKeyInTimeZone(new Date(startMs), timeZone);
+  for (let i = 0; i < nominalDayCount; i += 1) {
+    const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
+    if (dayStartMs >= endMs) break;
+    keys.push(dateKey);
+    dateKey = shiftDateKey(dateKey, 1);
+  }
+  return keys;
+};
+
+const buildDayLabels = (dateKeys: string[], timeZone: string): string[] => {
+  return dateKeys.map((dateKey) => {
+    const day = new Date(getDateKeyStartMs(dateKey, timeZone));
+    return formatDateInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
+  });
 };
 
 const buildHourLabels = (): string[] => (
@@ -136,34 +166,62 @@ const buildHourLabels = (): string[] => (
 
 type HeatCell = {
   value: [number, number, number];
+  bucketCount: number;
   itemStyle?: { color: string };
 };
 
-const getDayOffsetFromStart = (entry: PowerUsageEntry, startMs: number, timeZone: string): number => {
-  const hourOfDay = getLocalHour(entry.hour, timeZone);
-  const dayStartMs = entry.hour.getTime() - hourOfDay * 60 * 60 * 1000;
-  const dayMs = 24 * 60 * 60 * 1000;
-  return Math.round((dayStartMs - startMs) / dayMs);
+const resolveHeatCellKey = (dateKey: string, hour: number): string => `${dateKey}:${hour}`;
+
+export const resolvePowerWeekChartValueRange = (
+  entries: PowerUsageEntry[],
+  timeZone: string,
+  dateKeys?: string[],
+): { minKWh: number; maxKWh: number } => {
+  const allowedDateKeys = dateKeys ? new Set(dateKeys) : null;
+  const kWhByCell = new Map<string, number>();
+  for (const entry of entries) {
+    const dateKey = getDateKeyInTimeZone(entry.hour, timeZone);
+    if (allowedDateKeys && !allowedDateKeys.has(dateKey)) continue;
+    const hour = getLocalHour(entry.hour, timeZone);
+    const key = resolveHeatCellKey(dateKey, hour);
+    kWhByCell.set(key, (kWhByCell.get(key) ?? 0) + entry.kWh);
+  }
+  const values = [...kWhByCell.values()];
+  return {
+    minKWh: values.length > 0 ? Math.min(...values) : 0,
+    maxKWh: Math.max(0.1, ...values),
+  };
 };
 
 const buildHeatmapDataFixed = (
   entries: PowerUsageEntry[],
-  startMs: number,
-  numDays: number,
+  dateKeys: string[],
   timeZone: string,
   palette: HeatmapPalette,
-): HeatCell[] => (
-  entries
-    .map((entry) => {
-      const dayOffset = getDayOffsetFromStart(entry, startMs, timeZone);
-      if (dayOffset < 0 || dayOffset >= numDays) return null;
-      const hour = getLocalHour(entry.hour, timeZone);
-      const cell: HeatCell = { value: [dayOffset, hour, entry.kWh] };
-      if (entry.unreliable) cell.itemStyle = { color: palette.cellUnreliable };
-      return cell;
-    })
-    .filter((cell): cell is HeatCell => cell !== null)
-);
+): HeatCell[] => {
+  const dateKeyToIndex = new Map(dateKeys.map((dateKey, index) => [dateKey, index]));
+  const cellsByKey = new Map<string, HeatCell>();
+  for (const entry of entries) {
+    const dateKey = getDateKeyInTimeZone(entry.hour, timeZone);
+    const dayOffset = dateKeyToIndex.get(dateKey);
+    if (dayOffset === undefined) continue;
+    const hour = getLocalHour(entry.hour, timeZone);
+    const key = resolveHeatCellKey(dateKey, hour);
+    const existing = cellsByKey.get(key);
+    if (existing) {
+      existing.value[2] += entry.kWh;
+      existing.bucketCount += 1;
+      if (entry.unreliable) existing.itemStyle = { color: palette.cellUnreliable };
+      continue;
+    }
+    const cell: HeatCell = { value: [dayOffset, hour, entry.kWh], bucketCount: 1 };
+    if (entry.unreliable) cell.itemStyle = { color: palette.cellUnreliable };
+    cellsByKey.set(key, cell);
+  }
+  return [...cellsByKey.values()].sort((a, b) => (
+    a.value[0] - b.value[0] || a.value[1] - b.value[1]
+  ));
+};
 
 const buildTooltipFormatter = (
   dayLabels: string[],
@@ -176,27 +234,30 @@ const buildTooltipFormatter = (
   const dayLabel = dayLabels[dayIdx] ?? '';
   const hourStr = String(hour).padStart(2, '0');
   const nextHour = String((hour + 1) % 24).padStart(2, '0');
+  const measuredHoursLine = data.bucketCount > 1 ? [`${data.bucketCount} measured hours`] : [];
+  const kWhLabel = data.bucketCount > 1
+    ? `${(kWh as number).toFixed(2)} kWh total`
+    : `${(kWh as number).toFixed(2)} kWh`;
   return [
     encodeHtml(dayLabel),
     encodeHtml(`${hourStr}:00–${nextHour}:00`),
-    encodeHtml(`${(kWh as number).toFixed(2)} kWh`),
+    ...measuredHoursLine.map((line) => encodeHtml(line)),
+    encodeHtml(kWhLabel),
   ].join('<br/>');
 };
 
 const buildOption = (params: {
   entries: PowerUsageEntry[];
-  startMs: number;
-  numDays: number;
   timeZone: string;
+  dateKeys: string[];
   container: HTMLElement;
   globalMinKWh: number;
   globalMaxKWh: number;
 }): EChartsOption => {
   const {
     entries,
-    startMs,
-    numDays,
     timeZone,
+    dateKeys,
     container,
     globalMinKWh,
     globalMaxKWh,
@@ -204,9 +265,9 @@ const buildOption = (params: {
 
   const palette = resolvePalette(container);
   const cellRadius = resolveCellRadius(container);
-  const dayLabels = buildDayLabels(startMs, numDays, timeZone);
+  const dayLabels = buildDayLabels(dateKeys, timeZone);
   const hourLabels = buildHourLabels();
-  const data = buildHeatmapDataFixed(entries, startMs, numDays, timeZone, palette);
+  const data = buildHeatmapDataFixed(entries, dateKeys, timeZone, palette);
 
   return {
     animation: false,
@@ -314,17 +375,15 @@ export const renderPowerWeekChart = (params: {
     globalMaxKWh,
   } = params;
   try {
-    const kWhValues = entries.map((e) => e.kWh);
-    const localMinKWh = kWhValues.length > 0 ? Math.min(...kWhValues) : 0;
-    const localMaxKWh = Math.max(0.1, ...kWhValues);
-    const resolvedGlobalMinKWh = Math.min(localMinKWh, globalMinKWh ?? localMinKWh);
-    const resolvedGlobalMaxKWh = Math.max(localMaxKWh, globalMaxKWh ?? localMaxKWh);
-    const numDays = Math.round((endMs - startMs) / (24 * 60 * 60 * 1000));
+    const dateKeys = buildDateKeysForRange(startMs, endMs, timeZone);
+    const localRange = resolvePowerWeekChartValueRange(entries, timeZone, dateKeys);
+    const resolvedGlobalMinKWh = Math.min(localRange.minKWh, globalMinKWh ?? localRange.minKWh);
+    const resolvedGlobalMaxKWh = Math.max(localRange.maxKWh, globalMaxKWh ?? localRange.maxKWh);
     const chart = ensurePlot(container);
     chart.resize(resolveChartSize(container));
     chart.setOption(
       buildOption({
-        entries, startMs, numDays, timeZone, container,
+        entries, timeZone, dateKeys, container,
         globalMinKWh: resolvedGlobalMinKWh, globalMaxKWh: resolvedGlobalMaxKWh,
       }),
       { notMerge: true },
@@ -332,7 +391,7 @@ export const renderPowerWeekChart = (params: {
     return true;
   } catch (error) {
     console.warn('Power week heatmap: echarts render failed', error);
-    disposePowerWeekChart();
+    disposePowerWeekChart(container);
     return false;
   }
 };
