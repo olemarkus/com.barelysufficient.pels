@@ -120,7 +120,7 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Progress series (legend) | `Temperature` | `Charge level` |
 | Active-hour tooltip word | `Heating` | `Charging` |
 | Target unit | `°C` | `%` |
-| Plan inputs card title | `Smart task inputs` | `Smart task inputs` |
+| Plan inputs card title | `What PELS has learned` | `What PELS has learned` |
 
 The live deadline-plan hero shows only the kind chip plus a risk/failure chip
 (`At risk` or `Cannot finish`) and confidence as `Estimating` / `Refining` when
@@ -169,7 +169,7 @@ The prior "Move deadline later" copy promised an action neither destination offe
 
 ### "Plan" vs "deadline" on smart-task surfaces
 
-Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `Smart task inputs`, not `Plan inputs`.
+Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `What PELS has learned`, not `Plan inputs`.
 
 ## Mode label
 
