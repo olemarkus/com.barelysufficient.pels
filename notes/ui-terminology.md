@@ -167,15 +167,15 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ## Mode label
 
-The operating mode (Home, Away, Night, or any user-authored name) is rendered
-on the Settings page with the English structural prefix `Mode:` followed by
-the untranslated mode name — e.g. `Mode: Home`, `Mode: Hjemme`. Source helper:
-`formatModeSummary` in `packages/settings-ui/src/ui/modeLabels.ts`.
+The Settings page renders the current operating mode as a single selector
+labelled `Current mode`. The selected option is the untranslated mode name
+(Home, Away, Night, or any user-authored name such as `Hjemme`).
 
-The older `${name} mode` form was retired in PR9 (owner walk 2026-05-17)
-because it produced awkward mid-phrase code-switches at non-English locales
-(e.g. `Hjemme mode`). Putting the English word first keeps it unambiguously
-chrome, and lets the user-authored name stand alone.
+Do not render `${name} mode`; that form was retired in PR9 (owner walk
+2026-05-17) because it produced awkward mid-phrase code-switches at
+non-English locales (e.g. `Hjemme mode`). If a non-selector summary is needed
+again, use an English structural prefix before the user-authored name, e.g.
+`Mode: Hjemme`, rather than appending `mode`.
 
 The Overview hero does not chip the mode — see
 `notes/overview-hero-spec.md` § "Chip row".

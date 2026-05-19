@@ -872,24 +872,9 @@ md-primary-tab.tab[active]:hover {
 
 .settings-current-mode {
   display: grid;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
   background: var(--color-surface-2);
   box-shadow: var(--shadow-sm);
-}
-
-.settings-current-mode__summary {
-  display: grid;
-  gap: var(--spacing-1);
-  min-width: 0;
-}
-
-.settings-current-mode__summary h3 {
-  margin: 0;
-  color: var(--pels-text-title-color);
-  font-size: var(--pels-text-title-font-size);
-  font-weight: var(--pels-text-title-font-weight);
-  line-height: var(--pels-text-title-font-line-height);
-  letter-spacing: 0;
 }
 
 .settings-current-mode__field {
@@ -900,11 +885,8 @@ md-primary-tab.tab[active]:hover {
   width: 100%;
 }
 
-@media (min-width: 420px) {
-  .settings-current-mode {
-    grid-template-columns: minmax(0, 1fr) minmax(144px, 180px);
-    align-items: end;
-  }
+.settings-current-mode__hint {
+  margin: 0;
 }
 
 .settings-nav-list {

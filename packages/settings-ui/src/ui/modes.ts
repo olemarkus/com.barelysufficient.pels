@@ -14,7 +14,6 @@ import {
   addModeButton,
   deleteModeButton,
   renameModeButton,
-  settingsActiveModeSummary,
 } from './dom.ts';
 import { getSetting, setSetting } from './homey.ts';
 import {
@@ -26,7 +25,7 @@ import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
-import { DEFAULT_MODE_NAME, formatModeSummary, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
+import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { debouncedSetSetting } from './utils.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
@@ -64,11 +63,6 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
   if (selected) option.setAttribute('selected', '');
   option.selected = selected;
   return option;
-};
-
-const renderActiveModeSummary = () => {
-  if (!settingsActiveModeSummary) return;
-  settingsActiveModeSummary.textContent = formatModeSummary(state.activeMode);
 };
 
 const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
@@ -151,7 +145,6 @@ export const renderModeOptions = () => {
     );
     activeModeSelect.value = state.activeMode || sortedModes[0] || DEFAULT_MODE_NAME;
   }
-  renderActiveModeSummary();
 };
 
 const getPriorityRows = (): HTMLElement[] => (
