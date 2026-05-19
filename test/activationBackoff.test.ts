@@ -312,7 +312,7 @@ describe('activation backoff', () => {
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
   });
 
-  it('closes a thermostat restore attempt after non-zero load is seen and the next power sample stays clean', () => {
+  it('closes a thermostat restore attempt at attribution-window expiry once non-zero load has been observed', () => {
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -333,15 +333,15 @@ describe('activation backoff', () => {
         deviceClass: 'thermostat',
         lastFreshDataMs: start + 10_000,
       },
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: false,
     });
     expect(firstSync.attemptOpen).toBe(true);
     expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
       observedActivePowerAtMs: start + 10_000,
     });
 
-    const secondSync = syncConfirmedRestoreAttributionState({
+    // A clean sample mid-window does not close the attempt — we wait for the
+    // full attribution window so a delayed overshoot can still re-bump penalty.
+    const midWindowSync = syncConfirmedRestoreAttributionState({
       state,
       deviceId: 'dev-1',
       nowTs: start + 20_000,
@@ -351,18 +351,26 @@ describe('activation backoff', () => {
         deviceClass: 'thermostat',
         lastFreshDataMs: start + 20_000,
       },
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: true,
     });
-    expect(secondSync.attemptOpen).toBe(false);
+    expect(midWindowSync.attemptOpen).toBe(true);
+
+    // Window expiry: syncActivationPenaltyState closes the attempt.
+    const closingSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0.25 },
+    });
+    expect(closingSync.attemptOpen).toBe(false);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
-  it('clears accumulated penalty when a cautious admission is confirmed by observed draw and a clean whole-home sample', () => {
-    // The cautious admission proved itself: device drew what we expected and the household
-    // stayed in budget through the attribution window. Penalty must release so the next
-    // admission starts at the base bar — otherwise the device carries a permanent tax for
-    // a single past coincidence.
+  it('clears accumulated penalty when the cautious admission survives the full attribution window with observed draw', () => {
+    // The cautious admission proved itself: device drew non-trivial power after
+    // attempt start and no overshoot was attributed back to it before the
+    // attribution window expired. Penalty releases so the next admission starts
+    // at the base bar — otherwise the device carries a permanent tax for a
+    // single past coincidence.
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -388,37 +396,29 @@ describe('activation backoff', () => {
         deviceClass: 'thermostat',
         lastFreshDataMs: start + 10_000,
       },
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: false,
     });
 
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(2);
 
-    const closingSync = syncConfirmedRestoreAttributionState({
+    const closingSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + 20_000,
-      observation: {
-        currentOn: true,
-        measuredPowerKw: 0.25,
-        deviceClass: 'thermostat',
-        lastFreshDataMs: start + 20_000,
-      },
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: true,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0.25 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.stateChanged).toBe(true);
+    expect(closingSync.penaltyLevel).toBe(0);
     expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(0);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 
-  it('clears penalty for an EV charger step-up (evcharger participates in the confirmed-restore class set)', () => {
-    // Stepped EV chargers go through the same attempt lifecycle as binary thermostats:
-    // executor calls recordActivationAttemptStarted with source 'pels_restore' for a
-    // step-up command. The cautious admission must release its penalty on settlement
-    // — otherwise EV chargers carry the same permanent tax the binary fix removed.
+  it('clears penalty for an EV charger step-up that survives the attribution window', () => {
+    // Stepped EV chargers open attempts with source 'pels_restore' on step-up.
+    // Adding 'evcharger' to RESTORE_ATTRIBUTION_DEVICE_CLASSES lets the
+    // observed-power tracking run for them, so the cautious admission can
+    // release its penalty exactly like a binary thermostat restore.
     const state = createPlanEngineState();
     const start = Date.now();
 
@@ -444,27 +444,124 @@ describe('activation backoff', () => {
         deviceClass: 'evcharger',
         lastFreshDataMs: start + 10_000,
       },
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: false,
     });
 
-    const closingSync = syncConfirmedRestoreAttributionState({
+    const closingSync = syncActivationPenaltyState({
       state,
       deviceId: 'ev-1',
-      nowTs: start + 20_000,
-      observation: {
-        currentOn: true,
-        measuredPowerKw: 7.0,
-        deviceClass: 'evcharger',
-        lastFreshDataMs: start + 20_000,
-      },
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: true,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 7.0 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
+    expect(closingSync.penaltyLevel).toBe(0);
     expect(getActivationPenaltyLevel(state, 'ev-1')).toBe(0);
     expect(state.activationAttemptByDevice['ev-1']).toBeUndefined();
+  });
+
+  it('emits an attempt_closed_by_admission transition when penalty is released at window expiry', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 3,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    syncConfirmedRestoreAttributionState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + 10_000,
+      observation: {
+        currentOn: true,
+        measuredPowerKw: 0.2,
+        deviceClass: 'thermostat',
+        lastFreshDataMs: start + 10_000,
+      },
+    });
+
+    const closingSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0.25 },
+    });
+
+    expect(closingSync.transitions).toEqual([
+      expect.objectContaining({
+        kind: 'attempt_closed_by_admission',
+        deviceId: 'dev-1',
+        source: 'pels_restore',
+        previousPenaltyLevel: 3,
+        penaltyLevel: 0,
+      }),
+    ]);
+  });
+
+  it('does not emit attempt_closed_by_admission when window expires without observed draw', () => {
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const closingSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0 },
+    });
+
+    expect(closingSync.transitions).toEqual([]);
+    expect(closingSync.penaltyLevel).toBe(2);
+  });
+
+  it('keeps penalty intact when the attribution window expires without any observed draw', () => {
+    // No observed-power was tracked during the window — we have no evidence the
+    // restore actually landed, so penalty must persist. This guards the
+    // strictness gap noted in TODO.md: clearing requires positive evidence,
+    // not just absence of overshoot.
+    const state = createPlanEngineState();
+    const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: start - 60_000,
+    };
+
+    recordActivationAttemptStart({
+      state,
+      deviceId: 'dev-1',
+      source: 'pels_restore',
+      nowTs: start,
+    });
+
+    const closingSync = syncActivationPenaltyState({
+      state,
+      deviceId: 'dev-1',
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0 },
+    });
+
+    expect(closingSync.attemptOpen).toBe(false);
+    expect(closingSync.penaltyLevel).toBe(1);
+    expect(getActivationPenaltyLevel(state, 'dev-1')).toBe(1);
   });
 
   it('does not quietly close attribution when the device is already off on the next power sample', () => {
@@ -538,8 +635,6 @@ describe('activation backoff', () => {
         observationStale: true,
         lastFreshDataMs: start - 5_000,
       },
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: false,
     });
     expect(stalePowerSync.attemptOpen).toBe(true);
     expect(state.activationAttemptByDevice['dev-1']).not.toHaveProperty('observedActivePowerAtMs');
@@ -555,15 +650,18 @@ describe('activation backoff', () => {
         observationStale: true,
         lastFreshDataMs: start - 5_000,
       },
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: false,
     });
     expect(nextSampleSync.attemptOpen).toBe(true);
   });
 
-  it('records observed load time from fresh telemetry so delayed rebuilds can still close attribution', () => {
+  it('records observed load time from fresh telemetry so delayed rebuilds can still close-and-clear at window expiry', () => {
     const state = createPlanEngineState();
     const start = Date.now();
+
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 1,
+      lastSetbackMs: start - 60_000,
+    };
 
     recordActivationAttemptStart({
       state,
@@ -582,28 +680,20 @@ describe('activation backoff', () => {
         deviceClass: 'thermostat',
         lastFreshDataMs: start + 10_000,
       },
-      wholeHomePowerSampleAtMs: start + 10_000,
-      cleanWholeHomeSample: false,
     });
     expect(delayedObservationSync.attemptOpen).toBe(true);
     expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
       observedActivePowerAtMs: start + 10_000,
     });
 
-    const cleanSampleSync = syncConfirmedRestoreAttributionState({
+    const closingSync = syncActivationPenaltyState({
       state,
       deviceId: 'dev-1',
-      nowTs: start + 30_000,
-      observation: {
-        currentOn: true,
-        measuredPowerKw: 0.2,
-        deviceClass: 'thermostat',
-        lastFreshDataMs: start + 10_000,
-      },
-      wholeHomePowerSampleAtMs: start + 20_000,
-      cleanWholeHomeSample: true,
+      nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
+      observation: { currentOn: true, available: true, measuredPowerKw: 0.2 },
     });
-    expect(cleanSampleSync.attemptOpen).toBe(false);
+    expect(closingSync.attemptOpen).toBe(false);
+    expect(closingSync.penaltyLevel).toBe(0);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
   });
 

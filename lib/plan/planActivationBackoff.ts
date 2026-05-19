@@ -308,19 +308,43 @@ export function syncActivationPenaltyState(params: {
   }
 
   if (hasAttributionWindowExpired(attemptStartedMs, nowTs)) {
+    // The full attribution window elapsed without an overshoot being attributed
+    // back to this device. If we also observed the device drawing meaningful
+    // power during the window, treat that as the cautious admission proving
+    // itself — clear the accumulated penalty so the next admission starts at
+    // the base bar. Without observed draw, we have no evidence the restore
+    // actually landed, so leave the penalty intact.
+    const cautiousAdmissionProved = getObservedActivePowerAtMs(state, deviceId) !== null;
+    const elapsed = elapsedMs(attemptStartedMs, nowTs);
     const closeResult = closeActivationAttempt({
       state,
       deviceId,
       nowTs,
       kind: 'quiet',
     });
+    let stateChanged = closeResult.stateChanged;
+    let clearedPenaltyLevel = penaltyLevel;
+    const transitions: DeviceDiagnosticsBackoffTransition[] = [];
+    if (cautiousAdmissionProved && penaltyLevel > 0) {
+      stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
+      clearedPenaltyLevel = 0;
+      transitions.push({
+        kind: 'attempt_closed_by_admission',
+        deviceId,
+        source,
+        previousPenaltyLevel: penaltyLevel,
+        penaltyLevel: 0,
+        elapsedMs: elapsed,
+        nowTs,
+      });
+    }
     return {
-      penaltyLevel,
+      penaltyLevel: clearedPenaltyLevel,
       attemptOpen: false,
       clearRemainingSec: getClearRemainingSec(state, deviceId, nowTs),
-      stateChanged: closeResult.stateChanged,
+      stateChanged,
       source,
-      transitions: [],
+      transitions,
     };
   }
 
@@ -365,30 +389,11 @@ const shouldTrackObservedActivePower = (
   && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW
 );
 
-const shouldCloseConfirmedRestoreAttribution = (params: {
-  state: PlanEngineState;
-  deviceId: string;
-  observation?: ActivationBackoffObservation;
-  wholeHomePowerSampleAtMs?: number | null;
-  cleanWholeHomeSample: boolean;
-}): boolean => {
-  const observedActivePowerAtMs = getObservedActivePowerAtMs(params.state, params.deviceId);
-  if (params.observation === undefined) return false;
-  if (isActivationObservationExplicitlyInactive(params.observation)) return false;
-  if (!isObservedOn(params.observation)) return false;
-  return observedActivePowerAtMs !== null
-    && params.cleanWholeHomeSample
-    && isFiniteNumber(params.wholeHomePowerSampleAtMs)
-    && params.wholeHomePowerSampleAtMs > observedActivePowerAtMs;
-};
-
 export function syncConfirmedRestoreAttributionState(params: {
   state: PlanEngineState;
   deviceId: string;
   nowTs?: number;
   observation?: ActivationBackoffObservation;
-  wholeHomePowerSampleAtMs?: number | null;
-  cleanWholeHomeSample: boolean;
 }): {
   stateChanged: boolean;
   attemptOpen: boolean;
@@ -406,28 +411,16 @@ export function syncConfirmedRestoreAttributionState(params: {
   const nowTs = params.nowTs ?? Date.now();
   let stateChanged = false;
 
+  // Capture when this device first drew meaningful power after the attempt
+  // started. The canonical close-and-clear path lives in
+  // `syncActivationPenaltyState`'s window-expiry branch — it consults this
+  // timestamp as the "cautious admission proved itself" evidence and clears
+  // penalty when the full attribution window passes without an overshoot.
   if (
     shouldTrackObservedActivePower(observation, attemptStartedMs, nowTs)
     && getObservedActivePowerAtMs(state, deviceId) === null
   ) {
     stateChanged = updateObservedActivePowerAtMs(state, deviceId, observation.lastFreshDataMs) || stateChanged;
-  }
-
-  if (shouldCloseConfirmedRestoreAttribution({
-    state,
-    deviceId,
-    observation,
-    wholeHomePowerSampleAtMs: params.wholeHomePowerSampleAtMs,
-    cleanWholeHomeSample: params.cleanWholeHomeSample,
-  })) {
-    stateChanged = closeAttempt(state, deviceId) || stateChanged;
-    // The cautious admission proved itself: the device drew non-trivial power
-    // after attempt start and a subsequent whole-home sample stayed in budget.
-    // Release the accumulated penalty so the next admission starts at the base
-    // bar. Tightening the gate to require draw vs the expected step power is
-    // tracked in TODO.md.
-    stateChanged = setPenaltyLevel(state, deviceId, 0) || stateChanged;
-    return { stateChanged, attemptOpen: false };
   }
 
   return { stateChanged, attemptOpen: true };

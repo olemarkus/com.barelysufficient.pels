@@ -330,27 +330,26 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
-- [ ] Tighten the step-up confirmation gate in
-      `syncConfirmedRestoreAttributionState`. The spiral-of-death PR
-      (2026-05-19) clears `penaltyLevel` when an admission settles with
-      `shouldTrackObservedActivePower` (device observed on + measured
-      power above `MIN_ACTIVE_MEASURED_POWER_KW`) plus a clean
-      whole-home sample. For binary restores this is strong evidence
-      (device transitioned off→on). For stepped step-ups (e.g.
-      low→medium on a heater or EV charger) the device was already on
-      at the previous step, so the gate fires on the next fresh
-      observation regardless of whether measured power actually rose
-      to the new step's planning power. A step-up that failed to
-      actually change the draw would still clear penalty as long as
-      the household didn't blow up. Strengthen by capturing the
-      baseline measured-power at attempt start (new field on
-      `ActivationAttemptState`) and require `measuredPowerKw` to
-      exceed it by some meaningful delta — or hook into the existing
-      `resolveSteppedRestoreObservedGapKw` pathway in
-      `planSteppedRestorePending.ts`, which already knows when a
-      stepped restore is power-settled.
-      Source: `pels-runtime-reality` + `adversarial-review` skills,
-      spiral-of-death PR (2026-05-19).
+- [ ] Tighten the step-up confirmation evidence for penalty clearing.
+      The spiral-of-death PR (2026-05-19) clears `penaltyLevel` when
+      the attribution window expires AND
+      `shouldTrackObservedActivePower` saw the device drawing
+      meaningful power during the window. For binary restores this is
+      strong evidence (device transitioned off→on). For stepped
+      step-ups (e.g. low→medium on a heater or EV charger) the device
+      was already on at the previous step, so the gate fires on any
+      fresh observation regardless of whether measured power actually
+      rose to the new step's planning power. A step-up that failed to
+      actually change the draw would still clear penalty as long as no
+      overshoot was attributed during the window. Strengthen by
+      capturing the baseline measured-power at attempt start (new
+      field on `ActivationAttemptState`) and requiring
+      `measuredPowerKw` to exceed it by some meaningful delta — or
+      hook into the existing `resolveSteppedRestoreObservedGapKw`
+      pathway in `planSteppedRestorePending.ts`, which already knows
+      when a stepped restore is power-settled.
+      Source: `pels-runtime-reality` + `adversarial-review` skills +
+      copilot review thread, spiral-of-death PR (2026-05-19).
 
 - [ ] Smart-task history receipt + chip helpers in
       `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline
