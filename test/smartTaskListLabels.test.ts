@@ -1,6 +1,7 @@
 import {
   formatConfidenceChipLabel,
   formatSmartTaskCurrentValueLine,
+  formatSmartTaskListConfidenceChipLabel,
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
@@ -10,15 +11,31 @@ import {
 } from '../packages/shared-domain/src/deferredPlanHistory';
 
 describe('formatConfidenceChipLabel', () => {
-  it('returns "Confidence low" / "Confidence medium" / "Confidence high" to match the live hero', () => {
-    expect(formatConfidenceChipLabel('low')).toBe('Confidence low');
-    expect(formatConfidenceChipLabel('medium')).toBe('Confidence medium');
-    expect(formatConfidenceChipLabel('high')).toBe('Confidence high');
+  it('returns action-oriented low / medium chip copy to match the live hero', () => {
+    expect(formatConfidenceChipLabel('low')).toBe('Estimating');
+    expect(formatConfidenceChipLabel('medium')).toBe('Refining');
   });
 
-  it('returns null when the band is missing so the chip is suppressed', () => {
+  it('returns null when the band is high or missing so the chip is suppressed', () => {
+    expect(formatConfidenceChipLabel('high')).toBeNull();
     expect(formatConfidenceChipLabel(null)).toBeNull();
     expect(formatConfidenceChipLabel(undefined)).toBeNull();
+  });
+});
+
+describe('formatSmartTaskListConfidenceChipLabel', () => {
+  it('suppresses confidence chips on cannot-finish cards', () => {
+    expect(formatSmartTaskListConfidenceChipLabel({
+      confidence: 'low',
+      statusId: 'cannot_meet',
+    })).toBeNull();
+  });
+
+  it('keeps action-oriented confidence chips for recoverable list states', () => {
+    expect(formatSmartTaskListConfidenceChipLabel({
+      confidence: 'medium',
+      statusId: 'at_risk',
+    })).toBe('Refining');
   });
 });
 

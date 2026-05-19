@@ -41,14 +41,25 @@ afterEach(() => {
 });
 
 describe('DeadlinesList', () => {
-  it('renders a confidence chip when the card carries a confidence band', () => {
+  it('maps medium confidence to the live-hero chip vocabulary', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ confidence: 'medium' })],
     });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
-    expect(chips).toContain('Confidence medium');
+    expect(chips).toContain('Refining');
+    expect(chips).not.toContain('Confidence medium');
+  });
+
+  it('maps low confidence to the live-hero chip vocabulary', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ confidence: 'low' })],
+    });
+    const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
+    expect(chips).toContain('Estimating');
   });
 
   it('omits the confidence chip when no band is available', () => {
@@ -58,7 +69,31 @@ describe('DeadlinesList', () => {
       cards: [buildCard({ confidence: null })],
     });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
-    expect(chips.filter((text) => text.startsWith('Confidence'))).toEqual([]);
+    expect(chips).not.toContain('Estimating');
+    expect(chips).not.toContain('Refining');
+  });
+
+  it('omits the confidence chip for high confidence', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ confidence: 'high' })],
+    });
+    const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
+    expect(chips).not.toContain('Estimating');
+    expect(chips).not.toContain('Refining');
+    expect(chips.some((text) => text.startsWith('Confidence'))).toBe(false);
+  });
+
+  it('suppresses the confidence chip on cannot_meet cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'cannot_meet', confidence: 'low' })],
+    });
+    const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
+    expect(chips).toContain('Cannot finish');
+    expect(chips).not.toContain('Estimating');
   });
 
   it('renders the currently-X line when the producer supplies one', () => {

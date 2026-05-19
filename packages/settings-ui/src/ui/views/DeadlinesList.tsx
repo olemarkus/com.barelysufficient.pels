@@ -3,7 +3,7 @@ import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
   deadlineLabels,
-  formatConfidenceChipLabel,
+  formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskListReadyByTone,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
@@ -89,8 +89,9 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
 
 // Canonical chip order: [kind, status, ?confidence]. The confidence chip
 // matches the live hero's styling (`muted` tone) so the same trust signal
-// lands on both surfaces. Suppressed when no confidence band is available
-// (pending plans, no learned profile yet) rather than fabricating a label.
+// lands on both surfaces. Suppressed when no confidence chip copy is available
+// (pending plans, high confidence, no learned profile, or cannot-finish cards)
+// rather than fabricating a label.
 //
 // The "Ready by" accent row mirrors the status chip tone so an at-risk /
 // cannot-meet card never paints the deadline in success-green next to a
@@ -98,7 +99,10 @@ const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
 // stable slug instead of branching on `statusId`.
 const Card = ({ card }: { card: DeadlinesListCard }) => {
   const labels = deadlineLabels(card.kind);
-  const confidenceLabel = formatConfidenceChipLabel(card.confidence);
+  const confidenceLabel = formatSmartTaskListConfidenceChipLabel({
+    confidence: card.confidence,
+    statusId: card.statusId,
+  });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
   return (
     <a class="deadline-list-card clickable" href={card.href} data-device-id={card.deviceId}>

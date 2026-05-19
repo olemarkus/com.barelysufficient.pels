@@ -330,6 +330,14 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Refresh stale smart-task UX notes that still mention "move deadline
+      later" as a missed-task recourse. `notes/ui-terminology.md` now defines
+      the canonical recourse pair as `Lower daily budget` / `Review device`;
+      `notes/smart-task-ui/README.md` still has two older references around the
+      recovering-from-mistake and history-detail CTA sketches. Deferred from
+      the v2.7.4 lovability U3 copy review because the PR only changes active
+      confidence/status chips.
+
 - [ ] Add explicit backup-hour reservations for committed smart-task schedules.
       Day-zero committed schedules now keep the first full-horizon allocation
       stable and ignore later optimizer hour swaps. There is still no separate

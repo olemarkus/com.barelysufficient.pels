@@ -82,7 +82,7 @@ today (best to worst):
    prices distinction). Served well.
 3. **Curious tinkerer** — opens while actively configuring. Hovers the
    per-hour tooltips on the chart, expands the inputs card. The
-   `Confidence low` chip + `Energy per unit 0.59 kWh/°C` row gives them
+   `Estimating` chip + `Energy per unit 0.59 kWh/°C` row gives them
    enough to debug. Served adequately.
 4. **Skeptical EV commuter** — daily, after charging. Wants `did it
    pick the cheap hours?` + `how much did it cost?`. Today the chart

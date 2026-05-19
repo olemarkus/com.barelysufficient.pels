@@ -2280,7 +2280,7 @@ describe('deadline plan page payload', () => {
     expect(renderInput.pending.hero.metaLine).not.toContain('Last price update:');
   });
 
-  // Live hero chip ordering — canonical `[kind, ?cannotMeet, ?confidence]`.
+  // Live hero chip ordering — canonical `[kind, ?status, ?confidence]`.
   // The state chip is no longer rendered on the live hero (TODO 674): the
   // headline already carries the live state (`Heating from HH:MM`,
   // `Charging now`, `On track …`, `Cannot finish`). Pending heroes still emit
@@ -3005,8 +3005,7 @@ describe('buildHeroChips', () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const chips = buildHeroChips({
       labels,
-      cannotMeet: false,
-      cannotMeetChipTone: 'alert',
+      statusChip: null,
       confidenceChipText: null,
     });
     // No chip text should equal any of the live-state labels (TODO 674): the
@@ -3022,8 +3021,7 @@ describe('buildHeroChips', () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const chips = buildHeroChips({
       labels,
-      cannotMeet: true,
-      cannotMeetChipTone: 'alert',
+      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
       confidenceChipText: null,
     });
     expect(chips.some((chip) => chip.text === labels.cannotMeetChipLabel && chip.tone === 'alert')).toBe(true);
@@ -3033,12 +3031,11 @@ describe('buildHeroChips', () => {
     ]);
   });
 
-  it('keeps the canonical chip order kind → cannotMeet → confidence when all are present', async () => {
+  it('keeps the canonical chip order kind → status → confidence when all are present', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const chips = buildHeroChips({
       labels,
-      cannotMeet: true,
-      cannotMeetChipTone: 'alert',
+      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
       confidenceChipText: 'Estimating',
     });
     expect(chips.map((chip) => chip.text)).toEqual([
@@ -3048,22 +3045,45 @@ describe('buildHeroChips', () => {
     ]);
   });
 
-  it('honours the supplied cannotMeetChipTone — `warn` for at-risk, `alert` for cannot-meet', async () => {
+  it('honours the supplied status chip text and tone', async () => {
     const { buildHeroChips } = await import('../src/ui/deadlinePlanHero.ts');
     const alertChips = buildHeroChips({
       labels,
-      cannotMeet: true,
-      cannotMeetChipTone: 'alert',
+      statusChip: { text: labels.cannotMeetChipLabel, tone: 'alert' },
       confidenceChipText: null,
     });
     expect(alertChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('alert');
     const warnChips = buildHeroChips({
       labels,
-      cannotMeet: true,
-      cannotMeetChipTone: 'warn',
+      statusChip: { text: labels.atRiskChipLabel, tone: 'warn' },
       confidenceChipText: null,
     });
-    expect(warnChips.find((chip) => chip.text === labels.cannotMeetChipLabel)?.tone).toBe('warn');
+    expect(warnChips.find((chip) => chip.text === labels.atRiskChipLabel)?.tone).toBe('warn');
+  });
+});
+
+describe('resolveHeroStatusChip', () => {
+  const labels = deadlineLabels('temperature');
+
+  it('uses Cannot finish for true cannot-meet heroes', async () => {
+    const { resolveHeroStatusChip } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroStatusChip({ labels, planStatus: 'cannot_meet' })).toEqual({
+      text: labels.cannotMeetChipLabel,
+      tone: 'alert',
+    });
+  });
+
+  it('uses At risk for recoverable at-risk heroes so detail and list agree', async () => {
+    const { resolveHeroStatusChip } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroStatusChip({ labels, planStatus: 'at_risk' })).toEqual({
+      text: labels.atRiskChipLabel,
+      tone: 'warn',
+    });
+  });
+
+  it('suppresses the status chip for healthy live heroes', async () => {
+    const { resolveHeroStatusChip } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveHeroStatusChip({ labels, planStatus: 'on_track' })).toBeNull();
   });
 });
 
@@ -3504,6 +3524,8 @@ describe('cost + delivered-so-far hero lines', () => {
       nowMs: now.getTime(),
     }));
     expect(payload.hero.tone).toBe('warn');
+    expect(payload.hero.chips.some((chip) => chip.text === 'At risk' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(false);
     expect(payload.hero.costMetaLine).toBe('Cost ≈ 8.00 kr');
     // No "won't reach by" copy — at-risk still uses the hopeful shape.
     expect(payload.hero.deliveredSoFarLine).not.toMatch(/won.t reach/i);
