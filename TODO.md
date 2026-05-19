@@ -271,6 +271,60 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+*v2.7.4 train follow-ups (2026-05-19). Three items from the v2.7.3
+release-review fan-out that did not ride the train; deferred as
+maintenance-tier polish without user-visible impact at supported widths.
+Re-applied after the train merged because the in-session TODO additions
+were rolled back before they could land.*
+
+- [ ] Verify structured-debug back-pressure on the `power_calibration` topic.
+      `lib/app/appPowerCalibrationWiring.ts:522-542` emits one
+      structured debug record per accepted/skipped sample. With several
+      stepped loads under a long verbose debug session, confirm the
+      pino destination is back-pressured or rotated — PELS sits at
+      ~30 MB headroom against the 160 MB Homey RSS ceiling (see
+      [[project_homey_rss_limit]]). Default off, so the risk is bounded
+      to diagnostic sessions; this is a verification task, not a code
+      change unless the destination turns out to buffer unboundedly.
+      Files: `lib/app/appPowerCalibrationWiring.ts`, `lib/logging/`.
+      Source: `pels-runtime-reality` agent, v2.7.3 release-review pass.
+
+- [ ] Active-mode card heading hierarchy on the Settings landing page.
+      The v2.7.4 active-mode-card simplification dropped
+      `<h3 id="settings-active-mode-summary">Mode: Home</h3>` and the
+      section's H3 styling. Page heading nav now jumps from
+      `h2 "Configure PELS"` straight to nav items. Function intact
+      (`md-filled-select` carries the answer); structural-semantic
+      regression only. Decide whether to promote the `field__label`
+      to a heading or accept the flatter hierarchy on Settings.
+      Files: `packages/settings-ui/public/index.html`,
+      `settings/index.html`, `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
+
+- [ ] Heatmap `disposePowerWeekChart` inline-style cleanup.
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts:76-81,96`:
+      two call sites mutate the container's inline `height`,
+      `min-height`, `-webkit-tap-highlight-color`. Wrap the container
+      in a `.power-week-chart` class with default sizing tokens
+      (`min-height: var(--pels-chart-min-height, 240px)`) and have
+      dispose remove the style attribute instead.
+      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
+
+*Resolved review-finding (not a TODO; logged here so future audits don't
+re-raise it): the v2.7.3 release-review flagged "guard activation
+penalty against stale-meter inflation at window expiry" as a candidate
+P1. PR #901 explicitly enshrines the opposite direction in
+`test/activationBackoff.test.ts:543` — at window expiry with no clean
+whole-home sample, **penalty must persist** ("no overshoot attribution
+is not evidence of capacity compliance"). The "inflation" framing was
+also incorrect: `recordActivationSetback` cannot run without a known
+household total, so a stale window holds penalty at its current level
+rather than walking it upward. Current PELS design = retain-on-stale;
+the cautious admission stays cautious until a clean sample proves it.
+No action.*
+
 - [ ] Persist `currentHourOpening` / `lastKWhPerUnit` across PELS restarts.
       The v2.8.0 `recordHourlyDelivery` wiring tracks these on the in-memory
       `InProgressRecord` but does not write them to
