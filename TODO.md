@@ -377,6 +377,18 @@ No action.*
       once the resolver moves into a dedicated module alongside the other
       deferred-objective wiring (or the shared-domain tone helper above lands).
 
+- [ ] Decouple the `price_list_updated` trigger from `pels_prices_json`
+      tag-write failure in `lib/price/priceFlowTags.ts`. Today
+      `setToken` + `fireTrigger` share one try/catch, so a `setValue`
+      failure (or a missing `createToken` at init) suppresses the
+      trigger too. Event-driven flows that only consume the trigger
+      should keep firing even when the global tag path is broken. Trade
+      off vs. surface-consistency (both surfaces report the same
+      content at the same moment); the retry-on-failure path
+      (`lastFingerprint` not advanced) currently covers transient
+      errors, so this is reliability hardening rather than a bug.
+      Deferred from PR #926 review (codex P2 ×2).
+
 - [ ] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
       the canonical recourse pair as `Lower daily budget` / `Review device`;

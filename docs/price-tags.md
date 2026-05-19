@@ -5,15 +5,14 @@ description: Subscribe to PELS adjusted hourly prices from Homey Flow or HomeySc
 
 # Using PELS price tags in Flow and HomeyScript
 
-PELS publishes its **adjusted** electricity prices — the all-in price you see inside the app, i.e. spot + grid tariff + provider surcharge + tax + VAT + electricity support + Norgespris adjustment, depending on your configuration — as a JSON token on a single trigger card. Flows subscribe to the card and react to the data as it changes.
+PELS publishes its **adjusted** electricity prices — the all-in price you see inside the app, i.e. spot + grid tariff + provider surcharge + tax + VAT + electricity support + Norgespris adjustment, depending on your configuration — as a single global Flow tag, with a matching trigger card so flows can also react when the data changes. Both surfaces carry the same JSON payload from the same publisher; pick whichever fits your flow:
 
-## Trigger card
+- **Global tag** — read at any time from any Flow or HomeyScript. Use for scheduled flows ("every day at 06:00, pick cheapest hours") and on-demand reads.
+- **Trigger card** — fires when the content meaningfully changes. Use for event-driven flows ("when tomorrow's prices arrive, do X").
 
-**PELS price list was updated** (`price_list_updated`) fires when the exported price content meaningfully changes — when tomorrow's prices arrive, when grid tariffs are re-fetched, when Norgespris-adjusted amounts shift, at local midnight when today rolls forward. Identical refreshes do not fire it.
+## Global tag
 
-The card exposes a single local token:
-
-- `prices_json` (string) — the JSON payload below.
+**PELS price list JSON** (`pels_prices_json`, type: string):
 
 ```json
 {
@@ -27,12 +26,19 @@ The card exposes a single local token:
 - `tomorrow` is `[]` until day-ahead prices arrive — check `tomorrow.length > 0` before iterating.
 - `unit` — the unit PELS uses internally. Norway scheme is `øre/kWh`; the Homey / Flow schemes use whatever the source provides. Always read this field rather than assuming a currency.
 
-## Example: HomeyScript — pick the N cheapest upcoming hours before a deadline
+## Trigger card
 
-Run this from a "Then" card on a Flow triggered by **PELS price list was updated**, passing the trigger's `prices_json` token as the HomeyScript argument:
+**PELS price list was updated** (`price_list_updated`) fires when the exported price content meaningfully changes — when tomorrow's prices arrive, when grid tariffs are re-fetched, when Norgespris-adjusted amounts shift, at local midnight when today rolls forward. Identical refreshes do not fire it.
+
+Local token: `prices_json` (string) — the same payload as the global tag.
+
+## Example (paste into a HomeyScript card) — pick the N cheapest upcoming hours before a deadline
+
+This script uses HomeyScript-only APIs (`tag()`, top-level `await`, `log()`). Paste it into a Flow's "Run code" HomeyScript card or the HomeyScript IDE; it will not run as a plain Node script.
 
 ```javascript
-const data = JSON.parse(args[0]);
+const RAW = await tag('homey:manager:flow:pels_prices_json');
+const data = JSON.parse(RAW);
 
 // Tomorrow at 07:00 local time
 const deadlineDate = new Date();
@@ -66,4 +72,4 @@ for (const e of cheapest) log(`  ${new Date(e.time).toISOString()} — ${e.price
 - Prices are **post-adjustment**. Grid tariff, VAT, Norgespris, etc. are already baked into each number — there is no separate component breakdown in this payload.
 - Apply your own cheap/expensive thresholds (percentile, "lowest N hours", below-average, …) directly on the arrays. PELS' internal classification is intentionally **not** exported; choose the policy that suits your flow.
 - On DST fall-back days the day array contains 25 entries; on spring-forward, 23. Iterate by index; don't assume 24.
-- The trigger fingerprint is in-memory, so the trigger only fires when the price content meaningfully changes — an app restart with no underlying change in spot / tariff data will not fire it.
+- The publisher dedups by content fingerprint, so the tag is rewritten and the trigger fires only when the price content meaningfully changes. The fingerprint is in-memory, so the first publish after an app restart always fires the trigger once — even when the content hasn't changed from the prior session.
