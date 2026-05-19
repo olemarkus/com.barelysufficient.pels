@@ -4,10 +4,16 @@ import { readPriceStore } from './priceStore';
 import type { PriceExportV1 } from '../../packages/contracts/src/priceExport';
 
 type HomeyLike = Homey.App['homey'];
+type FlowTokenLike = { setValue: (value: unknown) => Promise<unknown> };
+type CreateTokenFn = (
+  id: string,
+  opts: { type: 'string'; title: string; value: string },
+) => Promise<FlowTokenLike>;
 type TriggerCardLike = {
   trigger: (tokens: Record<string, unknown>, state?: Record<string, unknown>) => Promise<unknown>;
 };
 
+export const PRICE_FLOW_TAG_ID = 'pels_prices_json';
 export const PRICE_LIST_UPDATED_TRIGGER_ID = 'price_list_updated';
 
 export type PriceFlowTagPublisherDeps = {
@@ -19,11 +25,39 @@ export type PriceFlowTagPublisherDeps = {
 };
 
 export class PriceFlowTagPublisher {
+  private token?: FlowTokenLike;
+  private initialized = false;
   private lastFingerprint: string | null = null;
 
   constructor(private deps: PriceFlowTagPublisherDeps) {}
 
+  async init(): Promise<void> {
+    if (this.initialized) return;
+    const flow = this.deps.homey.flow as { createToken?: CreateTokenFn };
+    if (typeof flow?.createToken !== 'function') {
+      this.deps.error('PriceFlowTagPublisher: homey.flow.createToken unavailable, skipping tag registration');
+      return;
+    }
+    try {
+      this.token = await flow.createToken(PRICE_FLOW_TAG_ID, {
+        type: 'string',
+        title: 'PELS price list JSON',
+        value: '{"today":[],"tomorrow":[],"unit":"price units"}',
+      });
+      this.initialized = true;
+    } catch (error) {
+      this.deps.error(`PriceFlowTagPublisher: failed to create token ${PRICE_FLOW_TAG_ID}`, error);
+    }
+  }
+
   async publish(reason: string): Promise<void> {
+    if (!this.initialized) {
+      await this.init();
+      if (!this.initialized) {
+        this.deps.logDebug(`PriceFlowTagPublisher: publish(${reason}) skipped — not initialized`);
+        return;
+      }
+    }
     const exportValue = this.tryBuildExport();
     if (!exportValue) return;
     const fingerprint = priceExportFingerprint(exportValue);
@@ -33,6 +67,7 @@ export class PriceFlowTagPublisher {
     }
     const json = JSON.stringify(exportValue);
     try {
+      await this.setToken(json);
       await this.fireTrigger(json, reason);
     } catch (error) {
       // Leave lastFingerprint untouched so the next publish retries this payload.
@@ -60,6 +95,11 @@ export class PriceFlowTagPublisher {
       timeZone,
     );
     return buildPriceExport({ store, now, timeZone });
+  }
+
+  private async setToken(value: string): Promise<void> {
+    if (!this.token) throw new Error('PriceFlowTagPublisher: token not initialized');
+    await this.token.setValue(value);
   }
 
   private async fireTrigger(json: string, reason: string): Promise<void> {
