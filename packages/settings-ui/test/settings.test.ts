@@ -62,12 +62,11 @@ const buildDom = () => {
     </div>
     <section class="panel hidden" id="settings-panel" data-panel="settings">
       <section class="settings-form-card settings-current-mode">
-        <p class="eyebrow" id="settings-current-mode-label">Current mode</p>
-        <h3 id="settings-active-mode-summary">Mode: Home</h3>
-        <label class="field">
-          <span class="field__label">Mode</span>
-          <md-filled-select id="active-mode-select"></md-filled-select>
+        <label class="field settings-current-mode__field">
+          <span class="field__label" id="settings-current-mode-label">Current mode</span>
+          <md-filled-select id="active-mode-select" aria-labelledby="settings-current-mode-label"></md-filled-select>
         </label>
+        <p class="muted settings-current-mode__hint">Priorities and temperatures stay in Modes.</p>
       </section>
       <button data-settings-target="limits"></button>
       <button data-settings-target="devices"></button>
@@ -1210,9 +1209,12 @@ describe('settings script', () => {
     await loadSettingsScript();
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
-    const activeModeSummary = document.querySelector('#settings-active-mode-summary') as HTMLElement;
+    const activeModeSummary = document.querySelector('#settings-active-mode-summary');
+    const activeModeLabel = document.querySelector('#settings-current-mode-label');
 
-    expect(activeModeSummary.textContent).toBe('Mode: Home');
+    expect(activeModeSummary).toBeNull();
+    expect(activeModeLabel?.textContent).toBe('Current mode');
+    expect(activeModeSelect.value).toBe('Home');
 
     // Change active mode to 'Away' - should auto-save on change
     activeModeSelect.value = 'Away';
@@ -1221,7 +1223,7 @@ describe('settings script', () => {
 
     // Now operating_mode should be saved as 'Away'
     expect(setSpy).toHaveBeenCalledWith('operating_mode', 'Away', expect.any(Function));
-    expect(activeModeSummary.textContent).toBe('Mode: Away');
+    expect(activeModeSelect.value).toBe('Away');
   });
 
   it('shows different selected values in editing vs active mode dropdowns', async () => {

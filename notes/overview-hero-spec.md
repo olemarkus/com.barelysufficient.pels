@@ -69,12 +69,9 @@ Show only when not `fresh`. Hide when live data is current.
 
 ### Mode (page chrome, not hero chip)
 
-The current operating mode is surfaced on the Settings page (under "Mode:") and
-in the modes editor, not on the Overview hero. Settings rendering uses
-`formatModeSummary` from `packages/settings-ui/src/ui/modeLabels.ts`, which
-emits the English structural prefix `Mode:` before the user-authored mode
-name (e.g. `Mode: Hjemme`) to avoid the mid-phrase code-switch that
-`{name} mode` produced at non-English locales.
+The current operating mode is surfaced on the Settings page as the `Current
+mode` selector and in the modes editor, not on the Overview hero. The selected
+option is the untranslated user-authored mode name; do not append `mode` to it.
 
 ### Info button
 

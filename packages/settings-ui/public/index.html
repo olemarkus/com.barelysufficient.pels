@@ -333,15 +333,11 @@
         </div>
       </header>
       <section class="settings-form-card settings-current-mode" aria-labelledby="settings-current-mode-label">
-        <div class="settings-current-mode__summary">
-          <p class="eyebrow" id="settings-current-mode-label">Current mode</p>
-          <h3 id="settings-active-mode-summary">Mode: Home</h3>
-          <p class="muted">Priorities and temperatures stay in Modes.</p>
-        </div>
         <label class="field settings-current-mode__field">
-          <span class="field__label" id="settings-active-mode-select-label">Mode</span>
-          <md-filled-select id="active-mode-select" name="active_mode" aria-labelledby="settings-active-mode-select-label"></md-filled-select>
+          <span class="field__label" id="settings-current-mode-label">Current mode</span>
+          <md-filled-select id="active-mode-select" name="active_mode" aria-labelledby="settings-current-mode-label"></md-filled-select>
         </label>
+        <p class="muted settings-current-mode__hint">Priorities and temperatures stay in Modes.</p>
       </section>
       <md-list class="settings-nav-list">
         <md-list-item type="button" class="settings-nav-card" data-settings-target="limits">
