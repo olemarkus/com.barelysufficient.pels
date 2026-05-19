@@ -6003,7 +6003,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: inline-flex;
   align-items: center;
   width: 100%;
-  max-width: 168px;
+  max-width: calc(7 * var(--spacing-6));
   min-height: var(--pels-touch-target-min);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
