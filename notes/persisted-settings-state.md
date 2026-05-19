@@ -104,7 +104,7 @@ hold only:
 - the `T` type (or import it)
 - `parse(raw): T | null` — normalise unknown
 - `isPlausible(raw): boolean` — strict structural validator
-- the domain operations (`ingestDevices`, `prune`, queries)
+- the domain operations (`ingestDeviceSnapshot`, `prune`, queries)
 - a thin wrapper that wires the above into `new PersistedSettingsState<T>(...)`
 
 No `dirty` flag, no debounce timer, no grace window, no flush variants, no

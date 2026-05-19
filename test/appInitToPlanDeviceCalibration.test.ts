@@ -34,8 +34,8 @@ const FIXED_NOW = new Date('2026-05-12T12:00:00Z').getTime();
 
 const buildSnapshotWithMediumEntry = (): PowerCalibrationSnapshot => {
   // Seed a confident-enough entry so `hasRecentDrawAt` has a real value to
-  // return; the cadence cap means six 70 s-spaced samples cross both the
-  // sample-count and sustained-seconds thresholds.
+  // return; six 70 s-spaced samples cross both the sample-count and
+  // sustained-seconds thresholds.
   let snapshot = createEmptyPowerCalibrationSnapshot();
   for (let i = 0; i < 6; i += 1) {
     const outcome = recordSample(snapshot, {

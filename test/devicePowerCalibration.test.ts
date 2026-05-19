@@ -85,16 +85,6 @@ describe('recordSample acceptance gates', () => {
     if (!outcome.accepted) expect(outcome.reason).toBe('stale_observation');
   });
 
-  it('throttles repeat samples within the cadence window', () => {
-    const empty = createEmptyPowerCalibrationSnapshot();
-    const first = recordSample(empty, baseSample({ nowMs: 0 }));
-    expect(first.accepted).toBe(true);
-    if (!first.accepted) return;
-    const second = recordSample(first.snapshot, baseSample({ nowMs: 1_000 }));
-    expect(second.accepted).toBe(false);
-    if (!second.accepted) expect(second.reason).toBe('cadence_throttled');
-  });
-
   it('rejects anomalies once confident', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     // Build confidence with 6 samples spaced 70s apart. Each gap caps at the
@@ -340,7 +330,6 @@ describe('exposed constants', () => {
   it('matches the documented gates', () => {
     expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SAMPLES).toBe(5);
     expect(POWER_CALIBRATION_CONSTANTS.CONFIDENCE_MIN_SUSTAINED_SECONDS).toBe(300);
-    expect(POWER_CALIBRATION_CONSTANTS.DEFAULT_CADENCE_MIN_INTERVAL_MS).toBe(30_000);
     expect(POWER_CALIBRATION_CONSTANTS.DEFAULT_FRESHNESS_WINDOW_MS).toBe(60_000);
     expect(POWER_CALIBRATION_CONSTANTS.NAMEPLATE_TOLERANCE_RATIO).toBe(0.02);
   });
