@@ -29,34 +29,44 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-- [ ] Wire `DeferredObjectivePlanHistoryRecorder.recordHourlyDelivery`
-      into the runtime so the history-detail loveable affordances
-      shipping in v2.7.2 actually populate. The contract field
-      (`hourlyContributions`), the recorder method, the producers
-      (`resolveHistoryDetailHourlyStrip`, postmortem cost narrative via
-      `deliveredKWh`/`totalCost`), and the views (`HourlyStrip`, cost
-      chip) all ship in v2.7.2, but `grep -rn "recordHourlyDelivery"`
-      shows zero production callers — only tests. Net effect on the
-      v2.7.2 ship: `finalizeRecord` gates the v4 delivery fields on
-      `hasDeliveryContribution` (planHistory.ts:564-572), so every real
-      entry persists with `hasDeliveryContribution: false` and **omits**
-      `deliveredKWh` / `totalCost` / `hourlyContributions` from the JSON
-      entirely (not `0` / `[]`); the per-hour strip is suppressed and
-      the cost narrative chip is hidden. Audit paths that key on
-      `undefined`/missing fields to detect the dark path will work as
-      designed. `progressSamples`, `revisions[]`, and
-      `revisionSnapshot.kwhPerUnitMean` *are* wired (via
-      `recordProgressSample` at planHistory.ts:401/422/436 and
-      `appendRevisionLogIfNew` at line 319), so the actual-vs-plan chart
-      and revisions card render correctly. Only the delivery / cost /
-      hourly path is dark. Suppression is graceful (no broken UI), so
-      this is patch-release follow-up rather than a v2.7.2 blocker.
-      Wire from the per-hour cost rollup site that already computes
-      per-hour kWh, resolving the price tone against the live
-      cheap/normal/expensive thresholds at contribution time so the
-      postmortem reads a stable band. Adversarial review on
-      `v2.7.3/hourly-contributions` branch (2026-05-18); scope confirmed
-      by v2.7.2 notes-drift audit (2026-05-18).
+*v2.8.0 release-review findings (2026-05-19). Two items from the
+five-agent fan-out pass on `v2.7.4..origin/main`; safe for the next
+patch release, not 2.8.0 merge-blockers. (Card-title rename landed in
+PR #934.)*
+
+- [ ] Recovery no-progress disarm needs wall-clock floor + hysteresis
+      band. `lib/core/objectiveProfileRecovery.ts:99-104`. With
+      `RECOVERY_PROGRESS_EPSILON = 0.01` °C and 10s polling, sub-epsilon
+      sensor drift can either reset the counter indefinitely (noise
+      crossing zero) or disarm prematurely (first post-arm sample sees
+      large negative delta vs. the pre-drop baseline). Under
+      `power_source = flow`, four samples may span hours, muting the
+      safeguard entirely (the 24 h `RECOVERY_SAFETY_TIMEOUT_MS` still
+      fires).
+      Why P1: failure mode is "safeguard does nothing," not user-visible
+      breakage; safety timeout still catches the worst case.
+      Acceptance: gate counter reset on
+      `forwardDelta > 5 * RECOVERY_PROGRESS_EPSILON`; add
+      `RECOVERY_NO_PROGRESS_MIN_DURATION_MS ≈ 30 min` measured from
+      `recoveryArmedAtMs`; add a regression test pinning the slow
+      legitimate refill case (currently only the cap-shed cooling
+      pattern is tested).
+      Files: `lib/core/objectiveProfileRecovery.ts`,
+      `test/objectiveProfileRecovery.test.ts`.
+      Source: `pels-runtime-reality` + `adversarial-review`, v2.8.0
+      release-review pass.
+
+- [ ] Move Smart tasks panel baseline-state strings to shared-domain.
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx:221-263`
+      inlines `'Loading your smart tasks…'`, `'Smart tasks unavailable'`,
+      `'Schedule a ready-by deadline'`, and the baseline eyebrow
+      `'Smart tasks'` introduced by `0fadbd2d`. Extend
+      `packages/shared-domain/src/deadlinesListHero.ts` with a
+      `BASELINE_HEADLINE_BY_STATE` map mirroring the populated-hero
+      pattern so runtime logs can quote what users saw (Rule 4).
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
+      `packages/shared-domain/src/deadlinesListHero.ts`.
+      Source: `pels-copy-and-terminology`, v2.8.0 release-review pass.
 
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
@@ -66,8 +76,6 @@ release, not v2.7.1 merge-blockers.*
       (projected above bar in diagram).
 - [ ] End-to-end tz-aware test for `formatCheapestUpcomingHour`
       in `test:unit:tz`.
-- [ ] Audit flow-card / push notification copy to share the new
-      decision-sentence voice (no logger yet).
 
 - [ ] Norgespris historical display uses live monthly cap snapshot, not
       snapshot-at-the-time. `priceServiceNorway.ts` initialises
@@ -140,25 +148,6 @@ release, not v2.7.1 merge-blockers.*
       previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
       app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
 
-- [ ] Surface EV deadline device-card state.
-      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx:63` shows only the Smart task chip.
-      Once EV actuation lands, the device card should explain what PELS thinks the charger is
-      doing. Add a next-planned-start line ("Waiting · charging starts 01:00"), an
-      active-charging finish line ("Charging · planned finish 05:30"), and a plug-out paused
-      line ("Charging plan paused — car unplugged"). Pull start / finish from the active-plan
-      recorder's `latest.hours`; pull the paused state from the existing
-      `objective_invalid_session` reason emitted by `resolveEvObjectiveProgress`
-      (`lib/plan/deferredObjectives/diagnosticsBridge.ts:380-402`), which fires when the
-      observation layer reports `stateOfCharge.status === 'invalid'`.
-      Why P1: this is not a P0 blocker, but it is the first support-facing clarity gap once EV
-      deadlines actually control charging.
-      *(partial shipping observed: `resolveEvCardStateLine` exists in `PlanDeviceCards.tsx`, but
-      `diagnosticsBridge.ts` plumbing and contract additions need verification before this can be
-      closed.)*
-      Design: `notes/ev-ready-by/README.md`.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
-      `packages/contracts/src/` (diagnostic reason additions), device-card tests.
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
       The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
@@ -396,6 +385,59 @@ No action.*
       errors, so this is reliability hardening rather than a bug.
       Deferred from PR #926 review (codex P2 ×2).
 
+*v2.8.0 release-review findings (2026-05-19). Four items from the
+five-agent fan-out pass on `v2.7.4..origin/main`.*
+
+- [ ] Stale-sample row in Smart task plan-inputs card needs a tone
+      affordance. `formatLastSampleValue` returns `Stale — <ts>` once
+      `ageMs ≥ 24 h`, but `resolveKwhPerUnitProvenanceRows` plugs it
+      under the same "Most recent sample" label as plain text — no warn
+      chip, no muted-color affordance. Users skimming the card miss the
+      signal that the underlying data is older than yesterday's reality.
+      Acceptance: style the stale branch via the existing `.muted` or
+      warn-tone span pattern used by sibling rows in
+      `KwhPerUnitProvenanceRow`.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+      Source: `pels-ux-fit`, v2.8.0 release-review pass.
+
+- [ ] Flatten the deferred-objective diagnostic to expose `currentValue`
+      + `kWhPerUnit` so recorder/UI consumers stop branching on
+      `objectiveKind`. `lib/plan/deferredObjectives/planHistory.ts`
+      `applyHourlyDeliveryRollover` (~907-916) and
+      `flushOpenHourAtFinalize` (~990-1000) repeatedly switch on
+      `diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC :
+      diag.kWhPerPercent` and `currentTemperatureC` vs `currentPercent`
+      — exactly the resolution-in-consumer smell flagged in
+      `feedback_layering_resolution_in_producer`. Pre-existing pattern,
+      surfaced by the v2.8.0 review of `ec60f06f`.
+      Acceptance: diagnostic exposes flat `currentValue: number | null`
+      and `kWhPerUnit: number | null`; consumers read them without kind
+      branches.
+      Files: `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      `packages/contracts/src/`.
+      Source: `pels-runtime-reality`, v2.8.0 release-review pass.
+
+- [ ] Plan-inputs freshness string ticks once per minute while the
+      Smart task detail page is open. Today `Updated N min ago` is
+      computed at render and frozen until the next plan refresh — a
+      user staring at the page for 30 minutes sees "Updated just now"
+      the entire time. Acceptable for non-critical context but mildly
+      misleading.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+      Source: `adversarial-review`, v2.8.0 release-review pass.
+
+- [ ] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
+      while the eyebrow says `'Smart tasks'`. Per
+      `feedback_terminology_plan_vs_deadline`, surface this with the
+      consistent "smart task" / "ready-by" vocabulary — e.g. "Add your
+      first smart task" or "Schedule a ready-by time".
+      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
+      Source: `pels-ux-fit`, v2.8.0 release-review pass.
+
 - [ ] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
       the canonical recourse pair as `Lower daily budget` / `Review device`;
@@ -438,32 +480,9 @@ No action.*
       should fall back to a collapsed-chart shape or stay quiet, and update
       `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
 
-- [ ] Refresh overview prices on realtime `prices_updated` events.
-      The hero anticipation subline ("Cheapest hour ahead …") depends on
-      `cachedPrices`, but realtime price updates only invalidate the prices
-      cache + refresh price tabs (`realtime.ts#handlePricesUpdated`). The
-      overview can keep showing stale/missing anticipation text until an
-      unrelated plan refresh runs (tab switch, plan update, etc.). Add a
-      plan-side prices refresh path so the overview stays in sync.
-      Deferred from PR #885 (codex P2 review thread on
-      `packages/settings-ui/src/ui/planRedesign.ts:124`).
-
 - [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
-
-- [ ] Smart-tasks panel loses its visible title in loading / error / empty
-      states after the v2.7.2 `smart-tasks-list-hero` PR dropped the static
-      `<h2>Smart tasks</h2>`. Other panels (Overview, Budget, Usage, Settings)
-      keep a persistent header, so the Smart tasks tab is now inconsistent
-      when the populated hero is not rendered. Options: (a) restore a small
-      eyebrow/header that shows in non-populated states only, (b) render a
-      tone-neutral hero placeholder ("Smart tasks") in loading/error/empty so
-      a heading always exists. Note the `aria-label` already covers screen
-      readers — this is a sighted-user / semantic-structure follow-up.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/public/index.html`, `settings/index.html`.
-      Source: gemini-code-assist on PR #880.
 
 - [ ] Overview device-card status copy is inlined in `PlanDeviceCards.tsx`
       (and `PlanSteppedCard.tsx`) instead of routed through a shared-domain
@@ -494,15 +513,6 @@ No action.*
 release-review pass (2026-05-17). All three depend on the history schema
 v3 → v4 migration, which is out of scope for v2.7.1; sequence them together
 in v2.7.2+.*
-
-*Claimed by the **v2.7.2 PR train** (long-lived branch `v2.7.2`, started
-2026-05-17). In scope for the train: the history-detail trio below
-(L1215 / L1249 / L1260) plus the smart-task trust-signal cluster
-(L2121, L2133, L2155, L2167, L2179, L2191, L2205, L2216, L2228) plus
-small UI polish (L915, L1383, L1393, L1987). Theme: failed runs deserve
-a different page shape than succeeded runs — see `notes/v2-7-2/README.md`
-and `notes/smart-task-ui/README.md`. Skip these items in v2.7.1
-release-review passes.*
 
 *v2.7.1 release-review P2 batch (2026-05-17). Eight items from the
 six-agent fan-out pass — non-blocking polish, drift, and follow-up.*

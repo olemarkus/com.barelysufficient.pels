@@ -1,22 +1,8 @@
 # Postmortem chart-visibility policy (active vs historic)
 
-> Status: merged to the `v2.7.2` integration branch on PR10 (2026-05-17); pending
-> version bump and milestone close. Source for the active-vs-historic asymmetry
-> the smart-task pages enforce.
->
-> **Carrying issue (release-review 2026-05-18):** the cost narrative chip and
-> the per-hour bar strip below both depend on `deliveredKWh` / `totalCost` /
-> `hourlyContributions`, which are produced exclusively by
-> `DeferredObjectivePlanHistoryRecorder.recordHourlyDelivery`. That recorder
-> method has **zero production callers** — `finalizeRecord` gates the v4
-> delivery fields on `hasDeliveryContribution` (planHistory.ts:564-572), so
-> every v2.7.2 history entry persists with `hasDeliveryContribution: false`
-> and **omits** `deliveredKWh` / `totalCost` / `hourlyContributions` from the
-> JSON entirely (not `0` / `[]`). The cost chip and per-hour strip will not
-> appear on real production runs until the recorder is wired (tracked as P1
-> in `TODO.md`). Suppression is graceful (chip hidden, strip absent), so the
-> asymmetry policy itself is unaffected — but the loveable affordances ship
-> dark.
+> Status: shipped via the v2.7.2 train; `recordHourlyDelivery` is wired in
+> production as of `ec60f06f` (v2.8.0). Reference doc for the
+> active-vs-historic asymmetry the smart-task pages enforce.
 
 ## TL;DR
 
