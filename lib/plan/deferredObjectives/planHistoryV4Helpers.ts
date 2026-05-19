@@ -9,11 +9,23 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryHourlyContribution,
+  DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+
+// Resolver supplied by the runtime wiring. Returns the spot price and
+// resolved tone for the hour that starts at `hourStartMs`. Returning `null`
+// (no price data yet, hour outside the published horizon) causes the
+// rollover detector to skip the contribution — the postmortem strip is
+// best-effort, not a hard requirement for finalization. See
+// `lib/app/appInit.ts` for the production wiring against
+// `combined_prices`.
+export type HourPriceResolver = (
+  hourStartMs: number,
+) => { priceValue: number; tone: DeferredObjectivePlanHistoryHourlyTone } | null;
 
 // Runtime cap on persisted progress samples per entry. The contract module
 // documents a matching constant (intentionally not exported there — runtime
@@ -210,6 +222,138 @@ const diffHourSchedules = (
   let hoursRemoved = 0;
   for (const startsAtMs of previousStarts) if (!nextStarts.has(startsAtMs)) hoursRemoved += 1;
   return { hoursAdded, hoursRemoved };
+};
+
+// Hour-aligned snapshot of a trustworthy progress reading. The hour-rollover
+// detector keeps one of these for the "current hour's opening" (the first
+// trustworthy reading observed in the hour) so it can compute delivered kWh
+// for the hour by subtracting the opening value from the latest reading when
+// the hour closes. `value` is in the objective's native unit (°C or %); the
+// caller multiplies by kWh-per-unit to convert.
+export type HourProgressSnapshot = {
+  hourMs: number;
+  value: number;
+};
+
+// Pick the effective kWh-per-unit factor for the diagnostic's kind. Returns
+// null when no profile (learned or bootstrap) has resolved yet — without
+// kWh/unit we can't translate progress delta into delivered kWh, so the
+// rollover skips emission for that cycle and the contribution lands as
+// "not measured" in the postmortem rather than as a fabricated zero.
+export const pickKwhPerUnit = (diag: DeferredObjectiveDiagnostic): number | null => {
+  const value = diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC : diag.kWhPerPercent;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+};
+
+// Result of one rollover step: zero or more closed-hour contributions plus
+// the updated opening snapshot. The caller (the recorder) folds the
+// contributions into the in-progress record and stores the new opening.
+export type HourRolloverResult = {
+  contributions: DeferredObjectivePlanHistoryHourlyContribution[];
+  nextOpening: HourProgressSnapshot;
+};
+
+// Detect an hour-bucket transition for an in-progress run with trustworthy
+// progress. Inputs:
+//   - `opening` — first trustworthy reading observed in the current open
+//     hour. `null` when the recorder has not yet anchored an opening
+//     snapshot (start of run, or after a stretch of untrustworthy readings).
+//   - `nowProgress` — current cycle's trustworthy reading.
+//   - `nowMs` — current cycle timestamp.
+//   - `kWhPerUnit` — multiplier resolving progress delta to delivered kWh.
+//   - `resolvePrice` — optional resolver that supplies hourly price+tone.
+//     `undefined` resolver or `null` lookup skips emission (no price → no
+//     contribution; the strip suppresses these hours instead of guessing).
+// Returns the contribution(s) to append (currently zero or one) and the new
+// opening snapshot to store. Returns `null` when no transition occurred and
+// no contribution should fire.
+//
+// Contract: the postmortem strip is observation-bucketed, not prorated.
+// Under `power_source = homey_energy` the recorder runs from the ~10 s
+// energy poll so multi-hour gaps are rare. Under `power_source = flow`
+// samples are event-driven and may arrive at arbitrary intervals — a
+// stretch with no observations followed by a single reading N hours later
+// attributes the full delta to `opening.hourMs` (the hour we last
+// observed), leaving intermediate hours blank rather than fabricating
+// intermediate bars. Proration across an unobserved window would require
+// independent power telemetry per hour and is deliberately out of scope
+// here. See `TODO.md` for the follow-up.
+export const detectHourRollover = (params: {
+  opening: HourProgressSnapshot | null;
+  nowProgress: number;
+  nowMs: number;
+  kWhPerUnit: number;
+  resolvePrice?: HourPriceResolver;
+}): HourRolloverResult | null => {
+  const { opening, nowProgress, nowMs, kWhPerUnit, resolvePrice } = params;
+  const currentHourMs = hourBucketMs(nowMs);
+  if (opening === null) {
+    return { contributions: [], nextOpening: { hourMs: currentHourMs, value: nowProgress } };
+  }
+  if (currentHourMs <= opening.hourMs) {
+    // Same hour (or — defensively — a clock jump backwards): keep the
+    // original opening so a backwards-skewed reading doesn't reset our
+    // anchor. The latest reading is captured by the caller via the
+    // progress-sample ring.
+    return null;
+  }
+  // Hour boundary crossed. Treat the *opening* snapshot's reading as the
+  // close-of-its-hour (the latest trustworthy reading we held for that hour)
+  // and the *current* reading as the new opening for the just-entered hour.
+  // This conservatively under-attributes when there were no observations in
+  // intervening hours (rare; default 30s plan cadence keeps coverage
+  // dense) — those hours simply don't get a contribution rather than a
+  // fabricated one. The closing-hour contribution lands on `opening.hourMs`
+  // because that is the hour that was just observed to end.
+  const deliveredUnits = nowProgress - opening.value;
+  const nextOpening: HourProgressSnapshot = { hourMs: currentHourMs, value: nowProgress };
+  if (deliveredUnits <= 0) {
+    // Progress didn't advance (or regressed — sensor drift, EV unplugged
+    // mid-hour). No contribution; advance the opening so subsequent hours
+    // don't double-count against the old anchor.
+    return { contributions: [], nextOpening };
+  }
+  if (!resolvePrice) return { contributions: [], nextOpening };
+  const pricing = resolvePrice(opening.hourMs);
+  if (pricing === null) return { contributions: [], nextOpening };
+  const deliveredKWh = deliveredUnits * kWhPerUnit;
+  return {
+    contributions: [{
+      atMs: opening.hourMs,
+      deliveredKWh,
+      priceValue: pricing.priceValue,
+      tone: pricing.tone,
+    }],
+    nextOpening,
+  };
+};
+
+// Emit a final contribution for the still-open hour at run finalization.
+// Mirrors `detectHourRollover` but is called once at finalize-time so a
+// run that completed inside a single hour (short EV top-up, sub-hour
+// thermal nudge) still produces at least one bar on the postmortem strip
+// instead of dropping its delivery entirely. Returns null when there is
+// no opening anchor or no measurable progress delta to flush.
+export const buildFinalHourContribution = (params: {
+  opening: HourProgressSnapshot | null;
+  finalProgress: number | null;
+  kWhPerUnit: number | null;
+  resolvePrice?: HourPriceResolver;
+}): DeferredObjectivePlanHistoryHourlyContribution | null => {
+  const { opening, finalProgress, kWhPerUnit, resolvePrice } = params;
+  if (opening === null || finalProgress === null || kWhPerUnit === null) return null;
+  const deliveredUnits = finalProgress - opening.value;
+  if (deliveredUnits <= 0) return null;
+  if (!resolvePrice) return null;
+  const pricing = resolvePrice(opening.hourMs);
+  if (pricing === null) return null;
+  return {
+    atMs: opening.hourMs,
+    deliveredKWh: deliveredUnits * kWhPerUnit,
+    priceValue: pricing.priceValue,
+    tone: pricing.tone,
+  };
 };
 
 // Append (or merge) a per-hour delivery contribution onto the running list

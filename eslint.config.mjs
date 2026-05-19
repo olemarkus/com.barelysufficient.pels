@@ -474,7 +474,23 @@ export default tseslint.config(
     // in-progress record into its own module.
     files: ['lib/plan/deferredObjectives/planHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 620, skipBlankLines: true, skipComments: true }],
+      // Bumped in v2.8.0 to host the internal hour-rollover detector that
+      // wires `recordHourlyDelivery` from the planner observe loop
+      // (`applyHourlyDeliveryRollover` + `flushOpenHourAtFinalize`).
+      // Target: <=620 once the in-progress record + finalize paths split
+      // into their own module.
+      'max-lines': ['warn', { max: 720, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // appInit.ts hosts the runtime wiring for plan/price/deferred-objective
+    // services. v2.8.0 added a per-hour price+tone resolver that consumes
+    // `entry.isCheap`/`entry.isExpensive` from the persisted V2 combined-prices
+    // store. Target: <=500 once the resolver moves into a dedicated module
+    // alongside the other deferred-objective wiring (tracked in TODO.md).
+    files: ['lib/app/appInit.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
     },
   },
   {
