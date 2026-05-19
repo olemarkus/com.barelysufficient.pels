@@ -386,6 +386,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     }, 'objective_missing_charge_rate');
   }
 
+  const commitment = resolveCommittedHours({
+    activePlans,
+    deviceId,
+    objective,
+  });
   const horizonPlan = planDeferredObjectiveHorizon({
     nowMs,
     objective: {
@@ -398,11 +403,8 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     },
     steps,
     buckets: policyHorizon.buckets,
-    committedHours: resolveCommittedHours({
-      activePlans,
-      deviceId,
-      objective,
-    }),
+    committed: commitment !== undefined,
+    committedHours: commitment,
   });
 
   return {
@@ -422,6 +424,14 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   };
 };
 
+// Returns `undefined` when there is no active commitment for this objective
+// (no persisted plan, plan still pending, signature mismatch, etc.) and the
+// caller should let the horizon planner run the fresh optimizer. Returns
+// `plan.commitment.hours` — which may be an empty array, e.g. when the first
+// revision was a `cannot_meet` plan that allocated zero hours — when there is
+// an active commitment. The caller distinguishes "no commitment" from
+// "commitment with no hours" via the `undefined` vs `[]` boundary; downstream
+// consumers must not collapse the two cases.
 const resolveCommittedHours = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   deviceId: string;

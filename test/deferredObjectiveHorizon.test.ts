@@ -132,6 +132,7 @@ describe('planDeferredObjectiveHorizon', () => {
         bucket(1, 'preferred'),
         bucket(2, 'avoid'),
       ],
+      committed: true,
       committedHours: [
         { startsAtMs: NOW_MS, plannedKWh: 1 },
         { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
@@ -143,6 +144,58 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
+  it('treats committed=true with empty hours as a commitment to zero hours (not a re-optimization request)', () => {
+    // Models a previously stored `cannot_meet` plan that allocated zero hours.
+    // The producer (diagnosticsBridge) still reports `committed: true` so the
+    // planner stays on the committed-replan path and reports the full
+    // energyNeededKWh as unplanned — it does not silently rerun the fresh
+    // optimizer against the same horizon and "recover".
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+    expect(plan.plannedUsefulEnergyKWh).toBe(0);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
+  });
+
+  it('runs the fresh optimizer when committed is false regardless of committedHours', () => {
+    // Regression guard: a legacy / non-committed call must route to the fresh
+    // optimizer. Same buckets as the previous case but `committed: false`
+    // produces a fully on-track plan.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: false,
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plan.unplannedUsefulEnergyKWh).toBe(0);
   });
 
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {

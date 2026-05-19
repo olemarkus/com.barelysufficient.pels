@@ -59,6 +59,12 @@ export type DeferredObjectiveHorizonInput = {
   objective: DeferredObjective;
   steps: DeferredObjectiveStep[];
   buckets: DeferredObjectiveHorizonBucket[];
+  // `true` when the producer has an active commitment for this objective —
+  // even when the committed hour list is empty (e.g. a `cannot_meet` plan
+  // committed zero hours). The horizon planner uses this flag, not
+  // `committedHours.length`, to decide between the committed-replan path and
+  // the fresh-optimizer path so the two cases stay distinguishable.
+  committed?: boolean;
   committedHours?: DeferredObjectiveCommittedHour[];
   epsilonKWh?: number;
 };
