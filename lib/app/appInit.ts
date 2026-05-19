@@ -271,6 +271,9 @@ export function createPlanEngine(ctx: AppContext) {
     getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
       ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
     ),
+    getDeferredObjectiveActivePlans: () => (
+      ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
+    ),
     getTimeZone: () => ctx.getTimeZone(),
     getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),

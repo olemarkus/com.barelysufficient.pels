@@ -20,6 +20,7 @@ import {
   normalizeShedReasons,
 } from './planReasons';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
+import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -77,6 +78,7 @@ export type PlanBuilderDeps = {
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
+  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getTimeZone?: () => string;
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
@@ -214,12 +216,12 @@ export class PlanBuilder {
       deferredTargetTempByDeviceId,
       deferredEvCommandIntentByDeviceId,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
+      this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
       this.deps.observeDeferredObjectivePlanHistory?.(
         deferredEvaluations,
         nowTs,
         this.deps.getStallClassification,
       );
-      this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
       const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
       const admission = applyDeferredAdmissionToInput(devices, deferredAdmission);
       return {
@@ -318,7 +320,6 @@ export class PlanBuilder {
       devices,
       this.powerTracker.lastTimestamp ?? null,
       context.powerKnown && context.headroom >= 0,
-      nowTs,
     );
 
     const sheddingPlan = await this.trackDurationAsync(
@@ -342,22 +343,11 @@ export class PlanBuilder {
     devices: PlanInputDevice[],
     wholeHomePowerSampleAtMs: number | null,
     cleanWholeHomeSample: boolean,
-    nowTs: number,
   ): void {
     for (const device of devices) {
       syncConfirmedRestoreAttributionAttempt({
         state: this.state,
         deviceId: device.id,
-        nowTs,
-        observation: {
-          available: device.available,
-          currentState: device.currentState,
-          currentOn: device.currentOn,
-          measuredPowerKw: device.measuredPowerKw,
-          deviceClass: device.deviceClass,
-          observationStale: device.observationStale,
-          lastFreshDataMs: device.lastFreshDataMs,
-        },
         wholeHomePowerSampleAtMs,
         cleanWholeHomeSample,
       });
@@ -668,6 +658,7 @@ export class PlanBuilder {
       powerTracker: this.powerTracker,
       dailyBudgetSnapshot,
       priceOptimizationEnabled: this.priceOptimizationEnabled,
+      activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
     });
   }
 

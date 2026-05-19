@@ -330,26 +330,20 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
-- [ ] Tighten the step-up confirmation evidence for penalty clearing.
-      The spiral-of-death PR (2026-05-19) clears `penaltyLevel` when
-      the attribution window expires AND
-      `shouldTrackObservedActivePower` saw the device drawing
-      meaningful power during the window. For binary restores this is
-      strong evidence (device transitioned off→on). For stepped
-      step-ups (e.g. low→medium on a heater or EV charger) the device
-      was already on at the previous step, so the gate fires on any
-      fresh observation regardless of whether measured power actually
-      rose to the new step's planning power. A step-up that failed to
-      actually change the draw would still clear penalty as long as no
-      overshoot was attributed during the window. Strengthen by
-      capturing the baseline measured-power at attempt start (new
-      field on `ActivationAttemptState`) and requiring
-      `measuredPowerKw` to exceed it by some meaningful delta — or
-      hook into the existing `resolveSteppedRestoreObservedGapKw`
-      pathway in `planSteppedRestorePending.ts`, which already knows
-      when a stepped restore is power-settled.
-      Source: `pels-runtime-reality` + `adversarial-review` skills +
-      copilot review thread, spiral-of-death PR (2026-05-19).
+- [ ] Add explicit backup-hour reservations for committed smart-task schedules.
+      Day-zero committed schedules now keep the first full-horizon allocation
+      stable and ignore later optimizer hour swaps. There is still no separate
+      backup-hour model: if the device cannot deliver inside the committed
+      hours, the plan degrades to `cannot_meet` rather than spilling into
+      reserved backup capacity. Future work should model backup hours as
+      distinct from committed delivery hours, surface the assumption in the
+      plan detail, and decide how daily-budget capacity is reserved so backup
+      hours do not silently steal energy from other tasks.
+      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/plan/deferredObjectives/bucketAllocation.ts`,
+      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `notes/deferred-load-objectives/`.
 
 - [ ] Smart-task history receipt + chip helpers in
       `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline

@@ -44,6 +44,7 @@ describe('applyDeferredObjectiveChange', () => {
     const planHistoryRecorder = buildHistoryRecorder();
     const activePlanRecorder = buildActiveRecorder();
     const finalizeSpy = vi.spyOn(planHistoryRecorder, 'finalizeForUserChange');
+    const clearSpy = vi.spyOn(activePlanRecorder, 'clearForDevice');
     const markSpy = vi.spyOn(activePlanRecorder, 'markPending');
 
     applyDeferredObjectiveChange({
@@ -57,6 +58,7 @@ describe('applyDeferredObjectiveChange', () => {
     });
 
     expect(finalizeSpy).not.toHaveBeenCalled();
+    expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]).toMatchObject({
       deviceId: 'dev',
@@ -70,6 +72,7 @@ describe('applyDeferredObjectiveChange', () => {
     const planHistoryRecorder = buildHistoryRecorder();
     const activePlanRecorder = buildActiveRecorder();
     const finalizeSpy = vi.spyOn(planHistoryRecorder, 'finalizeForUserChange');
+    const clearSpy = vi.spyOn(activePlanRecorder, 'clearForDevice');
     const markSpy = vi.spyOn(activePlanRecorder, 'markPending');
 
     applyDeferredObjectiveChange({
@@ -83,6 +86,7 @@ describe('applyDeferredObjectiveChange', () => {
     });
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
+    expect(clearSpy).toHaveBeenCalledWith('dev');
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]!.deadlineAtMs).toBe(8 * HOUR_MS);
   });
@@ -91,6 +95,8 @@ describe('applyDeferredObjectiveChange', () => {
     const planHistoryRecorder = buildHistoryRecorder();
     const activePlanRecorder = buildActiveRecorder();
     const finalizeSpy = vi.spyOn(planHistoryRecorder, 'finalizeForUserChange');
+    const clearSpy = vi.spyOn(activePlanRecorder, 'clearForDevice');
+    const markSpy = vi.spyOn(activePlanRecorder, 'markPending');
 
     applyDeferredObjectiveChange({
       deviceId: 'dev',
@@ -103,6 +109,12 @@ describe('applyDeferredObjectiveChange', () => {
     });
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
+    expect(clearSpy).toHaveBeenCalledWith('dev');
+    expect(markSpy).toHaveBeenCalledTimes(1);
+    expect(markSpy.mock.calls[0]![0]).toMatchObject({
+      targetTemperatureC: 70,
+      deadlineAtMs: 6 * HOUR_MS,
+    });
   });
 
   it('does nothing when the objective signature is identical', () => {

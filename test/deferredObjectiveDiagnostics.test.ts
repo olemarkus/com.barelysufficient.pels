@@ -12,6 +12,7 @@ import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObject
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
+import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -252,6 +253,15 @@ const buildDay = (params: {
 
 const sumReserveAllocation = (plannedBuckets: readonly DeferredObjectivePlannedBucket[]): number => (
   plannedBuckets.reduce((sum, bucket) => sum + (bucket.reserve ? bucket.plannedUsefulEnergyKWh : 0), 0)
+);
+
+const plannedBySourceBucket = (
+  plannedBuckets: readonly DeferredObjectivePlannedBucket[],
+  sourceBucketId: string,
+): number => (
+  plannedBuckets
+    .filter((bucket) => bucket.sourceBucketId === sourceBucketId)
+    .reduce((sum, bucket) => sum + bucket.plannedUsefulEnergyKWh, 0)
 );
 
 describe('deferred objective settings', () => {
@@ -500,6 +510,80 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       horizonBucketCount: 5,
     });
     expect(diagnostic?.horizonPlan?.plannedBuckets.some((bucket) => bucket.preference === 'preferred')).toBe(true);
+  });
+
+  it('uses a committed active-plan schedule instead of moving to newly preferred hours', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({
+      deadlineLocalTime: '20:00',
+      targetPercent: 50,
+    }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: JSON.stringify(['ev_soc', null, 50, deadlineAtMs, 'soft']),
+          commitment: {
+            committedAtMs: NOW_MS - HOUR_MS,
+            hours: [
+              { startsAtMs: NOW_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+            ],
+          },
+          original: {
+            revision: 1,
+            revisedAtMs: NOW_MS - HOUR_MS,
+            computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [
+              { startsAtMs: NOW_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+            ],
+            energyNeededKWh: 2,
+            planStatus: 'on_track',
+          },
+          latest: {
+            revision: 1,
+            revisedAtMs: NOW_MS - HOUR_MS,
+            computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
+            reason: 'flow_card',
+            hours: [
+              { startsAtMs: NOW_MS, plannedKWh: 1 },
+              { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+            ],
+            energyNeededKWh: 2,
+            planStatus: 'on_track',
+          },
+        },
+      },
+    };
+    const prices = Array.from({ length: 24 }, () => 30);
+    prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+
+    const plannedBuckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(diagnostic?.requestedMinimumStepId).toBe('low');
+    expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS).toISOString())).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + HOUR_MS).toISOString())).toBe(0);
+    expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + 2 * HOUR_MS).toISOString())).toBeCloseTo(1);
   });
 
   it('plans a persisted temperature objective from learned kWh per degree', () => {

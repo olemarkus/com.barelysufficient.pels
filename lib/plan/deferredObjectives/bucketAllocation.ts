@@ -1,5 +1,6 @@
 import type {
   DeferredObjectiveBucketPreference,
+  DeferredObjectiveCommittedHour,
   DeferredObjectiveHorizonBucket,
   DeferredObjectivePlannedBucket,
   DeferredObjectiveStep,
@@ -88,6 +89,53 @@ export const allocateEnergyToBuckets = (params: {
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
+    plannedUsefulEnergyKWh += plannedKWh;
+    remainingKWh -= plannedKWh;
+    usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
+    usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
+  }
+
+  return {
+    plannedBuckets: buildPlannedBuckets({ buckets, step, plannedByBucketId }),
+    plannedUsefulEnergyKWh,
+    unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
+    usesDeadlineReserve,
+    usesPolicyAvoid,
+  };
+};
+
+export const allocateCommittedEnergyToBuckets = (params: {
+  buckets: NormalizedBucket[];
+  step: DeferredObjectiveStep;
+  energyNeededKWh: number;
+  epsilonKWh: number;
+  committedHours: readonly DeferredObjectiveCommittedHour[];
+}): BucketAllocationResult => {
+  const {
+    buckets,
+    step,
+    energyNeededKWh,
+    epsilonKWh,
+    committedHours,
+  } = params;
+  const committedRemainingByHour = buildCommittedHourMap(committedHours, epsilonKWh);
+  const plannedByBucketId = new Map<string, number>();
+  let remainingKWh = Math.max(0, energyNeededKWh);
+  let plannedUsefulEnergyKWh = 0;
+  let usesDeadlineReserve = false;
+  let usesPolicyAvoid = false;
+  const bucketsByTime = sortBucketsByTime(buckets);
+
+  for (const bucket of bucketsByTime) {
+    if (remainingKWh <= epsilonKWh) break;
+    const hourStartMs = Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS;
+    const committedRemainingKWh = committedRemainingByHour.get(hourStartMs) ?? 0;
+    if (committedRemainingKWh <= epsilonKWh) continue;
+    const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, step);
+    const plannedKWh = Math.min(remainingKWh, committedRemainingKWh, usefulEnergyCapacityKWh);
+    if (plannedKWh <= epsilonKWh) continue;
+    plannedByBucketId.set(bucket.id, plannedKWh);
+    committedRemainingByHour.set(hourStartMs, committedRemainingKWh - plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
     usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
@@ -252,6 +300,12 @@ const sortBucketsForAllocation = (
   [...buckets].sort(compareBucketsForAllocation)
 );
 
+const sortBucketsByTime = (
+  buckets: NormalizedBucket[],
+): NormalizedBucket[] => (
+  [...buckets].sort(compareBucketsByTime)
+);
+
 const compareBucketsForAllocation = (
   left: NormalizedBucket,
   right: NormalizedBucket,
@@ -262,6 +316,28 @@ const compareBucketsForAllocation = (
   || left.startMs - right.startMs
   || left.endMs - right.endMs
 );
+
+const compareBucketsByTime = (
+  left: NormalizedBucket,
+  right: NormalizedBucket,
+): number => (
+  left.startMs - right.startMs
+  || left.endMs - right.endMs
+);
+
+const buildCommittedHourMap = (
+  committedHours: readonly DeferredObjectiveCommittedHour[],
+  epsilonKWh: number,
+): Map<number, number> => {
+  const byHour = new Map<number, number>();
+  for (const hour of committedHours) {
+    if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(hour.plannedKWh)) continue;
+    if (hour.plannedKWh <= epsilonKWh) continue;
+    const startsAtMs = Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS;
+    byHour.set(startsAtMs, (byHour.get(startsAtMs) ?? 0) + hour.plannedKWh);
+  }
+  return byHour;
+};
 
 const compareReserve = (
   left: Pick<NormalizedBucket, 'reserve'>,
