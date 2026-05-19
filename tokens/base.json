@@ -32,6 +32,7 @@
       "sm": { "value": "13px" },
       "md": { "value": "15px" },
       "lg": { "value": "18px" },
+      "xl": { "value": "20px" },
       "title-md": { "value": "16px" },
       "headline-sm": { "value": "24px" },
       "headline-md": { "value": "28px" },
