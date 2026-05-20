@@ -373,5 +373,8 @@
   },
   "2.7.4": {
     "en": "Improved smart task plan stability."
+  },
+  "2.8.0": {
+    "en": "Add trigger card and global tokan containing calculated prices per hour."
   }
 }
