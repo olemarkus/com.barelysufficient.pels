@@ -2092,3 +2092,15 @@ should not be folded into the same PR.
       cutoff through `DeferredObjectiveHorizonPlan` (e.g. `pricesAvailableUpToMs`)
       from the price source down to the recorder. Filed as chatgpt-codex P2
       on PR #890 (thread `PRRT_kwDOQhCm-86CxCbo`).
+
+- [ ] Deferred dependency vuln: `ws` (GHSA-58qx-3vcg-4xpx, moderate,
+      uninitialized-memory disclosure). Pulled in transitively via
+      `socket.io-client@4.8.3` → `engine.io-client@6.6.4`, which pins
+      `ws@~8.18.3`; the patched `ws@8.20.1` is outside that range, so there is
+      no clean fix yet. `npm audit fix --force` only "resolves" it by
+      downgrading `socket.io-client` to 4.2.0 (breaking) — do not do that.
+      Wait for `engine.io-client` to bump its `ws` range upstream, then drop
+      this. A forced `overrides: { "ws": "8.20.1" }` is the fallback if the
+      advisory escalates. Moderate severity; runtime websocket talks to
+      trusted Homey infra. Recorded 2026-05-20 alongside the safe
+      `npm audit fix` (fast-uri High + postcss/brace-expansion moderates).
