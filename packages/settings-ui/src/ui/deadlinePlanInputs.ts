@@ -1,5 +1,10 @@
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import { resolveKwhPerUnitProvenanceRows, type DeadlineLabels } from '../../../shared-domain/src/deadlineLabels.ts';
+import {
+  formatSmartTaskExtraPermissionsValue,
+  resolveKwhPerUnitProvenanceRows,
+  SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE,
+  type DeadlineLabels,
+} from '../../../shared-domain/src/deadlineLabels.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
@@ -32,9 +37,16 @@ const formatPerUnitRateLabel = (
   return `${kwhPerUnitMean.toFixed(2)} ${unitSuffix}`;
 };
 
-const formatMaxPowerLabel = (lowestStepKw: number | null): string | null => (
-  lowestStepKw === null ? null : `${lowestStepKw.toFixed(1)} kW`
-);
+const formatMaxPowerLabel = (kw: number | null): string | null => {
+  if (kw === null) return null;
+  if (kw < 2) return `${kw.toFixed(2).replace(/\.?0+$/, '')} kW`;
+  return `${kw.toFixed(1)} kW`;
+};
+
+const resolvePlanInputPowerKw = (params: {
+  planningSpeedKw: number | null;
+  device: TargetDeviceSnapshot;
+}): number | null => params.planningSpeedKw ?? resolveLowestActiveStepKw(params.device);
 
 // Producer-side resolver: collapses the per-unit-rate provenance branching
 // (bootstrap-source EV vs learned profile vs legacy null-source revisions)
@@ -79,12 +91,21 @@ export const buildPlanInputs = (params: {
   // refining as PELS observes charging" note rendered next to the rate row;
   // suppressed when the rate came from the learned profile.
   usingBootstrap: boolean;
+  objective: DeferredObjectiveSettingsEntry;
+  planningSpeedKw: number | null;
   nowMs: number;
 }): DeadlinePlanPayload['planInputs'] => {
   return {
     perUnitRateLabel: formatPerUnitRateLabel(params.rateMean, params.labels.perUnitRateUnit),
     perUnitRateNote: params.usingBootstrap ? params.labels.planInputsRateBootstrapNote : null,
-    maxPowerLabel: formatMaxPowerLabel(resolveLowestActiveStepKw(params.device)),
+    maxPowerLabel: formatMaxPowerLabel(resolvePlanInputPowerKw({
+      planningSpeedKw: params.planningSpeedKw,
+      device: params.device,
+    })),
+    maxPowerNote: params.objective.rescue?.limitLowerPriorityDevices
+      ? SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE
+      : null,
+    extraPermissionsValue: formatSmartTaskExtraPermissionsValue(params.objective.rescue),
     provenanceRows: resolveKwhPerUnitProvenanceRows({
       provenance: params.provenance,
       nowMs: params.nowMs,

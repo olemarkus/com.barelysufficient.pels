@@ -8,6 +8,10 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
+  SMART_TASK_USAGE_RETURN_CONTEXT,
+  SMART_TASK_USAGE_RETURN_LABEL,
+} from '../../../shared-domain/src/deadlineLabels.ts';
+import {
   fetchDeadlinePlanHistory,
   resolveBrowserTimeZone,
   type DeadlinePlanHistoryView,
@@ -16,6 +20,7 @@ import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
 import { logSettingsError } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
+import { showUsageReturnLink } from './usageReturnLink.ts';
 
 const describeError = (error: unknown): string => {
   if (error instanceof Error && error.message) return error.message;
@@ -105,9 +110,8 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
 // The anchor carries `data-deadline-usage-link="<deviceId>"` and is intercepted
 // here so the SPA closes the deadline-plan view and lands on the Usage tab in
 // a single transition — same close-with-fallback flow as the recourse buttons.
-// `data-deadline-usage-link` is kept on the anchor for future enhancement
-// (Usage deviceId/date filter wiring); the value is unused at click time today
-// because the Usage panel doesn't yet consume the param.
+// Usage is household-scoped today, so this also arms an explicit return link
+// before leaving the Smart-task detail instead of implying a device filter.
 let usageLinkHandlerBound = false;
 const initDeadlinePlanUsageLinkDispatcher = (): void => {
   if (usageLinkHandlerBound) return;
@@ -120,6 +124,12 @@ const initDeadlinePlanUsageLinkDispatcher = (): void => {
     const trigger = event.target.closest<HTMLElement>('[data-deadline-usage-link]');
     if (!trigger) return;
     event.preventDefault();
+    const currentUrl = new URL(window.location.href);
+    showUsageReturnLink({
+      href: `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`,
+      label: trigger.dataset.deadlineUsageReturnLabel ?? SMART_TASK_USAGE_RETURN_LABEL,
+      context: trigger.dataset.deadlineUsageReturnContext ?? SMART_TASK_USAGE_RETURN_CONTEXT,
+    });
     onCloseDeadlinePlan({ fallbackTab: 'usage' });
   });
 };

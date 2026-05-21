@@ -118,10 +118,6 @@ export const getPlanHistoryOutcomeTone = (outcome: DeferredObjectivePlanOutcome)
   OUTCOME_TONES[outcome]
 );
 
-export const shouldShowBackupHoursPill = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'usedPolicyAvoid' | 'usedDeadlineReserve'>,
-): boolean => entry.usedPolicyAvoid || entry.usedDeadlineReserve;
-
 // Overshoot threshold matches the `notes/smart-task-ui/README.md` design spec
 // ("Notable extras: overshoot line if delivered > target by > 5 °C / 10 %").
 // Pulled out of `wasOvershoot` so the dedicated overshoot line helper below
@@ -170,25 +166,21 @@ export const formatPlanHistoryOvershootLine = (
 };
 
 /**
- * Composes the muted "See {device} usage on {date} →" cross-link label rendered below the
+ * Composes the muted "See household usage on {date} →" cross-link label rendered below the
  * history-detail hero. Per `notes/smart-task-ui/README.md` "Cross-surface: vs Usage /
  * Insights", the asymmetric link from a Smart-task history detail to the same-day Usage
- * chart helps the recovering-from-mistake user see the device's whole-day energy context
- * when investigating a miss.
+ * chart helps the recovering-from-mistake user compare the task with the household
+ * day context when investigating a miss.
  *
- * Falls back to "usage" when the device name is missing so the line never reads as a
- * bare placeholder. `dateLabel` is the localized day string supplied by the caller (UI
- * layer) so shared-domain stays free of locale/Date helpers — same rule as
+ * `dateLabel` is the localized day string supplied by the caller (UI layer) so
+ * shared-domain stays free of locale/Date helpers — same rule as
  * `formatPlanHistoryDeadlineLine`. The trailing arrow is part of the label so the
  * link reads as a navigation affordance even without underline styling.
  */
 export const formatPlanHistoryUsageDayLinkLabel = (
-  deviceName: string | null,
+  _deviceName: string | null,
   dateLabel: string,
-): string => {
-  const device = deviceName && deviceName.trim().length > 0 ? deviceName : 'device';
-  return `See ${device} usage on ${dateLabel} →`;
-};
+): string => `See household usage on ${dateLabel} →`;
 
 // Window size for the "miss-streak" aggregate on the past-tasks landing surface.
 // Mirrors the lived-state Connected 300 example from `notes/smart-task-ui/README.md`:

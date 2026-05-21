@@ -17,7 +17,10 @@ import {
   type PlanHistoryRevisionLogRow,
   formatPlanHistoryUsageDayLinkLabel,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { deadlineLabels } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_USAGE_RETURN_LABEL,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
@@ -707,7 +710,7 @@ const HistoryDetailHero = ({
 }: {
   hero: DeadlinePlanHistoryHeroPayload;
   revisionUpdatesLine: string | null;
-  usageLink: { href: string; label: string; deviceId: string } | null;
+  usageLink: { href: string; label: string; deviceId: string; returnContext: string } | null;
 }) => (
   <section
     class="pels-surface-card plan-history-detail__hero"
@@ -833,6 +836,8 @@ const HistoryDetailHero = ({
           class="plan-history-detail__usage-link-anchor"
           href={usageLink.href}
           data-deadline-usage-link={usageLink.deviceId}
+          data-deadline-usage-return-label={SMART_TASK_USAGE_RETURN_LABEL}
+          data-deadline-usage-return-context={usageLink.returnContext}
         >
           {usageLink.label}
         </a>
@@ -852,12 +857,12 @@ const formatRevisionUpdatesLine = (revisionCount: number | undefined): string | 
   return `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}.`;
 };
 
-// Card-title copy. Trajectory mode reads as "Progress vs schedule" — the
-// chart shows the actual progression against the planned trajectory. Legacy
+// Card-title copy. Trajectory mode reads as "Progress history" so it is not
+// confused with the live Smart-task price horizon. Legacy
 // mode keeps the existing "Scheduled vs observed" so the v3 fallback path
 // reads consistently across surfaces.
 const resolveChartCardTitle = (mode: DeferredPlanHistoryChartData['mode']): string => (
-  mode === 'trajectory' ? 'Progress vs schedule' : 'Scheduled vs observed'
+  mode === 'trajectory' ? 'Progress history' : 'Scheduled vs observed'
 );
 
 // Subtext shown under the chart card title for the legacy fallback. The
@@ -1074,18 +1079,20 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   const revisionUpdatesLine = revisionRows.length > 0
     ? null
     : formatRevisionUpdatesLine(entry.revisionCount);
-  // Cross-link to the same-day Usage chart for this device. Per
+  const usageDateLabel = formatUsageLinkDate(entry.deadlineAtMs, timeZone);
+  // Cross-link to the same-day Usage chart. Per
   // `notes/smart-task-ui/README.md` "Cross-surface: vs Usage / Insights",
-  // the asymmetric link helps users investigating a miss see the device's
-  // whole-day energy context. Pinned to the deadline timestamp's date so the
+  // the asymmetric link helps users investigating a miss compare the run with
+  // the household day context. Pinned to the deadline timestamp's date so the
   // user lands on the day the run was *supposed* to finish.
   const usageLink = {
     href: buildUsageDayHref(entry.deviceId, entry.deadlineAtMs),
     label: formatPlanHistoryUsageDayLinkLabel(
       entry.deviceName ?? null,
-      formatUsageLinkDate(entry.deadlineAtMs, timeZone),
+      usageDateLabel,
     ),
     deviceId: entry.deviceId,
+    returnContext: `Showing household usage for ${usageDateLabel}.`,
   };
   // Producer-resolved hero payload. The view layer never branches on outcome
   // / planStatus / `dailyBudgetExhaustedBucketCount` — all of that resolution

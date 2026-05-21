@@ -537,6 +537,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   //     surface "Today's budget is full — next cheap window after midnight."
   const dailyBudgetExhaustedAnywhere = (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
   const dailyBudgetExhausted = latest.planStatus === 'cannot_meet' && dailyBudgetExhaustedAnywhere;
+  const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
 
   return {
     kind: objective.kind,
@@ -568,9 +569,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       // (recorded before this snapshot shipped) fall back to the per-revision
       // values so the surface stays populated; the snapshot will land the
       // first time those plans hit a replan revision.
-      planningSpeedKw: resolvePositiveNumber(
-        activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw,
-      ),
+      planningSpeedKw,
       estimatedDurationText: resolveNonEmptyString(
         activePlan!.initialEstimatedDurationText ?? latest.estimatedDurationText,
       ),
@@ -601,6 +600,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       labels,
       device,
       provenance: activePlan!.kwhPerUnitProvenance,
+      objective,
+      planningSpeedKw,
       nowMs,
       ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
     }),

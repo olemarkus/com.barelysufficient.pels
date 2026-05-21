@@ -26,7 +26,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     })).toEqual([]);
   });
 
-  it('renders a single "Bootstrap estimate" source row for bootstrap provenance', () => {
+  it('renders a single "Starting estimate" source row for bootstrap provenance', () => {
     const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
       source: 'bootstrap',
       kWhPerUnit: null,
@@ -38,7 +38,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       provenance,
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
-    })).toEqual([{ label: 'Source', value: 'Bootstrap estimate' }]);
+    })).toEqual([{ label: 'Source', value: 'Starting estimate' }]);
   });
 
   it('renders source/samples/last-sample rows for fully-populated learned provenance — no duplicate "Learned rate" row', () => {
@@ -54,9 +54,9 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS + 5 * ONE_MIN_MS,
       formatAcceptedAt,
     })).toEqual([
-      { label: 'Source', value: 'Learned profile' },
-      { label: 'Samples', value: '12 accepted samples · medium confidence' },
-      { label: 'Most recent sample', value: 'Updated 5 min ago' },
+      { label: 'Source', value: 'Learned from power readings' },
+      { label: 'Readings used', value: '12 accepted power readings · medium confidence' },
+      { label: 'Latest reading used', value: 'Updated 5 min ago' },
     ]);
   });
 
@@ -73,7 +73,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS + 15 * 1000,
       formatAcceptedAt,
     });
-    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe('Updated just now');
+    expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe('Updated just now');
   });
 
   it('emits hour-resolution copy past the one-hour boundary', () => {
@@ -89,7 +89,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS + 3 * ONE_HOUR_MS,
       formatAcceptedAt,
     });
-    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe('Updated 3 hours ago');
+    expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe('Updated 3 hours ago');
   });
 
   it('marks the row as stale and surfaces the absolute timestamp past 24h', () => {
@@ -105,7 +105,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
       formatAcceptedAt,
     });
-    expect(rows.find((row) => row.label === 'Most recent sample')?.value).toBe(`Stale — ${STUB_ACCEPTED_AT}`);
+    expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe(`Stale — ${STUB_ACCEPTED_AT}`);
   });
 
   it('omits the samples row when acceptedSamples is zero', () => {
@@ -121,7 +121,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     })).toEqual([
-      { label: 'Source', value: 'Learned profile' },
+      { label: 'Source', value: 'Learned from power readings' },
     ]);
   });
 
@@ -138,8 +138,8 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     });
-    const samples = rows.find((row) => row.label === 'Samples');
-    expect(samples?.value).toBe('1 accepted sample · low confidence');
+    const samples = rows.find((row) => row.label === 'Readings used');
+    expect(samples?.value).toBe('1 accepted power reading · low confidence');
   });
 
   it('omits confidence text from the samples row when confidence is null', () => {
@@ -155,7 +155,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     });
-    const samples = rows.find((row) => row.label === 'Samples');
-    expect(samples?.value).toBe('4 accepted samples');
+    const samples = rows.find((row) => row.label === 'Readings used');
+    expect(samples?.value).toBe('4 accepted power readings');
   });
 });

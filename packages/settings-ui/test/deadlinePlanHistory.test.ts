@@ -65,17 +65,9 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.textContent).toContain('50.0 °C → 58.0 °C');
   });
 
-  it('shows the backup-hours pill when the run leaned on avoid buckets', () => {
+  it('does not show the stale backup-hours pill when the run leaned on avoid buckets', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [buildEntry({ usedPolicyAvoid: true })],
-      timeZone: 'UTC',
-    }));
-    expect(mount.textContent).toContain('Backup hours');
-  });
-
-  it('does not show the backup-hours pill on a clean run', () => {
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [buildEntry({ usedPolicyAvoid: false, usedDeadlineReserve: false })],
       timeZone: 'UTC',
     }));
     expect(mount.textContent).not.toContain('Backup hours');

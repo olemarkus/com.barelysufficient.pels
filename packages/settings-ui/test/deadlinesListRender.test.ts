@@ -22,6 +22,7 @@ const buildCard = (overrides: Partial<DeadlinesListCard> = {}): DeadlinesListCar
   href: './?page=deadline-plan&deviceId=dev_water_heater',
   statusId: 'on_track',
   confidence: null,
+  extraPermissionsValue: null,
   currentValueLine: null,
   ...overrides,
 });
@@ -112,6 +113,16 @@ describe('DeadlinesList', () => {
       cards: [buildCard({ currentValueLine: null })],
     });
     expect(mount.querySelector('.deadline-list-card__current')).toBeNull();
+  });
+
+  it('renders extra permissions when the producer supplies them', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ extraPermissionsValue: 'May go over daily budget' })],
+    });
+    expect(mount.textContent).toContain('Extra permissions');
+    expect(mount.textContent).toContain('May go over daily budget');
   });
 
   // Status-tone parity on the "Ready by" row: an active card with a

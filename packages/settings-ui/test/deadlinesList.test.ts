@@ -160,8 +160,29 @@ describe('resolveDeadlinesListCards', () => {
       href: './?page=deadline-plan&deviceId=dev_a',
       statusId: 'queued', // first hour is in the future relative to nowMs
       confidence: null,
+      extraPermissionsValue: null,
       currentValueLine: 'currently 18.4 °C',
     });
+  });
+
+  it('plumbs smart-task extra permissions onto the card', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([buildPlan({})]),
+      objectiveSettings: buildObjectiveSettings({
+        dev_a: {
+          ...enabledTemperatureEntry,
+          rescue: {
+            exemptFromBudget: 'always',
+            limitLowerPriorityDevices: 'at_risk',
+          },
+        },
+      }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].extraPermissionsValue).toBe(
+      'May go over daily budget · May limit lower-priority devices if at risk',
+    );
   });
 
   it('plumbs the per-revision learned-profile confidence band onto the card', () => {

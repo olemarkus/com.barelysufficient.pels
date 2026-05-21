@@ -27,12 +27,11 @@ export const isDeadlinePlanRoute = (search: string): boolean => (
   new URLSearchParams(search).get('page') === DEADLINE_PLAN_PAGE_PARAM
 );
 
-// Cross-link from smart-task history detail → Usage tab for the same device
-// + day. The Usage surface today does not consume deviceId/date URL params
-// (the filter is selected from inside the panel), so the href is a SPA root
-// reference; the click handler in `deadlinePlanMount.ts` reads `data-deadline-
-// usage-link` attributes on the anchor to dispatch a close-then-Usage-tab
-// transition.
+// Cross-link from smart-task history detail → household Usage for the same day.
+// The Usage surface today does not consume deviceId/date URL params, so the
+// click handler in `deadlinePlanMount.ts` reads `data-deadline-usage-link`
+// attributes on the anchor to dispatch a close-then-Usage-tab transition and
+// arms an explicit return link back to the Smart-task detail.
 //
 // The deviceId + dateMs are still encoded on the href so future work that
 // adds Usage deviceId/date filter routing can read them off the URL without

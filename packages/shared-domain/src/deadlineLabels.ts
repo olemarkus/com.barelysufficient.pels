@@ -3,7 +3,11 @@
    so-far formatters, EV provenance rows). Splitting per surface would scatter
    copy across files; `feedback_ui_text_shared_with_logs` keeps runtime
    logging and the UI reading the same strings, which requires colocation. */
-import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
+import type {
+  DeferredObjectiveRescuePermissions,
+  DeferredObjectiveRescueMode,
+  DeferredObjectiveSettingsKind,
+} from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanPendingReason,
@@ -118,6 +122,37 @@ export const formatSmartTaskListConfidenceChipLabel = (params: {
   return formatConfidenceChipLabel(params.confidence);
 };
 
+export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions';
+export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devices may be limited separately.';
+
+const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
+  exemptFromBudget: 'May go over daily budget',
+  limitLowerPriorityDevices: 'May limit lower-priority devices',
+};
+
+const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {
+  always: '',
+  at_risk: ' if at risk',
+};
+
+export const formatSmartTaskExtraPermissionsValue = (
+  rescue: DeferredObjectiveRescuePermissions | undefined,
+): string | null => {
+  const parts: string[] = [];
+  if (rescue?.exemptFromBudget) {
+    parts.push(
+      `${SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget}${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.exemptFromBudget]}`,
+    );
+  }
+  if (rescue?.limitLowerPriorityDevices) {
+    parts.push(
+      `${SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices}`
+      + `${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.limitLowerPriorityDevices]}`,
+    );
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+};
+
 // "currently 18.5 °C" / "currently 45 %" line shown on Smart-tasks list cards
 // so users can answer "what's at risk?" without tapping in. Lives in
 // shared-domain because the same phrasing also feeds runtime log breadcrumbs
@@ -144,6 +179,10 @@ export const formatSmartTaskCurrentValueLine = (params: {
 export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
+
+export const SMART_TASK_USAGE_RETURN_DEFAULT_HREF = './?page=deadline-plan';
+export const SMART_TASK_USAGE_RETURN_LABEL = SMART_TASK_HISTORY_EYEBROW;
+export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
 
 // Resolve the list card status id from plan data.
 // `nowMs` is used to distinguish the `queued` id (plan ready, first action in
@@ -632,7 +671,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     targetUnit: '°C',
     planInputsCardTitle: 'What PELS has learned',
     planInputsRateRowLabel: 'Energy needed per °C',
-    planInputsMaxPowerRowLabel: 'Heating power',
+    planInputsMaxPowerRowLabel: 'Device power used',
     perUnitRateUnit: 'kWh/°C',
     planInputsRateBootstrapNote: null,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
@@ -712,7 +751,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     targetUnit: '%',
     planInputsCardTitle: 'What PELS has learned',
     planInputsRateRowLabel: 'Energy needed per %',
-    planInputsMaxPowerRowLabel: 'Charging power',
+    planInputsMaxPowerRowLabel: 'Device power used',
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
@@ -805,7 +844,7 @@ export type SmartTaskStatusNotificationId =
 export type KwhPerUnitProvenanceRow = { label: string; value: string };
 
 // Confidence text is rendered next to the learned mean. Lowercase to fit the
-// neighbouring sentence ("12 samples · medium confidence"); the chip surface
+// neighbouring sentence ("12 readings · medium confidence"); the chip surface
 // uses sentence-case copy elsewhere.
 const CONFIDENCE_TEXT: Record<'low' | 'medium' | 'high', string> = {
   low: 'low confidence',
@@ -814,8 +853,8 @@ const CONFIDENCE_TEXT: Record<'low' | 'medium' | 'high', string> = {
 };
 
 const formatSamplesLine = (acceptedSamples: number, confidence: 'low' | 'medium' | 'high' | null): string => {
-  const sampleWord = acceptedSamples === 1 ? 'sample' : 'samples';
-  const base = `${acceptedSamples} accepted ${sampleWord}`;
+  const sampleWord = acceptedSamples === 1 ? 'reading' : 'readings';
+  const base = `${acceptedSamples} accepted power ${sampleWord}`;
   return confidence === null ? base : `${base} · ${CONFIDENCE_TEXT[confidence]}`;
 };
 
@@ -1062,22 +1101,22 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
   if (provenance.source === 'bootstrap') {
     // Bootstrap rows describe the cold-start state. The plan-inputs row note
     // already says "Estimated — refining as PELS observes charging", so a
-    // single Source row is enough here — adding "0 samples" would be noisy.
-    return [{ label: 'Source', value: 'Bootstrap estimate' }];
+    // single Source row is enough here — adding "0 readings" would be noisy.
+    return [{ label: 'Source', value: 'Starting estimate' }];
   }
-  // `Learned profile` source no longer carries a redundant `Learned rate` row
+  // `Learned from power readings` source no longer carries a redundant `Learned rate` row
   // (the card's headline already shows the rate value). Surface only the
   // facts the headline doesn't repeat: sample count + confidence, and the
-  // recency of the most recent sample (recency is a separate signal from the
-  // confidence chip — the chip is "how many / how tight," "Most recent
-  // sample" is "how long since we saw fresh evidence").
-  const rows: KwhPerUnitProvenanceRow[] = [{ label: 'Source', value: 'Learned profile' }];
+  // recency of the latest reading used (recency is a separate signal from the
+  // confidence chip — the chip is "how many / how tight," "Latest reading
+  // used" is "how long since we saw fresh evidence").
+  const rows: KwhPerUnitProvenanceRow[] = [{ label: 'Source', value: 'Learned from power readings' }];
   if (provenance.acceptedSamples > 0) {
-    rows.push({ label: 'Samples', value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence) });
+    rows.push({ label: 'Readings used', value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence) });
   }
   if (provenance.lastAcceptedAtMs !== null && Number.isFinite(provenance.lastAcceptedAtMs)) {
     rows.push({
-      label: 'Most recent sample',
+      label: 'Latest reading used',
       value: formatLastSampleValue({
         lastMs: provenance.lastAcceptedAtMs,
         nowMs,

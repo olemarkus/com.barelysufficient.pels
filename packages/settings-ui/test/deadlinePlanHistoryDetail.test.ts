@@ -537,7 +537,7 @@ describe('DeadlinePlanHistoryDetail', () => {
   // line + points, and the target reference + metAtMs marker land on the
   // chart.
   describe('actual-vs-plan trajectory chart (PR 4)', () => {
-    it('renders the trajectory chart and the new "Progress vs schedule" title for entries with progressSamples', async () => {
+    it('renders the trajectory chart and the "Progress history" title for entries with progressSamples', async () => {
       const revision = buildRevision({ kwhPerUnitMean: 0.5 });
       const root = await mount(buildEntry({
         outcome: 'missed', // missed → chart expanded by default
@@ -550,7 +550,7 @@ describe('DeadlinePlanHistoryDetail', () => {
           { atMs: DEADLINE_MS - HOUR_MS, valueC: 58, valuePercent: null },
         ],
       }));
-      expect(root.textContent).toContain('Progress vs schedule');
+      expect(root.textContent).toContain('Progress history');
       expect(root.textContent).not.toContain('Scheduled vs observed');
       expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
     });
