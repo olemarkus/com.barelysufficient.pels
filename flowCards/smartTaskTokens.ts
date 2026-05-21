@@ -13,6 +13,7 @@ import type { SmartTaskStatusNotificationId } from '../packages/shared-domain/sr
 import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,
+  type DeferredObjectiveHoursRemainingEvent,
   type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
@@ -63,6 +64,18 @@ export const buildSmartTaskStatusTokens = (
 ): Record<string, unknown> => ({
   device_name: snapshot.deviceName ?? snapshot.deviceId,
   status,
+});
+
+// Minimal per the token-minimalism convention (`notes/smart-task-flow-cards`):
+// emit only the thing that changed. The trigger is "time remaining crossed a
+// threshold", so the bag is the device name plus the remaining whole hours at
+// the crossing. Status / target / diagnostic detail belong on conditions and
+// device capabilities, not here.
+export const buildSmartTaskHoursRemainingTokens = (
+  event: DeferredObjectiveHoursRemainingEvent,
+): Record<string, unknown> => ({
+  device_name: event.deviceName ?? event.deviceId,
+  hours_remaining: roundForToken(event.hoursRemaining, 0),
 });
 
 export const buildSmartTaskPlanChangedTokens = (

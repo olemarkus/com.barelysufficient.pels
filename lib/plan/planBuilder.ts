@@ -52,6 +52,8 @@ import {
   emitDeferredObjectiveDiagnostics,
   emitDeferredObjectiveStatusTransitions,
   type DeferredObjectiveDiagnostic,
+  type DeferredObjectiveHoursRemainingBus,
+  type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
 } from './deferredObjectives';
@@ -108,6 +110,8 @@ export type PlanBuilderDeps = {
     nowMs: number,
   ) => void;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
+  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
+  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
   disableDeferredObjective?: (deviceId: string) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
@@ -274,6 +278,7 @@ export class PlanBuilder {
     this.trackDuration('plan_emit_deferred_ms', () => {
       this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
       this.emitDeferredObjectiveStatusTransitions(deferredEvaluations, nowTs);
+      this.emitDeferredObjectiveHoursRemainingCrossings(deferredEvaluations, nowTs);
     });
     return {
       meta,
@@ -682,6 +687,16 @@ export class PlanBuilder {
       nowMs,
       onDeadlinePassed: this.deps.disableDeferredObjective,
     });
+  }
+
+  private emitDeferredObjectiveHoursRemainingCrossings(
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+  ): void {
+    const bus = this.deps.getDeferredObjectiveHoursRemainingBus?.();
+    const tracker = this.deps.getDeferredObjectiveHoursRemainingTracker?.();
+    if (!bus || !tracker) return;
+    tracker.observe({ diagnostics, nowMs, bus });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {

@@ -80,9 +80,13 @@ import {
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import {
   createDeferredObjectiveEndedBus,
+  createDeferredObjectiveHoursRemainingBus,
+  createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   type DeferredObjectiveEndedBus,
+  type DeferredObjectiveHoursRemainingBus,
+  type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveStatusBus,
 } from './lib/plan/deferredObjectives';
@@ -234,6 +238,10 @@ class PelsApp extends Homey.App {
     = createDeferredObjectivePlanRevisionBus();
   private readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus
     = createDeferredObjectiveEndedBus();
+  private readonly deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus
+    = createDeferredObjectiveHoursRemainingBus();
+  private readonly deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker
+    = createDeferredObjectiveHoursRemainingTracker();
   private capacitySettings = { limitKw: 10, marginKw: 0.2 };
   private capacityDryRun = true;
   private operatingMode = 'Home';
@@ -705,6 +713,8 @@ class PelsApp extends Homey.App {
       get deferredObjectiveStatusBus() { return app.deferredObjectiveStatusBus; },
       get deferredObjectivePlanRevisionBus() { return app.deferredObjectivePlanRevisionBus; },
       get deferredObjectiveEndedBus() { return app.deferredObjectiveEndedBus; },
+      get deferredObjectiveHoursRemainingBus() { return app.deferredObjectiveHoursRemainingBus; },
+      get deferredObjectiveHoursRemainingTracker() { return app.deferredObjectiveHoursRemainingTracker; },
       get dailyBudgetService() { return app.dailyBudgetService; },
       set dailyBudgetService(value) { appRef.dailyBudgetService = value; },
       get deferredObjectivePlanHistoryRecorder() { return app.deferredObjectivePlanHistoryRecorder; },

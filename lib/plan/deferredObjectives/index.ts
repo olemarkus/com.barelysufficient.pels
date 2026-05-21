@@ -14,6 +14,13 @@ export type {
   DeferredObjectiveEndedBus,
   DeferredObjectiveEndedEvent,
 } from './endedEventBus';
+export { createDeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
+export type {
+  DeferredObjectiveHoursRemainingBus,
+  DeferredObjectiveHoursRemainingEvent,
+} from './hoursRemainingBus';
+export { createDeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
+export type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 export { emitDeferredObjectiveStatusTransitions } from './statusTransitions';
 export type {
   DeferredObjectiveStatusBus,
