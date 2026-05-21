@@ -475,15 +475,15 @@ describe('formatMissStreakAggregateLine', () => {
 });
 
 describe('formatPlanHistoryUsageDayLinkLabel', () => {
-  it('renders the device + date link copy', () => {
+  it('renders household usage link copy for the selected date', () => {
     expect(formatPlanHistoryUsageDayLinkLabel('Connected 300', '16 May'))
-      .toBe('See Connected 300 usage on 16 May →');
+      .toBe('See household usage on 16 May →');
   });
 
-  it('falls back to a neutral label when device name is missing', () => {
+  it('keeps the household label when device name is missing', () => {
     expect(formatPlanHistoryUsageDayLinkLabel(null, '16 May'))
-      .toBe('See device usage on 16 May →');
+      .toBe('See household usage on 16 May →');
     expect(formatPlanHistoryUsageDayLinkLabel('   ', '16 May'))
-      .toBe('See device usage on 16 May →');
+      .toBe('See household usage on 16 May →');
   });
 });

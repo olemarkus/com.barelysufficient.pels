@@ -4,6 +4,7 @@ import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/de
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
+  SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
@@ -114,8 +115,10 @@ export type DeadlinePlanPayload = {
     perUnitRateLabel: string | null;
     perUnitRateNote: string | null;
     maxPowerLabel: string | null;
-    // EV learning provenance rows (source, learned value, samples, last
-    // sample timestamp). Pre-resolved at the producer side so the view
+    maxPowerNote: string | null;
+    extraPermissionsValue: string | null;
+    // EV learning provenance rows (source, learned value, readings used,
+    // latest reading timestamp). Pre-resolved at the producer side so the view
     // never branches on `kwhPerUnitProvenance.source` or null fields.
     // Empty array when no provenance is available.
     provenanceRows: KwhPerUnitProvenanceRow[];
@@ -363,15 +366,15 @@ export const buildChartOption = (
   const hourCount = payload.timeline.hours.length;
   const labels = payload.timeline.hours.map((hour) => hour.time);
   const showLabelEvery = hourCount > 10 ? 3 : 2;
-  // Use the natural max of the (already scaled) display values; do not clamp
-  // to a fixed floor like `1` — kr/kWh values are typically in the 0.5–2 range
-  // and clamping would squash the bars against the bottom of the price grid.
+  // Use the natural max of the (already scaled) display values and keep the
+  // price axis anchored at zero for normal non-negative prices. Nord Pool can
+  // go negative; in that case the lower bound follows the data so those hours
+  // remain visible instead of being flattened into the zero line.
   const priceValues = payload.timeline.hours.map((hour) => hour.priceValue);
+  const rawPriceMin = priceValues.length ? Math.min(...priceValues) : 0;
   const rawPriceMax = priceValues.length ? Math.max(...priceValues) : 0;
-  const priceMax = rawPriceMax > 0 ? rawPriceMax : 1;
-  const priceMin = priceValues.length ? Math.min(...priceValues) : 0;
-  const priceRange = priceMax - priceMin;
-  const priceAxisMin = priceRange > 0.01 ? priceMin : 0;
+  const priceAxisMin = rawPriceMin < 0 ? rawPriceMin : 0;
+  const priceMax = rawPriceMax > 0 ? rawPriceMax : (priceAxisMin < 0 ? 0 : 1);
   const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
     Math.max(
       hour.usage.backgroundKwh + Math.max(hour.usage.originalDeviceKwh, hour.usage.deviceKwh),
@@ -546,8 +549,8 @@ export const buildChartOption = (
           // format on both surfaces. Tooltip retains two-decimal precision
           // via `formatPrice` in `deadlinePlan.ts`.
           formatter: (value: number) => {
+            if (priceAxisMin < 0 && Math.abs(value - priceAxisMin) < 0.001) return priceAxisMin.toFixed(1);
             if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(1);
-            if (priceAxisMin !== 0 && Math.abs(value - priceAxisMin) < 0.001) return priceMin.toFixed(1);
             return '';
           },
         },
@@ -787,8 +790,20 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
 );
 
 const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
-  const { perUnitRateLabel, perUnitRateNote, maxPowerLabel, provenanceRows } = payload.planInputs;
-  if (perUnitRateLabel === null && maxPowerLabel === null && provenanceRows.length === 0) return null;
+  const {
+    perUnitRateLabel,
+    perUnitRateNote,
+    maxPowerLabel,
+    maxPowerNote,
+    extraPermissionsValue,
+    provenanceRows,
+  } = payload.planInputs;
+  if (
+    perUnitRateLabel === null
+    && maxPowerLabel === null
+    && extraPermissionsValue === null
+    && provenanceRows.length === 0
+  ) return null;
   return (
     <section class="pels-surface-card budget-redesign-card" aria-labelledby="deadline-plan-inputs-title">
       <div class="budget-card-header">
@@ -809,7 +824,18 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
         {maxPowerLabel !== null && (
           <div class="plan-inputs__row">
             <dt class="plan-inputs__row-label">{payload.labels.planInputsMaxPowerRowLabel}</dt>
-            <dd class="plan-inputs__row-value">{maxPowerLabel}</dd>
+            <dd class="plan-inputs__row-value">
+              {maxPowerLabel}
+              {maxPowerNote !== null && (
+                <div class="plan-inputs__row-note">{maxPowerNote}</div>
+              )}
+            </dd>
+          </div>
+        )}
+        {extraPermissionsValue !== null && (
+          <div class="plan-inputs__row">
+            <dt class="plan-inputs__row-label">{SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}</dt>
+            <dd class="plan-inputs__row-value">{extraPermissionsValue}</dd>
           </div>
         )}
         {provenanceRows.map((row) => (

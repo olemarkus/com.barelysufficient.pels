@@ -1723,22 +1723,18 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-status-on-warning);
 }
 
-/* Outcome headline — the answer to "what happened on this run?". Promoted
- * to display-tier weight within the hero block (v2.7.2/PR10), immediately
+/* Outcome headline — the answer to "what happened on this run?". Kept at
+ * section-headline scale within the hero block, immediately
  * after the device-name header. Reading order inside the hero is
  * headline -> supporting (cost / delivered) -> why -> recourse -> progress,
- * with the chart card following. Visually equivalent to the live
- * deadline-plan page's main hero headline (`.plan-hero__headline`). This is
- * the strongest content move on the page: succeeded receipts read the
- * outcome sentence as a confirmation; missed/abandoned runs read it as the
- * page's diagnosis. Display-tier tokens already bake in tracking, so this
- * rule does not set its own letter-spacing. */
+ * with the chart card following. The live Smart-task page owns the large
+ * display headline; historical receipts stay compact on mobile. */
 .plan-history-detail__outcome-headline {
   margin: 0;
-  color: var(--pels-text-display-color);
-  font-size: var(--pels-text-display-font-size);
-  font-weight: var(--pels-text-display-font-weight);
-  line-height: var(--pels-text-display-font-line-height);
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
 }
 
 /* Secondary line under the outcome headline: cost + delivered (succeeded /
@@ -2254,7 +2250,7 @@ md-primary-tab.tab[active]:hover {
   font-size: var(--pels-text-display-font-size);
   font-weight: var(--pels-text-display-font-weight);
   line-height: var(--pels-text-display-font-line-height);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 
 .plan-hero__subline {
@@ -2308,11 +2304,19 @@ md-primary-tab.tab[active]:hover {
   margin-top: var(--spacing-3);
 }
 
-.plan-hero__recourse-button {
+/* Native button used for delegated clicks. Scope to the deadline panel and
+   duplicate the class so these rules beat Homey's host button stylesheet
+   without `!important`, matching the segmented-control cascade strategy. */
+#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button {
+  appearance: none;
+  -webkit-appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   min-height: var(--pels-touch-target-min);
+  height: auto;
+  margin: 0;
   padding: var(--spacing-2) var(--spacing-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--pels-surface-outline);
@@ -2325,13 +2329,13 @@ md-primary-tab.tab[active]:hover {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-.plan-hero__recourse-button:hover,
-.plan-hero__recourse-button:focus-visible {
+#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:hover,
+#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:focus-visible {
   background: var(--pels-surface-container-highest);
   border-color: var(--accent);
 }
 
-.plan-hero__recourse-button:focus-visible {
+#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -3097,6 +3101,10 @@ md-primary-tab.tab[active]:hover {
 
   .plan-hero__legend {
     font-size: var(--font-size-xs);
+  }
+
+  .plan-hero__recourse-button {
+    width: 100%;
   }
 
   .plan-cards {
@@ -5183,8 +5191,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-  background: transparent;
-  padding: 0;
+  background: var(--bg);
+  padding: calc(max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px)) + var(--spacing-2)) 0 0;
 }
 
 .deadline-plan-panel__surface {
@@ -5203,57 +5211,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
-.pels-page-close {
-  /* Page-chrome close button: sibling of the page surface (not inside the
-   * hero card) so the X never collides with hero copy. Anchored to the page
-   * viewport via `position: fixed`, offset below Homey's mobile chrome via
-   * the same `--pels-homey-mobile-chrome` token the panel uses for its top
-   * inset. Name reserved for the cross-page primitive promised by v2.7.2/PR10. */
-  position: fixed;
-  z-index: 20;
-  top: max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px));
-  right: max(var(--spacing-3), env(safe-area-inset-right, 0px));
-  width: var(--pels-deadline-close-size);
-  height: var(--pels-deadline-close-size);
-  border: 1px solid var(--pels-surface-outline);
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--pels-deadline-close-background) 86%, transparent);
-  box-shadow: var(--shadow-sm);
-  line-height: var(--font-line-height-flat);
-  --md-icon-button-icon-color: var(--pels-deadline-close-text);
-  --md-icon-button-hover-icon-color: var(--pels-deadline-close-text);
-  --md-icon-button-focus-icon-color: var(--pels-deadline-close-text);
-  --md-icon-button-pressed-icon-color: var(--pels-deadline-close-text);
-  --md-icon-button-state-layer-height: var(--pels-deadline-close-size);
-  --md-icon-button-state-layer-width: var(--pels-deadline-close-size);
-  --md-icon-button-state-layer-shape: var(--radius-full);
-  --md-icon-button-hover-state-layer-color: var(--pels-deadline-close-text);
-  --md-icon-button-pressed-state-layer-color: var(--pels-deadline-close-text);
-}
-
-.pels-page-close__icon {
-  display: inline-block;
-  width: 1.5rem;
-  height: 1.5rem;
-  color: var(--pels-deadline-close-text);
-  fill: currentColor;
-}
-
-#deadline-plan-root {
-  /* Reserve a strip for the page-chrome offset and the fixed close button:
-   * the Homey mobile webview overlays its own top chrome ("PELS / Done") on
-   * top of the iframe without populating safe-area-inset-*, so
-   * `--pels-homey-mobile-chrome` gives a token-sized fallback while
-   * `env(safe-area-inset-top)` still wins on platforms that surface it. */
-  padding-top: calc(
-    max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px))
-    + var(--pels-deadline-close-size) + var(--spacing-2)
-  );
-}
-
-.pels-page-close:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+.deadline-plan-back-button {
+  align-self: flex-start;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md) !important;
+  background: var(--color-surface-2) !important;
+  color: var(--text) !important;
+  box-shadow: none;
 }
 
 .deadline-horizon-card {
@@ -5448,10 +5412,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
-#deadline-plan-root .plan-hero__chips {
-  padding-right: 48px;
-}
-
 .plan-inputs__list {
   display: flex;
   flex-direction: column;
@@ -5461,7 +5421,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .plan-inputs__row {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--spacing-3);
 }
@@ -5476,6 +5436,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--text);
   font-weight: var(--font-weight-medium);
   margin: 0;
+  min-width: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
@@ -5485,6 +5448,17 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-normal);
   line-height: var(--font-line-height-tight);
   margin-top: var(--spacing-1);
+}
+
+@media (max-width: 480px) {
+  .plan-inputs__row {
+    flex-direction: column;
+    gap: var(--spacing-1);
+  }
+
+  .plan-inputs__row-value {
+    text-align: left;
+  }
 }
 
 /* Day view foundation */
@@ -6255,6 +6229,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-list-card__when-row dd {
   margin: 0;
   color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
@@ -6276,6 +6252,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-list-card__when-row--alert dd {
   color: var(--pels-status-on-critical);
   font-weight: var(--font-weight-semibold);
+}
+
+.deadline-list-card__when-row--muted dd {
+  color: var(--muted);
+  font-weight: var(--font-weight-medium);
 }
 
 .deadlines-history {
@@ -6315,6 +6296,52 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
+
+.usage-return-link {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex-wrap: wrap;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--text);
+}
+
+.usage-return-link[hidden] {
+  display: none;
+}
+
+.usage-return-link__anchor {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-height: var(--pels-touch-target-min);
+  padding: 0 var(--spacing-1);
+  color: var(--text);
+  font-weight: var(--font-weight-bold);
+  text-decoration: none;
+}
+
+.usage-return-link__anchor svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+}
+
+.usage-return-link__anchor:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.usage-return-link__context {
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-cozy);
+}
 
 .usage-hero {
   position: relative;
@@ -7218,5 +7245,54 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     background: var(--color-surface-1);
     border: 1px solid var(--color-border-default);
     box-shadow: none;
+  }
+}
+
+@media (max-width: 480px) {
+  #deadline-plan-panel .plan-hero,
+  #deadlines-panel .deadlines-list-hero {
+    background: var(--pels-surface-container-high);
+    border-color: var(--pels-surface-outline);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
+  }
+
+  #deadline-plan-panel .plan-hero[data-tone="good"],
+  #deadlines-panel .deadlines-list-hero[data-tone="good"] {
+    background: linear-gradient(
+      180deg,
+      var(--color-state-positive-bg),
+      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    );
+    border-color: var(--color-state-positive-border);
+  }
+
+  #deadline-plan-panel .plan-hero[data-tone="warn"],
+  #deadlines-panel .deadlines-list-hero[data-tone="warn"] {
+    background: linear-gradient(
+      180deg,
+      var(--color-state-warning-bg),
+      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    );
+    border-color: var(--color-state-warning-border);
+  }
+
+  #deadline-plan-panel .plan-hero[data-tone="alert"],
+  #deadlines-panel .deadlines-list-hero[data-tone="alert"] {
+    background: linear-gradient(
+      180deg,
+      var(--color-state-negative-bg),
+      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    );
+    border-color: var(--color-state-negative-border);
+  }
+
+  #deadline-plan-panel .plan-hero[data-tone="info"],
+  #deadlines-panel .deadlines-list-hero[data-tone="info"] {
+    background: linear-gradient(
+      180deg,
+      var(--color-state-info-bg),
+      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    );
+    border-color: var(--color-state-info-border);
   }
 }

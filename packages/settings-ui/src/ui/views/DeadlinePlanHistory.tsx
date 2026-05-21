@@ -7,7 +7,6 @@ import {
   formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
-  shouldShowBackupHoursPill,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 
@@ -52,11 +51,6 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
       )}
       {coverageLine && (
         <div class="plan-history-card__coverage">{coverageLine}</div>
-      )}
-      {shouldShowBackupHoursPill(entry) && (
-        <div class="plan-history-card__pills">
-          <span class="plan-chip plan-chip--info">Backup hours</span>
-        </div>
       )}
     </a>
   );

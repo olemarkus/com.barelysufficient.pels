@@ -44,6 +44,8 @@ const buildHeaterActivePlan = (params: {
   energyNeededKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
   dailyBudgetExhaustedBucketCount?: number;
+  planningSpeedKw?: number;
+  initialPlanningSpeedKw?: number;
 }): DeferredObjectiveActivePlanV1 => {
   const revisedAtMs = params.now.getTime();
   const buildHours = (offsets: number[]) => offsets.map((offset) => ({
@@ -63,6 +65,7 @@ const buildHeaterActivePlan = (params: {
     ...(params.dailyBudgetExhaustedBucketCount !== undefined
       ? { dailyBudgetExhaustedBucketCount: params.dailyBudgetExhaustedBucketCount }
       : {}),
+    ...(params.planningSpeedKw !== undefined ? { planningSpeedKw: params.planningSpeedKw } : {}),
   };
   const latestRevision = params.latestHourOffsets
     ? {
@@ -83,6 +86,7 @@ const buildHeaterActivePlan = (params: {
     startedAtMs: revisedAtMs,
     pending: false,
     objectiveSignature: 'sig',
+    ...(params.initialPlanningSpeedKw !== undefined ? { initialPlanningSpeedKw: params.initialPlanningSpeedKw } : {}),
     original: originalRevision,
     latest: latestRevision,
   };
@@ -809,6 +813,126 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
     expect(payload.planInputs.maxPowerLabel).toBe('1.5 kW');
+  });
+
+  it('planInputs maxPowerLabel uses the plan-level learned speed with sub-2 kW precision', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 1.3,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0],
+        plannedKWhPerHour: 1.19,
+        initialPlanningSpeedKw: 1.19,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.planInputs.maxPowerLabel).toBe('1.19 kW');
+  });
+
+  it('surfaces smart-task extra permissions in the learned inputs card', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+              rescue: {
+                exemptFromBudget: 'always',
+                limitLowerPriorityDevices: 'at_risk',
+              },
+            },
+          },
+        },
+      }, buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [0],
+        plannedKWhPerHour: 2,
+      })),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+    expect(payload.planInputs.extraPermissionsValue).toBe(
+      'May go over daily budget · May limit lower-priority devices if at risk',
+    );
+    expect(payload.planInputs.maxPowerNote).toBe('Lower-priority devices may be limited separately.');
   });
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {
@@ -1854,16 +1978,16 @@ describe('deadline plan page payload', () => {
     // `Learned rate` row is intentionally absent — the card's headline row now
     // carries the rate value, so the provenance section drops the duplicate.
     const labels = payload.planInputs.provenanceRows.map((row) => row.label);
-    expect(labels).toEqual(['Source', 'Samples', 'Most recent sample']);
+    expect(labels).toEqual(['Source', 'Readings used', 'Latest reading used']);
     const byLabel = Object.fromEntries(payload.planInputs.provenanceRows.map((row) => [row.label, row.value]));
-    expect(byLabel.Source).toBe('Learned profile');
-    expect(byLabel.Samples).toBe('12 accepted samples · medium confidence');
+    expect(byLabel.Source).toBe('Learned from power readings');
+    expect(byLabel['Readings used']).toBe('12 accepted power readings · medium confidence');
     // `lastAccepted` sits 2h before `now`, well inside the 24h freshness
     // window — expect a relative "Updated …" string, not a stale timestamp.
-    expect(byLabel['Most recent sample']).toBe('Updated 2 hours ago');
+    expect(byLabel['Latest reading used']).toBe('Updated 2 hours ago');
   });
 
-  it('surfaces a single "Bootstrap estimate" provenance row when the plan still uses bootstrap', () => {
+  it('surfaces a single "Starting estimate" provenance row when the plan still uses bootstrap', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -1946,7 +2070,7 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.planInputs.provenanceRows).toEqual([
-      { label: 'Source', value: 'Bootstrap estimate' },
+      { label: 'Source', value: 'Starting estimate' },
     ]);
   });
 
@@ -3323,6 +3447,7 @@ describe('buildChartOption original-series suppression', () => {
 
   const buildMinimalPayload = (
     hours: Array<{ originalDeviceKwh: number; deviceKwh: number }>,
+    priceValues: number[] = [],
   ): import('../src/ui/views/DeadlinePlan.tsx').DeadlinePlanPayload => {
     const labels = deadlineLabels('ev_soc');
     return {
@@ -3351,8 +3476,8 @@ describe('buildChartOption original-series suppression', () => {
           const hourChanged = Math.abs(h.originalDeviceKwh - h.deviceKwh) > 0.001;
           return {
             time: `${13 + i}:00`,
-            price: '100.00',
-            priceValue: 100,
+            price: (priceValues[i] ?? 100).toFixed(2),
+            priceValue: priceValues[i] ?? 100,
             tone: 'normal' as const,
             planned: h.deviceKwh > 0,
             changed: hourChanged,
@@ -3367,7 +3492,14 @@ describe('buildChartOption original-series suppression', () => {
           };
         }),
       },
-      planInputs: { perUnitRateLabel: null, perUnitRateNote: null, maxPowerLabel: null, provenanceRows: [] },
+      planInputs: {
+        perUnitRateLabel: null,
+        perUnitRateNote: null,
+        maxPowerLabel: null,
+        maxPowerNote: null,
+        extraPermissionsValue: null,
+        provenanceRows: [],
+      },
     };
   };
 
@@ -3401,6 +3533,34 @@ describe('buildChartOption original-series suppression', () => {
     expect(legendNames).toContain(payload.labels.originalDeviceSeriesName);
     const seriesNames = option.series.map((s) => s.name);
     expect(seriesNames).toContain(payload.labels.originalDeviceSeriesName);
+  });
+
+  it('zero-anchors the price axis even when all prices are above zero', async () => {
+    const { buildChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const payload = buildMinimalPayload([
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+    ], [0.72, 1.31]);
+    const option = buildChartOption(payload, stubPalette, stubTypography) as {
+      yAxis: Array<{ min?: number; max?: number; axisLabel?: { formatter?: (value: number) => string } }>;
+    };
+    expect(option.yAxis[0]?.min).toBe(0);
+    expect(option.yAxis[0]?.max).toBe(1.31);
+    expect(option.yAxis[0]?.axisLabel?.formatter?.(0.72)).toBe('');
+  });
+
+  it('keeps negative price hours visible below zero', async () => {
+    const { buildChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const payload = buildMinimalPayload([
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+      { originalDeviceKwh: 5, deviceKwh: 5 },
+    ], [-0.23, 0.41]);
+    const option = buildChartOption(payload, stubPalette, stubTypography) as {
+      yAxis: Array<{ min?: number; max?: number; axisLabel?: { formatter?: (value: number) => string } }>;
+    };
+    expect(option.yAxis[0]?.min).toBe(-0.23);
+    expect(option.yAxis[0]?.max).toBe(0.41);
+    expect(option.yAxis[0]?.axisLabel?.formatter?.(-0.23)).toBe('-0.2');
   });
 });
 

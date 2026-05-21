@@ -67,6 +67,7 @@ import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
+import { clearUsageReturnLink } from './usageReturnLink.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -417,6 +418,7 @@ const discardBudgetAdjustOnLeave = (nextTabId: string) => {
 
 export const showTab = (tabId: string) => {
   const activeTopLevelTab = REDESIGN_SETTINGS_SECTIONS.has(tabId) ? 'settings' : tabId;
+  if (tabId !== 'usage') clearUsageReturnLink();
   discardBudgetAdjustOnLeave(tabId);
   for (const tab of tabs) {
     const isActive = tab.dataset.tab === activeTopLevelTab;

@@ -167,6 +167,13 @@
     </section>
 
     <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-hero-headline">
+      <div class="usage-return-link" id="usage-return-link" hidden>
+        <a class="usage-return-link__anchor" id="usage-return-link-anchor">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+          <span id="usage-return-link-label"></span>
+        </a>
+        <span class="usage-return-link__context" id="usage-return-link-context"></span>
+      </div>
       <div class="plan-hero pels-hero usage-hero" id="usage-hero" data-tone="ok">
         <div class="plan-hero__section">
           <p class="eyebrow" id="usage-title">Energy history</p>
@@ -314,9 +321,10 @@
     </section>
 
     <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-label="Smart task plan">
-      <md-icon-button class="pels-page-close" type="button" data-deadline-plan-close aria-label="Back to Smart tasks">
-        <svg class="pels-page-close__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z" fill="currentColor"/></svg>
-      </md-icon-button>
+      <md-text-button class="btn ghost settings-back-button deadline-plan-back-button" type="button" data-deadline-plan-close>
+        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        Smart tasks
+      </md-text-button>
       <div class="deadline-plan-panel__surface" id="deadline-plan-root" aria-live="polite">
         <section class="pels-surface-card budget-redesign-card">
           <h1 class="plan-card__title">Loading smart task plan</h1>

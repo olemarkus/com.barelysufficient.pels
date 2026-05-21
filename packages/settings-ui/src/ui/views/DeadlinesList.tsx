@@ -5,6 +5,7 @@ import {
   deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskListReadyByTone,
+  SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type SmartTaskListStatusId,
@@ -34,6 +35,7 @@ export type DeadlinesListCard = {
   // confidence has been computed yet (pending plan or no learned profile).
   // Mirrors the live hero's confidence chip so the two surfaces stay aligned.
   confidence: ObjectiveProfileConfidence | null;
+  extraPermissionsValue: string | null;
   // Pre-rendered "currently 18.5 °C" / "currently 45 %" sentence; `null` when
   // the device's current value is unknown. Resolved at the producer so the
   // view layer never branches on the device kind for unit formatting.
@@ -138,6 +140,12 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           <dt>Ready by</dt>
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>
+        {card.extraPermissionsValue !== null && (
+          <div class="deadline-list-card__when-row deadline-list-card__when-row--muted">
+            <dt>{SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}</dt>
+            <dd>{card.extraPermissionsValue}</dd>
+          </div>
+        )}
       </dl>
       <ChevronRightIcon class="deadline-list-card__chevron" />
     </a>

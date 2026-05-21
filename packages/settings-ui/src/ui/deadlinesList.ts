@@ -21,6 +21,7 @@ import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
+  formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
   resolveSmartTaskListStatus,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -33,11 +34,6 @@ import {
   renderDeadlinesHistoryList,
   type DeadlinesHistoryListState,
 } from './views/DeadlinesHistoryList.tsx';
-
-const isObjectiveEnabled = (
-  settings: DeferredObjectiveSettingsV1,
-  deviceId: string,
-): boolean => Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
 
 // Resolves the device's current value (current temperature for thermal kinds,
 // state-of-charge for EV) by deviceId. Returns `null` when the value is not
@@ -63,10 +59,11 @@ const resolveCurrentValue = (
 const buildCard = (params: {
   deviceId: string;
   plan: DeferredObjectiveActivePlanV1;
+  objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined;
   device: TargetDeviceSnapshot | undefined;
   nowMs: number;
 }): DeadlinesListCard => {
-  const { deviceId, plan, device, nowMs } = params;
+  const { deviceId, plan, objective, device, nowMs } = params;
   const pending = plan.pending || plan.latest === null;
   const firstHour = plan.latest?.hours[0]?.startsAtMs ?? null;
   const statusId = resolveSmartTaskListStatus({
@@ -95,6 +92,7 @@ const buildCard = (params: {
     href: buildDeadlineHref(deviceId),
     statusId,
     confidence,
+    extraPermissionsValue: formatSmartTaskExtraPermissionsValue(objective?.rescue),
     currentValueLine: formatSmartTaskCurrentValueLine({
       kind: plan.objectiveKind,
       currentValue,
@@ -113,8 +111,9 @@ export const resolveDeadlinesListCards = (params: {
   const devicesById = new Map(params.devices.map((device) => [device.id, device]));
   const cards: DeadlinesListCard[] = [];
   for (const [deviceId, plan] of Object.entries(plans)) {
-    if (!isObjectiveEnabled(params.objectiveSettings, deviceId)) continue;
-    cards.push(buildCard({ deviceId, plan, device: devicesById.get(deviceId), nowMs }));
+    const objective = params.objectiveSettings.objectivesByDeviceId[deviceId];
+    if (!objective?.enabled) continue;
+    cards.push(buildCard({ deviceId, plan, objective, device: devicesById.get(deviceId), nowMs }));
   }
   cards.sort((a, b) => a.deadlineAtMs - b.deadlineAtMs);
   return cards;
