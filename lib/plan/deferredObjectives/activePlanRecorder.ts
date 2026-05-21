@@ -17,6 +17,7 @@ import {
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
+import type { DeferredObjectiveRescuePermissions } from './settings';
 import {
   buildHoursFromHorizonPlan,
   resolveProjectedFinishAtMs,
@@ -54,6 +55,7 @@ export type ActivePlanFlowCardSeed = {
   targetPercent: number | null;
   deadlineAtMs: number;
   enforcement: 'soft' | 'hard';
+  rescue?: DeferredObjectiveRescuePermissions;
 };
 
 const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string | null => {
@@ -64,6 +66,7 @@ const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
     enforcement: diag.enforcement,
+    rescue: diag.rescue,
   });
 };
 
@@ -82,6 +85,7 @@ const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): Deferr
     targetPercent: seed.targetPercent,
     deadlineAtMs: seed.deadlineAtMs,
     enforcement: seed.enforcement,
+    rescue: seed.rescue,
   }),
   original: null,
   latest: null,
@@ -525,8 +529,8 @@ export class DeferredObjectiveActivePlanRecorder {
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     const horizonPlan = diag.horizonPlan as NonNullable<typeof diag.horizonPlan>;
-    const effectiveHours = current.commitment?.hours ?? hours;
     const objectiveChanged = current.objectiveSignature !== signature;
+    const effectiveHours = objectiveChanged ? hours : (current.commitment?.hours ?? hours);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
@@ -583,6 +587,9 @@ export class DeferredObjectiveActivePlanRecorder {
       targetTemperatureC: diagTargetTemperatureC(diag),
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
+      commitment: objectiveChanged
+        ? { committedAtMs: nowMs, hours }
+        : current.commitment,
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       // Explicit set so an `objective_changed` reset can drop the snapshot to
       // `undefined` when the new revision has no usable planning speed; the

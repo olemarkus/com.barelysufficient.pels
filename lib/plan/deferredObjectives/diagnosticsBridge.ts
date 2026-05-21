@@ -27,7 +27,11 @@ import {
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
 } from './policyHorizon';
-import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
+import type {
+  DeferredObjectiveRescuePermissions,
+  DeferredObjectiveSettingsEntry,
+  DeferredObjectiveSettingsV1,
+} from './settings';
 import type {
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
@@ -79,6 +83,9 @@ type BaseDeferredObjectiveDiagnostic = {
   // useful power. Null when no steps were resolvable. Surfaced as the
   // "Y.Y kW" speed-mode reading in the hero meta line.
   planningSpeedKw: number | null;
+  // Planning-affecting rescue permissions participate in the active-plan signature
+  // so permission edits invalidate stale committed schedules.
+  rescue?: DeferredObjectiveRescuePermissions;
   horizonBucketCount: number;
   // Number of buckets in the horizon whose per-bucket cap collapsed to zero
   // because the daily budget cap had already been reached at the start of the
@@ -87,9 +94,9 @@ type BaseDeferredObjectiveDiagnostic = {
   dailyBudgetExhaustedBucketCount: number;
   requestedMinimumStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
-  // True when the smart task's "exempt from budget" rescue permission is being applied
-  // to this plan (phase 1: mode 'always'). Admission consumes this flat flag to set the
-  // device's existing `budgetExempt` — the producer resolves it, consumers don't re-derive.
+  // True only while the current bucket is a planned bucket for a smart task whose "exempt
+  // from budget" rescue permission is active. Admission consumes this flat flag to set the
+  // device's existing `budgetExempt` for that bucket; idle/background cycles stay normal.
   budgetExemptApplied?: boolean;
   // True when the "limit lower-priority devices" rescue permission is granted (mode
   // 'always'). Admission consumes this flat flag to engage the device's boost while the
@@ -424,11 +431,16 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     horizonBucketCount: policyHorizon.horizonBucketCount,
     dailyBudgetExhaustedBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
-    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always',
+    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
+      && isCurrentBucketPlanned(horizonPlan),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
     horizonPlan,
   };
 };
+
+const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
+  (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
+);
 
 const buildDiagnosticBase = (params: {
   deviceId: string;
@@ -458,6 +470,7 @@ const buildDiagnosticBase = (params: {
     deviceName: params.device?.name,
     objectiveId: `${params.deviceId}:${params.objective.kind}`,
     enforcement: params.objective.enforcement,
+    ...(params.objective.rescue ? { rescue: params.objective.rescue } : {}),
     status: 'unknown',
     reasonCode: 'objective_progress_stale',
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,

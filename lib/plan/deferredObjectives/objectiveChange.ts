@@ -44,6 +44,7 @@ const seedFromEntry = (
   targetPercent: entry.kind === 'ev_soc' ? entry.targetPercent : null,
   deadlineAtMs: entry.deadlineAtMs,
   enforcement: entry.enforcement,
+  ...(entry.rescue ? { rescue: entry.rescue } : {}),
 });
 
 /**
