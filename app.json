@@ -942,7 +942,7 @@
           "en": "Allow [[device]]'s smart task to [[property]] [[when]]"
         },
         "hint": {
-          "en": "Choose what PELS may do to keep this smart task's deadline, and when. 'While it's scheduled to run' applies it the whole time the task is active. Changing it updates the schedule right away; it sticks until you change it or clear the smart task."
+          "en": "Choose what PELS may do to keep this smart task's deadline, and when — go over today's budget, or limit lower-priority devices so this task gets the power it needs. 'While it's scheduled to run' applies it the whole time the task is active; changing it updates the schedule right away and sticks until you change it or clear the smart task."
         },
         "args": [
           {

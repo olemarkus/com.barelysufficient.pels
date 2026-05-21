@@ -3,7 +3,13 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 export type DeferredAdmissionDecision =
   | { kind: 'inactive'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' }
-  | { kind: 'planned'; budgetExempt: boolean; requestedMinimumStepId: string | null; evCommandIntent?: 'ev_resume' }
+  | {
+      kind: 'planned';
+      budgetExempt: boolean;
+      engageBoost: boolean;
+      requestedMinimumStepId: string | null;
+      evCommandIntent?: 'ev_resume';
+    }
   | { kind: 'idle'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
@@ -39,6 +45,10 @@ const resolveDecision = (
   // Producer-resolved flat flag: the smart task's exempt-from-budget permission is
   // active for this plan. Only meaningful while the objective is still being pursued.
   const budgetExempt = diagnostic.budgetExemptApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
+  // The limit-lower-priority permission engages the device's boost, but only while the task
+  // is in its planned hours (the 'planned' decision below) — so it claims capacity from
+  // lower-priority devices only when it is actually scheduled to run.
+  const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     return shouldEmitSatisfiedPause(diagnostic, device)
       ? { kind: 'inactive', budgetExempt, evCommandIntent: 'ev_pause' }
@@ -56,6 +66,7 @@ const resolveDecision = (
   return {
     kind: 'planned',
     budgetExempt,
+    engageBoost,
     requestedMinimumStepId: currentBucket.requestedMinimumStepId,
     ...(isEvObjective ? { evCommandIntent: 'ev_resume' as const } : {}),
   };
@@ -85,6 +96,13 @@ export type DeferredAdmissionInput = {
   forceShedSet: Set<string>;
 };
 
+// A planned limit-lower-priority task forces the device's boost on. The boost resolvers
+// (resolveTemperatureBoostActive / resolveEvBoostActive) honour the request by device kind,
+// so the existing escalation/shedding machinery claims capacity from lower-priority devices.
+const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } => (
+  engageBoost ? { forceBoostActive: true } : {}
+);
+
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
 // they only see a managed device and (for idle hours) a seeded shed-set entry.
@@ -99,14 +117,21 @@ export const applyDeferredAdmissionToInput = (
     if (!decision) return device;
     const override = requiresOverride(decision, device);
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
+    // Engage the device's boost while a limit-lower-priority task is in its planned hours.
+    // This reuses the existing boost machinery (EV chargers via evBoost, stepped thermal
+    // devices via temperatureBoost) to escalate past the shed-invariant and claim capacity
+    // from lower-priority devices — the deferred target override already commands the task's
+    // target. Physical capacity stays enforced by the capacity guard.
+    const engageBoost = decision.kind === 'planned' && decision.engageBoost;
     // budgetExempt applies cap-agnostically — an exempt-always smart task exempts the
     // device whether or not capacity control is on, mirroring the standing
     // budget-exemption flag. The override only flips cap-off devices controllable.
-    if (!override && !decision.budgetExempt) return device;
+    if (!override && !decision.budgetExempt && !engageBoost) return device;
     return {
       ...device,
       ...(override ? { controllable: true } : {}),
       ...(decision.budgetExempt ? { budgetExempt: true } : {}),
+      ...resolveBoostFields(engageBoost),
     };
   });
   return { devices: transformed, forceShedSet };

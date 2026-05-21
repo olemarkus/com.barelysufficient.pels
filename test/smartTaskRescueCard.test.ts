@@ -65,16 +65,19 @@ describe('allow_smart_task_rescue flow card', () => {
     await app.onUninit?.();
   });
 
-  it('rejects limit-lower-priority as not yet available (phase-1 placeholder)', async () => {
+  it('sets limit-lower-priority and keeps the two permissions independent', async () => {
     seedTemperatureTask('dev-1');
     const app = await initApp();
 
-    await expect(listener()({ device: 'dev-1', property: 'limit_lower_priority', when: 'always' }))
-      .rejects.toThrow(/not available yet/i);
-    // The exempt-from-budget permission set earlier is untouched by the rejected call.
+    await expect(listener()({ device: 'dev-1', property: 'limit_lower_priority', when: 'always' })).resolves.toBe(true);
+    expect(readEntry('dev-1')?.rescue).toEqual({ limitLowerPriorityDevices: 'always' });
+
+    // Adding exempt-from-budget keeps the existing limit permission.
     await listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' });
-    await expect(listener()({ device: 'dev-1', property: 'limit_lower_priority', when: 'always' }))
-      .rejects.toThrow();
+    expect(readEntry('dev-1')?.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+
+    // Clearing limit leaves exempt intact.
+    await listener()({ device: 'dev-1', property: 'limit_lower_priority', when: 'never' });
     expect(readEntry('dev-1')?.rescue).toEqual({ exemptFromBudget: 'always' });
 
     await app.onUninit?.();

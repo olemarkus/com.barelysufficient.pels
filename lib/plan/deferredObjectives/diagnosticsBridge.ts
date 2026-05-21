@@ -91,6 +91,11 @@ type BaseDeferredObjectiveDiagnostic = {
   // to this plan (phase 1: mode 'always'). Admission consumes this flat flag to set the
   // device's existing `budgetExempt` — the producer resolves it, consumers don't re-derive.
   budgetExemptApplied?: boolean;
+  // True when the "limit lower-priority devices" rescue permission is granted (mode
+  // 'always'). Admission consumes this flat flag to engage the device's boost while the
+  // task is in its planned hours, so the existing escalation/shedding machinery claims
+  // capacity from lower-priority devices. Producer resolves it; consumers don't re-derive.
+  limitLowerPriorityApplied?: boolean;
 };
 
 // Discriminated by `objectiveKind`. Temperature variants always carry a
@@ -420,6 +425,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     dailyBudgetExhaustedBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always',
+    limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
     horizonPlan,
   };
 };

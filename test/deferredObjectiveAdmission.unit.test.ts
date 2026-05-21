@@ -73,7 +73,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan(),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: false });
   });
 
   it('adds an EV resume intent for an EV objective in a planned bucket', () => {
@@ -91,6 +91,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('ev1')).toEqual({
       kind: 'planned',
       budgetExempt: false,
+      engageBoost: false,
       requestedMinimumStepId: 'low',
       evCommandIntent: 'ev_resume',
     });
@@ -212,7 +213,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: false });
   });
 
   it('returns inactive when the horizon plan is missing', () => {
@@ -234,7 +235,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('marks the decision budget-exempt when exempt-from-budget is applied to the plan', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: true });
+      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: true, engageBoost: false });
 
     // Not applied once the task is no longer being pursued.
     const satisfied = buildDiagnostic({
@@ -253,6 +254,31 @@ describe('applyDeferredObjectiveAdmission', () => {
     const capOnDevice = buildEvDevice({ id: 'dev1', controllable: true });
     const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions);
     expect(devices[0]?.budgetExempt).toBe(true);
+  });
+
+  it('engages boost on a planned limit-lower-priority task, but not once it is satisfied', () => {
+    const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
+    expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
+      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: true });
+
+    const satisfied = buildDiagnostic({
+      deviceId: 'dev2',
+      status: 'satisfied',
+      limitLowerPriorityApplied: true,
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    expect(applyDeferredObjectiveAdmission([satisfied]).get('dev2'))
+      .toEqual({ kind: 'inactive', budgetExempt: false });
+  });
+
+  it('sets forceBoostActive on the device input for a planned limit-lower-priority task', () => {
+    const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
+    const decisions = applyDeferredObjectiveAdmission([planned]);
+    const device = buildEvDevice({ id: 'dev1', controllable: true });
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    // Admission only requests the boost (kind-agnostic); the boost resolvers decide whether
+    // it resolves to temperatureBoost or evBoost by device kind.
+    expect(devices[0]?.forceBoostActive).toBe(true);
   });
 });
 

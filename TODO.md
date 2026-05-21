@@ -2107,16 +2107,21 @@ should not be folded into the same PR.
 
 - [ ] Smart-task rescue permissions — phase-2 / follow-ups (from the exempt-from-budget
       PR `codex/smart-task-rescue-permissions-via-flow`):
-      - **limit-lower-priority lane.** `limit_lower_priority` ships in the
-        `allow_smart_task_rescue` card but the run-listener rejects it ("not available
-        yet") and the planner ignores `limitLowerPriorityDevices`. Wire the lane: the
-        permission guarantees the objective its capacity (shed lower-priority devices on
-        demand → guaranteed headroom), so the planner can raise the assured delivery
-        (higher committed step) safely — the guarantee is exactly what de-risks the
-        higher-step commitment `horizonPlanner` otherwise refuses. Then drop the
-        listener rejection. Files: `flowCards/smartTaskRescueCard.ts`,
-        `lib/plan/deferredObjectives/rescueReplan.ts`, `horizonPlanner.ts`,
-        `lib/plan/shedding/candidates.ts`.
+      - **limit-lower-priority lane — SHIPPED via boost** (`codex/smart-task-rescue-phase2`):
+        a planned task with the permission sets `forceBoostActive`, the boost resolvers
+        honour it, and the existing escalation/swap claims capacity from lower-priority
+        devices. `horizonPlanner` / `rescueReplan` / `candidates` were intentionally NOT
+        touched — the plan still commits the lowest step (no over-promise); boost delivers
+        the higher run at runtime. Remaining follow-ups:
+          - **(P2)** forced-boost flap at the satisfied↔at_risk boundary — the forced path
+            has no config hysteresis (on whenever `planned`); a task hovering at its target
+            can toggle boost and ripple shed/restore onto victims. Bounded by the planned
+            gate + victim restore back-off + `hasRecentObservedDrawAtSelectedStep`; add a
+            status hysteresis / minimum forced-boost dwell if `/tmp/pels` logs show
+            oscillation. (`lib/plan/deferredObjectives/admission.ts`)
+          - **(P3)** forced-boost `temperature_boost_state_changed` / `ev_boost_state_changed`
+            logs emit the device's own (often empty) threshold fields — add a forced-cause
+            marker for field debugging. (`planTemperatureBoost.ts`, `planEvBoost.ts`)
       - **`at_risk` rescue mode + hysteresis.** Add the "when at risk" `when` option.
         At-risk = the plan, using only always-on behaviours, projects to miss the target.
         The rescue must be sticky: engage on at-risk, exit only once a plan that is

@@ -32,6 +32,15 @@ describe('resolveEvBoostActive', () => {
     })).toBe(true);
   });
 
+  it('forces boost on for the deferred limit-lower-priority lane, ignoring config/threshold', () => {
+    // No evBoost config and SoC above any threshold: only the admission-set forceBoostActive
+    // flag activates it (the limit-lower-priority lane).
+    expect(resolveEvBoostActive({
+      dev: buildEvDevice({ forceBoostActive: true, evBoost: undefined, stateOfCharge: { percent: 90, status: 'fresh' as const } }),
+      previousActive: false,
+    })).toBe(true);
+  });
+
   it('stops at the target threshold without hysteresis', () => {
     expect(resolveEvBoostActive({
       dev: buildEvDevice({ stateOfCharge: { percent: 40, status: 'fresh' as const } }),
