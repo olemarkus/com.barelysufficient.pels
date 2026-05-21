@@ -346,9 +346,10 @@ function registerClearDeadlineCard(
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     accessors.write(removeObjective(settings, deviceId));
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
+    deps.getDeferredObjectiveHoursRemainingTracker?.()?.forgetDevice(deviceId);
     // Drop the trigger's per-device suppression cache so a later re-added task
-    // is treated as a fresh observation rather than continuing a stale prior
-    // status comparison.
+    // is treated as a fresh observation rather than continuing stale prior
+    // status or hours-remaining comparisons.
     lastFlowStatusByDeviceId.delete(deviceId);
     deps.applyDeferredObjectiveChange?.({
       deviceId,

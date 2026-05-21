@@ -2,17 +2,20 @@ import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCa
 import {
   createDeferredObjectiveEndedBus,
   createDeferredObjectiveHoursRemainingBus,
+  createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   createEmptyDeferredObjectiveSettings,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingBus,
+  type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
+import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives/diagnosticsBridge';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 
@@ -80,12 +83,45 @@ const buildSnapshot = (
   ...overrides,
 });
 
+const buildHoursRemainingDiagnostic = (
+  overrides: Partial<DeferredObjectiveDiagnostic> & {
+    deviceId: string;
+    deadlineAtMs: number | null;
+  },
+): DeferredObjectiveDiagnostic => ({
+  deviceId: overrides.deviceId,
+  deviceName: 'Garage charger',
+  objectiveId: `${overrides.deviceId}:ev_soc`,
+  objectiveKind: 'ev_soc',
+  enforcement: 'soft',
+  status: 'on_track',
+  reasonCode: 'objective_progress_stale',
+  targetPercent: 80,
+  currentPercent: 60,
+  deadlineAtMs: overrides.deadlineAtMs,
+  deadlineLocalTime: '07:00',
+  energyNeededKWh: 4,
+  kWhPerPercent: 0.2,
+  kWhPerDegreeC: null,
+  rateConfidence: null,
+  displayConfidence: null,
+  kwhPerUnitSource: null,
+  kwhPerUnitAcceptedSamples: 0,
+  kwhPerUnitLastAcceptedAtMs: null,
+  planningSpeedKw: 2,
+  horizonBucketCount: 2,
+  dailyBudgetExhaustedBucketCount: 0,
+  requestedMinimumStepId: null,
+  ...overrides,
+});
+
 const buildDeps = (overrides: {
   snapshot: TargetDeviceSnapshot[];
   bus?: DeferredObjectiveStatusBus;
   planRevisionBus?: DeferredObjectivePlanRevisionBus;
   endedBus?: DeferredObjectiveEndedBus;
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
+  hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
   rebuildPlan?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
   const mock = createMockHomey();
@@ -124,6 +160,7 @@ const buildDeps = (overrides: {
     getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
     getDeferredObjectiveEndedBus: () => overrides.endedBus,
     getDeferredObjectiveHoursRemainingBus: () => overrides.hoursRemainingBus,
+    getDeferredObjectiveHoursRemainingTracker: () => overrides.hoursRemainingTracker,
   } as unknown as FlowCardDeps;
   return { deps, mock };
 };
@@ -1010,6 +1047,41 @@ describe('deadline objective flow cards', () => {
       },
     });
     expect(await condition.run!({ device: 'heater-1' })).toBe(true);
+  });
+
+  it('re-arms smart_task_hours_remaining after clear_deadline and same-deadline re-add', async () => {
+    const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
+    const hoursRemainingTracker = createDeferredObjectiveHoursRemainingTracker();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus,
+      hoursRemainingTracker,
+      rebuildPlan: vi.fn(),
+    });
+    registerDeadlineObjectiveCards(deps);
+    const setCard = mock.actions.get('set_ev_charge_deadline')!;
+    const clearCard = mock.actions.get('clear_deadline')!;
+    const trigger = mock.triggers.get('smart_task_hours_remaining')!;
+    const deadlineAtMs = HH_MM_TO_UTC_MS(7, 0);
+    const nowMs = deadlineAtMs - 2 * 60 * 60 * 1000;
+    const diagnostics = [buildHoursRemainingDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
+
+    await setCard.run!({ device: 'ev-1', target_percent: 80, ready_by: '07:00' });
+    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    let state = trigger.trigger.mock.calls[0]![1];
+    expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
+
+    await clearCard.run!({ device: 'ev-1' });
+    await setCard.run!({ device: 'ev-1', target_percent: 80, ready_by: '07:00' });
+    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+    state = trigger.trigger.mock.calls[1]![1];
+    expect(state).toEqual({ deviceId: 'ev-1', hoursRemaining: 2, previousHoursRemaining: null });
+    expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
+
+    hoursRemainingTracker.observe({ diagnostics, nowMs, bus: hoursRemainingBus });
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
   });
 
   it('publishes smart_task_hours_remaining tokens and fires only on its own threshold crossing', async () => {
