@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 470" role="img">
+  <title>EV charging handoff</title>
+  <desc>Power data flows to PELS, PELS calculates desired charging current, a Homey Flow passes it to the charger app, and the charger app controls the EV charger.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#126c33" />
+    </marker>
+    <style>
+      .panel { fill: #ffffff; stroke: #b9d8c4; stroke-width: 2; }
+      .accent { fill: #e8f7ee; stroke: #22c55e; stroke-width: 2; }
+      .line { stroke: #126c33; stroke-width: 3; marker-end: url(#arrow); }
+      .label { fill: #181818; font: 600 20px IBM Plex Sans, Segoe UI, sans-serif; }
+      .small { fill: #4f5b54; font: 400 16px IBM Plex Sans, Segoe UI, sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="720" height="470" rx="18" fill="#f6f7fb" />
+
+  <rect class="panel" x="80" y="24" width="560" height="70" rx="14" />
+  <text class="label" x="360" y="56" text-anchor="middle">Homey Energy / Tibber Pulse</text>
+  <text class="small" x="360" y="78" text-anchor="middle">AMS/HAN/P1 or Flow data</text>
+
+  <line class="line" x1="360" y1="96" x2="360" y2="134" />
+
+  <rect class="accent" x="260" y="136" width="200" height="66" rx="14" />
+  <text class="label" x="360" y="176" text-anchor="middle">PELS</text>
+
+  <line class="line" x1="360" y1="204" x2="360" y2="244" />
+  <text class="small" x="384" y="230">desired charging current</text>
+
+  <rect class="panel" x="255" y="246" width="210" height="62" rx="14" />
+  <text class="label" x="360" y="284" text-anchor="middle">Homey Flow</text>
+
+  <line class="line" x1="360" y1="310" x2="360" y2="350" />
+
+  <rect class="panel" x="210" y="352" width="300" height="62" rx="14" />
+  <text class="label" x="360" y="389" text-anchor="middle">Zaptec / Easee / charger app</text>
+
+  <line class="line" x1="360" y1="416" x2="360" y2="442" />
+
+  <text class="label" x="360" y="462" text-anchor="middle">EV charger</text>
+</svg>

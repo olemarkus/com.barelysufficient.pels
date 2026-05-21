@@ -35,6 +35,11 @@ That can backfire. If hot water, floor heating, ventilation boost and EV chargin
 
 PELS treats the hard cap as the boundary. Price shifting happens inside that boundary.
 
+<figure class="docs-figure">
+  <img class="docs-diagram" src="/diagrams/cheap-hours-hard-cap.svg" alt="Diagram comparing two low-price hours: one where house load is already high and PELS waits or limits devices, and one where house load is below the hard cap and hot water or heating is a good candidate." />
+  <figcaption>PELS prefers cheap hours only when there is room under the hard cap. The hard cap wins over price shifting.</figcaption>
+</figure>
+
 ## Typical priority setup
 
 A simple default priority order could be:

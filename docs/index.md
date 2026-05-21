@@ -20,7 +20,10 @@ editLink: false
     </div>
   </div>
   <div class="landing-panel landing-panel-accent">
-    <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS overview showing live device states and power usage" />
+    <figure class="landing-screenshot-frame">
+      <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS overview showing live device states and power usage" />
+      <figcaption>The overview shows current whole-home power, the Safe pace now threshold, and which devices PELS is limiting or resuming.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -90,19 +93,28 @@ editLink: false
     <p class="landing-section-text">PELS lives entirely inside Homey. You configure it in the settings page, connect it with a few Flows, add Smart tasks when something must be ready, and check what it is doing in the overview.</p>
     <div class="landing-grid landing-grid-two">
       <article class="landing-card landing-card-with-screenshot">
-        <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS device list showing managed devices" />
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS device list showing managed devices" />
+          <figcaption>The device list is where you choose which devices are managed, can be limited to stay under the hard cap, or adjusted by price.</figcaption>
+        </figure>
         <h3>Device control</h3>
         <p>Pick the devices PELS can control, set your hard cap, and choose how it should behave in different situations — like daytime vs. nighttime.</p>
         <a href="configuration.html">Open configuration docs</a>
       </article>
       <article class="landing-card landing-card-with-screenshot">
-        <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS usage tab showing hourly energy chart" />
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS usage tab showing hourly energy chart" />
+          <figcaption>Usage shows hourly and daily energy history so you can see how the home behaves over time.</figcaption>
+        </figure>
         <h3>Usage and insights</h3>
         <p>See how much power you are using, track hourly and daily totals, and understand your home's consumption patterns over time.</p>
         <a href="insights-device.html">Open PELS Insights docs</a>
       </article>
       <article class="landing-card landing-card-with-screenshot">
-        <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price tab showing cheap and expensive hours" />
+        <figure class="landing-card-media">
+          <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price tab showing cheap and expensive hours" />
+          <figcaption>Price settings show the current price source and the cheap/expensive hours PELS can use to choose when flexible devices should run.</figcaption>
+        </figure>
         <h3>Price optimization</h3>
         <p>PELS knows when electricity is cheap or expensive and shifts flexible load to save money automatically, based on spot prices.</p>
         <a href="flow-cards.html">See available Flow cards</a>

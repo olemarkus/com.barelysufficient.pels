@@ -85,6 +85,11 @@ Example Flow ideas:
 
 Keep presence detection in Homey. Keep energy behavior in PELS.
 
+<figure class="docs-figure">
+  <img class="docs-diagram" src="/diagrams/modes-handoff.svg" alt="Diagram showing presence, time, buttons or calendar events triggering a Homey Flow, the Flow setting the PELS mode, and PELS applying Home, Away or Night targets and priorities." />
+  <figcaption>Homey decides when the routine changes. PELS decides how managed devices behave in that routine.</figcaption>
+</figure>
+
 ## Modes and Smart tasks
 
 Modes describe the normal behavior of the home.

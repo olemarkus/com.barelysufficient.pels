@@ -38,6 +38,11 @@ The important split is:
 - PELS handles planning, priorities, cheap hours, and power-limit protection.
 - The charger app handles the actual charger command.
 
+<figure class="docs-figure">
+  <img class="docs-diagram" src="/diagrams/ev-charging-handoff.svg" alt="Diagram showing power data flowing into PELS, PELS sending desired charging current to a Homey Flow, and the charger app applying it to the EV charger." />
+  <figcaption>PELS calculates the desired charging current. The charger app still sends the actual command to the charger.</figcaption>
+</figure>
+
 ## Example: EV charging has lower priority than heating and hot water
 
 In this setup, the EV is flexible. Hot water and critical heating should win first.
