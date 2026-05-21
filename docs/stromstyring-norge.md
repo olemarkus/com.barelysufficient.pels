@@ -7,6 +7,8 @@ description: Norsk oversikt over PELS for Homey Pro, effektgrense, kapasitetsled
 
 Denne siden er skrevet for deg som søker etter strømstyring, effektledd, kapasitetsledd, elbillading eller billigere strøm i et norsk Homey Pro-hjem.
 
+Resten av dokumentasjonen er på engelsk. Denne siden forklarer norske begreper og peker videre til relevante oppsettsider.
+
 PELS er en Homey-app som følger strømforbruket i hele boligen og styrer fleksible laster som elbillader, varmtvannsbereder, gulvvarme og panelovner. Målet er å holde deg under en valgt effektgrense, bruke billigere timer når det passer, og samtidig la viktige enheter få prioritet.
 
 ## Hva PELS gjør
@@ -84,6 +86,11 @@ Praktisk startpunkt:
 - bruk moderate temperaturendringer for prisstyring
 - test med Simulation mode før PELS får reell kontroll
 
+Sikkerhet: Ikke styr varmtvannsbereder, gulvvarme eller faste elektriske laster med
+utstyr som ikke er beregnet for belastningen. Fast elektrisk arbeid skal utføres av
+fagfolk. Husk også temperatur-, hygiene- og sikkerhetskrav for varmtvann; PELS skal
+planlegge lasten, ikke erstatte trygg varmtvannskontroll.
+
 ## Spotpris, nettleie, strømstøtte og Norgespris
 
 PELS kan bruke forskjellige priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt prisordning. Du kan velge mellom strømstøtte og Norgespris-modellen i innstillingene.
@@ -94,9 +101,9 @@ Hvis Homey Energy allerede gir deg en komplett pris du stoler på, kan PELS ogs�
 
 ## Enova: relevant styringsdel, men ingen garanti for støtte
 
-Enova har hatt støtteordninger for pris- og effektstyrt energilagringssystem i boliger. PELS er relevant for styringsdelen fordi appen kan styre fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey.
+Enova har en støtteordning for pris- og effektstyrt energilagringssystem i boliger. PELS er relevant for styringsdelen fordi appen kan styre fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey.
 
-Det betyr ikke at PELS alene garanterer støtte. Enova vurderer tiltak etter gjeldende vilkår, dokumentasjon og installasjon. Hvis støtte er viktig for deg, må du lese Enovas krav før du kjøper utstyr eller gjør installasjon, og du bør dokumentere hvilke enheter som styres og hvordan styringen fungerer.
+PELS alene garanterer ikke støtte. Enova vurderer tiltak etter gjeldende vilkår, dokumentasjon og installasjon. Hvis støtte er viktig for deg, må du lese Enovas krav før du kjøper utstyr eller gjør installasjon.
 
 ## Gå videre
 
