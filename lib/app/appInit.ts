@@ -470,6 +470,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
     getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,
     getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
+    getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
     applyDeferredObjectiveChange: (params) => {
       const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
       const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
