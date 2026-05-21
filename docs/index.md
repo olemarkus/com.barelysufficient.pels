@@ -49,7 +49,7 @@ editLink: false
 
   ## Start by problem {.landing-section-title}
 
-  Pick the problem that sounds closest to what you are trying to solve. These links point to use-case examples and detailed setup guides.
+  Pick the problem that sounds closest to what you are trying to solve. Start with the use-case page when one exists, then continue into the setup guide.
   {.landing-section-text}
 
   ### Stay below a capacity tariff step or power limit
@@ -62,13 +62,13 @@ editLink: false
 
   If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app.
 
-  [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
+  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
 
   ### Move hot water, heating or ventilation toward cheap hours
 
   If a water heater, floor heating, panel heater or ventilation unit can run earlier or later, use price shifting, Smart tasks or Flow-booked cheap hours. The hard cap still takes priority.
 
-  [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md)
+  [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
 
   ### Use Home, Away and Night for different energy behavior
 
@@ -117,8 +117,8 @@ editLink: false
 
   <section class="landing-section" id="quick-setup">
     <p class="landing-section-kicker">Get started</p>
-    <h2 class="landing-section-title">A working setup takes about 15 minutes</h2>
-    <p class="landing-section-text">Install the app, connect your power meter, set a limit, and pick the devices PELS should control. That is enough to get real value — you can fine-tune later.</p>
+    <h2 class="landing-section-title">Start with a basic setup in about 15 minutes</h2>
+    <p class="landing-section-text">Install the app, connect your power meter, set a limit, and pick one or two devices PELS should control. That is enough to start learning how it behaves — you can add EV charging, modes, Daily Energy Budget and Smart Tasks later.</p>
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>Getting started</h3>
