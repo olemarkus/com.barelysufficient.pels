@@ -42,8 +42,9 @@ const resolveDecision = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
-  // Producer-resolved flat flag: the smart task's exempt-from-budget permission is
-  // active for this plan. Only meaningful while the objective is still being pursued.
+  // Producer-resolved flat flag: the smart task's exempt-from-budget permission is active
+  // for the current planned bucket. Idle/background cycles must not inherit a standing
+  // budget exemption from a future planned bucket.
   const budgetExempt = diagnostic.budgetExemptApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   // The limit-lower-priority permission engages the device's boost, but only while the task
   // is in its planned hours (the 'planned' decision below) — so it claims capacity from
@@ -51,17 +52,17 @@ const resolveDecision = (
   const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     return shouldEmitSatisfiedPause(diagnostic, device)
-      ? { kind: 'inactive', budgetExempt, evCommandIntent: 'ev_pause' }
-      : { kind: 'inactive', budgetExempt };
+      ? { kind: 'inactive', budgetExempt: false, evCommandIntent: 'ev_pause' }
+      : { kind: 'inactive', budgetExempt: false };
   }
   const horizonPlan = diagnostic.horizonPlan;
-  if (!horizonPlan) return { kind: 'inactive', budgetExempt };
+  if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
   const currentBucket = horizonPlan.currentBucket;
   const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
   if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) {
     return isEvObjective
-      ? { kind: 'idle', budgetExempt, evCommandIntent: 'ev_pause' }
-      : { kind: 'idle', budgetExempt };
+      ? { kind: 'idle', budgetExempt: false, evCommandIntent: 'ev_pause' }
+      : { kind: 'idle', budgetExempt: false };
   }
   return {
     kind: 'planned',
@@ -123,9 +124,9 @@ export const applyDeferredAdmissionToInput = (
     // from lower-priority devices — the deferred target override already commands the task's
     // target. Physical capacity stays enforced by the capacity guard.
     const engageBoost = decision.kind === 'planned' && decision.engageBoost;
-    // budgetExempt applies cap-agnostically — an exempt-always smart task exempts the
-    // device whether or not capacity control is on, mirroring the standing
-    // budget-exemption flag. The override only flips cap-off devices controllable.
+    // The rescue budget exemption applies cap-agnostically, but only during the
+    // planned current bucket. It should not turn idle/background cycles into the
+    // device's standing budget-exemption setting.
     if (!override && !decision.budgetExempt && !engageBoost) return device;
     return {
       ...device,

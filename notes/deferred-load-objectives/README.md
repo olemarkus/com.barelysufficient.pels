@@ -179,7 +179,7 @@ type ActivePlan = {
   startedAtMs: number;
   pending: boolean;            // flow card fired, no revision yet
   pendingReason?: 'awaiting_horizon_plan' | 'price_feature_disabled' | 'device_data_missing';
-  objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement)
+  objectiveSignature: string;  // hash of (kind, targets, deadline, enforcement, rescue permissions)
   commitment?: {               // first full-horizon allocation accepted for runtime execution
     committedAtMs: number;
     hours: { startsAtMs: number; plannedKWh: number }[];

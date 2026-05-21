@@ -445,6 +445,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(2);
     expect(plan?.original?.revision).toBe(1);
     expect(plan?.original?.hours[0]?.plannedKWh).toBe(1.5);
+    expect(plan?.latest?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 2 },
+      { startsAtMs: 3 * HOUR_MS, plannedKWh: 2 },
+      { startsAtMs: 4 * HOUR_MS, plannedKWh: 2 },
+    ]);
+    expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
   });
 
   it('freezes initialPlanningSpeedKw and initialEstimatedDurationText at first-revision time', () => {
@@ -1445,14 +1451,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.commitment).toBeUndefined();
     });
 
-    it('does not backfill when the persisted signature mismatches the current diagnostic', () => {
+    it('writes a fresh commitment when the persisted signature mismatches the current diagnostic', () => {
       // Legacy plan was persisted for target 65C, but the user changed the
       // objective to 70C before the upgrade was observed. The persisted
       // `latest.hours` reflect the OLD target — backfilling would commit the
-      // executor to hours for an objective the user no longer wants. Skip
-      // backfill in this case; `maybeWriteReplanRevision` then writes a fresh
-      // revision under the new signature, and the next observe cycle (with
-      // signatures aligned) will commit the new schedule.
+      // executor to hours for an objective the user no longer wants. The recorder
+      // must instead write a fresh revision and commit that newly solved schedule.
       const persisted = buildLegacyPersisted();
       const { deps } = buildPersistDeps(persisted);
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -1466,7 +1470,11 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       recorder.observe([diag], 2 * HOUR_MS);
 
       const plan = recorder.getPlanForTests('dev');
-      expect(plan?.commitment).toBeUndefined();
+      expect(plan?.latest?.reason).toBe('objective_changed');
+      expect(plan?.commitment).toEqual({
+        committedAtMs: 2 * HOUR_MS,
+        hours: plan?.latest?.hours,
+      });
     });
 
     it('does not rewrite commitment once one is present', () => {

@@ -248,6 +248,27 @@ describe('applyDeferredObjectiveAdmission', () => {
       .toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
+  it('does not turn an idle rescue plan into a standing budget exemption', () => {
+    const idle = buildDiagnostic({
+      deviceId: 'dev1',
+      budgetExemptApplied: true,
+      horizonPlan: buildHorizonPlan({
+        currentBucket: {
+          bucketId: 'b1',
+          sourceBucketId: 'b1',
+          plannedUsefulEnergyKWh: 0,
+          requestedMinimumStepId: null,
+        },
+      }),
+    });
+    const decisions = applyDeferredObjectiveAdmission([idle]);
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
+
+    const device = buildEvDevice({ id: 'dev1', controllable: true });
+    const { devices } = applyDeferredAdmissionToInput([device], decisions);
+    expect(devices[0]?.budgetExempt).toBeUndefined();
+  });
+
   it('sets budgetExempt on the device input cap-agnostically when the decision is budget-exempt', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     const decisions = applyDeferredObjectiveAdmission([planned]);

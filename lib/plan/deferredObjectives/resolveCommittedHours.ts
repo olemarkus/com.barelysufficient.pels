@@ -28,6 +28,7 @@ export const resolveCommittedHours = (params: {
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     deadlineAtMs: params.objective.deadlineAtMs,
     enforcement: params.objective.enforcement,
+    rescue: params.objective.rescue,
   })) return undefined;
   return plan.commitment.hours;
 };

@@ -571,6 +571,76 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(run(exemptSettings)?.dailyBudgetExhaustedBucketCount).toBe(0);
   });
 
+  it('re-solves a committed schedule when budget rescue is enabled after the first plan', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({
+      deadlineLocalTime: '20:00',
+      targetPercent: 50,
+      rescue: { exemptFromBudget: 'always' },
+    }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const oldCommitment = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: JSON.stringify(['ev_soc', null, 50, deadlineAtMs, 'soft']),
+          commitment: {
+            committedAtMs: NOW_MS - HOUR_MS,
+            hours: oldCommitment,
+          },
+          original: {
+            revision: 1,
+            revisedAtMs: NOW_MS - HOUR_MS,
+            computedFromPricesUpTo: NOW_MS + HOUR_MS,
+            reason: 'flow_card',
+            hours: oldCommitment,
+            energyNeededKWh: 2,
+            planStatus: 'cannot_meet',
+          },
+          latest: {
+            revision: 1,
+            revisedAtMs: NOW_MS - HOUR_MS,
+            computedFromPricesUpTo: NOW_MS + HOUR_MS,
+            reason: 'flow_card',
+            hours: oldCommitment,
+            energyNeededKWh: 2,
+            planStatus: 'cannot_meet',
+          },
+        },
+      },
+    };
+    const exhausted = {
+      allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+    };
+    const prices = Array.from({ length: 24 }, () => 30);
+    prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ ...exhausted, prices }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+
+    const plannedBuckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(diagnostic?.status).not.toBe('cannot_meet');
+    expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + HOUR_MS).toISOString())).toBeCloseTo(1);
+    expect(diagnostic?.horizonPlan?.plannedUsefulEnergyKWh).toBeCloseTo(2);
+  });
+
   it('uses a committed active-plan schedule instead of moving to newly preferred hours', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({
       deadlineLocalTime: '20:00',
