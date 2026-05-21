@@ -49,7 +49,7 @@ editLink: false
 
   ## Start by problem {.landing-section-title}
 
-  Pick the problem that sounds closest to what you are trying to solve. These links point to the existing setup guides; dedicated use-case pages can be added later.
+  Pick the problem that sounds closest to what you are trying to solve. These links point to use-case examples and detailed setup guides.
   {.landing-section-text}
 
   ### Stay below a capacity tariff step or power limit
@@ -68,13 +68,13 @@ editLink: false
 
   If a water heater, floor heating, panel heater or ventilation unit can run earlier or later, use price shifting, Smart tasks or Flow-booked cheap hours. The hard cap still takes priority.
 
-  [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
+  [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md)
 
   ### Use Home, Away and Night for different energy behavior
 
   If your home should behave differently when you are home, away or asleep, configure modes and switch them from Homey Flows. Modes can change comfort targets and priorities without rebuilding your automations.
 
-  [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
+  [Read the modes use case](./use-cases/homey-home-away-night-energy-modes.md) · [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
 
   ### Use Homey Energy, Tibber Pulse, AMS/HAN/P1 or Flow data as input
 
