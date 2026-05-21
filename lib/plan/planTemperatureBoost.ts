@@ -15,11 +15,14 @@ export function resolveTemperatureBoostActive(params: {
   previousActive: boolean;
 }): boolean {
   const { dev, previousActive } = params;
-  const config = dev.temperatureBoost;
-  if (config?.enabled !== true) return false;
   if (!isSteppedLoadDevice(dev)) return false;
   if (!supportsTemperatureBoostDevice(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
+  // The deferred limit-lower-priority rescue lane forces boost while the task is in its
+  // planned hours, independent of the device's own boost config/threshold.
+  if (dev.forceBoostActive === true) return true;
+  const config = dev.temperatureBoost;
+  if (config?.enabled !== true) return false;
   const currentTemperature = getTrustedCurrentTemperatureC(dev);
   if (currentTemperature === undefined) return false;
   const boostBelowC = config.boostBelowC;

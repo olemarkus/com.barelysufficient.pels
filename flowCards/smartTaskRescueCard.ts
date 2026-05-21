@@ -60,15 +60,7 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg; property?: DropdownArg; when?: DropdownArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) throw new Error('Device must be provided.');
-    const propertyId = resolveRescuePropertyId(payload?.property);
-    // limit-lower-priority is a forward-declared placeholder: the schema and this
-    // card accept it, but the planner does not honour it yet (a follow-up wires the
-    // lane). Reject it explicitly rather than silently storing a no-op that would
-    // still log a "Flow changed what this task may use" plan revision.
-    if (propertyId === 'limit_lower_priority') {
-      throw new Error('Limiting lower-priority devices is not available yet.');
-    }
-    const key = RESCUE_PROPERTY_KEYS[propertyId];
+    const key = RESCUE_PROPERTY_KEYS[resolveRescuePropertyId(payload?.property)];
     const mode = resolveWhen(payload?.when);
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();

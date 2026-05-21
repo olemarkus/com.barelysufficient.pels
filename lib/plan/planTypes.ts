@@ -217,6 +217,11 @@ export type PlanInputDevice = {
   currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
   evBoost?: EvBoostConfig;
+  // Set by the deferred limit-lower-priority rescue lane (admission) to force boost on while
+  // the smart task is in its planned hours; the boost resolvers honour it independent of the
+  // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
+  // from lower-priority devices.
+  forceBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   controllable?: boolean;
   managed?: boolean;

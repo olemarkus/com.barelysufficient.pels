@@ -8,12 +8,15 @@ export function resolveEvBoostActive(params: {
   previousActive: boolean;
 }): boolean {
   const { dev } = params;
-  const config = dev.evBoost;
-  if (config?.enabled !== true) return false;
   if (dev.deviceClass !== 'evcharger') return false;
   if (!isSteppedLoadDevice(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
+  // The deferred limit-lower-priority rescue lane forces boost while the task is in its
+  // planned hours, independent of the device's own boost config/threshold.
+  if (dev.forceBoostActive === true) return true;
+  const config = dev.evBoost;
+  if (config?.enabled !== true) return false;
   const stateOfCharge = getTrustedStateOfCharge(dev);
   if (!stateOfCharge) return false;
   const boostBelowPercent = config.boostBelowPercent;
