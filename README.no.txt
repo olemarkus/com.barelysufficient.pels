@@ -1,3 +1,3 @@
 PELS passer for hjem der elbillading, varme, varmtvann eller ventilasjon kan føre timen over et effektledd eller en sikringsgrense. Appen følger totalforbruket fra Homey Energy, Tibber Pulse, AMS/HAN/P1-måler eller Flow-data, og begrenser lavere prioriterte laster før effektgrensen krysses. Når det er ledig effekt igjen, starter PELS dem i prioritert rekkefølge.
 
-I prisstyrte oppsett kan PELS ta hensyn til norske spotpriser, nettleie, strømstøtte/Norgespris, Homey Energy-priser eller eksterne Flow-priser. Smart tasks bruker egnede timer slik at elbil, rom eller varmtvann kan bli klart til et valgt tidspunkt, mens prioritetene avgjør hva som venter først.
+I prisstyrte oppsett kan PELS ta hensyn til norske spotpriser, nettleie, strømstøtte/Norgespris, Homey Energy-priser eller eksterne Flow-priser. Bruk Home, Away, Night og daily budget for hele hjemmet, og sett mål for elbil, rom eller varmtvann som må være klart til et valgt tidspunkt (Smart tasks).
