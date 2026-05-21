@@ -10,8 +10,8 @@
     "en": "PELS"
   },
   "description": {
-    "en": "Keep EV charging, heating and hot water under your power limit, and shift flexible load to cheap hours.",
-    "no": "Hold elbillading, varme og varmtvann under effektgrensen, og flytt fleksibelt forbruk til billige timer."
+    "en": "Keep EV charging, heating, hot water and ventilation under your power limit, and move flexible use to cheaper hours.",
+    "no": "Hold elbillading, varme, varmtvann og ventilasjon under valgt effektgrense, og flytt fleksibelt forbruk til billige timer."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -27,33 +27,53 @@
   },
   "tags": {
     "en": [
-      "power limit",
-      "peak shaving",
-      "EV charging",
-      "water heater",
+      "spot price",
       "cheap hours",
       "dynamic prices",
-      "capacity tariff",
+      "electricity prices",
+      "EV charging",
+      "EV charger",
+      "water heater",
+      "thermostat",
+      "floor heating",
+      "ventilation",
       "Homey Energy",
       "Tibber Pulse",
       "HAN",
-      "floor heating"
+      "power limit",
+      "peak shaving",
+      "capacity tariff",
+      "daily budget",
+      "load shifting",
+      "priority control"
     ],
     "no": [
       "effektledd",
+      "effekttrinn",
       "kapasitetsledd",
       "nettleie",
+      "effektgrense",
+      "effekttariff",
+      "hovedsikring",
       "elbillader",
       "elbillading",
       "varmtvannsbereder",
       "billige timer",
       "strømpris",
+      "spotpris",
+      "enovastøtte",
+      "pris- og effektstyrt energilagringssystem",
       "Norgespris",
       "strømstøtte",
       "Tibber Pulse",
       "AMS",
       "HAN",
-      "gulvvarme"
+      "gulvvarme",
+      "panelovn",
+      "ventilasjon",
+      "daglig budsjett",
+      "laststyring",
+      "effektstyring"
     ]
   },
   "permissions": [
