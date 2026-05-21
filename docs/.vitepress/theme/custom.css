@@ -15,9 +15,13 @@
 }
 
 /*
- * Docs-scoped design tokens — light-theme companion to settings/tokens.css.
- * Brand accent is derived from the app's accent palette so the docs site and
- * the in-app UI feel like the same product, in a light surface.
+ * Docs-scoped design tokens aligned to the visible settings UI.
+ *
+ * Do not import packages/settings-ui/dist/tokens.css directly here: that file
+ * is generated dark-first, the desktop light palette lives in
+ * packages/settings-ui/public/style.css, and docs channel builds archive only
+ * docs/.vitepress. Keep these docs tokens as a small semantic mirror of the
+ * settings UI palette instead of coupling VitePress to Homey's iframe CSS.
  */
 :root {
   /* Spacing — mirrors settings/tokens.css scale (4 / 8 / 12 / 16 / 24 / 32) */
@@ -36,10 +40,10 @@
   --docs-radius-2xl: 24px;
   --docs-radius-full: 9999px;
 
-  /* Light-theme shadows (softer than the app's dark shadows) */
-  --docs-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
-  --docs-shadow-md: 0 6px 24px rgba(15, 23, 42, 0.06);
-  --docs-shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.08);
+  /* Homey light-canvas shadows, matching the settings UI desktop override */
+  --docs-shadow-sm: 0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 5px 0 rgba(0, 0, 0, 0.05), 0 2px 2px 0 rgba(0, 0, 0, 0.02);
+  --docs-shadow-md: 0 10px 44px 0 rgba(0, 0, 0, 0.07), 0 2px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.04);
+  --docs-shadow-lg: 0 10px 44px 0 rgba(0, 0, 0, 0.07), 0 2px 12px 0 rgba(0, 0, 0, 0.1), 0 2px 4px 0 rgba(0, 0, 0, 0.04);
 
   /* Typography */
   --docs-font-family-sans: 'IBM Plex Sans', 'Segoe UI', sans-serif;
@@ -56,33 +60,41 @@
   --docs-transition-fast: 0.15s ease;
   --docs-transition-default: 0.2s ease;
 
-  /* Brand accent — light-theme variants of the app accent (#22c55e family) */
+  /* Brand accent - same defaults as settings/tokens.css */
   --docs-color-brand-rgb: 34, 197, 94;
-  --docs-color-accent-rgb: 21, 128, 61;
+  --docs-color-accent-rgb: 34, 197, 94;
   --docs-color-accent: rgb(var(--docs-color-accent-rgb));
-  --docs-color-accent-hover: #126c33;
-  --docs-color-accent-active: #0e5526;
-  --docs-color-accent-soft: rgba(var(--docs-color-brand-rgb), 0.12);
-  --docs-color-accent-soft-strong: rgba(var(--docs-color-brand-rgb), 0.2);
-  --docs-color-accent-border: rgba(var(--docs-color-accent-rgb), 0.16);
+  --docs-color-on-accent: #0c1610;
+  --docs-color-on-accent-strong: #ffffff;
+  --docs-color-accent-text: #126c33;
+  --docs-color-accent-text-hover: #0e5526;
+  --docs-color-accent-hover: #15803d;
+  --docs-color-accent-active: #126c33;
+  --docs-color-accent-soft: rgba(var(--docs-color-brand-rgb), 0.1);
+  --docs-color-accent-soft-strong: rgba(var(--docs-color-brand-rgb), 0.18);
+  --docs-color-accent-border: rgba(var(--docs-color-accent-rgb), 0.28);
 
-  /* Surfaces — light theme */
-  --docs-color-bg: #f7faf7;
-  --docs-color-bg-alt: #eef3ee;
-  --docs-color-bg-soft: #f1f5f1;
+  /* Homey light surfaces used by the settings UI desktop override */
+  --docs-color-bg: #f6f7fb;
+  --docs-color-bg-alt: #fafbfd;
+  --docs-color-bg-soft: #f1f2f6;
   --docs-color-bg-elevated: #ffffff;
-  --docs-color-bg-gradient-start: #f8fbf7;
-  --docs-color-bg-gradient-end: #f3f6f3;
-  --docs-color-navbar-bg: rgba(248, 251, 247, 0.9);
-  --docs-color-accent-secondary: #2f9e64;
-  --docs-color-surface-card: rgba(255, 255, 255, 0.88);
-  --docs-color-surface-card-accent: rgba(255, 255, 255, 0.92);
+  --docs-color-bg-gradient-start: #f6f7fb;
+  --docs-color-bg-gradient-end: #f1f2f6;
+  --docs-color-navbar-bg: rgba(246, 247, 251, 0.92);
+  --docs-color-accent-secondary: #4ade80;
+  --docs-color-surface-card: #ffffff;
+  --docs-color-surface-card-accent: #ffffff;
 
   /* Borders / dividers */
-  --docs-color-border: rgba(15, 23, 42, 0.08);
+  --docs-color-border: #dddee2;
+  --docs-color-border-strong: #939496;
+  --docs-color-text-primary: #181818;
+  --docs-color-text-secondary: #606266;
+  --docs-color-text-muted: #7a7b7d;
 
-  /* Mark / device-screenshot backdrop (always dark — these wrap dark UI shots) */
-  --docs-color-device-frame: #1a2332;
+  /* Mark / device-screenshot backdrop uses the settings UI dark mobile canvas */
+  --docs-color-device-frame: #141923;
 
   /* Touch targets (M3-style) */
   --docs-touch-target-min: 48px;
@@ -91,8 +103,8 @@
   --vp-font-family-base: var(--docs-font-family-sans);
   --vp-font-family-mono: var(--docs-font-family-mono);
   --vp-layout-max-width: 1440px;
-  --vp-c-brand-1: var(--docs-color-accent);
-  --vp-c-brand-2: var(--docs-color-accent-hover);
+  --vp-c-brand-1: var(--docs-color-accent-text);
+  --vp-c-brand-2: var(--docs-color-accent-text-hover);
   --vp-c-brand-3: var(--docs-color-accent-secondary);
   --vp-c-brand-soft: var(--docs-color-accent-soft);
   --vp-c-bg: var(--docs-color-bg);
@@ -100,9 +112,15 @@
   --vp-c-bg-soft: var(--docs-color-bg-soft);
   --vp-c-bg-elv: var(--docs-color-bg-elevated);
   --vp-c-divider: var(--docs-color-border);
+  --vp-c-text-1: var(--docs-color-text-primary);
+  --vp-c-text-2: var(--docs-color-text-secondary);
+  --vp-c-text-3: var(--docs-color-text-muted);
   --vp-button-brand-bg: var(--docs-color-accent);
   --vp-button-brand-hover-bg: var(--docs-color-accent-hover);
   --vp-button-brand-active-bg: var(--docs-color-accent-active);
+  --vp-button-brand-text: var(--docs-color-on-accent);
+  --vp-button-brand-hover-text: var(--docs-color-on-accent-strong);
+  --vp-button-brand-active-text: var(--docs-color-on-accent-strong);
   --vp-button-alt-bg: var(--docs-color-accent-soft);
   --vp-button-alt-hover-bg: var(--docs-color-accent-soft-strong);
 }
@@ -235,13 +253,14 @@ body {
 .landing-actions .VPButton.brand,
 .landing-panel-actions .VPButton.brand {
   background-color: var(--docs-color-accent);
-  color: var(--docs-color-bg-elevated);
+  color: var(--docs-color-on-accent);
   box-shadow: var(--docs-shadow-sm);
 }
 
 .landing-actions .VPButton.brand:hover,
 .landing-panel-actions .VPButton.brand:hover {
   background-color: var(--docs-color-accent-hover);
+  color: var(--docs-color-on-accent-strong);
   box-shadow: var(--docs-shadow-md);
   transform: translateY(-1px);
 }
@@ -249,6 +268,7 @@ body {
 .landing-actions .VPButton.brand:active,
 .landing-panel-actions .VPButton.brand:active {
   background-color: var(--docs-color-accent-active);
+  color: var(--docs-color-on-accent-strong);
   transform: translateY(0);
   box-shadow: var(--docs-shadow-sm);
 }
@@ -257,13 +277,13 @@ body {
 .landing-panel-actions .VPButton.alt {
   background-color: var(--docs-color-accent-soft);
   border-color: var(--docs-color-accent-border);
-  color: var(--docs-color-accent);
+  color: var(--docs-color-accent-text);
 }
 
 .landing-actions .VPButton.alt:hover,
 .landing-panel-actions .VPButton.alt:hover {
   background-color: var(--docs-color-accent-soft-strong);
-  color: var(--docs-color-accent-hover);
+  color: var(--docs-color-accent-text-hover);
   transform: translateY(-1px);
 }
 
