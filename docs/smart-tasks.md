@@ -68,6 +68,36 @@ Smart tasks do not replace the rest of PELS.
 - **Priority** still decides which devices get room first when not everything can run.
 - **Price-based temperature shift** can still adjust normal temperature targets, but a heating task target is the readiness target for that task.
 
+## Letting a Task Push Harder
+
+By default a Smart task stays polite: it keeps to the daily budget and never takes power from devices you have ranked higher or equal. If a task is **At risk** of missing its target and the deadline matters, you can grant it extra leeway with the **Set what a smart task may do** action card.
+
+| Permission | What it allows |
+| --- | --- |
+| **go over today's budget** | The device may keep running during its planned hours even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
+| **limit lower-priority devices** | The task may have lower-priority devices limited — paused or turned down — so it gets the power it needs. Devices at the same or higher priority are never touched. |
+
+For each permission you choose when it applies:
+
+| When | Effect |
+| --- | --- |
+| **At no time** | The permission is off. |
+| **While it's scheduled to run** | The permission applies during the task's planned hours, and stays set until you change it or clear the task. |
+
+Two things stay true no matter what you grant:
+
+- Both permissions stay inside the **hard cap**. PELS never exceeds your physical capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
+- The leeway is only spent while the device is actually scheduled to run, so granting it is harmless when the task is already on track.
+
+### Example: a water heater that must be ready
+
+A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked. Someone showers at 21:00 and the tank drops well below target, leaving the morning short. To keep mornings covered, grant the task either permission:
+
+- **go over today's budget** so the heater can reheat during its planned hours even if the day's budget is tight.
+- **limit lower-priority devices** so it can claim power from loads you care about less.
+
+You can grant the leeway as a standing setting once the task exists, or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
+
 ## Different Targets Can Be Useful
 
 A mode target, a boost setting, and a Smart task target do not have to be the same value. They describe different intent:
@@ -93,7 +123,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | Status | Meaning |
 | --- | --- |
 | **Building plan…** | A task is stored but PELS has not allocated hours yet — usually because prices through the ready-by time are not available. |
-| **Queued** | A plan is ready and the first scheduled hour is still in the future. |
+| **Scheduled** | A plan is ready and the first scheduled hour is still in the future. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
 | **On track** | PELS currently expects the task to reach the target. |
 | **At risk** | PELS has a plan, but there is limited time or room left. |
