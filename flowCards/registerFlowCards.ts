@@ -36,6 +36,7 @@ import {
 } from './flowArgParsers';
 import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
+import { registerAllowSmartTaskRescueCard } from './smartTaskRescueCard';
 import type {
   DeferredObjectiveChangeInput,
   DeferredObjectiveEndedBus,
@@ -171,6 +172,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
     registerFlowPriceCards(deps);
     registerLowestPriceCards(deps);
     registerDeadlineObjectiveCards(deps);
+    registerAllowSmartTaskRescueCard(deps);
   } finally {
     stopSpan();
   }

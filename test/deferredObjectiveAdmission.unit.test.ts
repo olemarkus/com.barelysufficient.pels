@@ -1,4 +1,8 @@
-import { applyDeferredObjectiveAdmission, buildDeferredTargetOverrides } from '../lib/plan/deferredObjectives/admission';
+import {
+  applyDeferredAdmissionToInput,
+  applyDeferredObjectiveAdmission,
+  buildDeferredTargetOverrides,
+} from '../lib/plan/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../lib/plan/deferredObjectives';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
@@ -69,7 +73,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan(),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false });
   });
 
   it('adds an EV resume intent for an EV objective in a planned bucket', () => {
@@ -86,6 +90,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
     expect(decisions.get('ev1')).toEqual({
       kind: 'planned',
+      budgetExempt: false,
       requestedMinimumStepId: 'low',
       evCommandIntent: 'ev_resume',
     });
@@ -99,7 +104,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
   });
 
   it('adds an EV pause intent for an EV objective in an idle bucket', () => {
@@ -118,7 +123,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', evCommandIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, evCommandIntent: 'ev_pause' });
   });
 
   it('returns idle when the current bucket is missing entirely', () => {
@@ -127,7 +132,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({ currentBucket: null }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'idle' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'idle', budgetExempt: false });
   });
 
   it('returns inactive when the goal is already satisfied so the device falls back to its normal behavior', () => {
@@ -137,7 +142,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'inactive' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('emits a terminal ev_pause when an EV objective is satisfied and the device is cap-off', () => {
@@ -149,7 +154,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', evCommandIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, evCommandIntent: 'ev_pause' });
   });
 
   it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
@@ -161,7 +166,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: true });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('keeps inactive without a pause intent for a satisfied temperature objective on a cap-off device', () => {
@@ -173,7 +178,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'inactive' });
+    expect(decisions.get('heater1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('returns inactive for unknown / invalid statuses', () => {
@@ -184,7 +189,7 @@ describe('applyDeferredObjectiveAdmission', () => {
         horizonPlan: undefined,
       });
       const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-      expect(decisions.get(`dev_${status}`)).toEqual({ kind: 'inactive' });
+      expect(decisions.get(`dev_${status}`)).toEqual({ kind: 'inactive', budgetExempt: false });
     }
   });
 
@@ -207,13 +212,13 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false });
   });
 
   it('returns inactive when the horizon plan is missing', () => {
     const diagnostic = buildDiagnostic({ deviceId: 'dev1', horizonPlan: undefined });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'inactive' });
+    expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('produces one decision per diagnostic device id', () => {
@@ -224,6 +229,30 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.size).toBe(2);
     expect(decisions.get('dev_a')?.kind).toBe('planned');
     expect(decisions.get('dev_b')?.kind).toBe('inactive');
+  });
+
+  it('marks the decision budget-exempt when exempt-from-budget is applied to the plan', () => {
+    const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
+    expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
+      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: true });
+
+    // Not applied once the task is no longer being pursued.
+    const satisfied = buildDiagnostic({
+      deviceId: 'dev2',
+      status: 'satisfied',
+      budgetExemptApplied: true,
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    expect(applyDeferredObjectiveAdmission([satisfied]).get('dev2'))
+      .toEqual({ kind: 'inactive', budgetExempt: false });
+  });
+
+  it('sets budgetExempt on the device input cap-agnostically when the decision is budget-exempt', () => {
+    const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
+    const decisions = applyDeferredObjectiveAdmission([planned]);
+    const capOnDevice = buildEvDevice({ id: 'dev1', controllable: true });
+    const { devices } = applyDeferredAdmissionToInput([capOnDevice], decisions);
+    expect(devices[0]?.budgetExempt).toBe(true);
   });
 });
 

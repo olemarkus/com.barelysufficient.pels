@@ -59,6 +59,8 @@ export type {
   DeferredObjectivePolicyHorizonUnavailableReason,
 } from './policyHorizon';
 export type {
+  DeferredObjectiveRescueMode,
+  DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsKind,
   DeferredObjectiveSettingsV1,

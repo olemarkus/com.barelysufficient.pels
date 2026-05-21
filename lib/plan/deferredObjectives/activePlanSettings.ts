@@ -23,6 +23,11 @@ const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = ne
   'rate_refined',
   'device_unavailable',
   'measured_deviation',
+  // A Flow toggled a rescue permission, prompting a re-solve under the new limits.
+  // Listed here so a persisted revision carrying this reason survives rehydration
+  // once the planner chunk starts emitting it (mirrors the `rate_refined` fix —
+  // the type union and label maps alone don't gate persistence; this Set does).
+  'flow_permission_changed',
 ]);
 
 const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' => (

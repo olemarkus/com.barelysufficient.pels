@@ -322,6 +322,41 @@ describe('deadline objective flow cards', () => {
     expect(call.nextEntry?.deadlineAtMs).toBe(HH_MM_TO_UTC_MS(8, 0));
   });
 
+  it('preserves a granted rescue permission when the deadline is updated', async () => {
+    const initial: DeferredObjectiveSettingsV1 = {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+          rescue: { exemptFromBudget: 'always' },
+        },
+      },
+    };
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    mock.settings.set('deferred_objectives', initial);
+    registerDeadlineObjectiveCards(deps);
+    await mock.actions.get('set_temperature_deadline')!.run!({
+      device: 'heater-1', target_c: 60, ready_by: '08:00',
+    });
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    // The deadline/target update must not silently drop the standing rescue permission.
+    expect(stored.objectivesByDeviceId['heater-1']).toEqual({
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 60,
+      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
+      rescue: { exemptFromBudget: 'always' },
+    });
+  });
+
   it('calls applyDeferredObjectiveChange with cleared next entry on clear_deadline', async () => {
     const applyChange = vi.fn();
     const initial: DeferredObjectiveSettingsV1 = {

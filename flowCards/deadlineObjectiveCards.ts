@@ -26,7 +26,7 @@ type LastSmartTaskFlowStatus = {
   deadlineAtMs: number | null;
 };
 
-type DropdownArg = string | { id?: string; name?: string };
+export type DropdownArg = string | { id?: string; name?: string };
 type InternalTaskStatus =
   | DeferredObjectiveStatusSnapshot['status']
   | DeferredObjectiveStatusSnapshot['previousStatus'];
@@ -39,7 +39,7 @@ type InternalTaskStatus =
 // change.)
 const PENDING_FLOW_STATUS: SmartTaskActiveFlowStatus = 'waiting';
 
-const getDropdownId = (raw: DropdownArg | undefined): string => (
+export const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
 
@@ -51,7 +51,7 @@ const isEvCharger = (device: TargetDeviceSnapshot): boolean => (
   device.deviceClass === 'evcharger'
 );
 
-const requireSettingsAccessors = (deps: FlowCardDeps): {
+export const requireSettingsAccessors = (deps: FlowCardDeps): {
   read: () => DeferredObjectiveSettingsV1;
   write: (next: DeferredObjectiveSettingsV1) => void;
 } => {
@@ -86,7 +86,7 @@ const validateNumberInRange = (
   return value;
 };
 
-const upsertObjective = (
+export const upsertObjective = (
   settings: DeferredObjectiveSettingsV1,
   deviceId: string,
   entry: DeferredObjectiveSettingsEntry,
@@ -234,6 +234,10 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
       enforcement: 'soft',
       targetTemperatureC,
       deadlineAtMs,
+      // Preserve any standing rescue permission across a deadline update — the rescue
+      // card promises it sticks until changed or the task is cleared, and upsertObjective
+      // replaces the entry wholesale.
+      ...(prevEntry?.rescue ? { rescue: prevEntry.rescue } : {}),
     };
     accessors.write(upsertObjective(settings, deviceId, nextEntry));
     notifyObjectiveChange(deps, { device, prevEntry, nextEntry });
@@ -281,6 +285,10 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
       enforcement: 'soft',
       targetPercent,
       deadlineAtMs,
+      // Preserve any standing rescue permission across a deadline update — the rescue
+      // card promises it sticks until changed or the task is cleared, and upsertObjective
+      // replaces the entry wholesale.
+      ...(prevEntry?.rescue ? { rescue: prevEntry.rescue } : {}),
     };
     accessors.write(upsertObjective(settings, deviceId, nextEntry));
     notifyObjectiveChange(deps, { device, prevEntry, nextEntry });

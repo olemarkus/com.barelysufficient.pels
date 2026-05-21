@@ -161,6 +161,10 @@ const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0
 const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
 const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
+// Leading window before the first flow rebuild runs, so a burst of settings cards in one
+// flow (e.g. set deadline -> allow rescue -> allow rescue) coalesces into a single re-solve
+// / one plan revision. 0 in tests so the suite is not delayed.
+const FLOW_REBUILD_COALESCE_MS = process.env.NODE_ENV === 'test' ? 0 : 1000;
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
@@ -982,7 +986,9 @@ class PelsApp extends Homey.App {
         return Number.POSITIVE_INFINITY;
       }
       const lastCompletedAtMs = state.lastCompletedAtMsByKind.flow ?? Number.NEGATIVE_INFINITY;
-      return Math.max(nowMs, lastCompletedAtMs + FLOW_REBUILD_COOLDOWN_MS);
+      // Leading coalesce window holds the first rebuild a beat so a multi-card flow collapses
+      // into one re-solve; the trailing cooldown still throttles subsequent bursts.
+      return Math.max(nowMs + FLOW_REBUILD_COALESCE_MS, lastCompletedAtMs + FLOW_REBUILD_COOLDOWN_MS);
     }
     return Number.POSITIVE_INFINITY;
   }

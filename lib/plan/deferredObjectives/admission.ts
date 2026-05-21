@@ -2,9 +2,9 @@ import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive'; evCommandIntent?: 'ev_pause' }
-  | { kind: 'planned'; requestedMinimumStepId: string | null; evCommandIntent?: 'ev_resume' }
-  | { kind: 'idle'; evCommandIntent?: 'ev_pause' };
+  | { kind: 'inactive'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' }
+  | { kind: 'planned'; budgetExempt: boolean; requestedMinimumStepId: string | null; evCommandIntent?: 'ev_resume' }
+  | { kind: 'idle'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
@@ -36,22 +36,26 @@ const resolveDecision = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
 ): DeferredAdmissionDecision => {
+  // Producer-resolved flat flag: the smart task's exempt-from-budget permission is
+  // active for this plan. Only meaningful while the objective is still being pursued.
+  const budgetExempt = diagnostic.budgetExemptApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     return shouldEmitSatisfiedPause(diagnostic, device)
-      ? { kind: 'inactive', evCommandIntent: 'ev_pause' }
-      : { kind: 'inactive' };
+      ? { kind: 'inactive', budgetExempt, evCommandIntent: 'ev_pause' }
+      : { kind: 'inactive', budgetExempt };
   }
   const horizonPlan = diagnostic.horizonPlan;
-  if (!horizonPlan) return { kind: 'inactive' };
+  if (!horizonPlan) return { kind: 'inactive', budgetExempt };
   const currentBucket = horizonPlan.currentBucket;
   const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
   if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) {
     return isEvObjective
-      ? { kind: 'idle', evCommandIntent: 'ev_pause' }
-      : { kind: 'idle' };
+      ? { kind: 'idle', budgetExempt, evCommandIntent: 'ev_pause' }
+      : { kind: 'idle', budgetExempt };
   }
   return {
     kind: 'planned',
+    budgetExempt,
     requestedMinimumStepId: currentBucket.requestedMinimumStepId,
     ...(isEvObjective ? { evCommandIntent: 'ev_resume' as const } : {}),
   };
@@ -92,9 +96,18 @@ export const applyDeferredAdmissionToInput = (
   const forceShedSet = new Set<string>();
   const transformed = devices.map((device) => {
     const decision = decisions.get(device.id);
-    if (!decision || !requiresOverride(decision, device)) return device;
-    if (decision.kind === 'idle') forceShedSet.add(device.id);
-    return { ...device, controllable: true };
+    if (!decision) return device;
+    const override = requiresOverride(decision, device);
+    if (override && decision.kind === 'idle') forceShedSet.add(device.id);
+    // budgetExempt applies cap-agnostically — an exempt-always smart task exempts the
+    // device whether or not capacity control is on, mirroring the standing
+    // budget-exemption flag. The override only flips cap-off devices controllable.
+    if (!override && !decision.budgetExempt) return device;
+    return {
+      ...device,
+      ...(override ? { controllable: true } : {}),
+      ...(decision.budgetExempt ? { budgetExempt: true } : {}),
+    };
   });
   return { devices: transformed, forceShedSet };
 };
