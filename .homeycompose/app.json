@@ -10,8 +10,8 @@
     "en": "PELS"
   },
   "description": {
-    "en": "Keep EV charging, heating, hot water and ventilation under your power limit, and move flexible use to cheaper hours.",
-    "no": "Hold elbillading, varme, varmtvann og ventilasjon under valgt effektgrense, og flytt fleksibelt forbruk til billige timer."
+    "en": "Power control and cheaper-hour scheduling for EV charging, heating and hot water.",
+    "no": "Effektstyring og bruk av billige timer for elbillading, varme og varmtvann."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -72,7 +72,7 @@
       "panelovn",
       "ventilasjon",
       "daglig budsjett",
-      "laststyring",
+      "strømforbruk",
       "effektstyring"
     ]
   },
