@@ -13,6 +13,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     text: 'Start Here',
     items: [
       { text: 'Overview', link: '/' },
+      { text: 'For norske hjem', link: '/stromstyring-norge' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Configuration', link: '/configuration' },
       { text: 'Flow Cards', link: '/flow-cards' },

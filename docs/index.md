@@ -28,7 +28,7 @@ editLink: false
   <section class="landing-section" id="is-pels-a-fit">
     <p class="landing-section-kicker">Is it for you?</p>
     <h2 class="landing-section-title">PELS is worth it if any of this sounds familiar</h2>
-    <p class="landing-section-text">You don't need a complicated setup to get value from PELS. If you have a few power-hungry devices and care about your electricity bill, that is usually enough.</p>
+    <p class="landing-section-text">You don't need a complicated setup to get value from PELS. If you have a few power-hungry devices and care about your electricity bill, that is usually enough. Norwegian users can also read the <a href="stromstyring-norge.html">Norwegian overview for strømstyring, kapasitetsledd, and elbillading</a>.</p>
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>You have devices that use a lot of power</h3>
