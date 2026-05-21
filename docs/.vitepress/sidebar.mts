@@ -23,16 +23,31 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     ],
   },
   {
-    text: 'Smart Tasks',
+    text: 'Use Cases',
+    items: [
+      { text: 'EV charging under a power limit', link: '/use-cases/homey-ev-charging-power-limit' },
+      {
+        text: 'Hot water and heating in cheap hours',
+        link: '/use-cases/homey-water-heater-cheap-hours',
+      },
+      {
+        text: 'Home, Away and Night energy modes',
+        link: '/use-cases/homey-home-away-night-energy-modes',
+      },
+    ],
+  },
+  {
+    text: 'Cost & Scheduling',
     items: [
       { text: 'Compare Cost-Saving Functions', link: '/cost-saving-functions' },
+      { text: 'Daily Energy Budget', link: '/daily-budget' },
       { text: 'Smart Tasks', link: '/smart-tasks' },
       { text: 'Book Cheap Hours With Flows', link: '/how-to-book-cheap-hours-with-flows' },
       { text: 'Price Tags in Flow & HomeyScript', link: '/price-tags' },
     ],
   },
   {
-    text: 'Advanced Usage',
+    text: 'Device Integrations',
     items: [
       {
         text: 'Wire a Flow-Based Load Device',
@@ -40,7 +55,6 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       },
       { text: 'Configure an EV Charger', link: '/ev-charger' },
       { text: 'Configure a Zaptec EV Charger', link: '/zaptec-ev-charger' },
-      { text: 'Daily Energy Budget', link: '/daily-budget' },
     ],
   },
   {
