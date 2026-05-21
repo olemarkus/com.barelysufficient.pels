@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 430" role="img">
+  <title>PELS control loop</title>
+  <desc>Whole-home power data flows into PELS. PELS uses the hard cap, priorities, prices, modes, and Smart tasks to decide which managed devices should run, pause, or resume.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#126c33" />
+    </marker>
+    <style>
+      .panel { fill: #ffffff; stroke: #b9d8c4; stroke-width: 2; }
+      .accent { fill: #e8f7ee; stroke: #22c55e; stroke-width: 2; }
+      .line { stroke: #126c33; stroke-width: 3; marker-end: url(#arrow); }
+      .label { fill: #181818; font: 600 20px IBM Plex Sans, Segoe UI, sans-serif; }
+      .small { fill: #4f5b54; font: 400 16px IBM Plex Sans, Segoe UI, sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="720" height="430" rx="18" fill="#f6f7fb" />
+
+  <rect class="panel" x="70" y="28" width="580" height="82" rx="14" />
+  <text class="label" x="360" y="58" text-anchor="middle">Whole-home power</text>
+  <text class="small" x="360" y="86" text-anchor="middle">Homey Energy / Tibber Pulse / AMS/HAN/P1 / Flow data</text>
+
+  <line class="line" x1="360" y1="112" x2="360" y2="158" />
+
+  <rect class="accent" x="250" y="160" width="220" height="70" rx="14" />
+  <text class="label" x="360" y="203" text-anchor="middle">PELS</text>
+
+  <line class="line" x1="360" y1="232" x2="360" y2="278" />
+
+  <rect class="panel" x="90" y="280" width="540" height="72" rx="14" />
+  <text class="label" x="360" y="309" text-anchor="middle">Hard cap + priorities + prices</text>
+  <text class="small" x="360" y="335" text-anchor="middle">modes + Smart tasks</text>
+
+  <line class="line" x1="360" y1="354" x2="360" y2="384" />
+
+  <rect class="panel" x="50" y="386" width="620" height="32" rx="12" />
+  <text class="small" x="360" y="407" text-anchor="middle">EV charger / water heater / heating / ventilation</text>
+</svg>

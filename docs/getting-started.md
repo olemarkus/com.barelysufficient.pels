@@ -11,6 +11,11 @@ In practice, most users spend their time in **Apps -> PELS -> Settings** and a s
 
 If PELS is not installed yet, get it from the [Homey App Store](https://homey.app/a/com.barelysufficient.pels).
 
+<figure class="docs-figure">
+  <img class="docs-diagram" src="/diagrams/pels-control-loop.svg" alt="Diagram showing whole-home power data flowing into PELS, PELS applying hard cap, priorities, prices, modes and Smart tasks, and then managing EV charging, hot water, heating and ventilation." />
+  <figcaption>PELS sits between whole-home power data and managed devices. It uses your hard cap, priorities, prices, modes and Smart tasks to decide what should run, pause or resume.</figcaption>
+</figure>
+
 ## Before you begin
 
 - PELS must already be installed on your Homey Pro.

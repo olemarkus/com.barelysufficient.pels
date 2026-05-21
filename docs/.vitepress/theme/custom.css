@@ -434,6 +434,32 @@ body {
   font-size: 0.95rem;
 }
 
+.docs-figure {
+  margin: var(--docs-spacing-6) 0;
+}
+
+.docs-figure figcaption,
+.landing-screenshot-frame figcaption,
+.landing-card-media figcaption {
+  margin-top: var(--docs-spacing-2);
+  color: var(--docs-color-text-secondary);
+  font-size: 0.92rem;
+  line-height: var(--docs-line-height-normal);
+  text-align: center;
+}
+
+.docs-diagram {
+  display: block;
+  width: 100%;
+  max-width: 720px;
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.landing-screenshot-frame {
+  margin: 0;
+}
+
 .landing-screenshot {
   display: block;
   width: 100%;
@@ -450,11 +476,15 @@ body {
   flex-direction: column;
 }
 
+.landing-card-media {
+  margin: 0 auto var(--docs-spacing-4);
+}
+
 .landing-card-screenshot {
   display: block;
   width: 100%;
   max-width: 260px;
-  margin: 0 auto var(--docs-spacing-4);
+  margin: 0 auto;
   padding: 4px;
   border-radius: var(--docs-radius-md);
   background: var(--docs-color-device-frame);

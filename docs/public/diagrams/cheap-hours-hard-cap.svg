@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" role="img">
+  <title>Cheap hours inside the hard cap</title>
+  <desc>Two low-price hours are compared. When house load is already high, PELS waits or limits devices. When house load is below the hard cap, the hour is a good candidate for hot water or heating.</desc>
+  <defs>
+    <style>
+      .panel { fill: #ffffff; stroke: #b9d8c4; stroke-width: 2; }
+      .accent { fill: #e8f7ee; stroke: #22c55e; stroke-width: 2; }
+      .warn { fill: #fff7ed; stroke: #f59e0b; stroke-width: 2; }
+      .rule { stroke: #126c33; stroke-width: 3; stroke-linecap: round; }
+      .load-high { fill: #f59e0b; }
+      .load-ok { fill: #22c55e; }
+      .label { fill: #181818; font: 600 20px IBM Plex Sans, Segoe UI, sans-serif; }
+      .small { fill: #4f5b54; font: 400 16px IBM Plex Sans, Segoe UI, sans-serif; }
+      .result { fill: #126c33; font: 600 17px IBM Plex Sans, Segoe UI, sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="720" height="360" rx="18" fill="#f6f7fb" />
+  <text class="label" x="360" y="38" text-anchor="middle">Low price does not mean start everything</text>
+
+  <rect class="warn" x="48" y="70" width="294" height="238" rx="16" />
+  <text class="label" x="195" y="105" text-anchor="middle">Hour A</text>
+  <text class="small" x="195" y="132" text-anchor="middle">Price: low</text>
+  <text class="small" x="195" y="158" text-anchor="middle">House load: already high</text>
+  <line class="rule" x1="94" y1="222" x2="296" y2="222" />
+  <text class="small" x="94" y="214">Hard cap</text>
+  <rect class="load-high" x="120" y="176" width="150" height="72" rx="8" />
+  <text class="small" x="195" y="268" text-anchor="middle">Wait or limit</text>
+
+  <rect class="accent" x="378" y="70" width="294" height="238" rx="16" />
+  <text class="label" x="525" y="105" text-anchor="middle">Hour B</text>
+  <text class="small" x="525" y="132" text-anchor="middle">Price: low</text>
+  <text class="small" x="525" y="158" text-anchor="middle">House load: below hard cap</text>
+  <line class="rule" x1="424" y1="222" x2="626" y2="222" />
+  <text class="small" x="424" y="214">Hard cap</text>
+  <rect class="load-ok" x="450" y="232" width="150" height="30" rx="8" />
+  <text class="result" x="525" y="268" text-anchor="middle">Good candidate</text>
+  <text class="small" x="525" y="291" text-anchor="middle">for hot water or heating</text>
+
+  <text class="small" x="360" y="336" text-anchor="middle">PELS prefers cheap hours only when there is room under the hard cap.</text>
+</svg>
