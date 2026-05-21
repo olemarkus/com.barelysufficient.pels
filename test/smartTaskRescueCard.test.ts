@@ -127,4 +127,18 @@ describe('allow_smart_task_rescue flow card', () => {
     await expect(listener()({ property: 'exempt_from_budget', when: 'always' })).rejects.toThrow(/device/i);
     await app.onUninit?.();
   });
+
+  it('lists smart-task-capable devices in the autocomplete even with no active task', async () => {
+    // Regression: the device dropdown filtered by current active tasks, so it was empty while
+    // building the flow (before any task existed). It must list capable devices instead.
+    const device = new MockDevice('therm-1', 'Heater', ['measure_power', 'onoff', 'target_temperature']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+    const app = createApp();
+    await app.onInit();
+    const autocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.allow_smart_task_rescue?.device;
+    if (!autocomplete) throw new Error('device autocomplete not registered');
+    const results = await autocomplete('');
+    expect(results.map((option: { id: string }) => option.id)).toContain('therm-1');
+    await app.onUninit?.();
+  });
 });

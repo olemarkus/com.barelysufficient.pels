@@ -9,6 +9,7 @@ import {
   upsertObjective,
   type DropdownArg,
 } from './deadlineObjectiveCards';
+import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import type { FlowCardDeps } from './registerFlowCards';
 
@@ -76,7 +77,9 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    const activeIds = new Set(Object.keys(requireSettingsAccessors(deps).read().objectivesByDeviceId));
-    return buildDeviceAutocompleteOptions(snapshot.filter((device) => activeIds.has(device.id)), query);
+    // List smart-task-capable devices (temperature-deadline-capable or EV chargers), not just
+    // devices that have a task right now — otherwise the flow can't be built before the task
+    // exists. The run-listener guards the "no smart task yet" case at execution time.
+    return buildDeviceAutocompleteOptions(snapshot.filter(supportsSmartTaskObjective), query);
   });
 }
