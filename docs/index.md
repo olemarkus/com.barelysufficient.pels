@@ -1,7 +1,7 @@
 ---
 title: PELS
 titleTemplate: false
-description: Homey Pro app that keeps your power usage under control, plans Smart tasks, and moves flexible load to cheaper hours.
+description: Homey Pro app for power-limit control, EV charging, heating, hot water, ventilation, Smart tasks, and cheap-hour load shifting.
 aside: false
 outline: false
 editLink: false
@@ -43,6 +43,45 @@ editLink: false
         <p>PELS can move heating, charging, and task-based load toward cheaper hours, so you spend less without having to check prices yourself. This works anywhere with dynamic hourly electricity prices — see <a href="homey-energy.html">Using Homey Energy</a> if you are outside Norway.</p>
       </article>
     </div>
+  </section>
+
+  <section class="landing-section">
+
+  ## Start by problem {.landing-section-title}
+
+  Pick the problem that sounds closest to what you are trying to solve. These links point to the existing setup guides; dedicated use-case pages can be added later.
+  {.landing-section-text}
+
+  ### Stay below a capacity tariff step or power limit
+
+  If your grid tariff gets more expensive above a chosen hourly level, start with power limiting. PELS watches whole-home power and limits lower-priority devices before the hard cap is crossed.
+
+  [Compare cost-saving functions](./cost-saving-functions.md) · [Open configuration docs](./configuration.md)
+
+  ### Charge an EV without crossing your whole-home power limit
+
+  If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app.
+
+  [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
+
+  ### Move hot water, heating or ventilation toward cheap hours
+
+  If a water heater, floor heating, panel heater or ventilation unit can run earlier or later, use price shifting, Smart tasks or Flow-booked cheap hours. The hard cap still takes priority.
+
+  [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
+
+  ### Use Home, Away and Night for different energy behavior
+
+  If your home should behave differently when you are home, away or asleep, configure modes and switch them from Homey Flows. Modes can change comfort targets and priorities without rebuilding your automations.
+
+  [Open configuration docs](./configuration.md) · [See available Flow cards](./flow-cards.md)
+
+  ### Use Homey Energy, Tibber Pulse, AMS/HAN/P1 or Flow data as input
+
+  PELS needs whole-home power and, for price features, a price source. Homey Energy can provide both in many setups; Flow data can be used when you already have another meter or price source.
+
+  [Using Homey Energy](./homey-energy.md) · [Getting Started](./getting-started.md) · [Price tags in Flow & HomeyScript](./price-tags.md)
+
   </section>
 
   <section class="landing-section" id="how-pels-fits-into-homey">
