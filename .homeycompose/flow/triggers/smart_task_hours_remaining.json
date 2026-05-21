@@ -1,0 +1,45 @@
+{
+  "title": {
+    "en": "Smart task time remaining crossed"
+  },
+  "titleFormatted": {
+    "en": "[[device]] smart task has [[hours]] h or less remaining"
+  },
+  "hint": {
+    "en": "Fires once when the time left before the smart task's Ready by drops to or below the chosen number of hours. Re-arms when the Ready by is rescheduled. Use it to act a fixed lead-time before a deadline (e.g. 2 h left). The [[hours_remaining]] tag carries the whole hours remaining at the crossing."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select device"
+      }
+    },
+    {
+      "name": "hours",
+      "type": "range",
+      "title": {
+        "en": "Hours before Ready by"
+      },
+      "min": 1,
+      "max": 24,
+      "step": 1
+    }
+  ],
+  "tokens": [
+    {
+      "name": "device_name",
+      "type": "string",
+      "title": { "en": "Device" }
+    },
+    {
+      "name": "hours_remaining",
+      "type": "number",
+      "title": { "en": "Hours remaining" }
+    }
+  ]
+}

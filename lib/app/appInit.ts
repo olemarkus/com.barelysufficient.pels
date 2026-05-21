@@ -366,6 +366,8 @@ export function createPlanEngine(ctx: AppContext) {
       ctx.planService?.getStallClassification(deviceId)
     ),
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
+    getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
+    getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
     disableDeferredObjective: (deviceId) => disableDeferredObjectiveInSettings(ctx, deviceId),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
@@ -390,6 +392,10 @@ const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): 
   // immediately, instead of seeing the last published snapshot until the
   // next plan cycle's forget-sweep runs.
   ctx.deferredObjectiveStatusBus?.forgetDevice(deviceId);
+  // Re-arm the hours-remaining crossing latch so a later re-enabled task with
+  // the same deadline still fires its lead-time trigger rather than treating
+  // the stale boundary as already crossed.
+  ctx.deferredObjectiveHoursRemainingTracker?.forgetDevice(deviceId);
   ctx.deferredObjectiveActivePlanRecorder?.clearForDevice(deviceId);
 };
 
@@ -463,6 +469,7 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
     getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,
+    getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
     applyDeferredObjectiveChange: (params) => {
       const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
       const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);

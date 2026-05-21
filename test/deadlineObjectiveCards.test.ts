@@ -1,11 +1,13 @@
 import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
 import {
   createDeferredObjectiveEndedBus,
+  createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   createEmptyDeferredObjectiveSettings,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveEndedEvent,
+  type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
@@ -83,6 +85,7 @@ const buildDeps = (overrides: {
   bus?: DeferredObjectiveStatusBus;
   planRevisionBus?: DeferredObjectivePlanRevisionBus;
   endedBus?: DeferredObjectiveEndedBus;
+  hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   rebuildPlan?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
   const mock = createMockHomey();
@@ -120,6 +123,7 @@ const buildDeps = (overrides: {
     getDeferredObjectiveStatusBus: () => overrides.bus,
     getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
     getDeferredObjectiveEndedBus: () => overrides.endedBus,
+    getDeferredObjectiveHoursRemainingBus: () => overrides.hoursRemainingBus,
   } as unknown as FlowCardDeps;
   return { deps, mock };
 };
@@ -971,5 +975,111 @@ describe('deadline objective flow cards', () => {
       },
     });
     expect(await condition.run!({ device: 'heater-1' })).toBe(true);
+  });
+
+  it('publishes smart_task_hours_remaining tokens and fires only on its own threshold crossing', async () => {
+    const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('smart_task_hours_remaining')!;
+
+    hoursRemainingBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      hoursRemaining: 2,
+      previousHoursRemaining: 3,
+    });
+
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toEqual({ device_name: 'Garage charger', hours_remaining: 2 });
+    expect(state).toEqual({ deviceId: 'ev-1', hoursRemaining: 2, previousHoursRemaining: 3 });
+
+    // Device filter: only the matching device fires.
+    expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
+    expect(await trigger.run!({ device: 'ev-2', hours: 2 }, state)).toBe(false);
+
+    // Threshold gate: this 3h->2h crossing is the crossing of the "2h" mark
+    // only. A "5h" flow already crossed its mark on an earlier (un-published)
+    // boundary — `previous (3) <= 5` means this is not its crossing, so it must
+    // not fire. A "1h" flow hasn't been reached yet (`2 <= 1` is false).
+    expect(await trigger.run!({ device: 'ev-1', hours: 5 }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'ev-1', hours: 3 }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'ev-1', hours: 1 }, state)).toBe(false);
+  });
+
+  it('fires a given threshold exactly once across a multi-boundary descent', async () => {
+    const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('smart_task_hours_remaining')!;
+
+    // Domain emits one crossing per integer boundary as remaining drops from
+    // first-observation (boundary 4, previous null) down to 1. A flow watching
+    // any single threshold must fire on exactly one of these crossings — the
+    // one that drops from above that threshold to <= it — never twice (the
+    // `previousHoursRemaining > threshold` gate is what prevents the later,
+    // lower crossings from re-firing under the `<=` comparison).
+    const crossings = [
+      { hoursRemaining: 4, previousHoursRemaining: null as number | null },
+      { hoursRemaining: 3, previousHoursRemaining: 4 },
+      { hoursRemaining: 2, previousHoursRemaining: 3 },
+      { hoursRemaining: 1, previousHoursRemaining: 2 },
+    ];
+
+    const fireCountFor = async (threshold: number): Promise<number> => {
+      trigger.trigger.mockClear();
+      let fires = 0;
+      for (const crossing of crossings) {
+        hoursRemainingBus.publish({ deviceId: 'ev-1', deviceName: 'Garage charger', ...crossing });
+        const state = trigger.trigger.mock.calls.at(-1)![1];
+        if (await trigger.run!({ device: 'ev-1', hours: threshold }, state)) fires += 1;
+      }
+      return fires;
+    };
+
+    expect(await fireCountFor(4)).toBe(1);
+    expect(await fireCountFor(2)).toBe(1);
+    expect(await fireCountFor(1)).toBe(1);
+  });
+
+  it('fires once when the first observed crossing is already under the threshold (previous null)', async () => {
+    const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('smart_task_hours_remaining')!;
+
+    // Freshly armed / re-armed: previousHoursRemaining is null. A flow set to
+    // 2h must still fire once even though there was no prior "above" sample.
+    hoursRemainingBus.publish({
+      deviceId: 'ev-1',
+      deviceName: 'Garage charger',
+      hoursRemaining: 1,
+      previousHoursRemaining: null,
+    });
+    const state = trigger.trigger.mock.calls[0]![1];
+    expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
+  });
+
+  it('does not fire smart_task_hours_remaining when the threshold arg is missing or non-finite', async () => {
+    const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('smart_task_hours_remaining')!;
+    const state = { deviceId: 'ev-1', hoursRemaining: 1, previousHoursRemaining: null };
+    expect(await trigger.run!({ device: 'ev-1' }, state)).toBe(false);
+    expect(await trigger.run!({ device: 'ev-1', hours: 'soon' }, state)).toBe(false);
   });
 });

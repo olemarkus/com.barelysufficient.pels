@@ -10,6 +10,7 @@ import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import {
   buildSmartTaskEndedTokens,
+  buildSmartTaskHoursRemainingTokens,
   buildSmartTaskPlanChangedTokens,
   buildSmartTaskStatusTokens,
   type SmartTaskStatusId,
@@ -200,6 +201,7 @@ export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
   registerDeadlineStatusChangedTrigger(deps, lastFlowStatusByDeviceId);
   registerDeadlineEndedTrigger(deps);
   registerDeadlinePlanChangedTrigger(deps);
+  registerSmartTaskHoursRemainingTrigger(deps);
   registerDeadlineStatusIsCondition(deps);
   registerHasActiveDeadlineCondition(deps);
 }
@@ -492,6 +494,61 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
     }
     void card.trigger?.(tokens, { deviceId: event.deviceId })
       .catch((err: Error) => deps.error('Failed to trigger deadline_plan_changed', err));
+  });
+}
+
+// Validates the `hours` threshold arg the same way the set-deadline cards
+// validate their numeric ranges, then returns the finite number. Mirrors the
+// 1..24 range declared in the manifest.
+const resolveHoursThreshold = (raw: unknown): number | null => {
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return value;
+};
+
+function registerSmartTaskHoursRemainingTrigger(deps: FlowCardDeps): void {
+  const card = deps.homey.flow.getTriggerCard('smart_task_hours_remaining');
+  card.registerRunListener(async (args: unknown, state?: unknown) => {
+    const payload = args as { device?: RawFlowDeviceArg; hours?: unknown } | null;
+    const stateRecord = (state ?? {}) as {
+      deviceId?: string;
+      hoursRemaining?: number;
+      previousHoursRemaining?: number | null;
+    };
+    const wantedDeviceId = getDeviceIdFromFlowArg(payload?.device);
+    if (!wantedDeviceId || wantedDeviceId !== stateRecord.deviceId) return false;
+    const threshold = resolveHoursThreshold(payload?.hours);
+    if (threshold === null || typeof stateRecord.hoursRemaining !== 'number') return false;
+    // Fire only on the cycle where remaining first drops to/below this flow's
+    // threshold. The crossing carries the previous emitted boundary; a genuine
+    // downward crossing of *this* threshold means it was previously above it.
+    // `previousHoursRemaining == null` is the first crossing for the deadline
+    // (freshly armed / re-armed / created already under the threshold) and
+    // counts as "previously above" so it fires exactly once.
+    const previous = stateRecord.previousHoursRemaining;
+    const wasAboveThreshold = previous === null || previous === undefined || previous > threshold;
+    return stateRecord.hoursRemaining <= threshold && wasAboveThreshold;
+  });
+  card.registerArgumentAutocompleteListener('device', async (query: string) => {
+    const snapshot = await deps.getSnapshot();
+    return buildDeviceAutocompleteOptions(snapshot, query);
+  });
+
+  const bus = deps.getDeferredObjectiveHoursRemainingBus?.();
+  if (!bus) return;
+  bus.onCrossing((event) => {
+    let tokens: Record<string, unknown>;
+    try {
+      tokens = buildSmartTaskHoursRemainingTokens(event);
+    } catch (err) {
+      deps.error('Failed to build smart_task_hours_remaining tokens', err);
+      return;
+    }
+    void card.trigger?.(tokens, {
+      deviceId: event.deviceId,
+      hoursRemaining: event.hoursRemaining,
+      previousHoursRemaining: event.previousHoursRemaining,
+    }).catch((triggerErr: Error) => deps.error('Failed to trigger smart_task_hours_remaining', triggerErr));
   });
 }
 

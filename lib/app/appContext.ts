@@ -11,6 +11,8 @@ import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/lo
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
 import type {
   DeferredObjectiveEndedBus,
+  DeferredObjectiveHoursRemainingBus,
+  DeferredObjectiveHoursRemainingTracker,
   DeferredObjectivePlanRevisionBus,
   DeferredObjectiveStatusBus,
 } from '../plan/deferredObjectives';
@@ -190,6 +192,8 @@ export type AppContext = {
   readonly deferredObjectiveStatusBus: DeferredObjectiveStatusBus;
   readonly deferredObjectivePlanRevisionBus: DeferredObjectivePlanRevisionBus;
   readonly deferredObjectiveEndedBus: DeferredObjectiveEndedBus;
+  readonly deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus;
+  readonly deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker;
   dailyBudgetService?: DailyBudgetService;
   deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;

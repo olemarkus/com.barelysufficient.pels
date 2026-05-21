@@ -28,6 +28,8 @@ import { syncPendingBinaryCommands } from './planBinaryControl';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type {
+  DeferredObjectiveHoursRemainingBus,
+  DeferredObjectiveHoursRemainingTracker,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
 } from './deferredObjectives';
@@ -71,6 +73,8 @@ export type PlanEngineDeps = {
   observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
   getStallClassification?: PlanBuilderDeps['getStallClassification'];
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
+  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
+  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
   disableDeferredObjective?: (deviceId: string) => void;
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
@@ -125,6 +129,8 @@ export class PlanEngine {
       observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
       getStallClassification: deps.getStallClassification,
       getDeferredObjectiveStatusBus: deps.getDeferredObjectiveStatusBus,
+      getDeferredObjectiveHoursRemainingBus: deps.getDeferredObjectiveHoursRemainingBus,
+      getDeferredObjectiveHoursRemainingTracker: deps.getDeferredObjectiveHoursRemainingTracker,
       disableDeferredObjective: deps.disableDeferredObjective,
       log: deps.log,
       logDebug: deps.logDebug,
