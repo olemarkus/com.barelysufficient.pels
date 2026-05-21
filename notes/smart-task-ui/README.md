@@ -90,8 +90,8 @@ today (best to worst):
    "picked N of M cheapest" framing.
 5. **Recovering-from-mistake user** — opens after a miss-streak run,
    planning the next deadline. List shows the streak; detail shows
-   nothing actionable. No CTA to lower the daily budget or move the
-   deadline later.
+   nothing actionable. No CTA to lower the daily budget or review the
+   device settings that affected the missed run.
 6. **Notification-driven panic visitor** — pushed via a "Smart task
    missed" notification, possibly mid-shower with no hot water. Most
    emotionally invested at point of contact. Today the surface they
@@ -149,7 +149,7 @@ a different page shape than succeeded tasks**.
 | Lead line | `Hit 65 °C at 11:57, 4h 03m before 16:00.` | `Reached 38 °C at 16:00 (target 65 °C, 27 °C short).` | `You cleared this at 04:12.` |
 | Secondary | `Cost ≈ 4.20 kr · 7.2 kWh delivered.` | `Why: {reason}. Cost ≈ 3.10 kr partial.` | `2 of 4 planned kWh delivered by then.` |
 | Plan chart | collapsed by default, "View plan" toggle | always expanded | collapsed |
-| Next-step CTA | none | `Lower daily budget` / `Move deadline later` (composed from reason) | none |
+| Next-step CTA | none | `Lower daily budget` / `Review device` (composed from reason) | none |
 | Notable extras | overshoot line if delivered > target by > 5 °C / 10 % | revisions timeline if `revisionCount > 1` | — |
 
 Pattern: succeeded = receipt; missed = diagnosis + CTA; abandoned =

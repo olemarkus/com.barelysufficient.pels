@@ -815,6 +815,31 @@ Hard enforcement is deferred — see
 [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the design contract
 (admission lane, hard-objective admission headroom, hard-boost rebalancing).
 
+### Smart-task rescue permissions
+
+The shipped rescue permissions are objective-scoped. They are not general
+device settings:
+
+- `go over today's budget` lets the active task ignore daily-budget pacing
+  only while the task's own rescue gate applies. It must not write or behave
+  like a device-wide budget exemption, and the device's real usage still
+  counts in daily usage and hard-cap protection.
+- `limit lower-priority devices` uses the existing boost/escalation path to
+  make room from lower-priority devices when the planned task is allowed to
+  run. It does not guarantee the target can be reached and never raises the
+  hard cap.
+
+Changing a rescue permission changes the authority of the active objective.
+Treat it like an objective input change for commitment/history purposes:
+active commitments must be reset or versioned instead of silently reusing old
+committed hours under new authority. The reserved `flow_permission_changed`
+revision reason is the intended history/log surface for that distinction.
+
+The `at_risk` rescue timing option is not shipped behavior yet. If it is
+implemented later, it must be sticky/debounced: engage once the plan is at risk
+and exit only after a plan that is solidly not at risk holds, otherwise the
+permission can remove its own trigger and flap as plans churn.
+
 ## Planning Horizon and Milestones
 
 Every deferred objective creates a planning horizon:
