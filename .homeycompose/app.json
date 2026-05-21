@@ -10,7 +10,8 @@
     "en": "PELS"
   },
   "description": {
-    "en": "Save energy and money with automatic capacity control and price-aware load shifting."
+    "en": "Keep EV charging, heating and hot water under your power limit, and shift flexible load to cheap hours.",
+    "no": "Hold elbillading, varme og varmtvann under effektgrensen, og flytt fleksibelt forbruk til billige timer."
   },
   "brandColor": "#22c55e",
   "category": [
@@ -26,14 +27,33 @@
   },
   "tags": {
     "en": [
-      "capacity",
-      "hard cap",
-      "energy price",
-      "temperature",
-      "spot price",
-      "grid tariff",
-      "energy optimization",
-      "power management"
+      "power limit",
+      "peak shaving",
+      "EV charging",
+      "water heater",
+      "cheap hours",
+      "dynamic prices",
+      "capacity tariff",
+      "Homey Energy",
+      "Tibber Pulse",
+      "HAN",
+      "floor heating"
+    ],
+    "no": [
+      "effektledd",
+      "kapasitetsledd",
+      "nettleie",
+      "elbillader",
+      "elbillading",
+      "varmtvannsbereder",
+      "billige timer",
+      "strømpris",
+      "Norgespris",
+      "strømstøtte",
+      "Tibber Pulse",
+      "AMS",
+      "HAN",
+      "gulvvarme"
     ]
   },
   "permissions": [
