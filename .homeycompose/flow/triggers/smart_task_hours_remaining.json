@@ -1,6 +1,6 @@
 {
   "title": {
-    "en": "Smart task time remaining crossed"
+    "en": "Smart task time is running low"
   },
   "titleFormatted": {
     "en": "[[device]] smart task has [[hours]] h or less remaining"
@@ -23,7 +23,7 @@
       "name": "hours",
       "type": "range",
       "title": {
-        "en": "Hours before Ready by"
+        "en": "Hours remaining (or fewer)"
       },
       "min": 1,
       "max": 24,
