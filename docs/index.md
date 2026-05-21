@@ -32,7 +32,7 @@ editLink: false
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>You have devices that use a lot of power</h3>
-        <p>Heaters, floor heating, water heaters, ventilation, or EV charging are the most common ones. PELS works best when some of these can be turned down for a while without causing problems.</p>
+        <p>Heaters, floor heating, water heaters, ventilation, or EV charging are the most common ones. PELS works best when some of these can be turned down for a while without causing problems. For chargers, start with <a href="use-cases/homey-ev-charging-power-limit.html">Homey EV charging without crossing your power limit</a>.</p>
       </article>
       <article class="landing-card">
         <h3>You want to stay within your hourly limit</h3>
