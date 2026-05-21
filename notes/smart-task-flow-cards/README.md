@@ -183,6 +183,14 @@ users who prefer a condition card over a token comparison still get one — but
 the comparison value is the same stable id surfaced as `status_id` in the
 trigger.
 
+The shipped dropdown is intentionally the canonical flow-status set only:
+`Waiting`, `On track`, `At risk`, `Cannot finish`, and `Satisfied`
+(`waiting`, `on_track`, `at_risk`, `unachievable`, `satisfied`). Public docs
+must not describe Smart-task list-only display states such as `Scheduled` or
+`Paused — unplugged`, or label variants such as `Building plan…`, as
+selectable values on this condition card unless the card JSON grows matching
+dropdown options.
+
 ## Stable token contract
 
 The following token *values* become public API. Treat any change as a

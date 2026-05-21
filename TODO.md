@@ -68,6 +68,53 @@ PR #934.)*
       `packages/shared-domain/src/deadlinesListHero.ts`.
       Source: `pels-copy-and-terminology`, v2.8.0 release-review pass.
 
+- [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
+      rescue and hard-cap terminology. The rescue card should not
+      over-promise: `Set what a smart task may do` may grant daily-budget
+      leeway or let the existing boost path limit lower-priority devices, but
+      it still stays inside the hard cap and does not guarantee every target
+      can be rescued. README / App Store copy should say `hard cap` instead of
+      `power limit` where the text means the configured physical ceiling.
+      Norwegian Enova wording should stay relevant without sounding like PELS
+      guarantees support eligibility. The hours-left trigger/card copy should
+      use `hours` / `ready-by time` instead of terse `h` / `Ready by`. Also
+      soften `docs/smart-tasks.md` rescue-leeway wording that currently says
+      granting leeway is "harmless when the task is already on track";
+      permissions persist, so the honest claim is that they have no effect
+      until the planned/rescue gate actually applies.
+      Files: `README.md`, `.homeycompose/app.json`,
+      `.homeycompose/flow/**/*smart_task*`, `docs/smart-tasks.md`,
+      `docs/stromstyring-norge.md`, generated `app.json` after
+      `homey app validate`.
+      Source: v2.8.0 release-review leftovers, 2026-05-21.
+
+- [ ] Align `docs/flow-cards.md` Smart task status-condition docs with
+      the actual condition dropdown. The public docs currently describe list
+      / detail statuses such as `Building plan…`, `Scheduled`, and
+      `Paused — unplugged`, but
+      `.homeycompose/flow/conditions/deadline_status_is.json` exposes only
+      `Waiting`, `On track`, `At risk`, `Cannot finish`, and `Satisfied`.
+      Update the docs so users do not build flows around statuses the
+      condition card cannot select.
+      Files: `docs/flow-cards.md`,
+      `.homeycompose/flow/conditions/deadline_status_is.json` (reference
+      only).
+      Source: v2.8.0 release-review leftovers, 2026-05-21.
+
+- [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
+      upstream has a non-breaking 6.x path. Current lock:
+      `socket.io-client@4.8.3` -> `engine.io-client@6.6.4` ->
+      `ws@~8.18.3`, leaving GHSA-58qx-3vcg-4xpx open. npm registry check on
+      2026-05-21 shows `engine.io-client@6.6.5` (which depends on
+      `ws@~8.20.1`) is inside `socket.io-client`'s `~6.6.1` transitive
+      range. Acceptance: prefer a non-breaking lockfile refresh
+      (`npm update engine.io-client` or equivalent) that keeps
+      `socket.io-client@4.8.3`; rerun `npm audit`; do not use
+      `npm audit fix --force` or downgrade `socket.io-client`.
+      Files: `package-lock.json`, `package.json` only if an override becomes
+      necessary.
+      Source: v2.8.0 release-review leftovers, 2026-05-21.
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
@@ -2093,18 +2140,6 @@ should not be folded into the same PR.
       from the price source down to the recorder. Filed as chatgpt-codex P2
       on PR #890 (thread `PRRT_kwDOQhCm-86CxCbo`).
 
-- [ ] Deferred dependency vuln: `ws` (GHSA-58qx-3vcg-4xpx, moderate,
-      uninitialized-memory disclosure). Pulled in transitively via
-      `socket.io-client@4.8.3` → `engine.io-client@6.6.4`, which pins
-      `ws@~8.18.3`; the patched `ws@8.20.1` is outside that range, so there is
-      no clean fix yet. `npm audit fix --force` only "resolves" it by
-      downgrading `socket.io-client` to 4.2.0 (breaking) — do not do that.
-      Wait for `engine.io-client` to bump its `ws` range upstream, then drop
-      this. A forced `overrides: { "ws": "8.20.1" }` is the fallback if the
-      advisory escalates. Moderate severity; runtime websocket talks to
-      trusted Homey infra. Recorded 2026-05-20 alongside the safe
-      `npm audit fix` (fast-uri High + postcss/brace-expansion moderates).
-
 - [ ] Smart-task rescue permissions — phase-2 / follow-ups (from the exempt-from-budget
       PR `codex/smart-task-rescue-permissions-via-flow`):
       - **limit-lower-priority lane — SHIPPED via boost** (`codex/smart-task-rescue-phase2`):
@@ -2121,18 +2156,26 @@ should not be folded into the same PR.
             oscillation. (`lib/plan/deferredObjectives/admission.ts`)
           - **(P3)** forced-boost `temperature_boost_state_changed` / `ev_boost_state_changed`
             logs emit the device's own (often empty) threshold fields — add a forced-cause
-            marker for field debugging. (`planTemperatureBoost.ts`, `planEvBoost.ts`)
-      - **`at_risk` rescue mode + hysteresis.** Add the "when at risk" `when` option.
-        At-risk = the plan, using only always-on behaviours, projects to miss the target.
-        The rescue must be sticky: engage on at-risk, exit only once a plan that is
-        *solidly* not-at-risk holds (debounce) — the rescue removes its own trigger and
-        would otherwise flap as plans churn. `resolveWhen` + the schema already accept
-        `at_risk`; the producer only honours `'always'` today.
+            marker for field debugging only if rescue field logs prove ambiguous.
+            (`planTemperatureBoost.ts`, `planEvBoost.ts`)
+          - **(P2)** broader rescue regressions: pin that a budget-rescue task
+            does not become a general device exemption, and that toggling rescue
+            permission resets/versions active commitments rather than silently
+            applying new authority to old committed hours.
+      - **`at_risk` rescue mode + hysteresis.** Implement later only. Add the
+        "when at risk" `when` option once sticky/debounced semantics exist:
+        engage on at-risk, exit only after a plan that is *solidly*
+        not-at-risk holds. Do not expose, document, or rely on `at_risk` as
+        shipped behavior before that producer path exists. `resolveWhen` + the
+        schema already accept `at_risk`; the producer only honours `'always'`
+        today.
       - **Emit `flow_permission_changed`.** The reason, label, and persistence allowlist
         are forward-declared; nothing emits it yet (a rescue toggle surfaces as
         `schedule_revised`). Thread rescue-change detection into the recorder's
         `resolveReplanReason` (e.g. include `rescue` in the objective signature with a
-        rescue-specific reason branch).
+        rescue-specific reason branch). Pair with the commitment-versioning
+        regression above so permission changes are visible in history and do
+        not mutate already-committed schedules invisibly.
       - **Move the card's thrown error strings to shared-domain** (per
         `feedback_ui_text_shared_with_logs`) — pre-existing convention gap shared with
         `add_budget_exemption`; `flowCards/smartTaskRescueCard.ts`.
