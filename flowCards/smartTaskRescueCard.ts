@@ -11,6 +11,12 @@ import {
 } from './deadlineObjectiveCards';
 import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import {
+  SMART_TASK_RESCUE_INVALID_PROPERTY,
+  SMART_TASK_RESCUE_INVALID_WHEN,
+  SMART_TASK_RESCUE_MISSING_DEVICE,
+  SMART_TASK_RESCUE_NO_TASK,
+} from '../packages/shared-domain/src/smartTaskRescueStrings';
 import type { FlowCardDeps } from './registerFlowCards';
 
 type RescuePropertyId = 'exempt_from_budget' | 'limit_lower_priority';
@@ -23,7 +29,7 @@ const RESCUE_PROPERTY_KEYS: Record<RescuePropertyId, keyof DeferredObjectiveResc
 const resolveRescuePropertyId = (raw: DropdownArg | undefined): RescuePropertyId => {
   const id = getDropdownId(raw);
   if (id === 'exempt_from_budget' || id === 'limit_lower_priority') return id;
-  throw new Error('Choose which rescue permission to set.');
+  throw new Error(SMART_TASK_RESCUE_INVALID_PROPERTY);
 };
 
 // 'never' clears the permission; 'at_risk' / 'always' set the mode.
@@ -31,7 +37,7 @@ const resolveWhen = (raw: DropdownArg | undefined): DeferredObjectiveRescueMode 
   const id = getDropdownId(raw);
   if (id === 'never') return undefined;
   if (id === 'at_risk' || id === 'always') return id;
-  throw new Error('Choose when this applies: never, or when the device is planned to run.');
+  throw new Error(SMART_TASK_RESCUE_INVALID_WHEN);
 };
 
 // Rebuild the rescue permissions from the existing entry plus the single changed
@@ -60,14 +66,14 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
   card.registerRunListener(async (args: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg; property?: DropdownArg; when?: DropdownArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
-    if (!deviceId) throw new Error('Device must be provided.');
+    if (!deviceId) throw new Error(SMART_TASK_RESCUE_MISSING_DEVICE);
     const key = RESCUE_PROPERTY_KEYS[resolveRescuePropertyId(payload?.property)];
     const mode = resolveWhen(payload?.when);
     const accessors = requireSettingsAccessors(deps);
     const settings = accessors.read();
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     if (!prevEntry) {
-      throw new Error('That device has no smart task yet — add a deadline first.');
+      throw new Error(SMART_TASK_RESCUE_NO_TASK);
     }
     // Idempotent: an unchanged mode means no write, no re-plan, no plan revision.
     if (prevEntry.rescue?.[key] === mode) return true;

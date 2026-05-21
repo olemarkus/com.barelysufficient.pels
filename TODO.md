@@ -2176,14 +2176,19 @@ should not be folded into the same PR.
         rescue-specific reason branch). Pair with the commitment-versioning
         regression above so permission changes are visible in history and do
         not mutate already-committed schedules invisibly.
-      - **Move the card's thrown error strings to shared-domain** (per
-        `feedback_ui_text_shared_with_logs`) — pre-existing convention gap shared with
-        `add_budget_exemption`; `flowCards/smartTaskRescueCard.ts`.
+      - **Move `add_budget_exemption`'s thrown error string to shared-domain** (per
+        `feedback_ui_text_shared_with_logs`) — pre-existing convention gap.
+        `flowCards/deviceSettingsCards.ts` builds the message from a dynamic `label`
+        (`` `${label} device must be provided` ``), so externalizing it needs a small
+        formatter rather than a constant. (The `allow_smart_task_rescue` card's four
+        thrown strings were moved to `packages/shared-domain/src/smartTaskRescueStrings.ts`.)
+      - **(P2) Reword the `when`-dropdown error copy** in
+        `packages/shared-domain/src/smartTaskRescueStrings.ts`
+        (`SMART_TASK_RESCUE_INVALID_WHEN`): `"…or when the device is planned to run."` leans on
+        the planning-layer verb on a smart-task surface. Per `feedback_terminology_plan_vs_deadline`
+        / `notes/ui-terminology.md` § plan-vs-deadline, prefer `"…or when the device's smart task
+        is scheduled to run."` (matches the `Scheduled` chip). Pre-existing v2.9.0 copy, so it's a
+        wording change rather than part of the verbatim string move. Source: `pels-copy-and-terminology`.
       - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
         unchanged mode); assert daily-budget shedding of *other* devices isn't suppressed
         when an exempt-always task is merely `planned` but drawing little.
-
-- [ ] Smart-task hours-left trigger (#940) — add a regression test that `clear_deadline`
-      followed by an immediate same-deadline re-add fires the `smart_task_hours_remaining`
-      trigger exactly once (today that path relies on the next-cycle stale-sweep rather
-      than a direct `forgetDevice`).
