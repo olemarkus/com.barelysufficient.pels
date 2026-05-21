@@ -35,4 +35,4 @@ npm run docs:promote:live -- v2.7.0
 
 When the ref is omitted, the promotion scripts use `v<app.json version>`.
 
-The short Homey App Store description stays in [`README.txt`](./README.txt).
+Homey App Store readmes live in [`README.txt`](./README.txt) and [`README.no.txt`](./README.no.txt); one-line descriptions and tags live in [`.homeycompose/app.json`](./.homeycompose/app.json).
