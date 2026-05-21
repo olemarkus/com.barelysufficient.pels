@@ -8,6 +8,7 @@ import {
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
+import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
 import {
   buildSmartTaskEndedTokens,
   buildSmartTaskHoursRemainingTokens,
@@ -42,14 +43,6 @@ const PENDING_FLOW_STATUS: SmartTaskActiveFlowStatus = 'waiting';
 export const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
-
-const supportsTemperatureObjective = (device: TargetDeviceSnapshot): boolean => (
-  device.deviceType === 'temperature' || device.targets.length > 0
-);
-
-const isEvCharger = (device: TargetDeviceSnapshot): boolean => (
-  device.deviceClass === 'evcharger'
-);
 
 export const requireSettingsAccessors = (deps: FlowCardDeps): {
   read: () => DeferredObjectiveSettingsV1;
