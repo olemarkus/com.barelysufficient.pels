@@ -5,7 +5,7 @@ description: Use PELS modes with Homey Flows to change comfort targets, prioriti
 
 # Use Home, Away and Night modes for energy behavior
 
-Homey can know when people are home, away or asleep. PELS can use that state to change how energy is managed.
+Homey can use presence, time, manual buttons or other automations to decide whether the home should be in a Home, Away or Night routine. PELS can use that state to change how energy is managed.
 
 Instead of rebuilding every Flow for every routine, use PELS modes. A mode can have different comfort targets, priorities and energy behavior. Homey Flows can then switch PELS between Home, Away and Night.
 
@@ -31,7 +31,7 @@ A PELS mode can change how devices are treated. For example:
 - price shifting can be more or less aggressive
 - Smart tasks can still protect ready-by goals
 
-The hard cap still applies. Modes do not override the configured power limit.
+The hard cap still applies. Modes do not override it.
 
 ## Example: Home mode
 

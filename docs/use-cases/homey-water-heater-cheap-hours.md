@@ -1,13 +1,13 @@
 ---
 title: Run hot water and heating in cheaper hours with Homey
-description: Use PELS to move water heaters, floor heating, panel heaters and ventilation toward cheap electricity hours while protecting your power limit.
+description: Use PELS to move water heaters, floor heating, panel heaters and ventilation toward cheap electricity hours while protecting your hard cap.
 ---
 
 # Run hot water and heating in cheaper hours with Homey
 
 Water heaters, floor heating, panel heaters and ventilation can use a lot of power. They are also often flexible: they do not always need to run at the exact moment the price is high.
 
-PELS helps Homey move flexible load toward cheaper hours while still protecting the configured power limit. That matters because the cheapest hour is not always the best hour if EV charging, cooking, heating, and hot water all run at the same time.
+PELS helps Homey move flexible load toward cheaper hours while still protecting the hard cap. That matters because the cheapest hour is not always the best hour if EV charging, cooking, heating, and hot water all run at the same time.
 
 ## When this is useful
 
@@ -17,16 +17,21 @@ Use this setup when you want to:
 - preheat rooms before you come home
 - lower heating when prices are high
 - avoid running several large loads at the same time
-- keep the home below a capacity tariff step or power limit
+- keep the home below a capacity tariff step or hard cap
 - let higher-priority devices win when available power is limited
 
 PELS is useful when the load can move in time. A water heater, floor heating loop or panel heater usually has some thermal buffer. A device that must run immediately is less suitable for price shifting.
+
+Only control water heaters, floor heating or other fixed electrical loads with equipment
+that is rated for the load and installed correctly. Fixed electrical work should be
+handled by qualified professionals. Keep temperature, hygiene and safety requirements
+in mind; PELS should schedule the load, not remove the need for safe hot-water control.
 
 ## Price shifting still needs a hard cap
 
 A common mistake is to turn on every flexible device when the price is low.
 
-That can backfire. If hot water, floor heating, ventilation boost and EV charging all start in the same cheap hour, the home may cross the configured power limit or move into a more expensive capacity tariff step.
+That can backfire. If hot water, floor heating, ventilation boost and EV charging all start in the same cheap hour, the home may cross the hard cap or move into a more expensive capacity tariff step.
 
 PELS treats the hard cap as the boundary. Price shifting happens inside that boundary.
 
@@ -91,7 +96,7 @@ PELS works best when the home has both reliable whole-home power data and device
 
 Use this rough guide:
 
-- Use power limiting when the main concern is staying below a power limit.
+- Use power limiting when the main concern is staying below the hard cap.
 - Use price shifting when the load can move to cheaper hours.
 - Use daily budget when you want PELS to pace energy use across the day.
 - Use Smart tasks when something must be ready by a specific time.
