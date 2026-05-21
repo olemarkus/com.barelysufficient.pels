@@ -49,12 +49,19 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  // When true (an at-risk smart task that was granted the "exempt from budget"
+  // rescue permission), the per-bucket daily-budget cap is lifted so the planner
+  // may schedule into otherwise budget-exhausted buckets. This relaxes only the
+  // soft daily-budget throttle; physical capacity stays enforced downstream at
+  // admission and the capacity guard.
+  exemptFromBudget?: boolean;
 }): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
     deadlineAtMs,
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
+    exemptFromBudget = false,
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
@@ -68,7 +75,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     return unavailable('objective_missing_price_horizon');
   }
   return {
-    buckets: mapPolicyBuckets(sourceBuckets),
+    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget),
     horizonBucketCount: sourceBuckets.length,
     dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
@@ -221,12 +228,15 @@ const coversHorizon = (params: {
   return false;
 };
 
-const mapPolicyBuckets = (buckets: PolicyBucketSource[]): DeferredObjectiveHorizonBucket[] => {
+const mapPolicyBuckets = (
+  buckets: PolicyBucketSource[],
+  exemptFromBudget: boolean,
+): DeferredObjectiveHorizonBucket[] => {
   const ranked = rankPrices(buckets.map((bucket) => bucket.price));
   return buckets.map((bucket, index) => {
     const priceFactor = bucket.priceFactor;
     const rankedScore = ranked[index] ?? 1;
-    const cap = resolveMaxUsefulEnergyKWh(bucket);
+    const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     return {
       id: bucket.id,
       startMs: bucket.startMs,
@@ -238,7 +248,14 @@ const mapPolicyBuckets = (buckets: PolicyBucketSource[]): DeferredObjectiveHoriz
   });
 };
 
-const resolveMaxUsefulEnergyKWh = (bucket: PolicyBucketSource): number | null => {
+const resolveMaxUsefulEnergyKWh = (
+  bucket: PolicyBucketSource,
+  exemptFromBudget: boolean,
+): number | null => {
+  // "Exempt from budget" lifts the per-bucket daily-budget cap entirely; the
+  // bucket falls back to the device's step capacity in allocation, and physical
+  // limits are enforced downstream (admission / capacity guard).
+  if (exemptFromBudget) return null;
   if (bucket.perBucketBudgetKWh === null || bucket.backgroundKWh === null) return null;
   return Math.max(0, bucket.perBucketBudgetKWh - bucket.backgroundKWh);
 };

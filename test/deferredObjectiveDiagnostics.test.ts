@@ -469,6 +469,34 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     }
   });
 
+  it('lifts the per-bucket cap entirely when exempt from budget, even on an exhausted budget', () => {
+    // Same budget-exhausted plateau as the exhaustion test (caps collapse to 0), but with
+    // exemptFromBudget the daily-budget per-bucket cap is removed so the device can plan
+    // against step capacity. The physical hard cap stays enforced downstream.
+    const plateauedAllowed = Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20));
+    const snapshot = {
+      allowedCumKWh: plateauedAllowed,
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+    };
+    const capped = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot(snapshot),
+    });
+    const exempt = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot(snapshot),
+      exemptFromBudget: true,
+    });
+    expect(capped.buckets.length).toBeGreaterThan(0);
+    expect(capped.buckets.every((bucket) => bucket.maxUsefulEnergyKWh === 0)).toBe(true);
+    // Exempt: the per-bucket cap is omitted entirely (allocation falls back to step capacity).
+    expect(exempt.buckets.every((bucket) => bucket.maxUsefulEnergyKWh === undefined)).toBe(true);
+  });
+
   it('does not flag exhaustion when the per-bucket cap is non-zero', () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
@@ -510,6 +538,37 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       horizonBucketCount: 5,
     });
     expect(diagnostic?.horizonPlan?.plannedBuckets.some((bucket) => bucket.preference === 'preferred')).toBe(true);
+  });
+
+  it('reports zero budget-exhausted buckets for an exempt-from-budget task on an exhausted budget', () => {
+    // NOW_MS is 17:00 UTC; allowedCumKWh plateaus at the 20 kWh cap from index 9, so the
+    // whole 17:00-22:00 horizon sits on the exhausted plateau.
+    const exhausted = {
+      allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+    };
+    const baseSettings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' }));
+    const exemptSettings = {
+      ...baseSettings,
+      objectivesByDeviceId: {
+        'ev-1': { ...baseSettings.objectivesByDeviceId['ev-1']!, rescue: { exemptFromBudget: 'always' as const } },
+      },
+    };
+    const run = (settings: typeof baseSettings) => buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(exhausted),
+      priceOptimizationEnabled: true,
+    })[0];
+
+    // Control: without rescue the exhausted budget collapses the per-bucket caps to zero.
+    expect(run(baseSettings)?.dailyBudgetExhaustedBucketCount).toBeGreaterThan(0);
+    // Exempt-always lifts the caps, so the diagnostic must not report budget exhaustion —
+    // otherwise a capacity/time-limited cannot_meet is misattributed to the daily budget.
+    expect(run(exemptSettings)?.dailyBudgetExhaustedBucketCount).toBe(0);
   });
 
   it('uses a committed active-plan schedule instead of moving to newly preferred hours', () => {

@@ -13,7 +13,7 @@ import type {
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
 import { formatDeadlineLocalTime } from './deadline';
-import { planDeferredObjectiveHorizon } from './horizonPlanner';
+import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { resolveCommittedHours } from './resolveCommittedHours';
 import { firstPositiveFinite, resolvePlanningSpeedKw } from './planningSpeed';
@@ -32,15 +32,6 @@ import type {
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
 } from './types';
-
-// Reserve a flat 1-hour safety buffer before the deadline. The horizon planner
-// allocates into the primary window (now → deadline − reserve) first and only
-// dips into the reserve hour when every earlier hour is fully booked. Crossing
-// into the reserve flips the diagnostic to `at_risk` so users see "your plan
-// has no slack left" before they actually miss the deadline. A 1-hour reserve
-// is the smallest buffer that gives users actionable warning time for the
-// EV-overnight / heater-morning use cases this slice targets.
-const DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
 
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
@@ -96,6 +87,10 @@ type BaseDeferredObjectiveDiagnostic = {
   dailyBudgetExhaustedBucketCount: number;
   requestedMinimumStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
+  // True when the smart task's "exempt from budget" rescue permission is being applied
+  // to this plan (phase 1: mode 'always'). Admission consumes this flat flag to set the
+  // device's existing `budgetExempt` — the producer resolves it, consumers don't re-derive.
+  budgetExemptApplied?: boolean;
 };
 
 // Discriminated by `objectiveKind`. Temperature variants always carry a
@@ -276,6 +271,8 @@ const buildDeferredObjectiveDiagnostic = (params: {
       progress,
       policyHorizon: { buckets: [], horizonBucketCount: 0, dailyBudgetExhaustedBucketCount: 0, reasonCode: null },
       deadlineAtMs: objective.deadlineAtMs,
+      priceOptimizationEnabled,
+      dailyBudgetSnapshot,
       activePlans,
     });
   }
@@ -310,6 +307,8 @@ const buildDeferredObjectiveDiagnostic = (params: {
     progress,
     policyHorizon,
     deadlineAtMs: objective.deadlineAtMs,
+    priceOptimizationEnabled,
+    dailyBudgetSnapshot,
     activePlans,
   });
 };
@@ -324,6 +323,8 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   progress: DeferredObjectiveProgressResolution;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
+  priceOptimizationEnabled: boolean;
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
 }): DeferredObjectiveDiagnostic => {
   const {
@@ -336,6 +337,8 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     progress,
     policyHorizon,
     deadlineAtMs,
+    priceOptimizationEnabled,
+    dailyBudgetSnapshot,
     activePlans,
   } = params;
   if (progress.reasonCode) {
@@ -390,20 +393,17 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     deviceId,
     objective,
   });
-  const horizonPlan = planDeferredObjectiveHorizon({
+  const { plan: horizonPlan, dailyBudgetExhaustedBucketCount } = resolveHorizonPlanWithRescue({
     nowMs,
-    objective: {
-      id: `${deviceId}:${objective.kind}`,
-      kind: objective.kind,
-      enforcement: objective.enforcement,
-      energyNeededKWh: profileEnergy.energyNeededKWh,
-      deadlineAtMs,
-      deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
-    },
+    deviceId,
+    objective,
+    energyNeededKWh: profileEnergy.energyNeededKWh,
+    deadlineAtMs,
     steps,
-    buckets: policyHorizon.buckets,
-    committed: commitment !== undefined,
-    committedHours: commitment,
+    commitment,
+    policyHorizon,
+    priceOptimizationEnabled,
+    dailyBudgetSnapshot,
   });
 
   return {
@@ -417,8 +417,9 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     displayConfidence: profileEnergy.displayConfidence,
     kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
     horizonBucketCount: policyHorizon.horizonBucketCount,
-    dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
+    dailyBudgetExhaustedBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
+    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always',
     horizonPlan,
   };
 };

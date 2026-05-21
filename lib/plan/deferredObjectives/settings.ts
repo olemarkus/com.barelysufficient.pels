@@ -2,12 +2,27 @@ import type { DeferredObjectiveEnforcement } from './types';
 
 export const DEFERRED_OBJECTIVES_SETTINGS_VERSION = 1;
 
+/**
+ * Per-smart-task rescue permissions. Each permission carries a mode: `'always'`
+ * applies it to the whole plan from the start (the device is "emancipated" up
+ * front); `'at_risk'` applies it only when the task would otherwise miss its
+ * deadline. Absent = off (current behaviour). Mirror of
+ * `packages/contracts/src/deferredObjectiveSettings.ts` — keep both in sync.
+ */
+export type DeferredObjectiveRescueMode = 'always' | 'at_risk';
+
+export type DeferredObjectiveRescuePermissions = {
+  exemptFromBudget?: DeferredObjectiveRescueMode;
+  limitLowerPriorityDevices?: DeferredObjectiveRescueMode;
+};
+
 export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature';
 
 type DeferredObjectiveSettingsEntryBase = {
   enabled: boolean;
   kind: DeferredObjectiveSettingsKind;
   deadlineAtMs: number;
+  rescue?: DeferredObjectiveRescuePermissions;
 };
 
 export type DeferredObjectiveEvSocSettingsEntry = DeferredObjectiveSettingsEntryBase & {
@@ -55,9 +70,7 @@ export const normalizeDeferredObjectiveSettings = (raw: unknown): DeferredObject
   };
 };
 
-export const normalizeDeferredObjectiveSettingsEntry = (
-  raw: unknown,
-): DeferredObjectiveSettingsEntry | null => {
+const normalizeEntryBase = (raw: unknown): DeferredObjectiveSettingsEntry | null => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const entry = raw as Partial<DeferredObjectiveSettingsEntry>;
   if (typeof entry.enabled !== 'boolean') return null;
@@ -88,6 +101,35 @@ export const normalizeDeferredObjectiveSettingsEntry = (
   }
 
   return null;
+};
+
+export const normalizeDeferredObjectiveSettingsEntry = (
+  raw: unknown,
+): DeferredObjectiveSettingsEntry | null => {
+  const base = normalizeEntryBase(raw);
+  if (!base) return null;
+  const rescue = normalizeRescuePermissions((raw as { rescue?: unknown }).rescue);
+  return rescue ? { ...base, rescue } : base;
+};
+
+const isRescueMode = (value: unknown): value is DeferredObjectiveRescueMode => (
+  value === 'always' || value === 'at_risk'
+);
+
+const normalizeRescuePermissions = (
+  raw: unknown,
+): DeferredObjectiveRescuePermissions | undefined => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const value = raw as Partial<Record<keyof DeferredObjectiveRescuePermissions, unknown>>;
+  const exemptFromBudget = isRescueMode(value.exemptFromBudget) ? value.exemptFromBudget : undefined;
+  const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices)
+    ? value.limitLowerPriorityDevices
+    : undefined;
+  if (!exemptFromBudget && !limitLowerPriorityDevices) return undefined;
+  return {
+    ...(exemptFromBudget ? { exemptFromBudget } : {}),
+    ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
+  };
 };
 
 const isValidDeadlineAtMs = (value: unknown): value is number => (

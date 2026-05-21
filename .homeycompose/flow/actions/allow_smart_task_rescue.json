@@ -1,0 +1,65 @@
+{
+  "title": {
+    "en": "Set what a smart task may do"
+  },
+  "titleFormatted": {
+    "en": "Allow [[device]]'s smart task to [[property]] [[when]]"
+  },
+  "hint": {
+    "en": "Choose what PELS may do to keep this smart task's deadline, and when. 'While it's scheduled to run' applies it the whole time the task is active. Changing it updates the schedule right away; it sticks until you change it or clear the smart task."
+  },
+  "args": [
+    {
+      "name": "device",
+      "type": "autocomplete",
+      "title": {
+        "en": "Device"
+      },
+      "placeholder": {
+        "en": "Select smart-task device"
+      }
+    },
+    {
+      "name": "property",
+      "type": "dropdown",
+      "title": {
+        "en": "Permission"
+      },
+      "values": [
+        {
+          "id": "exempt_from_budget",
+          "label": {
+            "en": "go over today's budget"
+          }
+        },
+        {
+          "id": "limit_lower_priority",
+          "label": {
+            "en": "limit lower-priority devices"
+          }
+        }
+      ]
+    },
+    {
+      "name": "when",
+      "type": "dropdown",
+      "title": {
+        "en": "When"
+      },
+      "values": [
+        {
+          "id": "never",
+          "label": {
+            "en": "at no time"
+          }
+        },
+        {
+          "id": "always",
+          "label": {
+            "en": "while it's scheduled to run"
+          }
+        }
+      ]
+    }
+  ]
+}

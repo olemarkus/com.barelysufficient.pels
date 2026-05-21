@@ -2104,3 +2104,38 @@ should not be folded into the same PR.
       advisory escalates. Moderate severity; runtime websocket talks to
       trusted Homey infra. Recorded 2026-05-20 alongside the safe
       `npm audit fix` (fast-uri High + postcss/brace-expansion moderates).
+
+- [ ] Smart-task rescue permissions — phase-2 / follow-ups (from the exempt-from-budget
+      PR `codex/smart-task-rescue-permissions-via-flow`):
+      - **limit-lower-priority lane.** `limit_lower_priority` ships in the
+        `allow_smart_task_rescue` card but the run-listener rejects it ("not available
+        yet") and the planner ignores `limitLowerPriorityDevices`. Wire the lane: the
+        permission guarantees the objective its capacity (shed lower-priority devices on
+        demand → guaranteed headroom), so the planner can raise the assured delivery
+        (higher committed step) safely — the guarantee is exactly what de-risks the
+        higher-step commitment `horizonPlanner` otherwise refuses. Then drop the
+        listener rejection. Files: `flowCards/smartTaskRescueCard.ts`,
+        `lib/plan/deferredObjectives/rescueReplan.ts`, `horizonPlanner.ts`,
+        `lib/plan/shedding/candidates.ts`.
+      - **`at_risk` rescue mode + hysteresis.** Add the "when at risk" `when` option.
+        At-risk = the plan, using only always-on behaviours, projects to miss the target.
+        The rescue must be sticky: engage on at-risk, exit only once a plan that is
+        *solidly* not-at-risk holds (debounce) — the rescue removes its own trigger and
+        would otherwise flap as plans churn. `resolveWhen` + the schema already accept
+        `at_risk`; the producer only honours `'always'` today.
+      - **Emit `flow_permission_changed`.** The reason, label, and persistence allowlist
+        are forward-declared; nothing emits it yet (a rescue toggle surfaces as
+        `schedule_revised`). Thread rescue-change detection into the recorder's
+        `resolveReplanReason` (e.g. include `rescue` in the objective signature with a
+        rescue-specific reason branch).
+      - **Move the card's thrown error strings to shared-domain** (per
+        `feedback_ui_text_shared_with_logs`) — pre-existing convention gap shared with
+        `add_budget_exemption`; `flowCards/smartTaskRescueCard.ts`.
+      - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
+        unchanged mode); assert daily-budget shedding of *other* devices isn't suppressed
+        when an exempt-always task is merely `planned` but drawing little.
+
+- [ ] Smart-task hours-left trigger (#940) — add a regression test that `clear_deadline`
+      followed by an immediate same-deadline re-add fires the `smart_task_hours_remaining`
+      trigger exactly once (today that path relies on the next-cycle stale-sweep rather
+      than a direct `forgetDevice`).
