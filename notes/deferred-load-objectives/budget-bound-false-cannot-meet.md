@@ -1,9 +1,12 @@
 # Budget-bound false `cannot_meet` (+ exempt-from-budget not applied)
 
-Status: open. Telemetry landed (rescue/exempt visibility in
-`deferred_objective_horizon_planned`). Status-classification fix (Prong C) and
-exempt-honoring diagnosis (Prong B) tracked in `TODO.md` P0. Not data-gated like
-the confidence (Cause #1) work — B and C are code-actionable.
+Status: Prong A (rescue/exempt telemetry) and Prong C (budget-bound vs physical
+status classification) shipped. Remaining: route the per-bucket *background
+squeeze* copy via a producer-resolved budget-bound flag on the persisted revision
+(P1 — the literal "Connected 300" case is de-alarmed but still shows device-side
+copy), and the Prong B exempt-not-applied diagnosis (gated on the telemetry / a
+live rescue check). Tracked in `TODO.md` P0. Not data-gated like the confidence
+(Cause #1) work.
 
 ## Symptom (prod, 2026-05-22, commit `d280c1ed`)
 

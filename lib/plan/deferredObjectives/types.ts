@@ -21,6 +21,7 @@ export type DeferredObjectiveHorizonStatusDetail =
   | 'deadline_passed'
   | 'energy_already_met'
   | 'feasible_above_floor'
+  | 'limited_by_daily_budget'
   | 'invalid_bucket_plan'
   | 'invalid_deadline'
   | 'invalid_energy'

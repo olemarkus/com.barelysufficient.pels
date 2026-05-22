@@ -866,7 +866,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeGreaterThan(0);
   });
 
-  it('surfaces dailyBudgetExhaustedBucketCount on cannot_meet so the UI can explain the constraint', () => {
+  it('surfaces dailyBudgetExhaustedBucketCount on a budget-bound at_risk plan so the UI can explain the constraint', () => {
     // allowedCumKWh plateaus at the 20 kWh daily cap from index 9 onwards, so
     // every horizon bucket (17–20 with the default 21:00 deadline) inherits a
     // 0 kWh per-bucket cap purely because the daily budget cap was already hit
@@ -887,7 +887,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic?.status).toBe('cannot_meet');
+    // Cumulative budget exhaustion is budget-bound (uncapped it would fit), so
+    // the verdict is at_risk/limited_by_daily_budget rather than a physical
+    // cannot_meet; the exhausted-bucket count still explains the constraint.
+    expect(diagnostic?.status).toBe('at_risk');
+    expect(diagnostic?.reasonCode).toBe('limited_by_daily_budget');
     expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(4);
   });
 
