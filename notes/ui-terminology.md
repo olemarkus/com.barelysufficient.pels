@@ -166,7 +166,16 @@ contracts remain stable — only the user-visible chip label changed.
 
 ### Recourse labels
 
-Smart-task heroes (live "cannot finish" and history-detail "missed") render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. Source: `resolveMissedHistoryRecourse` and `cannotMeet*Recourse` helpers in `deadlineLabels.ts`.
+Smart-task heroes render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. The **live "cannot finish"** hero and the **history-detail "missed"** card use *different* label sets — keep them distinct. Source: `CANNOT_MEET_RECOURSE` (live) and `resolveMissedHistoryRecourse` (history) in `deadlineLabels.ts`.
+
+**Live "cannot finish"** (`CANNOT_MEET_RECOURSE`):
+
+| Label | When | Lands on |
+|---|---|---|
+| `Open Budget` | Daily energy budget is exhausted before the deadline. | Budget tab. |
+| `Adjust device` | Any other cannot-finish cause (shortfall, capacity pressure). | Overview tab. |
+
+**History-detail "missed"** (`resolveMissedHistoryRecourse`):
 
 | Label | When | Lands on |
 |---|---|---|
@@ -178,6 +187,14 @@ The prior "Move deadline later" copy promised an action neither destination offe
 ### "Plan" vs "deadline" on smart-task surfaces
 
 Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *objective*, or *smart task* for lifecycle and identity language ("set a deadline", "smart task ended"). Surface labels prefer non-plan terminology — e.g., the inputs card is titled `What PELS has learned`, not `Plan inputs`.
+
+### Smart-task Flow permissions
+
+The `allow_smart_task_rescue` Flow action grants permission; it must not promise a guaranteed outcome. Copy may say PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets more room when available. Always keep the hard-cap boundary explicit: rescue permissions stay inside the hard cap and do not guarantee the target.
+
+Use `while the smart task is scheduled to run` / `while it's scheduled to run` for the shipped `always` mode. Avoid `planned to run` in user-facing error text, and avoid saying a permission change "updates the schedule right away" unless the UI really shows a new schedule immediately. Prefer `takes effect on the next plan refresh` or a similarly honest sentence.
+
+Visible Flow labels and hints use full words for time units: `hours`, not `h`.
 
 ## Mode label
 

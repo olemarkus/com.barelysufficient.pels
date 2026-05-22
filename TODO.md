@@ -171,12 +171,49 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       everything needed — the gap is duration + a from-zero baseline, not
       instrumentation.
 
+- [ ] **Smart-task detail hero shows "On track — no action needed yet"
+      on `at_risk` plans with an empty floor schedule.** The
+      floor-vs-climbed-band probe (commit `835908ee`, Slice-1 of the
+      feasibility P0 above) added a new verdict — `at_risk` /
+      `feasible_above_floor` — that yields an `at_risk` plan with **no**
+      floor-planned hours (`horizonPlanner.ts:304`). On that path the hero
+      builds with `tone === 'warn'` (`resolveHeroTone`,
+      `deadlinePlanHero.ts:93`) and `firstChargingHour === undefined`.
+      `resolveHeroHeadline` suppresses the headline only for
+      `tone === 'alert'` (`deadlinePlanHero.ts:115`), so warn + no charging
+      hour falls straight through to the literal
+      `'On track — no action needed yet'` (line 116) — directly
+      contradicting the amber `At risk` chip, the warn rim, and the "may
+      not reach the target" meta line beneath it. Same headline/status
+      contradiction that commits `a108c585` and `d38d2407` removed on the
+      `cannot_meet` branch; the suppression was applied only to the alert
+      tone and the new path reintroduces it on warn. The path is now common
+      (it is the Slice-1 status fix) and notification-firing
+      (`shouldFireNotification` fires on the empty-`at_risk` collapse), so a
+      user tapping in from an "at risk" notification reads the opposite at
+      headline height.
+      Why P0: misleading user-facing status on the most prominent line of
+      the detail hero; introduced this release on a reachable,
+      notification-firing path; the existing test only covers `at_risk`
+      *with* a `firstChargingHour`, so the case is untested.
+      Acceptance: gate the on-track sentinel to genuinely on-track plans —
+      return it only when `tone === 'good'`; for `tone === 'warn'` with no
+      `firstChargingHour`, suppress the headline (return `null`, mirroring
+      the alert branch so the At-risk chip + meta line carry it) or return
+      an at-risk-appropriate headline. Add a regression test for the
+      `feasible_above_floor` empty-schedule case asserting the headline is
+      not the on-track sentinel.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`
+      (`resolveHeroHeadline`),
+      `packages/settings-ui/test/deadlinePlan.test.ts`.
+      Source: `pels-ux-fit`, v2.8.0→origin/main release-review pass,
+      2026-05-22.
+
 ## P1 Correctness, Data Integrity, and Supported UX
 
-*v2.8.0 release-review findings (2026-05-19). Two items from the
-five-agent fan-out pass on `v2.7.4..origin/main`; safe for the next
-patch release, not 2.8.0 merge-blockers. (Card-title rename landed in
-PR #934.)*
+*v2.8.x release-review follow-ups. These are safe for patch releases,
+not release blockers; each item carries its own source/date. (The
+v2.8.0 card-title rename landed in PR #934.)*
 
 - [ ] Recovery no-progress disarm needs wall-clock floor + hysteresis
       band. `lib/core/objectiveProfileRecovery.ts:99-104`. With
@@ -217,20 +254,50 @@ PR #934.)*
       over-promise: `Set what a smart task may do` may grant daily-budget
       leeway or let the existing boost path limit lower-priority devices, but
       it still stays inside the hard cap and does not guarantee every target
-      can be rescued. README / App Store copy should say `hard cap` instead of
-      `power limit` where the text means the configured physical ceiling.
-      Norwegian Enova wording should stay relevant without sounding like PELS
-      guarantees support eligibility. The hours-left trigger/card copy should
-      use `hours` / `ready-by time` instead of terse `h` / `Ready by`. Also
-      soften `docs/smart-tasks.md` rescue-leeway wording that currently says
-      granting leeway is "harmless when the task is already on track";
-      permissions persist, so the honest claim is that they have no effect
-      until the planned/rescue gate actually applies.
+      can be rescued. Highest-priority copy fix: the
+      `allow_smart_task_rescue` hint must stop saying `gets the power it
+      needs` and must not promise that changing the permission `updates the
+      schedule right away`; use "gets more room when available" and "takes
+      effect on the next plan refresh" / equivalent. README / App Store copy
+      should say `hard cap` instead of `power limit` where the text means the
+      configured physical ceiling. Norwegian Enova wording should stay
+      relevant without sounding like PELS guarantees support eligibility. The
+      hours-left trigger/card copy should use `hours` / `ready-by time`
+      instead of terse `h` / `Ready by`. Also soften `docs/smart-tasks.md`
+      rescue-leeway wording that currently says granting leeway is "harmless
+      when the task is already on track"; permissions persist, so the honest
+      claim is that they have no effect until the planned/rescue gate actually
+      applies. Reword `smartTaskRescueStrings.ts` errors to avoid planner /
+      internal terms: `Choose what this smart task may do.`, `Choose when this
+      applies: at no time, or while the smart task is scheduled to run.`, and
+      `That device has no smart task yet — add a smart task first.`
       Files: `README.md`, `.homeycompose/app.json`,
       `.homeycompose/flow/**/*smart_task*`, `docs/smart-tasks.md`,
-      `docs/stromstyring-norge.md`, generated `app.json` after
-      `homey app validate`.
-      Source: v2.8.0 release-review leftovers, 2026-05-21.
+      `docs/stromstyring-norge.md`,
+      `packages/shared-domain/src/smartTaskRescueStrings.ts`, generated
+      `app.json` after `homey app validate`.
+      Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
+      release-review refresh, 2026-05-22.
+
+- [ ] Persist or seed the `smart_task_hours_remaining` crossing latch so an
+      already-crossed threshold does not re-fire after app restart. Today the
+      crossing state is in-memory only; after restart the first observation for
+      an existing deadline arrives with `previousHoursRemaining: null`, and the
+      run listener treats that as a fresh crossing even though the card says it
+      fires once and re-arms when the ready-by time is rescheduled.
+      Why P1: restart-only duplicate Flow firing, not data loss or planner
+      correctness, but it violates the Flow card's user-visible contract.
+      Acceptance: persist the last emitted `(deviceId, deadlineAtMs,
+      hoursRemaining)` boundary or suppress/seal startup observations so only
+      new or re-armed tasks fire; add a regression for an app restart while an
+      existing task is already below the configured threshold.
+      Files: `lib/plan/deferredObjectives/hoursRemainingCrossings.ts`,
+      `flowCards/deadlineObjectiveCards.ts`,
+      `.homeycompose/flow/triggers/smart_task_hours_remaining.json`,
+      `test/deferredObjectiveHoursRemainingCrossings.test.ts`,
+      `test/deadlineObjectiveCards.test.ts`.
+      Source: `pels-runtime-reality`, v2.9.0 release-review refresh,
+      2026-05-22.
 
 - [ ] Align `docs/flow-cards.md` Smart task status-condition docs with
       the actual condition dropdown. The public docs currently describe list
@@ -450,6 +517,71 @@ graceful but should ship in the next patch.*
       Source: `pels-copy-and-terminology` agent, v2.7.2 release-review pass.
 
 ## P2 Product, Observability, and Maintainability
+
+*v2.8.0 → origin/main release-review findings (2026-05-22). From the
+five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
+
+- [ ] Miss attribution compares delivered energy against the *buffered*
+      `plannedKWh`, not the mean. When the SE buffer is large (cold-start)
+      `plannedKWh` is inflated, so a run can be labelled
+      `capacity_shortfall` when the real cause was the conservative buffer.
+      Diagnostics/history-explanation only — never affects control or the
+      met/missed verdict; subsumed by the standing feasibility P0. Sibling
+      of the live-chip buffered-basis question in the variance-buffer group
+      below; fix by comparing delivered against `energyExpectedKWh` (the
+      mean) before this telemetry tunes feasibility.
+      Files: `packages/shared-domain/src/deferredPlanHistoryAttribution.ts:115-121`.
+      Source: `pels-runtime-reality`, v2.8.0→origin/main release-review pass.
+
+- [ ] Muted meta lines on the warn/alert tonal hero sit ~3.6:1 (below
+      WCAG AA 4.5:1) at the top gradient stop. Established device-card
+      muted-on-tonal treatment (not a regression); the gradient recovers to
+      ~4.4:1 lower down and primary text is ~13:1. Fold into a system-wide
+      muted-token contrast bump.
+      Files: `packages/settings-ui/public/style.css`
+      (`.plan-hero[data-tone="warn"]`), `settings/tokens.css`.
+      Source: `pels-m3-critic`, v2.8.0→origin/main release-review pass.
+
+- [ ] Detail-hero density at 320px: the at-risk-with-partial-delivery worst
+      case stacks up to 8 text rows + the recourse button (section label,
+      headline, headline-reason, subline, meta, variance note,
+      delivered-so-far, cost) above the price-horizon chart. Wraps rather
+      than overflows, but pushes the chart far below the fold — verify on a
+      live 320px walk.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:203-233`.
+      Source: `pels-ux-fit`, v2.8.0→origin/main release-review pass.
+
+- [ ] App Store changelog (release-prep, owner-handled — version/changelog
+      is out of automated edit scope). `.homeychangelog.json` newest key
+      `2.8.0` reads "…global *tokan*…" (typo for "token") and describes only
+      the price token, not this release's smart-task work; no entry exists
+      for the work since `v2.8.0`. Fix the typo and add a release entry when
+      cutting the next version. (Manifest `version` is still `1.1.1` on both
+      the `v2.8.0` tag and `origin/main`.)
+      Files: `.homeychangelog.json`.
+      Source: `pels-copy-and-terminology`, v2.8.0→origin/main release-review pass.
+
+- [ ] Smart-task rescue phase 2: add sticky `at_risk` timing and emit
+      `flow_permission_changed`. The shipped Homey action exposes only
+      `never` / `always`; the contract and labels already accept/render
+      `at_risk`, but it should stay unexposed until the producer semantics
+      exist end-to-end. At-risk rescue must be sticky/debounced: engage once
+      the plan is at risk, then exit only after a plan that is solidly not at
+      risk holds, otherwise the permission can remove its own trigger and flap
+      as plans churn. The revision reason, label, and persistence allowlist are
+      forward-declared; thread rescue-change detection into the recorder so a
+      rescue toggle has its own history reason instead of surfacing as generic
+      `schedule_revised`. If `/tmp/pels` logs show lower-priority limit/resume
+      oscillation around the satisfied↔at_risk boundary, include status
+      hysteresis or minimum forced-boost dwell in the same work.
+      Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
+      `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `lib/plan/deferredObjectives/settings.ts`,
+      `lib/plan/deferredObjectives/admission.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      `lib/plan/deferredObjectives/replanReason.ts`.
+      Source: v2.9.0 release-review refresh, 2026-05-22.
 
 *Variance-buffer follow-ups (2026-05-22, PR #965 — `mean + k·SE` planning buffer).*
 
@@ -2351,55 +2483,18 @@ should not be folded into the same PR.
       from the price source down to the recorder. Filed as chatgpt-codex P2
       on PR #890 (thread `PRRT_kwDOQhCm-86CxCbo`).
 
-- [ ] Smart-task rescue permissions — phase-2 / follow-ups (from the exempt-from-budget
-      PR `codex/smart-task-rescue-permissions-via-flow`):
-      - **limit-lower-priority lane — SHIPPED via boost** (`codex/smart-task-rescue-phase2`):
-        a planned task with the permission sets `forceBoostActive`, the boost resolvers
-        honour it, and the existing escalation/swap claims capacity from lower-priority
-        devices. `horizonPlanner` / `rescueReplan` / `candidates` were intentionally NOT
-        touched — the plan still commits the lowest step (no over-promise); boost delivers
-        the higher run at runtime. Remaining follow-ups:
-          - **(P2)** forced-boost flap at the satisfied↔at_risk boundary — the forced path
-            has no config hysteresis (on whenever `planned`); a task hovering at its target
-            can toggle boost and ripple shed/restore onto victims. Bounded by the planned
-            gate + victim restore back-off + `hasRecentObservedDrawAtSelectedStep`; add a
-            status hysteresis / minimum forced-boost dwell if `/tmp/pels` logs show
-            oscillation. (`lib/plan/deferredObjectives/admission.ts`)
-          - **(P3)** forced-boost `temperature_boost_state_changed` / `ev_boost_state_changed`
-            logs emit the device's own (often empty) threshold fields — add a forced-cause
-            marker for field debugging only if rescue field logs prove ambiguous.
-            (`planTemperatureBoost.ts`, `planEvBoost.ts`)
-          - **(P2)** broader rescue regressions: pin that a budget-rescue task
-            does not become a general device exemption, and that toggling rescue
-            permission resets/versions active commitments rather than silently
-            applying new authority to old committed hours.
-      - **`at_risk` rescue mode + hysteresis.** Implement later only. Add the
-        "when at risk" `when` option once sticky/debounced semantics exist:
-        engage on at-risk, exit only after a plan that is *solidly*
-        not-at-risk holds. Do not expose, document, or rely on `at_risk` as
-        shipped behavior before that producer path exists. `resolveWhen` + the
-        schema already accept `at_risk`; the producer only honours `'always'`
-        today.
-      - **Emit `flow_permission_changed`.** The reason, label, and persistence allowlist
-        are forward-declared; nothing emits it yet (a rescue toggle surfaces as
-        `schedule_revised`). Thread rescue-change detection into the recorder's
-        `resolveReplanReason` (e.g. include `rescue` in the objective signature with a
-        rescue-specific reason branch). Pair with the commitment-versioning
-        regression above so permission changes are visible in history and do
-        not mutate already-committed schedules invisibly.
+- [ ] Smart-task rescue residual hygiene (from the exempt-from-budget PR
+      `codex/smart-task-rescue-permissions-via-flow`):
+      - **Forced-boost debug marker.** `temperature_boost_state_changed` /
+        `ev_boost_state_changed` logs emit the device's own (often empty)
+        threshold fields — add a forced-cause marker for field debugging only
+        if rescue field logs prove ambiguous. (`planTemperatureBoost.ts`,
+        `planEvBoost.ts`)
       - **Move `add_budget_exemption`'s thrown error string to shared-domain** (per
         `feedback_ui_text_shared_with_logs`) — pre-existing convention gap.
         `flowCards/deviceSettingsCards.ts` builds the message from a dynamic `label`
         (`` `${label} device must be provided` ``), so externalizing it needs a small
         formatter rather than a constant. (The `allow_smart_task_rescue` card's four
         thrown strings were moved to `packages/shared-domain/src/smartTaskRescueStrings.ts`.)
-      - **(P2) Reword the `when`-dropdown error copy** in
-        `packages/shared-domain/src/smartTaskRescueStrings.ts`
-        (`SMART_TASK_RESCUE_INVALID_WHEN`): `"…or when the device is planned to run."` leans on
-        the planning-layer verb on a smart-task surface. Per `feedback_terminology_plan_vs_deadline`
-        / `notes/ui-terminology.md` § plan-vs-deadline, prefer `"…or when the device's smart task
-        is scheduled to run."` (matches the `Scheduled` chip). Pre-existing v2.9.0 copy, so it's a
-        wording change rather than part of the verbatim string move. Source: `pels-copy-and-terminology`.
       - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
-        unchanged mode); assert daily-budget shedding of *other* devices isn't suppressed
-        when an exempt-always task is merely `planned` but drawing little.
+        unchanged mode).
