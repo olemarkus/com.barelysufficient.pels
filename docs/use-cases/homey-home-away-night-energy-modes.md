@@ -124,4 +124,9 @@ PELS does not need to know why a mode changed. Homey can use presence, time, man
 
 ## Related setup guides
 
-For more information, see the [Getting Started](../getting-started.md), [Using Homey Energy](../homey-energy.md), [Compare cost-saving functions](../cost-saving-functions.md), [Smart Tasks](../smart-tasks.md), [Open configuration docs](../configuration.md), and [Flow Cards](../flow-cards.md) guides.
+- [Getting Started](../getting-started.md)
+- [Using Homey Energy](../homey-energy.md)
+- [Compare cost-saving functions](../cost-saving-functions.md)
+- [Smart Tasks](../smart-tasks.md)
+- [Configuration](../configuration.md)
+- [Flow Cards](../flow-cards.md)
