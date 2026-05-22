@@ -83,16 +83,29 @@ export const planDeferredObjectiveHorizon = (
     });
   }
 
+  const committed = resolveCommittedFlag({
+    committed: input.committed,
+    committedHours: input.committedHours,
+  });
+  // Floor commitment: the lowest active step is the only level we can guarantee
+  // for the full hour (higher steps depend on transient headroom). It drives the
+  // committed allocation and every planned-bucket figure below.
   const allocation = resolveAllocation({
-    activeSteps,
+    step: activeSteps[0],
     buckets,
-    committed: resolveCommittedFlag({
-      committed: input.committed,
-      committedHours: input.committedHours,
-    }),
+    committed,
     committedHours: input.committedHours,
     energyNeededKWh,
     epsilonKWh,
+  });
+  const feasibleOnClimbedBand = resolveClimbedBandFeasibility({
+    activeSteps,
+    buckets,
+    committed,
+    committedHours: input.committedHours,
+    energyNeededKWh,
+    epsilonKWh,
+    floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
   });
   return buildPlanFromAllocation({
     input,
@@ -101,6 +114,7 @@ export const planDeferredObjectiveHorizon = (
     steps,
     allocation,
     epsilonKWh,
+    feasibleOnClimbedBand,
   });
 };
 
@@ -122,20 +136,23 @@ const resolveCommittedFlag = (params: {
   return false;
 };
 
-// We plan against the lowest non-zero step only. That is the commitment we can
-// guarantee for the full hour — higher steps depend on transient headroom and
-// could be denied mid-bucket. `normalizeObjectiveSteps` sorts the input
-// ascending by `usefulPowerKw`, and `getActiveObjectiveSteps` then filters out
-// zero-power entries, so `activeSteps[0]` is the smallest active step.
+// The commitment is sized against the lowest non-zero step (`activeSteps[0]`,
+// since `normalizeObjectiveSteps` sorts ascending by `usefulPowerKw` and
+// `getActiveObjectiveSteps` drops zero-power entries). That is the only level
+// we can guarantee for the full hour — higher steps depend on transient
+// headroom and could be denied mid-bucket. Callers pass the step explicitly so
+// the same allocator can also run a climbed-band feasibility probe (see
+// `resolveClimbedBandFeasibility`) without re-introducing optimism into the
+// commitment.
 const resolveAllocation = (params: {
-  activeSteps: NonEmptyObjectiveSteps;
+  step: DeferredObjectiveStep;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
   committed: boolean;
   committedHours: DeferredObjectiveHorizonInput['committedHours'];
   energyNeededKWh: number;
   epsilonKWh: number;
 }): BucketAllocationResult => {
-  const step = params.activeSteps[0];
+  const { step } = params;
   // Branch on `committed`, not `committedHours.length`. An active commitment
   // with zero allocated hours (e.g. a previously stored `cannot_meet` plan)
   // must stay on the committed-replan path so the allocator cannot silently
@@ -157,6 +174,44 @@ const resolveAllocation = (params: {
   });
 };
 
+// A floor-step shortfall is not necessarily a miss: the executor climbs to
+// higher steps whenever capacity allows, so the device often delivers more than
+// the guaranteed floor. We re-run the allocator at the *highest* active step,
+// in the same commitment mode as the floor pass, purely to classify the
+// shortfall — if the energy fits there, the target is reachable by climbing and
+// the status is `at_risk` ('feasible_above_floor') rather than a flat
+// `cannot_meet`. This never feeds the commitment, so `hard-cap-is-physical`
+// holds: we still only *plan* against the guaranteed floor.
+//
+// Mirroring the commitment mode matters: an active commitment with zero hours
+// (a previously stored `cannot_meet` plan) has an empty committed map, so the
+// climbed probe also allocates nothing and the verdict stays `cannot_meet` —
+// the probe must not silently recover by re-running the fresh optimizer.
+// Single-step devices (e.g. EV chargers) cannot climb, so they skip the probe
+// and keep the floor verdict.
+const resolveClimbedBandFeasibility = (params: {
+  activeSteps: NonEmptyObjectiveSteps;
+  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  committed: boolean;
+  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  energyNeededKWh: number;
+  epsilonKWh: number;
+  floorUnplannedKWh: number;
+}): boolean => {
+  if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
+  const climbStep = params.activeSteps[params.activeSteps.length - 1];
+  if (climbStep.usefulPowerKw <= params.activeSteps[0].usefulPowerKw) return false;
+  const climbed = resolveAllocation({
+    step: climbStep,
+    buckets: params.buckets,
+    committed: params.committed,
+    committedHours: params.committedHours,
+    energyNeededKWh: params.energyNeededKWh,
+    epsilonKWh: params.epsilonKWh,
+  });
+  return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+};
+
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;
   deadlineMarginMs: number;
@@ -164,6 +219,7 @@ const buildPlanFromAllocation = (params: {
   steps: DeferredObjectiveStep[];
   allocation: BucketAllocationResult;
   epsilonKWh: number;
+  feasibleOnClimbedBand: boolean;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -172,11 +228,13 @@ const buildPlanFromAllocation = (params: {
     steps,
     allocation,
     epsilonKWh,
+    feasibleOnClimbedBand,
   } = params;
   const statusResult = resolveStatus({
     allocation,
     enforcement: input.objective.enforcement,
     epsilonKWh,
+    feasibleOnClimbedBand,
   });
   const currentBucket = resolveCurrentBucketPlan({
     plannedBuckets: allocation.plannedBuckets,
@@ -235,9 +293,16 @@ const resolveStatus = (params: {
   allocation: BucketAllocationResult;
   enforcement: DeferredObjectiveHorizonInput['objective']['enforcement'];
   epsilonKWh: number;
+  feasibleOnClimbedBand: boolean;
 }): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
-  const { allocation, enforcement, epsilonKWh } = params;
+  const { allocation, enforcement, epsilonKWh, feasibleOnClimbedBand } = params;
   if (allocation.unplannedUsefulEnergyKWh > epsilonKWh) {
+    // The guaranteed floor cannot fit the target. Only call it impossible when
+    // climbing to a higher step would not fit it either; otherwise the device
+    // can likely finish by climbing, which is `at_risk`, not a flat miss.
+    if (feasibleOnClimbedBand) {
+      return { status: 'at_risk', statusDetail: 'feasible_above_floor' };
+    }
     return { status: 'cannot_meet', statusDetail: 'target_cannot_be_met' };
   }
   if (allocation.usesDeadlineReserve) {

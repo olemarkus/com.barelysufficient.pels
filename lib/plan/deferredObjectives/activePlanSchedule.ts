@@ -57,9 +57,13 @@ export const resolveProjectedFinishAtMs = (
 // User-facing notification gate. Fires only when the number of charging
 // hours actually changes — same-count swaps stay quiet on the flow bus.
 // Empty schedules split by intent: a `satisfied` collapse is suppressed
-// (target met — no plan to notify about); a `cannot_meet` or `invalid`
-// collapse fires so automations see "your plan blew up" even when the
-// planner stays in the same status across a statusDetail worsening.
+// (target met — no plan to notify about); a `cannot_meet`, `invalid`, or
+// `at_risk` collapse fires so automations see "your plan blew up" even when the
+// planner stays in the same status across a statusDetail worsening. `at_risk`
+// is included because a `feasible_above_floor` verdict (floor planned nothing,
+// only a step climb would fit) is the one `at_risk` case that can reach an
+// empty schedule — reserve/policy at-risk always plan buckets — and an empty
+// floor schedule is still a "plan blew up" event worth surfacing.
 export const shouldFireNotification = (
   previousHourCount: number,
   nextHourCount: number,
@@ -67,7 +71,7 @@ export const shouldFireNotification = (
 ): boolean => {
   if (previousHourCount === nextHourCount) return false;
   if (nextHourCount > 0) return true;
-  return planStatus === 'cannot_meet' || planStatus === 'invalid';
+  return planStatus === 'cannot_meet' || planStatus === 'invalid' || planStatus === 'at_risk';
 };
 
 // Schedule comparison: two hour lists are equivalent iff they cover the same
