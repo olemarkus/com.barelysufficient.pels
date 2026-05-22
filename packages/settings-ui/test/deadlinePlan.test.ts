@@ -3353,9 +3353,11 @@ describe('resolveLiveHeroConfidenceChipText', () => {
 });
 
 // `resolveHeroHeadline` gates the live hero headline on rim tone (not on
-// the broader cannot-meet flag), so at-risk heroes keep their live-state
-// headline while only `tone === 'alert'` collapses to null. See
-// `notes/ui-terminology.md` and the comment above the function in
+// the broader cannot-meet flag): at-risk heroes keep their live-state
+// headline when a scheduled hour exists, `tone === 'alert'` collapses to
+// null, and an at-risk plan with no scheduled hour (`feasible_above_floor`)
+// also collapses to null so it can't read "On track" above an amber card.
+// See `notes/ui-terminology.md` and the comment above the function in
 // `deadlinePlanHero.ts`.
 describe('resolveHeroHeadline', () => {
   const labels = deadlineLabels('temperature');
@@ -3408,6 +3410,19 @@ describe('resolveHeroHeadline', () => {
       nowMs: queuedHour.startsAtMs,
       tone: 'good',
     })).toBe('On track — no action needed yet');
+  });
+
+  it('suppresses the headline on an at-risk plan with no scheduled hour (feasible_above_floor)', async () => {
+    const { resolveHeroHeadline } = await import('../src/ui/deadlinePlanHero.ts');
+    // The `feasible_above_floor` verdict yields an at-risk (warn) plan with an
+    // empty floor schedule — there is no live state to announce, so the
+    // headline must NOT claim "On track" above the amber At-risk card.
+    expect(resolveHeroHeadline({
+      labels,
+      firstChargingHour: undefined,
+      nowMs: queuedHour.startsAtMs,
+      tone: 'warn',
+    })).toBeNull();
   });
 });
 
