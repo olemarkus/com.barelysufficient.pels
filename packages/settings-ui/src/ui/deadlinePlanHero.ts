@@ -103,9 +103,12 @@ export const resolveHeroTone = (
 // than information. The chip + body pair carries the entire signal on that
 // branch so the section flows chip → subline → meta line directly. At-risk
 // heroes (`tone === 'warn'`) keep their live-state headline ("Heating from
-// HH:MM" / "Charging from HH:MM") per `notes/ui-terminology.md`: the
-// At-risk chip warns, but the headline still answers "what is the device
-// doing right now?".
+// HH:MM" / "Charging from HH:MM") per `notes/ui-terminology.md` *when a
+// scheduled hour exists*: the At-risk chip warns, but the headline still
+// answers "what is the device doing right now?". The `feasible_above_floor`
+// at-risk plan has no floor-planned hour, so there is nothing live to
+// announce — its headline is suppressed like `alert`, leaving the chip +
+// meta line to carry the warning rather than a contradictory "On track".
 export const resolveHeroHeadline = (params: {
   labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;
@@ -113,7 +116,12 @@ export const resolveHeroHeadline = (params: {
   tone: DeadlinePlanHeroTone;
 }): string | null => {
   if (params.tone === 'alert') return null;
-  if (!params.firstChargingHour) return 'On track — no action needed yet';
+  if (!params.firstChargingHour) {
+    // Only a genuinely on-track plan (`good`) earns the reassuring sentinel;
+    // an at-risk (`warn`) plan with no scheduled hour stays headless so it
+    // can't claim "On track" while the chip + meta line warn otherwise.
+    return params.tone === 'good' ? 'On track — no action needed yet' : null;
+  }
   if (params.firstChargingHour.startsAtMs <= params.nowMs) {
     return `${params.labels.activeChipLabel} now`;
   }
