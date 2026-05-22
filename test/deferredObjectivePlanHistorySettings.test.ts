@@ -231,6 +231,60 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  // v2.7.4 added miss-attribution provenance on the snapshot: rateConfidence,
+  // acceptedSamples, planningSpeedKw. The validator accepts the known
+  // confidence bands + finite counts/power, and drops the snapshot when any is
+  // malformed (so a corrupted persisted entry never feeds a wrong attribution).
+  it('accepts a revision snapshot with miss-attribution provenance present', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      rateConfidence: 'low',
+      acceptedSamples: 3,
+      planningSpeedKw: 3.2,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-1', originalPlan: snapshot, finalPlan: snapshot }],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.finalPlan?.rateConfidence).toBe('low');
+    expect(result.entries[0]!.finalPlan?.acceptedSamples).toBe(3);
+    expect(result.entries[0]!.finalPlan?.planningSpeedKw).toBeCloseTo(3.2);
+  });
+
+  it('drops a revision snapshot whose rateConfidence is not a known band', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      rateConfidence: 'maybe', // illegal band.
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-bad-conf', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+
+  it('drops a revision snapshot whose planningSpeedKw is non-positive', () => {
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      planningSpeedKw: 0, // illegal — a real floor power is > 0.
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-bad-speed', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+
   it('accepts metReason:"stalled" on met entries (optional field, byte-stable upgrade)', () => {
     const stalledEntry = {
       ...v3Entry,

@@ -148,6 +148,12 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveMissedHistoryRecourse$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - APPROX_GLYPH$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - revisionReason$/,
+  // `formatRefinedMissCause` is consumed only by `deferredPlanHistory.ts`'s
+  // `formatPlanHistoryMissedReason` (a settings-UI-facing helper the runtime
+  // tsconfig excludes), so ts-prune sees no runtime importer. Its sibling
+  // `resolveDeferredPlanHistoryMissAttribution` IS reached (the recorder's
+  // structured-log builder imports it) and so is not flagged.
+  /^packages\/shared-domain\/src\/deferredPlanHistoryAttribution\.ts:\d+ - formatRefinedMissCause$/,
   /^packages\/shared-domain\/src\/deferredPlanHistory\.ts:\d+ - formatPlanHistoryCostAndDelivered$/,
   /^packages\/shared-domain\/src\/deferredPlanHistory\.ts:\d+ - formatPlanHistoryAbandonedSecondary$/,
   // Transitively reached from `deadlineLabels.ts`; consumed by settings UI bootstrap

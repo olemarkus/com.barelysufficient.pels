@@ -95,6 +95,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       incl. `objectiveProfileSamples.ts`).
       Source: live prod UI walk + `/tmp/pels` planner/executor trace,
       2026-05-22.
+      Progress (Session A, telemetry only — does NOT close this P0): the
+      finalized-run history now carries plan-time provenance
+      (`rateConfidence`, `acceptedSamples`, `planningSpeedKw` on the revision
+      snapshot) and emits a `deferred_objective_history_finalized` structured
+      event per run with the resolved miss cause
+      (`budget_limited` / `low_confidence` / `energy_underestimate` /
+      `capacity_shortfall`). This separates estimate-driven false misses from
+      genuine capacity misses in the data so causes (1)+(2) can be quantified
+      before tuning. The history "Why" line is enriched for the
+      low-confidence and delivered-but-short cases. The actual fixes — learned-
+      rate convergence / sample-rejection (cause 1) and floor-vs-likely
+      feasibility banding (cause 2) — remain open as the follow-up sessions.
+      See `notes/smart-task-miss-attribution.md`.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
