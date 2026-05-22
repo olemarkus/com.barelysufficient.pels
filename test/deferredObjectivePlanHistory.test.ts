@@ -2157,4 +2157,110 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBe('stalled');
     });
   });
+
+  describe('miss attribution (plan-time provenance + structured log)', () => {
+    // Active plan carrying the provenance the attribution rests on: a
+    // low-confidence learned rate over few accepted samples, plus the
+    // committed full-hour floor power.
+    const buildProvenancedPlans = (params: {
+      deviceId: string;
+      deadlineAtMs: number;
+      confidence?: 'low' | 'medium' | 'high' | null;
+      acceptedSamples?: number;
+      planningSpeedKw?: number;
+    }) => ({
+      version: 1 as const,
+      plansByDeviceId: {
+        [params.deviceId]: {
+          deviceId: params.deviceId,
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature' as const,
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: params.deadlineAtMs,
+          startedAtMs: 0,
+          pending: false,
+          objectiveSignature: 'sig',
+          ...(params.planningSpeedKw !== undefined
+            ? { initialPlanningSpeedKw: params.planningSpeedKw }
+            : {}),
+          kwhPerUnitProvenance: {
+            source: 'learned' as const,
+            kWhPerUnit: 1.5,
+            acceptedSamples: params.acceptedSamples ?? 3,
+            confidence: params.confidence ?? 'low',
+            lastAcceptedAtMs: 0,
+          },
+          original: {
+            revision: 1,
+            revisedAtMs: 0,
+            computedFromPricesUpTo: null,
+            reason: 'flow_card' as const,
+            hours: [{ startsAtMs: 0, plannedKWh: 2.0 }],
+            energyNeededKWh: 2.0,
+            planStatus: 'cannot_meet' as const,
+          },
+          latest: {
+            revision: 1,
+            revisedAtMs: 0,
+            computedFromPricesUpTo: null,
+            reason: 'flow_card' as const,
+            hours: [{ startsAtMs: 0, plannedKWh: 2.0 }],
+            energyNeededKWh: 2.0,
+            planStatus: 'cannot_meet' as const,
+          },
+        },
+      },
+    });
+
+    const driveMissedRun = (deps: PlanHistoryPersistDeps, plans: ReturnType<typeof buildProvenancedPlans>) => {
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      // Observed below target throughout, then swept at the deadline → missed.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, status: 'cannot_meet' })],
+        0,
+        plans,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+      return recorder;
+    };
+
+    it('captures plan-time confidence, accepted samples, and the committed floor onto the snapshot', () => {
+      const { deps, saved } = buildPersistDeps();
+      driveMissedRun(deps, buildProvenancedPlans({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        confidence: 'low',
+        acceptedSamples: 3,
+        planningSpeedKw: 3.2,
+      }));
+      const snapshot = saved()!.entries[0]!.finalPlan!;
+      expect(snapshot.rateConfidence).toBe('low');
+      expect(snapshot.acceptedSamples).toBe(3);
+      expect(snapshot.planningSpeedKw).toBeCloseTo(3.2);
+    });
+
+    it('emits a finalized attribution event with the resolved miss cause', () => {
+      const events: Record<string, unknown>[] = [];
+      const { deps } = buildPersistDeps();
+      driveMissedRun(
+        { ...deps, debugStructured: (payload) => { events.push(payload); } },
+        buildProvenancedPlans({
+          deviceId: 'dev',
+          deadlineAtMs: 6 * HOUR_MS,
+          confidence: 'low',
+          acceptedSamples: 3,
+        }),
+      );
+      const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
+      expect(finalized).toMatchObject({
+        outcome: 'missed',
+        missCause: 'low_confidence',
+        rateConfidence: 'low',
+        acceptedSamples: 3,
+      });
+    });
+  });
 });

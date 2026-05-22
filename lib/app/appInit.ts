@@ -123,6 +123,7 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // Missing entries / unloaded payload return `null` so the postmortem
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
+    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;

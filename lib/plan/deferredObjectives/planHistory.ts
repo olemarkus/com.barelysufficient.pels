@@ -15,6 +15,7 @@ import type {
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
@@ -22,6 +23,7 @@ import {
   appendHourlyContribution,
   appendRevisionLogIfNew,
   buildFinalHourContribution,
+  buildFinalizedAttributionEvent,
   captureRevisionSnapshot,
   detectHourRollover,
   drainProgressSamples,
@@ -691,6 +693,15 @@ export type PlanHistoryPersistDeps = {
   // useful in tests and for callers that drive `recordHourlyDelivery`
   // directly with their own pricing.
   resolveHourPrice?: HourPriceResolver;
+  // Optional structured-debug emitter. The recorder emits one
+  // `deferred_objective_history_finalized` event per observation entry as it
+  // finalizes, carrying the resolved miss attribution (cause + the raw plan-time
+  // confidence / committed-floor / delivery inputs it rested on). This is the
+  // telemetry that lets us count how many `missed` runs were genuine capacity
+  // misses versus shaky-estimate / conservative-planning false alarms. Optional
+  // so the recorder stays usable in tests and headless callers. Gated on the
+  // `deferred_objectives` debug topic by the wiring in `lib/app/appInit.ts`.
+  debugStructured?: StructuredDebugEmitter;
 };
 
 // Per-hour delivery contribution fed into the recorder by the runtime
@@ -1037,10 +1048,22 @@ export class DeferredObjectivePlanHistoryRecorder {
     this.entries.push(entry);
     this.trimEntries();
     this.dirty = true;
+    this.emitFinalizedAttribution(entry);
     const endedEvent = buildEndedEventFromEntry(entry);
     if (endedEvent !== null) {
       this.deps.endedBus?.publish(endedEvent);
     }
+  }
+
+  // Emit the per-run miss attribution as the entry finalizes. Backfill entries
+  // are skipped: they carry no observed plan/delivery, so the attribution would
+  // be `unknown` with null inputs — noise. Emitting on every outcome (not just
+  // `missed`) is deliberate: the met/missed ratio against the same confidence /
+  // floor inputs is what quantifies the false-alarm rate.
+  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
+    if (!this.deps.debugStructured) return;
+    if (entry.discoveredFrom !== 'observation') return;
+    this.deps.debugStructured(buildFinalizedAttributionEvent(entry));
   }
 
   private trimEntries(): void {

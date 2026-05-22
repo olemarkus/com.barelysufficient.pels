@@ -8,12 +8,16 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import {
+  resolveDeferredPlanHistoryMissAttribution,
+} from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 // Resolver supplied by the runtime wiring. Returns the spot price and
@@ -72,12 +76,80 @@ const pickDailyBudgetExhaustedBucketCount = (
   return value;
 };
 
+// Plan-time confidence band of the learned rate, pulled from the active
+// plan's provenance. Mirrors the band the live smart-task chip would have
+// shown when this run was planned (`displayConfidence` when present, else the
+// raw per-sample `confidence`). Returns `undefined` for bootstrap plans (no
+// learned profile) and when no provenance was recorded — the attribution then
+// suppresses its confidence half rather than asserting a band it never saw.
+const pickRateConfidence = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): 'low' | 'medium' | 'high' | undefined => {
+  const provenance = plan?.kwhPerUnitProvenance;
+  if (!provenance) return undefined;
+  const band = provenance.displayConfidence ?? provenance.confidence;
+  return band ?? undefined;
+};
+
+// Accepted-sample count behind the learned rate at plan time. Zero (bootstrap)
+// is suppressed the same way absence is — the attribution treats both as "no
+// learned support yet", and suppressing keeps the persisted entry byte-stable.
+const pickAcceptedSamples = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): number | undefined => {
+  const value = plan?.kwhPerUnitProvenance?.acceptedSamples;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+};
+
+// The committed full-hour floor power (kW) the planner sized the run against,
+// frozen on the active plan at first revision. Suppressed when absent or
+// non-positive so the attribution's floor-vs-delivered comparison opts out
+// rather than dividing against a zero floor.
+const pickPlanningSpeedKw = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): number | undefined => {
+  const value = plan?.initialPlanningSpeedKw;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return value;
+};
+
+// Build the `deferred_objective_history_finalized` structured-debug payload for
+// a finalized entry. Carries the resolved miss attribution (cause + the raw
+// plan-time confidence / committed-floor / delivery inputs it rested on) so the
+// telemetry can count genuine capacity misses versus shaky-estimate /
+// conservative-planning false alarms. Lives here (not on the recorder) so the
+// recorder file stays under the 500-LOC cap and the shared-domain attribution
+// import sits beside the other history-shaping helpers.
+export const buildFinalizedAttributionEvent = (
+  entry: DeferredObjectivePlanHistoryEntry,
+): Record<string, unknown> => {
+  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+  return {
+    event: 'deferred_objective_history_finalized',
+    deviceId: entry.deviceId,
+    objectiveKind: entry.objectiveKind,
+    outcome: entry.outcome,
+    missCause: attribution.cause,
+    plannedKWh: attribution.plannedKWh,
+    deliveredKWh: attribution.deliveredKWh,
+    planningSpeedKw: attribution.planningSpeedKw,
+    rateConfidence: attribution.rateConfidence,
+    acceptedSamples: attribution.acceptedSamples,
+    dailyBudgetExhaustedBucketCount: attribution.dailyBudgetExhaustedBucketCount,
+    deliveredAtOrAbovePlan: attribution.deliveredAtOrAbovePlan,
+  };
+};
+
 export const captureRevisionSnapshot = (
   revision: DeferredObjectiveActivePlanRevisionV1,
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): DeferredObjectivePlanHistoryRevisionSnapshot => {
   const kwhPerUnitMean = pickKwhPerUnitMean(plan);
   const dailyBudgetExhaustedBucketCount = pickDailyBudgetExhaustedBucketCount(revision);
+  const rateConfidence = pickRateConfidence(plan);
+  const acceptedSamples = pickAcceptedSamples(plan);
+  const planningSpeedKw = pickPlanningSpeedKw(plan);
   return {
     hours: revision.hours.map((hour) => ({ ...hour })),
     energyNeededKWh: revision.energyNeededKWh,
@@ -87,6 +159,9 @@ export const captureRevisionSnapshot = (
     ...(dailyBudgetExhaustedBucketCount !== undefined
       ? { dailyBudgetExhaustedBucketCount }
       : {}),
+    ...(rateConfidence !== undefined ? { rateConfidence } : {}),
+    ...(acceptedSamples !== undefined ? { acceptedSamples } : {}),
+    ...(planningSpeedKw !== undefined ? { planningSpeedKw } : {}),
   };
 };
 

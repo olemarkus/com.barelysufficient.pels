@@ -355,6 +355,52 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'met' }))).toBeNull();
     expect(formatPlanHistoryMissedReason(buildEntry({ outcome: 'abandoned' }))).toBeNull();
   });
+
+  // v2.7.4 — plan-time miss attribution (Session A) refines the Why line for
+  // the two causes the planStatus alone can't tell apart.
+  it('names the still-learning estimate ahead of the cannot_meet fallback', () => {
+    const entry = buildEntry({
+      outcome: 'missed',
+      deliveredKWh: 2.5,
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        rateConfidence: 'low',
+        acceptedSamples: 3,
+      }),
+    });
+    expect(formatPlanHistoryMissedReason(entry)).toBe(
+      "PELS was still learning this device's energy use (3 readings) when it planned this run.",
+    );
+  });
+
+  it('names an energy underestimate when delivery met the planned floor but missed', () => {
+    const entry = buildEntry({
+      outcome: 'missed',
+      deliveredKWh: 2.5, // ≥ planned 2.0 → power was available.
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        rateConfidence: 'high',
+        acceptedSamples: 12,
+      }),
+    });
+    expect(formatPlanHistoryMissedReason(entry)).toBe(
+      'Power was available, but the target needed more energy than estimated.',
+    );
+  });
+
+  it('budget exhaustion still outranks the attribution refinement', () => {
+    const entry = buildEntry({
+      outcome: 'missed',
+      deliveredKWh: 2.5,
+      finalPlan: buildSnapshot({
+        planStatus: 'cannot_meet',
+        dailyBudgetExhaustedBucketCount: 2,
+        rateConfidence: 'low',
+        acceptedSamples: 3,
+      }),
+    });
+    expect(formatPlanHistoryMissedReason(entry)).toContain('daily budget');
+  });
 });
 
 describe('formatPlanHistoryOvershootLine', () => {

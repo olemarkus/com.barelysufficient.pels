@@ -1347,10 +1347,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(reserveAllocated).toBeCloseTo(1);
   });
 
-  it('reports cannot_meet when even the reserve hour cannot absorb the shortfall', () => {
-    // 4 kWh need at 1 kW with only a 3-hour horizon: every hour (including
-    // the reserve hour at 19:00 → 20:00) is fully booked at planning power
-    // and 1 kWh is still unplanned. cannot_meet outranks the reserve flag.
+  it('reports at_risk (feasible_above_floor) when the floor misses but climbing fits', () => {
+    // 4 kWh need with only a 3-hour horizon: at the guaranteed floor (low = 1 kW)
+    // every hour — including the reserve hour at 19:00 → 20:00 — is fully booked
+    // and 1 kWh stays unplanned. But this device can climb to high (2 kW), which
+    // would fit the full 4 kWh, so the verdict is at_risk, not a flat cannot_meet
+    // false negative. The floor commitment still leaves 1 kWh unplanned.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -1362,8 +1364,8 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      status: 'cannot_meet',
-      reasonCode: 'target_cannot_be_met',
+      status: 'at_risk',
+      reasonCode: 'feasible_above_floor',
     });
     expect(diagnostic?.horizonPlan?.unplannedUsefulEnergyKWh).toBeCloseTo(1);
   });
