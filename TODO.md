@@ -27,6 +27,61 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P0 Release Blockers
 
+- [ ] **Smart-task feasibility verdicts and delivery don't match physical
+      reality — chronic false `Cannot finish` / `missed` streaks.**
+      Surfaced by a live prod UI walk + `/tmp/pels` analysis on 2026-05-22
+      (two app sessions, restart ~06:50). "Connected 300" water heater
+      showed `4 of last 4 missed`. Three interlocking causes:
+      1. *Volatile, low-confidence learned rate.* `kWhPerDegreeC` swung
+         `0.195 → 0.27 → 0.49 → 0.225` across one day, all at
+         `rateConfidence: low`. The `0.49` reading drove a `cannot_meet`
+         (the UI walk caught it); `0.225` later the same task read
+         `on_track`. The rate never stabilizes because profile samples for
+         the device are repeatedly rejected
+         (`objective_profile_non_monotonic_time`,
+         `objective_profile_interval_too_short`).
+      2. *Planner sizes feasibility on the most conservative step power.*
+         `resolvePlanningSpeedKw` (`planningSpeed.ts:41,48`) returns
+         `Math.min(...stepKws)` — the **lowest** non-zero step's useful
+         power, not full/peak power. So per-bucket capacity is sized to the
+         minimum step and under-counts what the device can actually
+         deliver, biasing toward `cannot_meet`. The executor, by contrast,
+         climbs to higher steps whenever capacity allows — logged
+         `low→medium` (`shed_invariant`), then `medium→max` held by
+         `insufficient_headroom` ×11 over ~7 min (06:55–07:01). Real
+         delivery therefore usually exceeds the planned floor, so a
+         `cannot_meet` built on the min-step assumption is often a false
+         negative. (The capacity guard is still a real upper bound when the
+         household is busy — it is not the conservative driver here.)
+      3. *Net effect.* The headline status is frequently wrong in **both**
+         directions, and the missed-history mixes genuine capacity-limited
+         misses with estimate-driven false misses (this subsumes the
+         earlier "cooling/at-target windows recorded as missed" concern —
+         those rows all started below target and reflect (1)+(2), not an
+         isolated classification bug).
+      Why P0: undermines trust in the entire smart-task feature; the most
+      prominent signals (`Cannot finish`, the missed streak) are
+      unreliable.
+      Investigation required before any fix — do **not** assume the fix is
+      simply "plan against the max step": peak steps depend on spare
+      capacity that is not guaranteed, so that would trade false
+      `cannot_meet` for false `on_track`. Design how feasibility should
+      weigh (a) a low-confidence rate, (b) the *realistically achievable*
+      step given typical spare capacity (rather than the worst-case min
+      step or best-case max), and (c) fixing the upstream sample-rejection
+      so the learned rate can converge. Consider separating "physically
+      can't deliver" from "estimate uncertain" in the status.
+      Note: the UI no longer *contradicts itself* about this (PR #962
+      removed the "can't determine why" dead-end + the >100% delivered
+      chip); this item is the underlying correctness root cause.
+      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/plan/deferredObjectives/planningSpeed.ts`,
+      `lib/plan/deferredObjectives/bucketAllocation.ts`,
+      `lib/core/objectiveProfile*` (rate learning + sample rejection,
+      incl. `objectiveProfileSamples.ts`).
+      Source: live prod UI walk + `/tmp/pels` planner/executor trace,
+      2026-05-22.
+
 ## P1 Correctness, Data Integrity, and Supported UX
 
 *v2.8.0 release-review findings (2026-05-19). Two items from the
@@ -312,6 +367,38 @@ release-review fan-out that did not ride the train; deferred as
 maintenance-tier polish without user-visible impact at supported widths.
 Re-applied after the train merged because the in-session TODO additions
 were rolled back before they could land.*
+
+- [ ] Smart-task temperature overshoot. Live prod walk (2026-05-22):
+      multiple "Connected 300" successes overshot the 65 °C target by
+      double digits — `70.7 → 79.4 °C · Overshoot 14.4 °C`,
+      `29.3 → 77.7 °C · Overshoot 12.7 °C`. Surfacing overshoot is good,
+      but a consistent ~14 °C overrun wastes energy and hints at a
+      stop-condition/sensor lag. Recorded as `Succeeded`, so no
+      correctness/data break — energy-waste + comfort concern.
+      Investigate the heat stop condition vs. target before changing
+      control behaviour (over-tightening risks under-heating).
+      Source: live prod UI walk, 2026-05-22.
+
+- [ ] Plan-rebuild latency / Homey CPU warnings. `/tmp/pels` perf trace
+      2026-05-22: startup `planRebuild` up to 6.2 s (apply 4.95 s),
+      steady-state `planBuild` avg ~1.07 s, triggering `homey cpuwarn`.
+      Heap healthy (~20–28 MB / 70 limit), no `planRebuildFailed`. Slow
+      rebuilds can delay shed/restore reactions to power changes.
+      Profile `planBuild` cost (it dominates rebuild time) and reduce it.
+      Source: `/tmp/pels` `[perf]` cpuwarn context, 2026-05-22.
+
+- [ ] Smart-task "met early then cooled" history row reads as a
+      contradiction. Live prod walk: `Tue 12 May 06:00 · Succeeded · 64.0
+      → 39.2 °C · target 65.0 °C · reached at 03:42` — the run met the
+      06:00 deadline early (03:42) then the tank cooled to 39.2 °C by the
+      window end, so `start → final` shows a *drop* below target on a
+      Succeeded row. The data is internally consistent (deadline label +
+      `metAtMs`), but the `64.0 → 39.2` arrow next to "Succeeded · target
+      65" reads as wrong. Consider showing the peak/`metAtMs` value rather
+      than the end-of-window final on met runs, or annotating "met at
+      03:42, cooled afterwards". P3-ish polish, not a data bug.
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
+      Source: live prod UI walk, 2026-05-22.
 
 - [ ] Docs vocabulary sweep: "capacity step" still appears in
       `docs/smart-tasks.md` and the `docs/cost-saving-functions.md`
