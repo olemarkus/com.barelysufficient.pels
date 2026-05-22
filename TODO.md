@@ -32,14 +32,25 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Surfaced by a live prod UI walk + `/tmp/pels` analysis on 2026-05-22
       (two app sessions, restart ~06:50). "Connected 300" water heater
       showed `4 of last 4 missed`. Three interlocking causes:
-      1. *Volatile, low-confidence learned rate.* `kWhPerDegreeC` swung
-         `0.195 → 0.27 → 0.49 → 0.225` across one day, all at
-         `rateConfidence: low`. The `0.49` reading drove a `cannot_meet`
-         (the UI walk caught it); `0.225` later the same task read
-         `on_track`. The rate never stabilizes because profile samples for
-         the device are repeatedly rejected
-         (`objective_profile_non_monotonic_time`,
-         `objective_profile_interval_too_short`).
+      1. *Low-confidence learned rate — volatility UNCONFIRMED, likely an
+         early-learning transient, not a convergence failure.* The original
+         walk reported `kWhPerDegreeC` swinging `0.195 → 0.27 → 0.49 → 0.225`
+         in a day, all at `rateConfidence: low`, with the `0.49` reading
+         driving a `cannot_meet`. **Re-check against `/tmp/pels` on 2026-05-22
+         could NOT reproduce that swing**: the retained logs show the rate
+         stable at `0.225–0.244` (~9% drift) with `acceptedSamples` up to
+         **539** and still `rateConfidence: low`. So the rate has *converged*
+         (mean nailed down at n≈hundreds); the persistent `low` is the
+         by-design CV artifact (per-sample thermal variance is irreducibly
+         high — see PR #965 SE-buffer rationale), not non-convergence.
+         Sample rejection (`objective_profile_non_monotonic_time`,
+         `objective_profile_interval_too_short`) does occur but is **not**
+         starving the profile (539 accepted samples). The original
+         `0.195→0.49` swing was almost certainly an early-learning transient
+         (low n) in the pre-restart session, whose log was overwritten — or a
+         per-band/per-sample value misread as the mean. **Cannot be confirmed
+         until retained logs cover a fresh profile from n=0** (see the
+         retention fix + the data-collection follow-up below).
       2. *Planner sizes feasibility on the most conservative step power.*
          `resolvePlanningSpeedKw` (`planningSpeed.ts:41,48`) returns
          `Math.min(...stepKws)` — the **lowest** non-zero step's useful
@@ -140,6 +151,19 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       rate convergence / sample-rejection (cause 1) and floor-vs-likely
       feasibility banding (cause 2) — remain open as the follow-up sessions.
       See `notes/smart-task-miss-attribution.md`.
+      Data-collection gate before touching cause #1 (2026-05-22): the
+      volatility evidence is too weak to act on — a single post-restart log
+      window showed a converged rate (n≈539, stable 0.225–0.244), and the
+      earlier swing's log was overwritten on restart. Prod logs are now
+      retained across restarts with a commit-stamped `===== PELS START …
+      commit=… =====` marker per launch (so analysis never mixes pre-change
+      logs). Needed before any cause-#1 fix: (a) a multi-day retained window,
+      and (b) a fresh thermostat profile captured from n=0 to confirm or
+      disprove the early-learning swing. Until then the per-sample
+      (`objective_profile_sample_recorded`) and per-run
+      (`deferred_objective_history_finalized`) telemetry already emit
+      everything needed — the gap is duration + a from-zero baseline, not
+      instrumentation.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
