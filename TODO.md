@@ -93,12 +93,44 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       sized off the min-step floor (`hard-cap-is-physical` preserved). This
       is exactly the "separate 'physically can't deliver' from 'estimate
       uncertain'" split. See `notes/deferred-load-objectives/feasibility-floor-vs-climbed-band.md`.
-      **Still open:** (a) cause #1 — volatile low-confidence learned rate /
-      upstream sample-rejection so the rate can converge; (b) Slice 2 —
+      **Still open:** (a) cause #1 — re-diagnosed against `/tmp/pels`
+      2026-05-22 (see
+      `notes/deferred-load-objectives/feasibility-confidence.md`). The
+      original "rate never converges / fix sample-rejection / make bands
+      engage" framing is **disproven by the logs**: samples converge
+      (`acceptedSamples` 500+), the buffer fills (`bufferedSamples:64`) and
+      bands fit (`bandsCount:2`), the buffer is persisted (`power_tracker_state`,
+      30-day retention). The fix is **three steps in dependency order** (full
+      design + log evidence in `feasibility-confidence.md`):
+      (1) *Stop poisoning the estimate* — `calculateEnergyKwh` bills the whole
+      baseline→rise interval at the baseline sample's single `crediblePowerW`,
+      but the device runs distinct steps (prod: 1193/1671/2865 W), so mid-window
+      step changes are mis-attributed. Accumulate `Σ crediblePowerW_i × Δt_i`
+      across sub-intervals (persist the partial sum on `DeviceObjectiveProfile`
+      so an in-progress interval survives restart/reload); invalidate the window
+      on a power-=0 sub-interval (thermal coasting, not electrical heat). The
+      power-=0 case is already guarded for energy; power *variation* is not.
+      (2) *Make confidence escape `low`* — prod `energyConfidence` is `low`
+      22/24, never `high`; `resolveProfileConfidence` uses global-mean
+      relative-std-dev, structurally wrong once bands exist. Judge by within-band
+      residual. (Band cap is not the constraint — `OBJECTIVE_PROFILE_MAX_BANDS`
+      is already 4; prod fits only 2, so the lever is split *quality* like the
+      `MIN_SSE_REDUCTION_FRACTION` threshold, not the constant.) Without this,
+      step 3 makes *everything* a permanent "At risk".
+      (3) *Confidence-aware verdict* — the horizon planner consumes no confidence
+      today; have `profileEnergyResolution` emit `energyNeededKWh ± margin`
+      (continuous band residual, not the 3-level enum) and report `at_risk`
+      (`estimate_uncertain`) on a within-margin shortfall, composing with the
+      Slice 1 floor-vs-climbed banding. Gate before building (3): instrument
+      plan-time `displayConfidence` and confirm devices reach `medium`/`high`
+      after (1)+(2). P3 telemetry nit: `unitPerHour` (debug-only, unconsumed) is
+      polluted by no-power coast intervals so its logged `rateConfidence` reads
+      `low`. The P0's missed-history half is a separate item.
+      (b) Slice 2 —
       raising the committed floor itself when reserved headroom guarantees a
       higher step (exempt + `limit_lower_priority`), which needs a physical
       headroom forecast plumbed into the horizon input and revisits PR #944
-      (design captured in the note above, not built).
+      (design captured in the floor-vs-climbed-band note, not built).
       Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
       `lib/plan/deferredObjectives/planningSpeed.ts`,
       `lib/plan/deferredObjectives/bucketAllocation.ts`,
