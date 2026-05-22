@@ -739,6 +739,78 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
+  it('books the soft variance buffer (mean + k·SE) for a temperature objective while the displayed rate stays at the mean', () => {
+    // Same heater as the on_track baseline above (mean 0.8 kWh/°C, 55→65 = 10°C
+    // → expected 8 kWh), now with real per-sample variance. Temperature
+    // objectives are always soft (k = 1). σ = sqrt(m2/(n-1)) = sqrt(0.48/3) =
+    // 0.4, n = 4 → standard error SE = 0.4/√4 = 0.2, so the planner books
+    // 10 × (0.8 + 1·0.2) = 10 kWh. Guards the producer → diagnostic → planner
+    // coupling.
+    const buildVarianceTracker = (m2: number): PowerTrackerState => buildTemperaturePowerTracker({
+      objectiveProfiles: {
+        'heater-1': {
+          kind: 'temperature',
+          updatedAtMs: NOW_MS,
+          lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+          kwhPerUnit: {
+            sampleCount: 4, mean: 0.8, m2, min: 0.4, max: 1.2, confidence: 'low', lastUpdatedMs: NOW_MS,
+          },
+          acceptedSamples: 4,
+          rejectedSamples: 0,
+        },
+      },
+    });
+    const run = (m2: number) => buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildVarianceTracker(m2),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    })[0];
+
+    const buffered = run(0.48); // σ = 0.4
+    expect(buffered?.energyNeededKWh).toBeCloseTo(10); // 10 × (0.8 + 1·0.2)
+    // Displayed learned rate is the measured mean, NOT the buffered rate.
+    expect(buffered?.kWhPerDegreeC).toBeCloseTo(0.8);
+
+    // Zero variance reproduces the un-buffered baseline (8 kWh).
+    expect(run(0)?.energyNeededKWh).toBeCloseTo(8);
+  });
+
+  it('books the larger hard buffer (k = 2) for a hard EV deadline', () => {
+    // EV objectives can be hard (k = 2); temperature objectives are always
+    // soft. SoC 40 → target 60 = 20%, mean 0.2 kWh/%, σ = sqrt(0.03/3) = 0.1,
+    // n = 4 → SE = 0.1/√4 = 0.05 → 20 × (0.2 + 2·0.05) = 6 kWh (expected 4).
+    // Confirms enforcement raises k end-to-end versus the soft buffer above.
+    const tracker = buildPowerTracker({
+      objectiveProfiles: {
+        'ev-1': {
+          kind: 'ev_soc',
+          updatedAtMs: NOW_MS,
+          lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+          kwhPerUnit: {
+            sampleCount: 4, mean: 0.2, m2: 0.03, min: 0.1, max: 0.3, confidence: 'low', lastUpdatedMs: NOW_MS,
+          },
+          acceptedSamples: 4,
+          rejectedSamples: 0,
+        },
+      },
+    });
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ enforcement: 'hard' })),
+      powerTracker: tracker,
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+    expect(diagnostic?.energyNeededKWh).toBeCloseTo(6);
+    expect(diagnostic?.kWhPerPercent).toBeCloseTo(0.2);
+  });
+
   it('refuses to promise more energy than the per-bucket budget headroom allows', () => {
     // Reproduces the case behind the planning-input card: a heater claiming
     // 31 kWh of need against a horizon whose per-bucket headroom is small

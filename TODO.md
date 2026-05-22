@@ -418,6 +418,26 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+*Variance-buffer follow-ups (2026-05-22, PR #965 — `mean + k·SE` planning buffer).*
+
+- [ ] Verdict basis: `at_risk` / `cannot_meet` and the shortfall text in
+      `statusTransitions.ts` evaluate the *buffered* `energyNeededKWh`, so a
+      still-learning device can show a slightly more pessimistic chip than the
+      measured mean justifies. Current behaviour is intentional (reserve *and*
+      judge against the buffer so an optimistic `on_track` can't silently miss);
+      product question is whether the chip should instead judge against
+      `energyExpectedKWh` while the planner keeps reserving the buffer. Decide
+      with the PR-2 UI work that surfaces the expected…planned range.
+      Source: `pels-runtime-reality` review of PR #965.
+
+- [ ] Multi-band aggregate cap: the 2× `MAX_BUFFER_MULTIPLIER` clamp is applied
+      per band/slice inside `integrateBands`, then summed, so a profile with
+      several high-SE bands can total up to ~2× the mean-expected figure across
+      the whole interval. That is the intended ceiling, but confirm the
+      aggregate is acceptable for multi-band EV profiles (interacts with the
+      conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
+      review of PR #965.
+
 *v2.7.4 train follow-ups (2026-05-19). Three items from the v2.7.3
 release-review fan-out that did not ride the train; deferred as
 maintenance-tier polish without user-visible impact at supported widths.
