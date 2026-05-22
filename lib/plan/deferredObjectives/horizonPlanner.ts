@@ -107,6 +107,16 @@ export const planDeferredObjectiveHorizon = (
     epsilonKWh,
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
   });
+  const budgetBound = resolveBudgetBoundFeasibility({
+    activeSteps,
+    buckets,
+    committed,
+    committedHours: input.committedHours,
+    energyNeededKWh,
+    epsilonKWh,
+    floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
+    feasibleOnClimbedBand,
+  });
   return buildPlanFromAllocation({
     input,
     deadlineMarginMs,
@@ -115,6 +125,7 @@ export const planDeferredObjectiveHorizon = (
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
+    budgetBound,
   });
 };
 
@@ -212,6 +223,54 @@ const resolveClimbedBandFeasibility = (params: {
   return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
 };
 
+// A floor shortfall that disappears once the per-bucket daily-budget cap is
+// lifted — with everything else held constant — is *budget-bound*, not
+// physical: the soft daily budget (the per-bucket pacing slice net of forecast
+// background) is the binding constraint, while physical capacity and time would
+// fit. We re-allocate the highest active step on a copy of the buckets with the
+// per-bucket cap removed (`usefulEnergyCapKWh → Infinity`), mirroring the floor
+// pass's commitment mode so that only the budget cap changes between the two
+// passes. If the energy then fits, the shortfall is the daily budget's doing →
+// recoverable `at_risk`, not a physical `cannot_meet`.
+//
+// Distinct from the climbed-band probe, which keeps the budget cap and only
+// raises the step — that cannot rescue a budget-bound shortfall because the cap
+// bounds every step equally. Classification only; never feeds the commitment,
+// so `hard-cap-is-physical` and the soft-budget throttle stay enforced in what
+// we actually plan — only the status label softens. Mirroring the commitment
+// mode keeps it conservative: a committed, already-budget-shaped schedule stays
+// `cannot_meet` (the committed caps bind in the probe too), while the common
+// fresh-plan case reclassifies correctly.
+const resolveBudgetBoundFeasibility = (params: {
+  activeSteps: NonEmptyObjectiveSteps;
+  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  committed: boolean;
+  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  energyNeededKWh: number;
+  epsilonKWh: number;
+  floorUnplannedKWh: number;
+  feasibleOnClimbedBand: boolean;
+}): boolean => {
+  // No shortfall, or climbing within the budget already fits — neither is a
+  // budget-bound classification.
+  if (params.floorUnplannedKWh <= params.epsilonKWh || params.feasibleOnClimbedBand) {
+    return false;
+  }
+  const uncappedBuckets = params.buckets.map((bucket) => ({
+    ...bucket,
+    usefulEnergyCapKWh: Number.POSITIVE_INFINITY,
+  }));
+  const uncapped = resolveAllocation({
+    step: params.activeSteps[params.activeSteps.length - 1],
+    buckets: uncappedBuckets,
+    committed: params.committed,
+    committedHours: params.committedHours,
+    energyNeededKWh: params.energyNeededKWh,
+    epsilonKWh: params.epsilonKWh,
+  });
+  return uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+};
+
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;
   deadlineMarginMs: number;
@@ -220,6 +279,7 @@ const buildPlanFromAllocation = (params: {
   allocation: BucketAllocationResult;
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
+  budgetBound: boolean;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -229,12 +289,14 @@ const buildPlanFromAllocation = (params: {
     allocation,
     epsilonKWh,
     feasibleOnClimbedBand,
+    budgetBound,
   } = params;
   const statusResult = resolveStatus({
     allocation,
     enforcement: input.objective.enforcement,
     epsilonKWh,
     feasibleOnClimbedBand,
+    budgetBound,
   });
   const currentBucket = resolveCurrentBucketPlan({
     plannedBuckets: allocation.plannedBuckets,
@@ -294,14 +356,22 @@ const resolveStatus = (params: {
   enforcement: DeferredObjectiveHorizonInput['objective']['enforcement'];
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
+  budgetBound: boolean;
 }): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
-  const { allocation, enforcement, epsilonKWh, feasibleOnClimbedBand } = params;
+  const { allocation, enforcement, epsilonKWh, feasibleOnClimbedBand, budgetBound } = params;
   if (allocation.unplannedUsefulEnergyKWh > epsilonKWh) {
     // The guaranteed floor cannot fit the target. Only call it impossible when
     // climbing to a higher step would not fit it either; otherwise the device
     // can likely finish by climbing, which is `at_risk`, not a flat miss.
     if (feasibleOnClimbedBand) {
       return { status: 'at_risk', statusDetail: 'feasible_above_floor' };
+    }
+    // The same energy fits once the per-bucket daily-budget cap is lifted: the
+    // soft daily budget is the binding constraint, not physical capacity/time.
+    // Surface it as recoverable `at_risk` (the user can lower the daily budget
+    // or exempt the task) rather than a physical `cannot_meet`.
+    if (budgetBound) {
+      return { status: 'at_risk', statusDetail: 'limited_by_daily_budget' };
     }
     return { status: 'cannot_meet', statusDetail: 'target_cannot_be_met' };
   }

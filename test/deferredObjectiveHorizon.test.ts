@@ -300,6 +300,57 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
   });
 
+  it('reports at_risk (limited_by_daily_budget) when the floor is short only because of the per-bucket budget cap', () => {
+    // 3 kWh needed across four 1-hour buckets, each capped at 0.5 kWh by the
+    // per-bucket daily-budget cap (`maxUsefulEnergyKWh`). The floor can place only
+    // 2.0 kWh, and climbing a higher step cannot help — the cap bounds every step
+    // equally. But with the cap lifted the device physically fits the full 3 kWh,
+    // so the shortfall is budget-bound: at_risk, not a physical cannot_meet.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 3,
+        deadlineAtMs: NOW_MS + (4 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(1, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(2, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(3, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+      ],
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('limited_by_daily_budget');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('keeps cannot_meet when even the budget-uncapped horizon cannot fit (physical/time limit)', () => {
+    // Same per-bucket budget caps, but 20 kWh is needed: even with the cap lifted,
+    // four hours at the top step (3 kW) deliver only 12 kWh. The shortfall is
+    // genuinely physical/time-bound, not budget-bound — so a budget cap must not
+    // mask it as recoverable.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 20,
+        deadlineAtMs: NOW_MS + (4 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(1, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(2, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+        bucket(3, 'neutral', { maxUsefulEnergyKWh: 0.5 }),
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+  });
+
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
@@ -410,7 +461,12 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('cannot_meet');
+    // The per-bucket budget cap (scaled to 0.5 kWh by the now-clip) is the
+    // binding constraint — the 10 kW step would deliver far more uncapped — so
+    // this is budget-bound at_risk, not a physical cannot_meet. The capacity
+    // scaling under test is unchanged.
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('limited_by_daily_budget');
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(0.5);
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
@@ -433,7 +489,11 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('cannot_meet');
+    // Budget-cap-bound (the 10 kW step is uncapped-feasible), so at_risk, not a
+    // physical cannot_meet. The reserve-segment cap scaling under test is
+    // unchanged, and the floor still dips into the reserve.
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('limited_by_daily_budget');
     expect(plan.usesDeadlineReserve).toBe(true);
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.75);
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(0.05);

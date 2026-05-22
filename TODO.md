@@ -217,15 +217,29 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       ~2.7 kWh needed. Root cause: the floor's per-bucket cap is the **soft daily
       budget net of forecast background** — `max(0, perBucketBudgetKWh −
       backgroundKWh)` (`policyHorizon.ts:260`) — not physical capacity.
-      **Prong C (the fix):** the planner must distinguish a soft-budget-bound
-      shortfall from a physical/time/step one and resolve it to a flat
-      status+cause — budget-bound → `at_risk` (`limited_by_daily_budget`,
-      → "Lower daily budget" recourse), reserving `cannot_meet` for physical
-      impossibility. Extend `isDailyBudgetExhausted` (`policyHorizon.ts`) beyond
-      cumulative exhaustion to the per-bucket background squeeze. Subsumes the
-      climbed-band gap (the probe can't rescue a budget-bound shortfall — the cap
-      is step-independent). Files: `horizonPlanner.ts` (`resolveStatus`),
-      `policyHorizon.ts`, `deadlineLabels.ts` (recourse), `notes/ui-terminology.md`.
+      **Prong C (classification SHIPPED, this branch):** `horizonPlanner`
+      `resolveBudgetBoundFeasibility` reclassifies a soft-budget-bound shortfall
+      (one that fits once the per-bucket cap is lifted, mirroring commitment mode)
+      as `at_risk`/`limited_by_daily_budget` instead of physical `cannot_meet`;
+      `cannot_meet` is reserved for the physically/time-infeasible case. The UI
+      budget-cause gate (`deadlinePlan.ts`) was widened to `(cannot_meet ||
+      at_risk) && dailyBudgetExhaustedAnywhere` so cumulative-exhaustion plans keep
+      the budget copy + "Open Budget" recourse. Subsumes the climbed-band gap (the
+      cap is step-independent). Remaining follow-ups (P1, not merge-blocking —
+      `pels-ux-fit`):
+      (i) the per-bucket *background squeeze* (`dailyBudgetExhaustedBucketCount: 0`
+      — the literal "Connected 300" prod case) is now de-alarmed but its copy still
+      reads device-side ("Adjust device" / lower the target). Thread the
+      producer-resolved budget-bound signal (`floorShortfallCause` /
+      `limited_by_daily_budget`, already on the debug payload) onto the persisted
+      active-plan revision (`deferredObjectiveActivePlans.ts`) and gate the hero
+      copy on it, so copy routing matches status routing for the squeeze case too.
+      (ii) the partial-schedule budget-bound hero pairs a live "Heating from HH:MM"
+      headline with the "budget used up" body — pin behavior with a test
+      (`plannedHourOffsets: [0,1]` + `at_risk` + count>0) and decide whether to add
+      a budget qualifier to the headline. P2: the budget meta sentence was written
+      for the terminal `cannot_meet` tier — confirm tone on the recoverable
+      `at_risk` tier during a live walk.
       **Prong B (diagnosis-pending — do not guess a fix):** exempt-from-budget is
       set but the plan stays budget-capped, so the planner's objective is not
       seeing `rescue.exemptFromBudget === 'always'`. Card→settings write

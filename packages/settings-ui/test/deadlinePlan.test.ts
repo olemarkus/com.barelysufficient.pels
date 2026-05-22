@@ -1178,6 +1178,82 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
   });
 
+  it('routes a budget-bound at_risk plan to the daily-budget hint and Open Budget recourse', () => {
+    // The planner now softens a floor shortfall that is short only because of
+    // the daily budget to `at_risk` (not a physical `cannot_meet`). With the
+    // recorder still flagging the cumulatively exhausted buckets, the budget
+    // cause + the lower-the-budget recourse must follow the reclassification —
+    // not regress to device-blaming shortfall copy.
+    const now = new Date(2026, 0, 1, 19, 0, 0, 0);
+    const deadline = atLocalHour(now, 3);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 3 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 50 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [],
+      plannedKWhPerHour: 0,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'at_risk',
+      dailyBudgetExhaustedBucketCount: 3,
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    // Reclassified to at_risk — not the alarm "Cannot finish" chip…
+    expect(payload.hero.chips.some((chip) => chip.text === 'At risk' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(false);
+    // …but the budget cause and the Open Budget recourse still follow the plan.
+    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
+    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    expect(payload.hero.recourse?.targetTab).toBe('budget');
+    expect(payload.hero.recourse?.label).toBe('Open Budget');
+  });
+
   it('routes a passed deadline to the completed state on the History tab', () => {
     const now = new Date(2026, 0, 1, 7, 0, 0, 0);
     const deadline = atLocalHour(now, -1); // already passed
