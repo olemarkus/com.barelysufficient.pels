@@ -8,6 +8,7 @@ import {
 import type {
   DeferredObjectivePlannedBucket,
 } from '../lib/plan/deferredObjectives';
+import { buildDeferredObjectiveDebugPayload } from '../lib/plan/deferredObjectives/diagnosticDebugPayload';
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
@@ -1241,6 +1242,30 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       kwhPerUnitSource: 'learned',
       rateConfidence: 'medium',
     });
+  });
+
+  it('logs band-aware displayConfidence and the mean-based energy at plan time', () => {
+    // The Cause #1 Step 2/3 validation gate needs the band-aware confidence and
+    // the variance margin (`energyNeededKWh − energyExpectedKWh`) captured at
+    // plan time — neither was in the debug payload before. A learned profile
+    // populates both on the diagnostic.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    const payload = buildDeferredObjectiveDebugPayload(diagnostic);
+    expect(payload.event).toBe('deferred_objective_horizon_planned');
+    // Band-aware confidence is surfaced distinctly from the global rateConfidence.
+    expect(payload).toHaveProperty('displayConfidence', diagnostic.displayConfidence);
+    // Mean-based estimate present so the margin is derivable from the payload.
+    expect(payload).toHaveProperty('energyExpectedKWh', diagnostic.energyExpectedKWh ?? null);
+    expect(typeof payload.energyExpectedKWh === 'number' || payload.energyExpectedKWh === null).toBe(true);
   });
 
   it('still reports missing_capacity for temperature objectives without a learned profile (bootstrap is EV-only)', () => {
