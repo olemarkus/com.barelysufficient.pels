@@ -4,6 +4,7 @@ import CapacityGuard from '../lib/core/capacityGuard';
 import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
+import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
 import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
@@ -166,6 +167,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
       registerFlowBackedDeviceCards(deps);
     }
     registerSteppedLoadCards(deps);
+    registerEvChargingPhaseCard(deps);
     registerDeviceCapacityControlCards(deps);
     registerBudgetExemptionCards(deps);
     registerManagedDeviceCondition(deps);

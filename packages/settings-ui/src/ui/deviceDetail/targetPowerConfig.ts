@@ -2,9 +2,9 @@ import type {
   DeviceTargetPowerConfigs,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
-  TargetPowerSteppedLoadPreset,
 } from '../../../../contracts/src/types.ts';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../contracts/src/settingsKeys.ts';
+import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
   deviceDetailTargetPowerClear,
   deviceDetailTargetPowerConfig,
@@ -24,15 +24,7 @@ import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.
 const runSerializedTargetPowerWrite = createSerializedAsyncRunner();
 const TARGET_POWER_MAX_GENERATED_STEPS = 128;
 
-export const createEvTargetPowerConfig = (
-  preset: TargetPowerSteppedLoadPreset,
-): TargetPowerSteppedLoadConfig => ({
-  enabled: true,
-  preset,
-  ...(preset === 'ev_charger_1_phase'
-    ? { min: 0, max: 7360, step: 460, excludeMin: 1, excludeMax: 1380 }
-    : { min: 0, max: 22080, step: 1380, excludeMin: 1, excludeMax: 4140 }),
-});
+export { createEvTargetPowerConfig };
 
 export const createContinuousTargetPowerConfig = (device: TargetDeviceSnapshot): TargetPowerSteppedLoadConfig => {
   const existing = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;

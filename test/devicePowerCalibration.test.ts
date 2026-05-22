@@ -4,6 +4,7 @@ import {
   getAdmissionPowerKw,
   getDeliveryPowerKw,
   hasRecentDrawAt,
+  isStepCalibrationConfident,
   normalizePowerCalibrationSnapshot,
   POWER_CALIBRATION_CONSTANTS,
   POWER_CALIBRATION_VERSION,
@@ -139,6 +140,24 @@ describe('EMA updates and confidence gates', () => {
     expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBeCloseTo(2.5, 1);
   });
 
+  it('falls back to current nameplate when a confident entry was learned for different step watts', () => {
+    let snapshot = createEmptyPowerCalibrationSnapshot();
+    for (let i = 0; i < 6; i += 1) {
+      const outcome = recordSample(snapshot, baseSample({
+        nowMs: i * 70_000,
+        measuredPowerKw: 1.7,
+        nameplateKw: 2,
+      }));
+      if (outcome.accepted) snapshot = outcome.snapshot;
+    }
+
+    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 2)).toBeCloseTo(1.7, 1);
+    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 2)).toBeCloseTo(1.7, 1);
+    expect(getDeliveryPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
+    expect(getAdmissionPowerKw(snapshot, 'dev1', 'high', 3)).toBe(3);
+    expect(isStepCalibrationConfident(snapshot, 'dev1', 'high', 3)).toBe(false);
+  });
+
   it('does not learn above the configured step ceiling', () => {
     let snapshot = createEmptyPowerCalibrationSnapshot();
     for (let i = 0; i < 6; i += 1) {
@@ -227,6 +246,20 @@ describe('hasRecentDrawAt', () => {
     })).toBe(true);
     expect(hasRecentDrawAt({
       snapshot: first.snapshot, deviceId: 'dev1', stepId: 'high', windowMs: 60_000, nowMs: 120_000,
+    })).toBe(false);
+  });
+
+  it('returns false when the current step watts no longer match the learned nameplate', () => {
+    const empty = createEmptyPowerCalibrationSnapshot();
+    const first = recordSample(empty, baseSample({ nowMs: 0, measuredPowerKw: 2.75, nameplateKw: 3 }));
+    if (!first.accepted) throw new Error('expected accepted sample');
+    expect(hasRecentDrawAt({
+      snapshot: first.snapshot,
+      deviceId: 'dev1',
+      stepId: 'high',
+      windowMs: 60_000,
+      nowMs: 30_000,
+      nameplateKw: 4,
     })).toBe(false);
   });
 
