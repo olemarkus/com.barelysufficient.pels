@@ -456,6 +456,19 @@ body {
   margin: 0 auto;
 }
 
+.docs-screenshot {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 6px;
+  border-radius: var(--docs-radius-lg);
+  background: var(--docs-color-device-frame);
+  box-shadow: var(--docs-shadow-lg);
+}
+
 .landing-screenshot-frame {
   margin: 0;
 }
