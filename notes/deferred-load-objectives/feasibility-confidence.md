@@ -75,6 +75,10 @@ are the same problem viewed twice.
 
 Fix: **accumulate energy across sub-intervals** using each sample's own
 `crediblePowerW` (`Σ crediblePowerW_i × Δt_i`) instead of one baseline reading.
+The running accumulator is in-progress state spanning multiple cycles, so it must
+be **persisted on `DeviceObjectiveProfile`** alongside `lastSample` — otherwise a
+restart or settings-driven reload mid-interval drops the partial sum and
+under-counts the energy when the value finally moves.
 A flat-value-but-still-powered sample stays a baseline-preserving skip whose
 power×time is *added to a running energy total*; the kWh/unit is emitted when the
 value finally moves. Per the power-continuity rule, if any sub-interval shows
@@ -109,17 +113,19 @@ drives the UI chip — but the planner never reads it for the verdict.
 The end state is confidence-aware feasibility, but it cannot ship first.
 
 **Step 1 (prerequisite) — stop poisoning the estimate.** Accumulate energy across
-sub-intervals (`Σ crediblePowerW_i × Δt_i`) and invalidate the window on a
-power-=0 sub-interval, per the poisoning section above. This tightens the real
-`kwhPerUnit` dispersion so confidence can actually rise.
+sub-intervals (`Σ crediblePowerW_i × Δt_i`, persisted on the profile per the
+poisoning section) and invalidate the window on a power-=0 sub-interval. This
+tightens the real `kwhPerUnit` dispersion so confidence can actually rise.
 
 **Step 2 (prerequisite) — make confidence escape `low`.** Even with clean
 samples, `resolveProfileConfidence` measures dispersion as relative-std-dev of a
 *single global mean*, which is structurally wrong once bands exist — a well-fit
 U-curve reports high global variance *because* the bands captured real
-structure. Judge confidence by **within-band residual** (and consider lifting
-`OBJECTIVE_PROFILE_MAX_BANDS` past 2 if the U-curve needs it). Without this,
-confidence stays `low` and Step 3 degenerates to permanent "At risk."
+structure. Judge confidence by **within-band residual**. (Note the band cap is
+not the constraint: `OBJECTIVE_PROFILE_MAX_BANDS` is already `4`; prod fits only
+`bandsCount:2`, so the lever is split *quality* — e.g. the
+`MIN_SSE_REDUCTION_FRACTION` split threshold — not raising the constant.) Without
+this, confidence stays `low` and Step 3 degenerates to permanent "At risk."
 
 **Step 3 (the lever) — confidence-aware verdict.** Prefer a **continuous margin**
 over the 3-level enum: have `profileEnergyResolution` emit `energyNeededKWh`

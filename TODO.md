@@ -95,14 +95,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       baseline→rise interval at the baseline sample's single `crediblePowerW`,
       but the device runs distinct steps (prod: 1193/1671/2865 W), so mid-window
       step changes are mis-attributed. Accumulate `Σ crediblePowerW_i × Δt_i`
-      across sub-intervals; invalidate the window on a power-=0 sub-interval
-      (thermal coasting, not electrical heat). The power-=0 case is already
-      guarded for energy; power *variation* is not.
+      across sub-intervals (persist the partial sum on `DeviceObjectiveProfile`
+      so an in-progress interval survives restart/reload); invalidate the window
+      on a power-=0 sub-interval (thermal coasting, not electrical heat). The
+      power-=0 case is already guarded for energy; power *variation* is not.
       (2) *Make confidence escape `low`* — prod `energyConfidence` is `low`
       22/24, never `high`; `resolveProfileConfidence` uses global-mean
       relative-std-dev, structurally wrong once bands exist. Judge by within-band
-      residual (and maybe lift `OBJECTIVE_PROFILE_MAX_BANDS` past 2). Without
-      this, step 3 makes *everything* a permanent "At risk".
+      residual. (Band cap is not the constraint — `OBJECTIVE_PROFILE_MAX_BANDS`
+      is already 4; prod fits only 2, so the lever is split *quality* like the
+      `MIN_SSE_REDUCTION_FRACTION` threshold, not the constant.) Without this,
+      step 3 makes *everything* a permanent "At risk".
       (3) *Confidence-aware verdict* — the horizon planner consumes no confidence
       today; have `profileEnergyResolution` emit `energyNeededKWh ± margin`
       (continuous band residual, not the 3-level enum) and report `at_risk`
