@@ -7,7 +7,7 @@ import type {
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { resolveChipConfidence } from '../../../shared-domain/src/deadlineLabels.ts';
+import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
 import { isFiniteNumber } from './deadlinePlanData.ts';
 
 export const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
@@ -105,19 +105,34 @@ export const resolveProfile = (
 export const resolveEnergyNeededKWh = (params: {
   profile: DeviceObjectiveProfile | null;
   activePlan: DeferredObjectiveActivePlanV1;
-}): { energyNeededKWh: number; confidence: ObjectiveProfileConfidence | null } | null => {
+}): {
+  energyNeededKWh: number;
+  // Mean-based estimate paired with the buffered `energyNeededKWh` for the
+  // `expected…planned` range. Equals `energyNeededKWh` (range collapses) when
+  // the revision carries no separate expected figure (steady device, cold-start,
+  // or a plan persisted before the variance buffer shipped).
+  energyExpectedKWh: number;
+  confidence: ObjectiveProfileConfidence | null;
+  // True only during genuine cold-start; gates the "Estimating" chip.
+  learning: boolean;
+} | null => {
   // The recorder stores `energyNeededKWh` straight from the horizon planner —
   // authoritative even under `cannot_meet` (allocated hours can round to zero
   // for sub-second remaining buckets). The UI never needs its own learned
   // profile to render the timeline.
   const revisionEnergy = params.activePlan.latest?.energyNeededKWh;
   if (!isFiniteNumber(revisionEnergy) || revisionEnergy <= 0) return null;
+  const revisionExpected = params.activePlan.latest?.energyExpectedKWh;
+  const energyExpectedKWh = isFiniteNumber(revisionExpected) && revisionExpected > 0
+    ? revisionExpected
+    : revisionEnergy;
   // Producer-resolved per `feedback_layering_resolution_in_producer.md`: the
-  // shared-domain helper owns the preference chain. The UI sees one flat
-  // value and never branches on provenance / source / kind.
+  // shared-domain helpers own the preference chain. The UI sees flat values
+  // and never branches on provenance / source / kind.
   const confidence = resolveChipConfidence({
     provenance: params.activePlan.kwhPerUnitProvenance,
     profileConfidence: params.profile?.kwhPerUnit?.confidence ?? null,
   });
-  return { energyNeededKWh: revisionEnergy, confidence };
+  const learning = resolveSmartTaskLearning(params.activePlan.kwhPerUnitProvenance);
+  return { energyNeededKWh: revisionEnergy, energyExpectedKWh, confidence, learning };
 };

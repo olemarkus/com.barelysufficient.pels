@@ -111,14 +111,35 @@ export const formatConfidenceChipLabel = (
   return null;
 };
 
-// Smart-task list confidence chip. Cannot-finish cards already carry the
-// strongest state chip and body/detail copy; matching the live hero, suppress
-// confidence there so the row does not mix "cannot finish" with "estimating".
+// Min accepted samples before the learned rate stops being treated as
+// cold-start. Mirrors the planner's variance-buffer floor: below this the rate
+// is genuinely provisional ("Estimating"); at or above it the device is
+// learned, and a persistently `low` confidence reflects inherent variance, not
+// a cold start — so it must not keep nagging.
+export const MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4;
+
+// True only during genuine cold-start: the rate is a bootstrap default, or
+// fewer than `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP` accepted samples back it.
+// Producer-resolved flat boolean — consumers never branch on source/samples.
+export const resolveSmartTaskLearning = (
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined,
+): boolean => {
+  if (!provenance) return false;
+  if (provenance.source === 'bootstrap') return true;
+  return provenance.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
+};
+
+// Smart-task list confidence chip. Shown only during genuine cold-start
+// (`learning`) and never on a settled task: `on_track` is silent (the steady
+// case carries no useful signal and a forever-`low` thermal rate would nag),
+// and `cannot_meet` already owns its row with the strongest state chip + body.
 export const formatSmartTaskListConfidenceChipLabel = (params: {
   confidence: ObjectiveProfileConfidence | null | undefined;
   statusId: SmartTaskListStatusId;
+  learning: boolean;
 }): string | null => {
-  if (params.statusId === 'cannot_meet') return null;
+  if (params.statusId === 'cannot_meet' || params.statusId === 'on_track') return null;
+  if (!params.learning) return null;
   return formatConfidenceChipLabel(params.confidence);
 };
 
@@ -405,6 +426,12 @@ export type DeadlineLabels = {
   // expected to appear on revised hours (device_unavailable, measured_deviation)
   // are omitted; callers fall back to null for unknown keys.
   revisionReasonTooltipLine: Partial<Record<DeferredObjectiveActivePlanRevisionReason, string>>;
+  // One-line explanation shown on the detail surface when the booked energy
+  // carries a non-trivial buffer over the expected (mean) figure — explains the
+  // estimate range by stating PELS reserves the high end as a safety margin.
+  // Describes the margin itself (not an active-learning state) so it stays
+  // accurate regardless of how many samples back the rate.
+  varianceMarginNote: string;
 };
 
 // Shared across all objective kinds — revision reasons are recorder-level
@@ -669,6 +696,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     perUnitRateUnit: 'kWh/°C',
     planInputsRateBootstrapNote: null,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
+    varianceMarginNote: 'PELS books the high end of this range to leave a safety margin.',
   },
   ev_soc: {
     kindChipLabel: 'EV',
@@ -747,6 +775,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
+    varianceMarginNote: 'PELS books the high end of this range to leave a safety margin.',
   },
 };
 
@@ -880,6 +909,43 @@ const formatLastSampleValue = (params: {
   const hours = Math.max(1, Math.round(ageMs / ONE_HOUR_MS));
   const unit = hours === 1 ? 'hour' : 'hours';
   return `Updated ${hours} ${unit} ago`;
+};
+
+// ─── Energy estimate range (variance buffer) ─────────────────────────────────
+
+// Formats the energy estimate as a range when the planned (buffered) figure
+// sits above the expected (mean) figure — PELS books for the high end while the
+// rate is still being refined. Collapses to a single "8.0 kWh" when the two
+// round equal (steady device, cold-start, or no buffer), so the UI never shows
+// a degenerate "8.0–8.0" range. The range itself signals approximation, so no
+// `≈` glyph here — unlike a lone planned figure, which needs the hedge.
+//
+// `energyExpectedKWh` is optional/absent on plans persisted before the variance
+// buffer shipped; absent is treated as equal to planned (range collapses).
+export const formatEnergyEstimateKWh = (params: {
+  energyPlannedKWh: number;
+  energyExpectedKWh?: number | null;
+}): string => {
+  const planned = params.energyPlannedKWh;
+  const expected = typeof params.energyExpectedKWh === 'number' ? params.energyExpectedKWh : planned;
+  const lowText = expected.toFixed(1);
+  const highText = planned.toFixed(1);
+  if (lowText === highText || planned <= expected) return `${highText} kWh`;
+  return `${lowText}–${highText} kWh`; // en-dash
+};
+
+// Returns the kind-specific "why we book extra time" note when the booked
+// energy carries a non-trivial buffer over the expected figure; null otherwise
+// (steady device / cold-start collapse / legacy plan). Detail surface only.
+export const resolveVarianceMarginNote = (params: {
+  labels: DeadlineLabels;
+  energyPlannedKWh: number;
+  energyExpectedKWh?: number | null;
+}): string | null => {
+  if (typeof params.energyExpectedKWh !== 'number') return null;
+  // Guard sub-rounding jitter: only surface when the rounded figures differ.
+  if (params.energyPlannedKWh.toFixed(1) === params.energyExpectedKWh.toFixed(1)) return null;
+  return params.energyPlannedKWh > params.energyExpectedKWh ? params.labels.varianceMarginNote : null;
 };
 
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────

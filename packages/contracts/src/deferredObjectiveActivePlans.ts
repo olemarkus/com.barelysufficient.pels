@@ -61,6 +61,12 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // (e.g. `cannot_meet` against a sub-second remaining bucket) and without
   // depending on a learned `kwhPerUnit` profile.
   energyNeededKWh: number;
+  // Mean-based estimate (no variance buffer). Paired with the buffered
+  // `energyNeededKWh` so the UI can render an `expected…planned` range. Written
+  // only when it differs from `energyNeededKWh`; absent means no buffer to show
+  // (cold-start, bootstrap, steady device) and the UI treats it as equal to
+  // `energyNeededKWh`. Optional for backward compatibility.
+  energyExpectedKWh?: number;
   // Planner status. UI surfaces a "Can't fully meet" chip when this is
   // `cannot_meet` or `at_risk`.
   planStatus: DeferredObjectiveActivePlanStatusV1;

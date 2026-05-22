@@ -84,6 +84,11 @@ export type DeadlinePlanPayload = {
     headlineReason: string | null;
     subline: string;
     metaLine: string;
+    // One-line "why we book extra time" note, shown while PELS is still
+    // refining the rate and the booked energy carries a buffer over the mean.
+    // Null when there's no buffer to explain (steady device / cold-start
+    // collapse / legacy plan).
+    varianceNote: string | null;
     // `Cost ≈ X.XX kr` (planned) or `Cost ≈ X.XX kr so far · Y.YY kr planned`
     // (when partial delivery is known). Resolved producer-side from
     // `Σ priceValue × deviceKwh` so the view never re-derives sums or branches
@@ -205,6 +210,9 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       )}
       <div class="plan-hero__subline">{payload.hero.subline}</div>
       <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
+      {payload.hero.varianceNote !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.varianceNote}</div>
+      )}
       {payload.hero.deliveredSoFarLine !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.deliveredSoFarLine}</div>
       )}

@@ -61,6 +61,11 @@ type BaseDeferredObjectiveDiagnostic = {
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;
+  // Mean-based estimate (no variance buffer). Pairs with the buffered
+  // `energyNeededKWh` so the UI can render an `expected…planned` range. Omitted
+  // on the unresolved paths; absent or equal to `energyNeededKWh` means there is
+  // no buffer to show (cold-start, bootstrap, steady device).
+  energyExpectedKWh?: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
@@ -535,9 +540,11 @@ const buildKnownEnergyFields = (params: {
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
 }): Pick<
   DeferredObjectiveDiagnostic,
-  'energyNeededKWh' | 'kWhPerPercent' | 'kWhPerDegreeC' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
+  'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerPercent' | 'kWhPerDegreeC'
+  | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
+  energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
   kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
   kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
   rateConfidence: params.profileEnergy.rateConfidence,

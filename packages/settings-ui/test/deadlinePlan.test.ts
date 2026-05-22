@@ -42,6 +42,7 @@ const buildHeaterActivePlan = (params: {
   latestHourOffsets?: number[];
   targetTemperatureC?: number;
   energyNeededKWh?: number;
+  energyExpectedKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
   dailyBudgetExhaustedBucketCount?: number;
   planningSpeedKw?: number;
@@ -61,6 +62,7 @@ const buildHeaterActivePlan = (params: {
     hours: originalHours,
     energyNeededKWh: params.energyNeededKWh
       ?? params.plannedHourOffsets.length * params.plannedKWhPerHour,
+    ...(params.energyExpectedKWh !== undefined ? { energyExpectedKWh: params.energyExpectedKWh } : {}),
     planStatus: params.planStatus ?? ('on_track' as const),
     ...(params.dailyBudgetExhaustedBucketCount !== undefined
       ? { dailyBudgetExhaustedBucketCount: params.dailyBudgetExhaustedBucketCount }
@@ -3237,21 +3239,116 @@ describe('resolveConfidenceChipText', () => {
   });
 });
 
+describe('variance-buffer estimate range (end-to-end through buildObjectivePayload)', () => {
+  const setup = (energyExpectedKWh?: number) => {
+    const now = new Date(2026, 0, 1, 12, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 10 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const activePlan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1, 2, 3, 4],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 65,
+      energyNeededKWh: 10,
+      ...(energyExpectedKWh !== undefined ? { energyExpectedKWh } : {}),
+      planStatus: 'on_track',
+    });
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true, kind: 'temperature', enforcement: 'soft',
+            targetTemperatureC: 65, deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    return expectOk(testExports.buildObjectivePayload({
+      bootstrap, deviceId: 'heater', devices, prices, nowMs: now.getTime(),
+    }));
+  };
+
+  it('renders the expected…planned range and the why-note when a buffer is booked', () => {
+    const payload = setup(8); // expected 8, planned (booked) 10
+    expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
+    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
+  });
+
+  it('collapses to a single figure with no why-note when expected equals planned (or is absent)', () => {
+    const collapsed = setup(10);
+    expect(collapsed.hero.metaLine).toContain('10.0 kWh');
+    expect(collapsed.hero.metaLine).not.toContain('–');
+    expect(collapsed.hero.varianceNote).toBeNull();
+
+    const legacy = setup(undefined); // pre-buffer plan: no expected figure
+    expect(legacy.hero.metaLine).toContain('10.0 kWh');
+    expect(legacy.hero.varianceNote).toBeNull();
+  });
+});
+
 describe('resolveLiveHeroConfidenceChipText', () => {
   it('suppresses low-confidence copy for true cannot-meet heroes', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
     expect(resolveLiveHeroConfidenceChipText({
       confidence: 'low',
       planStatus: 'cannot_meet',
+      learning: true,
     })).toBeNull();
   });
 
-  it('keeps low-confidence copy for at-risk heroes', async () => {
+  it('keeps low-confidence copy for at-risk heroes that are still learning', async () => {
     const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
     expect(resolveLiveHeroConfidenceChipText({
       confidence: 'low',
       planStatus: 'at_risk',
+      learning: true,
     })).toBe('Estimating');
+  });
+
+  it('stays silent on on_track even while learning (the steady case carries no signal)', async () => {
+    const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveLiveHeroConfidenceChipText({
+      confidence: 'low',
+      planStatus: 'on_track',
+      learning: true,
+    })).toBeNull();
+  });
+
+  it('suppresses the chip for a learned (not cold-start) rate even at low confidence', async () => {
+    const { resolveLiveHeroConfidenceChipText } = await import('../src/ui/deadlinePlanHero.ts');
+    // A learned thermal rate sits at `low` confidence forever from inherent
+    // variance — that is not an "estimating" state and must not nag.
+    expect(resolveLiveHeroConfidenceChipText({
+      confidence: 'low',
+      planStatus: 'at_risk',
+      learning: false,
+    })).toBeNull();
   });
 });
 
@@ -3466,6 +3563,7 @@ describe('buildChartOption original-series suppression', () => {
         headlineReason: null,
         subline: '',
         metaLine: '',
+        varianceNote: null,
         costMetaLine: null,
         deliveredSoFarLine: null,
         recourse: null,

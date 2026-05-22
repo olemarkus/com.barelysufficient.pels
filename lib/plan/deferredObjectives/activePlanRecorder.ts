@@ -189,6 +189,11 @@ const buildRevision = (params: {
   // consumers that haven't been updated keep falling back to zero.
   const exhaustedBuckets = params.diag.dailyBudgetExhaustedBucketCount;
   const energyNeededKWh = roundKWh(horizonPlan.energyNeededKWh);
+  // Mean-based expected energy, rounded to match `energyNeededKWh`. Persisted
+  // only when it differs from the buffered figure, so steady devices stay
+  // byte-stable across revisions and the UI's range collapses to one number.
+  const energyExpectedKWhRaw = params.diag.energyExpectedKWh;
+  const energyExpectedKWh = typeof energyExpectedKWhRaw === 'number' ? roundKWh(energyExpectedKWhRaw) : null;
   const planningSpeedKw = params.diag.planningSpeedKw;
   // Estimated duration is a derived field — the recorder is the right place
   // to format it so the hero meta line and any downstream consumer (flow
@@ -206,6 +211,9 @@ const buildRevision = (params: {
     // that would appear in persisted output even when the underlying
     // allocation is byte-identical.
     energyNeededKWh,
+    ...(energyExpectedKWh !== null && energyExpectedKWh !== energyNeededKWh
+      ? { energyExpectedKWh }
+      : {}),
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
     ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),

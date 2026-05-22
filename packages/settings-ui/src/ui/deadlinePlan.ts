@@ -476,12 +476,23 @@ const resolveProratedActualKWh = (params: {
   return actualKWh * (relevantMs / elapsedMs);
 };
 
+// Flattens the resolver's energy result into the hero's range + chip inputs,
+// defaulting when no learned/buffered energy is available (null `energy`).
+const resolveHeroEnergyFields = (
+  energy: ObjectivePayloadReady['energy'],
+  energyNeededKWh: number,
+): { energyExpectedKWh: number; learning: boolean } => ({
+  energyExpectedKWh: energy?.energyExpectedKWh ?? energyNeededKWh,
+  learning: energy?.learning ?? false,
+});
+
 const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload => {
   const { ctx, bootstrap, profile, progress, hours, energy } = input;
   const { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } = ctx;
   const latest = activePlan!.latest!;
   const labels = deadlineLabels(objective.kind);
   const energyNeededKWh = energy?.energyNeededKWh ?? 0;
+  const heroEnergy = resolveHeroEnergyFields(energy, energyNeededKWh);
   const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
   const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
@@ -535,8 +546,10 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       firstChargingHour,
       deadlineAtMs,
       energyNeededKWh,
+      energyExpectedKWh: heroEnergy.energyExpectedKWh,
       hoursLeft,
       confidence: energy?.confidence ?? null,
+      learning: heroEnergy.learning,
       planStatus: latest.planStatus,
       nowMs,
       cannotMeet,

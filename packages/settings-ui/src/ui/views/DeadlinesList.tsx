@@ -35,6 +35,9 @@ export type DeadlinesListCard = {
   // confidence has been computed yet (pending plan or no learned profile).
   // Mirrors the live hero's confidence chip so the two surfaces stay aligned.
   confidence: ObjectiveProfileConfidence | null;
+  // True only during genuine cold-start; gates the "Estimating" chip so a
+  // learned-but-forever-`low` thermal rate doesn't nag a settled task.
+  learning: boolean;
   extraPermissionsValue: string | null;
   // Pre-rendered "currently 18.5 °C" / "currently 45 %" sentence; `null` when
   // the device's current value is unknown. Resolved at the producer so the
@@ -104,6 +107,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
   const confidenceLabel = formatSmartTaskListConfidenceChipLabel({
     confidence: card.confidence,
     statusId: card.statusId,
+    learning: card.learning,
   });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
   return (

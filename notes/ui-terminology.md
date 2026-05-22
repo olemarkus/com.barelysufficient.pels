@@ -133,8 +133,16 @@ only available signal.
 
 Confidence chips use the same short vocabulary on the live hero and active
 smart-task list: low confidence is `Estimating`, medium confidence is
-`Refining`, and high confidence renders no chip. Cannot-finish cards also
-suppress confidence because `Cannot finish` is the stronger signal.
+`Refining`, and high confidence renders no chip. The chip now appears **only
+during genuine cold-start** — when the rate is bootstrap-sourced or has fewer
+than `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP` (4) accepted samples — and is
+**silent on `on_track`** as well as `cannot_meet`. A learned rate that sits at
+`low` confidence forever (thermal devices, from inherent per-hour variance) is
+no longer treated as cold-start, so it renders no chip rather than nagging a
+settled task. The energy estimate instead shows as a range
+(`expected…planned`, e.g. `8.0–10.0 kWh`) on the detail hero, with a one-line
+note explaining PELS books the high end as a safety margin; the range collapses
+to a single figure once the buffer fades with learning.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
