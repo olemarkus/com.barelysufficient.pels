@@ -180,6 +180,24 @@ const canReportFreshProgressWhileUnknown = (reasonCode: DeferredObjectiveDiagnos
     || reasonCode === 'objective_price_feature_disabled'
 );
 
+// Single entry point for resolving learned/buffered energy from progress, so
+// both diagnostic paths pass the objective's enforcement (which sets the
+// variance buffer `k`) and current value identically.
+const resolveProgressEnergy = (params: {
+  powerTracker: PowerTrackerState;
+  deviceId: string;
+  objective: DeferredObjectiveSettingsEntry;
+  remainingUnits: number;
+  progress: DeferredObjectiveProgressResolution;
+}): DeferredObjectiveEnergyResolution => resolveProfileEnergy({
+  powerTracker: params.powerTracker,
+  deviceId: params.deviceId,
+  objectiveKind: params.objective.kind,
+  enforcement: params.objective.enforcement,
+  remainingUnits: params.remainingUnits,
+  currentValue: progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind }),
+});
+
 // Variant-preserving merge of progress-derived fields onto an existing
 // diagnostic. The discriminated union forbids assigning
 // `currentTemperatureC` on the EV variant, so we branch on the diagnostic's
@@ -207,13 +225,7 @@ const buildPolicyGatedKnownInputs = (
 
   const profileEnergy = !progress.reasonCode && remainingUnits > 0
     && policyReasonCode === 'objective_missing_price_horizon'
-    ? resolveProfileEnergy({
-      powerTracker,
-      deviceId,
-      objectiveKind: objective.kind,
-      remainingUnits,
-      currentValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
-    })
+    ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits, progress })
     : null;
 
   const withProgress = mergeProgressFields(
@@ -362,15 +374,10 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   }
 
   const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
-    ? resolveProfileEnergy({
-      powerTracker,
-      deviceId,
-      objectiveKind: objective.kind,
-      remainingUnits: progress.remainingUnits,
-      currentValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
-    })
+    ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits: progress.remainingUnits, progress })
     : {
       energyNeededKWh: 0,
+      energyExpectedKWh: 0,
       kWhPerUnit: null,
       rateConfidence: null,
       displayConfidence: null,
@@ -389,12 +396,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   if (profileEnergy.energyNeededKWh > 0 && steps.length === 0) {
     return withUnknown({
       ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-      energyNeededKWh: profileEnergy.energyNeededKWh,
-      kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
-      kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
-      rateConfidence: profileEnergy.rateConfidence,
-      displayConfidence: profileEnergy.displayConfidence,
-      kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
+      ...buildKnownEnergyFields({ objective, profileEnergy }),
       horizonBucketCount: policyHorizon.horizonBucketCount,
       dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
     }, 'objective_missing_charge_rate');
@@ -422,12 +424,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
     status: horizonPlan.status,
     reasonCode: horizonPlan.statusDetail,
-    energyNeededKWh: profileEnergy.energyNeededKWh,
-    kWhPerPercent: objective.kind === 'ev_soc' ? profileEnergy.kWhPerUnit : null,
-    kWhPerDegreeC: objective.kind === 'temperature' ? profileEnergy.kWhPerUnit : null,
-    rateConfidence: profileEnergy.rateConfidence,
-    displayConfidence: profileEnergy.displayConfidence,
-    kwhPerUnitSource: profileEnergy.kwhPerUnitSource,
+    ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
     dailyBudgetExhaustedBucketCount,
     requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
