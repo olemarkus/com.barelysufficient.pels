@@ -9,6 +9,12 @@ import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } 
 import { updateProfileStat } from './objectiveProfileStats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './objectiveProfileBands';
 import { buildObjectiveProfileSample } from './objectiveProfileSamples';
+import {
+  CLEARED_ENERGY_ACCUMULATOR,
+  calculateWindowEnergyKwh,
+  resolveSubIntervalLeftEdge,
+  subIntervalEnergyKwh,
+} from './objectiveProfileEnergyAccumulator';
 
 export type {
   DeviceObjectiveProfile,
@@ -151,15 +157,34 @@ export function updateDeviceObjectiveProfile(params: {
       deviceName,
       debugStructured,
     });
-    return recovery.nextProfile;
+    // A recovery transition (refill drop / rebuild) invalidates the open energy
+    // window, so drop any partial accumulator the recovery result carried over.
+    return { ...recovery.nextProfile, ...CLEARED_ENERGY_ACCUMULATOR };
   }
 
+  // Energy across the open baseline→sample window, accumulated per sub-interval
+  // at each one's own left-edge power. Computed once and threaded into both the
+  // energy-range rejection check and the accepted-sample builder so the verdict
+  // and the recorded value rest on the same figure.
+  const windowEnergyKwh = calculateWindowEnergyKwh(previous, sample);
+
   const rejectionReason = resolveProfileValueOrEnergyRejectionReason({
-    previousSample,
     sample,
     intervalMs,
     valueDelta,
+    windowEnergyKwh,
   });
+  // `rise_too_small` is the documented poisoning vector: a still-powered sample
+  // whose value barely moved. Instead of discarding it (which billed the eventual
+  // accepted rise at a single baseline power), close its sub-interval into the
+  // accumulator and keep the baseline so the next real rise integrates the true
+  // per-step power profile.
+  if (rejectionReason === 'objective_profile_rise_too_small') {
+    emitRejectedProfileSample({
+      previous, deviceId, deviceName, debugStructured, intervalMs, valueDelta, rejectionReason,
+    });
+    return accrueSubIntervalSkip({ previous, sample });
+  }
   if (rejectionReason) {
     emitRejectedProfileSample({
       previous,
@@ -185,7 +210,41 @@ export function updateDeviceObjectiveProfile(params: {
     debugStructured,
     intervalMs,
     valueDelta,
+    windowEnergyKwh,
   });
+}
+
+// `rise_too_small` skip: close the open sub-interval at its left-edge power into
+// `pendingEnergyKWh`, advance the sub-interval pointer to this sample, and keep
+// the baseline (`lastSample`) so the value delta still measures the full rise.
+// A sub-interval whose left-edge power is absent or non-positive is thermally
+// contaminated (the device coasted, not heated electrically) — discard the
+// partial window and reset the baseline to this sample instead of averaging
+// coast drift into the energy estimate.
+function accrueSubIntervalSkip(params: {
+  previous: DeviceObjectiveProfile;
+  sample: DeviceObjectiveProfileSample;
+}): DeviceObjectiveProfile {
+  const { previous, sample } = params;
+  const { fromMs, powerW } = resolveSubIntervalLeftEdge(previous);
+  if (typeof powerW !== 'number' || powerW <= 0) {
+    return {
+      ...previous,
+      updatedAtMs: sample.observedAtMs,
+      lastSample: sample,
+      rejectedSamples: previous.rejectedSamples + 1,
+      ...CLEARED_ENERGY_ACCUMULATOR,
+    };
+  }
+  return {
+    ...previous,
+    updatedAtMs: sample.observedAtMs,
+    rejectedSamples: previous.rejectedSamples + 1,
+    pendingEnergyKWh: (previous.pendingEnergyKWh ?? 0)
+      + subIntervalEnergyKwh(powerW, fromMs, sample.observedAtMs),
+    subIntervalStartMs: sample.observedAtMs,
+    subIntervalPowerW: sample.crediblePowerW,
+  };
 }
 
 function buildAcceptedProfileSample(params: {
@@ -196,6 +255,7 @@ function buildAcceptedProfileSample(params: {
   debugStructured?: ObjectiveProfileDebugEmitter;
   intervalMs: number;
   valueDelta: number;
+  windowEnergyKwh: number | undefined;
 }): DeviceObjectiveProfile {
   const {
     previous,
@@ -205,10 +265,11 @@ function buildAcceptedProfileSample(params: {
     debugStructured,
     intervalMs,
     valueDelta,
+    windowEnergyKwh,
   } = params;
   const previousSample = previous.lastSample;
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
-  const energyKwh = calculateEnergyKwh(previousSample, intervalMs);
+  const energyKwh = windowEnergyKwh;
   const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
   const bandedUpdate = resolveBandedUpdate({ previous, previousSample, sample, kwhPerUnit });
   const nextProfile = {
@@ -221,6 +282,9 @@ function buildAcceptedProfileSample(params: {
       ? { kwhPerUnit: updateProfileStat(previous.kwhPerUnit, kwhPerUnit, sample.observedAtMs) }
       : {}),
     ...bandedUpdate,
+    // The accepted rise closes the window; the next sample starts a fresh one
+    // measured from this baseline.
+    ...CLEARED_ENERGY_ACCUMULATOR,
   };
   debugStructured?.({
     event: 'objective_profile_sample_recorded',
@@ -260,6 +324,8 @@ function buildRejectedProfileSample(params: {
       updatedAtMs: sample.observedAtMs,
       lastSample: sample,
       rejectedSamples: previous.rejectedSamples + 1,
+      // Baseline reset → the open energy window is void; drop the partial sum.
+      ...CLEARED_ENERGY_ACCUMULATOR,
     };
   }
   return {
@@ -338,15 +404,15 @@ function emitRejectedProfileSample(params: {
 }
 
 function resolveProfileValueOrEnergyRejectionReason(params: {
-  previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   intervalMs: number;
   valueDelta: number;
+  windowEnergyKwh: number | undefined;
 }): string | null {
-  const { previousSample, sample, intervalMs, valueDelta } = params;
+  const { sample, intervalMs, valueDelta, windowEnergyKwh } = params;
   const valueReason = resolveProfileValueRejectionReason({ sample, intervalMs, valueDelta });
   if (valueReason) return valueReason;
-  return resolveProfileEnergyRejectionReason({ previousSample, sample, intervalMs, valueDelta });
+  return resolveProfileEnergyRejectionReason({ sample, valueDelta, windowEnergyKwh });
 }
 
 function resolveProfileIntervalRejectionReason(params: {
@@ -379,22 +445,18 @@ function resolveProfileValueRejectionReason(params: {
 }
 
 function resolveProfileEnergyRejectionReason(params: {
-  previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
-  intervalMs: number;
   valueDelta: number;
+  windowEnergyKwh: number | undefined;
 }): string | null {
-  const {
-    previousSample,
-    sample,
-    intervalMs,
-    valueDelta,
-  } = params;
-  if (typeof previousSample.crediblePowerW !== 'number') return null;
-  const energyKwh = calculateEnergyKwh(previousSample, intervalMs);
-  const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
+  const { sample, valueDelta, windowEnergyKwh } = params;
+  // No credible power across the window (device idle / coasting) → no energy
+  // estimate to range-check; the sample can still be accepted on its value rise
+  // and simply contributes no `kwhPerUnit`.
+  if (windowEnergyKwh === undefined) return null;
+  const kwhPerUnit = calculateKwhPerUnit({ energyKwh: windowEnergyKwh, valueDelta });
   const maxKwhPerUnit = sample.unit === 'degree_c' ? MAX_KWH_PER_DEGREE_C : MAX_KWH_PER_PERCENT;
-  if (kwhPerUnit === undefined || !Number.isFinite(kwhPerUnit) || kwhPerUnit <= 0 || kwhPerUnit > maxKwhPerUnit) {
+  if (!Number.isFinite(kwhPerUnit) || kwhPerUnit <= 0 || kwhPerUnit > maxKwhPerUnit) {
     return 'objective_profile_energy_per_unit_out_of_range';
   }
   return null;
@@ -421,14 +483,6 @@ function calculateUnitPerHour(params: {
   return params.valueDelta / (params.intervalMs / 3_600_000);
 }
 
-function calculateEnergyKwh(
-  previousSample: DeviceObjectiveProfileSample,
-  intervalMs: number,
-): number | undefined {
-  return typeof previousSample.crediblePowerW === 'number'
-    ? previousSample.crediblePowerW * (intervalMs / 3_600_000) / 1000
-    : undefined;
-}
 
 function calculateKwhPerUnit(params: {
   energyKwh: number;

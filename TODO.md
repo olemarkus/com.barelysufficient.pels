@@ -40,9 +40,12 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
          could NOT reproduce that swing**: the retained logs show the rate
          stable at `0.225–0.244` (~9% drift) with `acceptedSamples` up to
          **539** and still `rateConfidence: low`. So the rate has *converged*
-         (mean nailed down at n≈hundreds); the persistent `low` is the
-         by-design CV artifact (per-sample thermal variance is irreducibly
-         high — see PR #965 SE-buffer rationale), not non-convergence.
+         (mean nailed down at n≈hundreds) — `low` is **not** non-convergence.
+         Per `feasibility-confidence.md` the persistent `low` is driven by an
+         energy-attribution **poisoning** artifact (Step 1, now fixed below)
+         plus a structurally-wrong global-mean dispersion model (Step 2) — only
+         *partly* irreducible thermal variance, NOT "by design" as an earlier
+         draft of this line claimed.
          Sample rejection (`objective_profile_non_monotonic_time`,
          `objective_profile_interval_too_short`) does occur but is **not**
          starving the profile (539 accepted samples). The original
@@ -102,14 +105,17 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       bands fit (`bandsCount:2`), the buffer is persisted (`power_tracker_state`,
       30-day retention). The fix is **three steps in dependency order** (full
       design + log evidence in `feasibility-confidence.md`):
-      (1) *Stop poisoning the estimate* — `calculateEnergyKwh` bills the whole
-      baseline→rise interval at the baseline sample's single `crediblePowerW`,
-      but the device runs distinct steps (prod: 1193/1671/2865 W), so mid-window
-      step changes are mis-attributed. Accumulate `Σ crediblePowerW_i × Δt_i`
-      across sub-intervals (persist the partial sum on `DeviceObjectiveProfile`
-      so an in-progress interval survives restart/reload); invalidate the window
-      on a power-=0 sub-interval (thermal coasting, not electrical heat). The
-      power-=0 case is already guarded for energy; power *variation* is not.
+      (1) ✅ *Stop poisoning the estimate* — **SHIPPED.** `calculateEnergyKwh`
+      billed the whole baseline→rise interval at the baseline sample's single
+      `crediblePowerW`, but the device runs distinct steps (prod: 1193/1671/2865
+      W), so mid-window step changes were mis-attributed. Now accumulates
+      `Σ crediblePowerW_i × Δt_i` per sub-interval across the `rise_too_small`
+      skips that used to be discarded, persisting the partial sum
+      (`pendingEnergyKWh`/`subIntervalStartMs`/`subIntervalPowerW` on
+      `DeviceObjectiveProfile`) so an in-progress window survives restart/reload,
+      and invalidating the window on a power-=0 sub-interval (thermal coasting,
+      not electrical heat). No-skip windows stay byte-identical to the old
+      single-baseline bill.
       (2) *Make confidence escape `low`* — prod `energyConfidence` is `low`
       22/24, never `high`; `resolveProfileConfidence` uses global-mean
       relative-std-dev, structurally wrong once bands exist. Judge by within-band
