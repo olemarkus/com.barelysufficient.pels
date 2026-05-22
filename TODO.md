@@ -74,6 +74,20 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Note: the UI no longer *contradicts itself* about this (PR #962
       removed the "can't determine why" dead-end + the >100% delivered
       chip); this item is the underlying correctness root cause.
+      **Partially addressed (Slice 1, this branch):** cause #2's *status*
+      half is fixed — `horizonPlanner` now runs a classification-only
+      climbed-band probe at the top active step and reports `at_risk`
+      (`feasible_above_floor`) instead of a flat `cannot_meet` when the
+      floor falls short but climbing would fit. The commitment is still
+      sized off the min-step floor (`hard-cap-is-physical` preserved). This
+      is exactly the "separate 'physically can't deliver' from 'estimate
+      uncertain'" split. See `notes/deferred-load-objectives/feasibility-floor-vs-climbed-band.md`.
+      **Still open:** (a) cause #1 — volatile low-confidence learned rate /
+      upstream sample-rejection so the rate can converge; (b) Slice 2 —
+      raising the committed floor itself when reserved headroom guarantees a
+      higher step (exempt + `limit_lower_priority`), which needs a physical
+      headroom forecast plumbed into the horizon input and revisits PR #944
+      (design captured in the note above, not built).
       Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
       `lib/plan/deferredObjectives/planningSpeed.ts`,
       `lib/plan/deferredObjectives/bucketAllocation.ts`,

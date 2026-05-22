@@ -206,6 +206,100 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.unplannedUsefulEnergyKWh).toBe(0);
   });
 
+  it('reports at_risk (feasible_above_floor) when the floor falls short but climbing a higher step fits', () => {
+    // 2 kWh needed in a single 1-hour bucket. The guaranteed floor (low = 1 kW)
+    // delivers only 1 kWh, so the commitment is short — but the executor climbs
+    // to higher steps when capacity allows, and the top step (max = 3 kW) would
+    // fit the full 2 kWh. That is reachable-by-climbing, not impossible, so the
+    // verdict is at_risk rather than a flat cannot_meet false negative.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    // The commitment itself still only plans the guaranteed floor (1 kWh).
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('still reports cannot_meet when the target does not fit even at the top step', () => {
+    // 10 kWh needed in a single 1-hour bucket. Even the top step (max = 3 kW)
+    // delivers only 3 kWh, so the target is physically unreachable — climbing
+    // cannot rescue it and the verdict stays cannot_meet.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 10,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+  });
+
+  it('keeps cannot_meet for a single-step device that cannot climb', () => {
+    // A device with one usable step (e.g. an EV charger) has no higher step to
+    // climb to, so a floor shortfall is a genuine miss, not feasible_above_floor.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: [
+        { id: 'charge', usefulPowerKw: 1 },
+      ],
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+  });
+
+  it('keeps cannot_meet for a committed plan that is short, since the climbed probe respects committed caps', () => {
+    // Committed to 1 kWh in the first hour only, but 2 kWh is needed. The climbed
+    // probe mirrors the committed mode, so the per-hour committed cap (1 kWh)
+    // still binds even at the top step — climbing within committed hours cannot
+    // manufacture feasibility, so the verdict stays cannot_meet rather than
+    // silently recovering to feasible_above_floor.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (2 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
