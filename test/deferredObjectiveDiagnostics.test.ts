@@ -1268,6 +1268,43 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(typeof payload.energyExpectedKWh === 'number' || payload.energyExpectedKWh === null).toBe(true);
   });
 
+  it('surfaces rescue-permission mode and applied flags in the debug payload', () => {
+    // Without these, a budget-capped `cannot_meet` cannot be told apart from one
+    // where exempt-from-budget was configured but never reached/lifted the plan.
+    // The configured mode (`*Mode`) and whether the producer engaged it
+    // (`*Applied`) must both be visible at plan time.
+    const [withoutRescue] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+    expect(buildDeferredObjectiveDebugPayload(withoutRescue)).toMatchObject({
+      rescueExemptMode: 'off',
+      rescueLimitMode: 'off',
+      budgetExemptApplied: false,
+      limitLowerPriorityApplied: false,
+    });
+
+    const [withRescue] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(
+        buildSettings({ targetPercent: 60, rescue: { exemptFromBudget: 'always' } }),
+      ),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+    // The configured mode is surfaced verbatim even when the plan stays
+    // budget-capped — that combination is exactly the diagnosis signal.
+    expect(buildDeferredObjectiveDebugPayload(withRescue).rescueExemptMode).toBe('always');
+  });
+
   it('still reports missing_capacity for temperature objectives without a learned profile (bootstrap is EV-only)', () => {
     const heaterDevice = buildTemperatureDevice({ currentTemperature: 40 });
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');

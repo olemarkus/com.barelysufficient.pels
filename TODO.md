@@ -209,6 +209,38 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       Source: `pels-ux-fit`, v2.8.0→origin/main release-review pass,
       2026-05-22.
 
+- [ ] **Budget-bound `cannot_meet` is mislabeled as physical, and
+      exempt-from-budget is not applied to the plan.** Distinct from the
+      min-step/confidence causes above. Prod 2026-05-22 (`d280c1ed`): "Connected
+      300" is a persistent `cannot_meet` with `plannedUsefulEnergyKWh` pinned at
+      one min-step bucket (1.182) despite ~9 h runway, 10–12 kW headroom, and
+      ~2.7 kWh needed. Root cause: the floor's per-bucket cap is the **soft daily
+      budget net of forecast background** — `max(0, perBucketBudgetKWh −
+      backgroundKWh)` (`policyHorizon.ts:260`) — not physical capacity.
+      **Prong C (the fix):** the planner must distinguish a soft-budget-bound
+      shortfall from a physical/time/step one and resolve it to a flat
+      status+cause — budget-bound → `at_risk` (`limited_by_daily_budget`,
+      → "Lower daily budget" recourse), reserving `cannot_meet` for physical
+      impossibility. Extend `isDailyBudgetExhausted` (`policyHorizon.ts`) beyond
+      cumulative exhaustion to the per-bucket background squeeze. Subsumes the
+      climbed-band gap (the probe can't rescue a budget-bound shortfall — the cap
+      is step-independent). Files: `horizonPlanner.ts` (`resolveStatus`),
+      `policyHorizon.ts`, `deadlineLabels.ts` (recourse), `notes/ui-terminology.md`.
+      **Prong B (diagnosis-pending — do not guess a fix):** exempt-from-budget is
+      set but the plan stays budget-capped, so the planner's objective is not
+      seeing `rescue.exemptFromBudget === 'always'`. Card→settings write
+      (`flowCards/smartTaskRescueCard.ts`) and planner read (`appInit.ts`) look
+      correct, so confirm config-vs-code from the Prong-A telemetry (next restart)
+      or a live `objectivesByDeviceId['632c4190…'].rescue` check before any fix.
+      B2: `budgetExemptApplied` is gated on `isCurrentBucketPlanned`
+      (`diagnosticsBridge.ts:436`) so execution-exempt self-disarms when the
+      current bucket is "avoid"/empty — decide if intended.
+      **Prong A (landed):** rescue/exempt visibility added to
+      `deferred_objective_horizon_planned`.
+      Not data-gated. See
+      `notes/deferred-load-objectives/budget-bound-false-cannot-meet.md`.
+      Source: root-cause trace 2026-05-22.
+
 ## P1 Correctness, Data Integrity, and Supported UX
 
 *v2.8.x release-review follow-ups. These are safe for patch releases,
