@@ -56,6 +56,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
     });
@@ -73,6 +74,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 10,
     });
     expect(result.reasonCode).toBeNull();
@@ -91,6 +93,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 15,
       currentValue: 45,
     });
@@ -111,6 +114,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 35,
       currentValue: 45,
     });
@@ -129,6 +133,7 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 20,
       currentValue: 50,
     });
@@ -141,10 +146,125 @@ describe('resolveProfileEnergy (banded)', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
     });
     expect(result.reasonCode).toBe('objective_missing_capacity');
+  });
+});
+
+describe('resolveProfileEnergy variance buffer', () => {
+  // Buffer is mean + k · (σ/√n). m2 chosen via σ²·(n-1) so σ is exact; n = 4
+  // keeps √n = 2 so the standard error is a round number.
+  const statVar = (mean: number, sampleCount: number, sigma: number): ObjectiveProfileStat => ({
+    sampleCount,
+    mean,
+    m2: sigma * sigma * (sampleCount - 1),
+    min: mean,
+    max: mean,
+    confidence: 'low',
+    lastUpdatedMs: 0,
+  });
+
+  it('plans against mean + k·SE for a hard objective while expected stays at the mean', () => {
+    // σ = 0.2, n = 4 → SE = 0.1; hard k = 2 → rate 0.4 + 2·0.1 = 0.6.
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 0.2) }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'hard',
+      remainingUnits: 10,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    expect(result.energyExpectedKWh).toBeCloseTo(4, 6); // 10 * 0.4
+    expect(result.energyNeededKWh).toBeCloseTo(6, 6); // 10 * (0.4 + 2 * 0.1)
+    // Displayed learned rate stays at the measured mean, not the buffer.
+    expect(result.kWhPerUnit).toBeCloseTo(0.4, 6);
+  });
+
+  it('uses a gentler k for soft objectives', () => {
+    // Same SE = 0.1; soft k = 1 → rate 0.4 + 1·0.1 = 0.5.
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 0.2) }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'soft',
+      remainingUnits: 10,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    expect(result.energyNeededKWh).toBeCloseTo(5, 6); // 10 * (0.4 + 1 * 0.1)
+  });
+
+  it('shrinks the buffer as the sample count grows (standard error fades)', () => {
+    // Same σ = 0.2 and mean, but n = 64 → SE = 0.2/8 = 0.025; hard k = 2 →
+    // rate 0.4 + 0.05 = 0.45, far below the n = 4 case (0.6). The buffer fades
+    // toward the mean with learning rather than persisting.
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 64, 0.2) }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'hard',
+      remainingUnits: 10,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    expect(result.energyNeededKWh).toBeCloseTo(4.5, 6); // 10 * (0.4 + 2 * 0.025)
+  });
+
+  it('does not buffer during cold-start (sample count below the floor)', () => {
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 3, 0.2) }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'hard',
+      remainingUnits: 10,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    // Range collapses: planned == expected when the estimate is not yet trustworthy.
+    expect(result.energyNeededKWh).toBeCloseTo(4, 6);
+    expect(result.energyExpectedKWh).toBeCloseTo(4, 6);
+  });
+
+  it('caps the buffer so a pathological estimate cannot explode the booked energy', () => {
+    // σ = 1.0, n = 4 → SE = 0.5; hard k = 2 → mean + 1.0 = 1.4, capped at 2× mean = 0.8.
+    const tracker = buildTracker(buildProfile({ kwhPerUnit: statVar(0.4, 4, 1) }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'hard',
+      remainingUnits: 10,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    expect(result.energyNeededKWh).toBeCloseTo(8, 6); // 10 * min(1.4, 0.8)
+  });
+
+  it('buffers per band using each band own standard error', () => {
+    // Band: σ = 0.4, n = 4 → SE = 0.2; hard k = 2 → rate 0.5 + 0.4 = 0.9.
+    const tracker = buildTracker(buildProfile({
+      kwhPerUnit: statVar(0.3, 20, 0.05),
+      bands: [{ lowerInclusive: 50, upperExclusive: 70, sampleCount: 4, mean: 0.5, m2: 0.4 * 0.4 * 3, confidence: 'low' }],
+    }));
+    const result = resolveProfileEnergy({
+      powerTracker: tracker,
+      deviceId: 'device-1',
+      objectiveKind: 'temperature',
+      enforcement: 'hard',
+      remainingUnits: 20,
+      currentValue: 50,
+    });
+    if (result.reasonCode !== null) throw new Error('expected a learned resolution');
+    expect(result.energyExpectedKWh).toBeCloseTo(10, 6); // 20 * 0.5
+    expect(result.energyNeededKWh).toBeCloseTo(18, 6); // 20 * (0.5 + 2 * 0.2)
   });
 });
 
@@ -296,6 +416,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'temperature',
+      enforcement: 'hard',
       remainingUnits: 5,
       currentValue: 50,
     });
@@ -311,6 +432,7 @@ describe('resolveProfileEnergy displayConfidence', () => {
       powerTracker: tracker,
       deviceId: 'device-1',
       objectiveKind: 'ev_soc',
+      enforcement: 'hard',
       remainingUnits: 20,
       currentValue: 40,
     });

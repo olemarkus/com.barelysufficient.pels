@@ -6,12 +6,22 @@ import type {
   ObjectiveProfileConfidence,
   ObjectiveProfileStat,
 } from '../../core/objectiveProfileTypes';
-import type { DeferredObjectiveKind } from './types';
+import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './types';
 
 export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap';
 
 export type DeferredObjectiveEnergyResolution = {
+  // Planned energy the horizon planner books hours against. This is the
+  // *buffered* figure (`mean + k·σ` per integrated band), so a device whose
+  // energy-per-unit varies a lot reserves more time automatically. Equals
+  // `energyExpectedKWh` when there is no usable variance (cold-start, bootstrap,
+  // or a perfectly steady device).
   energyNeededKWh: number;
+  // Mean-based estimate (no buffer). The honest "expected" figure; PR-2 UI
+  // renders `energyExpectedKWh…energyNeededKWh` as a range. Kept distinct from
+  // `energyNeededKWh` so the planner can be conservative while the displayed
+  // learned rate (`kWhPerUnit`) and the low end of the range stay at the mean.
+  energyExpectedKWh: number;
   kWhPerUnit: number | null;
   rateConfidence: string | null;
   // Band-aware confidence for the smart-task chip. Aggregated from the bands
@@ -28,6 +38,7 @@ export type DeferredObjectiveEnergyResolution = {
   reasonCode: null;
 } | {
   energyNeededKWh: null;
+  energyExpectedKWh: null;
   kWhPerUnit: null;
   rateConfidence: null;
   displayConfidence: null;
@@ -40,10 +51,63 @@ export type DeferredObjectiveEnergyResolution = {
 // dominating the estimate before it has enough evidence.
 const MIN_BAND_SAMPLES_FOR_INTEGRATION = 4;
 
+// Variance buffer: the planner books hours against `mean + k·SE` rather than the
+// bare mean, so while the learned rate is still uncertain the objective reserves
+// more time automatically instead of producing a hard `cannot_meet` off an
+// optimistic, under-sampled estimate.
+//
+// SE is the *standard error of the mean* (σ/√n), not the per-sample σ. This is a
+// deliberate choice: σ on a thermal device stays high effectively forever (CV
+// > 0.75), so a σ-based buffer would be permanent *and* would jitter the booked
+// hours as σ wobbles during early learning, churning replans. SE instead hedges
+// uncertainty about the *mean*, so the buffer is largest while learning and
+// fades smoothly toward zero as samples accumulate — a well-learned device
+// plans at the mean. The per-cycle replan is the steady-state safety net: a
+// worse-than-mean hour leaves more `remainingUnits`, so the next cycle books
+// more hours while slack remains.
+//
+// `k` depends on enforcement: a hard deadline reserves a wider margin (~95% CI
+// on the mean at k=2); a soft objective biases gently. Temperature objectives
+// are always soft (only EV SoC may be hard). These are deliberately
+// conservative, reversible tuning constants — see PR description.
+const BUFFER_K_HARD = 2;
+const BUFFER_K_SOFT = 1;
+// Below this sample count even the standard error is untrustworthy, so we plan
+// at the mean (range collapses to a single figure — the honest cold-start
+// behaviour). EV cold-start is handled separately by the bootstrap path.
+const MIN_SAMPLES_FOR_BUFFER = 4;
+// Hard cap so a pathological estimate cannot explode the booked energy.
+const MAX_BUFFER_MULTIPLIER = 2;
+
+const resolveBufferK = (enforcement: DeferredObjectiveEnforcement): number => (
+  enforcement === 'hard' ? BUFFER_K_HARD : BUFFER_K_SOFT
+);
+
+// Welford sample standard deviation. Shared by the global stat and per-band
+// stats — both carry `m2` + `sampleCount`.
+const sampleStdDev = (stat: { m2: number; sampleCount: number }): number => (
+  stat.sampleCount > 1 ? Math.sqrt(Math.max(0, stat.m2 / (stat.sampleCount - 1))) : 0
+);
+
+const bufferedRate = (params: {
+  mean: number;
+  sigma: number;
+  sampleCount: number;
+  k: number;
+}): number => {
+  const { mean, sigma, sampleCount, k } = params;
+  if (sampleCount < MIN_SAMPLES_FOR_BUFFER || sigma <= 0) return mean;
+  // Standard error of the mean: shrinks as √n grows, so the buffer fades with
+  // learning rather than persisting (and jittering) on a high-σ device.
+  const standardError = sigma / Math.sqrt(sampleCount);
+  return Math.min(mean + k * standardError, mean * MAX_BUFFER_MULTIPLIER);
+};
+
 export const resolveProfileEnergy = (params: {
   powerTracker: PowerTrackerState;
   deviceId: string;
   objectiveKind: DeferredObjectiveKind;
+  enforcement: DeferredObjectiveEnforcement;
   remainingUnits: number;
   currentValue?: number;
 }): DeferredObjectiveEnergyResolution => {
@@ -55,6 +119,7 @@ export const resolveProfileEnergy = (params: {
       kWhPerUnit,
       remainingUnits: params.remainingUnits,
       currentValue: params.currentValue,
+      k: resolveBufferK(params.enforcement),
     });
   }
   // Bootstrap fallback for EV SoC objectives: SoC reporting depends on a
@@ -64,8 +129,12 @@ export const resolveProfileEnergy = (params: {
   // accepted profile sample takes over and an automatic `rate_refined`
   // revision is written when the allocation shifts.
   if (params.objectiveKind === 'ev_soc') {
+    const bootstrapEnergyKWh = params.remainingUnits * BOOTSTRAP_EV_SOC_KWH_PER_PERCENT;
     return {
-      energyNeededKWh: params.remainingUnits * BOOTSTRAP_EV_SOC_KWH_PER_PERCENT,
+      // No learned σ yet, so the planned and expected figures coincide — the
+      // bootstrap constant is already conservative-high.
+      energyNeededKWh: bootstrapEnergyKWh,
+      energyExpectedKWh: bootstrapEnergyKWh,
       kWhPerUnit: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT,
       rateConfidence: null,
       displayConfidence: null,
@@ -75,6 +144,7 @@ export const resolveProfileEnergy = (params: {
   }
   return {
     energyNeededKWh: null,
+    energyExpectedKWh: null,
     kWhPerUnit: null,
     rateConfidence: null,
     displayConfidence: null,
@@ -88,21 +158,31 @@ const buildLearnedResolution = (params: {
   kWhPerUnit: ObjectiveProfileStat;
   remainingUnits: number;
   currentValue: number | undefined;
+  k: number;
 }): DeferredObjectiveEnergyResolution => {
-  const { profile, kWhPerUnit, remainingUnits, currentValue } = params;
+  const { profile, kWhPerUnit, remainingUnits, currentValue, k } = params;
   const globalMean = kWhPerUnit.mean;
+  const globalSigma = sampleStdDev(kWhPerUnit);
+  const globalSampleCount = kWhPerUnit.sampleCount;
   const banded = integrateBands({
     bands: profile?.bands,
     globalMean,
+    globalSigma,
+    globalSampleCount,
     remainingUnits,
     currentValue,
+    k,
   });
-  const energyNeededKWh = banded?.energyNeededKWh ?? remainingUnits * globalMean;
-  // Effective kWh/unit reported to the planner is the integrated total divided
-  // by remainingUnits; for the unbanded fallback this collapses to globalMean.
-  const effectiveKwhPerUnit = remainingUnits > 0 ? energyNeededKWh / remainingUnits : globalMean;
+  const energyExpectedKWh = banded?.energyExpectedKWh ?? remainingUnits * globalMean;
+  const energyNeededKWh = banded?.energyPlannedKWh
+    ?? remainingUnits * bufferedRate({ mean: globalMean, sigma: globalSigma, sampleCount: globalSampleCount, k });
+  // Displayed learned rate stays at the *expected* mean (integrated total over
+  // remainingUnits) so "Energy needed per °C" reflects what PELS measured, not
+  // the planning buffer; for the unbanded fallback this collapses to globalMean.
+  const effectiveKwhPerUnit = remainingUnits > 0 ? energyExpectedKWh / remainingUnits : globalMean;
   return {
     energyNeededKWh,
+    energyExpectedKWh,
     kWhPerUnit: effectiveKwhPerUnit,
     rateConfidence: kWhPerUnit.confidence,
     displayConfidence: resolveDisplayConfidence({
@@ -177,29 +257,44 @@ const minConfidence = (values: ObjectiveProfileConfidence[]): ObjectiveProfileCo
 const integrateBands = (params: {
   bands: ObjectiveProfileBand[] | undefined;
   globalMean: number;
+  globalSigma: number;
+  globalSampleCount: number;
   remainingUnits: number;
   currentValue: number | undefined;
-}): { energyNeededKWh: number } | null => {
-  const { bands, globalMean, remainingUnits, currentValue } = params;
+  k: number;
+}): { energyExpectedKWh: number; energyPlannedKWh: number } | null => {
+  const {
+    bands, globalMean, globalSigma, globalSampleCount, remainingUnits, currentValue, k,
+  } = params;
   if (!bands || bands.length === 0) return null;
   if (typeof currentValue !== 'number' || !Number.isFinite(currentValue)) return null;
-  if (remainingUnits <= 0) return { energyNeededKWh: 0 };
+  if (remainingUnits <= 0) return { energyExpectedKWh: 0, energyPlannedKWh: 0 };
   const targetValue = currentValue + remainingUnits;
-  let energy = 0;
+  let expected = 0;
+  let planned = 0;
   let coveredUnits = 0;
   for (const band of bands) {
     const overlap = computeOverlap(band, currentValue, targetValue);
     if (overlap <= 0) continue;
-    const bandMean = band.sampleCount >= MIN_BAND_SAMPLES_FOR_INTEGRATION ? band.mean : globalMean;
-    energy += overlap * bandMean;
+    // An underpopulated band leans on the global mean *and* the global buffer
+    // for its slice — same fallback the expected estimate uses.
+    const useBand = band.sampleCount >= MIN_BAND_SAMPLES_FOR_INTEGRATION;
+    const mean = useBand ? band.mean : globalMean;
+    const sigma = useBand ? sampleStdDev(band) : globalSigma;
+    const sampleCount = useBand ? band.sampleCount : globalSampleCount;
+    expected += overlap * mean;
+    planned += overlap * bufferedRate({ mean, sigma, sampleCount, k });
     coveredUnits += overlap;
   }
   // Bands may not cover the entire [current, target] interval — anything
   // outside the observed range (e.g., target above the highest band edge or
-  // current below the lowest) gets the global mean.
+  // current below the lowest) gets the global mean (buffered for the plan).
   const uncoveredUnits = Math.max(0, remainingUnits - coveredUnits);
-  energy += uncoveredUnits * globalMean;
-  return { energyNeededKWh: energy };
+  expected += uncoveredUnits * globalMean;
+  planned += uncoveredUnits * bufferedRate({
+    mean: globalMean, sigma: globalSigma, sampleCount: globalSampleCount, k,
+  });
+  return { energyExpectedKWh: expected, energyPlannedKWh: planned };
 };
 
 const computeOverlap = (
