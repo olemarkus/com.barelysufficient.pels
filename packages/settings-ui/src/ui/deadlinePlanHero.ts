@@ -144,18 +144,22 @@ export const resolveQueuedHeadlineReason = (params: {
   });
 };
 
-// Walks budget → shortfall → unknown-reason so we never render the warning
-// chip without a paired body reason. Returns the user-visible cannot-meet
-// sentence; `formatMetaLine` is then appended by `buildHero` so the rich
-// "Needs X kWh · Y hours left · …" context coexists with the reason.
+// Resolves the user-visible cannot-meet sentence; `formatMetaLine` is then
+// appended by `buildHero` so the rich "Needs X kWh · Y hours left · …" context
+// coexists with the reason. Only ever called on a `cannot_meet` / `at_risk`
+// plan (see `buildHero`), so the target genuinely won't be reached — the
+// budget-exhausted cause gets its own copy and everything else falls through
+// to the blameless "may not reach the target" shortfall sentence. We do not
+// re-derive a UI-side shortfall to gate this: that recomputation (inverse of
+// the low-confidence learned rate) disagreed with the planner's verdict and
+// produced a "can't determine why" dead-end on plans the planner had already
+// classified as cannot-meet.
 export const resolveCannotMeetMeta = (params: {
   labels: DeadlineLabels;
-  shortfallUnits: number;
   dailyBudgetExhausted: boolean;
 }): string => {
   if (params.dailyBudgetExhausted) return params.labels.cannotMeetDailyBudgetExhausted;
-  if (params.shortfallUnits > 0) return params.labels.cannotMeetShortfall();
-  return params.labels.cannotMeetUnknownReason;
+  return params.labels.cannotMeetShortfall();
 };
 
 // Resolves the recourse action surfaced below the cannot-finish body. Returns
@@ -213,13 +217,6 @@ export type BuildHeroInput = {
   planStatus: DeferredObjectiveActivePlanStatusV1;
   nowMs: number;
   cannotMeet: boolean;
-  // Remaining shortfall against the target after the planner's best-effort
-  // allocation, in progress units (°C / %). Used to disambiguate the
-  // "device-side shortfall" branch (`> 0`) from the "no clear cause"
-  // fallback so the unknown-reason copy fires only when we actually have no
-  // signal. The unit is no longer surfaced in user copy — see
-  // `cannotMeetShortfall` for the rephrasing rationale.
-  shortfallUnits: number;
   dailyBudgetExhausted: boolean;
   // Whether the latest revision's `dailyBudgetExhaustedBucketCount` is > 0.
   // Distinct from `dailyBudgetExhausted` above (which is gated on

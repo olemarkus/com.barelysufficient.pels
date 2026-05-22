@@ -313,10 +313,19 @@ export const formatPlanHistoryShortfallChip = (
   const plannedTotal = sumPlannedKWh(entry.finalPlan ?? entry.originalPlan);
   const hasDelivery = typeof entry.deliveredKWh === 'number'
     && Number.isFinite(entry.deliveredKWh);
-  if (hasDelivery && plannedTotal > 0) {
+  if (hasDelivery && plannedTotal > 0 && entry.deliveredKWh! < plannedTotal) {
     // v2.7.3 — 1-decimal precision so small deliveries (e.g. 0.4 kWh) don't
     // round to "0 kWh" and read as zero delivery, and so the chip matches the
     // toFixed(1) precision the abandoned-details + receipt rows already use.
+    //
+    // The "of {plannedTotal}" denominator is the energy the plan *scheduled*,
+    // not the energy needed to reach the temperature/charge target. On a heat
+    // run that lost heat faster than planned (or stayed on longer than the
+    // schedule reserved), delivery can exceed the scheduled total while the
+    // target is still missed — so "Delivered 14.2 of 9.9 kWh · short ≈ 49 min"
+    // reads as a >100% contradiction. When delivery already meets/exceeds the
+    // scheduled total, energy wasn't the limiting factor: drop the denominator
+    // and show the bare delivered figure rather than a ratio over 100%.
     parts.push(`Delivered ${entry.deliveredKWh!.toFixed(1)} of ${plannedTotal.toFixed(1)} kWh`);
   } else if (hasDelivery) {
     parts.push(`Delivered ${entry.deliveredKWh!.toFixed(1)} kWh`);
