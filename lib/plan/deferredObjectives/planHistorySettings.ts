@@ -100,6 +100,24 @@ const isRevisionSnapshot = (
   if (v.dailyBudgetExhaustedBucketCount !== undefined
     && (!isFiniteNumber(v.dailyBudgetExhaustedBucketCount)
       || v.dailyBudgetExhaustedBucketCount < 0)) return false;
+  return hasValidMissAttributionFields(v);
+};
+
+// Miss-attribution provenance added in v2.7.4. All optional — absence is the
+// legacy shape. `rateConfidence` is the learned-rate band the run was planned
+// against; `acceptedSamples` the count behind it (positive when written, but
+// the validator accepts zero so round-tripped fixtures aren't dropped);
+// `planningSpeedKw` the committed full-hour floor (kW, finite positive). Split
+// out of `isRevisionSnapshot` to keep that guard under the complexity cap.
+const hasValidMissAttributionFields = (v: Record<string, unknown>): boolean => {
+  if (v.rateConfidence !== undefined
+    && v.rateConfidence !== 'low'
+    && v.rateConfidence !== 'medium'
+    && v.rateConfidence !== 'high') return false;
+  if (v.acceptedSamples !== undefined
+    && (!isFiniteNumber(v.acceptedSamples) || v.acceptedSamples < 0)) return false;
+  if (v.planningSpeedKw !== undefined
+    && (!isFiniteNumber(v.planningSpeedKw) || v.planningSpeedKw <= 0)) return false;
   return true;
 };
 

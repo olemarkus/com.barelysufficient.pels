@@ -55,6 +55,28 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // legacy v3 entries and revisions written before this field shipped
   // persist without it — consumers treat absence as zero. Added in v2.7.2.
   dailyBudgetExhaustedBucketCount?: number;
+  // Plan-time provenance of the learned kWh-per-unit rate that backed this
+  // revision, pulled from the active plan's `kwhPerUnitProvenance` at snapshot
+  // time. Persisted so a finalized `missed` entry can be attributed to a
+  // shaky estimate (low confidence / few samples) versus a genuine capacity
+  // shortfall — the live profile store has long since moved on by the time
+  // anyone reads the history. Both optional: absent for bootstrap plans, for
+  // revisions written before a profile resolved, and for legacy entries
+  // persisted before this field shipped (consumers treat absence as
+  // "unknown" and suppress the confidence half of the attribution). Added in
+  // v2.7.4.
+  rateConfidence?: 'low' | 'medium' | 'high';
+  acceptedSamples?: number;
+  // The per-active-hour useful power (kW) the planner committed for this run —
+  // the lowest non-zero step, the only delivery guaranteed for a full hour
+  // (see `lib/plan/deferredObjectives/planningSpeed.ts`). Mirrors the active
+  // plan's `initialPlanningSpeedKw`. Persisted so the attribution can compare
+  // the committed floor against the energy the executor actually delivered:
+  // delivery at or above the floor on a missed run points at an energy-needed
+  // underestimate rather than a capacity miss. Optional — absent when the
+  // plan never resolved a planning speed and on legacy entries. Added in
+  // v2.7.4.
+  planningSpeedKw?: number;
 };
 
 // Price-tier classification for a single hour's delivery contribution. The

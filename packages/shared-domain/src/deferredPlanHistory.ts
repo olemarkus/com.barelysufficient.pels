@@ -6,6 +6,7 @@ import type {
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
 import { APPROX_GLYPH, revisionReason } from './deadlineLabels.js';
+import { formatRefinedMissCause } from './deferredPlanHistoryAttribution.js';
 import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
 export type DeferredPlanHistoryChipTone = 'ok' | 'warn' | 'muted';
@@ -302,7 +303,7 @@ const pickLastPlan = (
 export const formatPlanHistoryMissedReason = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom'
+    'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
@@ -317,6 +318,14 @@ export const formatPlanHistoryMissedReason = (
   if (snapshotShowsBudgetExhausted(lastPlan)) {
     return "Today's daily budget filled before the deadline could be reached.";
   }
+  // v2.7.4 — plan-time miss attribution (Session A). Inserted ahead of the
+  // `planStatus` branches so a `cannot_meet` that rested on a low-confidence
+  // learned rate reads "still learning" rather than "couldn't reserve cheap
+  // hours", and a run that delivered the planned power yet missed names the
+  // energy-needed underestimate instead of a generic shortfall. Returns null
+  // for every cause the shipped copy below already handles honestly.
+  const refinedCause = formatRefinedMissCause(entry);
+  if (refinedCause !== null) return refinedCause;
   if (lastPlan?.planStatus === 'cannot_meet') {
     return "PELS couldn't reserve enough cheap hours before the deadline.";
   }
