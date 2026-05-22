@@ -1,35 +1,33 @@
 ---
 title: PELS for norske hjem
-description: Norsk oversikt over PELS for Homey Pro, effektgrense, kapasitetsledd, elbillading, varmtvannsbereder, varme, spotpris, nettleie, strømstøtte, Norgespris og Enova.
+description: Oversikt over PELS for Homey Pro, strømstyring, kapasitetsledd, elbillading, varmtvannsbereder, varme, spotpris, nettleie, strømstøtte, Norgespris og Enova.
 ---
 
 # PELS for norske hjem
 
-Denne siden er skrevet for deg som søker etter strømstyring, effektledd, kapasitetsledd, elbillading eller billigere strøm i et norsk Homey Pro-hjem.
+Utformingen av strømkostnadene og de ulike støtteordningene gjør PELS spesielt relevant for norske hjem. Spesielt kapasitetsleddet i nettleien er det nesten umulig å håndtere uten et automatisert styringssystem. PELS er nettopp hjernen i et slikt system, og den styrer etter både kapasitetsledd og pris. Det er mye man kan gjøre for å sørge for at strømforbruket i hovedsak skjer når strømprisen er lav.
 
-Resten av dokumentasjonen er på engelsk. Denne siden forklarer norske begreper og peker videre til relevante oppsettsider.
-
-PELS er en Homey-app som følger strømforbruket i hele boligen og styrer fleksible laster som elbillader, varmtvannsbereder, gulvvarme og panelovner. Målet er å holde deg under en valgt effektgrense, bruke billigere timer når det passer, og samtidig la viktige enheter få prioritet.
+PELS er designet for å kunne inngå i et styringssystem som Enova kan gi støtte til. Se mer om dette hos [Enovas side om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/).
 
 ## Hva PELS gjør
 
-PELS leser løpende effektforbruk fra Homey Energy, en AMS/HAN/P1-måler, Tibber Pulse eller en Homey Flow. Når forbruket nærmer seg grensen du har valgt, kan PELS senke, pause eller slå av lavere prioriterte enheter først. Når det er nok tilgjengelig effekt igjen, starter PELS dem i prioritert rekkefølge.
+PELS trenger en løpende måling av hele boligens effektforbruk. Som regel kommer dette fra en HAN-sensor koblet i strømmåleren. Når dette er på plass, kan du sette opp hvilket kapasitetstrinn du ønsker å holde deg på, og deretter vil PELS sørge for at du holder deg under.
 
-PELS kan også bruke strømpriser. I Norge kan appen kombinere spotpris, nettleie, avgifter og valgt prisordning i én timepris. Den prisen brukes blant annet til å flytte fleksibelt forbruk mot billigere timer, planlegge Smart tasks og gi varmeenheter lavere eller høyere måltemperatur gjennom døgnet.
+Når PELS ser at boligen nærmer seg grensen du har satt, reduseres de minst viktige enhetene først. Slik kan appen holde igjen fleksibelt forbruk uten at du må lage egne regler for hver situasjon.
+
+PELS kan også styre etter strømpriser. PELS kombinerer spotpris, nettleie, avgifter, leverandørpåslag og valgt ordning for strømstøtte eller Norgespris i én timepris. Alt etter hva man ønsker, kan PELS øke temperatur i billige timer, senke temperatur i dyre timer, sørge for at varmtvann og elbillading kun skjer når strømmen er billig. Se [Kostnadsbesparende funksjoner](/cost-saving-functions) for de ulike mulighetene PELS tilbyr.
 
 ## Når PELS passer
 
-PELS passer best når du har en eller flere store laster som kan vente litt uten at hverdagen blir dårligere:
+PELS passer best når noe av det store strømforbruket i boligen kan vente litt eller kjøres med lavere effekt:
 
-- elbillader
+- elbillading
 - varmtvannsbereder
 - gulvvarme
 - panelovn
 - ventilasjon eller andre enheter med høy effekt
 
-Det er spesielt nyttig hvis en enkelt time med høyt forbruk kan gi et dyrere kapasitetsledd, eller hvis du vil unngå å ligge nær en sikringsgrense. PELS passer også godt når du vil bruke billigere timer uten å bygge mange egne Flows for hver enhet.
-
-PELS passer dårligere hvis alt stort forbruk må kjøre med full effekt akkurat når det startes. Appen trenger fleksibilitet for å kunne flytte eller begrense last.
+Appen er særlig nyttig når høyt samtidig forbruk kan gi et dyrere kapasitetstrinn, eller når du vil holde god avstand til en sikringsgrense. Den passer også når du vil bruke billigere timer uten å bygge mange egne Flows.
 
 ## Hva du trenger
 
@@ -37,85 +35,63 @@ Du trenger:
 
 1. Homey Pro.
 2. PELS installert fra Homey App Store.
-3. En kilde til totalforbruk i watt, for eksempel Homey Energy, Tibber Pulse, AMS/HAN/P1-måler, Shelly EM eller en Flow som rapporterer effekt.
+3. En HAN-sensor koblet opp mot Homey.
 4. En eller flere enheter Homey kan styre, for eksempel lader, termostat, av/på-bryter eller enhet med trinnvis effekt.
-5. En effektgrense du ønsker å holde deg under, typisk valgt fra nettleieavtalen, kapasitetsleddet eller sikringsgrensen din.
 
-Start med totalforbruk og én eller to tydelige laster. Legg heller til mer styring når du ser at grunnoppsettet fungerer.
+Begynn enkelt. Koble til totalforbruket, velg en realistisk grense og la PELS styre én eller to tydelige enheter først. Legg heller til mer styring når du ser at grunnoppsettet fungerer.
 
 ## Effektledd, kapasitetsledd og effektgrense
 
-Mange søker etter "effektledd" når de egentlig mener at strømregningen påvirkes av den høyeste timen eller de høyeste timene i måneden. For husholdninger omtaler mange nettselskap dette som kapasitetsledd, kapasitetstrinn eller et trinn i fastleddet.
+I PELS setter du grensen som **Hard cap (kW)**. Det er den øvre grensen PELS prøver å holde boligen under. Hvis du for eksempel setter grensen til 5 kW, begynner PELS å begrense fleksibelt forbruk før timesnittet blir for høyt.
 
-I PELS setter du dette som **Hard cap (kW)**. Det er effektgrensen PELS prøver å holde boligen under. Setter du for eksempel grensen til 5 kW, vil PELS begynne å begrense fleksible laster før snittet for timen risikerer å bli for høyt.
+To innstillinger er sentrale:
 
-To innstillinger er viktige:
+- **Hard cap (kW)**: den øvre grensen PELS prøver å holde boligen under.
+- **Safety margin (kW)**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn eller sikringen belastes for hardt.
 
-- **Hard cap (kW)**: grensen du ikke vil overstige.
-- **Safety margin (kW)**: en buffer under grensen, slik at PELS rekker å reagere før timen blir dyrere eller sikringen belastes for hardt.
-
-PELS kan ikke endre hvordan nettselskapet beregner nettleien din. Det appen kan gjøre, er å redusere risikoen for at fleksibelt forbruk skyver deg inn i et dyrere trinn.
 
 ## Elbillading
 
-Elbillading er ofte den største og mest fleksible lasten i boligen. Med PELS kan en lader være en vanlig managed enhet, slik at den får mindre effekt eller pauses når huset nærmer seg effektgrensen.
+Elbillading er ofte det mest fleksible forbruket i boligen. Derfor er det også et godt sted å starte. Med PELS kan laderen settes opp til å bruke mindre strøm, eller pauses, når huset nærmer seg grensen du har satt.
 
-For ladere med strømkontroll kan PELS beregne ønsket ladestrøm i ampere. Da lager du en Flow som sender PELS sin verdi videre til laderappen. PELS kan også bruke Smart tasks når bilen skal ha en bestemt batteriprosent innen et klokkeslett, for eksempel 80 % før 07:00.
+For ladere med strømkontroll beregner PELS ønsket ladestrøm i ampere. En Homey Flow sender verdien fra PELS videre til laderappen. Hvis bilen skal nå et bestemt ladenivå før et klokkeslett, for eksempel 80 % før 07:00, kan du bruke Smart tasks i stedet for fast prisstyring.
 
 Vanlig oppsett:
 
-- legg laderen inn som managed
-- velg EV 1-phase eller EV 3-phase etter installasjonen
-- la PELS sende ønsket ladestrøm til laderappen med Flow
-- bruk Smart tasks hvis bilen skal være klar til et bestemt tidspunkt
+- slå på **Managed** for laderen
+- velg **EV 1-phase** eller **EV 3-phase** etter hvordan laderen er installert
+- send ønsket ladestrøm fra PELS til laderappen med Flow
+- bruk Smart tasks når bilen skal være klar til et bestemt tidspunkt
 
-Se [Konfigurer elbillader](/ev-charger) for oppsettet.
+Se [Konfigurer elbillader](/ev-charger) for selve oppsettet. Se også [Homey EV charging without crossing your power limit](/use-cases/homey-ev-charging-power-limit) for et mer konkret bruksområde.
 
-## Varmtvannsbereder, gulvvarme og panelovn
+## Varmtvannsbereder
 
-Varmtvannsbereder, gulvvarme og panelovner er gode kandidater fordi de ofte tåler korte pauser eller små temperaturendringer.
+Varmtvannsberedere, gulvvarme og panelovner kan slås av i kortere pauser uten at det påvirker temperaturen eller komforten.
 
-For varmtvannsbereder kan PELS slå av eller senke effekten mens annet viktig forbruk pågår, og la berederen starte igjen når det er tilgjengelig effekt. Hvis varmtvann må være klart før et kjent tidspunkt, kan en Smart task være bedre enn enkel prisstyring.
+For eksempel kan PELS holde igjen strømforbruket til en varmtvannsbereder i den perioden du lager middag med en induksjonsplatetopp, og la berederen kjøre igjen etterpå. Om du også kun trenger varmtvann på gitte tidspunkt kan PELS sørge for at vannet er oppvarmet til da, og at oppvarmingen skjer i de billigst mulige timene.
 
-Gulvvarme passer ofte godt med prisstyring fordi gulvet lagrer varme. PELS kan heve målet i billige timer og senke det i dyre timer. Panelovner reagerer raskere og har mindre lagring, så de bør ofte styres mer forsiktig for å unngå merkbare komfortendringer.
+## Gulvvarme og panelovn
 
-Praktisk startpunkt:
+Gulvvarme passer ofte godt med prisstyring fordi gulvet lagrer varme. PELS kan heve måltemperaturen i billige timer og senke den i dyre timer. Panelovner reagerer raskere og lagrer mindre varme, så de bør normalt styres mer forsiktig.
 
-- gi rom med viktig komfort høyere prioritet
+## Praktisk startpunkt
+
+- gi viktige rom høyere prioritet
 - la mindre viktige soner eller varmtvannsbereder begrenses først
 - bruk moderate temperaturendringer for prisstyring
-- test med Simulation mode før PELS får reell kontroll
+- test med **Simulation mode** før PELS får reell kontroll
 
-Sikkerhet: Ikke styr varmtvannsbereder, gulvvarme eller faste elektriske laster med
-utstyr som ikke er beregnet for belastningen. Fast elektrisk arbeid skal utføres av
-fagfolk. Husk også temperatur-, hygiene- og sikkerhetskrav for varmtvann; PELS skal
-planlegge lasten, ikke erstatte trygg varmtvannskontroll.
 
 ## Spotpris, nettleie, strømstøtte og Norgespris
 
-PELS kan bruke forskjellige priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt prisordning. Du kan velge mellom strømstøtte og Norgespris-modellen i innstillingene.
+PELS kan bruke flere priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt ordning for strømstøtte eller Norgespris. Du velger dette i innstillingene.
 
-Dette er viktig: PELS er ikke en fasit for strømregningen din. Faktisk regning avhenger av strømavtale, nettselskap, måledata, prisområde, offentlige regler og hvordan strømstøtte eller Norgespris gjelder for deg. Bruk PELS-prisen som et styringsgrunnlag for automasjon, og sjekk alltid avtale og regelverk hos strømleverandør, nettselskap og offentlige kilder.
-
-Hvis Homey Energy allerede gir deg en komplett pris du stoler på, kan PELS også bruke Homey Energy som priskilde.
-
-## Enova: relevant styringsdel, men ingen garanti for støtte
-
-Enova har en støtteordning for pris- og effektstyrt energilagringssystem i boliger. PELS er relevant for styringsdelen fordi appen kan styre fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey.
-
-PELS alene garanterer ikke støtte. Enova vurderer tiltak etter gjeldende vilkår, dokumentasjon og installasjon. Hvis støtte er viktig for deg, må du lese Enovas krav før du kjøper utstyr eller gjør installasjon.
 
 ## Gå videre
 
 - [Kom i gang](/getting-started): installer PELS, koble til måler og sett første effektgrense.
 - [Konfigurasjon](/configuration): full oversikt over innstillingene.
 - [Konfigurer elbillader](/ev-charger): koble elbillader til PELS med strømkontroll.
-- [Smart Tasks](/smart-tasks): lad bil, varm rom eller klargjør varmtvann innen et tidspunkt.
-- [Kostnadsbesparende funksjoner](/cost-saving-functions): sammenlign effektstyring, daglig budsjett, prisstyring, Smart tasks og Flow-baserte billige timer.
-
-## Kilder og videre lesing
-
-- [NVE/RME om nettleie for forbruk](https://www.nve.no/reguleringsmyndigheten/regulering/nettvirksomhet/nettleie/nettleie-for-forbruk/)
-- [RME om nettselskapenes nettleiemodeller](https://www.nve.no/reguleringsmyndigheten/nytt-fra-rme/nyheter-reguleringsmyndigheten-for-energi/rme-har-kartlagt-nettselskapenes-valg-av-nettleiemodeller/)
-- [Regjeringen om strømstøtte og Norgespris](https://www.regjeringen.no/no/tema/energi/strom/regjeringens-stromtiltak/id2900232/)
-- [Enova om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/)
+- [Smart tasks](/smart-tasks): lad bil, varm rom eller klargjør varmtvann til et bestemt tidspunkt.
+- [Kostnadsbesparende funksjoner](/cost-saving-functions): sammenlign effektstyring, daglig budsjett, prisstyring, Smart tasks og billige timer valgt med Flow.

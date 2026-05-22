@@ -2293,6 +2293,27 @@ md-primary-tab.tab[active]:hover {
   color: var(--pels-text-primary);
 }
 
+/* Smart-task detail hero density. The cannot-finish hero stacks a target/why
+ * subline above a group of muted meta lines (`Needs … · kW · hours`, the
+ * delivered-so-far line, and the cost line). At the section's 4 px grid gap
+ * those collapse into one dense block on a 320–480 px webview. Add a tier
+ * between the non-muted subline and the muted meta group, plus a hair more
+ * between consecutive muted lines, so "what / why" reads apart from "the
+ * numbers". These margins are intentionally *additive* to the section's
+ * 4 px grid gap, so the effective separation is 12 px (subline → meta group)
+ * and 8 px (between muted lines) — a deliberate two-step rhythm over the 4 px
+ * baseline, not a replacement for it. Scoped to `#deadline-plan-panel` so the
+ * Overview / Budget heroes (whose muted lines follow a `headline-row`, not a
+ * subline) keep their tighter rhythm untouched. */
+#deadline-plan-panel .plan-hero__subline--muted + .plan-hero__subline--muted {
+  margin-top: var(--spacing-1);
+}
+
+#deadline-plan-panel .plan-hero__subline:not(.plan-hero__subline--muted)
+  + .plan-hero__subline--muted {
+  margin-top: var(--spacing-2);
+}
+
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
  * matches the touch-target token used elsewhere on PELS — see
  * `feedback_design_tokens.md` plus the upstream "Lift `.pels-icon-toggle` and

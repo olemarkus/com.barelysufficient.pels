@@ -347,10 +347,6 @@ export type DeadlineLabels = {
   liveStateChipLabel: Record<DeadlineLiveState, string>;
   atRiskChipLabel: string;
   cannotMeetChipLabel: string;
-  // Honest fallback for `Cannot finish` when no specific reason is available.
-  // Never paired with the chip alone — the meta line always names a reason so
-  // users are never left with a warning chip and no explanation.
-  cannotMeetUnknownReason: string;
   deviceSeriesName: string;
   originalDeviceSeriesName: string;
   actualDeviceSeriesName: string;
@@ -602,8 +598,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannotMeetChipLabel: 'Cannot finish',
-    cannotMeetUnknownReason: 'PELS can\'t determine why this task is at risk. '
-      + 'Check this heater\'s power readings and setpoint range.',
     deviceSeriesName: 'Heating',
     originalDeviceSeriesName: 'Original Heating',
     actualDeviceSeriesName: 'Measured Heating',
@@ -689,8 +683,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannotMeetChipLabel: 'Cannot finish',
-    cannotMeetUnknownReason: 'PELS can\'t determine why this charging task is at risk. '
-      + 'Check the EV charger\'s power readings and charge-rate configuration.',
     deviceSeriesName: 'Charging',
     originalDeviceSeriesName: 'Original Charging',
     actualDeviceSeriesName: 'Measured Charging',
