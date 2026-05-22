@@ -637,10 +637,14 @@ function resolveHasRecentObservedDrawAtSelectedStep(
   const stepId = device.reportedStepId;
   if (typeof stepId !== 'string' || stepId.length === 0) return undefined;
   const snapshot = ctx.getPowerCalibrationSnapshot();
+  const planningPowerW = device.steppedLoadProfile?.steps.find((step) => step.id === stepId)?.planningPowerW;
+  const nameplateKw = isFiniteNumber(planningPowerW) && planningPowerW > 0
+    ? planningPowerW / 1000
+    : undefined;
   // Warm-up samples (below the confidence threshold) must not produce a
   // concrete `false` — the gate would treat that as authoritative and
   // suppress boost escalation for newly-paired devices.
-  if (!isStepCalibrationConfident(snapshot, device.id, stepId)) return undefined;
+  if (!isStepCalibrationConfident(snapshot, device.id, stepId, nameplateKw)) return undefined;
   // Use the AppContext clock so the planner can be tested deterministically
   // and so this stays consistent with other plan-input enrichment helpers
   // (per state-management/AGENTS.md "use a single clock per cycle").
@@ -650,5 +654,6 @@ function resolveHasRecentObservedDrawAtSelectedStep(
     stepId,
     windowMs: BOOST_RECENT_DRAW_WINDOW_MS,
     nowMs: ctx.getNow().getTime(),
+    nameplateKw,
   });
 }

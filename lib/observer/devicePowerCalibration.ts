@@ -87,6 +87,7 @@ export type HasRecentDrawAtParams = {
   windowMs: number;
   nowMs: number;
   minKw?: number;
+  nameplateKw?: number;
 };
 
 /**
@@ -187,6 +188,7 @@ function getBoundedConfidentPowerKw(
 ): number {
   const step = snapshot.devices[deviceId]?.steps[stepId];
   if (step === undefined || !isConfident(step)) return Math.max(0, nameplateKw);
+  if (!isStepUsableForNameplate(step, nameplateKw)) return Math.max(0, nameplateKw);
   return Math.max(0, Math.min(nameplateKw, step.observedKw));
 }
 
@@ -200,9 +202,12 @@ export function isStepCalibrationConfident(
   snapshot: PowerCalibrationSnapshot,
   deviceId: string,
   stepId: string,
+  nameplateKw?: number,
 ): boolean {
   const step = snapshot.devices[deviceId]?.steps[stepId];
-  return step !== undefined && isConfident(step);
+  return step !== undefined
+    && isConfident(step)
+    && isStepUsableForNameplate(step, nameplateKw);
 }
 
 /**
@@ -219,6 +224,7 @@ export function hasRecentDrawAt(params: HasRecentDrawAtParams): boolean {
   const minKw = params.minKw ?? RECENT_DRAW_DEFAULT_MIN_KW;
   const step = snapshot.devices[deviceId]?.steps[stepId];
   if (step === undefined) return false;
+  if (!isStepUsableForNameplate(step, params.nameplateKw)) return false;
   if (step.observedKw < minKw) return false;
   return (nowMs - step.lastSampleMs) <= windowMs;
 }
@@ -291,6 +297,18 @@ function hasNameplateDriftedBeyondTolerance(params: {
   const denominator = Math.max(params.previousNameplateKw, 1e-6);
   const drift = Math.abs(params.previousNameplateKw - params.nextNameplateKw) / denominator;
   return drift > NAMEPLATE_TOLERANCE_RATIO;
+}
+
+function isStepUsableForNameplate(
+  step: StepCalibration,
+  nameplateKw: number | undefined,
+): boolean {
+  if (nameplateKw === undefined) return true;
+  if (!isFiniteNumber(nameplateKw) || nameplateKw <= 0) return false;
+  return !hasNameplateDriftedBeyondTolerance({
+    previousNameplateKw: step.nameplateAtSampleKw,
+    nextNameplateKw: nameplateKw,
+  });
 }
 
 function isAnomalousSample(step: StepCalibration, input: RecordSampleInput): boolean {

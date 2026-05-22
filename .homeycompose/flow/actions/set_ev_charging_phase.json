@@ -1,0 +1,34 @@
+{
+  "title": {
+    "en": "Set EV charging phase"
+  },
+  "titleFormatted": {
+    "en": "Set [[charger]] charging phase to [[phase]]"
+  },
+  "hint": {
+    "en": "Use this after the charger or car is already using this phase. PELS uses it to calculate charging power; it does not switch the charger hardware."
+  },
+  "args": [
+    {
+      "name": "charger",
+      "type": "autocomplete",
+      "title": {
+        "en": "EV charger"
+      },
+      "placeholder": {
+        "en": "Select configured EV charger"
+      }
+    },
+    {
+      "name": "phase",
+      "type": "dropdown",
+      "title": {
+        "en": "Phase"
+      },
+      "values": [
+        { "id": "ev_charger_1_phase", "label": { "en": "EV 1-phase" } },
+        { "id": "ev_charger_3_phase", "label": { "en": "EV 3-phase" } }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import { createEvTargetPowerConfig } from '../packages/shared-domain/src/evTargetPowerConfig';
+import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
 
 const steppedProfile: SteppedLoadProfile = {
@@ -118,6 +120,93 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
 };
 
 describe('registerFlowCards', () => {
+  it('sets EV charging phase by writing the target-power preset setting', async () => {
+    const existing = {
+      'ev-1': createEvTargetPowerConfig('ev_charger_3_phase'),
+      'ev-2': createEvTargetPowerConfig('ev_charger_1_phase'),
+    };
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: existing['ev-1'],
+        },
+      ]),
+    });
+    const settingsGet = vi.fn((key: string) => (key === DEVICE_TARGET_POWER_CONFIGS ? existing : undefined));
+    const settingsSet = vi.fn();
+    deps.homey.settings.get = settingsGet;
+    deps.homey.settings.set = settingsSet;
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.set_ev_charging_phase({
+      charger: { id: 'ev-1', name: 'Garage Charger' },
+      phase: { id: 'ev_charger_1_phase', name: 'EV 1-phase' },
+    })).resolves.toBe(true);
+
+    expect(settingsSet).toHaveBeenCalledWith(DEVICE_TARGET_POWER_CONFIGS, {
+      ...existing,
+      'ev-1': createEvTargetPowerConfig('ev_charger_1_phase'),
+    });
+    expect(deps.structuredLog?.info).toHaveBeenCalledWith({
+      event: 'ev_charging_phase_set_from_flow',
+      sourceCardId: 'set_ev_charging_phase',
+      deviceId: 'ev-1',
+      deviceName: 'Garage Charger',
+      preset: 'ev_charger_1_phase',
+      phase: 'EV 1-phase',
+    });
+  });
+
+  it('only autocompletes chargers that already use an EV phase preset', async () => {
+    const { deps, actionAutocompleteListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: createEvTargetPowerConfig('ev_charger_3_phase'),
+        },
+        {
+          id: 'ev-2',
+          name: 'Disabled Charger',
+          targetPowerConfig: { enabled: false, preset: 'ev_charger_1_phase' },
+        },
+        {
+          id: 'ev-3',
+          name: 'Continuous Charger',
+          targetPowerConfig: { enabled: true, min: 0, max: 7000, step: 100 },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionAutocompleteListeners.set_ev_charging_phase.charger('charger')).resolves.toEqual([
+      { id: 'ev-1', name: 'Garage Charger' },
+    ]);
+  });
+
+  it('rejects EV charging phase changes for devices not configured in settings first', async () => {
+    const { deps, actionListeners } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'ev-1',
+          name: 'Garage Charger',
+          targetPowerConfig: { enabled: true, min: 0, max: 7000, step: 100 },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.set_ev_charging_phase({
+      charger: 'ev-1',
+      phase: 'ev_charger_3_phase',
+    })).rejects.toThrow('Configure EV phase control for this charger in settings first.');
+  });
+
   it('normalizes non-Error failures from external price flow cards', async () => {
     const { deps, actionListeners } = buildDeps({
       storeFlowPriceData: vi.fn(() => {
