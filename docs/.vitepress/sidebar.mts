@@ -3,8 +3,8 @@ import type { DefaultTheme } from 'vitepress';
 export const navItems: DefaultTheme.NavItem[] = [
   { text: 'App Store', link: 'https://homey.app/a/com.barelysufficient.pels' },
   { text: 'Getting Started', link: '/getting-started' },
+  { text: 'Use Cases', link: '/#start-by-problem' },
   { text: 'Configuration', link: '/configuration' },
-  { text: 'Smart Tasks', link: '/smart-tasks' },
   { text: 'Flow Cards', link: '/flow-cards' },
 ];
 

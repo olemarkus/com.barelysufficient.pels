@@ -22,10 +22,7 @@ Use this setup when you want to:
 
 PELS is useful when the load can move in time. A water heater, floor heating loop or panel heater usually has some thermal buffer. A device that must run immediately is less suitable for price shifting.
 
-Only control water heaters, floor heating or other fixed electrical loads with equipment
-that is rated for the load and installed correctly. Fixed electrical work should be
-handled by qualified professionals. Keep temperature, hygiene and safety requirements
-in mind; PELS should schedule the load, not remove the need for safe hot-water control.
+> **Safety:** Only control water heaters, floor heating or other fixed electrical loads with equipment that is rated for the load and installed correctly. Fixed electrical work should be handled by qualified professionals. Keep temperature, hygiene and safety requirements in mind; PELS should schedule the load, not replace safe hot-water control.
 
 ## Price shifting still needs a hard cap
 
@@ -113,4 +110,10 @@ Start here:
 
 ## Related setup guides
 
-For more information, see the [Getting Started](../getting-started.md), [Using Homey Energy](../homey-energy.md), [Compare cost-saving functions](../cost-saving-functions.md), [Smart Tasks](../smart-tasks.md), [Book cheap hours with Flows](../how-to-book-cheap-hours-with-flows.md), [Open configuration docs](../configuration.md), and [Flow Cards](../flow-cards.md) guides.
+- [Getting Started](../getting-started.md)
+- [Using Homey Energy](../homey-energy.md)
+- [Compare cost-saving functions](../cost-saving-functions.md)
+- [Smart Tasks](../smart-tasks.md)
+- [Book cheap hours with Flows](../how-to-book-cheap-hours-with-flows.md)
+- [Configuration](../configuration.md)
+- [Flow Cards](../flow-cards.md)

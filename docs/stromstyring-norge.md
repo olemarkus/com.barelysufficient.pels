@@ -7,7 +7,9 @@ description: Oversikt over PELS for Homey Pro, strømstyring, kapasitetsledd, el
 
 Utformingen av strømkostnadene og de ulike støtteordningene gjør PELS spesielt relevant for norske hjem. Spesielt kapasitetsleddet i nettleien er det nesten umulig å håndtere uten et automatisert styringssystem. PELS er nettopp hjernen i et slikt system, og den styrer etter både kapasitetsledd og pris. Det er mye man kan gjøre for å sørge for at strømforbruket i hovedsak skjer når strømprisen er lav.
 
-PELS er designet for å kunne inngå i et styringssystem som Enova kan gi støtte til. Se mer om dette hos [Enovas side om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/).
+Enova har en støtteordning for pris- og effektstyrt energilagringssystem i boliger. PELS er relevant for styringsdelen fordi appen kan styre fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey. Se mer hos [Enovas side om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/).
+
+PELS alene garanterer ikke støtte. Enova vurderer tiltak etter gjeldende vilkår, dokumentasjon og installasjon. Hvis støtte er viktig for deg, må du lese Enovas krav før du kjøper utstyr eller gjør installasjon.
 
 ## Hva PELS gjør
 
@@ -49,7 +51,6 @@ To innstillinger er sentrale:
 - **Hard cap (kW)**: den øvre grensen PELS prøver å holde boligen under.
 - **Safety margin (kW)**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn eller sikringen belastes for hardt.
 
-
 ## Elbillading
 
 Elbillading er ofte det mest fleksible forbruket i boligen. Derfor er det også et godt sted å starte. Med PELS kan laderen settes opp til å bruke mindre strøm, eller pauses, når huset nærmer seg grensen du har satt.
@@ -82,11 +83,11 @@ Gulvvarme passer ofte godt med prisstyring fordi gulvet lagrer varme. PELS kan h
 - bruk moderate temperaturendringer for prisstyring
 - test med **Simulation mode** før PELS får reell kontroll
 
+> **Sikkerhet:** Ikke styr varmtvannsbereder, gulvvarme eller faste elektriske laster med utstyr som ikke er beregnet for belastningen. Fast elektrisk arbeid skal utføres av fagfolk. Husk også temperatur-, hygiene- og sikkerhetskrav for varmtvann; PELS skal planlegge lasten, ikke erstatte trygg varmtvannskontroll.
 
 ## Spotpris, nettleie, strømstøtte og Norgespris
 
 PELS kan bruke flere priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt ordning for strømstøtte eller Norgespris. Du velger dette i innstillingene.
-
 
 ## Gå videre
 

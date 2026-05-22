@@ -16,11 +16,13 @@ PELS publishes its **adjusted** electricity prices — the all-in price you see 
 
 ```json
 {
-  "today":    [74.2, 69.8, 65.1, 64.0, 70.5, ...],
-  "tomorrow": [70.5, 68.0, ...],
+  "today": [74.2, 69.8, 65.1, 64.0, 70.5],
+  "tomorrow": [70.5, 68.0],
   "unit": "øre/kWh"
 }
 ```
+
+Real arrays normally contain 23, 24, or 25 entries depending on the local day and DST transition.
 
 - `today` / `tomorrow` — adjusted hourly totals indexed by local hour. Array length is the day length (23, 24, or 25 across DST transitions). When a source publishes data sparsely (allowed for the Flow and Homey schemes), the missing hour slots are `null` so per-hour lookups stay correct — skip nulls when summing or filtering.
 - `tomorrow` is `[]` until day-ahead prices arrive — check `tomorrow.length > 0` before iterating.
@@ -42,6 +44,7 @@ The HomeyScript `tag()` helper only resolves Homey Logic variables and built-in 
 const result = await Homey.flowtoken.getFlowTokenValue({
   id: 'homey:app:com.barelysufficient.pels:pels_prices_json',
 });
+
 const data = JSON.parse(result.value);
 
 // Tomorrow at 07:00 local time
@@ -50,24 +53,41 @@ deadlineDate.setDate(deadlineDate.getDate() + 1);
 deadlineDate.setHours(7, 0, 0, 0);
 const deadline = deadlineDate.getTime();
 
-const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
-const startOfTomorrow = startOfToday.getTime() + 24 * 3600 * 1000;
+const startOfToday = new Date();
+startOfToday.setHours(0, 0, 0, 0);
+
+const startOfTomorrowDate = new Date(startOfToday);
+startOfTomorrowDate.setDate(startOfTomorrowDate.getDate() + 1);
+const startOfTomorrow = startOfTomorrowDate.getTime();
 
 const upcoming = [];
+
 data.today.forEach((price, hour) => {
   if (price === null) return;
+
   const time = startOfToday.getTime() + hour * 3600 * 1000;
-  if (time >= Date.now() && time < deadline) upcoming.push({ time, price });
-});
-data.tomorrow.forEach((price, hour) => {
-  if (price === null) return;
-  const time = startOfTomorrow + hour * 3600 * 1000;
-  if (time >= Date.now() && time < deadline) upcoming.push({ time, price });
+  if (time >= Date.now() && time < deadline) {
+    upcoming.push({ time, price });
+  }
 });
 
-const cheapest = upcoming.sort((a, b) => a.price - b.price).slice(0, 3);
+data.tomorrow.forEach((price, hour) => {
+  if (price === null) return;
+
+  const time = startOfTomorrow + hour * 3600 * 1000;
+  if (time >= Date.now() && time < deadline) {
+    upcoming.push({ time, price });
+  }
+});
+
+const cheapest = upcoming
+  .sort((a, b) => a.price - b.price)
+  .slice(0, 3);
+
 console.log(`Cheapest hours (in ${data.unit}):`);
-for (const e of cheapest) console.log(`  ${new Date(e.time).toISOString()} — ${e.price.toFixed(2)}`);
+for (const entry of cheapest) {
+  console.log(`  ${new Date(entry.time).toISOString()} — ${entry.price.toFixed(2)}`);
+}
 ```
 
 ## Notes
