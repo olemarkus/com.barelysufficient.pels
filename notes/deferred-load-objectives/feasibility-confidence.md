@@ -112,10 +112,16 @@ drives the UI chip — but the planner never reads it for the verdict.
 
 The end state is confidence-aware feasibility, but it cannot ship first.
 
-**Step 1 (prerequisite) — stop poisoning the estimate.** Accumulate energy across
-sub-intervals (`Σ crediblePowerW_i × Δt_i`, persisted on the profile per the
-poisoning section) and invalidate the window on a power-=0 sub-interval. This
-tightens the real `kwhPerUnit` dispersion so confidence can actually rise.
+**Step 1 (prerequisite) — stop poisoning the estimate. ✅ SHIPPED.** Accumulate
+energy across sub-intervals (`Σ crediblePowerW_i × Δt_i`, persisted on the
+profile as `pendingEnergyKWh`/`subIntervalStartMs`/`subIntervalPowerW` per the
+poisoning section) and invalidate the window on a power-=0 sub-interval. The
+`rise_too_small` skips that used to be discarded now bank their sub-interval
+energy at their own left-edge power; the accept emits `pending + final
+sub-interval`; baseline resets (accept / value-fell / interval-too-long /
+recovery / contamination) clear the accumulator. No-skip windows stay
+byte-identical to the old single-baseline bill. This tightens the real
+`kwhPerUnit` dispersion so confidence can actually rise — Step 2's prerequisite.
 
 **Step 2 (prerequisite) — make confidence escape `low`.** Even with clean
 samples, `resolveProfileConfidence` measures dispersion as relative-std-dev of a
