@@ -322,19 +322,6 @@ type ObjectivePayloadResult =
   // is behind.
   | { kind: 'awaiting_prices' };
 
-const resolveShortfall = (params: {
-  progress: ReturnType<typeof resolveProgress>;
-  allocatedKWh: number;
-  progressPerKWh: number;
-}): { cannotMeetUnits: number } => {
-  if (!params.progress) return { cannotMeetUnits: 0 };
-  const projected = Math.min(
-    params.progress.targetValue,
-    params.progress.currentValue + params.allocatedKWh * params.progressPerKWh,
-  );
-  return { cannotMeetUnits: Math.max(0, params.progress.targetValue - projected) };
-};
-
 type ObjectivePayloadReady = {
   ctx: ResolvedObjectiveContext;
   bootstrap: SettingsUiBootstrap;
@@ -498,9 +485,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
   const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
-  const allocatedKWh = [...currentChargeByStartMs.values()].reduce((sum, kwh) => sum + Math.max(0, kwh), 0);
   const cannotMeet = latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk';
-  const { cannotMeetUnits } = resolveShortfall({ progress, allocatedKWh, progressPerKWh });
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
   const costAndDelivery = resolveLiveCostAndDelivery({
@@ -555,7 +540,6 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       planStatus: latest.planStatus,
       nowMs,
       cannotMeet,
-      shortfallUnits: cannotMeetUnits,
       dailyBudgetExhausted,
       dailyBudgetExhaustedInRunUp: dailyBudgetExhaustedAnywhere,
       // Latest revision's `computedFromPricesUpTo` is carried verbatim so the

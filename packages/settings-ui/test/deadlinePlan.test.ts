@@ -2532,9 +2532,12 @@ describe('deadline plan page payload', () => {
   });
 
   it('cannot-meet meta line falls back to a kind-specific named reason when shortfall is zero', () => {
-    // Cannot-meet plan with no shortfall and no daily-budget exhaustion must
-    // still surface a reasoned body line — never the bare warning chip with
-    // no explanation (TODO 344).
+    // Cannot-meet plan with no UI-derived shortfall and no daily-budget
+    // exhaustion must still surface the blameless "may not reach the target"
+    // sentence — never the old "can't determine why" dead-end. The planner has
+    // already classified the plan as cannot-meet, so the UI must not contradict
+    // that with an "unknown cause" admission just because its own (learned-rate)
+    // projection landed at-or-above target (TODO 344; smart-task hero walk).
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
     const devices: TargetDeviceSnapshot[] = [{
@@ -2592,7 +2595,8 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(true);
-    expect(payload.hero.metaLine).toMatch(/can't determine why this task is at risk/i);
+    expect(payload.hero.metaLine).toMatch(/may not reach the target temperature before the deadline/i);
+    expect(payload.hero.metaLine).not.toMatch(/can't determine why/i);
   });
 
   it('shows planning speed and estimated duration when the latest revision carries them', () => {
