@@ -33,6 +33,11 @@ A PELS mode can change how devices are treated. For example:
 
 The hard cap still applies. Modes do not override it.
 
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/settings/modes.png" alt="PELS Settings Modes page showing Home mode priorities and target temperatures for managed devices." />
+  <figcaption>Modes is where priorities and comfort targets differ between Home, Away and Night.</figcaption>
+</figure>
+
 ## Example: Home mode
 
 Home mode is usually the comfort-first mode.

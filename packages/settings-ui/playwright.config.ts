@@ -5,6 +5,14 @@ const IS_DYNAMIC_PORT = PORT === '0';
 const BASE_URL = process.env.PELS_E2E_BASE_URL
   ?? (IS_DYNAMIC_PORT ? undefined : `http://127.0.0.1:${PORT}`);
 const SHOULD_BUILD = process.env.PELS_E2E_BUILD !== '0';
+const CHROMIUM_EXECUTABLE_PATH = process.env.PELS_E2E_CHROMIUM_EXECUTABLE_PATH;
+
+const chromiumUse = {
+  browserName: 'chromium' as const,
+  ...(CHROMIUM_EXECUTABLE_PATH
+    ? { launchOptions: { executablePath: CHROMIUM_EXECUTABLE_PATH } }
+    : {}),
+};
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -21,7 +29,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium-mobile-width',
-      use: { browserName: 'chromium' },
+      use: chromiumUse,
     },
     {
       name: 'firefox-mobile-width',
@@ -29,7 +37,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-narrow-width',
-      use: { browserName: 'chromium', viewport: { width: 320, height: 900 } },
+      use: { ...chromiumUse, viewport: { width: 320, height: 900 } },
     },
   ],
   webServer: {

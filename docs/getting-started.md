@@ -45,6 +45,11 @@ Go to **Settings > Limits & safety** and configure:
 - **Hard cap (kW)** — your hourly limit. This is the average power level you do not want to exceed within any given hour. Set this to match your grid tariff step (effekttrinn), for example 5 kW or 8 kW.
 - **Safety margin (kW)** — a buffer below the hard cap. PELS starts turning things down before you actually hit the limit. A margin of 0.3-0.5 kW is a reasonable starting point.
 
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/settings/limits-safety.png" alt="PELS Settings Limits and safety page showing hard cap, safety margin and power source controls." />
+  <figcaption>Limits & safety is where you choose the power source, hard cap and safety margin.</figcaption>
+</figure>
+
 ::: tip
 Enable **Simulation mode** in **Settings > Simulation mode** while you are getting started. PELS will calculate what it *would* do without actually controlling any devices. This lets you verify the setup is sensible before giving PELS real control.
 :::
@@ -60,6 +65,11 @@ Go to **Settings > Devices**. For each device you want PELS to manage, configure
 | **Price** | PELS adjusts this device's temperature targets based on electricity prices (only relevant for temperature devices). |
 
 Good first candidates are water heaters, floor heating, panel heaters, and ventilation — devices that use a lot of power but can tolerate being turned down for a while.
+
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/settings/devices.png" alt="PELS Settings Devices page showing EV charger, heater and thermostat devices with Managed, Limit and Price controls." />
+  <figcaption>Devices is where each load is marked as managed, can be limited to stay under the hard cap, adjusted by price, or left as background usage.</figcaption>
+</figure>
 
 ## Step 4: Set up modes, priorities, and targets
 
@@ -79,6 +89,11 @@ For each device in each mode, you configure two things:
 
 - **Priority** — a number where lower means more important. When PELS needs to turn things down, it starts with the highest-numbered (least important) devices and works its way up. When there is room again, it resumes devices in the opposite order.
 - **Desired temperature** — the target temperature PELS will set for this device in this mode (for temperature devices).
+
+<figure class="docs-figure">
+  <img class="docs-screenshot" src="/screenshots/settings/modes.png" alt="PELS Settings Modes page showing Home mode priorities and target temperatures for managed devices." />
+  <figcaption>Modes is where priorities and comfort targets differ between Home, Away and Night.</figcaption>
+</figure>
 
 For example, in **Night** mode you might set:
 - Bedroom heater: priority 1, target 20 °C — stays on as long as possible
