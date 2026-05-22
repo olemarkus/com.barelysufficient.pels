@@ -17,6 +17,21 @@ const horizonPlanFields = (
   })) ?? null,
 });
 
+// Rescue-permission visibility. `*Mode` is what the user configured
+// (`objective.rescue`), `*Applied` is whether the producer actually engaged it
+// this cycle. Surfaced so a budget-capped `cannot_meet` can be told apart from
+// one where exempt-from-budget was set but never reached/lifted the plan — the
+// signal that was missing when the budget cap could not be distinguished from a
+// physical limit. Producer resolves the flags; this helper only flattens them.
+const rescueFields = (
+  diagnostic: DeferredObjectiveDiagnostic,
+): Record<string, unknown> => ({
+  rescueExemptMode: diagnostic.rescue?.exemptFromBudget ?? 'off',
+  rescueLimitMode: diagnostic.rescue?.limitLowerPriorityDevices ?? 'off',
+  budgetExemptApplied: diagnostic.budgetExemptApplied ?? false,
+  limitLowerPriorityApplied: diagnostic.limitLowerPriorityApplied ?? false,
+});
+
 export const buildDeferredObjectiveDebugPayload = (
   diagnostic: DeferredObjectiveDiagnostic,
 ): Record<string, unknown> => ({
@@ -54,5 +69,6 @@ export const buildDeferredObjectiveDebugPayload = (
   horizonBucketCount: diagnostic.horizonBucketCount,
   dailyBudgetExhaustedBucketCount: diagnostic.dailyBudgetExhaustedBucketCount,
   requestedMinimumStepId: diagnostic.requestedMinimumStepId,
+  ...rescueFields(diagnostic),
   ...horizonPlanFields(diagnostic.horizonPlan),
 });
