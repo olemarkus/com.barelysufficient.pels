@@ -115,6 +115,27 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
     expect(line!.endsWith('.')).toBe(false);
   });
 
+  it('drops the "of Y" denominator when delivery met or exceeded the scheduled total', () => {
+    // The denominator is the energy the plan *scheduled*, not the energy needed
+    // to reach the target. A heat run that lost heat faster than planned can
+    // deliver more than the scheduled total and still miss — "Delivered 14.2 of
+    // 9.9 kWh · short ≈ 49 min" reads as a >100% contradiction. When delivery
+    // meets/exceeds the schedule, energy wasn't the limiter: show the bare figure.
+    const line = formatPlanHistoryShortfallChip(buildEntry({
+      outcome: 'missed',
+      finalProgressPercent: 60,
+      deliveredKWh: 14.2,
+      finalPlan: buildSnapshot({
+        hours: [
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 5 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 4.9 },
+        ],
+      }),
+    }));
+    expect(line).toMatch(/Delivered 14\.2 kWh/);
+    expect(line).not.toMatch(/of 9\.9 kWh/);
+  });
+
   it('returns null on Succeeded entries', () => {
     expect(formatPlanHistoryShortfallChip(buildEntry({ outcome: 'met' }))).toBeNull();
   });
