@@ -1,7 +1,10 @@
 import {
   formatConfidenceChipLabel,
+  formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
   formatSmartTaskListConfidenceChipLabel,
+  resolveSmartTaskLearning,
+  resolveVarianceMarginNote,
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
@@ -28,14 +31,83 @@ describe('formatSmartTaskListConfidenceChipLabel', () => {
     expect(formatSmartTaskListConfidenceChipLabel({
       confidence: 'low',
       statusId: 'cannot_meet',
+      learning: true,
     })).toBeNull();
   });
 
-  it('keeps action-oriented confidence chips for recoverable list states', () => {
+  it('keeps action-oriented confidence chips for recoverable list states while learning', () => {
     expect(formatSmartTaskListConfidenceChipLabel({
       confidence: 'medium',
       statusId: 'at_risk',
+      learning: true,
     })).toBe('Refining');
+  });
+
+  it('stays silent on on_track even while learning', () => {
+    expect(formatSmartTaskListConfidenceChipLabel({
+      confidence: 'low',
+      statusId: 'on_track',
+      learning: true,
+    })).toBeNull();
+  });
+
+  it('suppresses the chip for a learned (not cold-start) rate so a forever-low thermal band cannot nag', () => {
+    expect(formatSmartTaskListConfidenceChipLabel({
+      confidence: 'low',
+      statusId: 'at_risk',
+      learning: false,
+    })).toBeNull();
+  });
+});
+
+describe('resolveSmartTaskLearning', () => {
+  const provenance = (overrides: Record<string, unknown> = {}) => ({
+    source: 'learned' as const,
+    kWhPerUnit: 0.4,
+    acceptedSamples: 20,
+    confidence: 'low' as const,
+    lastAcceptedAtMs: 0,
+    ...overrides,
+  });
+
+  it('is true for bootstrap-sourced rates', () => {
+    expect(resolveSmartTaskLearning(provenance({ source: 'bootstrap', kWhPerUnit: null, acceptedSamples: 0 }))).toBe(true);
+  });
+
+  it('is true below the learned-sample floor and false at or above it', () => {
+    expect(resolveSmartTaskLearning(provenance({ acceptedSamples: 3 }))).toBe(true);
+    expect(resolveSmartTaskLearning(provenance({ acceptedSamples: 4 }))).toBe(false);
+    expect(resolveSmartTaskLearning(provenance({ acceptedSamples: 200 }))).toBe(false);
+  });
+
+  it('is false when there is no provenance (legacy plan)', () => {
+    expect(resolveSmartTaskLearning(undefined)).toBe(false);
+  });
+});
+
+describe('formatEnergyEstimateKWh', () => {
+  it('renders a range when planned exceeds expected', () => {
+    expect(formatEnergyEstimateKWh({ energyPlannedKWh: 10, energyExpectedKWh: 8 })).toBe('8.0–10.0 kWh');
+  });
+
+  it('collapses to a single figure when the rounded endpoints match or no buffer', () => {
+    expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBe('8.0 kWh');
+    expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8, energyExpectedKWh: 8 })).toBe('8.0 kWh');
+    expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8 })).toBe('8.0 kWh');
+  });
+});
+
+describe('resolveVarianceMarginNote', () => {
+  const labels = { varianceMarginNote: 'why-note' } as never;
+
+  it('returns the kind note when a buffer is booked', () => {
+    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 10, energyExpectedKWh: 8 })).toBe('why-note');
+  });
+
+  it('returns null when there is no buffer, the figures round equal, or expected is absent', () => {
+    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8, energyExpectedKWh: 8 })).toBeNull();
+    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBeNull();
+    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8 })).toBeNull();
   });
 });
 

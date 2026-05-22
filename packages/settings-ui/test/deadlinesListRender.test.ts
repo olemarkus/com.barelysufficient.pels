@@ -22,6 +22,7 @@ const buildCard = (overrides: Partial<DeadlinesListCard> = {}): DeadlinesListCar
   href: './?page=deadline-plan&deviceId=dev_water_heater',
   statusId: 'on_track',
   confidence: null,
+  learning: false,
   extraPermissionsValue: null,
   currentValueLine: null,
   ...overrides,
@@ -42,32 +43,52 @@ afterEach(() => {
 });
 
 describe('DeadlinesList', () => {
-  it('maps medium confidence to the live-hero chip vocabulary', () => {
+  it('maps medium confidence to the live-hero chip vocabulary while learning on a recoverable card', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
-      cards: [buildCard({ confidence: 'medium' })],
+      cards: [buildCard({ confidence: 'medium', statusId: 'at_risk', learning: true })],
     });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).toContain('Refining');
     expect(chips).not.toContain('Confidence medium');
   });
 
-  it('maps low confidence to the live-hero chip vocabulary', () => {
+  it('maps low confidence to the live-hero chip vocabulary while learning on a recoverable card', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
-      cards: [buildCard({ confidence: 'low' })],
+      cards: [buildCard({ confidence: 'low', statusId: 'at_risk', learning: true })],
     });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).toContain('Estimating');
+  });
+
+  it('stays silent on on_track cards even while learning', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ confidence: 'low', statusId: 'on_track', learning: true })],
+    });
+    const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
+    expect(chips).not.toContain('Estimating');
+  });
+
+  it('suppresses the chip once the rate is learned (not cold-start)', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ confidence: 'low', statusId: 'at_risk', learning: false })],
+    });
+    const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
+    expect(chips).not.toContain('Estimating');
   });
 
   it('omits the confidence chip when no band is available', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
-      cards: [buildCard({ confidence: null })],
+      cards: [buildCard({ confidence: null, statusId: 'at_risk', learning: true })],
     });
     const chips = Array.from(mount.querySelectorAll('.plan-chip')).map((el) => el.textContent ?? '');
     expect(chips).not.toContain('Estimating');

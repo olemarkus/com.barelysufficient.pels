@@ -23,6 +23,7 @@ import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
+  resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
@@ -79,6 +80,7 @@ const buildCard = (params: {
   // matches the plan the list card is summarising. `null` covers the
   // bootstrap / pending case where no learned band exists yet.
   const confidence = plan.kwhPerUnitProvenance?.confidence ?? null;
+  const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
   const currentValue = resolveCurrentValue(device, plan.objectiveKind);
   return {
     deviceId,
@@ -92,6 +94,7 @@ const buildCard = (params: {
     href: buildDeadlineHref(deviceId),
     statusId,
     confidence,
+    learning,
     extraPermissionsValue: formatSmartTaskExtraPermissionsValue(objective?.rescue),
     currentValueLine: formatSmartTaskCurrentValueLine({
       kind: plan.objectiveKind,

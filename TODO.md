@@ -465,6 +465,21 @@ graceful but should ship in the next patch.*
       conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
       review of PR #965.
 
+- [ ] Calm-list discoverability of "what PELS has learned" (PR #970). Gating the
+      confidence chip to cold-start + silencing it on `on_track` is correct for
+      the list mission ("on track?"), but it removes the chip that
+      `notes/smart-task-ui/README.md` treated as the doorway into the learned-rate
+      explanation. Healthy tasks now expose that only via the detail page. Consider
+      a non-chip affordance if users expect to discover learned-rate info from a
+      calm list. Source: `pels-ux-fit` review of PR #970.
+
+- [ ] `learning` floor vs volatile rates (PR #970). `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4`
+      classifies a device with ≥4 samples as "learned", so a volatile low-confidence
+      rate (the swing behind the open feasibility P0) shows `At risk` with no
+      "Estimating" cue that the verdict rests on a shaky estimate. Defensible against
+      nagging, but revisit alongside the feasibility-accuracy P0 — a variance-based
+      (not just sample-count) cue may be warranted. Source: `pels-ux-fit` review of PR #970.
+
 *v2.7.4 train follow-ups (2026-05-19). Three items from the v2.7.3
 release-review fan-out that did not ride the train; deferred as
 maintenance-tier polish without user-visible impact at supported widths.

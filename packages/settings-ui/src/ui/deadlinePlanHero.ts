@@ -6,6 +6,8 @@ import {
   formatConfidenceChipLabel,
   formatDeadlineCostMetaLine,
   formatDeadlineDeliveredSoFarLine,
+  formatEnergyEstimateKWh,
+  resolveVarianceMarginNote,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -62,11 +64,17 @@ export const resolveConfidenceChipText = (
   confidence: ObjectiveProfileConfidence | null | undefined,
 ): string | null => formatConfidenceChipLabel(confidence);
 
+// Shown only during genuine cold-start (`learning`) and never on a settled
+// task: `on_track` is silent (a learned-but-forever-`low` thermal rate would
+// nag), and `cannot_meet` already owns its row. Mirrors the Smart-tasks list
+// gate in `formatSmartTaskListConfidenceChipLabel`.
 export const resolveLiveHeroConfidenceChipText = (params: {
   confidence: ObjectiveProfileConfidence | null;
   planStatus: DeferredObjectiveActivePlanStatusV1;
+  learning: boolean;
 }): string | null => {
-  if (params.planStatus === 'cannot_meet') return null;
+  if (params.planStatus === 'cannot_meet' || params.planStatus === 'on_track') return null;
+  if (!params.learning) return null;
   return resolveConfidenceChipText(params.confidence);
 };
 
@@ -185,12 +193,18 @@ export const resolveCannotMeetRecourse = (params: {
 // plans, devices missing calibration).
 const formatMetaLine = (params: {
   energyNeededKWh: number;
+  energyExpectedKWh: number;
   hoursLeft: number;
   planningSpeedKw: number | null;
   estimatedDurationText: string | null;
   speedModeLabel: string;
 }): string => {
-  const energy = `${params.energyNeededKWh.toFixed(1)} kWh`;
+  // Range "8.0–10.0 kWh" while a buffer is booked, collapsing to a single
+  // figure once the rate is learned (planned == expected).
+  const energy = formatEnergyEstimateKWh({
+    energyPlannedKWh: params.energyNeededKWh,
+    energyExpectedKWh: params.energyExpectedKWh,
+  });
   if (params.planningSpeedKw !== null && params.estimatedDurationText !== null) {
     const speed = `${params.planningSpeedKw.toFixed(1)} kW`;
     return `Needs ${energy} · ${speed} · ${params.estimatedDurationText} · ${params.speedModeLabel}`;
@@ -212,8 +226,13 @@ export type BuildHeroInput = {
   firstChargingHour: HorizonHour | undefined;
   deadlineAtMs: number;
   energyNeededKWh: number;
+  // Mean-based estimate paired with the buffered `energyNeededKWh` for the
+  // `expected…planned` range; equals `energyNeededKWh` when no buffer is booked.
+  energyExpectedKWh: number;
   hoursLeft: number;
   confidence: ObjectiveProfileConfidence | null;
+  // True only during genuine cold-start; gates the "Estimating" confidence chip.
+  learning: boolean;
   planStatus: DeferredObjectiveActivePlanStatusV1;
   nowMs: number;
   cannotMeet: boolean;
@@ -317,6 +336,7 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
   const baseMetaLine = formatMetaLine({
     energyNeededKWh: params.energyNeededKWh,
+    energyExpectedKWh: params.energyExpectedKWh,
     hoursLeft: params.hoursLeft,
     planningSpeedKw: params.planningSpeedKw,
     estimatedDurationText: params.estimatedDurationText,
@@ -340,6 +360,7 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
       confidenceChipText: resolveLiveHeroConfidenceChipText({
         confidence: params.confidence,
         planStatus: params.planStatus,
+        learning: params.learning,
       }),
     }),
     tone: params.tone,
@@ -348,6 +369,11 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     headlineReason: resolveQueuedHeadlineReason(params),
     subline,
     metaLine,
+    varianceNote: resolveVarianceMarginNote({
+      labels: params.labels,
+      energyPlannedKWh: params.energyNeededKWh,
+      energyExpectedKWh: params.energyExpectedKWh,
+    }),
     costMetaLine: formatDeadlineCostMetaLine({
       plannedTotalCost: params.plannedTotalCost,
       deliveredCost: params.deliveredCostSoFar,

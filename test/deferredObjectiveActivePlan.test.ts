@@ -125,6 +125,36 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
 };
 
 describe('DeferredObjectiveActivePlanRecorder', () => {
+  it('persists energyExpectedKWh only when it differs from the buffered energyNeededKWh', () => {
+    // horizonPlan.energyNeededKWh = 4.5 (sum of buckets). A lower expected
+    // figure means a buffer is booked → persist it for the UI range.
+    const buffered = buildPersistDeps();
+    const recorderBuffered = new DeferredObjectiveActivePlanRecorder(buffered.deps);
+    recorderBuffered.observe(
+      [makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, energyExpectedKWh: 4 })],
+      HOUR_MS,
+    );
+    recorderBuffered.flushIfDirty();
+    expect(buffered.saved()!.plansByDeviceId.dev.latest?.energyExpectedKWh).toBeCloseTo(4);
+
+    // Equal expected (no buffer) → omitted so steady plans stay byte-stable.
+    const steady = buildPersistDeps();
+    const recorderSteady = new DeferredObjectiveActivePlanRecorder(steady.deps);
+    recorderSteady.observe(
+      [makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, energyExpectedKWh: 4.5 })],
+      HOUR_MS,
+    );
+    recorderSteady.flushIfDirty();
+    expect(steady.saved()!.plansByDeviceId.dev.latest?.energyExpectedKWh).toBeUndefined();
+
+    // Absent on the diagnostic (legacy / unresolved) → omitted.
+    const legacy = buildPersistDeps();
+    const recorderLegacy = new DeferredObjectiveActivePlanRecorder(legacy.deps);
+    recorderLegacy.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorderLegacy.flushIfDirty();
+    expect(legacy.saved()!.plansByDeviceId.dev.latest?.energyExpectedKWh).toBeUndefined();
+  });
+
   it('writes the first revision on first plannable diagnostic with reason flow_card', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
