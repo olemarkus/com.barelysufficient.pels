@@ -1,7 +1,7 @@
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-} from './objectiveProfileTypes';
+} from './types';
 
 // Magnitude thresholds that classify a sample-to-sample drop as a draw/refill
 // event rather than ordinary measurement noise.

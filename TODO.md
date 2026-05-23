@@ -302,9 +302,9 @@ release, not v2.7.1 merge-blockers.*
       so the wall-clock floor is a no-op for flow mode; the
       `RECOVERY_SAFETY_TIMEOUT_MS = 24 h` still bounds the worst case.
       Add a one-line comment beside the constant in
-      `lib/core/objectiveProfileRecovery.ts` so future readers don't
+      `lib/objectives/recovery.ts` so future readers don't
       assume the floor bounds flow-mode disarm latency.
-      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
@@ -319,7 +319,7 @@ release, not v2.7.1 merge-blockers.*
       `missing_capacity` draft) rather than blindly raising the
       multiplier here; the right fix is likely a noise-aware threshold
       keyed to the device's observed jitter floor.
-      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Make empty-deviceId on at-risk / pending recourse buttons detectable
@@ -507,7 +507,7 @@ block merge.*
       and confirm the model correctly returns `medium`, not `high`. If it
       over-promotes, tighten the high threshold for the banded path
       (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
-      `lib/core/objectiveProfileStats.ts`.
+      `lib/objectives/stats.ts`.
 - [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
       (integration interval extends outside band coverage) reads the now
       band-aware `kwhPerUnit.confidence`, while the energy estimate for the
@@ -521,7 +521,7 @@ block merge.*
       raw RSD from `{sampleCount, mean, m2}` directly. Files:
       `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
       `packages/contracts/src/objectiveProfileTypes.ts`,
-      `lib/core/objectiveProfiles.ts`.
+      `lib/objectives/profiles.ts`.
 - [ ] Log parity / doc drift. The structured-log field `energyConfidence`
       (`objective_profile_sample_recorded`) now silently shifts semantics
       (band-aware when bands exist), so old/new log dumps are no longer
@@ -633,7 +633,7 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       Acceptance: replay the captured `bufferedSamples` through the band
       fitter offline and report the SSE-reduction value to know whether to
       lower `MIN_SSE_REDUCTION_FRACTION` or accept the current behaviour.
-      Files: `lib/core/objectiveProfileStats.ts` (band fitter),
+      Files: `lib/objectives/stats.ts` (band fitter),
       `lib/plan/deferredObjectives/profileEnergyResolution.ts` (consumer).
       Source: SHS multi-band live-walk 2026-05-23. Artifacts:
       `/tmp/thermal-multiband-live-20260523-132901/pels.settings.after.json`.
@@ -1674,7 +1674,7 @@ consolidation + a11y polish (8 P2)`.*
       snapshot rebuilds with the *same* `value` and a flat-or-slightly-shifted floor —
       occasionally `-2` to `-4 ms` when one capability ages out of the `Math.max` and an
       older capability becomes the new winner. The monotonicity guard at
-      `lib/core/objectiveProfiles.ts:346` then emits an `objective_profile_sample_rejected
+      `lib/objectives/profiles.ts:346` then emits an `objective_profile_sample_rejected
       reasonCode:objective_profile_non_monotonic_time` event with `valueDelta:0`. In this
       audit window 14/27 sample rejections are this pattern. No correctness impact (the
       duplicate would not have improved learning) but the log noise burns 15-minute
@@ -1689,7 +1689,7 @@ consolidation + a11y polish (8 P2)`.*
       identical `(observedAtMs, value)` samples and (b) a sample with `observedAtMs` 4 ms
       less than previous and unchanged `value`; assert no rejection event fires in either case
       and `rejectedSamples` is not incremented.
-      Files: `lib/core/objectiveProfiles.ts`, `lib/core/objectiveProfileSamples.ts`,
+      Files: `lib/objectives/profiles.ts`, `lib/objectives/samples.ts`,
       sample-pipeline tests.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
@@ -1714,9 +1714,9 @@ consolidation + a11y polish (8 P2)`.*
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
-      `lib/core/objectiveProfileSamples.ts:57-82` returns `kwhPerUnit:null` when neither
+      `lib/objectives/samples.ts:57-82` returns `kwhPerUnit:null` when neither
       `measuredPowerKw > 0` nor `reportedStep.planningPowerW > 0` is present at sample
-      time. `lib/core/objectiveProfiles.ts:436-438` then skips the band buffer update, so
+      time. `lib/objectives/profiles.ts:436-438` then skips the band buffer update, so
       the device's adaptive band fitter (per `notes/objective-profile-bands.md`) never
       sees any input. `Termostat Synne` in this audit window had `acceptedSamples:67` but
       `bandsCount:0`, `rateConfidence:"low"`, `energyConfidence:"low"`. For thermostats
@@ -1730,7 +1730,7 @@ consolidation + a11y polish (8 P2)`.*
       device-class default `planningPowerW` for the reported step when the user has not
       configured one, with a clear logging trace. Either path documents the requirement in
       `notes/objective-profile-bands.md`.
-      Files: `lib/core/objectiveProfileSamples.ts`, `lib/core/objectiveProfiles.ts`,
+      Files: `lib/objectives/samples.ts`, `lib/objectives/profiles.ts`,
       `notes/objective-profile-bands.md`, profile-sample tests.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
@@ -2116,7 +2116,7 @@ should not be folded into the same PR.
       `flowCards/smartTaskTokens.ts`; `notes/deferred-load-objectives/feasibility-confidence.md`
       and the matching TODO citation point at old `objectiveProfiles.ts`
       lines for energy-window math now living in
-      `lib/core/objectiveProfileEnergyAccumulator.ts`; and
+      `lib/objectives/energyAccumulator.ts`; and
       `notes/smart-task-ui/README.md` mentions a `Backup hours` history pill
       that is still future scope. Update or annotate the stale references so
       future reviewers do not chase missing surfaces.
@@ -2133,7 +2133,7 @@ should not be folded into the same PR.
       load-time schema. Pre-existing gap, not a v2.9 regression; add a
       normalizer when touching profile persistence again.
       Files: `lib/app/settingsUiApi.ts`, `lib/core/powerTrackerTypes.ts`,
-      `lib/core/objectiveProfiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
+      `lib/objectives/profiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
       Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
 
 - [ ] Keep `recordHourlyDelivery` single-authoritative before wiring any

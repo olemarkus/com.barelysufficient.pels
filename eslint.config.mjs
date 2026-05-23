@@ -225,7 +225,7 @@ export default tseslint.config(
   },
   // Runtime hot paths - stricter perf-oriented iteration rules
   {
-    files: ['lib/core/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts'],
+    files: ['lib/core/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts', 'lib/objectives/**/*.ts'],
     rules: {
       // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
       'functional/immutable-data': 'off',

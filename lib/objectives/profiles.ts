@@ -2,30 +2,30 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-} from './objectiveProfileTypes';
-import type { PowerTrackerState } from './powerTrackerTypes';
-import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
-import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './objectiveProfileRecovery';
-import { applyBandedConfidence, updateProfileStat } from './objectiveProfileStats';
-import { appendSampleToBuffer, fitBandsFromSamples } from './objectiveProfileBands';
-import { buildObjectiveProfileSample } from './objectiveProfileSamples';
+} from './types';
+import type { PowerTrackerState } from '../core/powerTrackerTypes';
+import { shouldEmitRejectedProfileSample } from './rejectionLogging';
+import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './recovery';
+import { applyBandedConfidence, updateProfileStat } from './stats';
+import { appendSampleToBuffer, fitBandsFromSamples } from './bands';
+import { buildObjectiveProfileSample } from './samples';
 import {
   CLEARED_ENERGY_ACCUMULATOR,
   calculateWindowEnergyKwh,
   resolveSubIntervalLeftEdge,
   subIntervalEnergyKwh,
-} from './objectiveProfileEnergyAccumulator';
+} from './energyAccumulator';
 
 export type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-} from './objectiveProfileTypes';
+} from './types';
 
 export {
   OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
   OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
   buildObjectiveProfileSample,
-} from './objectiveProfileSamples';
+} from './samples';
 
 export const OBJECTIVE_PROFILE_MAX_DEVICES = 64;
 export const OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;

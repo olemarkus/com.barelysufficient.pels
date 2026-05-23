@@ -61,7 +61,7 @@ skips blank lines and comments.
 | `packages/settings-ui/src/ui/advanced.ts` | 529 | Bucket A: split advanced surfaces by destination. |
 | `packages/settings-ui/src/ui/dailyBudget.ts` | 526 | Bucket A: shrink after Budget redesign settles. |
 | `packages/settings-ui/src/ui/deviceDetail/index.ts` | 525 | Bucket A: continue device-detail ownership split. |
-| `lib/core/objectiveProfiles.ts` | 519 | Bucket B while objective profiling remains one cohesive store. |
+| `lib/objectives/profiles.ts` | 519 | Bucket B while objective profiling remains one cohesive store. |
 | `packages/settings-ui/src/ui/budgetRedesignChart.ts` | 516 | Bucket A: split chart scale/series helpers if touched. |
 | `lib/app/appInit.ts` | 516 | Bucket A: delete or inline once remaining adapter value is gone. |
 | `lib/core/powerTracker.ts` | 512 | Bucket A: normalize persisted/runtime state boundaries. |

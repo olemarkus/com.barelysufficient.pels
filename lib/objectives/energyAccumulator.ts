@@ -9,7 +9,7 @@
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
-} from './objectiveProfileTypes';
+} from './types';
 
 // Left edge of the currently-open sub-interval: the most recent raw sample's
 // timestamp + the power to bill from there to the next sample. Seeds from the

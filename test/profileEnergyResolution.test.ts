@@ -8,7 +8,7 @@ import type {
   DeviceObjectiveProfile,
   ObjectiveProfileBand,
   ObjectiveProfileStat,
-} from '../lib/core/objectiveProfileTypes';
+} from '../lib/objectives/types';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 
 const stat = (mean: number): ObjectiveProfileStat => ({

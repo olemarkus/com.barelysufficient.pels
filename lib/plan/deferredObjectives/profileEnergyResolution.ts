@@ -5,7 +5,7 @@ import type {
   ObjectiveProfileBand,
   ObjectiveProfileConfidence,
   ObjectiveProfileStat,
-} from '../../core/objectiveProfileTypes';
+} from '../../objectives/types';
 import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './types';
 
 export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap';

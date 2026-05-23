@@ -1,9 +1,9 @@
 import type { ObjectiveProfileKind } from '../../packages/contracts/src/objectiveProfileTypes';
-import { resolveProfileConfidence } from './objectiveProfileStats';
+import { resolveProfileConfidence } from './stats';
 import type {
   ObjectiveProfileBand,
   ObjectiveProfileSampleObservation,
-} from './objectiveProfileTypes';
+} from './types';
 
 export const OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64;
 export const OBJECTIVE_PROFILE_MIN_BAND_SAMPLES = 8;
