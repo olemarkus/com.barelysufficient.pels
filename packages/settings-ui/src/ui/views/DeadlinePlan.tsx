@@ -940,9 +940,17 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   }
   if (loadState.status === 'loading') {
     return (
-      <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Loading smart task</h1>
-        <p class="pels-card-supporting">Preparing the schedule.</p>
+      <section
+        class="pels-surface-card budget-redesign-card"
+        aria-busy="true"
+      >
+        <div class="pels-skeleton-stack" aria-hidden="true">
+          <span class="pels-skeleton pels-skeleton--headline"></span>
+          <span class="pels-skeleton pels-skeleton--subline"></span>
+          <span class="pels-skeleton pels-skeleton--hero"></span>
+          <span class="pels-skeleton pels-skeleton--card"></span>
+        </div>
+        <span class="visually-hidden">Loading smart task…</span>
       </section>
     );
   }

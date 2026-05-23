@@ -332,4 +332,20 @@ describe('DeadlinesHistoryList', () => {
     renderDeadlinesHistoryList(mount, { status: 'hidden' });
     expect(mount.querySelector('.deadlines-history')).toBeNull();
   });
+
+  it('renders the M3 skeleton primitive in the loading state', () => {
+    // Past tasks loading shares the canonical `pels-skeleton-stack` shape with
+    // the other panels — no bespoke spinner / text-only fallback. The SR text
+    // carries the panel-specific copy so assistive tech announces which list
+    // is loading instead of a generic "loading" string.
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, { status: 'loading' });
+    const section = mount.querySelector('.deadlines-history');
+    expect(section).not.toBeNull();
+    expect(section?.getAttribute('aria-busy')).toBe('true');
+    expect(section?.querySelector('.pels-skeleton-stack')).not.toBeNull();
+    expect(section?.querySelectorAll('.pels-skeleton').length).toBeGreaterThan(0);
+    const srText = section?.querySelector('.visually-hidden');
+    expect(srText?.textContent).toBe('Loading past tasks…');
+  });
 });

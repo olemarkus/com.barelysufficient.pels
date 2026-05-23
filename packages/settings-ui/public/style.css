@@ -6513,6 +6513,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
+/* Usage panel first-paint skeleton: while `#usage-panel[data-loading="true"]`
+ * is set, hide the static `-- kWh` hero/cards/footer so the panel shows a
+ * single shimmer placeholder instead of a half-populated wall. `power.ts`
+ * flips to `data-loading="false"` after `renderPowerStats` resolves. */
+#usage-panel[data-loading="true"] > .usage-return-link,
+#usage-panel[data-loading="true"] > .usage-hero,
+#usage-panel[data-loading="true"] > .usage-card,
+#usage-panel[data-loading="true"] > .usage-footer {
+  display: none;
+}
+
+#usage-panel[data-loading="false"] > .usage-loading-skeleton {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------------
  * Device detail panel — Material Web 3 theming + layout
  * --------------------------------------------------------------------------- */

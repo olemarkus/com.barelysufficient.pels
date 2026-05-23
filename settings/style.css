@@ -5232,13 +5232,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
+/* Doubled-class + panel-scoped cascade so these rules beat both the host
+ * `md-text-button` shadow defaults and Homey's button stylesheet without
+ * `!important`. Mirrors the `.plan-hero__recourse-button` pattern documented
+ * nearby (~line 2329), where the same doubled-class strategy replaces the
+ * earlier `!important`-heavy block. The `align-self` and `box-shadow`
+ * declarations stay on the single-class rule so they keep applying when this
+ * class is used outside the deadline-plan panel scope. */
 .deadline-plan-back-button {
   align-self: flex-start;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md) !important;
-  background: var(--color-surface-2) !important;
-  color: var(--text) !important;
   box-shadow: none;
+}
+
+#deadline-plan-panel md-text-button.deadline-plan-back-button.deadline-plan-back-button {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--text);
 }
 
 .deadline-horizon-card {
@@ -6538,6 +6548,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   .usage-hero__stat-value {
     font-size: var(--pels-text-title-font-size);
   }
+}
+
+/* Usage panel first-paint skeleton: while `#usage-panel[data-loading="true"]`
+ * is set, hide the static `-- kWh` hero/cards/footer so the panel shows a
+ * single shimmer placeholder instead of a half-populated wall. `power.ts`
+ * flips to `data-loading="false"` after `renderPowerStats` resolves. */
+#usage-panel[data-loading="true"] > .usage-return-link,
+#usage-panel[data-loading="true"] > .usage-hero,
+#usage-panel[data-loading="true"] > .usage-card,
+#usage-panel[data-loading="true"] > .usage-footer {
+  display: none;
+}
+
+#usage-panel[data-loading="false"] > .usage-loading-skeleton {
+  display: none;
 }
 
 /* ---------------------------------------------------------------------------

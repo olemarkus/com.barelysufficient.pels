@@ -172,7 +172,7 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
-- [ ] Add loading skeletons across the five panels.
+- [x] Add loading skeletons across the five panels.
       Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
       identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
       Configure dialog opens shows a flat grey wall until the bootstrap fetch resolves.
@@ -180,6 +180,12 @@ release, not v2.7.1 merge-blockers.*
       card placeholders) and use it everywhere.
       Files: `packages/settings-ui/src/ui/views/*.tsx`,
       `packages/settings-ui/public/style.css`.
+      Shipped: Budget panel (HTML skeleton in `#budget-redesign-surface`), Usage panel
+      (HTML skeleton overlay + `data-loading` toggle, dropped by `renderPowerStats`),
+      Smart tasks past list (`DeadlinesHistoryList` `loading` state), Smart task plan SPA
+      route (`DeadlinePlan` `loading` state + initial HTML in `#deadline-plan-root`). Overview
+      panel already shipped its skeleton at v2.7.3; Settings panel is static navigation
+      with no async load and intentionally has no skeleton.
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
