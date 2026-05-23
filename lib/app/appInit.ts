@@ -402,9 +402,10 @@ export function createPlanService(ctx: AppContext): PlanService {
       .map((device) => toPlanDevice(ctx, device))
       .filter((device) => device.managed !== false),
     getCapacityDryRun: () => ctx.capacityDryRun,
-    log: (...args: unknown[]) => ctx.log(...args),
-    logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
-    error: (...args: unknown[]) => ctx.error(...args),
+    loggers: {
+      structuredLog: ctx.getStructuredLogger('plan'),
+      debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    },
     isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
     isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
     // Use readPriceStore so a legacy V1 payload is migrated to V2 on first
@@ -418,8 +419,6 @@ export function createPlanService(ctx: AppContext): PlanService {
     ),
     getLastPowerUpdate: () => ctx.powerTracker.lastTimestamp ?? null,
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
-    structuredLog: ctx.getStructuredLogger('plan'),
-    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
     isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),

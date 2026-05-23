@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import type { Logger as PinoLogger } from '../logging/logger';
 import { buildPelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -29,7 +30,7 @@ type PlanStatusWriterDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getLastPowerUpdate: () => number | null;
-  error: (...args: unknown[]) => void;
+  structuredLog?: PinoLogger;
 };
 
 export class PlanStatusWriter {
@@ -164,7 +165,11 @@ export class PlanStatusWriter {
     if (card) {
       card
         .trigger({ level: priceLevel }, { priceLevel })
-        .catch((err: Error) => this.deps.error('Failed to trigger price_level_changed', err));
+        .catch((err: Error) => this.deps.structuredLog?.error({
+          event: 'price_level_trigger_failed',
+          error: err.message,
+          stack: err.stack,
+        }));
     }
   }
 }
