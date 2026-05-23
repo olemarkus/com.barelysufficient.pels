@@ -468,7 +468,7 @@ const REVISION_REASON_TOOLTIP_LINE: Partial<Record<DeferredObjectiveActivePlanRe
   // claiming a publication event.
   schedule_revised: 'Updated as the schedule was revised',
   rate_refined: 'Updated as rates were refined',
-  flow_permission_changed: 'Updated after a Flow changed what this task may use',
+  flow_permission_changed: 'Updated after a Flow changed what this smart task may do',
 };
 
 // Short "what changed" copy for the per-revision log on the smart-task history
@@ -508,7 +508,7 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
   measured_deviation: 'Measured rate differed from plan',
   // A Flow toggled a rescue permission (exempt-from-budget etc.), so PELS re-solved
   // under the new limits. Names the action the user took, per the transparency rule.
-  flow_permission_changed: 'Flow changed what this task may use',
+  flow_permission_changed: 'Flow changed what this smart task may do',
 };
 
 const REVISION_REASON_FALLBACK = 'Plan refreshed';

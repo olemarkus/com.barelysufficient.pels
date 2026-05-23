@@ -483,6 +483,144 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
   });
 
+  // Regression for the rescue-only branch of the replan-reason cascade. Toggling
+  // a Flow rescue permission changes the active-plan objective signature, which
+  // would otherwise route the replan through generic `objective_changed` — the
+  // history detail then says the smart-task settings / target changed instead of
+  // naming the Flow permission change the user actually made. The recorder must
+  // detect "signature differs only in the rescue segment" and route to the
+  // reserved `flow_permission_changed` reason ahead of the generic fallback.
+  describe('rescue-permission-only replan routing', () => {
+    it('emits flow_permission_changed when only the rescue segment differs', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Pre-state: no rescue permission granted.
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+
+      // Post-state: same target, same deadline, same enforcement — only the
+      // rescue permission changes (user enabled the at-risk exempt-from-budget
+      // Flow card). The horizon allocation may legitimately re-balance, so use
+      // a different bucket pattern that still totals 4.5 kWh.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        rescue: { exemptFromBudget: 'at_risk' },
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('flow_permission_changed');
+      expect(plan?.latest?.revision).toBe(2);
+      // The new schedule is committed under the new permission set; the next
+      // cycle should treat the re-balanced hours as the committed envelope.
+      expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
+    });
+
+    it('emits flow_permission_changed when a granted rescue permission is revoked', () => {
+      // Symmetric case: starting with a rescue permission and clearing it
+      // should also surface as a Flow permission change, not a settings edit.
+      // Seed via observe() so the persisted signature carries the rescue tail
+      // from the start.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+      })], HOUR_MS);
+
+      // Clear both permissions (rescue tail disappears entirely).
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('flow_permission_changed');
+      expect(plan?.latest?.revision).toBe(2);
+    });
+
+    it('still emits objective_changed when the target changes (rescue unchanged)', () => {
+      // Negative case: target shift must keep routing through
+      // `objective_changed`. Asserts the rescue-only short-circuit doesn't
+      // swallow target/deadline edits.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        targetTemperatureC: 70,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 2.0),
+          makeBucket(3 * HOUR_MS, 2.0),
+          makeBucket(4 * HOUR_MS, 2.0),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('objective_changed');
+    });
+
+    it('emits objective_changed when both target and rescue change (target wins)', () => {
+      // Mixed-change priority guard. Without the "base segment must be equal"
+      // gate in `compareObjectiveSignatures`, a future refactor that flipped
+      // the priority (rescue tail wins) would silently mislabel an objective
+      // edit as a Flow permission change. This test fails if the cascade
+      // inverts the order.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        targetTemperatureC: 70,
+        rescue: { exemptFromBudget: 'at_risk' },
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 2.0),
+          makeBucket(3 * HOUR_MS, 2.0),
+          makeBucket(4 * HOUR_MS, 2.0),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('objective_changed');
+    });
+
+    it('still emits schedule_revised when neither base nor rescue change but planStatus drifts', () => {
+      // Sanity: the rescue-only branch must not steal revisions caused by
+      // metadata drift (planStatus transition with the same schedule). Forces
+      // a replan via a status flip on an identical bucket layout — recorder
+      // emits `schedule_revised` because both the base and rescue segments are
+      // byte-identical.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+        ], { status: 'at_risk', statusDetail: 'planned_using_deadline_reserve' }),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('schedule_revised');
+    });
+  });
+
   it('freezes initialPlanningSpeedKw and initialEstimatedDurationText at first-revision time', () => {
     // Regression for TODO 597: the recorder formats `estimatedDurationText`
     // from `energyNeededKWh / planningSpeedKw` on every revision and

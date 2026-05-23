@@ -48,16 +48,22 @@ export const hasPriceHorizonAdvanced = (
   return next > previous;
 };
 
-// Pick the recorder-emitted reason from the three causes the caller has
-// already detected. `objective_changed` and `rate_refined` are the
-// specific named causes; otherwise the split between `prices_revised` and
-// `schedule_revised` depends on whether the price horizon actually
-// advanced.
+// Pick the recorder-emitted reason from the causes the caller has
+// already detected. `flow_permission_changed` wins over generic
+// `objective_changed` when the signature differs only in the rescue segment
+// (i.e. the user toggled a smart-task rescue Flow card) — the history detail
+// then names the Flow permission change instead of the broader
+// "smart-task settings / target changed" copy. `objective_changed` and
+// `rate_refined` are the next specific named causes; otherwise the split
+// between `prices_revised` and `schedule_revised` depends on whether the price
+// horizon actually advanced.
 export const resolveReplanReason = (params: {
   objectiveChanged: boolean;
+  rescuePermissionOnlyChanged: boolean;
   sourceRefined: boolean;
   pricesAdvanced: boolean;
 }): DeferredObjectiveActivePlanRevisionReason => {
+  if (params.rescuePermissionOnlyChanged) return 'flow_permission_changed';
   if (params.objectiveChanged) return 'objective_changed';
   if (params.sourceRefined) return 'rate_refined';
   if (params.pricesAdvanced) return 'prices_revised';

@@ -59,23 +59,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: adversarial typing/contract review, v2.9.0 closeout,
       2026-05-23.
 
-- [ ] Emit `flow_permission_changed` for rescue-only smart-task permission
-      changes. Rescue permissions are included in the active-plan objective
-      signature, so toggling `allow_smart_task_rescue` currently routes through
-      `objective_changed` before the reserved `flow_permission_changed` reason
-      can fire. The history detail then says the smart-task settings / target
-      changed instead of naming the Flow permission change the user made.
-      Acceptance: detect "signature differs only in the rescue segment" in
-      `maybeWriteReplanRevision` and route that ahead of generic
-      `objective_changed`; add regression coverage for rescue toggle vs target
-      change.
-      Files: `lib/plan/deferredObjectives/activePlanSignature.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
-      `lib/plan/deferredObjectives/replanReason.ts`,
-      `flowCards/smartTaskRescueCard.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`.
-      Source: adversarial runtime/copy review, v2.9.0 closeout, 2026-05-23.
-
 - [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
       `resolveVarianceMarginNote` returns the safety-margin sentence whenever
       planned energy exceeds expected energy, so the calm "books the high end"
@@ -356,6 +339,25 @@ release, not v2.7.1 merge-blockers.*
       invisible.
       Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`.
       Source: `pels-ux-fit`, PR #997 follow-up, 2026-05-23.
+
+- [ ] Harden the rescue-only replan-reason routing against partial /
+      combined toggle scenarios. The PR-998 regression suite covers
+      "no rescue → some rescue" and "both → none", plus the negative
+      cases (target-change wins, neither changes). Two scenarios should
+      also be pinned so a future refactor can't silently invert the
+      cascade: (a) a single-permission toggle
+      (`exemptFromBudget: never → always` with
+      `limitLowerPriorityDevices` unchanged at a non-null value) — drives
+      the `key === ...` ternary in `withRescuePermission` end-to-end to
+      the recorder; (b) a rescue toggle simultaneous with a
+      `planStatus` drift on identical hours, asserting that
+      `flow_permission_changed` still wins because `baseChanged = false`
+      while `rescueChanged = true` (and the metadata-only drift would
+      have routed to `schedule_revised` on its own).
+      Files: `test/deferredObjectiveActivePlan.test.ts`,
+      `flowCards/smartTaskRescueCard.ts`,
+      `lib/plan/deferredObjectives/replanReason.ts`.
+      Source: `pels-runtime-reality`, PR #998 follow-up, 2026-05-23.
 
 - [ ] Smart-task extra-permissions row wraps mid-word at 320 px under
       worst-case payload. `.deadline-list-card__when-row dd` uses
