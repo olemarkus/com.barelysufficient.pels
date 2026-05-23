@@ -1,7 +1,6 @@
 import {
   isBinaryRestoreCandidate,
   getEvRestoreStateBlockReason,
-  getEvUnknownPowerBlockReason,
   getInactiveReason,
   getOffDevices,
   getOnDevices,
@@ -225,14 +224,6 @@ describe('plan restore device helpers', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
     }))).toBe('charger is not resumable');
-    expect(getEvUnknownPowerBlockReason(makeDevice({
-      controlCapabilityId: 'evcharger_charging',
-      expectedPowerSource: 'default',
-    }))).toBeNull();
-    expect(getEvUnknownPowerBlockReason(makeDevice({
-      controlCapabilityId: 'onoff',
-      expectedPowerSource: 'default',
-    }))).toBeNull();
     expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',

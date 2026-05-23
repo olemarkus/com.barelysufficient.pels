@@ -124,18 +124,9 @@ export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | nu
   }
 }
 
-export function getEvUnknownPowerBlockReason(dev: DevicePlanDevice): string | null {
-  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (dev.expectedPowerSource !== 'default') return null;
-  return null;
-}
-
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   const evStateBlock = getEvRestoreStateBlockReason(dev);
   if (evStateBlock) return { code: PLAN_REASON_CODES.inactive, detail: evStateBlock };
-
-  const evPowerBlock = getEvUnknownPowerBlockReason(dev);
-  if (evPowerBlock) return { code: PLAN_REASON_CODES.inactive, detail: evPowerBlock };
 
   return null;
 }
