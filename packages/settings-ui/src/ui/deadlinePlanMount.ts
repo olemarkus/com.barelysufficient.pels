@@ -18,7 +18,7 @@ import {
 } from './deadlinePlanHistoryFetch.ts';
 import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
-import { logSettingsError } from './logging.ts';
+import { logSettingsError, logSettingsWarn } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
 import { showUsageReturnLink } from './usageReturnLink.ts';
 
@@ -102,6 +102,26 @@ const initDeadlinePlanRecourseDispatcher = (): void => {
         document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
       }
       : undefined;
+    // The `data-deadline-recourse-device-id` attribute is always written by the
+    // JSX producer (`deviceId ?? ''`), so an empty string can legitimately
+    // appear when the recourse has no deep-link by design (e.g. the
+    // budget-exhausted "Lower daily budget" / "Open Settings" branches that
+    // never carry a deviceId). The degradation we want to surface in
+    // `/tmp/pels` is the cold-start / regression case where an `overview`-
+    // targeted recourse — which would otherwise open the device-settings
+    // overlay — falls back to tab-only landing because the upstream snapshot
+    // didn't yield a deviceId. `targetTab === 'overview'` is the only tab
+    // today whose recourse carries a deviceId (see `overviewDeviceRecourse`
+    // and `MISSED_HISTORY_RECOURSE_SHORTFALL` in `deadlineLabels.ts`), so
+    // gating on it keeps the warn focused on real degradations instead of
+    // firing on every "Open Budget" click.
+    if (targetTab === 'overview' && deviceId === '') {
+      void logSettingsWarn(
+        'Smart-task overview recourse clicked with empty deviceId; degrading to tab-only landing',
+        undefined,
+        'deadlinePlanRecourseDispatcher',
+      );
+    }
     onCloseDeadlinePlan({ fallbackTab: targetTab, onSettled });
   });
 };

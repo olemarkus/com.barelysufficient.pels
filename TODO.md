@@ -226,21 +226,6 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
-- [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
-      asymmetry when it wraps. PR #1016 routes the Budget header through
-      the shared `.plan-hero` primitive with a `.plan-hero__chips` row
-      carrying the price-level chip and the Plan/Adjust toggle. The
-      toggle uses `margin-left: auto` (style.css:4643) to sit flush
-      right when no chip is shown; when the row narrows below the
-      combined width the toggle wraps to its own flex line and the
-      `auto` margin pushes it to the right edge while the chip sits at
-      the left — readable but cosmetically asymmetric against the
-      headline below. Either drop the `margin-left: auto` (let the
-      parent's `justify-content` handle alignment) or align both edges
-      intentionally on wrap. Cosmetic; bounded one-rule fix.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
-
 - [ ] `cannot_meet` smart-task hero with `dailyBudgetExhaustedBucketCount > 0`
       on pre-v2.9.x revisions still routes to "Open Budget" via the legacy
       heuristic, but `resolveStatus` only returns `cannot_meet` when
@@ -352,21 +337,6 @@ release, not v2.7.1 merge-blockers.*
       Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
-- [ ] Make empty-deviceId on at-risk / pending recourse buttons detectable
-      in prod. The hero recourse plumbs `deviceId` through to a
-      `data-deadline-recourse-device-id` attribute on the button; the
-      dispatcher (`packages/settings-ui/src/ui/deadlinePlanMount.ts:99-105`)
-      treats an empty string as "no deep-link" and degrades to tab-only
-      landing. That's the right fallback for cold-start corner cases, but a
-      future regression that accidentally strips `deviceId` upstream would
-      silently restore the old dead-end behaviour without any test
-      failure. Add a `console.warn` (or a structured-log breadcrumb) in
-      the dispatcher when the attribute is the empty string, so the
-      degradation surfaces in `/tmp/pels` operator logs instead of going
-      invisible.
-      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`.
-      Source: `pels-ux-fit`, PR #997 follow-up, 2026-05-23.
-
 - [ ] Harden the rescue-only replan-reason routing against partial /
       combined toggle scenarios. The PR-998 regression suite covers
       "no rescue → some rescue" and "both → none", plus the negative
@@ -406,18 +376,6 @@ release, not v2.7.1 merge-blockers.*
       stack) but inconsistent rhythm worth a follow-up to either wrap or
       explicitly document why pending is the odd one out.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
-
-- [ ] Smart-task detail back button still sets `color: var(--text)` on the
-      `md-text-button` host. The PR #992 cascade cleanup removed the three
-      `!important` declarations and switched to the doubled-class
-      panel-scoped pattern, which works because the original `!important`
-      only beat competing light-DOM rules. The proper M3 idiom (already
-      used by the device-detail back button at `style.css:6637-6639`) is
-      `--md-sys-color-primary: var(--text)` rather than `color: var(--text)`
-      on the host, since the text color inside MD Web components routes
-      through their CSS-custom-property API.
-      Files: `packages/settings-ui/public/style.css`.
       Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
 
 - [ ] Finish the Budget hero copy-locality pass alongside

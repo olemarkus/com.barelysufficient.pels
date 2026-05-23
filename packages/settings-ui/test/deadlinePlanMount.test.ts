@@ -7,6 +7,7 @@
 
 const callApiMock = vi.fn();
 const logSettingsErrorMock = vi.fn().mockResolvedValue(undefined);
+const logSettingsWarnMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../src/ui/homey.ts', async () => {
   const actual = await vi.importActual<typeof import('../src/ui/homey.ts')>('../src/ui/homey.ts');
@@ -22,6 +23,7 @@ vi.mock('../src/ui/logging.ts', async () => {
   return {
     ...actual,
     logSettingsError: (...args: unknown[]) => logSettingsErrorMock(...args),
+    logSettingsWarn: (...args: unknown[]) => logSettingsWarnMock(...args),
   };
 });
 
@@ -50,6 +52,7 @@ const installRoot = () => {
 beforeEach(() => {
   callApiMock.mockReset();
   logSettingsErrorMock.mockReset().mockResolvedValue(undefined);
+  logSettingsWarnMock.mockReset().mockResolvedValue(undefined);
   installRoot();
   setLocation('?deviceId=dev_test');
 });
@@ -204,5 +207,49 @@ describe('recourse dispatcher (history-detail "Review device")', () => {
 
     expect(capturedOptions?.fallbackTab).toBe('budget');
     expect(capturedOptions?.onSettled).toBeUndefined();
+  });
+
+  // A future regression that strips `deviceId` upstream from an `overview`-
+  // targeted recourse would silently lose the device-detail overlay deep
+  // link. The JSX producer always emits the attribute (`deviceId ?? ''`), so
+  // the regression surfaces as an empty-string attribute, not an absent one.
+  // The dispatcher routes that through `logSettingsWarn` so the degradation
+  // shows up in `/tmp/pels` operator logs instead of vanishing.
+  it('warns when an overview recourse fires with an empty deviceId', () => {
+    setDeadlinePlanCloseHandler(() => {});
+
+    installRoot();
+    const button = document.createElement('button');
+    button.setAttribute('data-deadline-recourse-tab', 'overview');
+    button.setAttribute('data-deadline-recourse-device-id', '');
+    document.body.appendChild(button);
+
+    button.click();
+
+    expect(logSettingsWarnMock).toHaveBeenCalledExactlyOnceWith(
+      'Smart-task overview recourse clicked with empty deviceId; degrading to tab-only landing',
+      undefined,
+      'deadlinePlanRecourseDispatcher',
+    );
+  });
+
+  // Budget/Settings recourses legitimately ship no deviceId (the JSX writes
+  // `''` for them). The dispatcher must NOT warn on those — otherwise every
+  // "Open Budget" / "Open Settings" click would spam the operator log. The
+  // earlier "omits onSettled" test already pins the no-attribute path; this
+  // one pins the empty-string-attribute path (which is what production JSX
+  // actually emits).
+  it('does not warn when a budget recourse has an empty deviceId attribute', () => {
+    setDeadlinePlanCloseHandler(() => {});
+
+    installRoot();
+    const button = document.createElement('button');
+    button.setAttribute('data-deadline-recourse-tab', 'budget');
+    button.setAttribute('data-deadline-recourse-device-id', '');
+    document.body.appendChild(button);
+
+    button.click();
+
+    expect(logSettingsWarnMock).not.toHaveBeenCalled();
   });
 });

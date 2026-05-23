@@ -4640,14 +4640,18 @@ details[open] > summary .disclosure-chevron {
 
 /* Budget page header now consumes the shared `.plan-hero` / `.pels-hero`
    primitive — eyebrow + headline + chip-row inherit the same typography,
-   surface, and tone scaffolding the four sibling panels render. The only
-   per-surface override is the Plan/Adjust toggle's alignment so it sits
-   flush to the right of the headline row when there is no chip (and on the
-   chip rail otherwise). */
+   surface, and tone scaffolding the four sibling panels render. The
+   Plan/Adjust toggle sits flush to the right of the headline row through
+   the parent's `justify-content: space-between`; in the chip-rail row the
+   chip-rail's `flex: 1 1 auto` consumes the inline space so the toggle sits
+   at the trailing edge without an explicit `margin-left: auto`. Dropping
+   that auto margin avoids a cosmetic asymmetry where, when the chip-rail row
+   narrowed enough for the toggle to wrap to its own flex line, the auto
+   margin pushed the toggle to the right edge while the chip stayed at the
+   left — leaving an unbalanced gap between them. */
 .budget-page-header__action {
   flex: 0 0 auto;
   align-self: center;
-  margin-left: auto;
 }
 
 .budget-redesign-allocation-warning {
@@ -5211,7 +5215,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
   background: var(--color-surface-2);
-  color: var(--text);
+  /* Route the text/label color through the MD Web component's CSS-custom-
+   * property API (`--md-sys-color-primary`) rather than setting `color` on
+   * the host. Mirrors the device-detail back button at the
+   * `#device-detail-panel .slide-panel__header md-text-button.settings-back-button`
+   * cascade (~line 6615): MD Web buttons render their inner label inside a
+   * Shadow DOM that does not inherit host `color`, so setting `color` on the
+   * host is ignored. The custom-property override does land. */
+  --md-sys-color-primary: var(--text);
 }
 
 .deadline-horizon-card {
