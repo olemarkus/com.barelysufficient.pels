@@ -244,16 +244,6 @@ release, not v2.7.1 merge-blockers.*
       Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
       Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
 
-- [ ] Add a committed-vs-fresh-pair regression test for the priority-1
-      headroom split. PR #1003's dual-task fixtures
-      (`test/deferredObjectiveDiagnostics.test.ts:1561-1610`) cover two
-      fresh top-priority tasks both without an active-plan commitment.
-      Add a sibling test where one task carries an existing commitment
-      from a prior cycle (`activePlans` map populated) while the other is
-      fresh, so an asymmetric eligibility-vs-commitment bug can't regress
-      invisibly.
-      Files: `test/deferredObjectiveDiagnostics.test.ts`.
-      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
 
 - [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
       noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
@@ -375,26 +365,6 @@ release, not v2.7.1 merge-blockers.*
       (rendering), `lib/plan/deferredObjectives/planHistory.ts:141-148`
       (data signal so the renderer can identify the gap).
       Source: `pels-runtime-reality`, PR #990 follow-up, 2026-05-23.
-
-- [ ] Behavioural regression: `detectHourRollover` on a post-flush record
-      must not double-contribute the just-closed hour. The structural
-      pin at `test/deferredObjectivePlanHistory.test.ts:1872-1903`
-      already covers `flushOpenHourAtFinalize` returning
-      `nextOpening.hourMs === opening.hourMs + ONE_HOUR_MS` — but the
-      reason that fix exists is to defend against a caller that feeds
-      the post-flush record back through `detectHourRollover` for one
-      more pass before deletion. Add a sibling behavioural test in the
-      same describe block: take the `nextOpening` produced by
-      `buildFinalHourFlush`, feed it into `detectHourRollover` with a
-      same-hour or next-hour `nowMs`, and assert
-      `contributions.length === 0` (or that no contribution carries
-      `atMs === opening.hourMs`). Locks in the round-trip invariant so a
-      future refactor that re-introduces the stale anchor cannot
-      silently re-attribute progress against the closed hour.
-      Files: `test/deferredObjectivePlanHistory.test.ts:1872-1903`
-      (sibling test in the same describe).
-      Source: `pels-runtime-reality`, PR #991 follow-up, 2026-05-23.
-
 
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
@@ -1976,28 +1946,6 @@ should not be folded into the same PR.
       `packages/shared-domain/src/deviceOverview.ts` (or new helper).
 
 ## P3 Future and Exploratory Work
-
-- [ ] Bootstrap-silence regression for the list confidence chip. The list
-      chip mirrors the hero's
-      `displayConfidence ?? confidence ?? null` chain via
-      `resolveChipConfidence` (see
-      `packages/settings-ui/src/ui/deadlinesList.ts:79-90`), and the
-      list passes `profileConfidence: null` because it doesn't load
-      `objectiveProfiles`. A future refactor that wires a live-profile
-      fallback into the list would silently start surfacing
-      `Estimating` chips on cold-start cards — exactly the behaviour the
-      v2.7.x hero parity work removed. Add a sibling test in
-      `packages/settings-ui/test/deadlinesList.test.ts` that pins the
-      bootstrap-silence case: `(displayConfidence: null,
-      confidence: null, live profileConfidence: null)` → card
-      `confidence === null` (chip suppressed). Locks in cold-start
-      silence so the fallback-to-profile-confidence refactor can't
-      regress it.
-      Acceptance: new test in the existing
-      `describe('resolveDeadlinesListCards', …)` block; assertion is
-      `expect(cards[0].confidence).toBeNull()` with the three null inputs.
-      Files: `packages/settings-ui/test/deadlinesList.test.ts`.
-      Source: `pels-ux-fit`, PR #989 follow-up, 2026-05-23.
 
 - [ ] Clean up low-severity v2.9 review-note drift. The implementation is
       correct, but contributor notes point at stale files or examples:

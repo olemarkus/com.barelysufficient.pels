@@ -234,6 +234,43 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].confidence).toBe('high');
   });
 
+  // Bootstrap-silence regression: cold-start cards must keep the chip suppressed
+  // (`confidence === null`) so they don't show "Estimating" before the device
+  // has any provenance signal at all. The list passes `profileConfidence: null`
+  // unconditionally (it doesn't load `objectiveProfiles`), so the only thing
+  // standing between the chip and a future regression that re-wires a profile
+  // fallback into the list is the producer chain collapsing the three null
+  // inputs down to `null`. Sibling of the `displayConfidence > confidence`
+  // hero-parity test above — both tests pin the same chain (`resolveChipConfidence`
+  // in `deadlinesList.ts`), but this case asserts the silence end of the
+  // preference order: nothing in, nothing out.
+  it('suppresses the chip when both provenance confidences and live profile are null (cold-start silence)', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          // Bootstrap-shape provenance: no learned profile yet, both confidence
+          // fields explicitly null. Plus the list never supplies a live
+          // profileConfidence — so all three branches of
+          // `displayConfidence ?? confidence ?? profileConfidence` are null and
+          // the chain must collapse to `null` (chip suppressed).
+          kwhPerUnitProvenance: {
+            source: 'bootstrap',
+            kWhPerUnit: null,
+            acceptedSamples: 0,
+            confidence: null,
+            displayConfidence: null,
+            lastAcceptedAtMs: null,
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards).toHaveLength(1);
+    expect(cards[0].confidence).toBeNull();
+  });
+
   it('formats currently-X line for EV from device state of charge', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([
