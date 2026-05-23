@@ -71,7 +71,7 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-} from '../planRestoreAdmission';
+} from '../admission';
 import {
   getRestoreNeed,
   reserveHeadroomForPendingRestores,

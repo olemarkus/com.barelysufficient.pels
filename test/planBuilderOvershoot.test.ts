@@ -1,5 +1,5 @@
 import CapacityGuard from '../lib/core/capacityGuard';
-import { recordActivationAttemptStart } from '../lib/plan/planActivationBackoff';
+import { recordActivationAttemptStart } from '../lib/plan/admission';
 import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';

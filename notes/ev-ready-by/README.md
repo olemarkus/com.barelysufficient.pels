@@ -85,7 +85,7 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   conservative-low query primitives, already wired into stepped-load deferred objectives.
 - Smart tasks UI surfaces: list and per-device deadline-plan and history pages
   (`packages/settings-ui/src/ui/deadlinePlan.ts`, `deadlinesList.ts`).
-- Temperature admission wired in `lib/plan/deferredObjectives/admission.ts`: cap-off devices made
+- Temperature admission wired in `lib/plan/admission/deferredObjective.ts`: cap-off devices made
   visible during planned hours, kept idle outside, setpoint lifted to deadline target.
 - EV admission and pause/resume actuation wired across admission, planner, and executor:
   `admission.ts` emits `ev_resume`/`ev_pause` intents per cycle;
@@ -122,7 +122,7 @@ planned EV bucket resumes a paused plugged-in charger; an idle bucket
 pauses a charging one. Cooldowns and the stale-power failsafe are honored.
 Integration coverage lives in `test/evDevices.integration.test.ts`.
 
-Files (for reference): `lib/plan/deferredObjectives/admission.ts`,
+Files (for reference): `lib/plan/admission/deferredObjective.ts`,
 `lib/plan/planBuilder.ts`, `lib/executor/binaryExecutor.ts`,
 `lib/executor/planExecutor.ts`, `test/evDevices.integration.test.ts`.
 

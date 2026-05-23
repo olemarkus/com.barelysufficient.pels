@@ -1,4 +1,4 @@
-import { isActivationObservationActiveNow } from '../lib/plan/planActivationBackoff';
+import { isActivationObservationActiveNow } from '../lib/plan/admission';
 
 describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {

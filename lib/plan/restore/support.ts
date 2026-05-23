@@ -10,7 +10,7 @@ import {
 import {
   applyActivationPenalty,
   syncActivationPenaltyState,
-} from '../planActivationBackoff';
+} from '../admission';
 import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './accounting';
 
 export function reserveHeadroomForPendingRestores(params: {

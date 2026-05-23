@@ -35,7 +35,7 @@ import {
 import {
   recordActivationSetback,
   syncConfirmedRestoreAttributionState as syncConfirmedRestoreAttributionAttempt,
-} from './planActivationBackoff';
+} from './admission';
 import {
   OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
   SOFT_OVERSHOOT_DEADBAND_KW,
@@ -48,6 +48,8 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredEvCommandIntents,
   buildDeferredTargetOverrides,
+} from './admission';
+import {
   buildDeferredObjectiveDiagnostics,
   emitDeferredObjectiveDiagnostics,
   emitDeferredObjectiveStatusTransitions,

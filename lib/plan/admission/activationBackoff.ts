@@ -2,14 +2,14 @@ import type {
   ActivationAttemptState,
   ActivationAttemptSource,
   PlanEngineState,
-} from './planState';
-import type { DeviceDiagnosticsBackoffTransition } from '../diagnostics/deviceDiagnosticsService';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
-import { isActivelyDrawing } from '../observer/observedPower';
-import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from './planConstants';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+} from '../planState';
+import type { DeviceDiagnosticsBackoffTransition } from '../../diagnostics/deviceDiagnosticsService';
+import { isObservedOff, isObservedOn } from '../../observer/observedState';
+import { isActivelyDrawing } from '../../observer/observedPower';
+import { OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS } from '../planConstants';
+import { isFiniteNumber } from '../../utils/appTypeGuards';
 
-export type { ActivationAttemptSource } from './planState';
+export type { ActivationAttemptSource } from '../planState';
 
 export const ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS = OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS;
 export const ACTIVATION_SETBACK_RESTORE_BLOCK_MS = 5 * 60 * 1000;

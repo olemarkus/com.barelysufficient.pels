@@ -1,5 +1,5 @@
 import type { PlanInputDevice } from '../planTypes';
-import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { DeferredObjectiveDiagnostic } from '../deferredObjectives/diagnosticsBridge';
 
 export type DeferredAdmissionDecision =
   | { kind: 'inactive'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' }

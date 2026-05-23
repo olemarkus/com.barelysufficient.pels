@@ -27,12 +27,6 @@ export type {
   DeferredObjectiveStatusSnapshot,
 } from './statusBus';
 export {
-  applyDeferredAdmissionToInput,
-  applyDeferredObjectiveAdmission,
-  buildDeferredEvCommandIntents,
-  buildDeferredTargetOverrides,
-} from './admission';
-export {
   DeferredObjectivePlanHistoryRecorder,
   type DeferredObjectiveBackfillConfig,
 } from './planHistory';

@@ -10,7 +10,7 @@ import {
   closeActivationAttemptForShed,
   recordActivationAttemptStart,
   recordActivationSetback,
-} from './planActivationBackoff';
+} from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 
 const isShedThrottled = (params: {
