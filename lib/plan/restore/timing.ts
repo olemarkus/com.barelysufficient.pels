@@ -1,12 +1,12 @@
-import type { PlanEngineState } from './planState';
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PlanEngineState } from '../planState';
+import type { PowerTrackerState } from '../../core/powerTracker';
 import {
   RESTORE_COOLDOWN_MS,
   RESTORE_COOLDOWN_BACKOFF_MULTIPLIER,
   RESTORE_COOLDOWN_MAX_MS,
   RESTORE_STABLE_RESET_MS,
   SHED_COOLDOWN_MS,
-} from './planConstants';
+} from '../planConstants';
 
 export type RestoreTiming = {
   inCooldown: boolean;
@@ -217,7 +217,7 @@ export function getShedCooldownState(params: {
   };
 }
 
-import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 
 export type CapacityRestoreGateTiming = {
   activeOvershoot: boolean;

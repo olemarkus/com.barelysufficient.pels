@@ -1,6 +1,6 @@
 import { PLAN_REASON_CODES } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../planTypes';
-import { setRestorePlanDevice } from '../planRestoreHelpers';
+import { setRestorePlanDevice } from '../restore/helpers';
 import { isSwapTargetComplete } from './completion';
 import { clearDirectSwap, clearMissingSwapTarget, clearSwapTargetPreservingMeasurement } from './lifecycle';
 import type { SwapState } from './state';

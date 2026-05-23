@@ -14,8 +14,8 @@ import {
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
 } from './planActivationBackoff';
-import { computeBaseRestoreNeed, resolveRestorePowerSource } from './planRestoreAccounting';
-import { getRestoreNeed } from './planRestoreSupport';
+import { computeBaseRestoreNeed, resolveRestorePowerSource } from './restore/accounting';
+import { getRestoreNeed } from './restore/support';
 import {
   classifyPlanReason,
   renderPlanReasonDecision,
@@ -29,9 +29,9 @@ import {
 } from './planRestoreAdmission';
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
-import { resolveCapacityRestoreBlockReason } from './planRestoreTiming';
+import { resolveCapacityRestoreBlockReason } from './restore/timing';
 import { emitRestoreDebugEventOnChange } from './planDebugDedupe';
-import { NEUTRAL_STARTUP_HOLD_REASON } from './planRestoreDevices';
+import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 function shouldNormalizeReason(reason: ClassifiedPlanReason): boolean {
   return reason.code === 'none'

@@ -1,17 +1,17 @@
-import type { StructuredDebugEmitter } from '../logging/logger';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { DevicePlanDevice } from './planTypes';
-import type { PlanEngineState } from './planState';
+import type { StructuredDebugEmitter } from '../../logging/logger';
+import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
+import type { DevicePlanDevice } from '../planTypes';
+import type { PlanEngineState } from '../planState';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,
   RECENT_SHED_RESTORE_BACKOFF_MS,
   RECENT_SHED_RESTORE_MULTIPLIER,
-} from './planConstants';
+} from '../planConstants';
 import {
   applyActivationPenalty,
   syncActivationPenaltyState,
-} from './planActivationBackoff';
-import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './planRestoreAccounting';
+} from '../planActivationBackoff';
+import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './accounting';
 
 export function reserveHeadroomForPendingRestores(params: {
   rawHeadroom: number;

@@ -1,6 +1,6 @@
 import { buildDeviceDiagnosticsObservations } from '../lib/plan/planDiagnostics';
 import type { PlanContext } from '../lib/plan/planContext';
-import type { RestorePlanResult } from '../lib/plan/planRestore';
+import type { RestorePlanResult } from '../lib/plan/restore';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 

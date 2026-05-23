@@ -1,5 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../lib/plan/planReasons';
-import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/restore/devices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { buildPlanDevice } from './utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';

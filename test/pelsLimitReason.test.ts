@@ -1,6 +1,6 @@
 import { buildPelsStatus } from '../lib/core/pelsStatus';
 import { PriceLevel } from '../lib/price/priceLevels';
-import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/restore/devices';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';

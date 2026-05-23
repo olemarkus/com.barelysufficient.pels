@@ -1,4 +1,4 @@
-import { reserveHeadroomForPendingRestores } from '../lib/plan/planRestoreSupport';
+import { reserveHeadroomForPendingRestores } from '../lib/plan/restore/support';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';
 import { buildPlanDevice } from './utils/planTestUtils';
 

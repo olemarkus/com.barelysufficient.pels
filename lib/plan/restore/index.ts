@@ -1,20 +1,20 @@
 /* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type { DevicePlanDevice } from './planTypes';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
+import type { DevicePlanDevice } from '../planTypes';
 import {
   buildComparableDeviceReason,
   formatDeviceReason,
   PLAN_REASON_CODES,
-} from '../../packages/shared-domain/src/planReasonSemantics';
-import type { PlanEngineState } from './planState';
-import type { PlanContext } from './planContext';
-import type { PowerTrackerState } from '../core/powerTracker';
+} from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { PlanEngineState } from '../planState';
+import type { PlanContext } from '../planContext';
+import type { PowerTrackerState } from '../../core/powerTracker';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
   RESTORE_BATCH_HEADROOM_FRACTION,
   RESTORE_BATCH_MAX_DEVICES,
-} from './planConstants';
-import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
+} from '../planConstants';
+import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import {
   buildRequestedTargetFromDeviceUpdate,
   buildSwapCandidates,
@@ -31,12 +31,12 @@ import {
   shouldKeepSwapTargetPending,
   type SwapState,
   type SwapStateSnapshot,
-} from './swap';
+} from '../swap';
 import {
   buildInsufficientHeadroomUpdate,
   computeBaseRestoreNeed,
   resolveRestorePowerSource,
-} from './planRestoreAccounting';
+} from './accounting';
 import {
   getInactiveReason,
   getOffDevices,
@@ -47,7 +47,7 @@ import {
   isOffSteppedRestoreCandidate,
   markOffDevicesStayOff,
   type RestoreCandidate,
-} from './planRestoreDevices';
+} from './devices';
 import {
   blockRestoreForRecentActivationSetback,
   buildOffSteppedRestoreShedUpdate,
@@ -55,10 +55,10 @@ import {
   planRestoreForSteppedDevice,
   setRestorePlanDevice as setDevice,
   type SteppedSwapExecutor,
-} from './planRestoreHelpers';
-import { hasOtherDevicesWithUnconfirmedRecovery } from './planRestoreCoordination';
-import { isSteppedLoadDevice } from './planSteppedLoad';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+} from './helpers';
+import { hasOtherDevicesWithUnconfirmedRecovery } from './coordination';
+import { isSteppedLoadDevice } from '../planSteppedLoad';
+import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import {
   buildRestoreTiming,
   resolveCapacityRestoreBlockReason,
@@ -66,18 +66,18 @@ import {
   resolveMeterSettlingRemainingSec,
   shouldPlanRestores,
   type RestoreTiming,
-} from './planRestoreTiming';
+} from './timing';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-} from './planRestoreAdmission';
+} from '../planRestoreAdmission';
 import {
   getRestoreNeed,
   reserveHeadroomForPendingRestores,
-} from './planRestoreSupport';
-import { buildMeterSettlingReason, buildShortfallReason } from './planReasonStrings';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
+} from './support';
+import { buildMeterSettlingReason, buildShortfallReason } from '../planReasonStrings';
+import { isObservedOff, isObservedOn } from '../../observer/observedState';
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;

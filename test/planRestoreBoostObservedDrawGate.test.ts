@@ -2,7 +2,7 @@
  * Regression coverage for the boost-driven stepped-escalation gate.
  *
  * `blockSteppedRestoreForShedInvariant` / `canUseSwapForSteppedRestore` in
- * `lib/plan/planRestoreHelpers.ts` honor `hasRecentObservedDrawAtSelectedStep`
+ * `lib/plan/restore/helpers.ts` honor `hasRecentObservedDrawAtSelectedStep`
  * on the plan device: when calibration confirms the device is *not* currently
  * drawing at its selected step, boost cannot bypass the shed invariant or
  * trigger a swap to a higher step. When calibration has no opinion
@@ -14,7 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
-import { applyRestorePlan } from '../lib/plan/planRestore';
+import { applyRestorePlan } from '../lib/plan/restore';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
 import {

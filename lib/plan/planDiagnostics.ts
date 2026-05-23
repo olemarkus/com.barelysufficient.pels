@@ -8,7 +8,7 @@ import type {
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { resolveStarvationSuppressionSemantics } from '../planContract/planDecisionSemantics';
 import type { PlanContext } from './planContext';
-import type { RestorePlanResult } from './planRestore';
+import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { isDeviceObservationTrusted } from '../observer/observationTrust';
