@@ -22,7 +22,7 @@ import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './ende
 import {
   appendHourlyContribution,
   appendRevisionLogIfNew,
-  buildFinalHourContribution,
+  buildFinalHourFlush,
   buildFinalizedAttributionEvent,
   captureRevisionSnapshot,
   detectHourRollover,
@@ -1005,21 +1005,23 @@ export class DeferredObjectivePlanHistoryRecorder {
     const finalProgress = record.objectiveKind === 'temperature'
       ? record.finalProgressC
       : record.finalProgressPercent;
-    const contribution = buildFinalHourContribution({
+    // Option (a): advance the opening anchor to the *next* hour bucket so a
+    // (defensive) re-entry on the returned record cannot collide with the
+    // just-flushed hour. Finalization deletes the record immediately today, so
+    // this is belt-and-braces — but the previous shape (re-using the
+    // just-closed `hourMs`) was a latent double-count waiting for a refactor.
+    // See `buildFinalHourFlush` for the next-bucket math.
+    const flush = buildFinalHourFlush({
       opening: record.currentHourOpening,
       finalProgress,
       kWhPerUnit: record.lastKWhPerUnit,
       resolvePrice: this.deps.resolveHourPrice,
     });
-    if (contribution === null) return record;
+    if (flush === null) return record;
     return this.foldContributionsIntoRecord({
       record,
-      contributions: [contribution],
-      // Advance the opening past the just-flushed hour so a (defensive)
-      // re-entry wouldn't double-count it. Finalization deletes the record
-      // immediately after, so this assignment is informational, not
-      // load-bearing.
-      nextOpening: { hourMs: record.currentHourOpening!.hourMs, value: finalProgress! },
+      contributions: [flush.contribution],
+      nextOpening: flush.nextOpening,
       kWhPerUnit: record.lastKWhPerUnit!,
     });
   }

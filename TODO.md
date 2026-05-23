@@ -506,18 +506,6 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/usageReturnLink.ts`.
       Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
 
-- [ ] Fix `flushOpenHourAtFinalize`'s informational `nextOpening.hourMs`.
-      The finalize-time flush builds `nextOpening.hourMs` from the just-closed
-      `currentHourOpening.hourMs`; the nearby comment says the value is
-      informational because the record is deleted immediately after. If a
-      future refactor ever observes the returned record, rollover detection can
-      collide with the just-closed hour. Either set the next hour bucket
-      explicitly or omit `nextOpening`; add a regression covering
-      flush-without-immediate-delete.
-      Files: `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
-      `test/deferredObjectivePlanHistory.test.ts`.
-      Source: `pels-runtime-reality`, v2.9.0 retrospective, 2026-05-23.
 
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
