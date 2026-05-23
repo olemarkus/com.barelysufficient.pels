@@ -23,6 +23,7 @@ import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
+  resolveChipConfidence,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -75,11 +76,18 @@ const buildCard = (params: {
     firstActionAtMs: firstHour,
     nowMs,
   });
-  // `kwhPerUnitProvenance.confidence` is the per-revision snapshot of the
-  // learned profile band — preferred over the live profile because it
-  // matches the plan the list card is summarising. `null` covers the
-  // bootstrap / pending case where no learned band exists yet.
-  const confidence = plan.kwhPerUnitProvenance?.confidence ?? null;
+  // Mirror the live hero's `displayConfidence ?? confidence ?? null` chain so
+  // the list chip stays in lockstep with the detail hero. The list has no
+  // live-profile fallback (it doesn't load `objectiveProfiles`), so
+  // `profileConfidence: null` collapses the helper's third step. Without
+  // this, settled multi-step thermal devices kept showing `Estimating` on
+  // the list after the hero had correctly gone quiet — the raw
+  // `confidence` band sits at `low` effectively forever on those, while
+  // `displayConfidence` reflects the band-aware aggregate.
+  const confidence = resolveChipConfidence({
+    provenance: plan.kwhPerUnitProvenance,
+    profileConfidence: null,
+  });
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
   const currentValue = resolveCurrentValue(device, plan.objectiveKind);
   return {

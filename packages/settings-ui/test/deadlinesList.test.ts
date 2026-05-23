@@ -205,6 +205,35 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].confidence).toBe('medium');
   });
 
+  // Parity with the detail hero's `displayConfidence ?? confidence ?? null`
+  // chain (per `resolveChipConfidence`). On settled multi-step thermal
+  // devices the raw `confidence` stat sits at `low` forever — the
+  // band-aware `displayConfidence` is the value the chip must honour, or
+  // the list card keeps saying "Estimating" while the hero correctly
+  // stays quiet. Pinning to `high` here exercises the preference: raw
+  // `low` would otherwise drive the `Estimating` chip via
+  // `formatSmartTaskListConfidenceChipLabel`.
+  it('prefers displayConfidence over raw confidence for the chip (hero parity)', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          kwhPerUnitProvenance: {
+            source: 'learned',
+            kWhPerUnit: 0.55,
+            acceptedSamples: 32,
+            confidence: 'low',
+            displayConfidence: 'high',
+            lastAcceptedAtMs: T0,
+          },
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs: T0,
+    });
+    expect(cards[0].confidence).toBe('high');
+  });
+
   it('formats currently-X line for EV from device state of charge', () => {
     const cards = resolveDeadlinesListCards({
       activePlans: buildActivePlans([
