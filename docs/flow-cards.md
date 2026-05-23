@@ -54,7 +54,7 @@ Use **Capacity guard: manual action needed** for urgent notifications, not for n
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
 | **Is power-limit control enabled for device?** | Checks whether power-limit control is enabled for the selected device. |
 | **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hourly hard-cap protection. |
-| **Smart task status is...** | True when the current Smart task status for the chosen device matches **Building plan…**, **Scheduled**, **Paused — unplugged**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
+| **Smart task status is...** | True when the current Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
 
 The device-aware available-power condition includes built-in hysteresis after recent limiting or resume events on the same device.
