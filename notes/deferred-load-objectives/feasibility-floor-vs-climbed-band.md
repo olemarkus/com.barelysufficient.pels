@@ -78,7 +78,7 @@ objectives previously emitted while `cannot_meet` would silently disappear.
 
 Resolution pattern matches the Slice 2 sketch:
 
-- Producer (`policyHorizon.ts`) resolves `reservedHeadroomKw = max(0, hardCapKw − plannedUncontrolledKw)` onto each bucket as a flat number.
+- Producer (`policyHorizon.ts`) resolves `reservedHeadroomKw = max(0, hardCapKw − plannedUncontrolledKw) ÷ concurrentEligibleCount` onto each bucket as a flat number. The `concurrentEligibleCount` divisor (default `1`, supplied by the diagnostics bridge via `concurrentEligibleTasks.countConcurrentEligibleTasks`) is the number of priority-1 fully-reserved smart tasks present this cycle; equal-share allocation prevents two such tasks from each promoting their committed floor to the same reserved slot and double-booking the diagnostic verdict.
 - Rescue boundary (`rescueReplan.ts`) resolves `fullyReserved` as `devicePriority === 1 && rescue.exemptFromBudget === 'always' && rescue.limitLowerPriorityDevices === 'always'` and attaches it as a flat boolean on the planner objective.
 - `horizonPlanner.ts:resolveFloorStep` consumes both as flat values and picks the highest active step whose `usefulPowerKw` fits the *minimum* `reservedHeadroomKw` across the horizon (safe in every hour). Min step otherwise.
 

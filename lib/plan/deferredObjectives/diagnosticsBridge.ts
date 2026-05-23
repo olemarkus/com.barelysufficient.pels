@@ -31,6 +31,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
+import { countConcurrentEligibleTasks } from './concurrentEligibleTasks';
 import type { DeferredObjectiveHorizonPlan } from './types';
 
 export type DeferredObjectiveDiagnosticReasonCode =
@@ -135,6 +136,14 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   hardCapKw?: number | null;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
+  // Count the priority-1 fully-reserved smart tasks once per cycle so the
+  // per-task `policyHorizon` producer can split each bucket's reserved
+  // headroom equally across siblings instead of each eligible task promoting
+  // to the full forecast and double-booking the slot.
+  const concurrentEligibleCount = countConcurrentEligibleTasks({
+    settings: params.settings,
+    deviceById,
+  });
   return Object.entries(params.settings.objectivesByDeviceId)
     .flatMap(([deviceId, objective]) => {
       if (!objective.enabled) return [];
@@ -143,6 +152,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         deviceId,
         objective,
         device: deviceById.get(deviceId),
+        concurrentEligibleCount,
       })];
     });
 };
@@ -253,6 +263,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
+  concurrentEligibleCount?: number;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -302,6 +313,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
       dailyBudgetSnapshot,
       activePlans,
       hardCapKw: params.hardCapKw,
+      concurrentEligibleCount: params.concurrentEligibleCount,
     });
   }
 
@@ -311,6 +323,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
     hardCapKw: params.hardCapKw,
+    concurrentEligibleCount: params.concurrentEligibleCount,
   });
   if (policyHorizon.reasonCode) {
     const knownInputs = buildPolicyGatedKnownInputs(
@@ -340,6 +353,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     dailyBudgetSnapshot,
     activePlans,
     hardCapKw: params.hardCapKw,
+    concurrentEligibleCount: params.concurrentEligibleCount,
   });
 };
 
@@ -357,6 +371,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
+  concurrentEligibleCount?: number;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -431,6 +446,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
     // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.
     devicePriority: device.priority,
+    // Producer-resolved equal-share allocator for the reserved-headroom forecast
+    // when more than one priority-1 fully-reserved task shares the cycle. The
+    // exempt rebuild reuses it so the rebuilt buckets carry the same divided
+    // forecast as the baseline buckets above.
+    concurrentEligibleCount: params.concurrentEligibleCount,
   });
 
   return {
