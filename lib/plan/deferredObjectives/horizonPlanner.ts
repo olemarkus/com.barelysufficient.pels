@@ -11,6 +11,7 @@ import {
 } from './stepSelection';
 import type {
   DeferredObjectiveCurrentBucketPlan,
+  DeferredObjectiveHorizonBucket,
   DeferredObjectiveHorizonInput,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveHorizonStatus,
@@ -91,11 +92,23 @@ export const planDeferredObjectiveHorizon = (
     committed: input.committed,
     committedHours: input.committedHours,
   });
-  // Floor commitment: the lowest active step is the only level we can guarantee
-  // for the full hour (higher steps depend on transient headroom). It drives the
-  // committed allocation and every planned-bucket figure below.
+  // Floor commitment: by default the lowest active step is the only level we can
+  // guarantee for the full hour (higher steps depend on transient headroom). For
+  // a *fully-reserved* objective (both `exemptFromBudget` and
+  // `limitLowerPriorityDevices` set to 'always'), `resolveFloorStep` promotes
+  // the floor to the highest step the per-bucket reserved-headroom forecast
+  // supports — those higher steps are then as guaranteed as the min step, by
+  // construction of the forecast (Slice 2 of Cause #2). `hard-cap-is-physical`
+  // is preserved: the planner commits at a step the producer has verified
+  // against the forecast, and a wrong forecast is caught by the per-cycle
+  // re-solve and the deadline-reserve backstop.
+  const floorStep = resolveFloorStep({
+    activeSteps,
+    buckets: input.buckets,
+    fullyReserved: input.objective.fullyReserved ?? false,
+  });
   const allocation = resolveAllocation({
-    step: activeSteps[0],
+    step: floorStep,
     buckets,
     committed,
     committedHours: input.committedHours,
@@ -110,6 +123,7 @@ export const planDeferredObjectiveHorizon = (
     energyNeededKWh,
     epsilonKWh,
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
+    floorStep,
   });
   const budgetBound = resolveBudgetBoundFeasibility({
     activeSteps,
@@ -213,10 +227,14 @@ const resolveClimbedBandFeasibility = (params: {
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
+  // The step the floor pass actually used. With Slice 2's reserved-headroom
+  // promotion this may be higher than `activeSteps[0]`; the climbed probe only
+  // adds information when there is genuine headroom above the floor step.
+  floorStep: DeferredObjectiveStep;
 }): boolean => {
   if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
   const climbStep = params.activeSteps[params.activeSteps.length - 1];
-  if (climbStep.usefulPowerKw <= params.activeSteps[0].usefulPowerKw) return false;
+  if (climbStep.usefulPowerKw <= params.floorStep.usefulPowerKw) return false;
   const climbed = resolveAllocation({
     step: climbStep,
     buckets: params.buckets,
@@ -226,6 +244,58 @@ const resolveClimbedBandFeasibility = (params: {
     epsilonKWh: params.epsilonKWh,
   });
   return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
+};
+
+// Per-horizon (v1) committed-floor step selection for fully-reserved smart
+// tasks. By default the floor stays at `activeSteps[0]` (the min step is the
+// only level guaranteed for the full hour). When the objective holds both the
+// `exemptFromBudget` and `limitLowerPriorityDevices === 'always'` rescue
+// permissions, the higher steps are as guaranteed as the min step *within the
+// reserved-headroom forecast* — we can clear lower-priority controlled
+// devices up to the hard cap and the budget cap is lifted. This picks the
+// highest active step whose `usefulPowerKw` fits the *minimum*
+// `reservedHeadroomKw` across all horizon buckets, so the chosen floor is safe
+// for every hour of the horizon. If any bucket lacks a forecast we cannot
+// promise more than the min step and fall back to it. Single-step devices
+// (`activeSteps.length === 1`) trivially keep the min step.
+//
+// `hard-cap-is-physical` holds: the floor is still committed at a step the
+// producer has verified against the forecast — never at the max step. A drift
+// in the forecast (an unexpected non-sheddable surge) is caught by the
+// per-cycle re-solve and the deadline-reserve at-risk backstop, not by
+// over-committing here.
+const resolveFloorStep = (params: {
+  activeSteps: NonEmptyObjectiveSteps;
+  buckets: readonly DeferredObjectiveHorizonBucket[];
+  fullyReserved: boolean;
+}): DeferredObjectiveStep => {
+  const { activeSteps, buckets, fullyReserved } = params;
+  if (!fullyReserved || activeSteps.length === 1 || buckets.length === 0) {
+    return activeSteps[0];
+  }
+  let minHeadroomKw = Number.POSITIVE_INFINITY;
+  for (const bucket of buckets) {
+    if (
+      typeof bucket.reservedHeadroomKw !== 'number'
+      || !Number.isFinite(bucket.reservedHeadroomKw)
+    ) {
+      return activeSteps[0];
+    }
+    if (bucket.reservedHeadroomKw < minHeadroomKw) {
+      minHeadroomKw = bucket.reservedHeadroomKw;
+    }
+  }
+  if (minHeadroomKw === Number.POSITIVE_INFINITY) return activeSteps[0];
+  // `activeSteps` is sorted ascending by `usefulPowerKw` (see
+  // `normalizeObjectiveSteps`). Pick the rightmost step that fits; default to
+  // the min step when even it does not.
+  let promotedIndex = 0;
+  for (let i = 1; i < activeSteps.length; i += 1) {
+    if (activeSteps[i].usefulPowerKw <= minHeadroomKw) {
+      promotedIndex = i;
+    }
+  }
+  return activeSteps[promotedIndex];
 };
 
 // A floor shortfall that disappears once the per-bucket daily-budget cap is

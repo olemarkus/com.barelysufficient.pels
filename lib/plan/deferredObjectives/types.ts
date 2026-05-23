@@ -48,6 +48,17 @@ export type DeferredObjective = {
   // gap. Optional for backward-compatibility; missing or invalid values
   // collapse the margin to zero so the new branch never fires.
   energyExpectedKWh?: number;
+  // Producer-resolved flat boolean: `true` iff the objective holds BOTH the
+  // `exemptFromBudget === 'always'` AND `limitLowerPriorityDevices === 'always'`
+  // rescue permissions. Together they guarantee the soft daily budget won't cap
+  // this device AND lower-priority devices will yield power up to the hard cap
+  // — i.e. the higher steps are as reliable as the min step (within the
+  // reserved-headroom forecast). When `true`, `resolveFloorStep` promotes the
+  // committed floor from `activeSteps[0]` to the highest step the per-bucket
+  // `reservedHeadroomKw` forecast supports. The persisted commitment is still
+  // physical — only the step it commits to changes. Optional/backward-compat:
+  // missing → false → floor stays at min step.
+  fullyReserved?: boolean;
   deadlineAtMs: number;
   deadlineMarginMs?: number;
 };
@@ -64,6 +75,14 @@ export type DeferredObjectiveHorizonBucket = {
   preference?: DeferredObjectiveBucketPreference;
   policyScore?: number;
   maxUsefulEnergyKWh?: number;
+  // Producer-resolved per-bucket forecast of physical headroom available to a
+  // fully-reserved smart task: `hardCapKw − plannedUncontrolledKw` (the hard
+  // cap minus the forecast non-PELS-managed load, since a fully-reserved task
+  // can displace lower-priority controlled devices up to the cap). Consumed by
+  // `resolveFloorStep` to promote the committed floor when the objective is
+  // fully reserved. Optional/backward-compat: missing means "no forecast" and
+  // the floor stays at min step.
+  reservedHeadroomKw?: number;
 };
 
 export type DeferredObjectiveHorizonInput = {
