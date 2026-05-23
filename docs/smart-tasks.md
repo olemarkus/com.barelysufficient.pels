@@ -87,7 +87,7 @@ For each permission you choose when it applies:
 Two things stay true no matter what you grant:
 
 - Both permissions stay inside the **hard cap**. PELS never exceeds your physical capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
-- The leeway is only spent while the device is actually scheduled to run, so granting it is harmless when the task is already on track.
+- Permissions persist once you grant them, but they have no effect until the planned hours or the rescue gate apply — so a task already on track stays on its normal plan.
 
 ### Example: a water heater that must be ready
 
