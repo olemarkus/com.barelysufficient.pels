@@ -37,51 +37,6 @@ patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
 
-- [ ] Flow card + in-app + public-doc copy cleanup for smart-task rescue.
-      The rescue card should not over-promise: `Set what a smart task may
-      do` may grant daily-budget leeway or let the existing boost path
-      limit lower-priority devices, but it still stays inside the hard cap
-      and does not guarantee every target can be rescued. Highest-priority
-      copy fix: the `allow_smart_task_rescue` hint must stop saying `gets
-      the power it needs` and must not promise that changing the permission
-      `updates the schedule right away`; use "gets more room when
-      available" and "takes effect on the next plan refresh" / equivalent.
-      Norwegian Enova wording should stay relevant without sounding like
-      PELS guarantees support eligibility. The `smart_task_hours_remaining`
-      trigger/card copy should use `hours` rather than terse `h`, and make
-      the card's arg title, title, and hint use the same `or fewer`
-      phrasing. Also soften `docs/smart-tasks.md` rescue-leeway wording
-      that currently says granting leeway is "harmless when the task is
-      already on track"; permissions persist, so the honest claim is that
-      they have no effect until the planned/rescue gate actually applies.
-      Reword `smartTaskRescueStrings.ts` errors to avoid planner / internal
-      terms: `Choose what this smart task may do.`, `Choose when this
-      applies: at no time, or while the smart task is scheduled to run.`,
-      and `That device has no smart task yet — add a smart task first.`
-      Rephrase `docs/daily-budget-weights.md` guidance that tells users to
-      raise capacity/load assumptions; use "lower the daily budget or
-      review which devices count as managed vs background" for the
-      hard-cap physical model.
-      NOTE (2026-05-23): the previous version of this entry also asked to
-      replace `power limit` with `hard cap` in `README.md` and
-      `.homeycompose/app.json` keywords. Reverted: the README + App Store
-      surfaces are pre-onboarding marketing copy where users have NOT yet
-      seen the in-app `hard cap` vocabulary, so jargon-leaking the
-      canonical term into discovery surfaces makes the description less
-      legible, not more. Keep the ambiguous everyday phrasing
-      ("hourly power limit") in README/app.json keywords; the in-app
-      surfaces (where users have a referent) stay on `hard cap` per
-      `notes/ui-terminology.md`.
-      Files: `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
-      `.homeycompose/flow/**/*smart_task_hours_remaining*`,
-      `docs/smart-tasks.md`, `docs/daily-budget-weights.md`,
-      `docs/stromstyring-norge.md`,
-      `packages/shared-domain/src/smartTaskRescueStrings.ts`, generated
-      `app.json` after `homey app validate`.
-      Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
-      release-review refresh, 2026-05-22; README/App-Store scope reverted
-      2026-05-23.
-
 - [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
       upstream has a non-breaking 6.x path. Current lock:
       `socket.io-client@4.8.3` -> `engine.io-client@6.6.4` ->

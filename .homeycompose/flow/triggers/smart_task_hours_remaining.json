@@ -3,10 +3,10 @@
     "en": "Smart task time is running low"
   },
   "titleFormatted": {
-    "en": "[[device]] smart task has [[hours]] h or less remaining"
+    "en": "[[device]] smart task has [[hours]] hours or fewer remaining"
   },
   "hint": {
-    "en": "Fires once when the time left before the smart task's Ready by drops to or below the chosen number of hours. Re-arms when the Ready by is rescheduled. Use it to act a fixed lead-time before a deadline (e.g. 2 h left). The [[hours_remaining]] tag carries the whole hours remaining at the crossing."
+    "en": "Fires once when the hours remaining until the smart task's Ready by drops to the chosen value or fewer. Re-arms when the Ready by is rescheduled. Use it to act a fixed lead-time before a deadline (e.g. 2 hours or fewer). The [[hours_remaining]] tag carries the whole hours remaining at the crossing."
   },
   "args": [
     {
