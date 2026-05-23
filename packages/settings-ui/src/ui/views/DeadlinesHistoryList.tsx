@@ -54,9 +54,17 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   if (state.status === 'hidden') return null;
   if (state.status === 'loading') {
     return (
-      <section class="deadlines-history" aria-labelledby="deadlines-history-title">
+      <section
+        class="deadlines-history"
+        aria-labelledby="deadlines-history-title"
+        aria-busy="true"
+      >
         <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
-        <p class="muted">Loading past tasks…</p>
+        <div class="pels-skeleton-stack" aria-hidden="true">
+          <span class="pels-skeleton pels-skeleton--card"></span>
+          <span class="pels-skeleton pels-skeleton--card"></span>
+        </div>
+        <span class="visually-hidden">Loading past tasks…</span>
       </section>
     );
   }

@@ -559,13 +559,31 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
 
 export { getPowerReadModel };
 
+// Drops the first-paint loading skeleton on the Usage panel by flipping
+// `#usage-panel[data-loading]` to `"false"`. CSS hides the populated
+// hero/cards/footer while loading and hides the skeleton afterwards, so the
+// panel never shows a half-populated `-- kWh` wall during the bootstrap fetch.
+const clearUsagePanelLoadingState = (): void => {
+  const panel = document.getElementById('usage-panel');
+  if (panel && panel.dataset.loading !== 'false') {
+    panel.dataset.loading = 'false';
+  }
+};
+
 export const renderPowerStats = async () => {
-  const { stats, timeZone } = await getPowerStats();
-  latestPowerStats = stats;
-  latestPowerStatsTimeZone = timeZone;
-  renderPowerSummary(stats, timeZone);
-  renderPowerAverages(stats);
-  renderUsageHistorySections();
+  try {
+    const { stats, timeZone } = await getPowerStats();
+    latestPowerStats = stats;
+    latestPowerStatsTimeZone = timeZone;
+    renderPowerSummary(stats, timeZone);
+    renderPowerAverages(stats);
+    renderUsageHistorySections();
+  } finally {
+    // Always drop the first-paint skeleton, even if `getPowerStats` rejected —
+    // otherwise the panel sits behind the shimmer forever. The static
+    // `-- kWh` placeholders in `index.html` are the graceful no-data state.
+    clearUsagePanelLoadingState();
+  }
 };
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {

@@ -163,10 +163,37 @@
     </section>
 
     <section class="card panel hidden" id="budget-panel" data-panel="budget">
-      <div class="budget-redesign-surface" id="budget-redesign-surface"></div>
+      <div class="budget-redesign-surface" id="budget-redesign-surface" aria-busy="true" data-budget-skeleton>
+        <!-- First-paint skeleton — replaced by Preact on first `renderBudgetOverview`.
+             Mirrors the eventual hero + chart card shape so the panel keeps its
+             vertical rhythm and avoids a flat grey wall while the bootstrap
+             fetch resolves. SR text sits as a sibling of the shimmer stack
+             (matches the Overview hero pattern in `#plan-hero`). -->
+        <div class="pels-skeleton-stack" aria-hidden="true">
+          <span class="pels-skeleton pels-skeleton--headline"></span>
+          <span class="pels-skeleton pels-skeleton--subline"></span>
+          <span class="pels-skeleton pels-skeleton--hero"></span>
+          <span class="pels-skeleton pels-skeleton--card"></span>
+        </div>
+        <span class="visually-hidden">Loading budget…</span>
+      </div>
     </section>
 
-    <section class="card panel hidden" id="usage-panel" data-panel="usage" aria-labelledby="usage-hero-headline">
+    <section class="card panel hidden" id="usage-panel" data-panel="usage" data-loading="true" aria-labelledby="usage-hero-headline">
+      <!-- First-paint skeleton — visible while `data-loading="true"` is set.
+           Removed by `renderPowerStats` once usage history loads; CSS hides
+           the surrounding usage hero/cards/footer until then so the panel
+           presents a single skeleton instead of a half-populated `-- kWh`
+           wall during the bootstrap fetch. -->
+      <div class="usage-loading-skeleton" aria-busy="true" data-usage-skeleton>
+        <div class="pels-skeleton-stack" aria-hidden="true">
+          <span class="pels-skeleton pels-skeleton--headline"></span>
+          <span class="pels-skeleton pels-skeleton--subline"></span>
+          <span class="pels-skeleton pels-skeleton--hero"></span>
+          <span class="pels-skeleton pels-skeleton--card"></span>
+        </div>
+        <span class="visually-hidden">Loading usage…</span>
+      </div>
       <div class="usage-return-link" id="usage-return-link" hidden>
         <!-- Static `href` is defensive hardening: the container is hidden by
              default and `showUsageReturnLink()` overwrites `href` before the
@@ -332,9 +359,14 @@
         Smart tasks
       </md-text-button>
       <div class="deadline-plan-panel__surface" id="deadline-plan-root" aria-live="polite">
-        <section class="pels-surface-card budget-redesign-card">
-          <h1 class="plan-card__title">Loading smart task plan</h1>
-          <p class="pels-card-supporting">Preparing the device plan.</p>
+        <section class="pels-surface-card budget-redesign-card" aria-busy="true">
+          <div class="pels-skeleton-stack" aria-hidden="true">
+            <span class="pels-skeleton pels-skeleton--headline"></span>
+            <span class="pels-skeleton pels-skeleton--subline"></span>
+            <span class="pels-skeleton pels-skeleton--hero"></span>
+            <span class="pels-skeleton pels-skeleton--card"></span>
+          </div>
+          <span class="visually-hidden">Loading smart task plan…</span>
         </section>
       </div>
     </section>
