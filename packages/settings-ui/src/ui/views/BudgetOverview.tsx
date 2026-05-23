@@ -774,6 +774,12 @@ const BudgetAdjustView = ({
 // Plan/Adjust selector, and the price-level chip (recovered from PR9's Overview
 // demotion). Plan/Adjust collapses to a tertiary text button — only one mode
 // (Plan) carries a day-picker below, so a full segmented control was overkill.
+//
+// Rebound to the shared `.plan-hero` / `.pels-hero` primitive so the header
+// reads as the same component the four sibling panels render (Overview /
+// Usage / Smart tasks / Settings). Chip + Plan/Adjust toggle sit in the
+// shared chip-rail row above the eyebrow + headline, matching the shape the
+// Overview hero established for status chips + info button.
 const BudgetPageHeader = ({
   localView,
   budgetEnabled,
@@ -801,31 +807,49 @@ const BudgetPageHeader = ({
   const chipToneCls = priceLevelChip
     ? (priceLevelChip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info')
     : '';
+  const hasChipRow = priceLevelChip !== null;
   return (
-    <header class="budget-page-header">
-      <div class="budget-page-header__heading">
-        <span class="eyebrow">Budget</span>
-        <h2 class="budget-page-header__title">Daily budget</h2>
-      </div>
-      {priceLevelChip && (
-        <div class="budget-page-header__chips">
-          <span
-            class={`plan-chip ${chipToneCls}`}
-            data-price-level={priceLevelChip.priceLevel}
+    <header class="plan-hero pels-hero budget-page-header">
+      {hasChipRow && (
+        <div class="plan-hero__chips">
+          <div class="plan-hero__chip-rail">
+            {priceLevelChip && (
+              <span
+                class={`plan-chip ${chipToneCls}`}
+                data-price-level={priceLevelChip.priceLevel}
+              >
+                {priceLevelChip.label}
+              </span>
+            )}
+          </div>
+          <MdTextButton
+            id="budget-redesign-mode-toggle"
+            class="budget-page-header__action"
+            title={toggleTitle}
+            {...(toggleDisabled ? { disabled: true } : {})}
+            onClick={onToggleClick}
           >
-            {priceLevelChip.label}
-          </span>
+            {toggleLabel}
+          </MdTextButton>
         </div>
       )}
-      <MdTextButton
-        id="budget-redesign-mode-toggle"
-        class="budget-page-header__action"
-        title={toggleTitle}
-        {...(toggleDisabled ? { disabled: true } : {})}
-        onClick={onToggleClick}
-      >
-        {toggleLabel}
-      </MdTextButton>
+      <div class="plan-hero__section">
+        <p class="eyebrow plan-hero__section-label">Budget</p>
+        <div class="plan-hero__headline-row">
+          <h2 class="plan-hero__headline">Daily budget</h2>
+          {!hasChipRow && (
+            <MdTextButton
+              id="budget-redesign-mode-toggle"
+              class="budget-page-header__action"
+              title={toggleTitle}
+              {...(toggleDisabled ? { disabled: true } : {})}
+              onClick={onToggleClick}
+            >
+              {toggleLabel}
+            </MdTextButton>
+          )}
+        </div>
+      </div>
     </header>
   );
 };

@@ -182,9 +182,9 @@
       </div>
       <div class="plan-hero pels-hero usage-hero" id="usage-hero" data-tone="ok">
         <div class="plan-hero__section">
-          <p class="eyebrow" id="usage-title">Energy history</p>
+          <p class="eyebrow plan-hero__section-label" id="usage-title">Energy history</p>
           <div class="plan-hero__headline-row">
-            <div class="plan-hero__headline" id="usage-hero-headline">-- kWh today</div>
+            <h2 class="plan-hero__headline" id="usage-hero-headline">-- kWh today</h2>
             <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
           </div>
           <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-comparison">Gathering data…</div>
@@ -340,11 +340,11 @@
     </section>
 
     <section class="panel hidden settings-home-panel" id="settings-panel" data-panel="settings" aria-labelledby="settings-title">
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Settings</p>
-          <h2 id="settings-title">Configure PELS</h2>
-          <p class="muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
+      <header class="plan-hero pels-hero">
+        <div class="plan-hero__section">
+          <p class="eyebrow plan-hero__section-label">Settings</p>
+          <h2 class="plan-hero__headline" id="settings-title">Configure PELS</h2>
+          <p class="plan-hero__subline plan-hero__subline--muted">Choose what to adjust. Everyday planning stays in Budget; rare recovery tools stay in Advanced.</p>
         </div>
       </header>
       <section class="settings-form-card settings-current-mode" aria-labelledby="settings-current-mode-label">
@@ -473,10 +473,10 @@
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Advanced</p>
-          <h2>Device diagnostics</h2>
+      <header class="plan-hero pels-hero">
+        <div class="plan-hero__section">
+          <p class="eyebrow plan-hero__section-label">Advanced</p>
+          <h2 class="plan-hero__headline">Device diagnostics</h2>
         </div>
       </header>
       <details class="settings-collapse">
