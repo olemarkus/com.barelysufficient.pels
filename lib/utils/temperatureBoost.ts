@@ -1,7 +1,4 @@
-import type {
-  TargetCapabilitySnapshot,
-  TemperatureBoostSettings,
-} from './types';
+import type { TargetCapabilitySnapshot, TemperatureBoostSettings } from '../../packages/contracts/src/types';
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)

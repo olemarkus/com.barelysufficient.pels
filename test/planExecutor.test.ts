@@ -13,7 +13,7 @@ import type {
   DevicePlanDevice,
   PlanInputDevice,
 } from '../lib/plan/planTypes';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';

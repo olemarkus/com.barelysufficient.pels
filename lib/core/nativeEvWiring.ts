@@ -1,8 +1,5 @@
-import type {
-  HomeyDeviceLike,
-  DeviceControlAdapterSnapshot,
-  TargetDeviceSnapshot,
-} from '../utils/types';
+import type { DeviceControlAdapterSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 
 const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [

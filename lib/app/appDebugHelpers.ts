@@ -15,7 +15,7 @@ import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
 import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { normalizeError } from '../utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
 

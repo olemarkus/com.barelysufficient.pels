@@ -13,7 +13,7 @@ import type {
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../utils/types';
+} from '../../packages/contracts/src/types';
 import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
 import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
 import {

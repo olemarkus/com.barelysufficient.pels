@@ -12,8 +12,7 @@ import type {
   TemperatureBoostConfig,
   TargetCapabilitySnapshot,
   TargetPowerSteppedLoadConfig,
-} from '../utils/types';
-
+} from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
 export type PendingTargetObservationSource =

@@ -1,5 +1,5 @@
 import type { DeviceManager } from '../core/deviceManager';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
   getPendingBinaryCommandWindowMs,

@@ -1,4 +1,4 @@
-import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../utils/types';
+import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { isObservedOff } from '../observer/observedState';

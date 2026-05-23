@@ -20,7 +20,8 @@ import {
 } from '../lib/executor/executableSteppedLoadProjection';
 import { AppDeviceControlHelpers } from '../lib/app/appDeviceControlHelpers';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
-import type { HomeyDeviceLike, Logger, SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
 import { setRestClient } from '../lib/core/deviceManagerHomeyApi';
 import {

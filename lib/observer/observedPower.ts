@@ -5,7 +5,7 @@
  * draw (for restore admission) — instead of branching on which raw source
  * carried the value.
  */
-import type { DeviceControlModel, SteppedLoadProfile } from '../utils/types';
+import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
 export type ExpectedPowerSource =

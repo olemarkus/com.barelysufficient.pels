@@ -1,8 +1,5 @@
-import type {
-  HomeyDeviceLike,
-  Logger,
-  SteppedLoadProfile,
-} from '../utils/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { DeviceCapabilityMap } from './deviceManagerControl';
 import {
   isNativeSteppedLoadWiringCandidate,

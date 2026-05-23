@@ -21,7 +21,7 @@ import {
   recordSample,
 } from '../observer/devicePowerCalibration';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { StructuredDebugEmitter } from '../logging/logger';
 

@@ -7,8 +7,7 @@ import type {
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../utils/types';
-
+} from '../../packages/contracts/src/types';
 type StepEvidence = {
   stepId?: string;
   observedAtMs?: number;

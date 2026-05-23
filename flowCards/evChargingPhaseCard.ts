@@ -1,7 +1,7 @@
 import { createEvTargetPowerConfig, isEvTargetPowerPreset } from '../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
-import type { TargetDeviceSnapshot, TargetPowerSteppedLoadPreset } from '../lib/utils/types';
+import type { TargetDeviceSnapshot, TargetPowerSteppedLoadPreset } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {

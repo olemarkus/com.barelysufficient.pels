@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 // A device supports a temperature smart task if it reports a temperature device type or any
 // settable target (thermostats, water heaters, etc.).

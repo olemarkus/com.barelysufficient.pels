@@ -1,4 +1,5 @@
-import { FlowCard, FlowHomeyLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
 type DeviceRef = RawFlowDeviceArg;

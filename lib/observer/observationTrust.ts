@@ -17,7 +17,7 @@
  *    objectives bridge).
  */
 import { isFiniteNumber } from '../utils/appTypeGuards';
-import type { DeviceStateOfChargeSnapshot } from '../utils/types';
+import type { DeviceStateOfChargeSnapshot } from '../../packages/contracts/src/types';
 
 type ObservationTrustInput = {
   observationStale?: boolean;

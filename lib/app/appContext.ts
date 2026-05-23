@@ -32,7 +32,7 @@ import type {
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
-} from '../utils/types';
+} from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
