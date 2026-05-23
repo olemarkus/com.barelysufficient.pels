@@ -183,6 +183,15 @@ export const resolveCannotMeetMeta = (params: {
 // `cannotMeet` state. `open_budget` is reserved for the daily-budget cause;
 // every other cannot-meet branch points at the device (`open_overview`).
 //
+// The device-side branch threads the active task's `deviceId` onto the payload
+// so the click dispatcher (`deadlinePlanMount.ts`) opens the device-settings
+// overlay after landing on Overview — one click instead of "land on Overview,
+// hunt for the device card." Mirrors the history-detail "Review device"
+// recourse pattern (`resolveMissedHistoryRecourse` in shared-domain). When
+// `deviceId` is empty/missing the spread yields `deviceId: ''`; the
+// dispatcher's `length > 0` guard then gracefully degrades to landing on
+// Overview without dispatching `open-device-detail`.
+//
 // Per `feedback_hard_cap_is_physical.md`, no recourse branch suggests raising
 // the capacity hard cap — `open_budget` lands on the daily-budget surface
 // where users can lower the daily cap.
@@ -190,10 +199,11 @@ export const resolveCannotMeetRecourse = (params: {
   labels: DeadlineLabels;
   cannotMeet: boolean;
   dailyBudgetExhausted: boolean;
+  deviceId: string;
 }): DeadlineCannotMeetRecourse | null => {
   if (!params.cannotMeet) return null;
   if (params.dailyBudgetExhausted) return params.labels.cannotMeetRecourse.openBudget;
-  return params.labels.cannotMeetRecourse.openOverview;
+  return { ...params.labels.cannotMeetRecourse.openOverview, deviceId: params.deviceId };
 };
 
 // Falls back to the "Needs X kWh · N hours left" form when planning speed or
@@ -229,6 +239,12 @@ const resolveSpeedModeLabel = (
 
 export type BuildHeroInput = {
   device: TargetDeviceSnapshot;
+  // Active task's device id. Threaded onto the device-side cannot-meet recourse
+  // payload so the click dispatcher deep-links to the device-settings overlay
+  // rather than dead-ending on the Overview tab (mirrors history-detail's
+  // "Review device" recourse). Empty string degrades gracefully — the
+  // dispatcher's `length > 0` guard suppresses the overlay open in that case.
+  deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
   labels: DeadlineLabels;
   firstChargingHour: HorizonHour | undefined;

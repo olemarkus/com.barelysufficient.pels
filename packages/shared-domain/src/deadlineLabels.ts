@@ -266,6 +266,13 @@ export type DeadlinePendingContext = {
   // or null when no refresh has happened yet. Formatting lives in the caller so
   // shared-domain stays free of locale/Date helpers.
   lastFetchedShort: string | null;
+  // Active task's device id (e.g. "homey:device:abc123"). Empty string when
+  // the device snapshot hasn't loaded yet; device-side pending resolvers
+  // (`device_data_missing`, `invalid_session`, `missing_capacity`) stamp this
+  // onto the recourse so the click dispatcher can deep-link into the
+  // device-settings overlay in one tap — matching the cannot-meet recourse
+  // pattern (see `DeadlineCannotMeetRecourse.deviceId`).
+  deviceId: string;
   // Device name (e.g. "Connected 300") so the per-reason headlineReason copy
   // can name the source of the stall ("PELS can't read the current temperature
   // from {device}"). Empty string is a safe fallback when the device snapshot
@@ -408,9 +415,14 @@ export type DeadlineLabels = {
   // which `kind` to surface based on the cause; the view renders one button
   // per call. Both labels live here so the strings stay in sync with the rest
   // of the smart-task copy (kind chip / device-card lines).
+  //
+  // `openOverview` omits `deviceId` — the producer
+  // (`resolveCannotMeetRecourse`) spreads the active task's device id onto
+  // the payload so the click dispatcher deep-links to the device-settings
+  // overlay (mirrors `MISSED_HISTORY_RECOURSE_SHORTFALL` for history-detail).
   cannotMeetRecourse: {
     openBudget: DeadlineCannotMeetRecourse;
-    openOverview: DeadlineCannotMeetRecourse;
+    openOverview: Omit<DeadlineCannotMeetRecourse, 'deviceId'>;
   };
   // Resolver for the "why is the smart task starting at HH:MM" subline that
   // sits below the queued headline. Branches resolve in this order:
@@ -544,7 +556,16 @@ const resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver = (params) => 
 // payload the view layer sees. Both `targetTab` values resolve to shell tab
 // ids defined in `packages/settings-ui/public/index.html` (`#shell-nav
 // [data-tab]`); keep this list in sync if those tab ids change.
-const CANNOT_MEET_RECOURSE = {
+//
+// `openOverview` omits `deviceId` here so the producer (`resolveCannotMeetRecourse`
+// in `deadlinePlanHero.ts`) can spread the active task's device id onto the
+// payload — mirroring the history-detail "Review device" pattern in
+// `MISSED_HISTORY_RECOURSE_SHORTFALL` so one click closes the panel and opens
+// the device-settings overlay instead of dead-ending on the Overview tab.
+const CANNOT_MEET_RECOURSE: {
+  openBudget: DeadlineCannotMeetRecourse;
+  openOverview: Omit<DeadlineCannotMeetRecourse, 'deviceId'>;
+} = {
   openBudget: { label: 'Open Budget', targetTab: 'budget' },
   openOverview: { label: 'Adjust device', targetTab: 'overview' },
 };
@@ -555,7 +576,13 @@ const CANNOT_MEET_RECOURSE = {
 // pick a single, kind-aware label so the button reads as "where the device
 // lives", not "Adjust device" (which the cannot-meet branch already uses for
 // the post-plan-failure case and would mislead in a pre-plan pending state).
-const OVERVIEW_DEVICE_RECOURSE = { label: 'Open device in Overview', targetTab: 'overview' };
+// Resolvers spread `deviceId` from the pending context so the click dispatcher
+// deep-links to the device-settings overlay in one tap (mirrors the live
+// cannot-meet recourse).
+const OVERVIEW_DEVICE_RECOURSE_BASE = { label: 'Open device in Overview', targetTab: 'overview' };
+const overviewDeviceRecourse = (deviceId: string): DeadlineCannotMeetRecourse => (
+  { ...OVERVIEW_DEVICE_RECOURSE_BASE, deviceId }
+);
 
 // `awaiting_horizon_plan` is the most common pending reason — the planner
 // runs every ~5 min and needs prices through the deadline. `headlineReason`
@@ -597,7 +624,7 @@ const deviceDataMissingResolver = (kind: {
   body: kind.body,
   headlineReason: `PELS can’t read the ${kind.readingNoun} from `
     + `${ctx.deviceName.trim() || kind.fallbackDeviceNoun}.`,
-  recourse: OVERVIEW_DEVICE_RECOURSE,
+  recourse: overviewDeviceRecourse(ctx.deviceId),
 });
 
 const HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
@@ -655,13 +682,13 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       }),
       device_data_missing: HEATER_DEVICE_DATA_MISSING,
       invalid_session: HEATER_DEVICE_DATA_MISSING,
-      missing_capacity: () => ({
+      missing_capacity: (ctx) => ({
         headline: 'Learning energy use',
         body: 'PELS needs power readings from this heater while it heats so it can learn how '
           + 'many kWh raise the temperature by one degree. The schedule will appear once that is '
           + 'available.',
         headlineReason: 'PELS is still learning this heater’s energy per degree from observed power.',
-        recourse: OVERVIEW_DEVICE_RECOURSE,
+        recourse: overviewDeviceRecourse(ctx.deviceId),
       }),
     },
     unavailableByReason: {

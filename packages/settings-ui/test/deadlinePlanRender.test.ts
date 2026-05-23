@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   renderDeadlinePlan,
+  type DeadlinePlanPayload,
   type DeadlinePlanPendingPayload,
 } from '../src/ui/views/DeadlinePlan.tsx';
 import type { DeadlinePlanHistoryView } from '../src/ui/deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
+import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',
@@ -104,5 +106,66 @@ describe('DeadlinePlan pending branch', () => {
     const history$ = mount.querySelector('.deadlines-history');
     expect(history$).not.toBeNull();
     expect(history$?.textContent).toContain('Past tasks');
+  });
+});
+
+// Builds a minimal ready payload with an at-risk hero whose device-side
+// recourse carries a deviceId. Only the hero block matters for the regression;
+// the rest is filled with empty defaults so the live-hero render path runs.
+const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayload => ({
+  kind: 'temperature',
+  labels: deadlineLabels('temperature'),
+  priceUnitLabel: 'kr/kWh',
+  hero: {
+    chips: [
+      { text: 'Temperature', tone: 'info' },
+      { text: 'At risk', tone: 'warn' },
+    ],
+    tone: 'warn',
+    sectionLabel: 'Heating smart task',
+    headline: 'Heating from 16:00',
+    headlineReason: null,
+    subline: 'Connected 300 • Target 22.0 °C by 18:00',
+    metaLine: 'PELS may not reach the target temperature before the deadline. Needs 4.0 kWh · 2 hours left · Auto',
+    varianceNote: null,
+    costMetaLine: null,
+    deliveredSoFarLine: null,
+    recourse: { label: 'Adjust device', targetTab: 'overview', deviceId },
+  },
+  timeline: {
+    ariaLabel: 'Heating smart task',
+    progressFloor: 0,
+    progressCeilingValue: 22,
+    progressCeilingLabel: '22 °C',
+    deadlineLabel: 'Mon 18',
+    hours: [],
+  },
+  planInputs: {
+    perUnitRateLabel: null,
+    perUnitRateNote: null,
+    maxPowerLabel: null,
+    maxPowerNote: null,
+    extraPermissionsValue: null,
+    provenanceRows: [],
+  },
+});
+
+describe('DeadlinePlan live-hero recourse button', () => {
+  it('emits data-deadline-recourse-device-id so the dispatcher can deep-link the device-settings overlay', () => {
+    // Regression for the at-risk "Adjust device" recourse dead-ending on the
+    // Overview tab without a deviceId. The DeadlineHero JSX must forward the
+    // producer-resolved deviceId onto the button's `data-*` attribute so the
+    // delegated click handler in `deadlinePlanMount.ts` can dispatch
+    // `open-device-detail` after the panel closes — one click instead of
+    // "land on Overview, hunt for the device card."
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, {
+      status: 'ready',
+      payload: buildReadyPayloadWithDeviceRecourse('dev_heater_42'),
+    });
+    const button = mount.querySelector<HTMLButtonElement>('.plan-hero__recourse-button');
+    expect(button).not.toBeNull();
+    expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
+    expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
   });
 });
