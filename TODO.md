@@ -68,18 +68,6 @@ patch releases, not release blockers; each item carries its own source/date.
       `packages/shared-domain/src/deadlineLabels.ts`, new tests.
       Source: user report + SHS code trace 2026-05-23, PELS commit 908cf37f.
 
-- [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
-      `resolveVarianceMarginNote` returns the safety-margin sentence whenever
-      planned energy exceeds expected energy, so the calm "books the high end"
-      note can render under a cannot-finish alert hero. On first impression it
-      can also stack with the cold-start confidence chip (`Charging now` /
-      `Needs 8.0-10.0 kWh` / safety-margin note / `Estimating`). Gate the
-      sentence out for alert tone and suppress or shorten it when the cold-start
-      chip is shown.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
-      `packages/settings-ui/test/deadlinePlan.test.ts`.
-      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
 
 - [ ] **Squeeze-case budget-bound copy still reads device-side.** (Demoted from the v2.9 train's budget-bound
       mislabel work — Prong C, PR #978.) Prong C reclassifies the per-bucket
@@ -93,17 +81,6 @@ patch releases, not release blockers; each item carries its own source/date.
       routing for the squeeze case too. Source: `pels-ux-fit` P1,
       v2.8.0→origin/main release-review pass + Prong-C delivery,
       2026-05-22/23.
-
-- [ ] **Pin partial-schedule budget-bound hero behavior with a test.**
-      (Demoted from Prong C, PR #978.) The partial-schedule
-      budget-bound hero pairs a live "Heating from HH:MM" headline with the
-      "budget used up" body. Add a regression test
-      (`plannedHourOffsets: [0,1]` + `at_risk` + count>0) and decide whether
-      to add a budget qualifier to the headline; the budget meta sentence
-      was written for the terminal `cannot_meet` tier, confirm tone on the
-      recoverable `at_risk` tier during a live walk. Files:
-      `packages/settings-ui/test/deadlinePlan.test.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
 - [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
       rescue and hard-cap terminology. The rescue card should not
