@@ -32,9 +32,124 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
-*v2.8.x release-review follow-ups. These are safe for patch releases,
-not release blockers; each item carries its own source/date. (The
-v2.8.0 card-title rename landed in PR #934.)*
+*v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
+patch releases, not release blockers; each item carries its own source/date.
+(The v2.8.0 card-title rename landed in PR #934.)*
+
+- [ ] Harden persisted smart-task active-plan and history validators for
+      the v2.9 fields. `lib/plan/deferredObjectives/activePlanSettings.ts`
+      accepts revisions without validating required `energyNeededKWh` and
+      `planStatus`, and does not validate optional `energyExpectedKWh`,
+      `dailyBudgetExhaustedBucketCount`, or provenance `displayConfidence`.
+      `lib/plan/deferredObjectives/planHistorySettings.ts` validates v4
+      `progressSamples`, `deliveredKWh`, `totalCost`, and `revisions`, but not
+      `hourlyContributions`. A tampered or downgraded settings payload can
+      survive normalization and reach hero/status/history consumers with
+      garbage status, confidence, or hourly-strip data.
+      Acceptance: add an active-plan `isPlanStatus` guard; validate finite
+      `energyNeededKWh`, optional finite `energyExpectedKWh`, optional
+      non-negative `dailyBudgetExhaustedBucketCount`, optional
+      `displayConfidence`, and valid hourly contributions
+      (`atMs`, non-negative `deliveredKWh`, finite `priceValue`, tone
+      `cheap|normal|expensive`). Add persistence-boundary regressions.
+      Files: `lib/plan/deferredObjectives/activePlanSettings.ts`,
+      `lib/plan/deferredObjectives/planHistorySettings.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `packages/contracts/src/deferredObjectivePlanHistory.ts`.
+      Source: adversarial typing/contract review, v2.9.0 closeout,
+      2026-05-23.
+
+- [ ] Smart-task list confidence chip should use the band-aware
+      `displayConfidence` chain. `packages/settings-ui/src/ui/deadlinesList.ts`
+      currently reads `plan.kwhPerUnitProvenance?.confidence`, the raw profile
+      confidence, while the detail hero uses
+      `displayConfidence ?? confidence ?? profileConfidence` via
+      `resolveChipConfidence`. On settled multi-step thermal devices, the list
+      can keep showing `Estimating` after the hero has correctly gone quiet.
+      Acceptance: prefer `plan.kwhPerUnitProvenance?.displayConfidence`, then
+      `plan.kwhPerUnitProvenance?.confidence`, then `null`, or route through
+      `resolveChipConfidence` with `profileConfidence: null`; add a list-card
+      regression for raw low + display high.
+      Files: `packages/settings-ui/src/ui/deadlinesList.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/test/deadlinePlan.test.ts` or list-card tests.
+      Source: adversarial typing/contract review, v2.9.0 closeout,
+      2026-05-23.
+
+- [ ] Emit `flow_permission_changed` for rescue-only smart-task permission
+      changes. Rescue permissions are included in the active-plan objective
+      signature, so toggling `allow_smart_task_rescue` currently routes through
+      `objective_changed` before the reserved `flow_permission_changed` reason
+      can fire. The history detail then says the smart-task settings / target
+      changed instead of naming the Flow permission change the user made.
+      Acceptance: detect "signature differs only in the rescue segment" in
+      `maybeWriteReplanRevision` and route that ahead of generic
+      `objective_changed`; add regression coverage for rescue toggle vs target
+      change.
+      Files: `lib/plan/deferredObjectives/activePlanSignature.ts`,
+      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      `lib/plan/deferredObjectives/replanReason.ts`,
+      `flowCards/smartTaskRescueCard.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`.
+      Source: adversarial runtime/copy review, v2.9.0 closeout, 2026-05-23.
+
+- [ ] Rescue extra-permissions rows need an owner/edit affordance. The detail
+      and list surfaces render granted rescue permissions as passive values
+      (`Extra permissions: May go over daily budget · May limit lower-priority
+      devices if at risk`) with no indication that the Flow editor owns the
+      toggle. Cheap fix: append a muted `(set via Flow)` suffix. Better fix:
+      deep-link to the Flow card editor if Homey exposes a stable target.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
+      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Keep smart-task history visible while the detail hero is pending. The
+      pending branch in `DeadlinePlan.tsx` returns `<PendingHero />` alone, so
+      a brand-new active task with prior runs leaves a tall empty page and hides
+      the history evidence the user may be looking for. Render
+      `DeadlinePlanHistoryView` whenever `loadState.history` is non-empty,
+      regardless of pending/building status.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
+      `resolveVarianceMarginNote` returns the safety-margin sentence whenever
+      planned energy exceeds expected energy, so the calm "books the high end"
+      note can render under a cannot-finish alert hero. On first impression it
+      can also stack with the cold-start confidence chip (`Charging now` /
+      `Needs 8.0-10.0 kWh` / safety-margin note / `Estimating`). Gate the
+      sentence out for alert tone and suppress or shorten it when the cold-start
+      chip is shown.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/test/deadlinePlan.test.ts`.
+      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] At-risk `Adjust device` recourse should deep-link to the affected
+      device. The live-hero recourse lands on the Overview tab without
+      `deviceId`, even though the history-detail recourse type and dispatcher
+      already support `data-deadline-recourse-device-id`. Plumb the device id
+      through the live hero button so one click opens the relevant device
+      settings overlay.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/deadlinePlanMount.ts`.
+      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Multiple priority-1 fully-reserved smart tasks can double-book the same
+      reserved headroom in diagnostics. `policyHorizon.ts` computes
+      `reservedHeadroomKw = hardCap - uncontrolled` per bucket, not per
+      eligible task. If two priority-1 tasks both have both rescue permissions
+      set to `always`, both producers can promote their floor to the same
+      headroom. The physical capacity guard still protects the hard cap; the
+      risk is misleading diagnostic verdicts and user-facing at-risk/cannot-fit
+      reasoning. Enforce one winner, or divide the reserved headroom across
+      eligible top-priority tasks.
+      Files: `lib/plan/deferredObjectives/policyHorizon.ts`,
+      `lib/plan/deferredObjectives/rescueReplan.ts`,
+      `test/deferredObjectiveHorizon.test.ts`.
+      Source: `pels-runtime-reality`, v2.9.0 retrospective, 2026-05-23.
 
 - [ ] **Squeeze-case budget-bound copy still reads device-side.** (Demoted from the v2.9 train's budget-bound
       mislabel work — Prong C, PR #978.) Prong C reclassifies the per-bucket
@@ -107,18 +222,22 @@ v2.8.0 card-title rename landed in PR #934.)*
       should say `hard cap` instead of `power limit` where the text means the
       configured physical ceiling. Norwegian Enova wording should stay
       relevant without sounding like PELS guarantees support eligibility. The
-      hours-left trigger/card copy should use `hours` / `ready-by time`
-      instead of terse `h` / `Ready by`. Also soften `docs/smart-tasks.md`
+      `smart_task_hours_remaining` trigger/card copy should use `hours` rather
+      than terse `h`, and make the card's arg title, title, and hint use the
+      same `or fewer` phrasing. Also soften `docs/smart-tasks.md`
       rescue-leeway wording that currently says granting leeway is "harmless
       when the task is already on track"; permissions persist, so the honest
       claim is that they have no effect until the planned/rescue gate actually
       applies. Reword `smartTaskRescueStrings.ts` errors to avoid planner /
       internal terms: `Choose what this smart task may do.`, `Choose when this
       applies: at no time, or while the smart task is scheduled to run.`, and
-      `That device has no smart task yet — add a smart task first.`
+      `That device has no smart task yet — add a smart task first.` Rephrase
+      `docs/daily-budget-weights.md` guidance that tells users to raise
+      capacity/load assumptions; use "lower the daily budget or review which
+      devices count as managed vs background" for the hard-cap physical model.
       Files: `README.md`, `.homeycompose/app.json`,
       `.homeycompose/flow/**/*smart_task*`, `docs/smart-tasks.md`,
-      `docs/stromstyring-norge.md`,
+      `docs/daily-budget-weights.md`, `docs/stromstyring-norge.md`,
       `packages/shared-domain/src/smartTaskRescueStrings.ts`, generated
       `app.json` after `homey app validate`.
       Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
@@ -309,6 +428,11 @@ release, not v2.7.1 merge-blockers.*
         neutral explanation), but worth confirming during hero work that we're not
         artificially restraining it; if there's a natural "Price low / Price high" hint
         for the hero meta-row, use info there.
+      - **Deadline-plan tonal hero gradient declarations duplicated in a mobile
+        media query.** The four `data-tone="good|warn|alert|info"` gradient
+        overrides added near `style.css:7268-7319` should fold into the same
+        shared hero primitive instead of carrying a second per-tone declaration
+        site.
       Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
       across views with subtle per-page variations (padding, border colour, ripple behaviour,
       focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
@@ -395,6 +519,72 @@ graceful but should ship in the next patch.*
       remaining gap is duration, not instrumentation. Source: data-gated
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
+*v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] Remove `!important` from the smart-task detail back button. The
+      `.deadline-plan-back-button` rule overrides border radius, background,
+      and color with `!important`, while the same file already documents the
+      doubled-class cascade pattern and uses it for the recourse button nearby.
+      Rewrite as
+      `#deadline-plan-panel md-text-button.deadline-plan-back-button.deadline-plan-back-button`
+      with no `!important`.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Give the Usage return-link anchor a static fallback `href`.
+      `packages/settings-ui/public/index.html` ships
+      `<a class="usage-return-link__anchor" id="usage-return-link-anchor">`
+      without `href` until `showUsageReturnLink()` populates it. The container
+      is hidden by default and `clearUsageReturnLink()` repairs it later, so
+      this is narrow fallback hardening rather than release risk. Set the
+      static `href` to `#usage-panel`.
+      Files: `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/src/ui/usageReturnLink.ts`.
+      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Fix `flushOpenHourAtFinalize`'s informational `nextOpening.hourMs`.
+      The finalize-time flush builds `nextOpening.hourMs` from the just-closed
+      `currentHourOpening.hourMs`; the nearby comment says the value is
+      informational because the record is deleted immediately after. If a
+      future refactor ever observes the returned record, rollover detection can
+      collide with the just-closed hour. Either set the next hour bucket
+      explicitly or omit `nextOpening`; add a regression covering
+      flush-without-immediate-delete.
+      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      `test/deferredObjectivePlanHistory.test.ts`.
+      Source: `pels-runtime-reality`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Rewrite the `detectHourRollover` comment that calls the opening reading
+      a close-of-hour reading. The implementation anchors
+      `currentHourOpening` at the first trustworthy reading in an hour, keeps
+      that anchor during same-hour ticks, then attributes the open-to-open
+      delta to the opening hour when the next hour is observed. The current
+      comment documents the math backwards and invites a future "fix" that
+      would break the conservative attribution model.
+      Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts`.
+      Source: adversarial runtime review, v2.9.0 closeout, 2026-05-23.
+
+- [ ] Annotate or generate the docs light-palette mirror.
+      `docs/.vitepress/theme/custom.css` carries a small semantic mirror of
+      settings-UI palette values because the docs build cannot import the
+      dark-first token file directly, but the raw hex literals have no
+      per-token source comments or drift check. Either annotate each hex with
+      the source settings token name or generate a light-palette token file
+      during docs build.
+      Files: `docs/.vitepress/theme/custom.css`,
+      `settings/tokens.css`, docs build scripts if generated.
+      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
+
+- [ ] Document the new `set_ev_charging_phase` Flow action in
+      `docs/flow-cards.md`. The Homey action card exists, but the docs action
+      table still has no row explaining that it records the charger's current
+      one-phase / three-phase mode for planning and does not switch hardware.
+      Files: `docs/flow-cards.md`,
+      `.homeycompose/flow/actions/set_ev_charging_phase.json` (reference).
+      Source: adversarial docs review, v2.9.0 closeout, 2026-05-23.
+
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
 overall `kwhPerUnit.confidence` now reflects the pooled within-band residual,
@@ -469,29 +659,19 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:203-233`.
       Source: `pels-ux-fit`, v2.8.0→origin/main release-review pass.
 
-- [ ] App Store changelog (release-prep, owner-handled — version/changelog
-      is out of automated edit scope). `.homeychangelog.json` newest key
-      `2.8.0` reads "…global *tokan*…" (typo for "token") and describes only
-      the price token, not this release's smart-task work; no entry exists
-      for the work since `v2.8.0`. Fix the typo and add a release entry when
-      cutting the next version. (Manifest `version` is still `1.1.1` on both
-      the `v2.8.0` tag and `origin/main`.)
-      Files: `.homeychangelog.json`.
-      Source: `pels-copy-and-terminology`, v2.8.0→origin/main release-review pass.
-
-- [ ] Smart-task rescue phase 2: add sticky `at_risk` timing and emit
-      `flow_permission_changed`. The shipped Homey action exposes only
-      `never` / `always`; the contract and labels already accept/render
-      `at_risk`, but it should stay unexposed until the producer semantics
-      exist end-to-end. At-risk rescue must be sticky/debounced: engage once
-      the plan is at risk, then exit only after a plan that is solidly not at
-      risk holds, otherwise the permission can remove its own trigger and flap
-      as plans churn. The revision reason, label, and persistence allowlist are
-      forward-declared; thread rescue-change detection into the recorder so a
-      rescue toggle has its own history reason instead of surfacing as generic
-      `schedule_revised`. If `/tmp/pels` logs show lower-priority limit/resume
-      oscillation around the satisfied↔at_risk boundary, include status
-      hysteresis or minimum forced-boost dwell in the same work.
+- [ ] Smart-task rescue phase 2: add sticky `at_risk` timing. The shipped
+      Homey action exposes only `never` / `always`; the contract and runtime
+      parser already accept `at_risk`, but it should stay unexposed until the
+      producer semantics exist end-to-end. Add a comment beside
+      `flowCards/smartTaskRescueCard.ts:resolveWhen` that the `at_risk` branch
+      is phase-2 forward compatibility and is not exposed by the JSON dropdown
+      today. At-risk rescue must be sticky/debounced: engage once the plan is
+      at risk, then exit only after a plan that is solidly not at risk holds,
+      otherwise the permission can remove its own trigger and flap as plans
+      churn. The `flow_permission_changed` emission itself is tracked as a P1
+      v2.9 closeout item above. If `/tmp/pels` logs show lower-priority
+      limit/resume oscillation around the satisfied↔at_risk boundary, include
+      status hysteresis or minimum forced-boost dwell in the same work.
       Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
       `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
       `packages/shared-domain/src/deadlineLabels.ts`,
@@ -835,19 +1015,20 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Function is identical, this is a copy/layout preference. Pick one direction and document
       in `notes/ev-ready-by/README.md`.
 
-- [ ] Resolution-in-producer smell in `deadlinePlanInputs.ts:51-55`. UI
-      branches on `latest.kwhPerUnitSource === 'bootstrap'` to recompute
-      `rateMean` from `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT` because
-      `profile.kwhPerUnit.mean` is absent during bootstrap. The producer
-      (`profileEnergyResolution`) already resolves an `effectiveKwhPerUnit`;
-      persist that on the active-plan revision so the UI reads one flat
-      field and `kwhPerUnitSource` collapses to label-only provenance
-      (matches `resolveSpeedModeLabel` at `deadlinePlanHero.ts:170-216`).
-      Source: `pels-layering-guardian` agent.
-      Files: `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+- [ ] Move smart-task rate and speed-mode display resolution to the producer.
+      Supersedes the earlier `deadlinePlanInputs.ts:51-55` smell:
+      `deadlinePlanInputs.ts` now has `resolveKwhPerUnitDisplayRate`, and
+      `deadlinePlanHero.ts` has a sibling `resolveSpeedModeLabel`; both still
+      ask the settings UI consumer to derive display fields from planner
+      internals. Move the resolution into `activePlanRecorder.ts` and persist
+      flat `rateMean: number | null` plus `speedMode: 'auto' | 'learning'` on
+      `DeferredObjectiveActivePlanRevisionV1`; delete the settings-UI helpers
+      and update the contract.
+      Source: `pels-layering-guardian`, v2.9.0 retrospective, 2026-05-23.
+      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
 - [ ] Promote heatmap cell radius `2px` to a token. `settings/style.css`
       `.usage-legend__swatch--unreliable` uses `border-radius: 2px`, and
@@ -1969,6 +2150,47 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
+- [ ] Clean up low-severity v2.9 review-note drift. The implementation is
+      correct, but contributor notes point at stale files or examples:
+      `notes/smart-task-flow-cards/README.md` still names deleted
+      `flowCards/deadlineEndedTokens.ts` in the implementation punch list
+      even though the top of the same note says the code moved to
+      `flowCards/smartTaskTokens.ts`; `notes/deferred-load-objectives/feasibility-confidence.md`
+      and the matching TODO citation point at old `objectiveProfiles.ts`
+      lines for energy-window math now living in
+      `lib/core/objectiveProfileEnergyAccumulator.ts`; and
+      `notes/smart-task-ui/README.md` mentions a `Backup hours` history pill
+      that is still future scope. Update or annotate the stale references so
+      future reviewers do not chase missing surfaces.
+      Files: `notes/smart-task-flow-cards/README.md`,
+      `notes/deferred-load-objectives/feasibility-confidence.md`,
+      `notes/smart-task-ui/README.md`, matching TODO citation if retained.
+      Source: adversarial docs review, v2.9.0 closeout, 2026-05-23.
+
+- [ ] Persistence-hardening backlog: normalize `power_tracker_state` at the
+      Settings UI/API boundary. `lib/app/settingsUiApi.ts` still casts raw
+      `homey.settings.get('power_tracker_state')` to `PowerTrackerState`; the
+      newer objective-profile fields (`bands`, samples, pending energy, and
+      sub-interval timing) therefore rely on caller discipline instead of a
+      load-time schema. Pre-existing gap, not a v2.9 regression; add a
+      normalizer when touching profile persistence again.
+      Files: `lib/app/settingsUiApi.ts`, `lib/core/powerTrackerTypes.ts`,
+      `lib/core/objectiveProfiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
+      Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
+
+- [ ] Keep `recordHourlyDelivery` single-authoritative before wiring any
+      production caller. Today no production code calls the exported method,
+      while the internal rollover path already appends hourly contributions
+      and totals. If a future caller feeds the same hour through
+      `recordHourlyDelivery` as well, `appendHourlyContribution` will sum it
+      again and double-bill `deliveredKWh` / `totalCost`. Before adding a
+      production caller, choose whether external pushes or internal rollover is
+      authoritative for that hour and add a regression.
+      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      `test/deferredObjectivePlanHistory.test.ts`.
+      Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
+
 - [ ] Smart-task status oscillation at the cusp — quality-of-emit nit, not a
       bug. When a committed plan sits right at the boundary between the
       primary horizon and the deadline reserve hour, per-cycle re-solves can
@@ -2365,28 +2587,6 @@ should not be folded into the same PR.
       `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [ ] v2.7.2/PR12: per-hour bar strip on history detail showing planned-vs-delivered
-      kWh per hour, banded by price tier. Owner walk 2026-05-17 raised concerns
-      #11 + #14: the page describes a multi-hour run with a single total but does
-      not show where the energy actually landed within the deadline window. The
-      blocker is data, not UI: today `hourlyContributions` is summed into a single
-      `deliveredKWh` + `totalCost` in `deadlineRecorder.ts` and the per-hour split
-      is discarded. PR12 must (1) extend the history schema to v5 with a
-      `hourlyContributions: { atMs, plannedKWh, deliveredKWh, priceValue }[]`
-      array, (2) update the recorder to persist it, (3) add a bar-strip subview
-      to `DeadlinePlanHistoryDetail.tsx` with price-tier bands (reuse the
-      `--pels-price-*` token family from the live deadline-plan chart),
-      (4) gate the strip on `chartCollapsed` so it shares the "View details"
-      toggle visibility, (5) write a v4→v5 migration leaving the array empty
-      for legacy entries and rendering a "Per-hour breakdown unavailable for
-      runs recorded before v2.7.2" supporting note.
-      Why P2: the existing chart + outcome headline answer the page's primary
-      question ("did it succeed?"); the per-hour strip is the next-best
-      explanation surface but is not load-bearing.
-      Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `lib/plan/deadlineRecorder.ts`,
-      `packages/shared-domain/src/planHistoryV5Helpers.ts` (new),
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
 - [ ] v2.7.2/PR10 audit: `.deadline-page-close` (icon-only fixed X on the
       full-page deadline overlay) and `.settings-back-button` (M3 text button
       labelled "Back to devices" inside the slide-panel header) already consume
