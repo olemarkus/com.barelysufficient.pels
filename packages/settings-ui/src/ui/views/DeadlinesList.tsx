@@ -13,7 +13,10 @@ import {
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import {
+  DEADLINES_LIST_BASELINE_EYEBROW,
+  DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE,
   resolveDeadlinesListHero,
+  type DeadlinesListBaselineState,
   type DeadlinesListHeroCopy,
 } from '../../../../shared-domain/src/deadlinesListHero.ts';
 import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
@@ -222,29 +225,23 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
 // identical to the populated hero (which already supplies eyebrow + headline),
 // so the header height stays consistent as the body swaps below.
 //
-// Eyebrow is the section label ("Smart tasks", matching the populated hero's
-// fixed `eyebrow` literal) and the headline is a short state-context line so
-// the two slots don't render the same word twice — sibling panels (Modes /
-// Usage / Budget) follow the same eyebrow=section / headline=descriptive
-// rhythm. `data-tone` is omitted so the baseline picks up the default
-// neutral `.pels-hero` styling (the tone enum is `good | warn | alert | info`
-// — see `style.css` `.pels-hero[data-tone="…"]` rules — and the baseline
-// intentionally renders no tonal accent).
-const BASELINE_HEADLINE_BY_STATE: Record<'loading' | 'error' | 'empty', string> = {
-  loading: 'Loading your smart tasks…',
-  error: 'Smart tasks unavailable',
-  empty: 'Schedule a ready-by deadline',
-};
-
-const BaselineHeader = ({ state }: { state: 'loading' | 'error' | 'empty' }) => (
+// Eyebrow is the section label (matching the populated hero's fixed `eyebrow`
+// literal via `DEADLINES_LIST_BASELINE_EYEBROW`) and the headline is a short
+// state-context line so the two slots don't render the same word twice —
+// sibling panels (Modes / Usage / Budget) follow the same eyebrow=section /
+// headline=descriptive rhythm. `data-tone` is omitted so the baseline picks up
+// the default neutral `.pels-hero` styling (the tone enum is
+// `good | warn | alert | info` — see `style.css` `.pels-hero[data-tone="…"]`
+// rules — and the baseline intentionally renders no tonal accent).
+const BaselineHeader = ({ state }: { state: DeadlinesListBaselineState }) => (
   <header
     class="plan-hero pels-hero deadlines-list-hero"
     aria-labelledby="deadlines-list-baseline-headline"
   >
     <div class="plan-hero__section">
-      <p class="eyebrow plan-hero__section-label">Smart tasks</p>
+      <p class="eyebrow plan-hero__section-label">{DEADLINES_LIST_BASELINE_EYEBROW}</p>
       <h2 class="plan-hero__headline" id="deadlines-list-baseline-headline">
-        {BASELINE_HEADLINE_BY_STATE[state]}
+        {DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE[state]}
       </h2>
     </div>
   </header>
@@ -256,7 +253,7 @@ const LoadingBody = () => (
       <span class="pels-skeleton pels-skeleton--card"></span>
       <span class="pels-skeleton pels-skeleton--card"></span>
     </div>
-    <span class="visually-hidden">Loading smart tasks…</span>
+    <span class="visually-hidden">{DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE.loading}</span>
   </div>
 );
 

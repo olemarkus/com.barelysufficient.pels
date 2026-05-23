@@ -33,6 +33,15 @@ import {
 } from './budgetAdjustController.ts';
 import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
 import { resolvePriceLevelChip } from '../../../shared-domain/src/priceLevelChips.ts';
+import {
+  CHART_FINISHED_OVER_DAILY_BUDGET,
+  CHART_FINISHED_WITHIN_BUDGET,
+  YESTERDAY_FINISHED_OVER_BUDGET,
+  YESTERDAY_FINISHED_WITHIN_BUDGET,
+  composeHeadroomLeftToday,
+  composeHeadroomLineWithEstimate,
+  composeHeadroomOverBudgetUsed,
+} from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -264,11 +273,11 @@ export const resolveHeadroomLine = (
   // numbers don't read as if they should add up.
   const remaining = payload.state.remainingKWh;
   const status = Number.isFinite(remaining) && remaining < 0
-    ? `${formatKWh(Math.abs(remaining), 1)} over budget already used`
-    : `${formatKWh(remaining, 1)} left in today's budget`;
+    ? composeHeadroomOverBudgetUsed(formatKWh(Math.abs(remaining), 1))
+    : composeHeadroomLeftToday(formatKWh(remaining, 1));
   const cost = computeEstimatedCost({ payload, view: 'today' });
   if (cost === null) return status;
-  return `${status} · est. ${formatCost(cost, costDisplay)} today`;
+  return composeHeadroomLineWithEstimate(status, formatCost(cost, costDisplay));
 };
 
 const resolveNoPlanLine = (view: BudgetDayView, budgetEnabled: boolean): string => {
@@ -311,7 +320,7 @@ export const resolveDecisionLine = (
 ): string | null => {
   if (!payload || status === 'noPlan') return resolveNoPlanLine(view, budgetEnabled);
   if (view === 'yesterday') {
-    return status === 'over' ? 'Yesterday finished over budget.' : 'Yesterday finished within budget.';
+    return status === 'over' ? YESTERDAY_FINISHED_OVER_BUDGET : YESTERDAY_FINISHED_WITHIN_BUDGET;
   }
   if (view === 'tomorrow') return resolveTomorrowLine(payload);
   return resolveTodayLine(payload, status);
@@ -361,7 +370,7 @@ const resolveChartSubtitle = (params: {
     if (payload.budget.priceShapingEnabled) return 'Cheaper-hour context needs price data.';
     return 'Shows how the budget is distributed through the day.';
   }
-  if (view === 'yesterday') return status === 'over' ? 'Finished over the daily budget.' : 'Finished within budget.';
+  if (view === 'yesterday') return status === 'over' ? CHART_FINISHED_OVER_DAILY_BUDGET : CHART_FINISHED_WITHIN_BUDGET;
   if (view === 'tomorrow') return 'Shows the planned cumulative budget.';
   if (status === 'over') return 'Projected to finish over budget.';
   if (status === 'tight') return 'Close to the daily budget.';
