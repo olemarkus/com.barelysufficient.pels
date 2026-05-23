@@ -26,7 +26,7 @@ import {
   shouldFireNotification,
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
-import { buildObjectiveSignature } from './activePlanSignature';
+import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
 
 // Persisted plans store mixed objective kinds, so derive the nullable
 // persisted value from the discriminated diagnostic.
@@ -301,10 +301,8 @@ const shouldWriteReplanRevision = (params: {
   metadataDriftedWithinSchedule: boolean;
   sourceChanged: boolean;
 }): boolean => (
-  params.objectiveChanged
-    || params.scheduleChanged
-    || params.metadataDriftedWithinSchedule
-    || params.sourceChanged
+  params.objectiveChanged || params.scheduleChanged
+    || params.metadataDriftedWithinSchedule || params.sourceChanged
 );
 
 export class DeferredObjectiveActivePlanRecorder {
@@ -541,7 +539,10 @@ export class DeferredObjectiveActivePlanRecorder {
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
     const horizonPlan = diag.horizonPlan as NonNullable<typeof diag.horizonPlan>;
-    const objectiveChanged = current.objectiveSignature !== signature;
+    // `rescueOnly` routes to `flow_permission_changed` below so the history detail
+    // names the Flow permission change, not a generic objective edit.
+    const sigDiff = compareObjectiveSignatures(current.objectiveSignature, signature);
+    const objectiveChanged = sigDiff.changed;
     const effectiveHours = objectiveChanged ? hours : (current.commitment?.hours ?? hours);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
@@ -578,6 +579,7 @@ export class DeferredObjectiveActivePlanRecorder {
     })) return;
     const reason = resolveReplanReason({
       objectiveChanged,
+      rescuePermissionOnlyChanged: sigDiff.rescueOnly,
       sourceRefined,
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
     });
