@@ -1,4 +1,4 @@
-import type { SteppedLoadActualStepSource, SteppedLoadCommandStatus } from '../utils/types';
+import type { SteppedLoadActualStepSource, SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
 import { normalizeStepId } from '../utils/stepIds';
 
 type StepId = string;

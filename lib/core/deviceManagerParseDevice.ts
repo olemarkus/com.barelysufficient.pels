@@ -1,9 +1,5 @@
-import type {
-    DeviceControlProfile,
-    HomeyDeviceLike,
-    Logger,
-    TargetDeviceSnapshot,
-} from '../utils/types';
+import type { DeviceControlProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
     getCapabilities,
     getDeviceId,

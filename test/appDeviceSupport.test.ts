@@ -9,7 +9,7 @@ import {
   MANAGED_DEVICES,
   PRICE_OPTIMIZATION_SETTINGS,
 } from '../lib/utils/settingsKeys';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const makeSettings = (initial: Record<string, unknown>) => {
   const store: Record<string, unknown> = { ...initial };

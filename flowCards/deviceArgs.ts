@@ -1,4 +1,5 @@
-import type { FlowAutocompleteResult, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { FlowAutocompleteResult } from '../lib/utils/types';
 
 export type RawFlowDeviceArg = string | { id?: string; name?: string; data?: { id?: string } };
 

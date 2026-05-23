@@ -15,7 +15,7 @@ import {
   setBinaryControl,
 } from '../plan/planBinaryControl';
 import type { PlanEngineState } from '../plan/planState';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableEvIntent,

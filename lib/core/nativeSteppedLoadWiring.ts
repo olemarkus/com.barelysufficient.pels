@@ -1,10 +1,10 @@
 import type {
   DeviceControlAdapterSnapshot,
-  HomeyDeviceLike,
   SteppedLoadProfile,
   SteppedLoadStep,
   TargetPowerSteppedLoadConfig,
-} from '../utils/types';
+} from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,

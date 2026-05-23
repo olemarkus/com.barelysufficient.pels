@@ -6,7 +6,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,

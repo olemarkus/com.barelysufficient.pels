@@ -4,7 +4,8 @@
 /* eslint-disable max-params --
  * Internal helpers mirror observation fields directly to keep this move-only split simple.
  */
-import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { getDeviceId } from './deviceManagerHelpers';

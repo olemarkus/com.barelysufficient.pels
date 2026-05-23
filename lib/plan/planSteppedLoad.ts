@@ -10,7 +10,7 @@ import {
   isSteppedLoadOffStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile, SteppedLoadStep } from '../utils/types';
+import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isObservedOff, isObservedOn } from '../observer/observedState';
 import type { ShedAction } from './planTypes';

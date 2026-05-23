@@ -11,7 +11,12 @@ import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
-import { HomeyDeviceLike, TargetDeviceSnapshot, type DeviceTargetPowerConfigs } from './lib/utils/types';
+import type {
+  DeviceControlProfiles,
+  DeviceTargetPowerConfigs,
+  TargetDeviceSnapshot,
+} from './packages/contracts/src/types';
+import type { HomeyDeviceLike } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/core/powerTracker';
@@ -133,7 +138,6 @@ import type {
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
-import type { DeviceControlProfiles } from './lib/utils/types';
 import { AppHomeyEnergyHelpers } from './lib/app/appHomeyEnergyHelpers';
 import {
   AppSnapshotHelpers,
@@ -255,8 +259,8 @@ class PelsApp extends Homey.App {
   private controllableDevices: Record<string, boolean> = {};
   private managedDevices: Record<string, boolean> = {};
   private budgetExemptDevices: Record<string, boolean> = {};
-  private temperatureBoostSettings: import('./lib/utils/types').TemperatureBoostSettings = {};
-  private evBoostSettings: import('./lib/utils/types').EvBoostSettings = {};
+  private temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};
+  private evBoostSettings: import('./packages/contracts/src/types').EvBoostSettings = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};

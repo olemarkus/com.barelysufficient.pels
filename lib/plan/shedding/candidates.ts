@@ -1,6 +1,6 @@
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
-import type { SteppedLoadProfile } from '../../utils/types';
+import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import { isObservedOff } from '../../observer/observedState';
 import { getCurrentDrawKw } from '../../observer/observedPower';
 import {

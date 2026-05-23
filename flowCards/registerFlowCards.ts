@@ -1,7 +1,8 @@
 /* eslint-disable max-lines -- Flow card registration stays centralized in this module. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/core/capacityGuard';
-import { FlowHomeyLike, HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';

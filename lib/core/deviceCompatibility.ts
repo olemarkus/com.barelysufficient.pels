@@ -1,7 +1,5 @@
-import type {
-  HomeyDeviceLike,
-  TargetPowerSteppedLoadConfig,
-} from '../utils/types';
+import type { TargetPowerSteppedLoadConfig } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import { normalizeTargetPowerSteppedLoadConfig } from '../utils/targetPowerConfig';
 
 type UnknownRecord = Record<string, unknown>;

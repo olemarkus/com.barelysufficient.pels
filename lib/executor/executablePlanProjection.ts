@@ -4,7 +4,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,

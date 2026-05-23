@@ -4,7 +4,8 @@ import {
     mergeFresherCapabilityObservations,
 } from '../lib/core/deviceManagerObservation';
 import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
-import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isManagedFilterActive } from '../lib/app/appDeviceSupport';
 import {
     mockHomeyInstance,

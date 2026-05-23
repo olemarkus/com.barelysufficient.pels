@@ -1,11 +1,10 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type {
   DeviceControlAdapterSnapshot,
-  HomeyDeviceLike,
-  Logger,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../utils/types';
+} from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,

@@ -22,7 +22,7 @@ import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
 } from '../lib/app/appPowerCalibrationWiring';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/app/appPowerRebuildShortfallSuppression';
 import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';

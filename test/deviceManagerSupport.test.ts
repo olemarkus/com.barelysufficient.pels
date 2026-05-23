@@ -1,4 +1,5 @@
-import type { Logger, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { Logger } from '../lib/utils/types';
 import {
   getCanSetControl,
   getControlCapabilityId,

@@ -5,7 +5,7 @@ import {
   buildExecutableSteppedLoadIntent,
 } from '../lib/executor/executableSteppedLoadProjection';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { steppedPlanDevice } from './utils/planTestUtils';
 
 const buildObservedState = (

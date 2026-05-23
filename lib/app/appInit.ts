@@ -16,7 +16,8 @@ import {
 } from '../../packages/shared-domain/src/postmortemTone';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
-import type { FlowHomeyLike, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { FlowHomeyLike } from '../utils/types';
 import type { StepPowerCalibrationView } from '../plan/planTypes';
 import { firstPositiveFinite } from '../plan/deferredObjectives/planningSpeed';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';

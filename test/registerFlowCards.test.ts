@@ -3,7 +3,7 @@ import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',

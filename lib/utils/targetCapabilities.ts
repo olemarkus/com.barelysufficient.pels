@@ -1,4 +1,4 @@
-import type { TargetCapabilitySnapshot } from './types';
+import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)

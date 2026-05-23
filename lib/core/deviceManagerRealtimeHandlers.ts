@@ -1,4 +1,5 @@
-import type { HomeyDeviceLike, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../utils/types';
 import { resolveEvChargingStateBinaryEvidence } from './deviceManagerControl';
 import type { RecentLocalCapabilityWrites } from './deviceManagerRealtimeSupport';
 import {
