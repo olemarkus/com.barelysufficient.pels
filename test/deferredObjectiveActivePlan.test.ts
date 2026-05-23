@@ -2158,11 +2158,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(normalized.plansByDeviceId.dev?.latest?.floorShortfallCause).toBe('budget');
       });
 
-      it('drops a plan whose revision floorShortfallCause is an unknown enum value', () => {
-        // Tampered or downgraded payload smuggling an unknown cause string
-        // would silently fall through the UI's legacy heuristic if the
-        // validator accepted it. Drop the whole plan instead — sibling
-        // pattern to the `kwhPerUnitSource: 'totally_invalid'` case above.
+      it('accepts a revision with a forward-compat floorShortfallCause string the consumer does not recognise', () => {
+        // Forward-compat: a future PELS version may emit a new cause variant
+        // (e.g. `physics_violation`) that the running v2.9.x consumer doesn't
+        // recognise. The validator must accept any string so we don't drop
+        // the WHOLE persisted plan — which would also drop the revision
+        // history (`original`). The consumer in `deadlinePlan.ts` falls back
+        // gracefully on unknown values (only branches on the `'budget'`
+        // literal; treats everything else as device-side recourse), so a
+        // string-typed unknown lands safely.
         const persisted = {
           version: 1,
           plansByDeviceId: {
@@ -2173,7 +2177,34 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           },
         };
         const normalized = normalizeDeferredObjectiveActivePlans(persisted);
-        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+        expect(normalized.plansByDeviceId.dev?.latest?.floorShortfallCause).toBe('physics_violation');
+      });
+
+      it('drops a plan whose revision floorShortfallCause is non-string garbage', () => {
+        // A genuinely tampered payload that smuggled e.g. `cause: 42` or
+        // `cause: null` or `cause: {}` must not survive rehydration —
+        // downstream code branches on string equality and would either
+        // silently miscompare or throw on a non-string value. Sibling
+        // pattern to the `kwhPerUnitSource: 'totally_invalid'` case above
+        // for the non-string branch only.
+        const buildPersisted = (cause: unknown) => ({
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'flow_card',
+              floorShortfallCause: cause,
+            }),
+          },
+        });
+        expect(
+          normalizeDeferredObjectiveActivePlans(buildPersisted(42)).plansByDeviceId.dev,
+        ).toBeUndefined();
+        expect(
+          normalizeDeferredObjectiveActivePlans(buildPersisted(null)).plansByDeviceId.dev,
+        ).toBeUndefined();
+        expect(
+          normalizeDeferredObjectiveActivePlans(buildPersisted({})).plansByDeviceId.dev,
+        ).toBeUndefined();
       });
 
       it('accepts a revision without floorShortfallCause (legacy v2.9-pre payload)', () => {

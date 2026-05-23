@@ -226,33 +226,20 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
-- [ ] `cannot_meet` smart-task hero with `dailyBudgetExhaustedBucketCount > 0`
-      on pre-v2.9.x revisions still routes to "Open Budget" via the legacy
-      heuristic, but `resolveStatus` only returns `cannot_meet` when
-      `!budgetBound` — by construction the cause is `time_capacity`, not
-      `budget`. Pre-v2.9.x revisions (no `floorShortfallCause` on the
-      persisted record) take the legacy path; PR #1017 gates that legacy
-      clause on `floorShortfallCause === undefined`, so post-upgrade
-      revisions are correct, but the upgrade-day population still sees
-      the "Open Budget" misdirection until the recorder re-records each
-      plan. Acceptance: either short-circuit the legacy clause on
-      `planStatus === 'cannot_meet'` (since by construction the cause is
-      never `budget`) or accept the upgrade-day quirk and document.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
-      Source: `pels-runtime-reality`, PR #1017 follow-up, 2026-05-23.
-
-- [ ] Widen `isOptionalFloorShortfallCause` validator from enum-strict
-      to "absent or string". A forward-compat cause string (e.g. a
-      future v2.10 cause variant that PELS v2.9.x doesn't recognise)
-      currently drops the WHOLE persisted plan via `.filter(isActivePlan)`
-      rather than just the unknown field. The recorder re-records on the
-      next cycle so the user briefly sees pending — not data loss, but
-      the whole revision history (including `original`) goes with the
-      drop. Widening the validator to accept any string and let
-      consumers fall back gracefully on unknown values preserves history
-      while still rejecting non-string garbage.
-      Files: `lib/plan/deferredObjectives/activePlanSettings.ts`.
-      Source: `pels-runtime-reality`, PR #1017 follow-up, 2026-05-23.
+- [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
+      asymmetry when it wraps. PR #1016 routes the Budget header through
+      the shared `.plan-hero` primitive with a `.plan-hero__chips` row
+      carrying the price-level chip and the Plan/Adjust toggle. The
+      toggle uses `margin-left: auto` (style.css:4643) to sit flush
+      right when no chip is shown; when the row narrows below the
+      combined width the toggle wraps to its own flex line and the
+      `auto` margin pushes it to the right edge while the chip sits at
+      the left — readable but cosmetically asymmetric against the
+      headline below. Either drop the `margin-left: auto` (let the
+      parent's `justify-content` handle alignment) or align both edges
+      intentionally on wrap. Cosmetic; bounded one-rule fix.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
 
 - [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
       promotion. PR #1018's `capped_idle` discriminator requires a

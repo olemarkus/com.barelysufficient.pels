@@ -97,18 +97,21 @@ const isOptionalNonNegativeCount = (value: unknown): boolean => (
 
 // `floorShortfallCause` is the producer-resolved verdict that routes the hero
 // recourse (budget-bound → `Open Budget`, otherwise device-side). Optional for
-// backward compatibility with revisions persisted before the field shipped;
-// when present must be a known enum value so a tampered payload can't smuggle
-// an unknown cause string to the consumer (which would then fall through to
-// the legacy heuristic — silently wrong, not loudly). Matches the contract
-// type `DeferredObjectiveActivePlanFloorShortfallCause`.
+// backward compatibility with revisions persisted before the field shipped.
+// Accept any string here (not just the v2.9 enum values): a forward-compat
+// cause string emitted by a future PELS version that the running v2.9.x
+// consumer doesn't recognise would otherwise drop the WHOLE persisted plan
+// via `.filter(isActivePlan)`, taking the revision history (`original`) with
+// it. The consumer in `deadlinePlan.ts` already falls back gracefully on
+// unknown values (it only branches on the `'budget'` literal and treats
+// anything else as device-side recourse), so a string-typed unknown lands
+// safely. Still reject non-string garbage (numbers, null, objects) so a
+// genuinely tampered payload that smuggled e.g. `cause: 42` doesn't survive
+// rehydration. Matches the contract type
+// `DeferredObjectiveActivePlanFloorShortfallCause` for known values and
+// degrades to "unknown but recognisable" for forward-compat strings.
 const isOptionalFloorShortfallCause = (value: unknown): boolean => (
-  value === undefined
-    || value === 'budget'
-    || value === 'step_power'
-    || value === 'estimate'
-    || value === 'time_capacity'
-    || value === 'none'
+  value === undefined || typeof value === 'string'
 );
 
 // v2.9 hardening: `energyNeededKWh` and `planStatus` are required on every
