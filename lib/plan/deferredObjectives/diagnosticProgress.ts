@@ -9,7 +9,7 @@
 import {
   OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
   OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
-} from '../../core/objectiveProfiles';
+} from '../../objectives/profiles';
 import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveSettingsEntry } from './settings';

@@ -558,7 +558,7 @@ Those may exist internally or diagnostically, but users will expect "hit tempera
 
 Shipped v1 uses a learned `kWhPerUnit` (kWh per 1°C) multiplied by the remaining `ΔT` to derive
 `energyNeededKWh`. The profile learns from observed temperature rises with credible energy
-evidence (`lib/core/objectiveProfiles.ts`). There is no anchored "baseline temperature" in the
+evidence (`lib/objectives/profiles.ts`). There is no anchored "baseline temperature" in the
 shipped path — the profile is unit-rate based and `ΔT` carries the rest:
 
 ```ts
@@ -740,7 +740,7 @@ optimistic.
 
 Shipped v1 uses one rate source plus EV bootstrap fallback:
 
-1. Learned `kWhPerUnit` profile (`lib/core/objectiveProfiles.ts`), or
+1. Learned `kWhPerUnit` profile (`lib/objectives/profiles.ts`), or
 2. For EV without a learned profile: `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`
    (`packages/shared-domain/src/objectiveProfileBootstrap.ts`). The recorder emits a
    `rate_refined` revision when learning takes over.
@@ -868,7 +868,7 @@ margin, without computing explicit milestones.
 
 EV SoC objectives need a kWh-per-percent value to convert "target 80%" into "X kWh required" before
 the horizon planner can allocate buckets. The value is normally learned from observed charging
-samples (`lib/core/objectiveProfiles.ts`), but SoC reporting depends on a plugged-in charge session,
+samples (`lib/objectives/profiles.ts`), but SoC reporting depends on a plugged-in charge session,
 so a learned profile is often unavailable when the user first sets a deadline.
 
 To unblock the first cycle, the diagnostic falls back to `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT` (1.0,

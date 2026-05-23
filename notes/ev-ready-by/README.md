@@ -58,7 +58,7 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
 
 - EV SoC observation with session validity (`lib/core/deviceStateOfCharge.ts`): fresh / stale
   status, session start on plug-in, invalidation on plug-out.
-- Per-device learned profile (`lib/core/objectiveProfiles.ts`) storing `kwhPerUnit` (kWh per 1%)
+- Per-device learned profile (`lib/objectives/profiles.ts`) storing `kwhPerUnit` (kWh per 1%)
   and `unitPerHour` (%/hour) with EMA confidence.
 - Bootstrap kWh-per-percent fallback in
   `packages/shared-domain/src/objectiveProfileBootstrap.ts`: cold-start EV plans produce a useful

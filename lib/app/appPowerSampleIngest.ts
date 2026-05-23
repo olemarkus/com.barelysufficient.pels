@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type CapacityGuard from '../core/capacityGuard';
-import { updateObjectiveProfilesFromSnapshot } from '../core/objectiveProfiles';
+import { updateObjectiveProfilesFromSnapshot } from '../objectives/profiles';
 import type { PowerTrackerState } from '../core/powerTracker';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';

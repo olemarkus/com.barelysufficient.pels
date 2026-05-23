@@ -12,7 +12,7 @@ axis (how confident we are in kWh-per-unit).
 ## What a sample is
 
 Per device, per planning cycle, `buildObjectiveProfileSample`
-(`lib/core/objectiveProfileSamples.ts`) captures:
+(`lib/objectives/samples.ts`) captures:
 
 - `value` — the objective quantity (°C for thermostats, % SoC for EVs).
 - `observedAtMs` — the **sensor's own freshness timestamp** (`lastFreshDataMs`

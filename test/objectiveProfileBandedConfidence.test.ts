@@ -3,11 +3,11 @@ import {
   applyBandedConfidence,
   resolveBandedProfileConfidence,
   resolveProfileConfidence,
-} from '../lib/core/objectiveProfileStats';
+} from '../lib/objectives/stats';
 import type {
   ObjectiveProfileBand,
   ObjectiveProfileStat,
-} from '../lib/core/objectiveProfileTypes';
+} from '../lib/objectives/types';
 
 const band = (overrides: Partial<ObjectiveProfileBand>): ObjectiveProfileBand => ({
   lowerInclusive: 0,

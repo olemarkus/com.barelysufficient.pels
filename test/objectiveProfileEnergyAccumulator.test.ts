@@ -3,8 +3,8 @@
 // power instead of billing the whole baseline→rise window at the baseline
 // sample's single power. These tests pin the accumulator behaviour across the
 // `rise_too_small` skips that the baseline-preserving path used to discard.
-import { updateDeviceObjectiveProfile } from '../lib/core/objectiveProfiles';
-import type { DeviceObjectiveProfile, DeviceObjectiveProfileSample } from '../lib/core/objectiveProfileTypes';
+import { updateDeviceObjectiveProfile } from '../lib/objectives/profiles';
+import type { DeviceObjectiveProfile, DeviceObjectiveProfileSample } from '../lib/objectives/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;

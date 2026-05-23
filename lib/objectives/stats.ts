@@ -2,7 +2,7 @@ import type {
   ObjectiveProfileBand,
   ObjectiveProfileConfidence,
   ObjectiveProfileStat,
-} from './objectiveProfileTypes';
+} from './types';
 
 // Convenience wrapper for the profile orchestrator: rewrites a kWh/unit stat's
 // `confidence` field to the band-aware value once bands are in scope, so the

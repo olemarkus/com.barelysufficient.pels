@@ -1,5 +1,5 @@
 import type CapacityGuard from './capacityGuard';
-import type { DeviceObjectiveProfile } from './objectiveProfileTypes';
+import type { DeviceObjectiveProfile } from '../objectives/types';
 
 export type PowerTrackerState = {
   lastPowerW?: number;
