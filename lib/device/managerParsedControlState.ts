@@ -4,8 +4,8 @@ import type { Logger } from '../utils/types';
 import {
   getCurrentOn,
   type DeviceCapabilityMap,
-} from './deviceManagerControl';
-import { resolveParsedControlState } from './deviceManagerParseSnapshot';
+} from './managerControl';
+import { resolveParsedControlState } from './managerParseSnapshot';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 export type ParsedControlStateResult = {

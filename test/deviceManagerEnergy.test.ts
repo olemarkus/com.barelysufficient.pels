@@ -1,6 +1,6 @@
-import { extractLiveHomePowerWatts } from '../lib/core/deviceManagerEnergy';
-import { fetchLivePowerReport } from '../lib/core/deviceManagerFetch';
-import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
+import { extractLiveHomePowerWatts } from '../lib/device/managerEnergy';
+import { fetchLivePowerReport } from '../lib/device/managerFetch';
+import * as homeyApi from '../lib/device/managerHomeyApi';
 
 describe('extractLiveHomePowerWatts', () => {
   it('returns watts from first cumulative item', () => {

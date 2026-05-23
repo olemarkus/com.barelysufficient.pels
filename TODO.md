@@ -82,39 +82,50 @@ patch releases, not release blockers; each item carries its own source/date.
       v2.8.0→origin/main release-review pass + Prong-C delivery,
       2026-05-22/23.
 
-- [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
-      rescue and hard-cap terminology. The rescue card should not
-      over-promise: `Set what a smart task may do` may grant daily-budget
-      leeway or let the existing boost path limit lower-priority devices, but
-      it still stays inside the hard cap and does not guarantee every target
-      can be rescued. Highest-priority copy fix: the
-      `allow_smart_task_rescue` hint must stop saying `gets the power it
-      needs` and must not promise that changing the permission `updates the
-      schedule right away`; use "gets more room when available" and "takes
-      effect on the next plan refresh" / equivalent. README / App Store copy
-      should say `hard cap` instead of `power limit` where the text means the
-      configured physical ceiling. Norwegian Enova wording should stay
-      relevant without sounding like PELS guarantees support eligibility. The
-      `smart_task_hours_remaining` trigger/card copy should use `hours` rather
-      than terse `h`, and make the card's arg title, title, and hint use the
-      same `or fewer` phrasing. Also soften `docs/smart-tasks.md`
-      rescue-leeway wording that currently says granting leeway is "harmless
-      when the task is already on track"; permissions persist, so the honest
-      claim is that they have no effect until the planned/rescue gate actually
-      applies. Reword `smartTaskRescueStrings.ts` errors to avoid planner /
-      internal terms: `Choose what this smart task may do.`, `Choose when this
-      applies: at no time, or while the smart task is scheduled to run.`, and
-      `That device has no smart task yet — add a smart task first.` Rephrase
-      `docs/daily-budget-weights.md` guidance that tells users to raise
-      capacity/load assumptions; use "lower the daily budget or review which
-      devices count as managed vs background" for the hard-cap physical model.
-      Files: `README.md`, `.homeycompose/app.json`,
-      `.homeycompose/flow/**/*smart_task*`, `docs/smart-tasks.md`,
-      `docs/daily-budget-weights.md`, `docs/stromstyring-norge.md`,
+- [ ] Flow card + in-app + public-doc copy cleanup for smart-task rescue.
+      The rescue card should not over-promise: `Set what a smart task may
+      do` may grant daily-budget leeway or let the existing boost path
+      limit lower-priority devices, but it still stays inside the hard cap
+      and does not guarantee every target can be rescued. Highest-priority
+      copy fix: the `allow_smart_task_rescue` hint must stop saying `gets
+      the power it needs` and must not promise that changing the permission
+      `updates the schedule right away`; use "gets more room when
+      available" and "takes effect on the next plan refresh" / equivalent.
+      Norwegian Enova wording should stay relevant without sounding like
+      PELS guarantees support eligibility. The `smart_task_hours_remaining`
+      trigger/card copy should use `hours` rather than terse `h`, and make
+      the card's arg title, title, and hint use the same `or fewer`
+      phrasing. Also soften `docs/smart-tasks.md` rescue-leeway wording
+      that currently says granting leeway is "harmless when the task is
+      already on track"; permissions persist, so the honest claim is that
+      they have no effect until the planned/rescue gate actually applies.
+      Reword `smartTaskRescueStrings.ts` errors to avoid planner / internal
+      terms: `Choose what this smart task may do.`, `Choose when this
+      applies: at no time, or while the smart task is scheduled to run.`,
+      and `That device has no smart task yet — add a smart task first.`
+      Rephrase `docs/daily-budget-weights.md` guidance that tells users to
+      raise capacity/load assumptions; use "lower the daily budget or
+      review which devices count as managed vs background" for the
+      hard-cap physical model.
+      NOTE (2026-05-23): the previous version of this entry also asked to
+      replace `power limit` with `hard cap` in `README.md` and
+      `.homeycompose/app.json` keywords. Reverted: the README + App Store
+      surfaces are pre-onboarding marketing copy where users have NOT yet
+      seen the in-app `hard cap` vocabulary, so jargon-leaking the
+      canonical term into discovery surfaces makes the description less
+      legible, not more. Keep the ambiguous everyday phrasing
+      ("hourly power limit") in README/app.json keywords; the in-app
+      surfaces (where users have a referent) stay on `hard cap` per
+      `notes/ui-terminology.md`.
+      Files: `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
+      `.homeycompose/flow/**/*smart_task_hours_remaining*`,
+      `docs/smart-tasks.md`, `docs/daily-budget-weights.md`,
+      `docs/stromstyring-norge.md`,
       `packages/shared-domain/src/smartTaskRescueStrings.ts`, generated
       `app.json` after `homey app validate`.
       Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
-      release-review refresh, 2026-05-22.
+      release-review refresh, 2026-05-22; README/App-Store scope reverted
+      2026-05-23.
 
 - [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
       upstream has a non-breaking 6.x path. Current lock:
@@ -137,11 +148,6 @@ release, not v2.7.1 merge-blockers.*
 
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
-
-- [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
-      in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
-      previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
-      app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
 
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
@@ -1467,7 +1473,7 @@ consolidation + a11y polish (8 P2)`.*
       carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
       Remaining work is to move the last flow-backed binary transport details fully behind
       `DeviceManager`.
-      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
+      Files: `lib/executor/**`, `lib/device/manager.ts`, binary transport tests.
 - [ ] Define the binary operating precondition for temperature-lowered devices.
       `set_temperature` limiting currently lowers the target only. For devices that also expose
       binary control, decide whether an observed off state should be treated as drift and turned
@@ -1494,7 +1500,7 @@ consolidation + a11y polish (8 P2)`.*
       `lib/plan/planState.ts`, `lib/utils/appTypeGuards.ts`.
 - [ ] Replace deeply partial flow-reported capability state with a normalized runtime
       representation at the boundary.
-      Files: `lib/core/flowReportedCapabilities.ts`.
+      Files: `lib/device/flowReportedCapabilities.ts`.
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
@@ -1531,8 +1537,8 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
       applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
       third time inside `resolveParseDeviceIdentity`.
-      Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerParseDevice.ts`,
-      `lib/core/deviceManagerParseIdentity.ts`.
+      Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
+      `lib/device/managerParseIdentity.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
@@ -1673,7 +1679,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
 - [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
-      `lib/core/deviceManagerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
+      `lib/device/managerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
       `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
       device temperature value hasn't moved but another capability (target_temperature,
       measure_power, evcharger_charging_state, etc.) emits a fresh `lastUpdated`, the
@@ -1701,7 +1707,7 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
       restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
-      awaiting `refreshSnapshot()`; `lib/core/deviceManager.ts:1457-1460` emits
+      awaiting `refreshSnapshot()`; `lib/device/manager.ts:1457-1460` emits
       `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
       plan rebuild fires before the snapshot resolves and
       `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
@@ -1716,7 +1722,7 @@ consolidation + a11y polish (8 P2)`.*
       first `refreshSnapshot()` completes (or until a configurable bound expires).
       Regression: start the app with an unresolvable Homey Manager fetch and confirm no
       `deferred_objective_unknown` is emitted until the snapshot bound elapses.
-      Files: `app.ts`, `lib/core/deviceManager.ts`,
+      Files: `app.ts`, `lib/device/manager.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
@@ -2371,7 +2377,7 @@ should not be folded into the same PR.
 - [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
       Per-charger automation profile (enabled, target percent or kWh, ready-by time,
       enforcement, speed mode, optional manual kW and derating) plus a hook on the
-      `sessionStartedAtMs` boundary in `lib/core/deviceStateOfCharge.ts` that materializes the
+      `sessionStartedAtMs` boundary in `lib/device/stateOfCharge.ts` that materializes the
       defaults into a `DeferredObjectiveSettingsV1` entry through the same upsert path the flow
       card uses. Persistence must align with the shared `PersistedSettingsState<T>` helper from
       `notes/persisted-settings-state.md`.
@@ -2379,7 +2385,7 @@ should not be folded into the same PR.
       `set_ev_charge_deadline` manually, but the v1 flow-card path is workable without it.
       Design: `notes/ev-ready-by/README.md`.
       Files: new `packages/contracts/src/evChargerDefaults.ts`,
-      new `lib/app/evChargerDefaultsWiring.ts`, `lib/core/deviceStateOfCharge.ts`,
+      new `lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`,
       defaults / auto-trigger tests.
 - [ ] EV deadline polish: manual override actions and urgency rule.
       Add `charge_now` and `pause_until_next_planned_slot` flow actions. Add a

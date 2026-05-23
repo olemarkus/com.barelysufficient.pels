@@ -5,14 +5,14 @@ import {
   extractLiveHomePowerWatts,
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
-} from './deviceManagerEnergy';
+} from './managerEnergy';
 import {
   DEVICES_API_PATH,
   getEnergyLiveReport,
   getRawDevice,
   getRawDevices,
   logDeviceManagerRuntimeError,
-} from './deviceManagerHomeyApi';
+} from './managerHomeyApi';
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
 

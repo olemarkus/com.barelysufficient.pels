@@ -3,7 +3,7 @@ import {
   createBinarySettleState,
   notePendingBinarySettleObservation,
   startPendingBinarySettleWindow,
-} from '../lib/core/deviceManagerBinarySettle';
+} from '../lib/device/managerBinarySettle';
 
 describe('deviceManagerBinarySettle device identity hygiene', () => {
   it('does not emit a duplicate lifecycle log when a binary settle window starts', () => {

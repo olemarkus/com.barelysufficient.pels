@@ -16,9 +16,9 @@ import {
   applyNativeEvWiringOverlay,
   hasOfficialEvChargerCapabilities,
 } from './nativeEvWiring';
-import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './deviceManagerControl';
-import { resolveDeviceCapabilities } from './deviceManagerParse';
-import type { DeviceManagerParseProviders } from './deviceManagerParseDevice';
+import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
+import { resolveDeviceCapabilities } from './managerParse';
+import type { DeviceManagerParseProviders } from './managerParseDevice';
 import {
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
@@ -36,7 +36,7 @@ import {
   resetTargetPowerContractLogStateForTests,
   warnIfTargetPowerCapabilityViolatesContract,
 } from './targetPowerContractWarn';
-import { resolveDeviceCompatibilityTargetPowerConfig } from './deviceCompatibility';
+import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'

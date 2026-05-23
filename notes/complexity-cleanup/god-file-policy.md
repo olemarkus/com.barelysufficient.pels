@@ -31,14 +31,14 @@ skips blank lines and comments.
 
 | File | LOC | Current direction |
 |---|---:|---|
-| `lib/core/deviceManager.ts` | 1993 | Bucket B for now; only split further on a clear subsystem boundary. |
+| `lib/device/manager.ts` | 1993 | Bucket B for now; only split further on a clear subsystem boundary. |
 | `app.ts` | 1635 | Bucket A: continue lifecycle/context shrink. |
 | `lib/diagnostics/deviceDiagnosticsService.ts` | 1294 | Bucket B until starvation flows/insights split naturally. |
 | `lib/plan/planRestore.ts` | 1287 | Bucket A: reduce repeated restore gates/wrappers. |
 | `flowCards/registerFlowCards.ts` | 1148 | Bucket B unless registration gains deeper behavior. |
 | `lib/plan/planBuilder.ts` | 1102 | Bucket A: keep extracting focused builder helpers as ownership clarifies. |
 | `lib/plan/planReasons.ts` | 1027 | Bucket A: continue decision/render boundary cleanup. |
-| `lib/core/deviceManagerObservation.ts` | 978 | Bucket A: separate observation/freshness merge from debug-source capture if still useful. |
+| `lib/device/managerObservation.ts` | 978 | Bucket A: separate observation/freshness merge from debug-source capture if still useful. |
 | `lib/plan/planService.ts` | 860 | Bucket A: extract rebuild metrics/tracing. |
 | `lib/executor/planExecutor.ts` | 833 | Bucket B for now: remaining dispatch is intentionally centralized. |
 | `packages/settings-ui/src/ui/views/BudgetOverview.tsx` | 808 | Bucket A: split per-surface view logic once Budget UI settles. |
@@ -66,7 +66,7 @@ skips blank lines and comments.
 | `lib/app/appInit.ts` | 516 | Bucket A: delete or inline once remaining adapter value is gone. |
 | `lib/power/tracker.ts` | 512 | Bucket A: normalize persisted/runtime state boundaries. |
 | `lib/app/appDeviceControlHelpers.ts` | 510 | Bucket A: trim or split by control surface. |
-| `lib/core/deviceManagerParseDevice.ts` | 501 | Bucket A: keep under default after next helper extraction. |
+| `lib/device/managerParseDevice.ts` | 501 | Bucket A: keep under default after next helper extraction. |
 | `lib/app/appPowerHelpers.ts` | 15 | No longer a god file; old Phase 8 split has landed. |
 
 ## Migration Sequence

@@ -5,7 +5,7 @@ import {
   resolveEvChargingStateBinaryEvidence,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
-} from './deviceManagerControl';
+} from './managerControl';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 export function resolveParsedControlState(params: {

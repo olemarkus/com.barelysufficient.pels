@@ -1,11 +1,11 @@
 import type { HomeyDeviceLike } from '../utils/types';
-import type { DeviceManagerParseProviders } from './deviceManagerParseDevice';
+import type { DeviceManagerParseProviders } from './managerParseDevice';
 import {
   getDeviceId,
   resolveDeviceClassKey,
   resolveDeviceLabel,
-} from './deviceManagerHelpers';
-import { applyDeviceCompatibilityMetadata } from './deviceCompatibility';
+} from './managerHelpers';
+import { applyDeviceCompatibilityMetadata } from './compatibility';
 
 export type ParsedDeviceIdentity = {
   deviceId: string;

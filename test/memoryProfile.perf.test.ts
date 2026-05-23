@@ -60,22 +60,21 @@ describe('memory profile', () => {
     // Diagnostics
     profileRequire('diagnostics/deviceDiagnosticsService', '../lib/diagnostics/deviceDiagnosticsService', baseline);
 
-    // Core/Power — broken down
+    // Power/Device — broken down
     profileRequire('power/estimate', '../lib/power/estimate', baseline);
-    profileRequire('core/powerMeasurement', '../lib/core/powerMeasurement', baseline);
-    profileRequire('core/deviceManagerHelpers', '../lib/core/deviceManagerHelpers', baseline);
-    profileRequire('core/deviceManagerParse', '../lib/core/deviceManagerParse', baseline);
-    profileRequire('core/deviceManagerControl', '../lib/core/deviceManagerControl', baseline);
-    profileRequire('core/deviceManagerFetch', '../lib/core/deviceManagerFetch', baseline);
-    profileRequire('core/deviceManagerEnergy', '../lib/core/deviceManagerEnergy', baseline);
-    profileRequire('core/deviceManagerRuntime', '../lib/core/deviceManagerRuntime', baseline);
-    profileRequire('core/deviceManagerHomeyApi', '../lib/core/deviceManagerHomeyApi', baseline);
-    profileRequire('core/deviceManagerRealtimeHandlers', '../lib/core/deviceManagerRealtimeHandlers', baseline);
-    profileRequire('core/deviceManagerRealtimeSupport', '../lib/core/deviceManagerRealtimeSupport', baseline);
-    profileRequire('core/deviceLoad', '../lib/core/deviceLoad', baseline);
+    profileRequire('device/managerHelpers', '../lib/device/managerHelpers', baseline);
+    profileRequire('device/managerParse', '../lib/device/managerParse', baseline);
+    profileRequire('device/managerControl', '../lib/device/managerControl', baseline);
+    profileRequire('device/managerFetch', '../lib/device/managerFetch', baseline);
+    profileRequire('device/managerEnergy', '../lib/device/managerEnergy', baseline);
+    profileRequire('device/managerRuntime', '../lib/device/managerRuntime', baseline);
+    profileRequire('device/managerHomeyApi', '../lib/device/managerHomeyApi', baseline);
+    profileRequire('device/managerRealtimeHandlers', '../lib/device/managerRealtimeHandlers', baseline);
+    profileRequire('device/managerRealtimeSupport', '../lib/device/managerRealtimeSupport', baseline);
+    profileRequire('device/load', '../lib/device/load', baseline);
     profileRequire('power/capacityGuard', '../lib/power/capacityGuard', baseline);
     profileRequire('power/tracker', '../lib/power/tracker', baseline);
-    profileRequire('core/deviceManager', '../lib/core/deviceManager', baseline);
+    profileRequire('device/manager', '../lib/device/manager', baseline);
 
     // App-level
     profileRequire('app/appResourceWarningHelpers', '../lib/app/appResourceWarningHelpers', baseline);

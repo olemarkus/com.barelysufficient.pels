@@ -1,6 +1,6 @@
 import type { MockInstance } from 'vitest';
 
-import { DeviceManager } from '../lib/core/deviceManager';
+import { DeviceManager } from '../lib/device/manager';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
 

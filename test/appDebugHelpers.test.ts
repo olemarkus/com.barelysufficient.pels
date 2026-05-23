@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import type { DeviceManager } from '../lib/core/deviceManager';
+import type { DeviceManager } from '../lib/device/manager';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import {
   getHomeyDevicesForDebugFromApp,
@@ -7,7 +7,7 @@ import {
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
 } from '../lib/app/appDebugHelpers';
-import { resetRestClient, setRestClient } from '../lib/core/deviceManagerHomeyApi';
+import { resetRestClient, setRestClient } from '../lib/device/managerHomeyApi';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];

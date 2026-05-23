@@ -1,9 +1,9 @@
 import type { Logger } from '../utils/types';
-import type { LiveDevicePowerWatts } from './deviceManagerEnergy';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
-import { updateLastKnownPower } from './deviceManagerRuntime';
-import { readDeviceMeasuredPowerObservation } from './deviceMeasuredPowerReader';
-import type { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
+import type { LiveDevicePowerWatts } from './managerEnergy';
+import type { DeviceCapabilityMap } from './managerControl';
+import { updateLastKnownPower } from './managerRuntime';
+import { readDeviceMeasuredPowerObservation } from './measuredPowerReader';
+import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import type { PowerEstimateState } from '../power/estimate';
 
 export function resolveMeasuredPowerKw(params: {

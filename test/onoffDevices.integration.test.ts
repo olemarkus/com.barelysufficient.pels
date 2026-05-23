@@ -5,7 +5,7 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
-import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
+import * as homeyApi from '../lib/device/managerHomeyApi';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
