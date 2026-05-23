@@ -205,19 +205,23 @@ release, not v2.7.1 merge-blockers.*
       - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
         warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
         power bar now renders segmented [managed][background] blocks on a single track,
-        and the section labels reuse the shared `.eyebrow` primitive. Budget / Usage /
-        Smart tasks / Settings / Advanced headers + the deadline-plan hero still need
-        the same rebind.
+        and the section labels reuse the shared `.eyebrow` primitive.
+      - **Budget / Usage / Settings / Advanced headers rebound (2026-05-23 batch 7
+        partial PR):** all four now render via `.plan-hero` / `.pels-hero` with the
+        shared `.eyebrow` + `.plan-hero__headline` cascade; the per-surface
+        `.budget-page-header__title` one-off was dropped. The deadline-plan hero
+        (`DeadlinePlan.tsx`) still needs the same rebind — agent ran out of context
+        mid-flight; see commit message on PR for partial-completion rationale. Pin the
+        deadline-plan hero rebind as the next focused PR.
+      - **Tonal-gradient mobile-media-query duplicates folded (same partial PR):**
+        the four `data-tone="good|warn|alert|info"` overrides previously declared
+        twice — once in the main `.plan-hero[data-tone="…"]` block and once in a
+        mobile media query — now consolidate to a single declaration site.
       - **Info as a role is sparse on Overview** — only the Smart-task chip and the
         info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
         neutral explanation), but worth confirming during hero work that we're not
         artificially restraining it; if there's a natural "Price low / Price high" hint
         for the hero meta-row, use info there.
-      - **Deadline-plan tonal hero gradient declarations duplicated in a mobile
-        media query.** The four `data-tone="good|warn|alert|info"` gradient
-        overrides added near `style.css:7268-7319` should fold into the same
-        shared hero primitive instead of carrying a second per-tone declaration
-        site.
       Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
       across views with subtle per-page variations (padding, border colour, ripple behaviour,
       focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
@@ -266,6 +270,21 @@ release, not v2.7.1 merge-blockers.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
+      asymmetry when it wraps. PR #1016 routes the Budget header through
+      the shared `.plan-hero` primitive with a `.plan-hero__chips` row
+      carrying the price-level chip and the Plan/Adjust toggle. The
+      toggle uses `margin-left: auto` (style.css:4643) to sit flush
+      right when no chip is shown; when the row narrows below the
+      combined width the toggle wraps to its own flex line and the
+      `auto` margin pushes it to the right edge while the chip sits at
+      the left — readable but cosmetically asymmetric against the
+      headline below. Either drop the `margin-left: auto` (let the
+      parent's `justify-content` handle alignment) or align both edges
+      intentionally on wrap. Cosmetic; bounded one-rule fix.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
 
 - [ ] Eligibility-count flicker hardening for the new
       `countConcurrentEligibleTasks` helper. Today the count is read from

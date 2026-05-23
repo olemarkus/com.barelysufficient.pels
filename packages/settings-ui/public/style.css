@@ -2246,6 +2246,13 @@ md-primary-tab.tab[active]:hover {
 /* M3: one tonal story per surface. Hero rim + status chip carry the warn/alert
    signal; the headline value stays neutral. */
 .plan-hero__headline {
+  /* `margin: 0` resets the legacy `.pels-hero h2 { margin: 4px 0 0 }`
+     cascade so the consolidated primitive owns its own block-start spacing.
+     Before the batch-7 rebind only Smart-tasks rendered the headline via
+     `.plan-hero__headline`; afterwards Budget / Usage / Settings / Advanced
+     all do too, so the legacy 4 px nudge would otherwise leak onto five
+     surfaces. */
+  margin: 0;
   color: var(--pels-text-display-color);
   font-size: var(--pels-text-display-font-size);
   font-weight: var(--pels-text-display-font-weight);
@@ -4631,60 +4638,16 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-3);
 }
 
-/* Consolidated Budget page header (v2.7.3 rhythm pass): folds the previous
-   panel-level `pels-hero` (eyebrow + h2) and the Plan/Adjust segmented control
-   into one row, recovering ~80–90 px of vertical chrome at 480 px. The mode
-   toggle becomes a tertiary text button on the right; the price-level chip
-   (recovered from PR9 Overview demotion) rides in between. */
-.budget-page-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--spacing-2) var(--spacing-3);
-  padding: var(--spacing-3) 0 var(--spacing-2);
-}
-
-.budget-page-header__heading {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.budget-page-header__title {
-  margin: 0;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--font-line-height-tight);
-  color: var(--pels-text-headline-color);
-}
-
-.budget-page-header__chips {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--spacing-1);
-  min-width: 0;
-  flex-wrap: wrap;
-}
-
-.budget-page-header__chips:empty {
-  display: none;
-}
-
+/* Budget page header now consumes the shared `.plan-hero` / `.pels-hero`
+   primitive — eyebrow + headline + chip-row inherit the same typography,
+   surface, and tone scaffolding the four sibling panels render. The only
+   per-surface override is the Plan/Adjust toggle's alignment so it sits
+   flush to the right of the headline row when there is no chip (and on the
+   chip rail otherwise). */
 .budget-page-header__action {
-  justify-self: end;
-}
-
-/* Below 360 px the three-column grid runs out of room — drop the action onto
-   its own row so headline + chips can use the full width. */
-@media (max-width: 360px) {
-  .budget-page-header {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-  .budget-page-header__action {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
 }
 
 .budget-redesign-allocation-warning {
@@ -7201,17 +7164,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
      "Above safe pace", "Simulation mode") + role-coloured meter overflow
      segments + role-coloured status text, not from a coloured card edge.
      Mobile keeps the original tone-coloured edge (different aesthetic
-     for the dark canvas). */
-  .plan-hero[data-tone="good"],
-  .pels-hero[data-tone="good"],
-  .plan-hero[data-tone="warn"],
-  .pels-hero[data-tone="warn"],
-  .plan-hero[data-tone="alert"],
-  .pels-hero[data-tone="alert"],
-  .plan-hero[data-tone="info"],
-  .pels-hero[data-tone="info"] {
-    background: var(--color-surface-1);
-    border-color: var(--color-border-default);
+     for the dark canvas), so this neutralisation is gated to wider
+     viewports — at ≤480 px we let the default `.pels-hero[data-tone=…]`
+     gradients carry the tonal story for every surface (Overview, Budget,
+     Usage, Smart tasks, Deadline plan), removing the second per-tone
+     declaration site that used to live in `@media (max-width: 480px)`. */
+  @media (min-width: 481px) {
+    .plan-hero[data-tone="good"],
+    .pels-hero[data-tone="good"],
+    .plan-hero[data-tone="warn"],
+    .pels-hero[data-tone="warn"],
+    .plan-hero[data-tone="alert"],
+    .pels-hero[data-tone="alert"],
+    .plan-hero[data-tone="info"],
+    .pels-hero[data-tone="info"] {
+      background: var(--color-surface-1);
+      border-color: var(--color-border-default);
+    }
   }
 
   /* Power meter — fill on track. `--pels-status-good` is `#5eead4` (light
@@ -7294,51 +7263,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
-@media (max-width: 480px) {
-  #deadline-plan-panel .plan-hero,
-  #deadlines-panel .deadlines-list-hero {
-    background: var(--pels-surface-container-high);
-    border-color: var(--pels-surface-outline);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
-  }
-
-  #deadline-plan-panel .plan-hero[data-tone="good"],
-  #deadlines-panel .deadlines-list-hero[data-tone="good"] {
-    background: linear-gradient(
-      180deg,
-      var(--color-state-positive-bg),
-      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
-    );
-    border-color: var(--color-state-positive-border);
-  }
-
-  #deadline-plan-panel .plan-hero[data-tone="warn"],
-  #deadlines-panel .deadlines-list-hero[data-tone="warn"] {
-    background: linear-gradient(
-      180deg,
-      var(--color-state-warning-bg),
-      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
-    );
-    border-color: var(--color-state-warning-border);
-  }
-
-  #deadline-plan-panel .plan-hero[data-tone="alert"],
-  #deadlines-panel .deadlines-list-hero[data-tone="alert"] {
-    background: linear-gradient(
-      180deg,
-      var(--color-state-negative-bg),
-      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
-    );
-    border-color: var(--color-state-negative-border);
-  }
-
-  #deadline-plan-panel .plan-hero[data-tone="info"],
-  #deadlines-panel .deadlines-list-hero[data-tone="info"] {
-    background: linear-gradient(
-      180deg,
-      var(--color-state-info-bg),
-      color-mix(in srgb, var(--color-surface-3) 98%, transparent)
-    );
-    border-color: var(--color-state-info-border);
-  }
-}
+/* Tonal hero gradient restoration that previously lived here
+   (`#deadline-plan-panel .plan-hero[data-tone="…"]` + the matching
+   `#deadlines-panel .deadlines-list-hero[data-tone="…"]` overrides) has been
+   folded into the shared `.pels-hero` primitive: the desktop neutralisation
+   above is now gated to `(min-width: 481px)`, so the default tonal gradients
+   at the top of this file carry the per-tone story for every surface at the
+   narrow webview width without a second per-surface declaration site. */
