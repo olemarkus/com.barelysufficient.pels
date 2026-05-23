@@ -60,41 +60,56 @@
   --docs-transition-fast: 0.15s ease;
   --docs-transition-default: 0.2s ease;
 
-  /* Brand accent - same defaults as settings/tokens.css */
-  --docs-color-brand-rgb: 34, 197, 94;
-  --docs-color-accent-rgb: 34, 197, 94;
+  /*
+   * Brand accent - same defaults as settings/tokens.css.
+   *
+   * Per-line `from <settings-token>` comments record the dark-theme source
+   * token in `settings/tokens.css` each hex/rgb mirrors. Values not directly
+   * present in the dark token set carry their light-palette origin from
+   * `packages/settings-ui/public/style.css` (the `@media (hover: hover) and
+   * (pointer: fine)` block, which itself mirrors Homey's iframe variables).
+   * Mirroring is manual; a future audit cross-checks these annotations against
+   * the source tokens to spot drift.
+   */
+  --docs-color-brand-rgb: 34, 197, 94;   /* from --color-base-accent-default-rgb */
+  --docs-color-accent-rgb: 34, 197, 94;  /* from --color-base-accent-default-rgb */
   --docs-color-accent: rgb(var(--docs-color-accent-rgb));
-  --docs-color-on-accent: #0c1610;
-  --docs-color-on-accent-strong: #ffffff;
-  --docs-color-accent-text: #126c33;
-  --docs-color-accent-text-hover: #0e5526;
-  --docs-color-accent-hover: #15803d;
-  --docs-color-accent-active: #126c33;
+  --docs-color-on-accent: #0c1610;       /* from --color-base-accent-on */
+  --docs-color-on-accent-strong: #ffffff; /* from --color-base-white */
+  --docs-color-accent-text: #126c33;     /* light-palette accent-text (no dark token; light AA-readable green) */
+  --docs-color-accent-text-hover: #0e5526; /* light-palette accent-text hover (no dark token) */
+  --docs-color-accent-hover: #15803d;    /* from --color-base-accent-dark */
+  --docs-color-accent-active: #126c33;   /* light-palette accent-active (no dark token; matches accent-text) */
   --docs-color-accent-soft: rgba(var(--docs-color-brand-rgb), 0.1);
   --docs-color-accent-soft-strong: rgba(var(--docs-color-brand-rgb), 0.18);
   --docs-color-accent-border: rgba(var(--docs-color-accent-rgb), 0.28);
 
-  /* Homey light surfaces used by the settings UI desktop override */
-  --docs-color-bg: #f6f7fb;
-  --docs-color-bg-alt: #fafbfd;
-  --docs-color-bg-soft: #f1f2f6;
-  --docs-color-bg-elevated: #ffffff;
-  --docs-color-bg-gradient-start: #f6f7fb;
-  --docs-color-bg-gradient-end: #f1f2f6;
-  --docs-color-navbar-bg: rgba(246, 247, 251, 0.92);
-  --docs-color-accent-secondary: #4ade80;
-  --docs-color-surface-card: #ffffff;
-  --docs-color-surface-card-accent: #ffffff;
+  /*
+   * Homey light surfaces used by the settings UI desktop override.
+   * Source values live in `packages/settings-ui/public/style.css` desktop
+   * (`hover: hover`) block; the dark counterpart in `settings/tokens.css` is
+   * named in each comment so a future audit can spot drift on either side.
+   */
+  --docs-color-bg: #f6f7fb;              /* light override of --color-base-black; dark value is #0c111b (Homey ice-white) */
+  --docs-color-bg-alt: #fafbfd;          /* light override of --color-surface-2; dark value is #181e29 (Homey mono-01) */
+  --docs-color-bg-soft: #f1f2f6;         /* light override of --color-surface-3; dark value is #1d2430 (Homey mono-02) */
+  --docs-color-bg-elevated: #ffffff;     /* light override of --color-surface-1; dark value is #141923 (Homey mono-0 / component) */
+  --docs-color-bg-gradient-start: #f6f7fb; /* mirrors --docs-color-bg */
+  --docs-color-bg-gradient-end: #f1f2f6;   /* mirrors --docs-color-bg-soft */
+  --docs-color-navbar-bg: rgba(246, 247, 251, 0.92); /* --docs-color-bg at 0.92 alpha */
+  --docs-color-accent-secondary: #4ade80; /* from --color-base-accent-light */
+  --docs-color-surface-card: #ffffff;    /* light override of --color-surface-1; dark value is #141923 */
+  --docs-color-surface-card-accent: #ffffff; /* light override of --color-surface-1; dark value is #141923 */
 
   /* Borders / dividers */
-  --docs-color-border: #dddee2;
-  --docs-color-border-strong: #939496;
-  --docs-color-text-primary: #181818;
-  --docs-color-text-secondary: #606266;
-  --docs-color-text-muted: #7a7b7d;
+  --docs-color-border: #dddee2;          /* light override of --color-border-default (Homey mono-10 / line); dark value is #2a3340 */
+  --docs-color-border-strong: #939496;   /* light override of --color-border-strong (Homey mono-40); dark value is #56627a */
+  --docs-color-text-primary: #181818;    /* light override of --color-base-gray-50 / --color-semantic-text-primary (Homey mono-90); dark value is #e6ecf5 */
+  --docs-color-text-secondary: #606266;  /* docs-only mid-gray; no exact settings token (light settings uses #7a7b7d for --color-base-gray-100; docs picks slightly darker for body-copy contrast) */
+  --docs-color-text-muted: #7a7b7d;      /* light override of --color-base-gray-100 / --color-semantic-text-secondary (Homey mono-50); dark value is #9ba6b7 */
 
   /* Mark / device-screenshot backdrop uses the settings UI dark mobile canvas */
-  --docs-color-device-frame: #141923;
+  --docs-color-device-frame: #141923;    /* from --color-surface-1 mobile-dark value (intentional — device-frame mock should read as a dark device chrome) */
 
   /* Touch targets (M3-style) */
   --docs-touch-target-min: 48px;

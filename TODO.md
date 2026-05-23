@@ -536,36 +536,6 @@ release, not v2.7.1 merge-blockers.*
       `test/deferredObjectivePlanHistory.test.ts`.
       Source: `pels-runtime-reality`, v2.9.0 retrospective, 2026-05-23.
 
-- [ ] Rewrite the `detectHourRollover` comment that calls the opening reading
-      a close-of-hour reading. The implementation anchors
-      `currentHourOpening` at the first trustworthy reading in an hour, keeps
-      that anchor during same-hour ticks, then attributes the open-to-open
-      delta to the opening hour when the next hour is observed. The current
-      comment documents the math backwards and invites a future "fix" that
-      would break the conservative attribution model.
-      Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts`.
-      Source: adversarial runtime review, v2.9.0 closeout, 2026-05-23.
-
-- [ ] Annotate or generate the docs light-palette mirror.
-      `docs/.vitepress/theme/custom.css` carries a small semantic mirror of
-      settings-UI palette values because the docs build cannot import the
-      dark-first token file directly, but the raw hex literals have no
-      per-token source comments or drift check. Either annotate each hex with
-      the source settings token name or generate a light-palette token file
-      during docs build.
-      Files: `docs/.vitepress/theme/custom.css`,
-      `settings/tokens.css`, docs build scripts if generated.
-      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
-
-- [ ] Document the new `set_ev_charging_phase` Flow action in
-      `docs/flow-cards.md`. The Homey action card exists, but the docs action
-      table still has no row explaining that it records the charger's current
-      one-phase / three-phase mode for planning and does not switch hardware.
-      Files: `docs/flow-cards.md`,
-      `.homeycompose/flow/actions/set_ev_charging_phase.json` (reference).
-      Source: adversarial docs review, v2.9.0 closeout, 2026-05-23.
-
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
 overall `kwhPerUnit.confidence` now reflects the pooled within-band residual,
