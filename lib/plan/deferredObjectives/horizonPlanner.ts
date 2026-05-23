@@ -27,6 +27,10 @@ export const planDeferredObjectiveHorizon = (
 ): DeferredObjectiveHorizonPlan => {
   const epsilonKWh = normalizeEpsilon(input.epsilonKWh);
   const energyNeededKWh = normalizeEnergyNeededKWh(input.objective.energyNeededKWh);
+  const varianceMarginKWh = normalizeVarianceMarginKWh(
+    input.objective.energyExpectedKWh,
+    energyNeededKWh,
+  );
   const deadlineMarginMs = normalizeDeadlineMarginMs(input.objective.deadlineMarginMs);
   const invalidDetail = resolveInvalidDetail({
     nowMs: input.nowMs,
@@ -121,6 +125,7 @@ export const planDeferredObjectiveHorizon = (
     input,
     deadlineMarginMs,
     energyNeededKWh,
+    varianceMarginKWh,
     steps,
     allocation,
     epsilonKWh,
@@ -280,6 +285,7 @@ const buildPlanFromAllocation = (params: {
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
   budgetBound: boolean;
+  varianceMarginKWh: number;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -290,6 +296,7 @@ const buildPlanFromAllocation = (params: {
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetBound,
+    varianceMarginKWh,
   } = params;
   const statusResult = resolveStatus({
     allocation,
@@ -297,6 +304,7 @@ const buildPlanFromAllocation = (params: {
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetBound,
+    varianceMarginKWh,
   });
   const currentBucket = resolveCurrentBucketPlan({
     plannedBuckets: allocation.plannedBuckets,
@@ -357,8 +365,16 @@ const resolveStatus = (params: {
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
   budgetBound: boolean;
+  varianceMarginKWh: number;
 }): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
-  const { allocation, enforcement, epsilonKWh, feasibleOnClimbedBand, budgetBound } = params;
+  const {
+    allocation,
+    enforcement,
+    epsilonKWh,
+    feasibleOnClimbedBand,
+    budgetBound,
+    varianceMarginKWh,
+  } = params;
   if (allocation.unplannedUsefulEnergyKWh > epsilonKWh) {
     // The guaranteed floor cannot fit the target. Only call it impossible when
     // climbing to a higher step would not fit it either; otherwise the device
@@ -372,6 +388,21 @@ const resolveStatus = (params: {
     // or exempt the task) rather than a physical `cannot_meet`.
     if (budgetBound) {
       return { status: 'at_risk', statusDetail: 'limited_by_daily_budget' };
+    }
+    // The shortfall fits within the producer's variance margin (the integrated
+    // `k·SE` buffer baked into `energyNeededKWh` on top of the mean-based
+    // `energyExpectedKWh`). That means the *mean* rate would fit and only the
+    // conservative padding causes the gap — the estimate is uncertain, not the
+    // physics. Soften to `at_risk` so users aren't told "Cannot finish" purely
+    // because of an estimator buffer. The margin is itself confidence-aware (it
+    // scales with the band-residual SE from Step 2), so a high-confidence run
+    // has a small margin and this branch fires only on a correspondingly small
+    // shortfall.
+    if (
+      varianceMarginKWh > epsilonKWh
+      && allocation.unplannedUsefulEnergyKWh <= varianceMarginKWh + epsilonKWh
+    ) {
+      return { status: 'at_risk', statusDetail: 'estimate_uncertain' };
     }
     return { status: 'cannot_meet', statusDetail: 'target_cannot_be_met' };
   }
@@ -438,6 +469,18 @@ const resolveInvalidDetail = (params: {
 const normalizeEnergyNeededKWh = (energyNeededKWh: number): number => {
   if (!Number.isFinite(energyNeededKWh)) return Number.NaN;
   return Math.max(0, energyNeededKWh);
+};
+
+// Width of the producer's variance buffer (`energyNeededKWh − energyExpectedKWh`,
+// the integrated `k·SE`). Clamped at 0 when the expected estimate is missing or
+// not strictly less than the buffered need, so legacy callers / high-confidence
+// runs collapse the `estimate_uncertain` branch and behave exactly as before.
+const normalizeVarianceMarginKWh = (
+  energyExpectedKWh: number | undefined,
+  energyNeededKWh: number,
+): number => {
+  if (typeof energyExpectedKWh !== 'number' || !Number.isFinite(energyExpectedKWh)) return 0;
+  return Math.max(0, energyNeededKWh - energyExpectedKWh);
 };
 
 const normalizeDeadlineMarginMs = (deadlineMarginMs: number | undefined): number => (

@@ -33,6 +33,11 @@ export const resolveHorizonPlanWithRescue = (params: {
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
   energyNeededKWh: number;
+  // Mean-based pair to the buffered `energyNeededKWh`; the planner uses the
+  // gap (`needed − expected = k·SE`) to soften a floor shortfall to
+  // `at_risk`/`estimate_uncertain` when only the variance buffer causes the
+  // gap. `null` for legacy/bootstrap profiles collapses the margin to zero.
+  energyExpectedKWh: number | null;
   deadlineAtMs: number;
   steps: DeferredObjectiveStep[];
   commitment: ReturnType<typeof resolveCommittedHours>;
@@ -45,6 +50,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     deviceId,
     objective,
     energyNeededKWh,
+    energyExpectedKWh,
     deadlineAtMs,
     steps,
     commitment,
@@ -61,6 +67,7 @@ export const resolveHorizonPlanWithRescue = (params: {
       kind: objective.kind,
       enforcement: objective.enforcement,
       energyNeededKWh,
+      energyExpectedKWh: energyExpectedKWh ?? undefined,
       deadlineAtMs,
       deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
     },

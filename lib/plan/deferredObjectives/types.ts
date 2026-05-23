@@ -20,6 +20,7 @@ export type DeferredObjectiveHorizonStatus =
 export type DeferredObjectiveHorizonStatusDetail =
   | 'deadline_passed'
   | 'energy_already_met'
+  | 'estimate_uncertain'
   | 'feasible_above_floor'
   | 'limited_by_daily_budget'
   | 'invalid_bucket_plan'
@@ -38,6 +39,15 @@ export type DeferredObjective = {
   kind: DeferredObjectiveKind;
   enforcement: DeferredObjectiveEnforcement;
   energyNeededKWh: number;
+  // Mean-based estimate paired with the buffered `energyNeededKWh`. The
+  // difference (`energyNeededKWh − energyExpectedKWh`) is the integrated
+  // variance margin (`k·SE`) the producer baked into the plan as a conservative
+  // buffer. `resolveStatus` uses it to soften a `cannot_meet` to `at_risk`
+  // (`estimate_uncertain`) when the floor's shortfall falls within that margin
+  // — i.e. the mean rate would fit and only the buffered padding causes the
+  // gap. Optional for backward-compatibility; missing or invalid values
+  // collapse the margin to zero so the new branch never fires.
+  energyExpectedKWh?: number;
   deadlineAtMs: number;
   deadlineMarginMs?: number;
 };

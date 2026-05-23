@@ -351,6 +351,80 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.statusDetail).toBe('target_cannot_be_met');
   });
 
+  it('reports at_risk (estimate_uncertain) when the floor shortfall fits inside the variance margin', () => {
+    // Single-step device (so climbing can't rescue) with no budget caps (so the
+    // budget-bound probe finds the same uncapped capacity). Buffered need is
+    // 2.5 kWh; the mean is 2.0 kWh, so the producer's `k·SE` margin is 0.5 kWh.
+    // The 2 kW step over 1 h delivers 2.0 kWh — exactly the mean — leaving a
+    // 0.5 kWh shortfall that sits at the margin boundary. The mean would fit;
+    // only the conservative buffer pads us short. Soften to at_risk/
+    // estimate_uncertain rather than declaring physical cannot_meet.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2.5,
+        energyExpectedKWh: 2.0,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: [
+        { id: 'one', usefulPowerKw: 2 },
+      ],
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('estimate_uncertain');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(0.5);
+  });
+
+  it('still reports cannot_meet when the shortfall exceeds the variance margin', () => {
+    // Same single-step device, but the shortfall (1 kWh) is larger than the
+    // producer's `k·SE` margin (0.5 kWh) — the mean wouldn't fit either, so
+    // this is a genuine cannot_meet; the variance buffer doesn't excuse it.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 3,
+        energyExpectedKWh: 2.5,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: [
+        { id: 'one', usefulPowerKw: 2 },
+      ],
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+  });
+
+  it('does not invoke estimate_uncertain when energyExpectedKWh is absent (backward-compat: margin collapses to zero)', () => {
+    // Legacy callers that don't pass `energyExpectedKWh` (or pass it equal to
+    // `energyNeededKWh`) must produce the pre-Step-3 verdict. With no margin,
+    // any unplanned > epsilon is `cannot_meet`.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2.5,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: [
+        { id: 'one', usefulPowerKw: 2 },
+      ],
+      buckets: [
+        bucket(0, 'neutral'),
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.statusDetail).toBe('target_cannot_be_met');
+  });
+
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
