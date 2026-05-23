@@ -58,6 +58,30 @@ export type DeadlinesListHeroCopy = {
   readonly sublineTarget?: DeadlinesListHeroSublineTarget;
 };
 
+// States the Smart tasks panel renders a baseline (non-populated) header for.
+// Shared so the producer constant and the view's prop type cannot drift.
+export type DeadlinesListBaselineState = 'loading' | 'error' | 'empty';
+
+// Eyebrow rendered on the baseline Smart tasks header. Kept as the same
+// literal the populated hero emits via `DeadlinesListHeroCopy.eyebrow` so
+// runtime logs and screenshots quote one canonical label.
+export const DEADLINES_LIST_BASELINE_EYEBROW = 'Smart tasks';
+
+// Headlines rendered under the persistent Smart tasks header when the list is
+// loading / failing / empty. Sibling panels (Overview / Budget / Usage /
+// Settings) keep a persistent header in non-populated states; pulling the
+// labels into shared-domain mirrors the populated-hero copy chain so any
+// runtime log that references one of these states can quote the same wording
+// (Rule 4 — UI text shared with logs).
+export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
+  DeadlinesListBaselineState,
+  string
+> = {
+  loading: 'Loading your smart tasks…',
+  error: 'Smart tasks unavailable',
+  empty: 'Schedule a ready-by deadline',
+};
+
 // Status ids that escalate the hero's tonal voice. `paused_unplugged` is
 // classified as warn because the smart task can't progress until the user
 // plugs the EV back in — it's actionable, not "on track".

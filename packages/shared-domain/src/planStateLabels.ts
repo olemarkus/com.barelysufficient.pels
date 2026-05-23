@@ -37,6 +37,17 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
   unknown: 'neutral',
 };
 
+// Fallback status line for plan-card / stepped-load devices in the `held`
+// state when no richer per-device reason is available. Settings-UI consumers
+// (`PlanSteppedCard.tsx`, `PlanDeviceCards.tsx`) import this constant; the
+// three shared-domain reason helpers (`planSteppedCardText.ts`,
+// `planTemperatureCardText.ts`, `planReasonFormatting.ts`) still inline the
+// same literal — consolidating those three onto this constant alongside a
+// richer `resolvePlanGenericReasonText` helper is tracked in `TODO.md` under
+// the P2 "Overview device-card status copy" item. Rule 4 (UI text shared with
+// logs) holds because the values match across all five sites.
+export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Limited — staying under the hard cap';
+
 const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
 
 const isOffLike = (value: string | undefined): boolean => {

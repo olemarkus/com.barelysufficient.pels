@@ -525,11 +525,12 @@ export default tseslint.config(
   {
     // budgetRedesign hosts payload-to-prop derivation for hero, chart, adjust, confidence,
     // allocation-warning surfaces in one place, plus the price-level chip side-channel added
-    // in v2.7.3 (Budget chip recovery after PR9 Overview demotion). Target: <=500 once the
-    // per-surface resolvers move into their own modules alongside BudgetOverview.
+    // in v2.7.3 (Budget chip recovery after PR9 Overview demotion) and the shared-domain
+    // finish-of-day / headroom-line copy imports added in the v2.9 Rule-4 cleanup. Target:
+    // <=500 once the per-surface resolvers move into their own modules alongside BudgetOverview.
     files: ['packages/settings-ui/src/ui/budgetRedesign.ts'],
     rules: {
-      'max-lines': ['warn', { max: 535, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 545, skipBlankLines: true, skipComments: true }],
     },
   },
   {

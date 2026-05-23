@@ -3,6 +3,7 @@ import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import {
+  PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_LABEL,
   PLAN_STATE_TONE,
   type PlanStateKind,
@@ -209,10 +210,10 @@ const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
   }
   const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
   if (isTrivialReason(dev.reason)) {
-    return kind === 'held' ? 'Limited — staying under the hard cap' : '';
+    return kind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : '';
   }
   if (isDeviceReason(dev.reason)) return formatReasonSummary(dev.reason);
-  if (kind === 'held') return 'Limited — staying under the hard cap';
+  if (kind === 'held') return PLAN_STATE_HELD_FALLBACK_STATUS;
   // Final fallback for malformed snapshots — keep it user-facing so internal
   // planner terms never leak when the upstream reason payload is missing.
   return '';

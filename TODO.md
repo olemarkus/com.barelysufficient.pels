@@ -197,18 +197,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: `pels-runtime-reality` + `adversarial-review`, v2.8.0
       release-review pass.
 
-- [ ] Move Smart tasks panel baseline-state strings to shared-domain.
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx:221-263`
-      inlines `'Loading your smart tasks…'`, `'Smart tasks unavailable'`,
-      `'Schedule a ready-by deadline'`, and the baseline eyebrow
-      `'Smart tasks'` introduced by `0fadbd2d`. Extend
-      `packages/shared-domain/src/deadlinesListHero.ts` with a
-      `BASELINE_HEADLINE_BY_STATE` map mirroring the populated-hero
-      pattern so runtime logs can quote what users saw (Rule 4).
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/shared-domain/src/deadlinesListHero.ts`.
-      Source: `pels-copy-and-terminology`, v2.8.0 release-review pass.
-
 - [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
       rescue and hard-cap terminology. The rescue card should not
       over-promise: `Set what a smart task may do` may grant daily-budget
@@ -446,45 +434,6 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
 
-*v2.7.2 release-review findings (2026-05-18). Two copy-locality items
-from the `pels-copy-and-terminology` agent fan-out on `v2.7.1..HEAD`;
-graceful but should ship in the next patch.*
-
-- [ ] Move stepped-status fallback string to shared-domain.
-      `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx:115`
-      inlines `'Limited — staying under the hard cap'` as a fallback for
-      the stepped-load held state. All sibling status text already routes
-      through `resolveSteppedStatusLine` / `planStateLabels`; this
-      fallback should join them so the runtime planner log emits the
-      same wording when a stepped device is held without a profile.
-      Why P1: violates Rule 4 (UI text shared with logs) for a status
-      sentence newly introduced by the v2.7.2 train.
-      Acceptance: string lives in
-      `packages/shared-domain/src/planStateLabels.ts`; `PlanSteppedCard.tsx`
-      imports it with no inline literal; planner log emits identical text.
-      Files: `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx`,
-      `packages/shared-domain/src/planStateLabels.ts`.
-      Source: `pels-copy-and-terminology` agent, v2.7.2 release-review pass.
-
-- [ ] Move Budget finish-of-day hero sentences to shared-domain.
-      `packages/settings-ui/src/ui/budgetRedesign.ts:314,343,364`
-      introduces new user-visible decision sentences inlined in
-      settings-ui: `'Yesterday finished over budget.'`,
-      `'Yesterday finished within budget.'`,
-      `'Finished over the daily budget.'`,
-      `'Finished within budget.'`, plus the `resolveHeadroomLine` output.
-      The Budget page is the canonical "should I run loads now?" surface;
-      these decision sentences should live in shared-domain so any
-      planner / log echo can quote the exact phrasing the user saw.
-      Why P1: violates Rule 4 (UI text shared with logs) for newly
-      introduced hero copy.
-      Acceptance: strings move to a new
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`;
-      `budgetRedesign.ts` imports without inline literals.
-      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      new `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
-      Source: `pels-copy-and-terminology` agent, v2.7.2 release-review pass.
-
 ## P2 Product, Observability, and Maintainability
 
 - [ ] **Extend Slice 2 floor promotion beyond priority 1.** (Demoted from the v2.9 train P0
@@ -520,6 +469,51 @@ graceful but should ship in the next patch.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] Finish the Budget hero copy-locality pass alongside
+      `dailyBudgetHeroStrings.ts`. The v2.9 Rule-4 cleanup pulled the
+      finish-of-day decision sentences and the `resolveHeadroomLine` template
+      onto shared-domain, but the rest of the hero copy chain is still
+      inlined in settings-ui: `HEADLINE_LABEL_BY_VIEW` (`Yesterday's total` /
+      `Projected today` / `Planned for tomorrow`), the disabled-state
+      sentences `'Waiting for daily budget data'` / `'Daily budget off'`, and
+      the today-tone lines in `resolveTodayLine` /
+      `resolveChartSubtitle` (`'Projected to finish over budget.'` etc.).
+      Move them into `dailyBudgetHeroStrings.ts` so runtime logs and
+      screenshots quote one canonical source.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
+      2026-05-23.
+
+- [ ] Rename the new `dailyBudgetHeroStrings.ts` helper API to drop the
+      `Headroom` jargon. `composeHeadroomOverBudgetUsed`,
+      `composeHeadroomLeftToday`, and `composeHeadroomLineWithEstimate` are
+      new shared-domain symbols introduced by the v2.9 Rule-4 cleanup; the
+      visible strings already use "left in today's budget" / "over budget
+      already used" (no jargon), but the symbol names leak the banned term
+      per `notes/ui-terminology.md` Rule 1. Rename to `composeBudgetUsedOver`
+      / `composeBudgetRemainingToday` / `composeBudgetRemainingLineWithEstimate`
+      or similar. Also resolve the `est.` abbreviation in the template — Rule 3
+      bans abbreviations in visible labels; widen to `estimated` when the
+      pre-existing wording is reworked.
+      Files: `packages/shared-domain/src/dailyBudgetHeroStrings.ts`,
+      `packages/settings-ui/src/ui/budgetRedesign.ts`.
+      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
+      2026-05-23.
+
+- [ ] Route test/doc anchors through the shared-domain copy constants.
+      `test/deviceOverview.test.ts:147`, `test/planReasonUserFacing.test.ts:57`,
+      `packages/settings-ui/test/budgetRedesign.test.ts:155-156`, and
+      `docs/plan-states.md:35,55` still hardcode the literal
+      `"Limited — staying under the hard cap"` / `"Yesterday finished …"`
+      strings. Importing the constants would let a future rename in
+      shared-domain trip the tests instead of silently diverging.
+      Files: those above; constants in
+      `packages/shared-domain/src/planStateLabels.ts` and
+      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
+      2026-05-23.
 
 - [ ] Remove `!important` from the smart-task detail back button. The
       `.deadline-plan-back-button` rule overrides border radius, background,
@@ -976,19 +970,22 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
 
-- [ ] Overview device-card status copy is inlined in `PlanDeviceCards.tsx`
-      (and `PlanSteppedCard.tsx`) instead of routed through a shared-domain
-      helper, duplicating the same `"Limited — staying under the hard cap"`
-      / `"Still reporting … after pause — …"` strings against
-      `planTemperatureCardText.ts` and `planSteppedCardText.ts`. The v2.7.2
-      punctuation-drift PR fixed the separator but did not consolidate. Per
-      `feedback_ui_text_shared_with_logs`, UI-visible strings must live in
-      `packages/shared-domain/**` helpers so runtime logging picks up the same
-      wording. Surface for a follow-up: extract a `resolvePlanGenericReasonText`
-      helper alongside `resolveTemperatureReasonLine` and have both call sites
-      consume it.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/src/ui/views/PlanSteppedCard.tsx`,
+- [ ] Overview device-card status copy is still partially duplicated. The
+      v2.9 Rule-4 cleanup pulled the `"Limited — staying under the hard cap"`
+      literal out of the two settings-ui call sites (`PlanSteppedCard.tsx`,
+      `PlanDeviceCards.tsx`) and onto `PLAN_STATE_HELD_FALLBACK_STATUS` in
+      `planStateLabels.ts`, but the three sibling shared-domain helpers
+      (`planSteppedCardText.ts:261`, `planTemperatureCardText.ts:95`,
+      `planReasonFormatting.ts:359`) still inline the same literal, and the
+      `"Still reporting … after pause — …"` sentence remains duplicated across
+      the temperature/stepped helpers. Per `feedback_ui_text_shared_with_logs`,
+      UI-visible strings must live in `packages/shared-domain/**` helpers so
+      runtime logging picks up the same wording. Surface for a follow-up:
+      route the three helpers above through `PLAN_STATE_HELD_FALLBACK_STATUS`,
+      and extract a `resolvePlanGenericReasonText` helper alongside
+      `resolveTemperatureReasonLine` so all call sites consume one source.
+      Files: `packages/shared-domain/src/planSteppedCardText.ts`,
+      `packages/shared-domain/src/planTemperatureCardText.ts`,
       `packages/shared-domain/src/planReasonFormatting.ts`.
 
 - [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
