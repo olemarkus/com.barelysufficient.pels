@@ -396,6 +396,23 @@ describe('resolveHistoryDetailChartData', () => {
       expect(data.target).toBe(65);
     });
 
+    it('places metMarkerValue on the frozen finalProgress for stalled_device_capped met runs', () => {
+      // Connected 300 capped-internally regression: the chart marker lands
+      // on the plateau the device reached against its own setpoint cap,
+      // not the higher PELS-commanded target. Target line still renders.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled_device_capped',
+        metAtMs: DEADLINE_MS - 3 * HOUR_MS,
+        finalProgressC: 58,
+        targetTemperatureC: 65,
+        originalPlan: buildSnapshot(),
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.metMarkerValue).toBeCloseTo(58, 1);
+      expect(data.target).toBe(65);
+    });
+
     it('returns null metMarkerValue when no marker timestamp exists', () => {
       const missedEntry = buildEntry({
         outcome: 'missed',

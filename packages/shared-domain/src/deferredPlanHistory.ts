@@ -338,10 +338,10 @@ export const formatPlanHistoryMissedReason = (
   return 'The device did not reach the target before the deadline.';
 };
 
-// Outcome variant the postmortem resolver picks for a finalized entry. Six
-// concrete variants plus the `unknown` fallback so the consumer never has
-// to handle null. Producer resolves the variant once; the view layer reads
-// the resolved sentence and never re-derives.
+// Outcome variant the postmortem resolver picks for a finalized entry.
+// Concrete success/failure variants plus the `unknown` fallback so the
+// consumer never has to handle null. Producer resolves the variant once;
+// the view layer reads the resolved sentence and never re-derives.
 export type DeferredPlanHistoryPostmortemVariant =
   | 'met-with-margin'
   | 'met-with-overshoot'
@@ -354,6 +354,15 @@ export type DeferredPlanHistoryPostmortemVariant =
   // sentence is distinct so the user understands why the final reading is
   // below target.
   | 'met-by-stall'
+  // The device parked at a stable plateau several degrees below the PELS
+  // target while power cycled — the idle classifier reported `capped_idle`
+  // (`lib/observer/idleClassifier.ts`). The device's own internal setpoint
+  // cap is below the smart-task target, so the heater is doing the right
+  // thing against its own limit while PELS commanded higher. The result
+  // chip stays the standard `'ok'` "Succeeded", but the postmortem
+  // sentence names the device's own setpoint cap (not the PELS hard cap,
+  // per `feedback_hard_cap_is_physical.md`) as the cause.
+  | 'met-by-device-cap'
   | 'missed-by-shortfall'
   | 'missed-by-budget-exhaustion'
   | 'abandoned-by-clear'
@@ -520,6 +529,39 @@ const resolveStalledMetPostmortem = (
   };
 };
 
+const resolveDeviceCappedMetPostmortem = (
+  entry: PostmortemEntry,
+): DeferredPlanHistoryPostmortem => {
+  // The capped-idle path's defining feature is that the device parked
+  // several degrees below the PELS target because its own internal
+  // setpoint cap is lower. The recourse the user can act on is on the
+  // device itself — its setpoint cap noun (deliberately not "hard cap",
+  // which is the PELS-canonical physical-line concept per
+  // `feedback_hard_cap_is_physical.md`).
+  const finalLabel = formatFinalProgressValue(
+    entry.objectiveKind,
+    entry.finalProgressC,
+    entry.finalProgressPercent,
+  );
+  const targetLabel = formatTargetValue(
+    entry.objectiveKind,
+    entry.targetTemperatureC,
+    entry.targetPercent,
+  );
+  if (finalLabel !== null && targetLabel !== null) {
+    return {
+      variant: 'met-by-device-cap',
+      sentence: `Settled at ${finalLabel} against the device's own setpoint cap`
+        + ` — PELS commanded ${targetLabel} but the device holds itself lower.`,
+    };
+  }
+  return {
+    variant: 'met-by-device-cap',
+    sentence: 'The device reached its own setpoint cap below the smart task target'
+      + ' — PELS counted the run as done.',
+  };
+};
+
 const resolveMetPostmortem = (
   entry: PostmortemEntry,
   timeZone: string,
@@ -527,9 +569,14 @@ const resolveMetPostmortem = (
   // The stall promotion path is checked first so the postmortem reflects
   // the *reason* we marked the run done, not the timing math (which would
   // otherwise route a plateau that happens to fall in the final hour
-  // through `met-at-buzzer`). The recorder only sets `metReason: 'stalled'`
+  // through `met-at-buzzer`). The recorder only sets the stall metReasons
   // on outcomes it finalizes as `met`, so the field is authoritative once
-  // present.
+  // present. `'stalled'` and `'stalled_device_capped'` produce distinct
+  // sentences so the user understands whether the run landed inside the
+  // hysteresis band or against the device's own internal cap.
+  if (entry.metReason === 'stalled_device_capped') {
+    return resolveDeviceCappedMetPostmortem(entry);
+  }
   if (entry.metReason === 'stalled') {
     return resolveStalledMetPostmortem(entry);
   }
@@ -675,14 +722,19 @@ const resolveAbandonedPostmortem = (
 };
 
 /**
- * Composes a one-sentence postmortem for a finalized history entry. Six concrete
- * variants split across the three outcome shapes from
+ * Composes a one-sentence postmortem for a finalized history entry.
+ * Variants split across the three outcome shapes from
  * `notes/smart-task-ui/README.md` "Asymmetric treatment of failure":
  *
  *  - `met-with-margin`     — reached the target with > 1h to spare.
  *  - `met-with-overshoot`  — succeeded but the final reading exceeded the
  *                            target by > 5 °C or > 10 %.
  *  - `met-at-buzzer`       — reached the target inside the last planned hour.
+ *  - `met-by-stall`        — idle classifier reported `near_target_idle`
+ *                            (device parked inside the hysteresis band).
+ *  - `met-by-device-cap`   — idle classifier reported `capped_idle` (device
+ *                            parked at its own internal setpoint cap below
+ *                            the PELS target).
  *  - `missed-by-shortfall` — final progress < target with no daily-budget
  *                            cause recorded.
  *  - `missed-by-budget-exhaustion` — the final revision recorded the daily

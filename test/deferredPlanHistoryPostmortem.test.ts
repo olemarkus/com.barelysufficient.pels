@@ -179,6 +179,46 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.variant).toBe('met-by-stall');
       expect(result.sentence).toMatch(/PELS counted/);
     });
+
+    it('resolves met-by-device-cap when classifier promoted via capped_idle', () => {
+      // Connected 300 capped-internally regression: tank parked at 58 °C
+      // (7 °C gap from a 65 °C target) while power cycled around the
+      // device's own anti-cycle hysteresis. The
+      // metReason='stalled_device_capped' marker carries the fact that
+      // PELS hit the device's own setpoint cap, not the PELS hard cap.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled_device_capped',
+        metAtMs: DEADLINE_MS - 3 * HOUR_MS,
+        finalProgressC: 58,
+        targetTemperatureC: 65,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-by-device-cap');
+      expect(result.sentence).toContain('58.0 °C');
+      expect(result.sentence).toContain('65.0 °C');
+      // The recourse text must name the device's own setpoint cap, not
+      // the PELS-canonical hard cap (per
+      // `feedback_hard_cap_is_physical.md`).
+      expect(result.sentence).toContain('setpoint cap');
+      expect(result.sentence).not.toContain('hard cap');
+    });
+
+    it('met-by-device-cap sentence drops to a generic fallback when finalProgress is missing', () => {
+      // Defensive: a legacy entry hand-rewritten without finalProgressC
+      // should still get a sentence that names the device cap rather
+      // than throwing.
+      const entry = buildEntry({
+        outcome: 'met',
+        metReason: 'stalled_device_capped',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        finalProgressC: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('met-by-device-cap');
+      expect(result.sentence).toContain('setpoint cap');
+      expect(result.sentence).not.toContain('hard cap');
+    });
   });
 
   describe('missed outcome', () => {

@@ -12,14 +12,30 @@ export type DeferredObjectivePlanOutcome =
 
 // Why a 'met' run was marked done. Absent on the default "reached target"
 // path so legacy entries (and the overwhelming majority of clean met runs)
-// persist byte-stable. 'stalled' is the idle-classifier `near_target_idle`
-// promotion: the device stopped drawing close to its setpoint, so PELS
-// declared the objective satisfied without the progress series literally
-// crossing the target threshold. See `notes/idle-classification.md` for the
-// 5 °C / 15 min thresholds and the Connected 300 worked example. Added in
-// v2.7.3 — no schema-version bump because the field is optional and
-// validators accept absence as the legacy shape.
-export type DeferredObjectivePlanMetReason = 'stalled';
+// persist byte-stable.
+//
+// `'stalled'` is the idle-classifier `near_target_idle` promotion: the
+// device stopped drawing close to its setpoint, so PELS declared the
+// objective satisfied without the progress series literally crossing the
+// target threshold. See `notes/idle-classification.md` for the 5 °C / 15
+// min thresholds and the Connected 300 worked example. Added in v2.7.3.
+//
+// `'stalled_device_capped'` is the idle-classifier `capped_idle`
+// promotion: the device parked at a stable plateau several degrees below
+// the PELS-commanded target while its power cycled around its own internal
+// thermostat cap (e.g. a Connected 300 capped internally at ~60 °C with a
+// 65 °C smart-task target). The recorder accepts this as `met` so the run
+// doesn't read as a false miss, but the distinct reason lets the
+// postmortem name the device's own setpoint cap as the cause — not the
+// PELS-canonical hard cap (per `feedback_hard_cap_is_physical.md`).
+// Added in v2.9.x.
+//
+// Both variants are optional and consumers must treat absence as the
+// legacy "reached the configured target" shape. The validator accepts
+// either string on `met` outcomes; any other shape (an unknown string,
+// the field present on a non-met outcome) is treated as schema tamper and
+// dropped on read.
+export type DeferredObjectivePlanMetReason = 'stalled' | 'stalled_device_capped';
 
 export type DeferredObjectivePlanHistoryDiscoveredFrom = 'observation' | 'backfill';
 

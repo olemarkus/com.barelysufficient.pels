@@ -1,4 +1,5 @@
 import {
+  CAPPED_IDLE_MIN_WINDOW_MS,
   IDLE_HOLD_MIN_DURATION_MS,
   IDLE_UNRESPONSIVE_MIN_DURATION_MS,
   NEAR_TARGET_TEMPERATURE_DELTA_C,
@@ -97,7 +98,7 @@ describe('classifyIdleState — near_target_idle', () => {
     expect(sustained.temperatureGapC).toBeCloseTo(3.5);
   });
 
-  it('clears immediately when measured draw resumes', () => {
+  it('clears the classification immediately when measured draw resumes', () => {
     const state: IdleDetectorState = new Map();
     const t0 = 1_000_000;
     classifyIdleState(baseInput({ now: t0 }), state);
@@ -107,7 +108,12 @@ describe('classifyIdleState — near_target_idle', () => {
       state,
     );
     expect(resumed.classification).toBe('active');
-    expect(state.has('dev-1')).toBe(false);
+    // State is retained — the sample-history backing the `capped_idle`
+    // cycling detector must outlast individual on/off transitions, so the
+    // entry persists with a refreshed `idleSinceMs` anchor and an updated
+    // `lastClassification` of 'active'. Eligibility-violation paths
+    // (device shed / off / stale) still delete the entry.
+    expect(state.get('dev-1')?.lastClassification).toBe('active');
   });
 
   it('reports the prior streak duration on the clear transition', () => {
@@ -187,11 +193,229 @@ describe('classifyIdleState — unresponsive', () => {
   });
 });
 
+describe('classifyIdleState — capped_idle', () => {
+  // Drives the rolling window with alternating on/off ticks so the cycling
+  // detector sees both halves of the device's internal duty cycle. Each
+  // tick advances by `stepMs`; the temperature stays parked at `tempC`.
+  const driveCycling = (
+    state: IdleDetectorState,
+    params: {
+      startMs: number;
+      tempC: number;
+      targetC: number;
+      durationMs: number;
+      stepMs: number;
+      onPowerKw: number;
+    },
+  ): number => {
+    let cursor = params.startMs;
+    let drawing = true;
+    while (cursor <= params.startMs + params.durationMs) {
+      classifyIdleState(
+        baseInput({
+          now: cursor,
+          measuredPowerKw: drawing ? params.onPowerKw : 0,
+          currentTemperature: params.tempC,
+          targetTemperature: params.targetC,
+        }),
+        state,
+      );
+      cursor += params.stepMs;
+      drawing = !drawing;
+    }
+    return cursor;
+  };
+
+  it('classifies a cycling heater stuck at its own cap as capped_idle', () => {
+    // Connected 300 worked example: internal cap parks the tank ~5–7 °C
+    // below the PELS smart-task target (60 °C cap against 65 °C target =
+    // 5 °C gap; the bug TODO cites runs landing in the 5–7 °C band).
+    // Temperature stays at 58 °C (7 °C gap, strictly greater than the
+    // 5 °C `NEAR_TARGET_TEMPERATURE_DELTA_C` threshold) while power
+    // cycles on and off over the 20-min window.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    const cursor = driveCycling(state, {
+      startMs: t0,
+      tempC: 58,
+      targetC: 65,
+      durationMs: CAPPED_IDLE_MIN_WINDOW_MS,
+      stepMs: 30_000,
+      onPowerKw: 1.2,
+    });
+    const result = classifyIdleState(
+      baseInput({
+        now: cursor,
+        measuredPowerKw: 0,
+        currentTemperature: 58,
+        targetTemperature: 65,
+      }),
+      state,
+    );
+    expect(result.classification).toBe('capped_idle');
+    expect(result.temperatureGapC).toBe(7);
+  });
+
+  it('does NOT classify as capped_idle when power is monotonically low (unresponsive shape)', () => {
+    // No on-cycles at all → cycling check fails → falls back through to
+    // the existing eligibility / unresponsive path. Temperature 55 °C
+    // against 65 °C target (10 °C gap, > 5 °C band) after the 15-min
+    // unresponsive window → `unresponsive`.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    const cold = baseInput({ currentTemperature: 55 });
+    classifyIdleState({ ...cold, now: t0 }, state);
+    const result = classifyIdleState(
+      { ...cold, now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000 },
+      state,
+    );
+    expect(result.classification).toBe('unresponsive');
+  });
+
+  it('does NOT classify as capped_idle when the gap is within the near-target band', () => {
+    // Same cycling + stable temperature shape, but the gap is below 5 °C
+    // — `capped_idle` is reserved for the gap-too-big case. Cycling
+    // disrupts the contiguous `idleSinceMs` streak, so the existing
+    // `near_target_idle` path can't fire either (it requires sustained
+    // measured-idle). This branch deliberately falls through to `active`
+    // — the classifier doesn't model "satisfied while cycling inside the
+    // hysteresis band" since real heaters don't do that.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    const cursor = driveCycling(state, {
+      startMs: t0,
+      tempC: 63, // gap 2 °C — inside the near-target band
+      targetC: 65,
+      durationMs: CAPPED_IDLE_MIN_WINDOW_MS,
+      stepMs: 30_000,
+      onPowerKw: 1.2,
+    });
+    const result = classifyIdleState(
+      baseInput({
+        now: cursor,
+        measuredPowerKw: 0,
+        currentTemperature: 63,
+        targetTemperature: 65,
+      }),
+      state,
+    );
+    expect(result.classification).not.toBe('capped_idle');
+  });
+
+  it('does NOT classify as capped_idle when temperature is climbing through the window', () => {
+    // A heater that is genuinely heating (rate-limited charging) will
+    // shift its temperature reading across the window. The stable-temp
+    // check must reject this shape so an actively-climbing device isn't
+    // labelled "capped" while it's still making progress.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    let cursor = t0;
+    let temp = 55;
+    let drawing = true;
+    while (cursor <= t0 + CAPPED_IDLE_MIN_WINDOW_MS) {
+      classifyIdleState(
+        baseInput({
+          now: cursor,
+          measuredPowerKw: drawing ? 1.5 : 0,
+          currentTemperature: temp,
+          targetTemperature: 65,
+        }),
+        state,
+      );
+      cursor += 30_000;
+      drawing = !drawing;
+      temp += 0.15; // climbs > 1 °C across the window
+    }
+    const result = classifyIdleState(
+      baseInput({
+        now: cursor,
+        measuredPowerKw: 0,
+        currentTemperature: temp,
+        targetTemperature: 65,
+      }),
+      state,
+    );
+    expect(result.classification).not.toBe('capped_idle');
+  });
+
+  it('does NOT fire on a half-populated window during the first ticks', () => {
+    // Just one cycling pair inside the first 5 min — the cycling +
+    // stability signature is plausible but the window isn't fully
+    // populated yet. Producer-side guard: `capped_idle` is reserved for
+    // the case where the *full* 20-min window agrees.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState(
+      baseInput({ now: t0, measuredPowerKw: 1.2, currentTemperature: 60, targetTemperature: 65 }),
+      state,
+    );
+    classifyIdleState(
+      baseInput({ now: t0 + 60_000, measuredPowerKw: 0, currentTemperature: 60, targetTemperature: 65 }),
+      state,
+    );
+    const result = classifyIdleState(
+      baseInput({ now: t0 + 120_000, measuredPowerKw: 0, currentTemperature: 60, targetTemperature: 65 }),
+      state,
+    );
+    expect(result.classification).not.toBe('capped_idle');
+  });
+
+  it('does NOT fire on a single brief on-burst followed by 19 min of silence', () => {
+    // Real failure mode the two-halves cycling rule guards against: a
+    // tripped breaker mid-burst, child-lock engaged mid-cycle, or a relay
+    // failure. The device draws for one brief tick at t=0 then goes
+    // silent for the rest of the 20-min window. The premise that a
+    // truly-off heater would drop > 1 °C in 18 min does NOT hold for a
+    // 200L water heater (Connected 300, the canonical reproducer), so
+    // the stable-temp check alone is not enough — without the two-halves
+    // cycling requirement, this shape would have falsely promoted to
+    // `capped_idle` and silently called a stuck device "succeeded",
+    // which is the failure mode `unresponsive → null` was designed to
+    // prevent.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    // First-half: one drawing tick at t=0, then immediate silence.
+    classifyIdleState(
+      baseInput({ now: t0, measuredPowerKw: 1.2, currentTemperature: 58, targetTemperature: 65 }),
+      state,
+    );
+    // Second-half: nothing but idle samples for the rest of the window.
+    let cursor = t0 + 60_000;
+    while (cursor <= t0 + CAPPED_IDLE_MIN_WINDOW_MS) {
+      classifyIdleState(
+        baseInput({
+          now: cursor,
+          measuredPowerKw: 0,
+          currentTemperature: 58, // tank thermal mass holds temp inside the 1 °C band
+          targetTemperature: 65,
+        }),
+        state,
+      );
+      cursor += 60_000;
+    }
+    const result = classifyIdleState(
+      baseInput({ now: cursor, measuredPowerKw: 0, currentTemperature: 58, targetTemperature: 65 }),
+      state,
+    );
+    expect(result.classification).not.toBe('capped_idle');
+  });
+});
+
 describe('pruneIdleDetectorState', () => {
   it('drops entries for device ids not in the live set', () => {
     const state: IdleDetectorState = new Map();
-    state.set('keep', { idleSinceMs: 1, lastClassification: 'near_target_idle' });
-    state.set('drop', { idleSinceMs: 2, lastClassification: 'unresponsive' });
+    state.set('keep', {
+      idleSinceMs: 1,
+      lastClassification: 'near_target_idle',
+      samples: [],
+      firstSampleAtMs: 1,
+    });
+    state.set('drop', {
+      idleSinceMs: 2,
+      lastClassification: 'unresponsive',
+      samples: [],
+      firstSampleAtMs: 2,
+    });
     pruneIdleDetectorState(state, ['keep']);
     expect(state.has('keep')).toBe(true);
     expect(state.has('drop')).toBe(false);

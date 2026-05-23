@@ -1986,7 +1986,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.metReason).toBeUndefined();
     });
 
-    it('ignores `unresponsive` — only `near_target_idle` triggers stall met', () => {
+    it('ignores `unresponsive` — only the stall classifications trigger stall met', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
@@ -2010,6 +2010,82 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('missed');
       expect(entry.metReason).toBeUndefined();
+    });
+
+    it('promotes to met/stalled_device_capped when classifier reports capped_idle', () => {
+      // Connected 300 capped-internally scenario: device parks at 58 °C
+      // against a 65 °C target with power cycling around its own
+      // thermostat hysteresis. The cycling reset means the existing
+      // `near_target_idle` path can never fire (the streak resets every
+      // on-cycle), and the gap > 5 °C is outside the near-target band
+      // anyway. With `capped_idle` wired in, the run finalises as
+      // succeeded — same outcome as `near_target_idle` but a distinct
+      // `metReason` so the postmortem can name the device's own setpoint
+      // cap rather than the generic stalled copy.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const cappedIdle = () => 'capped_idle' as const;
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        0,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        3 * HOUR_MS,
+        null,
+        cappedIdle,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled_device_capped');
+      expect(entry.metAtMs).toBe(3 * HOUR_MS);
+      expect(entry.finalProgressC).toBeCloseTo(58, 1);
+    });
+
+    it('keeps the capped-idle promotion sticky across later non-plannable ticks', () => {
+      // Mirrors the `near_target_idle` stickiness — the device having
+      // accepted the run against its own cap is terminal even if the
+      // tank drifts down a degree afterwards. Without this, the next
+      // plannable tick would re-open the run because the diag still says
+      // `on_track` while progress is below target.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const cappedIdle = () => 'capped_idle' as const;
+      const noClassifier = () => undefined;
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        HOUR_MS,
+        null,
+        cappedIdle,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        2 * HOUR_MS,
+        null,
+        cappedIdle,
+      );
+      // Classifier exits capped_idle (e.g. user lowered PELS target);
+      // the already-promoted record must not retract.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
+        4 * HOUR_MS,
+        null,
+        noClassifier,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled_device_capped');
+      expect(entry.finalProgressC).toBeCloseTo(58, 1);
     });
 
     it('keeps the stall promotion sticky across subsequent plannable ticks reporting below-target progress', () => {
@@ -2202,6 +2278,72 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const entry = saved()!.entries[0]!;
       expect(entry.outcome).toBe('met');
       expect(entry.metReason).toBe('stalled');
+    });
+
+    it('Connected 300 capped-internally end-to-end: classifier-driven capped_idle promotes to succeeded', async () => {
+      // Full reproducer of the TODO bug: Connected 300 capped internally
+      // at ~60 °C with a 65 °C smart-task target. The classifier
+      // observes a cycling+stable-temp+gap-too-big pattern over the
+      // window and reports `capped_idle`; the recorder's
+      // getStallClassification bridge promotes the run to
+      // met/stalled_device_capped instead of finalising it as missed.
+      const { createIdleClassifier } = await import('../lib/observer/idleClassifier');
+      const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../lib/observer/idleDetector');
+
+      const classifier = createIdleClassifier();
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      // Drive the classifier with cycling+stable-temp ticks across the
+      // 20-min window so it transitions to `capped_idle`. Tank parked
+      // at 58 °C (7 °C gap from the 65 °C target).
+      const tickMs = 30_000;
+      let cursor = 0;
+      let drawing = true;
+      while (cursor <= CAPPED_IDLE_MIN_WINDOW_MS) {
+        classifier.classifyAll([{
+          id: 'dev',
+          name: 'Connected 300',
+          currentState: 'on',
+          currentOn: true,
+          observationStale: false,
+          measuredPowerKw: drawing ? 1.2 : 0,
+          currentTemperature: 58,
+          currentTarget: 65,
+          shedAction: undefined,
+          controlCapabilityId: 'onoff',
+        }], cursor);
+        cursor += tickMs;
+        drawing = !drawing;
+      }
+      expect(classifier.getClassification('dev')).toBe('capped_idle');
+
+      // Recorder observes a few cycles before stall promotion. First
+      // observation seeds the in-progress record (without a classifier
+      // — the first-tick carryover guard skips stall promotion on
+      // the very first cycle). Subsequent observations pass through the
+      // classifier and trigger the capped_idle promotion.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        0,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        CAPPED_IDLE_MIN_WINDOW_MS + tickMs,
+        null,
+        (deviceId) => classifier.getClassification(deviceId),
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      // Run finalises as succeeded — not the buggy "missed" verdict the
+      // TODO entry describes. The metReason names the device cap so
+      // the postmortem can route to the correct recourse copy.
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled_device_capped');
+      expect(entry.finalProgressC).toBeCloseTo(58, 1);
     });
   });
 

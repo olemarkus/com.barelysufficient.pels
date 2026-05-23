@@ -36,38 +36,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
-- [ ] Smart task false-missed when user target exceeds device-side setpoint
-      cap. Connected 300 caps internally at ~60 °C; with a 65 °C smart-task
-      target, PELS commands max, the device responds max but its own
-      thermostat opens, sensor parks ~5–7 °C below target, idle detector
-      fails to promote because (a) cycling resets the idle streak —
-      `lib/observer/idleDetector.ts:97-103` `isEligibleForIdle` requires
-      `measuredIsIdle(measuredPowerKw)` and repeated power spikes during
-      cycling kick the device out of idle eligibility — and (b) the gap is
-      outside the 5 °C `NEAR_TARGET_TEMPERATURE_DELTA_C` band
-      (`lib/observer/idleDetector.ts:36-37`). Run finalises as missed despite
-      the device behaving correctly. Same wrong "missed" verdict surface as
-      the v2.8.x feasibility P0 work, via a different path.
-      Acceptance: new
-      `IdleClassification = 'active' | 'near_target_idle' | 'unresponsive' | 'capped_idle'`.
-      Detection signal — discriminator from `unresponsive`: stable
-      `measureTemperature` over N minutes + power *cycling* (not
-      monotonically low) + gap > `NEAR_TARGET_TEMPERATURE_DELTA_C`. Producer
-      wires `capped_idle` into the satisfied promotion in `planHistory.ts`
-      alongside `near_target_idle`. New miss-attribution cause `device_capped`
-      so finalised "Succeeded (stalled, device-capped)" rows render correctly,
-      with recourse text pointing at the device's own setpoint cap, not the
-      PELS hard cap. Reproducer needs a Connected 300 mock change first
-      (`internalCapC` setting that lets `measureTemperature` oscillate around
-      a lower-than-commanded effective target while the runtime stores the
-      commanded `target_temperature` verbatim).
-      Files: `lib/observer/idleDetector.ts`,
-      `lib/observer/idleClassifier.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts`,
-      `packages/shared-domain/src/idleClassificationCopy.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`, new tests.
-      Source: user report + SHS code trace 2026-05-23, PELS commit 908cf37f.
-
 
 - [ ] Flow card + in-app + public-doc copy cleanup for smart-task rescue.
       The rescue card should not over-promise: `Set what a smart task may
@@ -300,6 +268,22 @@ release, not v2.7.1 merge-blockers.*
       while still rejecting non-string garbage.
       Files: `lib/plan/deferredObjectives/activePlanSettings.ts`.
       Source: `pels-runtime-reality`, PR #1017 follow-up, 2026-05-23.
+
+- [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
+      promotion. PR #1018's `capped_idle` discriminator requires a
+      20-min observation window before classification can fire; a
+      Connected 300 task with a 1-hour deadline gets at most one
+      classification opportunity (window opens ~20 min in, deadline at
+      60 min). If the cycling pattern hasn't established by then or
+      only one half of the duty cycle has occurred, the run finalises
+      as a real miss. Not a correctness bug — graceful degradation back
+      to the existing classification — but the user experience for
+      short-deadline runs is unchanged. Acceptance: either shorten the
+      window for short-deadline runs (risk: more false positives) or
+      document the limitation in `notes/idle-classification.md`.
+      Files: `lib/observer/idleDetector.ts`,
+      `notes/idle-classification.md`.
+      Source: `pels-runtime-reality`, PR #1018 follow-up, 2026-05-23.
 
 - [ ] Eligibility-count flicker hardening for the new
       `countConcurrentEligibleTasks` helper. Today the count is read from

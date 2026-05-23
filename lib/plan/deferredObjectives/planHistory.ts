@@ -397,6 +397,14 @@ const backfillStartProgress = (
 });
 
 
+// Both stall variants behave identically against re-open / drift checks —
+// "device went as far as it would go" is terminal whether the plateau sat
+// inside the hysteresis band (`'stalled'`) or against the device's own cap
+// (`'stalled_device_capped'`).
+const isStallMetReason = (reason: DeferredObjectivePlanMetReason | null): boolean => (
+  reason === 'stalled' || reason === 'stalled_device_capped'
+);
+
 // Stall-promoted records freeze `satisfied` and `finalProgress*` at the
 // plateau reading. Without the freeze, post-stall samples would
 // overwrite "as warm as the device would hold" and the next plannable
@@ -411,7 +419,7 @@ const computeMergedMetState = (
   finalProgressC: number | null;
   finalProgressPercent: number | null;
 } => {
-  const stallPromoted = record.satisfied && record.metReason === 'stalled';
+  const stallPromoted = record.satisfied && isStallMetReason(record.metReason);
   if (stallPromoted) {
     return {
       satisfied: true,
@@ -486,21 +494,22 @@ const recordObservedTick = (
   ...refreshPlanSnapshots(record, plan),
 });
 
-// Promote a run to satisfied(stalled) when the classifier reports
-// `near_target_idle`. Idempotent — already-satisfied records pass
-// through. Plateau value captured here is what the history reads back;
-// classifier owns the 5 °C / 15 min band (see notes/idle-classification.md).
-// Snapshots `finalProgress*` from the current diagnostic at promotion
-// time when the reading is trustworthy: `recordNonPlannableTick` routes
-// through `recordObservedTick`, which doesn't refresh `finalProgress*`,
-// so without this capture the freeze would pin to the previous
-// plannable tick's value rather than the reading that triggered stall.
-// Falls back to whatever the record already holds when the diag's
-// progress isn't trustworthy.
+// Promote a run to satisfied(stalled) when the classifier reports a stall
+// shape — `near_target_idle` (device parked inside the hysteresis band) or
+// `capped_idle` (device parked at its own internal cap below the PELS
+// target). Idempotent — already-satisfied records pass through. The
+// `reason` carries the distinct cause into the persisted entry so the
+// postmortem can render the right recourse copy. The promotion snapshots
+// `finalProgress*` from the diagnostic when it carries trustworthy
+// progress; non-plannable ticks route through `recordObservedTick` which
+// doesn't refresh `finalProgress*`, so without the capture here the freeze
+// would pin to the previous plannable tick's value rather than the
+// plateau reading.
 const promoteRecordToStalled = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
   nowMs: number,
+  reason: DeferredObjectivePlanMetReason,
 ): InProgressRecord => {
   if (record.satisfied) return record;
   const captureFromDiag = hasTrustworthyProgress(diag);
@@ -514,8 +523,19 @@ const promoteRecordToStalled = (
       : record.finalProgressPercent,
     satisfied: true,
     metAtMs: nowMs,
-    metReason: 'stalled',
+    metReason: reason,
   };
+};
+
+// Producer-side translation of observer-layer classifier output to the
+// persisted `metReason`. `unresponsive` deliberately returns null so a
+// tripped breaker doesn't get silently called "succeeded".
+const stallClassificationToMetReason = (
+  classification: 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined,
+): DeferredObjectivePlanMetReason | null => {
+  if (classification === 'near_target_idle') return 'stalled';
+  if (classification === 'capped_idle') return 'stalled_device_capped';
+  return null;
 };
 
 const recordNonPlannableTick = (
@@ -532,7 +552,7 @@ const recordNonPlannableTick = (
   // mets keep the existing clear-on-drift behavior.
   if (
     record.satisfied
-    && record.metReason !== 'stalled'
+    && !isStallMetReason(record.metReason)
     && hasTrustworthyProgress(diag)
     && !diagnosticProgressAtTarget(diag)
   ) {
@@ -625,11 +645,15 @@ const finalizeRecord = (
 };
 
 // Reads through the observer-layer idle classifier
-// (`lib/observer/idleClassifier.ts`). Only `near_target_idle` promotes;
-// `unresponsive` is a hardware-fault signal and is deliberately ignored.
+// (`lib/observer/idleClassifier.ts`). `near_target_idle` and `capped_idle`
+// both promote the run to satisfied (the run reflects "the device went as
+// far as it was going to go" — same outcome, two underlying causes which
+// the recorder distinguishes via `metReason`). `unresponsive` is a
+// hardware-fault signal and is deliberately ignored — we don't want to
+// silently call a tripped breaker "succeeded".
 export type DeferredObjectiveStallClassificationReader = (
   deviceId: string,
-) => 'near_target_idle' | 'unresponsive' | undefined;
+) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -767,9 +791,10 @@ export class DeferredObjectivePlanHistoryRecorder {
     getStallClassification?: DeferredObjectiveStallClassificationReader,
   ): InProgressRecord {
     const classification = getStallClassification?.(diag.deviceId);
-    return classification === 'near_target_idle'
-      ? promoteRecordToStalled(record, diag, nowMs)
-      : record;
+    const reason = stallClassificationToMetReason(classification);
+    return reason === null
+      ? record
+      : promoteRecordToStalled(record, diag, nowMs, reason);
   }
 
   private observeDiagnostic(

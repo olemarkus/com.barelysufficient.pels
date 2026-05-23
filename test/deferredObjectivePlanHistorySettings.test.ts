@@ -302,6 +302,45 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries[0]!.metReason).toBe('stalled');
   });
 
+  it('accepts metReason:"stalled_device_capped" on met entries (capped_idle promotion)', () => {
+    // Connected 300 capped-internally regression: device parks at 58 °C
+    // against a 65 °C target, classifier reports `capped_idle`, recorder
+    // writes the distinct reason so the postmortem can name the device
+    // cap as recourse.
+    const cappedEntry = {
+      ...v3Entry,
+      id: 'capped-1',
+      outcome: 'met',
+      metReason: 'stalled_device_capped',
+      metAtMs: HOUR_MS,
+      finalProgressC: 58,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [cappedEntry],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.metReason).toBe('stalled_device_capped');
+  });
+
+  it('drops an entry with metReason:"stalled_device_capped" on a non-met outcome', () => {
+    // Same contract guard as the `stalled` case — a hand-edited /
+    // corrupted persisted payload that put the capped-idle reason on a
+    // missed outcome must not surface as "stalled but missed" to the UI.
+    const malformed = {
+      ...v3Entry,
+      id: 'malformed-3',
+      outcome: 'missed',
+      metReason: 'stalled_device_capped',
+      metAtMs: null,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [malformed],
+    });
+    expect(result.entries).toHaveLength(0);
+  });
+
   it('drops an entry with metReason on a non-met outcome (contract violation)', () => {
     // The recorder is responsible for not writing metReason on missed/
     // replaced/abandoned/unknown; the validator enforces it on read-back
