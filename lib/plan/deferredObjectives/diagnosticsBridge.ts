@@ -417,6 +417,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     deviceId,
     objective,
     energyNeededKWh: profileEnergy.energyNeededKWh,
+    energyExpectedKWh: profileEnergy.energyExpectedKWh,
     deadlineAtMs,
     steps,
     commitment,

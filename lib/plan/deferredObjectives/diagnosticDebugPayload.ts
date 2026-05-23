@@ -35,11 +35,17 @@ const rescueFields = (
 // Which constraint left the floor short, derived from the producer-resolved
 // `reasonCode` (= the horizon `statusDetail`): `budget` = soft daily budget net
 // of forecast background, `step_power` = floor-step undercount (climbing within
-// budget fits), `time_capacity` = physical/time even uncapped. `none` when
-// there is no shortfall. Pure mapping — the planner already resolved the cause.
-const FLOOR_SHORTFALL_CAUSE_BY_REASON: Record<string, 'budget' | 'step_power' | 'time_capacity'> = {
+// budget fits), `estimate` = within the producer's variance buffer (the mean
+// rate would fit; only the `k·SE` padding causes the gap), `time_capacity` =
+// physical/time even uncapped. `none` when there is no shortfall. Pure mapping
+// — the planner already resolved the cause.
+const FLOOR_SHORTFALL_CAUSE_BY_REASON: Record<
+  string,
+  'budget' | 'step_power' | 'estimate' | 'time_capacity'
+> = {
   limited_by_daily_budget: 'budget',
   feasible_above_floor: 'step_power',
+  estimate_uncertain: 'estimate',
   target_cannot_be_met: 'time_capacity',
 };
 
