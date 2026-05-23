@@ -1087,9 +1087,15 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).not.toMatch(/short by about/i);
     expect(payload.hero.tone).toBe('alert');
     // Recourse-action surfaces on cannot-meet; shortfall route picks the
-    // Overview tab because the daily-budget cause hasn't fired.
+    // Overview tab because the daily-budget cause hasn't fired. The producer
+    // also threads the active task's deviceId so the click dispatcher
+    // (`deadlinePlanMount.ts`) can deep-link the device-settings overlay
+    // after landing on Overview — one click instead of "land on Overview,
+    // hunt for the device card." Mirrors the history-detail "Review device"
+    // recourse pattern.
     expect(payload.hero.recourse).not.toBeNull();
     expect(payload.hero.recourse?.targetTab).toBe('overview');
+    expect(payload.hero.recourse?.deviceId).toBe('heater');
     // No live-state chip ("On track" / "Heating now") should appear alongside
     // "Cannot finish"; the contradiction is the bug we are guarding against.
     expect(payload.hero.chips.some((chip) => chip.text === 'On track')).toBe(false);
@@ -1252,6 +1258,10 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
     expect(payload.hero.recourse?.targetTab).toBe('budget');
     expect(payload.hero.recourse?.label).toBe('Open Budget');
+    // Budget branch has no device-settings overlay to open — `deviceId` stays
+    // absent so the click dispatcher's `length > 0` guard keeps the click on
+    // the Budget tab without firing `open-device-detail`.
+    expect(payload.hero.recourse?.deviceId).toBeUndefined();
   });
 
   it('routes a passed deadline to the completed state on the History tab', () => {
@@ -3602,29 +3612,55 @@ describe('resolveCannotMeetRecourse', () => {
       labels,
       cannotMeet: false,
       dailyBudgetExhausted: false,
+      deviceId: 'heater',
     })).toBeNull();
   });
 
-  it('routes daily-budget-exhausted to "Open Budget"', async () => {
+  it('routes daily-budget-exhausted to "Open Budget" without a deviceId (no overlay to open)', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
       dailyBudgetExhausted: true,
+      deviceId: 'heater',
     });
     expect(out?.label).toBe('Open Budget');
     expect(out?.targetTab).toBe('budget');
+    // Budget branch has no device-settings overlay — `deviceId` stays absent
+    // so the click dispatcher's `length > 0` guard keeps the click on Budget.
+    expect(out?.deviceId).toBeUndefined();
   });
 
-  it('routes every other cannot-meet cause to "Adjust device"', async () => {
+  it('routes every other cannot-meet cause to "Adjust device" with the active task deviceId', async () => {
     const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
     const out = resolveCannotMeetRecourse({
       labels,
       cannotMeet: true,
       dailyBudgetExhausted: false,
+      deviceId: 'heater',
     });
     expect(out?.label).toBe('Adjust device');
     expect(out?.targetTab).toBe('overview');
+    // Device-side branch carries the deviceId so the click dispatcher can
+    // deep-link the device-settings overlay after landing on Overview.
+    expect(out?.deviceId).toBe('heater');
+  });
+
+  it('emits an empty deviceId when none is available (cold-start / history-detail-only state)', async () => {
+    // Defensive: the dispatcher's `length > 0` guard already degrades to a
+    // tab-only landing in this case, but the producer must not synthesise a
+    // bogus id either. Empty string is the agreed degraded value, mirroring
+    // the history-detail `recourse.deviceId ?? ''` JSX expression.
+    const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
+    const out = resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: true,
+      dailyBudgetExhausted: false,
+      deviceId: '',
+    });
+    expect(out?.label).toBe('Adjust device');
+    expect(out?.targetTab).toBe('overview');
+    expect(out?.deviceId).toBe('');
   });
 });
 
@@ -3978,6 +4014,40 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.headline).toBe('Heating from 16:00');
   });
 
+  it('at-risk: "Adjust device" recourse threads the active task deviceId for the deep-link', () => {
+    // Regression for the at-risk hero's "Adjust device" recourse landing on
+    // Overview without a deviceId — the dispatcher then had no overlay to
+    // open and the user dead-ended on the tab. Producer must thread the
+    // active task's deviceId onto the device-side recourse payload so the
+    // click closes the panel AND opens the device-settings overlay in one
+    // pass (mirrors the history-detail "Review device" pattern).
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 4);
+    const prices = buildStubPrices(now, 4, 100);
+    const plan = buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [0, 1, 2, 3],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 30,
+      energyNeededKWh: 8,
+      planStatus: 'at_risk',
+    });
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap: buildStubBootstrap(now, deadline, plan, 30),
+      deviceId: 'heater',
+      devices: buildHeaterDevice(18),
+      prices,
+      nowMs: now.getTime(),
+    }));
+    // Device-side branch: the "Adjust device" recourse carries the active
+    // task's deviceId so the click dispatcher can deep-link the overlay.
+    expect(payload.hero.recourse).not.toBeNull();
+    expect(payload.hero.recourse?.label).toBe('Adjust device');
+    expect(payload.hero.recourse?.targetTab).toBe('overview');
+    expect(payload.hero.recourse?.deviceId).toBe('heater');
+  });
+
   it('cannot-meet: delivered line gains the "won\'t reach by HH:MM" tail', () => {
     const now = new Date(2026, 0, 1, 14, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
@@ -4212,6 +4282,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_heater',
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
@@ -4227,6 +4298,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'external_flow',
       lastFetchedShort: '14:32',
+      deviceId: 'dev_heater',
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
@@ -4240,6 +4312,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_heater',
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
@@ -4255,6 +4328,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_heater',
       deviceName: '',
       deadlineTime: '07:00',
     });
@@ -4267,6 +4341,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.missing_capacity({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_heater',
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
@@ -4285,6 +4360,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('temperature').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_heater',
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
@@ -4297,6 +4373,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.awaiting_horizon_plan({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_ev',
       deviceName: 'Garage EV',
       deadlineTime: '07:00',
     });
@@ -4309,6 +4386,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.device_data_missing({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_ev',
       deviceName: 'Garage EV',
       deadlineTime: '07:00',
     });
@@ -4323,6 +4401,7 @@ describe('shared-domain pending-hero copy', () => {
     const copy = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session({
       priceSource: 'managed',
       lastFetchedShort: null,
+      deviceId: 'dev_ev',
       deviceName: 'Garage EV',
       deadlineTime: '07:00',
     });

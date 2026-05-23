@@ -285,6 +285,7 @@ const buildPendingPayload = (
   // the queued-hero headlineReason resolver).
   const pendingContext: DeadlinePendingContext = {
     ...priceContext,
+    deviceId: ctx.deviceId,
     deviceName: ctx.device.name ?? '',
     deadlineTime: formatHourLabel(ctx.deadlineAtMs),
   };
@@ -551,6 +552,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     priceUnitLabel: input.priceUnitLabel,
     hero: buildHero({
       device,
+      deviceId,
       objective,
       labels,
       firstChargingHour,

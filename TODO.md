@@ -89,18 +89,6 @@ patch releases, not release blockers; each item carries its own source/date.
       `packages/settings-ui/test/deadlinePlan.test.ts`.
       Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
 
-- [ ] At-risk `Adjust device` recourse should deep-link to the affected
-      device. The live-hero recourse lands on the Overview tab without
-      `deviceId`, even though the history-detail recourse type and dispatcher
-      already support `data-deadline-recourse-device-id`. Plumb the device id
-      through the live hero button so one click opens the relevant device
-      settings overlay.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlanMount.ts`.
-      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
-
 - [ ] Multiple priority-1 fully-reserved smart tasks can double-book the same
       reserved headroom in diagnostics. `policyHorizon.ts` computes
       `reservedHeadroomKw = hardCap - uncontrolled` per bucket, not per
@@ -353,6 +341,21 @@ release, not v2.7.1 merge-blockers.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] Make empty-deviceId on at-risk / pending recourse buttons detectable
+      in prod. The hero recourse plumbs `deviceId` through to a
+      `data-deadline-recourse-device-id` attribute on the button; the
+      dispatcher (`packages/settings-ui/src/ui/deadlinePlanMount.ts:99-105`)
+      treats an empty string as "no deep-link" and degrades to tab-only
+      landing. That's the right fallback for cold-start corner cases, but a
+      future regression that accidentally strips `deviceId` upstream would
+      silently restore the old dead-end behaviour without any test
+      failure. Add a `console.warn` (or a structured-log breadcrumb) in
+      the dispatcher when the attribute is the empty string, so the
+      degradation surfaces in `/tmp/pels` operator logs instead of going
+      invisible.
+      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`.
+      Source: `pels-ux-fit`, PR #997 follow-up, 2026-05-23.
 
 - [ ] Smart-task extra-permissions row wraps mid-word at 320 px under
       worst-case payload. `.deadline-list-card__when-row dd` uses

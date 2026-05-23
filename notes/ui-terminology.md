@@ -173,7 +173,7 @@ Smart-task heroes render at most one recourse button. The label is action-orient
 | Label | When | Lands on |
 |---|---|---|
 | `Open Budget` | Daily energy budget is exhausted before the deadline. | Budget tab. |
-| `Adjust device` | Any other cannot-finish cause (shortfall, capacity pressure). | Overview tab. |
+| `Adjust device` | Any other cannot-finish cause (shortfall, capacity pressure). | Overview tab + opens the device-settings overlay for the affected device. |
 
 **History-detail "missed"** (`resolveMissedHistoryRecourse`):
 

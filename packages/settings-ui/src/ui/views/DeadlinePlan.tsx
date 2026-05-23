@@ -226,6 +226,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
             type="button"
             class="plan-hero__recourse-button"
             data-deadline-recourse-tab={payload.hero.recourse.targetTab}
+            data-deadline-recourse-device-id={payload.hero.recourse.deviceId ?? ''}
           >
             {payload.hero.recourse.label}
           </button>
@@ -887,6 +888,7 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
             type="button"
             class="plan-hero__recourse-button"
             data-deadline-recourse-tab={pending.hero.recourse.targetTab}
+            data-deadline-recourse-device-id={pending.hero.recourse.deviceId ?? ''}
           >
             {pending.hero.recourse.label}
           </button>
