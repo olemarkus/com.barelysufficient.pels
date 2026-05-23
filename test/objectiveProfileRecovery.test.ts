@@ -3,7 +3,10 @@ import {
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/core/objectiveProfiles';
 import {
+  RECOVERY_NO_PROGRESS_MIN_DURATION_MS,
   RECOVERY_NO_PROGRESS_SAMPLE_LIMIT,
+  RECOVERY_PROGRESS_EPSILON,
+  RECOVERY_PROGRESS_RESET_MULTIPLIER,
   RECOVERY_SAFETY_TIMEOUT_MS,
   SHARP_FALL_SOC_PERCENT,
   SHARP_FALL_TEMPERATURE_C,
@@ -328,6 +331,162 @@ describe('objective profile recovery window', () => {
       },
     });
     expect(profile.acceptedSamples).toBe(1);
+  });
+
+  it('does not disarm before the wall-clock floor during a slow legitimate refill (sub-band noise then real rise)', () => {
+    // Regression for the P1 safeguard floor: with the 5-min interval gate, a
+    // legitimately slow heater can emit four near-flat samples within 20 min
+    // (counter reaches LIMIT) before any real rise lands. The wall-clock floor
+    // (`RECOVERY_NO_PROGRESS_MIN_DURATION_MS`) must suppress disarm until the
+    // armed window has been open long enough for a real rebuild to start
+    // producing super-band deltas; the next genuine refill sample then resets
+    // the counter and the recovery stays armed until the target is reached.
+    const debugStructured = vi.fn();
+    const fiveMinMs = 5 * 60 * 1000;
+    const minIntervalMs = fiveMinMs;
+    const subBandDelta = (RECOVERY_PROGRESS_EPSILON * RECOVERY_PROGRESS_RESET_MULTIPLIER) / 2;
+    expect(minIntervalMs * (RECOVERY_NO_PROGRESS_SAMPLE_LIMIT + 1))
+      .toBeLessThan(RECOVERY_NO_PROGRESS_MIN_DURATION_MS);
+
+    let profile: DeviceObjectiveProfile | undefined = updateDeviceObjectiveProfile({
+      previous: undefined,
+      sample: {
+        observedAtMs: startMs,
+        value: 60,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    // Sharp drop arms the window with the post-drop value as `lastSample`.
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: startMs + hourMs,
+        value: 45,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    expect(profile.recoveryTargetValue).toBe(60);
+    const armedAtMs = profile.recoveryArmedAtMs;
+    expect(armedAtMs).toBe(startMs + hourMs);
+
+    // Five sub-band noise samples (each 5 min apart) — alternating tiny
+    // positive and tiny negative deltas, all strictly inside the hysteresis
+    // band so under the new gate every one of them increments the counter.
+    // Total wall-clock span: 25 min < 30-min floor.
+    const noiseTrack = [
+      45 + subBandDelta,           // delta +subBand
+      45,                          // delta -subBand
+      45 + subBandDelta,           // delta +subBand
+      45 - subBandDelta,           // delta -2*subBand (still inside band)
+      45,                          // delta +subBand
+    ];
+    for (let step = 0; step < noiseTrack.length; step += 1) {
+      const sampleMs = startMs + hourMs + (step + 1) * minIntervalMs;
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: sampleMs,
+          value: noiseTrack[step],
+          unit: 'degree_c',
+          crediblePowerW: 2000,
+          powerSource: 'measured',
+        },
+        deviceId: 'heater-1',
+        debugStructured,
+      });
+      expect(profile.recoveryTargetValue).toBe(60);
+      expect(profile.recoveryArmedAtMs).toBe(armedAtMs);
+    }
+    // Counter has grown past the sample limit, but the wall-clock floor (still
+    // unmet at 25 min) keeps the recovery armed.
+    expect(profile.recoveryNoProgressSamples).toBeGreaterThanOrEqual(
+      RECOVERY_NO_PROGRESS_SAMPLE_LIMIT,
+    );
+    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'objective_profile_recovery_state',
+      action: 'disarm_recovery',
+    }));
+
+    // Legitimate refill arrives at +30 min (just clears the floor) with a
+    // super-band positive delta: the counter resets and the window stays
+    // armed for the remainder of the refill.
+    const refillMs = startMs + hourMs + (noiseTrack.length + 1) * minIntervalMs;
+    expect(refillMs - (armedAtMs ?? startMs)).toBeGreaterThanOrEqual(
+      RECOVERY_NO_PROGRESS_MIN_DURATION_MS,
+    );
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: refillMs,
+        value: 47,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+      deviceId: 'heater-1',
+      debugStructured,
+    });
+    expect(profile.recoveryTargetValue).toBe(60);
+    expect(profile.recoveryArmedAtMs).toBe(armedAtMs);
+    expect(profile.recoveryNoProgressSamples ?? 0).toBe(0);
+  });
+
+  it('treats sub-band positive jitter as no-progress so the counter still advances', () => {
+    // Hysteresis-band regression: under the old `> EPSILON` reset rule, a tiny
+    // positive noise spike (e.g. +0.02 °C with EPSILON=0.01) would reset the
+    // counter even though the underlying signal is flat. With the
+    // `5 * EPSILON` band, sub-band positives are treated as no-progress, so
+    // the counter advances and the safeguard can do its job.
+    const subBandPositive = (RECOVERY_PROGRESS_EPSILON * RECOVERY_PROGRESS_RESET_MULTIPLIER) / 2;
+    expect(subBandPositive).toBeGreaterThan(RECOVERY_PROGRESS_EPSILON);
+    let profile: DeviceObjectiveProfile | undefined = updateDeviceObjectiveProfile({
+      previous: undefined,
+      sample: {
+        observedAtMs: startMs,
+        value: 60,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    profile = updateDeviceObjectiveProfile({
+      previous: profile,
+      sample: {
+        observedAtMs: startMs + hourMs,
+        value: 45,
+        unit: 'degree_c',
+        crediblePowerW: 2000,
+        powerSource: 'measured',
+      },
+    });
+    expect(profile.recoveryTargetValue).toBe(60);
+
+    // Each subsequent sample shows a tiny *positive* delta strictly inside the
+    // band — old code would have reset the counter to 0 every step; new code
+    // increments it.
+    let lastValue = 45;
+    for (let step = 0; step < RECOVERY_NO_PROGRESS_SAMPLE_LIMIT; step += 1) {
+      const nextValue = lastValue + subBandPositive;
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: startMs + hourMs + (step + 1) * hourMs,
+          value: nextValue,
+          unit: 'degree_c',
+          crediblePowerW: 2000,
+          powerSource: 'measured',
+        },
+      });
+      lastValue = nextValue;
+    }
+    // Counter has hit LIMIT and wall-clock is well past the floor (4h) so the
+    // safeguard disarms — proving sub-band positives didn't reset it.
+    expect(profile.recoveryTargetValue).toBeUndefined();
+    expect(profile.recoveryArmedAtMs).toBeUndefined();
   });
 
   it('keeps the recovery window armed during a slow-but-trending-up rebuild', () => {
