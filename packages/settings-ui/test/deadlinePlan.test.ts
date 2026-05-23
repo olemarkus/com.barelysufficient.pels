@@ -1110,11 +1110,19 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.chips.some((chip) => chip.text === 'Heating')).toBe(false);
   });
 
-  it('explains a cannot-meet plan with daily-budget-exhausted hint when the recorder flagged it', () => {
-    // When the diagnostic reports that one or more horizon buckets had zero
-    // headroom because the daily budget cap was already reached, the meta
-    // line must point the user at the budget — not the device — and offer
-    // the lower-the-budget remedy.
+  it('keeps a pre-v2.9 cannot-meet revision on device-side recourse even when buckets were exhausted in the run-up', () => {
+    // Pre-v2.9.x persisted revisions don't carry `floorShortfallCause`, so the
+    // consumer falls back to the legacy `bucketCount > 0` heuristic. The fix
+    // restricts that heuristic to `at_risk` because by construction the
+    // producer (`resolveStatus` in `horizonPlanner.ts`) only returns
+    // `cannot_meet` on the `!budgetBound` branch — a `cannot_meet` plan's
+    // cause is `time_capacity` (or `step_power` / `estimate`), never
+    // `budget`. A pre-v2.9 `cannot_meet` revision whose run-up happened to
+    // brush the daily-budget cap (cumulative `dailyBudgetExhaustedBucketCount
+    // > 0`) is still a physical/time miss — routing it to "Open Budget"
+    // would misdirect the user. Once the recorder re-records each plan
+    // post-upgrade the explicit `floorShortfallCause: 'time_capacity'` takes
+    // over and the gate becomes moot.
     const now = new Date(2026, 0, 1, 19, 0, 0, 0);
     const deadline = atLocalHour(now, 3);
     const devices: TargetDeviceSnapshot[] = [{
@@ -1164,6 +1172,7 @@ describe('deadline plan page payload', () => {
       energyNeededKWh: 4,
       planStatus: 'cannot_meet',
       dailyBudgetExhaustedBucketCount: 3,
+      // No `floorShortfallCause` — pre-v2.9.x persisted revision shape.
     }));
 
     const payload = expectOk(testExports.buildObjectivePayload({
@@ -1175,18 +1184,17 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
-    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
-    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
-    // The shortfall copy must not also appear — the budget message is the
-    // chosen explanation when the recorder flagged the cause.
-    expect(payload.hero.metaLine).not.toMatch(/short by about/i);
-    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
-    // Daily-budget cause routes recourse to the Budget tab so the user can
-    // lower the cap; the hard-cap-is-physical rule forbids suggesting they
-    // raise it. The `budget` target-tab id is the only branch that fires
-    // when the recorder flagged an exhausted bucket.
-    expect(payload.hero.recourse?.targetTab).toBe('budget');
-    expect(payload.hero.recourse?.label).toBe('Open Budget');
+    // No daily-budget message — the cause cannot be budget for a cannot_meet
+    // verdict, so the legacy heuristic must not fire.
+    expect(payload.hero.metaLine).not.toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).not.toMatch(/lower the daily budget/i);
+    // The shortfall copy is the chosen explanation — pointing at the device.
+    expect(payload.hero.metaLine).toMatch(/may not reach the target/i);
+    // Recourse stays on the device-side `Adjust device` (Overview tab), not
+    // the budget tab. Mirrors the post-v2.9 `time_capacity` route.
+    expect(payload.hero.recourse?.targetTab).toBe('overview');
+    expect(payload.hero.recourse?.label).toBe('Adjust device');
+    expect(payload.hero.recourse?.deviceId).toBe('heater');
     // The reasoned sentence is followed by the rich `Needs N kWh · …` meta
     // (TODO 1276) so users see both "why it's failing" and "how bad".
     expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
