@@ -205,4 +205,92 @@ describe('PriceFlowTagPublisher', () => {
     expect(createCalls).toBe(2);
     expect(mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID]).toBeDefined();
   });
+
+  it('still fires the price_list_updated trigger when setToken throws', async () => {
+    mockHomeyInstance.settings.set('combined_prices', buildStore({
+      days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
+    }));
+    const errors: unknown[][] = [];
+    const publisher = new PriceFlowTagPublisher({
+      homey: {
+        ...mockHomeyInstance,
+        flow: {
+          ...mockHomeyInstance.flow,
+          createToken: async () => ({
+            setValue: async () => { throw new Error('tag-store-down'); },
+          }),
+        },
+      } as any,
+      requestPriceRefetch: () => {},
+      log: () => {},
+      logDebug: () => {},
+      error: (...args: unknown[]) => { errors.push(args); },
+    });
+    await publisher.init();
+    await publisher.publish('tag-broken');
+    // Event-driven flows must still fire even when the tag-write path is broken.
+    expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(1);
+    // Tag-write failure must still be logged (not silently swallowed).
+    const tagErrorLogged = errors.some((args) =>
+      typeof args[0] === 'string' && args[0].includes('tag write failed'));
+    expect(tagErrorLogged).toBe(true);
+  });
+
+  it('still fires the trigger when createToken never succeeded', async () => {
+    mockHomeyInstance.settings.set('combined_prices', buildStore({
+      days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
+    }));
+    const publisher = new PriceFlowTagPublisher({
+      homey: {
+        ...mockHomeyInstance,
+        flow: {
+          ...mockHomeyInstance.flow,
+          createToken: async () => { throw new Error('flow-down'); },
+        },
+      } as any,
+      requestPriceRefetch: () => {},
+      log: () => {},
+      logDebug: () => {},
+      error: () => {},
+    });
+    await publisher.init();
+    await publisher.publish('no-token');
+    // Trigger fires even though the token was never registered — flows that
+    // only subscribe to `price_list_updated` should not be blocked by the
+    // missing global tag.
+    expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(1);
+  });
+
+  it('retries the next publish when the trigger fires but the tag write failed', async () => {
+    mockHomeyInstance.settings.set('combined_prices', buildStore({
+      days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
+    }));
+    let throwNext = true;
+    const setValueCalls: string[] = [];
+    const publisher = new PriceFlowTagPublisher({
+      homey: {
+        ...mockHomeyInstance,
+        flow: {
+          ...mockHomeyInstance.flow,
+          createToken: async () => ({
+            setValue: async (v: string) => {
+              setValueCalls.push(v);
+              if (throwNext) { throwNext = false; throw new Error('transient'); }
+            },
+          }),
+        },
+      } as any,
+      requestPriceRefetch: () => {},
+      log: () => {},
+      logDebug: () => {},
+      error: () => {},
+    });
+    await publisher.init();
+    await publisher.publish('first');
+    await publisher.publish('second-identical');
+    // Tag write retried (lastFingerprint not latched), and the trigger
+    // fired both times since it was decoupled from the tag-write outcome.
+    expect(setValueCalls).toHaveLength(2);
+    expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(2);
+  });
 });

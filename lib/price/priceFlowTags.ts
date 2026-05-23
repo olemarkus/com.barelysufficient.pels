@@ -53,10 +53,6 @@ export class PriceFlowTagPublisher {
   async publish(reason: string): Promise<void> {
     if (!this.initialized) {
       await this.init();
-      if (!this.initialized) {
-        this.deps.logDebug(`PriceFlowTagPublisher: publish(${reason}) skipped — not initialized`);
-        return;
-      }
     }
     const exportValue = this.tryBuildExport();
     if (!exportValue) return;
@@ -66,15 +62,44 @@ export class PriceFlowTagPublisher {
       return;
     }
     const json = JSON.stringify(exportValue);
-    try {
-      await this.setToken(json);
-      await this.fireTrigger(json, reason);
-    } catch (error) {
-      // Leave lastFingerprint untouched so the next publish retries this payload.
-      this.deps.error(`PriceFlowTagPublisher: publish(${reason}) failed — will retry on next update`, error);
-      return;
+    // Split the surfaces so a tag-write failure (or a token that never
+    // initialised) does not suppress the event-driven trigger. Flows that
+    // only subscribe to `price_list_updated` should keep firing even when
+    // the global `pels_prices_json` tag path is broken. The
+    // lastFingerprint-not-advanced retry path still covers transient
+    // tag-write errors on the next publish.
+    let tagWriteOk = false;
+    if (this.initialized) {
+      try {
+        await this.setToken(json);
+        tagWriteOk = true;
+      } catch (error) {
+        this.deps.error(
+          `PriceFlowTagPublisher: publish(${reason}) tag write failed — will retry on next update`,
+          error,
+        );
+      }
+    } else {
+      this.deps.logDebug(
+        `PriceFlowTagPublisher: publish(${reason}) — tag not initialized, firing trigger only`,
+      );
     }
-    this.lastFingerprint = fingerprint;
+    let triggerFireOk = false;
+    try {
+      await this.fireTrigger(json, reason);
+      triggerFireOk = true;
+    } catch (error) {
+      this.deps.error(
+        `PriceFlowTagPublisher: publish(${reason}) trigger fire failed — will retry on next update`,
+        error,
+      );
+    }
+    // Only advance the fingerprint when both surfaces published cleanly —
+    // otherwise the next publish would skip this payload on the failed
+    // surface (the retry-on-failure path).
+    if (tagWriteOk && triggerFireOk) {
+      this.lastFingerprint = fingerprint;
+    }
   }
 
   private tryBuildExport(): PriceExportV1 | null {
