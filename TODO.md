@@ -742,14 +742,6 @@ No action.*
       wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
 
-- [ ] Extract postmortem tone classification into `packages/shared-domain/`
-      next to the existing price-chip classifier. v2.8.0 PR1's
-      `resolveTone` helper in `lib/app/appInit.ts` consumes
-      `entry.isCheap`/`entry.isExpensive` directly (no re-derivation), but
-      lives in the wiring layer. A shared helper would let the postmortem
-      strip and the live price chip share one classification surface.
-      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
-
 - [ ] Type the combined-prices `ctx` accessor in `lib/app/appInit.ts`.
       `readPriceStore` returns a typed `CombinedPricesV2 | null`, so the
       v2.8.0 PR1 resolver no longer casts through `unknown`. Track a contract
@@ -760,26 +752,14 @@ No action.*
 - [ ] Reduce `lib/plan/deferredObjectives/planHistory.ts` `max-lines`
       override (currently 720, was 620 pre-v2.8.0). Bumped to host the
       hour-rollover detector and finalize-time flush. Target: lower once the
-      in-progress record + finalize paths split into their own module, or
-      once the postmortem tone helper extraction (above) lets the file shrink.
+      in-progress record + finalize paths split into their own module.
       Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
 
 - [ ] Reduce `lib/app/appInit.ts` `max-lines` override (currently 520).
       Bumped in v2.8.0 PR1 to host the per-hour price resolver. Target: <=500
       once the resolver moves into a dedicated module alongside the other
-      deferred-objective wiring (or the shared-domain tone helper above lands).
-
-- [ ] Decouple the `price_list_updated` trigger from `pels_prices_json`
-      tag-write failure in `lib/price/priceFlowTags.ts`. Today
-      `setToken` + `fireTrigger` share one try/catch, so a `setValue`
-      failure (or a missing `createToken` at init) suppresses the
-      trigger too. Event-driven flows that only consume the trigger
-      should keep firing even when the global tag path is broken. Trade
-      off vs. surface-consistency (both surfaces report the same
-      content at the same moment); the retry-on-failure path
-      (`lastFingerprint` not advanced) currently covers transient
-      errors, so this is reliability hardening rather than a bug.
-      Deferred from PR #926 review (codex P2 ×2).
+      deferred-objective wiring. (The shared-domain `resolvePostmortemTone`
+      helper extraction has already landed.)
 
 *v2.8.0 release-review findings (2026-05-19). Four items from the
 five-agent fan-out pass on `v2.7.4..origin/main`.*
