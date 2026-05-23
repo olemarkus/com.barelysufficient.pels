@@ -532,11 +532,20 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   //     case (`dailyBudgetExhaustedBucketCount: 0`, prod Connected 300) the
   //     count-based heuristic misses. Per
   //     `feedback_layering_resolution_in_producer`, the consumer reads the
-  //     flat producer field and stops; the legacy `(cannot_meet || at_risk)
-  //     && bucketCount > 0` clause is GATED on `floorShortfallCause ===
-  //     undefined` so it only fires for pre-v2.9.x revisions persisted
-  //     before the producer field shipped — never as a consumer-side
-  //     override of a producer verdict.
+  //     flat producer field and stops; the legacy `at_risk && bucketCount > 0`
+  //     clause is GATED on `floorShortfallCause === undefined` so it only
+  //     fires for pre-v2.9.x revisions persisted before the producer field
+  //     shipped — never as a consumer-side override of a producer verdict.
+  //     The legacy clause is further restricted to `at_risk` (never
+  //     `cannot_meet`): the producer only returns `cannot_meet` on the
+  //     `!budgetBound` branch of `resolveStatus` in `horizonPlanner.ts`, so
+  //     by construction a `cannot_meet` verdict's cause is `time_capacity`
+  //     (or `step_power` / `estimate`), never `budget`. Pre-v2.9.x
+  //     `cannot_meet` plans with cumulatively exhausted buckets reflect a
+  //     physical/time miss that happened to also brush the budget cap on
+  //     the way; routing them to "Open Budget" would misdirect the user.
+  //     Once the recorder re-records each plan post-upgrade the producer
+  //     field arrives and the gate becomes moot for that plan.
   //   - The queued headline-reason resolver fires on any plan status so a
   //     healthy on-track plan whose first hour falls after midnight can still
   //     surface "Today's budget is full — next cheap window after midnight."
@@ -546,7 +555,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const dailyBudgetExhaustedAnywhere = (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
   const dailyBudgetExhausted = latest.floorShortfallCause === 'budget'
     || (latest.floorShortfallCause === undefined
-      && (latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk')
+      && latest.planStatus === 'at_risk'
       && dailyBudgetExhaustedAnywhere);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
 
