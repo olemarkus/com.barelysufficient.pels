@@ -1669,4 +1669,92 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(normalized.plansByDeviceId.dev).toBeUndefined();
     });
   });
+
+  describe('debug-event lifecycle fields', () => {
+    // Plain "task started / replanned" telemetry: a single emitted event must
+    // answer "when did this task start, what deadline did the user set, what
+    // target" without having to correlate to a downstream
+    // `deferred_objective_horizon_planned`. The recorder already holds these
+    // values on the persisted plan — this just threads them onto the debug
+    // event so log analysis is self-contained.
+    const captureEvents = () => {
+      const events: Record<string, unknown>[] = [];
+      const inner = buildPersistDeps();
+      return {
+        deps: { ...inner.deps, debugStructured: (e: Record<string, unknown>) => { events.push(e); } },
+        events,
+        saved: inner.saved,
+      };
+    };
+
+    it('writes startedAtMs, deadlineAtMs, objectiveKind, and target on active_plan_revision_written (first revision)', () => {
+      const deadlineAtMs = 6 * HOUR_MS;
+      const { deps, events } = captureEvents();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs })], HOUR_MS);
+
+      const written = events.find((e) => e.event === 'active_plan_revision_written');
+      expect(written).toBeDefined();
+      expect(written).toMatchObject({
+        deviceId: 'dev',
+        revision: 1,
+        startedAtMs: HOUR_MS,
+        deadlineAtMs,
+        objectiveKind: 'temperature',
+        targetTemperatureC: 65,
+        targetPercent: null,
+      });
+    });
+
+    it('writes the same lifecycle fields on a pending event when no horizon plan is available yet', () => {
+      const deadlineAtMs = 6 * HOUR_MS;
+      const { deps, events } = captureEvents();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      const diag = makeDiag({ deviceId: 'dev', deadlineAtMs });
+      delete (diag as { horizonPlan?: unknown }).horizonPlan;
+      diag.reasonCode = 'objective_missing_price_horizon';
+      recorder.observe([diag], HOUR_MS);
+
+      const pending = events.find((e) => e.event === 'active_plan_revision_pending');
+      expect(pending).toMatchObject({
+        deviceId: 'dev',
+        reason: 'awaiting_horizon_plan',
+        startedAtMs: HOUR_MS,
+        deadlineAtMs,
+        objectiveKind: 'temperature',
+        targetTemperatureC: 65,
+        targetPercent: null,
+      });
+    });
+
+    it('preserves startedAtMs across replans (revision > 1)', () => {
+      const deadlineAtMs = 6 * HOUR_MS;
+      const { deps, events } = captureEvents();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      // First cycle at HOUR_MS anchors `startedAtMs` for the run.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        dailyBudgetExhaustedBucketCount: 0,
+      })], HOUR_MS);
+      // Metadata-only drift (matches the recorder's documented
+      // `schedule_revised` path): same hours, same horizon end, only the
+      // daily-budget signal flips. `startedAtMs` must stay at the original
+      // first-observation time, not move to the replan tick.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        dailyBudgetExhaustedBucketCount: 2,
+      })], 2 * HOUR_MS);
+
+      const writes = events.filter((e) => e.event === 'active_plan_revision_written');
+      expect(writes.length).toBeGreaterThanOrEqual(2);
+      const replan = writes[writes.length - 1]!;
+      expect(replan).toMatchObject({
+        startedAtMs: HOUR_MS, // anchored at the first observation, not the replan tick
+        deadlineAtMs,
+      });
+      expect(replan.revision as number).toBeGreaterThan(1);
+    });
+  });
 });
