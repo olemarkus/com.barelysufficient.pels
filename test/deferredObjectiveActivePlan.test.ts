@@ -1806,6 +1806,301 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev).toBeUndefined();
     });
+
+    // v2.9.0 closeout hardening — the persistence boundary previously
+    // accepted unknown `planStatus` strings, NaN energy figures, negative
+    // bucket counts, and unknown `displayConfidence` bands. Each scenario
+    // below is a payload a tampered settings dump (hand-edit, downgrade,
+    // version-drift across an aborted upgrade) could produce; the validator
+    // must drop the offending plan rather than smuggle garbage to the hero/
+    // chip.
+    describe('v2.9 field hardening', () => {
+      it('drops a plan whose revision planStatus is an unknown string', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card', planStatus: 'bogus_status' }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose revision is missing planStatus entirely', () => {
+        const { planStatus: _omitStatus, ...revisionWithoutStatus } = {
+          ...baseRevision,
+          reason: 'flow_card' as const,
+        };
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan(),
+              latest: revisionWithoutStatus,
+              original: revisionWithoutStatus,
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose revision energyNeededKWh is NaN', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card', energyNeededKWh: Number.NaN }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose revision is missing energyNeededKWh entirely', () => {
+        const { energyNeededKWh: _omitEnergy, ...revisionWithoutEnergy } = {
+          ...baseRevision,
+          reason: 'flow_card' as const,
+        };
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan(),
+              latest: revisionWithoutEnergy,
+              original: revisionWithoutEnergy,
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose revision energyExpectedKWh is negative', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card', energyExpectedKWh: -0.1 }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose revision energyExpectedKWh is NaN', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card', energyExpectedKWh: Number.NaN }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('accepts a revision with a valid energyExpectedKWh < energyNeededKWh (range chip)', () => {
+        // The recorder writes `energyExpectedKWh` when the mean estimate is
+        // smaller than the buffered figure (variance buffer scenarios). Must
+        // round-trip cleanly so the UI can render the `expected…planned` range.
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'flow_card',
+              energyNeededKWh: 4.5,
+              energyExpectedKWh: 3.8,
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.latest?.energyExpectedKWh).toBeCloseTo(3.8);
+      });
+
+      it('drops a plan whose revision dailyBudgetExhaustedBucketCount is negative', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'flow_card',
+              dailyBudgetExhaustedBucketCount: -1,
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('accepts dailyBudgetExhaustedBucketCount = 0 (legacy tools that round-trip)', () => {
+        // The recorder suppresses zero to keep persisted revisions byte-stable
+        // (see comment in `activePlanRecorder.ts`), but a hand-written fixture
+        // or downstream tool could emit zero. The validator stays lenient so
+        // those payloads still load.
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'flow_card',
+              dailyBudgetExhaustedBucketCount: 0,
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(0);
+      });
+
+      it('accepts dailyBudgetExhaustedBucketCount > 0 (production shape)', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'schedule_revised',
+              dailyBudgetExhaustedBucketCount: 3,
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(3);
+      });
+
+      it('drops a plan whose provenance displayConfidence is an unknown band', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              kwhPerUnitProvenance: {
+                source: 'learned',
+                kWhPerUnit: 1.5,
+                acceptedSamples: 5,
+                confidence: 'medium',
+                displayConfidence: 'bogus',
+                lastAcceptedAtMs: HOUR_MS,
+              },
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('accepts provenance whose displayConfidence is a known band', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              kwhPerUnitProvenance: {
+                source: 'learned',
+                kWhPerUnit: 1.5,
+                acceptedSamples: 5,
+                confidence: 'medium',
+                displayConfidence: 'high',
+                lastAcceptedAtMs: HOUR_MS,
+              },
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(
+          normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
+        ).toBe('high');
+      });
+
+      it('accepts provenance whose displayConfidence is null (bootstrap path)', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              kwhPerUnitProvenance: {
+                source: 'bootstrap',
+                kWhPerUnit: null,
+                acceptedSamples: 0,
+                confidence: null,
+                displayConfidence: null,
+                lastAcceptedAtMs: null,
+              },
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(
+          normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
+        ).toBeNull();
+      });
+
+      it('accepts provenance without displayConfidence (legacy v2.9-pre payload)', () => {
+        // Migration safety: provenance snapshots written before
+        // `displayConfidence` shipped must continue to load — the optional
+        // field is absent on the persisted shape, which is the byte-stable
+        // pre-v2.9 production write.
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              kwhPerUnitProvenance: {
+                source: 'learned',
+                kWhPerUnit: 1.5,
+                acceptedSamples: 5,
+                confidence: 'medium',
+                lastAcceptedAtMs: HOUR_MS,
+              },
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.kwhPerUnitProvenance).toMatchObject({
+          source: 'learned',
+          confidence: 'medium',
+        });
+        expect(
+          normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
+        ).toBeUndefined();
+      });
+
+      it('accepts a pristine v2.9 production-shape plan (legacy-payload migration anchor)', () => {
+        // This pins the exact byte shape the recorder writes today so a future
+        // refactor that tightens any field accidentally would surface here.
+        // Mirrors `buildRevision` + `resolveProvenance` output for a typical
+        // schedule_revised cycle (energyExpectedKWh < energyNeededKWh,
+        // dailyBudgetExhaustedBucketCount > 0, displayConfidence set).
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({
+                reason: 'schedule_revised',
+                energyNeededKWh: 4.5,
+                energyExpectedKWh: 3.8,
+                dailyBudgetExhaustedBucketCount: 2,
+                kwhPerUnitSource: 'learned',
+                planningSpeedKw: 1.5,
+                estimatedDurationText: '3h',
+              }),
+              kwhPerUnitProvenance: {
+                source: 'learned',
+                kWhPerUnit: 1.5,
+                acceptedSamples: 12,
+                confidence: 'medium',
+                displayConfidence: 'high',
+                lastAcceptedAtMs: HOUR_MS - 1000,
+              },
+              initialPlanningSpeedKw: 1.5,
+              initialEstimatedDurationText: '3h',
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeDefined();
+        expect(normalized.plansByDeviceId.dev?.latest?.energyNeededKWh).toBe(4.5);
+        expect(normalized.plansByDeviceId.dev?.latest?.energyExpectedKWh).toBe(3.8);
+        expect(normalized.plansByDeviceId.dev?.latest?.dailyBudgetExhaustedBucketCount).toBe(2);
+        expect(normalized.plansByDeviceId.dev?.latest?.planStatus).toBe('on_track');
+        expect(
+          normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
+        ).toBe('high');
+      });
+    });
   });
 
   describe('debug-event lifecycle fields', () => {

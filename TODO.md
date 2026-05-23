@@ -36,29 +36,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
-- [ ] Harden persisted smart-task active-plan and history validators for
-      the v2.9 fields. `lib/plan/deferredObjectives/activePlanSettings.ts`
-      accepts revisions without validating required `energyNeededKWh` and
-      `planStatus`, and does not validate optional `energyExpectedKWh`,
-      `dailyBudgetExhaustedBucketCount`, or provenance `displayConfidence`.
-      `lib/plan/deferredObjectives/planHistorySettings.ts` validates v4
-      `progressSamples`, `deliveredKWh`, `totalCost`, and `revisions`, but not
-      `hourlyContributions`. A tampered or downgraded settings payload can
-      survive normalization and reach hero/status/history consumers with
-      garbage status, confidence, or hourly-strip data.
-      Acceptance: add an active-plan `isPlanStatus` guard; validate finite
-      `energyNeededKWh`, optional finite `energyExpectedKWh`, optional
-      non-negative `dailyBudgetExhaustedBucketCount`, optional
-      `displayConfidence`, and valid hourly contributions
-      (`atMs`, non-negative `deliveredKWh`, finite `priceValue`, tone
-      `cheap|normal|expensive`). Add persistence-boundary regressions.
-      Files: `lib/plan/deferredObjectives/activePlanSettings.ts`,
-      `lib/plan/deferredObjectives/planHistorySettings.ts`,
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `packages/contracts/src/deferredObjectivePlanHistory.ts`.
-      Source: adversarial typing/contract review, v2.9.0 closeout,
-      2026-05-23.
-
 - [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
       `resolveVarianceMarginNote` returns the safety-margin sentence whenever
       planned energy exceeds expected energy, so the calm "books the high end"

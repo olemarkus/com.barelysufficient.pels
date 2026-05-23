@@ -335,4 +335,199 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     });
     expect(result.entries).toHaveLength(0);
   });
+
+  // v2.9.0 closeout hardening — `hourlyContributions` is the per-hour
+  // delivery strip the postmortem renders. The recorder writes finite
+  // `atMs`/`deliveredKWh`/`priceValue` and a known `tone`, but the
+  // validator previously accepted any shape on the persisted array. A
+  // tampered or downgraded payload could feed NaN price into the totals
+  // or an unknown tone string into the bar-colour mapper.
+  describe('hourlyContributions validation (v2.9 hardening)', () => {
+    const wellFormedContribution = {
+      atMs: HOUR_MS,
+      deliveredKWh: 1.2,
+      priceValue: 0.85,
+      tone: 'cheap' as const,
+    };
+
+    // Top-level helper so the migration-safety sibling assertion below
+    // doesn't hit the max-nested-callbacks cap (describe → describe → it →
+    // arrow = 4).
+    const getId = (entry: { id: string }): string => entry.id;
+
+    it('accepts well-formed hourlyContributions (round-trip)', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-ok',
+        hourlyContributions: [
+          wellFormedContribution,
+          { atMs: HOUR_MS * 2, deliveredKWh: 0.9, priceValue: 1.1, tone: 'normal' },
+          { atMs: HOUR_MS * 3, deliveredKWh: 0.5, priceValue: 2.4, tone: 'expensive' },
+        ],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0]!.hourlyContributions).toEqual(entry.hourlyContributions);
+    });
+
+    it('accepts deliveredKWh = 0 (zero-delivery hour still bar-stripped)', () => {
+      // The recorder can emit a contribution with `deliveredKWh: 0` when an
+      // hour closes with no progress delta but the resolver still produced a
+      // price. The validator must accept zero so the postmortem doesn't
+      // silently lose those bars.
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-zero',
+        hourlyContributions: [{ ...wellFormedContribution, deliveredKWh: 0 }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(1);
+    });
+
+    it('drops an entry whose hourlyContributions atMs is not finite', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-bad-ms',
+        hourlyContributions: [{ ...wellFormedContribution, atMs: Number.NaN }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions atMs is non-positive', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-bad-ms-zero',
+        hourlyContributions: [{ ...wellFormedContribution, atMs: 0 }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions deliveredKWh is negative', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-neg-kwh',
+        hourlyContributions: [{ ...wellFormedContribution, deliveredKWh: -0.1 }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions deliveredKWh is NaN', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-nan-kwh',
+        hourlyContributions: [{ ...wellFormedContribution, deliveredKWh: Number.NaN }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions priceValue is NaN', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-nan-price',
+        hourlyContributions: [{ ...wellFormedContribution, priceValue: Number.NaN }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions priceValue is null', () => {
+      // The contract types `priceValue` as `number` (not nullable). Recorder
+      // rejects non-finite values, and null would surface as a runtime
+      // TypeError when the postmortem multiplies it for the strip totals.
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-null-price',
+        hourlyContributions: [{ ...wellFormedContribution, priceValue: null }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions tone is an unknown string', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-bad-tone',
+        hourlyContributions: [{ ...wellFormedContribution, tone: 'bogus' }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops an entry whose hourlyContributions is not an array', () => {
+      const entry = {
+        ...v3Entry,
+        id: 'hourly-not-array',
+        hourlyContributions: 'not-an-array',
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [entry],
+      });
+      expect(result.entries).toHaveLength(0);
+    });
+
+    it('drops the malformed entry but keeps siblings (migration safety)', () => {
+      const goodEntry = {
+        ...v3Entry,
+        id: 'hourly-sibling-ok',
+        hourlyContributions: [wellFormedContribution],
+      };
+      const badEntry = {
+        ...v3Entry,
+        id: 'hourly-sibling-bad',
+        hourlyContributions: [{ ...wellFormedContribution, tone: 'bogus' }],
+      };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [goodEntry, badEntry],
+      });
+      const ids = result.entries.map(getId);
+      expect(ids).toEqual(['hourly-sibling-ok']);
+    });
+
+    it('accepts a v3 entry that lacks hourlyContributions entirely', () => {
+      // Legacy v3 entries (and v4 entries written before the hourly-strip
+      // feed shipped) persist without `hourlyContributions`. The optional
+      // field must be absent-tolerant so a single tightened validator
+      // doesn't drop the bulk of pre-v2.9 prod history.
+      const legacy = { ...v3Entry, id: 'hourly-legacy' };
+      const result = normalizeDeferredObjectivePlanHistory({
+        version: 4,
+        entries: [legacy],
+      });
+      expect(result.entries).toHaveLength(1);
+      expect(result.entries[0]!.hourlyContributions).toBeUndefined();
+    });
+  });
 });
