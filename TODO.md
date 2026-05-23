@@ -255,18 +255,6 @@ release, not v2.7.1 merge-blockers.*
       Files: `test/deferredObjectiveDiagnostics.test.ts`.
       Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
 
-- [ ] Document that PR #1001's `RECOVERY_NO_PROGRESS_MIN_DURATION_MS`
-      30-minute floor is a *poll-mode* safeguard, not a flow-mode
-      safeguard. The four-sample counter requirement is the binding
-      constraint under `power_source = flow` (1-6 h sample intervals),
-      so the wall-clock floor is a no-op for flow mode; the
-      `RECOVERY_SAFETY_TIMEOUT_MS = 24 h` still bounds the worst case.
-      Add a one-line comment beside the constant in
-      `lib/objectives/recovery.ts` so future readers don't
-      assume the floor bounds flow-mode disarm latency.
-      Files: `lib/objectives/recovery.ts`.
-      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
-
 - [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
       noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
       0.01 °C epsilon), Mill/Adax/Glamox sensors that report 0.1-0.2 °C
@@ -368,25 +356,9 @@ release, not v2.7.1 merge-blockers.*
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
       2026-05-23.
 
-- [ ] Harmonize `currentHourOpening` field-doc with `detectHourRollover`'s
-      corrected rollover wording. The persisted-record comment at
-      `lib/plan/deferredObjectives/planHistory.ts:130-147` describes the
-      delta as `opening → latest reading in the closing hour`, but the
-      rollover helper actually attributes
-      `opening → first reading in the *next* hour` to `opening.hourMs`
-      (the just-closed hour). The current wording reads as if the
-      contribution closes inside the same hour bucket, which is what
-      future readers would assume — and what the v2.9 flush-anchor fix
-      (PR #991) is specifically protecting against. Rewrite the comment to
-      mirror `planHistoryV4Helpers.ts:347-356` /
-      `planHistoryV4Helpers.ts:376-388` so the record-side doc and the
-      rollover-side doc agree.
-      Files: `lib/plan/deferredObjectives/planHistory.ts:130-147`.
-      Source: `pels-runtime-reality`, PR #990 follow-up, 2026-05-23.
-
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
-      `lib/plan/deferredObjectives/planHistory.ts:138-146` notes that
+      `lib/plan/deferredObjectives/planHistory.ts:141-148` notes that
       progress accumulated between the pre-restart opening anchor and the
       first post-restart observation lands in *neither* hour bucket — the
       kWh are dropped from `hourlyContributions`. The postmortem strip
@@ -400,7 +372,7 @@ release, not v2.7.1 merge-blockers.*
       against the per-revision hourly contribution coverage; the gap is
       always the hour the pre-restart opening was anchored in.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`
-      (rendering), `lib/plan/deferredObjectives/planHistory.ts:138-146`
+      (rendering), `lib/plan/deferredObjectives/planHistory.ts:141-148`
       (data signal so the renderer can identify the gap).
       Source: `pels-runtime-reality`, PR #990 follow-up, 2026-05-23.
 
@@ -2025,21 +1997,6 @@ should not be folded into the same PR.
       `describe('resolveDeadlinesListCards', …)` block; assertion is
       `expect(cards[0].confidence).toBeNull()` with the three null inputs.
       Files: `packages/settings-ui/test/deadlinesList.test.ts`.
-      Source: `pels-ux-fit`, PR #989 follow-up, 2026-05-23.
-
-- [ ] Compress the chip-rationale comment in `deadlinesList.ts`. The
-      8-line educational comment at
-      `packages/settings-ui/src/ui/deadlinesList.ts:79-86` walks through
-      *why* the list chip mirrors `displayConfidence ?? confidence ??
-      null` — but the same rationale already lives at the hero call site
-      (the source of truth this comment is mirroring). Duplication
-      invites the two comments to drift. Compress to 2-3 lines
-      ("mirror the hero's chip-confidence chain; `profileConfidence:
-      null` collapses the live-profile step — see hero call site") and
-      cross-link the hero resolver instead of restating its reasoning.
-      Acceptance: comment trimmed to ≤3 lines and includes a path
-      reference to `resolveChipConfidence`'s hero usage.
-      Files: `packages/settings-ui/src/ui/deadlinesList.ts:79-86`.
       Source: `pels-ux-fit`, PR #989 follow-up, 2026-05-23.
 
 - [ ] Clean up low-severity v2.9 review-note drift. The implementation is

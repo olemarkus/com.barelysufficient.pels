@@ -76,14 +76,9 @@ const buildCard = (params: {
     firstActionAtMs: firstHour,
     nowMs,
   });
-  // Mirror the live hero's `displayConfidence ?? confidence ?? null` chain so
-  // the list chip stays in lockstep with the detail hero. The list has no
-  // live-profile fallback (it doesn't load `objectiveProfiles`), so
-  // `profileConfidence: null` collapses the helper's third step. Without
-  // this, settled multi-step thermal devices kept showing `Estimating` on
-  // the list after the hero had correctly gone quiet — the raw
-  // `confidence` band sits at `low` effectively forever on those, while
-  // `displayConfidence` reflects the band-aware aggregate.
+  // Mirror the hero's chip-confidence chain (see `resolveEnergyNeededKWh` in
+  // `deadlinePlanResolvers.ts`); `profileConfidence: null` collapses the
+  // live-profile step since the list doesn't load `objectiveProfiles`.
   const confidence = resolveChipConfidence({
     provenance: plan.kwhPerUnitProvenance,
     profileConfidence: null,
