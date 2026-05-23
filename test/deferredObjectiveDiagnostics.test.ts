@@ -1394,6 +1394,218 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
+  it('plans a thermostat-class thermal device without stepped controls via measuredPowerKw fallback', () => {
+    // Regression for the Mill-/Adax-/Glamox-shaped Norwegian panel heater
+    // class (PELS v2.9.0, 2026-05-23): the device reports class `thermostat`,
+    // `onoff` + `target_temperature` + `measure_power`, no stepped controls
+    // and no calibrated `planningPowerKw`. With a converged learned profile
+    // and live measure_power, `resolveObjectiveSteps` previously returned `[]`
+    // (EV-charger branch was the only fallback), so the diagnostic emitted
+    // `objective_missing_charge_rate` and `activePlanRecorder` collapsed it
+    // to user-visible `pendingReason: 'missing_capacity'` forever. With the
+    // thermal fallback (measured → expected → power), the planner builds a
+    // horizon plan from the live draw and the smart task can progress.
+    const heater: PlanInputDevice = {
+      id: 'heater-1',
+      name: 'Mill v2 Panel Heater',
+      targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
+      currentOn: true,
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      currentTemperature: 19,
+      lastFreshDataMs: NOW_MS,
+      measuredPowerKw: 1.5,
+      // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
+      // depends on.
+    };
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const powerTracker: PowerTrackerState = {
+      objectiveProfiles: {
+        'heater-1': {
+          kind: 'temperature',
+          updatedAtMs: NOW_MS,
+          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          // Mill v2 reproducer: 0.30040 kWh/°C, 4 accepted samples, medium
+          // confidence; matches the SHS live-walk artifact captured against
+          // PELS v2.9.0.
+          kwhPerUnit: {
+            sampleCount: 4,
+            mean: 0.3004,
+            m2: 0,
+            min: 0.3004,
+            max: 0.3004,
+            confidence: 'medium',
+            lastUpdatedMs: NOW_MS,
+          },
+          acceptedSamples: 4,
+          rejectedSamples: 0,
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [heater],
+      settings: {
+        version: 1,
+        objectivesByDeviceId: {
+          'heater-1': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs,
+          },
+        },
+      },
+      powerTracker,
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    // Pre-fix this would have been `status: 'unknown'`,
+    // `reasonCode: 'objective_missing_charge_rate'`, `horizonPlan: undefined`.
+    expect(diagnostic).toBeDefined();
+    expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
+    expect(diagnostic!.reasonCode).not.toBe('objective_missing_capacity');
+    // Energy needed = 3 °C × 0.3004 kWh/°C ≈ 0.9012 kWh (no σ, no buffer
+    // contribution).
+    expect(diagnostic!.energyNeededKWh).toBeCloseTo(0.9012, 3);
+    expect(diagnostic!.kWhPerDegreeC).toBeCloseTo(0.3004, 3);
+    // Horizon plan was built — the fallback step plumbed through to the
+    // bucket allocator. `requestedMinimumStepId` is the synthetic `charge`
+    // step the producer emitted; consumers that previously short-circuited
+    // on a `null` minimum step now have an actionable plan to render.
+    expect(diagnostic!.horizonPlan).toBeDefined();
+    expect(diagnostic!.requestedMinimumStepId).toBe('charge');
+    // The closing assertion: an active-plan recorder fed this diagnostic
+    // would now write a non-pending revision (the schedule is non-empty),
+    // so `pendingReason: 'missing_capacity'` no longer pins the hero.
+    expect(diagnostic!.horizonPlan!.plannedBuckets.some((bucket) => bucket.plannedUsefulEnergyKWh > 0)).toBe(true);
+  });
+
+  it('thermal fallback skips zero/negative measuredPowerKw and uses expectedPowerKw when device is idle', () => {
+    // A heater between heating cycles reports `measuredPowerKw: 0`; without
+    // the `firstPositiveFinite` filter the fallback would publish a useless
+    // 0 kW step. The producer must walk down the candidate list to
+    // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
+    // horizon plan still builds.
+    const heater: PlanInputDevice = {
+      id: 'heater-1',
+      name: 'Idle Panel Heater',
+      targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
+      currentOn: false,
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      currentTemperature: 19,
+      lastFreshDataMs: NOW_MS,
+      // Heater is currently idle — measured draw is zero.
+      measuredPowerKw: 0,
+      expectedPowerKw: 2.0,
+      powerKw: 2.0,
+    };
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const powerTracker: PowerTrackerState = {
+      objectiveProfiles: {
+        'heater-1': {
+          kind: 'temperature',
+          updatedAtMs: NOW_MS,
+          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          kwhPerUnit: {
+            sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
+          },
+          acceptedSamples: 4,
+          rejectedSamples: 0,
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [heater],
+      settings: {
+        version: 1,
+        objectivesByDeviceId: {
+          'heater-1': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs,
+          },
+        },
+      },
+      powerTracker,
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
+    expect(diagnostic!.horizonPlan).toBeDefined();
+    expect(diagnostic!.requestedMinimumStepId).toBe('charge');
+  });
+
+  it('still reports missing_charge_rate for a thermostat without any usable power source', () => {
+    // The thermal fallback only fires when at least one of
+    // `measuredPowerKw` / `expectedPowerKw` / `powerKw` is positive-finite.
+    // A device without `measure_power`, without a load setting, and without
+    // Homey Energy data still ends up at `objective_missing_charge_rate` —
+    // which `activePlanRecorder` will surface as `pendingReason:
+    // missing_capacity` for thermal kinds (intentional cold-start hero
+    // copy). Guards against the fallback over-reaching.
+    const heater: PlanInputDevice = {
+      id: 'heater-1',
+      name: 'Powerless Thermostat',
+      targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
+      currentOn: false,
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      currentTemperature: 19,
+      lastFreshDataMs: NOW_MS,
+      // No power fields populated at all.
+    };
+    const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
+    const powerTracker: PowerTrackerState = {
+      objectiveProfiles: {
+        'heater-1': {
+          kind: 'temperature',
+          updatedAtMs: NOW_MS,
+          lastSample: { observedAtMs: NOW_MS, value: 19, unit: 'degree_c' },
+          kwhPerUnit: {
+            sampleCount: 4, mean: 0.3, m2: 0, min: 0.3, max: 0.3, confidence: 'medium', lastUpdatedMs: NOW_MS,
+          },
+          acceptedSamples: 4,
+          rejectedSamples: 0,
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [heater],
+      settings: {
+        version: 1,
+        objectivesByDeviceId: {
+          'heater-1': {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs,
+          },
+        },
+      },
+      powerTracker,
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      status: 'unknown',
+      reasonCode: 'objective_missing_charge_rate',
+    });
+  });
+
   it('marks a met objective as satisfied without requiring a charger rate', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
