@@ -202,13 +202,16 @@ Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 6
 Standard Material linear progress bar with a projected-end marker.
 
 ```
+                ↓ projected end
 [ used ====== ][ remaining budget ........ ]
-                ↑ projected end
 ```
 
 - Filled = kWh used
 - Empty = remaining budget
 - Projected marker: warning tone if beyond budget
+- The projected-end label sits *above* the bar so the eye reads "projection
+  → bar" top-down, matching the Normal/Projected-over-budget text sketches
+  in § "Section 2: Energy this hour" (`projected 4.4 kWh` above `[ bar ]`).
 
 ---
 
