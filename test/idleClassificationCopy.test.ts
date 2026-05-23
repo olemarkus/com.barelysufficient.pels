@@ -37,4 +37,26 @@ describe('formatIdleClassificationCopy', () => {
     });
     expect(copy.detail.toLowerCase()).not.toMatch(/hard cap|raise/);
   });
+
+  it('builds a neutral status line for capped_idle with temperatures', () => {
+    const copy = formatIdleClassificationCopy({
+      classification: 'capped_idle',
+      currentTemperatureC: 58,
+      targetTemperatureC: 65,
+    });
+    expect(copy.tone).toBe('neutral');
+    expect(copy.statusLine).toBe('Device reached its own setpoint cap (58° / 65°)');
+    // The detail must name the device's OWN setpoint cap as the recourse
+    // surface — never PELS' canonical "hard cap" (per
+    // `feedback_hard_cap_is_physical.md`).
+    expect(copy.detail).toContain('setpoint cap');
+    expect(copy.detail.toLowerCase()).not.toContain('hard cap');
+  });
+
+  it('capped_idle degrades gracefully when temperatures are missing', () => {
+    const copy = formatIdleClassificationCopy({ classification: 'capped_idle' });
+    expect(copy.statusLine).toBe('Device reached its own setpoint cap');
+    expect(copy.detail).not.toContain('undefined');
+    expect(copy.tone).toBe('neutral');
+  });
 });

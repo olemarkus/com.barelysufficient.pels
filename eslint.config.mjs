@@ -477,9 +477,11 @@ export default tseslint.config(
       // Bumped in v2.8.0 to host the internal hour-rollover detector that
       // wires `recordHourlyDelivery` from the planner observe loop
       // (`applyHourlyDeliveryRollover` + `flushOpenHourAtFinalize`).
+      // Bumped again in v2.9.x for the `capped_idle` promotion path
+      // (`stallClassificationToMetReason` + `isStallMetReason` helpers).
       // Target: <=620 once the in-progress record + finalize paths split
       // into their own module.
-      'max-lines': ['warn', { max: 720, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 740, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -540,10 +542,11 @@ export default tseslint.config(
     // added `met-by-stall` variant + `resolveStalledMetPostmortem`, pushing the file
     // further past the 500-line budget. Target: <=500 once a future PR splits the
     // chart-data resolver (`deferredPlanHistoryChartData.ts`) out from the
-    // postmortem/list-shape helpers.
+    // postmortem/list-shape helpers. Bumped in v2.9.x for the
+    // `met-by-device-cap` postmortem variant + resolver.
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 580, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 610, skipBlankLines: true, skipComments: true }],
     },
   },
 );

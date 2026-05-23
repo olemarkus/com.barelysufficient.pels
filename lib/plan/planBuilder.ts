@@ -96,17 +96,18 @@ export type PlanBuilderDeps = {
     nowMs: number,
     getStallClassification?: (
       deviceId: string,
-    ) => 'near_target_idle' | 'unresponsive' | undefined,
+    ) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined,
   ) => void;
   // Reader for the per-device idle classification from the observer layer
   // (`createIdleClassifier`). Threaded through so the planHistory recorder
   // can promote a deferred-objective run to `met` / `metReason: 'stalled'`
-  // when the device has settled near its setpoint. Optional so test harnesses
-  // and pre-classification call paths still work — absence means no
-  // promotion will fire (target-reached path unchanged).
+  // (`near_target_idle`) or `metReason: 'stalled_device_capped'`
+  // (`capped_idle`) when the device has settled at its plateau. Optional so
+  // test harnesses and pre-classification call paths still work — absence
+  // means no promotion will fire (target-reached path unchanged).
   getStallClassification?: (
     deviceId: string,
-  ) => 'near_target_idle' | 'unresponsive' | undefined;
+  ) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
   observeDeferredObjectiveActivePlans?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,

@@ -1,5 +1,6 @@
 import { createIdleClassifier, type IdleClassifierDeviceInput } from '../lib/observer/idleClassifier';
 import {
+  CAPPED_IDLE_MIN_WINDOW_MS,
   IDLE_HOLD_MIN_DURATION_MS,
   IDLE_UNRESPONSIVE_MIN_DURATION_MS,
 } from '../lib/observer/idleDetector';
@@ -93,5 +94,34 @@ describe('createIdleClassifier', () => {
     classifier.classifyAll([shed], t0);
     classifier.classifyAll([shed], t0 + IDLE_HOLD_MIN_DURATION_MS);
     expect(classifier.getClassification('heater-1')).toBeUndefined();
+  });
+
+  it('emits a capped_idle started event when the device cycles at its own cap', () => {
+    // Connected 300 worked example: tank parks at 58 °C (7 °C below the
+    // 65 °C target) with power cycling around the device's own
+    // hysteresis. The classifier should fire a started event the cycle
+    // the full 20-min window is covered.
+    const logger = createMockLogger();
+    const classifier = createIdleClassifier({ structuredLog: logger as never });
+    const t0 = 1_000_000;
+    const cappedAt58 = heaterAt({ currentTemperature: 58 });
+    let cursor = t0;
+    let drawing = true;
+    while (cursor <= t0 + CAPPED_IDLE_MIN_WINDOW_MS) {
+      classifier.classifyAll(
+        [{ ...cappedAt58, measuredPowerKw: drawing ? 1.5 : 0 }],
+        cursor,
+      );
+      cursor += 30_000;
+      drawing = !drawing;
+    }
+    classifier.classifyAll(
+      [{ ...cappedAt58, measuredPowerKw: 0 }],
+      cursor,
+    );
+    expect(classifier.getClassification('heater-1')).toBe('capped_idle');
+    expect(
+      logger.events.some((event) => event.event === 'device_capped_idle_started'),
+    ).toBe(true);
   });
 });

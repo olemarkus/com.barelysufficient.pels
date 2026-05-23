@@ -162,7 +162,7 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   starvation?: SettingsUiPlanDeviceStarvation;
   pendingTargetCommand?: SettingsUiPlanPendingTargetCommand;
   steppedLoad?: SettingsUiPlanSteppedLoadState;
-  idleClassification?: 'near_target_idle' | 'unresponsive';
+  idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle';
 };
 
 export type SettingsUiPlanDevice = SettingsUiPlanDeviceSnapshot;

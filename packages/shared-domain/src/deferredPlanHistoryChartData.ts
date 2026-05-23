@@ -66,11 +66,11 @@ export type DeferredPlanHistoryChartData = {
   // `metAtMs` was recorded.
   metAtMs: number | null;
   // Y-coordinate to plot the met marker at. For target-reached runs this is
-  // the target; for stalled runs (`metReason === 'stalled'`) it's the
-  // frozen final progress (the plateau the device settled at) so the marker
-  // lands on the observed line, not above it. Null exactly when `metAtMs`
-  // is null. Producer-side resolution per
-  // `feedback_layering_resolution_in_producer` — the chart view never
+  // the target; for stalled runs (either `metReason === 'stalled'` or
+  // `'stalled_device_capped'`) it's the frozen final progress (the plateau
+  // the device settled at) so the marker lands on the observed line, not
+  // above it. Null exactly when `metAtMs` is null. Producer-side resolution
+  // per `feedback_layering_resolution_in_producer` — the chart view never
   // branches on outcome / metReason / kind to pick the coordinate.
   metMarkerValue: number | null;
 };
@@ -214,11 +214,13 @@ const pickMetMarker = (
 };
 
 // Y-coordinate for the met marker. Target-reached runs land on the target
-// line (their natural reading); stalled runs land on the captured plateau
-// reading from `finalProgress*`, which is exactly where the observed line
-// stopped. Falls back to `null` if either the marker timestamp is absent
-// or the entry's frozen plateau reading is missing — the chart treats null
-// the same as a no-marker run.
+// line (their natural reading); stalled runs (either `'stalled'` inside
+// the hysteresis band or `'stalled_device_capped'` against the device's
+// own setpoint cap) land on the captured plateau reading from
+// `finalProgress*`, which is exactly where the observed line stopped.
+// Falls back to `null` if either the marker timestamp is absent or the
+// entry's frozen plateau reading is missing — the chart treats null the
+// same as a no-marker run.
 const pickMetMarkerValue = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
@@ -233,7 +235,7 @@ const pickMetMarkerValue = (
   >,
 ): number | null => {
   if (pickMetMarker(entry) === null) return null;
-  if (entry.metReason === 'stalled') {
+  if (entry.metReason === 'stalled' || entry.metReason === 'stalled_device_capped') {
     const finalProgress = entry.objectiveKind === 'temperature'
       ? entry.finalProgressC
       : entry.finalProgressPercent;

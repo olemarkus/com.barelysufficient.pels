@@ -212,7 +212,7 @@ export class PlanService {
   // least one plan tick has run.
   getStallClassification(
     deviceId: string,
-  ): 'near_target_idle' | 'unresponsive' | undefined {
+  ): 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined {
     return this.idleClassifier.getClassification(deviceId);
   }
 

@@ -113,7 +113,11 @@ export const EvDeadlineStateLine = ({ deviceId, nowMs }: { deviceId: string; now
 };
 
 const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
-  if (dev.idleClassification !== 'near_target_idle' && dev.idleClassification !== 'unresponsive') {
+  if (
+    dev.idleClassification !== 'near_target_idle'
+    && dev.idleClassification !== 'unresponsive'
+    && dev.idleClassification !== 'capped_idle'
+  ) {
     return null;
   }
   return formatIdleClassificationCopy({

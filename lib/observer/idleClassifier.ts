@@ -36,7 +36,10 @@ export type IdleClassifierDeviceInput = {
 
 export type IdleClassifier = {
   classifyAll: (devices: readonly IdleClassifierDeviceInput[], now: number) => void;
-  /** Returns `near_target_idle` or `unresponsive`; undefined for active devices. */
+  /**
+   * Returns `near_target_idle`, `unresponsive`, or `capped_idle`;
+   * undefined for active devices.
+   */
   getClassification: (deviceId: string) => Exclude<IdleClassification, 'active'> | undefined;
 };
 
@@ -60,6 +63,26 @@ const toDetectorInput = (
   isEvCharger: device.controlCapabilityId === 'evcharger_charging',
 });
 
+type ReportableClassification = Exclude<IdleClassification, 'active'>;
+
+const STARTED_EVENT: Record<ReportableClassification, string> = {
+  near_target_idle: 'device_near_target_idle_started',
+  unresponsive: 'device_unresponsive_started',
+  capped_idle: 'device_capped_idle_started',
+};
+
+const CLEARED_EVENT: Record<ReportableClassification, string> = {
+  near_target_idle: 'device_near_target_idle_cleared',
+  unresponsive: 'device_unresponsive_cleared',
+  capped_idle: 'device_capped_idle_cleared',
+};
+
+const isReportableClassification = (
+  value: IdleClassification | undefined,
+): value is ReportableClassification => (
+  value === 'near_target_idle' || value === 'unresponsive' || value === 'capped_idle'
+);
+
 const emitTransitionLog = (params: {
   device: IdleClassifierDeviceInput;
   result: IdleDetectorResult;
@@ -71,13 +94,10 @@ const emitTransitionLog = (params: {
 
   if (classification === previousClassification) return;
 
-  if (previousClassification === 'near_target_idle' || previousClassification === 'unresponsive') {
-    const event = previousClassification === 'near_target_idle'
-      ? 'device_near_target_idle_cleared'
-      : 'device_unresponsive_cleared';
+  if (isReportableClassification(previousClassification)) {
     logger.info({
       component: 'observer',
-      event,
+      event: CLEARED_EVENT[previousClassification],
       deviceId: device.id,
       deviceName: device.name,
       idleDurationMs,
@@ -86,10 +106,7 @@ const emitTransitionLog = (params: {
     });
   }
 
-  if (classification === 'near_target_idle' || classification === 'unresponsive') {
-    const event = classification === 'near_target_idle'
-      ? 'device_near_target_idle_started'
-      : 'device_unresponsive_started';
+  if (isReportableClassification(classification)) {
     const copy = formatIdleClassificationCopy({
       classification,
       currentTemperatureC: device.currentTemperature,
@@ -97,7 +114,7 @@ const emitTransitionLog = (params: {
     });
     logger.info({
       component: 'observer',
-      event,
+      event: STARTED_EVENT[classification],
       deviceId: device.id,
       deviceName: device.name,
       idleDurationMs,
