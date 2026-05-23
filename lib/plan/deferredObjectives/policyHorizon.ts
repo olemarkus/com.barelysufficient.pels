@@ -62,6 +62,16 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // (Slice 2 of Cause #2 in `TODO.md`). Optional: missing → no forecast → the
   // planner stays on the min-step floor.
   hardCapKw?: number | null;
+  // Number of priority-1 fully-reserved smart tasks that could share this
+  // bucket's reserved headroom. The producer divides `reservedHeadroomKw` by
+  // this count (equal-share allocation) before publishing it to the planner,
+  // so two competing tasks each see their fair fraction rather than both
+  // promoting their committed floor to the full forecast. The consumer
+  // (`horizonPlanner.resolveFloorStep`) reads one flat per-bucket value and
+  // stays unaware of sibling tasks — see
+  // `feedback_layering_resolution_in_producer`. Defaults to `1` (legacy /
+  // single-task behavior). Values `<= 0` or non-finite are treated as `1`.
+  concurrentEligibleCount?: number;
 }): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
@@ -70,6 +80,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     dailyBudgetSnapshot,
     exemptFromBudget = false,
     hardCapKw = null,
+    concurrentEligibleCount = 1,
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
@@ -83,7 +94,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     return unavailable('objective_missing_price_horizon');
   }
   return {
-    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget, hardCapKw),
+    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget, hardCapKw, concurrentEligibleCount),
     horizonBucketCount: sourceBuckets.length,
     dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
@@ -240,13 +251,15 @@ const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
   hardCapKw: number | null,
+  concurrentEligibleCount: number,
 ): DeferredObjectiveHorizonBucket[] => {
   const ranked = rankPrices(buckets.map((bucket) => bucket.price));
+  const sharePerTask = resolveEligibleShare(concurrentEligibleCount);
   return buckets.map((bucket, index) => {
     const priceFactor = bucket.priceFactor;
     const rankedScore = ranked[index] ?? 1;
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
-    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw);
+    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw, sharePerTask);
     return {
       id: bucket.id,
       startMs: bucket.startMs,
@@ -259,22 +272,41 @@ const mapPolicyBuckets = (
   });
 };
 
+// Treat non-positive / non-finite eligible counts as `1` (single task) so a
+// caller mis-passing zero never produces `NaN`/`Infinity` headroom. The
+// single-task value preserves legacy behaviour exactly. Equal-share allocation
+// is the v1 rule — see the `concurrentEligibleCount` doc in
+// `buildDeferredObjectivePolicyHorizon` and the TODO entry that motivated this.
+const resolveEligibleShare = (concurrentEligibleCount: number): number => (
+  Number.isFinite(concurrentEligibleCount) && concurrentEligibleCount >= 1
+    ? 1 / concurrentEligibleCount
+    : 1
+);
+
 // Reserved physical headroom for a fully-reserved smart task in this bucket:
-// `hardCapKw − planned uncontrolled load` (the cap minus the non-PELS-managed
-// forecast — controlled lower-priority devices can be displaced up to the cap
-// because the task holds both the budget-exempt and limit-lower-priority
-// rescue permissions). Clamped at 0. Returns null when either input is missing
-// so the planner falls back to the min-step floor.
+// `(hardCapKw − planned uncontrolled load) ÷ concurrentEligibleCount`. The
+// per-bucket budget (hardCap minus the non-PELS-managed forecast) is divided
+// equally across the eligible top-priority fully-reserved tasks so two such
+// tasks don't both promote their committed floor to the *full* forecast and
+// double-book the reserved slot in diagnostic verdicts. Equal-share allocation
+// is the simplest fair v1 rule: it is symmetric across tasks (no deadline tie-
+// breaking subtlety), stable across plan cycles unless the eligible-set count
+// changes, and conservative — over-counting eligibility (e.g. counting a task
+// that has nothing to do this cycle) just keeps everyone closer to the
+// min-step floor, which is the safer direction. Clamped at 0. Returns null
+// when either physical input is missing so the planner falls back to the
+// min-step floor.
 const resolveReservedHeadroomKw = (
   bucket: PolicyBucketSource,
   hardCapKw: number | null,
+  sharePerTask: number,
 ): number | null => {
   if (hardCapKw === null || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return null;
   if (bucket.backgroundKWh === null) return null;
   const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
   if (durationHours <= 0) return null;
   const uncontrolledKw = bucket.backgroundKWh / durationHours;
-  return Math.max(0, hardCapKw - uncontrolledKw);
+  return Math.max(0, hardCapKw - uncontrolledKw) * sharePerTask;
 };
 
 const resolveMaxUsefulEnergyKWh = (

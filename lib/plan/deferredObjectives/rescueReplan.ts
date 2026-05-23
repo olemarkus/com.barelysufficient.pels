@@ -56,6 +56,13 @@ export const resolveHorizonPlanWithRescue = (params: {
   // load can be displaced, which is only true at priority 1. Non-top-priority
   // tasks stay on the min-step floor even with both rescue permissions set.
   devicePriority?: number;
+  // Count of priority-1 fully-reserved smart tasks competing for the same
+  // reserved headroom this cycle (this task included). The exempt rebuild
+  // threads it onto the policy-horizon producer so per-bucket
+  // `reservedHeadroomKw` is divided equally across sibling tasks rather than
+  // each producer publishing the full forecast independently. Defaults to `1`
+  // so single-task callers and partial-rescue callers keep legacy behaviour.
+  concurrentEligibleCount?: number;
 }): RescueHorizonResult => {
   const {
     nowMs,
@@ -120,6 +127,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     dailyBudgetSnapshot,
     exemptFromBudget: true,
     hardCapKw: params.hardCapKw,
+    concurrentEligibleCount: params.concurrentEligibleCount,
   });
   if (exemptHorizon.reasonCode) {
     // Exempt rebuild failed — fall back to the budget-capped baseline and its real count.

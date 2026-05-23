@@ -511,6 +511,60 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     expect(result.reasonCode).toBeNull();
     expect(result.dailyBudgetExhaustedBucketCount).toBe(0);
   });
+
+  // Regression: when two priority-1 fully-reserved smart tasks share a cycle they
+  // were both able to promote their committed floor to the same per-bucket
+  // `reservedHeadroomKw = hardCap - uncontrolled` forecast, double-booking the
+  // reserved slot in diagnostic verdicts. The producer now divides the headroom
+  // equally across the eligible-task count so each task sees its fair fraction.
+  it('divides reservedHeadroomKw equally across concurrent eligible tasks (equal-share allocation)', () => {
+    const base = {
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+      hardCapKw: 10,
+    };
+    const single = buildDeferredObjectivePolicyHorizon({ ...base, concurrentEligibleCount: 1 });
+    const split = buildDeferredObjectivePolicyHorizon({ ...base, concurrentEligibleCount: 2 });
+    expect(single.reasonCode).toBeNull();
+    expect(split.reasonCode).toBeNull();
+    for (const bucket of single.buckets) {
+      // hardCap (10) - uncontrolled (0.5) = 9.5 kW available to a sole eligible task.
+      expect(bucket.reservedHeadroomKw).toBeCloseTo(9.5);
+    }
+    for (const bucket of split.buckets) {
+      // Same 9.5 kW now split between two eligible tasks → 4.75 kW each.
+      expect(bucket.reservedHeadroomKw).toBeCloseTo(4.75);
+    }
+  });
+
+  it('falls back to single-task headroom when concurrentEligibleCount is omitted, zero, or non-finite', () => {
+    // Mis-passing a zero/NaN count must not produce Infinity/NaN headroom. The
+    // resolver treats anything `< 1` or non-finite as `1`, preserving legacy
+    // single-task behavior for all current callers that omit the parameter.
+    const base = {
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+      }),
+      hardCapKw: 10,
+    };
+    const omitted = buildDeferredObjectivePolicyHorizon(base);
+    const zero = buildDeferredObjectivePolicyHorizon({ ...base, concurrentEligibleCount: 0 });
+    const negative = buildDeferredObjectivePolicyHorizon({ ...base, concurrentEligibleCount: -3 });
+    const nan = buildDeferredObjectivePolicyHorizon({ ...base, concurrentEligibleCount: Number.NaN });
+    for (const result of [omitted, zero, negative, nan]) {
+      expect(result.reasonCode).toBeNull();
+      for (const bucket of result.buckets) {
+        expect(bucket.reservedHeadroomKw).toBeCloseTo(9.5);
+      }
+    }
+  });
 });
 
 describe('buildDeferredObjectiveDiagnostics', () => {
@@ -1460,5 +1514,223 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       reasonCode: 'planned_using_deadline_reserve',
     });
     expect(diagnostic?.horizonPlan?.usesDeadlineReserve).toBe(true);
+  });
+
+  // ---------- Concurrent fully-reserved task headroom split (Slice 2 sibling) ----------
+  // Two priority-1 fully-reserved smart tasks must not both promote their
+  // committed floor to the same reserved-headroom forecast — they would
+  // double-book the reserved slot in diagnostic verdicts. The producer splits
+  // the headroom equally across the eligible-task count so two competing tasks
+  // each see their fair fraction. These tests pin the verdict, not the
+  // physical power delivery (the capacity guard handles the hard cap).
+  describe('concurrent priority-1 fully-reserved tasks share reserved headroom', () => {
+    // Reusable shape: two EV-style devices, each needing 6 kWh in 4h. The min
+    // step is 1 kW (4 kWh max → 2 kWh short on the floor) and the climbed step
+    // (high = 2 kW × 4h = 8 kWh) fits. With promotion to `high` (2 kW), the
+    // full 6 kWh lands inside the primary window plus reserve so the verdict
+    // is `on_track`. Without promotion the floor is short and the climbed-band
+    // probe softens to `at_risk: feasible_above_floor`.
+    //
+    // The horizon spans 5 hours (one deadline-reserve hour included). hardCap
+    // = 5 kW with zero uncontrolled background gives 5 kW of reserved
+    // headroom; the two-step EV ladder tops out at 2 kW, so a single fully-
+    // reserved task always promotes to `high`. Splitting that 5 kW between
+    // two competing tasks (2.5 kW each) still fits `high` (2 kW), so to make
+    // the split observable we use a three-step ladder with a `top = 3 kW`
+    // entry: 5 kW solo → promotes to top (3 kW × 4 = 12 kWh fits), 2.5 kW
+    // split → top (3 kW) doesn't fit, only `mid` (2 kW) does, which still
+    // delivers 8 kWh ≥ 6 kWh need → on_track. We need the split to actually
+    // *fail* to promote past the floor for the verdict to flip, so we shrink
+    // the hardCap so the split share falls below even `mid`.
+    //
+    // Final math: hardCap = 3 kW. Solo: reserved = 3 kW → promotes to `top`
+    // (3 kW × 4 = 12 kWh; need 6 kWh) → on_track. Split=2: reserved = 1.5 kW
+    // each → neither `mid` (2 kW) nor `top` (3 kW) fits → stays at min (1 kW)
+    // → floor places 4 kWh, 2 kWh short → climbed probe (top 3 kW × 4 =
+    // 12 kWh) fits → at_risk: feasible_above_floor.
+    const HARDCAP_KW = 3;
+    const NEED_KWH_TO_REACH = 6;
+    const buildPromotableDevice = (id: string): PlanInputDevice => ({
+      id,
+      name: id,
+      targets: [],
+      currentOn: false,
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      priority: 1,
+      stateOfCharge: {
+        percent: 40,
+        status: 'fresh',
+        observedAtMs: NOW_MS,
+      },
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'min', planningPowerW: 1000 },
+          { id: 'mid', planningPowerW: 2000 },
+          { id: 'top', planningPowerW: 3000 },
+        ],
+      },
+    });
+
+    // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.
+    const buildPromotableSettings = (
+      deviceId: string,
+      rescue?: Record<string, 'always' | 'at_risk'>,
+    ) => ({
+      [deviceId]: {
+        enabled: true,
+        kind: 'ev_soc' as const,
+        enforcement: 'soft' as const,
+        targetPercent: 40 + (NEED_KWH_TO_REACH / 0.2),
+        deadlineAtMs: resolveDeadlineAtMsFor('22:00'), // NOW_MS = 17:00 → 5h horizon (4h primary + 1h reserve).
+        ...(rescue ? { rescue } : {}),
+      },
+    });
+
+    const buildPromotableTracker = (deviceIds: string[]): PowerTrackerState => ({
+      objectiveProfiles: Object.fromEntries(deviceIds.map((id) => [id, {
+        kind: 'ev_soc',
+        updatedAtMs: NOW_MS,
+        lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+        kwhPerUnit: {
+          sampleCount: 4,
+          mean: 0.2,
+          m2: 0,
+          min: 0.2,
+          max: 0.2,
+          confidence: 'medium',
+          lastUpdatedMs: NOW_MS,
+        },
+        acceptedSamples: 4,
+        rejectedSamples: 0,
+      }])),
+    });
+
+    const fullyReservedRescue = {
+      exemptFromBudget: 'always' as const,
+      limitLowerPriorityDevices: 'always' as const,
+    };
+
+    // The default `allowedCumKWh` ramps by 1 kWh per bucket, which caps the
+    // non-exempt floor allocation at 1 kWh/h regardless of the step. To
+    // observe the headroom-split effect on the climbed-band verdict for the
+    // *no-rescue* control, the per-bucket budget must not be the binding
+    // constraint. The exempt rebuild lifts caps for the rescued task; this
+    // generous schedule keeps the no-rescue task's per-bucket cap large too.
+    const generousAllowedCumKWh = Array.from({ length: 24 }, (_, index) => (index + 1) * 100);
+
+    it('a single priority-1 fully-reserved task promotes to the top step using the full reserved headroom', () => {
+      // Solo control: full 3 kW headroom available → promotes to `top` (3 kW)
+      // → 3 kW × 4 h primary = 12 kWh fits 6 kWh need → on_track.
+      const [diagnostic] = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [buildPromotableDevice('ev-1')],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        hardCapKw: HARDCAP_KW,
+      });
+      expect(diagnostic).toMatchObject({
+        status: 'on_track',
+      });
+    });
+
+    it('divides the reserved headroom across two concurrent fully-reserved tasks so neither can over-book the slot', () => {
+      // The bug: both tasks see the full 3 kW reserved headroom and both
+      // promote to `top` (3 kW), reporting `on_track` for *both* even though
+      // the physical reserved slot only fits one. After the fix: each task
+      // sees 1.5 kW → neither `mid` (2 kW) nor `top` (3 kW) fits → floor
+      // stays at `min` (1 kW) → 4 kWh placed, 2 kWh short → climbed-band
+      // probe softens to `at_risk: feasible_above_floor` for both. The user-
+      // visible diagnostic now honestly says "at risk" rather than falsely
+      // promising on_track to both tasks competing for the same slot.
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [
+          buildPromotableDevice('ev-1'),
+          buildPromotableDevice('ev-2'),
+        ],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+            ...buildPromotableSettings('ev-2', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1', 'ev-2']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        hardCapKw: HARDCAP_KW,
+      });
+      expect(diagnostics).toHaveLength(2);
+      for (const diagnostic of diagnostics) {
+        expect(diagnostic).toMatchObject({
+          status: 'at_risk',
+          reasonCode: 'feasible_above_floor',
+        });
+        // Floor stays at `min` (1 kW × 5 horizon hours = 5 kWh placed) so a
+        // 6 kWh need leaves ~1 kWh unplanned. The exact value depends on how
+        // the reserve hour is accounted; the verdict flip — not the magnitude
+        // — is what this regression guards.
+        expect(diagnostic.horizonPlan?.unplannedUsefulEnergyKWh ?? 0).toBeGreaterThan(0);
+      }
+    });
+
+    it('counts only the eligible task when only one of two priority-1 tasks holds both rescue permissions', () => {
+      // ev-1 holds both rescue permissions → eligible. ev-2 has rescue absent
+      // (the no-rescue case) → not eligible. The producer's eligible count
+      // is therefore 1, so ev-1 sees the full 3 kW headroom and promotes to
+      // `top` → on_track. ev-2 falls outside the fully-reserved path entirely
+      // and stays on the min-step floor: 4 kWh placed of 6 kWh need →
+      // climbed-band probe softens to `at_risk: feasible_above_floor`.
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [
+          buildPromotableDevice('ev-1'),
+          buildPromotableDevice('ev-2'),
+        ],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+            ...buildPromotableSettings('ev-2'),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1', 'ev-2']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        hardCapKw: HARDCAP_KW,
+      });
+      const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
+      expect(byDevice.get('ev-1')).toMatchObject({ status: 'on_track' });
+      expect(byDevice.get('ev-2')).toMatchObject({
+        status: 'at_risk',
+        reasonCode: 'feasible_above_floor',
+      });
+    });
   });
 });

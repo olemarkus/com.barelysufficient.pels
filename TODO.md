@@ -72,20 +72,6 @@ patch releases, not release blockers; each item carries its own source/date.
       `packages/settings-ui/test/deadlinePlan.test.ts`.
       Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
 
-- [ ] Multiple priority-1 fully-reserved smart tasks can double-book the same
-      reserved headroom in diagnostics. `policyHorizon.ts` computes
-      `reservedHeadroomKw = hardCap - uncontrolled` per bucket, not per
-      eligible task. If two priority-1 tasks both have both rescue permissions
-      set to `always`, both producers can promote their floor to the same
-      headroom. The physical capacity guard still protects the hard cap; the
-      risk is misleading diagnostic verdicts and user-facing at-risk/cannot-fit
-      reasoning. Enforce one winner, or divide the reserved headroom across
-      eligible top-priority tasks.
-      Files: `lib/plan/deferredObjectives/policyHorizon.ts`,
-      `lib/plan/deferredObjectives/rescueReplan.ts`,
-      `test/deferredObjectiveHorizon.test.ts`.
-      Source: `pels-runtime-reality`, v2.9.0 retrospective, 2026-05-23.
-
 - [ ] **Squeeze-case budget-bound copy still reads device-side.** (Demoted from the v2.9 train's budget-bound
       mislabel work — Prong C, PR #978.) Prong C reclassifies the per-bucket
       background-squeeze case (`dailyBudgetExhaustedBucketCount: 0`, prod
@@ -324,6 +310,73 @@ release, not v2.7.1 merge-blockers.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] Eligibility-count flicker hardening for the new
+      `countConcurrentEligibleTasks` helper. Today the count is read from
+      `params.deviceById` (built from the cached target snapshot) plus
+      persisted PELS settings, so a transient SDK-side device-snapshot
+      eviction (Homey SDK miss per `feedback_homey_sdk_unreliable`) drops
+      that task from the count for one plan cycle and surviving siblings
+      briefly see `headroom / (N-1)` — diagnostic verdicts can oscillate
+      `on_track` ↔ `at_risk: feasible_above_floor` across adjacent
+      cycles. Capacity guard still holds, so this is verdict-flicker
+      hardening rather than a control bug. Consider an abandon-grace
+      window analogous to `planHistory.ts:48` (`ABANDON_GRACE_MS`) — count
+      should only drop after the device has been absent for one full
+      cooldown window.
+      Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
+      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
+
+- [ ] `countConcurrentEligibleTasks` over-counts in late-horizon buckets
+      where one of the eligible tasks' deadlines has already passed. The
+      count is computed once per cycle from settings + device map, with no
+      `deadlineAtMs` or `nowMs` input, so a task that drops out of
+      eligibility mid-horizon stays in the per-bucket denominator across
+      all buckets in the union horizon. Strictly conservative
+      (survivors get a smaller slice in late buckets, never larger), so
+      hard-cap invariant is intact. Consider a per-bucket count that
+      respects deadline expiry to tighten the diagnostic verdict on
+      late-horizon buckets.
+      Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
+      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
+
+- [ ] Add a committed-vs-fresh-pair regression test for the priority-1
+      headroom split. PR #1003's dual-task fixtures
+      (`test/deferredObjectiveDiagnostics.test.ts:1561-1610`) cover two
+      fresh top-priority tasks both without an active-plan commitment.
+      Add a sibling test where one task carries an existing commitment
+      from a prior cycle (`activePlans` map populated) while the other is
+      fresh, so an asymmetric eligibility-vs-commitment bug can't regress
+      invisibly.
+      Files: `test/deferredObjectiveDiagnostics.test.ts`.
+      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
+
+- [ ] Document that PR #1001's `RECOVERY_NO_PROGRESS_MIN_DURATION_MS`
+      30-minute floor is a *poll-mode* safeguard, not a flow-mode
+      safeguard. The four-sample counter requirement is the binding
+      constraint under `power_source = flow` (1-6 h sample intervals),
+      so the wall-clock floor is a no-op for flow mode; the
+      `RECOVERY_SAFETY_TIMEOUT_MS = 24 h` still bounds the worst case.
+      Add a one-line comment beside the constant in
+      `lib/core/objectiveProfileRecovery.ts` so future readers don't
+      assume the floor bounds flow-mode disarm latency.
+      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
+
+- [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
+      noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
+      0.01 °C epsilon), Mill/Adax/Glamox sensors that report 0.1-0.2 °C
+      jitter will keep clearing the band and resetting the no-progress
+      counter, so the `no_progress` disarm never trips and only the
+      24-hour `RECOVERY_SAFETY_TIMEOUT_MS` bounds the worst case. The
+      wall-clock floor caps the harm to "won't disarm during the first
+      30 min", but past 30 min a noisy device is back to the original
+      stuck-state. Couple to the open thermostat-noise work (stashed
+      `missing_capacity` draft) rather than blindly raising the
+      multiplier here; the right fix is likely a noise-aware threshold
+      keyed to the device's observed jitter floor.
+      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Make empty-deviceId on at-risk / pending recourse buttons detectable
       in prod. The hero recourse plumbs `deviceId` through to a
