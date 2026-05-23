@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../../core/powerTracker';
+import type { PowerTrackerState } from '../../power/tracker';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../packages/shared-domain/src/objectiveProfileBootstrap';
 import type {
   DeviceObjectiveProfile,

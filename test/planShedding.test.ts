@@ -1,5 +1,5 @@
-import CapacityGuard from '../lib/core/capacityGuard';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import CapacityGuard from '../lib/power/capacityGuard';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';

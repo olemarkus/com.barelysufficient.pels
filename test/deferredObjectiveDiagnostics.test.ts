@@ -11,7 +11,7 @@ import type {
 import { buildDeferredObjectiveDebugPayload } from '../lib/plan/deferredObjectives/diagnosticDebugPayload';
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../packages/contracts/src/deferredObjectivePlanHistory';

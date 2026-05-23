@@ -5,7 +5,7 @@ import {
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/objectives/profiles';
 import type { DeviceObjectiveProfile } from '../lib/objectives/types';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);

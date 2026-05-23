@@ -9,7 +9,7 @@ import type {
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getDeviceId } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { estimatePower, type PowerEstimateState } from './powerEstimate';
+import { estimatePower, type PowerEstimateState } from '../power/estimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
   resolveEvChargingStateBinaryEvidence,

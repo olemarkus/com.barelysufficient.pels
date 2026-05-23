@@ -1,5 +1,5 @@
 import { recordPowerSampleForApp } from '../lib/app/appPowerHelpers';
-import type CapacityGuard from '../lib/core/capacityGuard';
+import type CapacityGuard from '../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { getHighestKnownPowerKw } from '../lib/observer/observedPower';

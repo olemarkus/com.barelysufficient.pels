@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,

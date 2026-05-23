@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import { buildDefaultProfile, buildPlan, buildPriceDebugData } from './dailyBudgetMath';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import { buildSnapshotAndLogDebug } from './dailyBudgetManagerSnapshot';

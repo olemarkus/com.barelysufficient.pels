@@ -6,7 +6,7 @@ import {
     getIsAvailable,
     resolveZoneLabel,
 } from './deviceManagerHelpers';
-import { estimatePower, type PowerEstimateState } from './powerEstimate';
+import { estimatePower, type PowerEstimateState } from '../power/estimate';
 import {
     type FlowReportedCapabilityId,
     type FlowReportedCapabilitiesForDevice,

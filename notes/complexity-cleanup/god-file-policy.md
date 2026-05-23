@@ -64,7 +64,7 @@ skips blank lines and comments.
 | `lib/objectives/profiles.ts` | 519 | Bucket B while objective profiling remains one cohesive store. |
 | `packages/settings-ui/src/ui/budgetRedesignChart.ts` | 516 | Bucket A: split chart scale/series helpers if touched. |
 | `lib/app/appInit.ts` | 516 | Bucket A: delete or inline once remaining adapter value is gone. |
-| `lib/core/powerTracker.ts` | 512 | Bucket A: normalize persisted/runtime state boundaries. |
+| `lib/power/tracker.ts` | 512 | Bucket A: normalize persisted/runtime state boundaries. |
 | `lib/app/appDeviceControlHelpers.ts` | 510 | Bucket A: trim or split by control surface. |
 | `lib/core/deviceManagerParseDevice.ts` | 501 | Bucket A: keep under default after next helper extraction. |
 | `lib/app/appPowerHelpers.ts` | 15 | No longer a god file; old Phase 8 split has landed. |

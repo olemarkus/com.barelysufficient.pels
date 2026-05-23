@@ -1,6 +1,6 @@
-import type CapacityGuard from '../../core/capacityGuard';
-import { getSheddingClearThresholdKw } from '../../core/capacityGuard';
-import type { PlanCapacityStateSummary } from '../../core/capacityStateSummary';
+import type CapacityGuard from '../../power/capacityGuard';
+import { getSheddingClearThresholdKw } from '../../power/capacityGuard';
+import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { PlanContext } from '../planContext';
 import { isObservedOff } from '../../observer/observedState';

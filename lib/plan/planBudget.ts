@@ -1,5 +1,5 @@
-import type { PowerTrackerState } from '../core/powerTracker';
-import { resolveUsableCapacityKw } from '../core/capacityModel';
+import type { PowerTrackerState } from '../power/tracker';
+import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentHourContext } from './planHourContext';
 
 const SUSTAINABLE_RATE_THRESHOLD_MIN = 10;

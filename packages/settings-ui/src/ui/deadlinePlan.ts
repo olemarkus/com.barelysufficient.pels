@@ -405,7 +405,7 @@ const resolveLiveCostAndDelivery = (params: {
   currentChargeByStartMs: Map<number, number>;
   costDisplay: CostDisplay;
   // Plan start timestamp + render-time "now". Tracker buckets accumulate
-  // incrementally during the current hour (see `lib/core/powerTrackerEnergy.ts`),
+  // incrementally during the current hour (see `lib/power/trackerEnergy.ts`),
   // so the bucket value represents `[hour_start, min(now, hour_end))` of
   // measured energy — not necessarily a full-hour aggregate. We prorate the
   // bucket by `relevant / elapsed`, where `relevant = min(now, hour_end) -

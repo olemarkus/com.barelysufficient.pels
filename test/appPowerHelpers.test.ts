@@ -8,9 +8,9 @@ vi.mock('../lib/utils/perfCounters', async (importOriginal) => {
   };
 });
 
-import CapacityGuard from '../lib/core/capacityGuard';
-import { buildEmptyCapacityStateSummary } from '../lib/core/capacityStateSummary';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import CapacityGuard from '../lib/power/capacityGuard';
+import { buildEmptyCapacityStateSummary } from '../lib/power/capacityStateSummary';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,

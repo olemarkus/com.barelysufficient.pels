@@ -98,7 +98,7 @@ const getDerivedDailyTotals = (buckets: Record<string, number> | undefined, time
 };
 
 // Persisted `dailyTotals` only ever holds days that have aged out of the 30-day
-// hourly retention window in `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
+// hourly retention window in `lib/power/tracker.ts` (`aggregateAndPruneHistory`).
 // Recent days still live exclusively in `tracker.buckets`, so taking
 // `tracker.dailyTotals` as the source of truth makes the Daily-usage chart
 // trail today by a full month. Merge both sources additively: same-key sums

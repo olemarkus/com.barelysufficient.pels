@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 export type HourUsageContext = {

@@ -1,5 +1,5 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import type { PlanContext } from './planContext';
 import { clamp } from '../utils/mathUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';

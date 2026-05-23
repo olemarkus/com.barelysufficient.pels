@@ -3,7 +3,7 @@ import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
 } from './types';
-import type { PowerTrackerState } from '../core/powerTrackerTypes';
+import type { PowerTrackerState } from '../power/trackerTypes';
 import { shouldEmitRejectedProfileSample } from './rejectionLogging';
 import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './recovery';
 import { applyBandedConfidence, updateProfileStat } from './stats';

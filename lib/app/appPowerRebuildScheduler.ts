@@ -1,4 +1,4 @@
-import type CapacityGuard from '../core/capacityGuard';
+import type CapacityGuard from '../power/capacityGuard';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
 import { PlanRebuildScheduler, type RebuildIntent } from './planRebuildScheduler';
 import {

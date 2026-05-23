@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import type { CombinedPriceData } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import type { PriceData } from './dailyBudgetState';

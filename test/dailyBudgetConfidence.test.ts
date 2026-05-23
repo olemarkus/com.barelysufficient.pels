@@ -5,7 +5,7 @@ import {
   resolveConfidence,
   sampleDayIndex,
 } from '../lib/dailyBudget/dailyBudgetConfidence';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,

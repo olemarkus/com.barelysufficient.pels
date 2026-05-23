@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import {
   POWER_SAMPLE_STALE_SHED_TIMEOUT_MS,
   POWER_SAMPLE_STALE_THRESHOLD_MS,

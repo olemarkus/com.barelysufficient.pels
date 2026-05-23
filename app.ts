@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- Homey app lifecycle remains centralized in the main app class. */
 import Homey from 'homey';
-import CapacityGuard from './lib/core/capacityGuard';
+import CapacityGuard from './lib/power/capacityGuard';
 import {
   DeviceManager,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
@@ -19,7 +19,7 @@ import type {
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
-import { PowerTrackerState } from './lib/core/powerTracker';
+import { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/app/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';

@@ -1,4 +1,4 @@
-import type CapacityGuard from '../../core/capacityGuard';
+import type CapacityGuard from '../../power/capacityGuard';
 import type { Logger as PinoLogger } from '../../logging/logger';
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';

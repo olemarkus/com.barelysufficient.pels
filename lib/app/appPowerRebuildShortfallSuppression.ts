@@ -1,4 +1,4 @@
-import type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
+import type { PlanCapacityStateSummary } from '../power/capacityStateSummary';
 import type { PowerSampleRebuildState } from './appPowerRebuildScheduler';
 
 export const clearShortfallSuppressionInvalidation = (

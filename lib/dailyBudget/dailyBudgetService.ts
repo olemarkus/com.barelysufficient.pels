@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import {
   getDateKeyInTimeZone,
@@ -50,7 +50,7 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
-import { resolveUsableCapacityKw } from '../core/capacityModel';
+import { resolveUsableCapacityKw } from '../power/capacityModel';
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];

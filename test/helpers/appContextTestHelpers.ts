@@ -4,7 +4,7 @@ import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
 import { AppHomeyEnergyHelpers } from '../../lib/app/appHomeyEnergyHelpers';
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
-import type { PowerTrackerState } from '../../lib/core/powerTracker';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
