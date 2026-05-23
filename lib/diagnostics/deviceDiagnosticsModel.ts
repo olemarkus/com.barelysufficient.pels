@@ -2,7 +2,7 @@ import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
 } from '../utils/dateUtils';
-import { ACTIVATION_BACKOFF_MAX_LEVEL } from '../plan/planActivationBackoff';
+import { ACTIVATION_BACKOFF_MAX_LEVEL } from '../plan/admission';
 import type {
   DeviceDiagnosticsWindowSummary,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';

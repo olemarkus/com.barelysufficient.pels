@@ -3,7 +3,7 @@ import type { PlanEngineState } from '../planState';
 import type { PlanContext } from '../planContext';
 
 import { isCapacityBreached } from '../planRemainingSheddableLoad';
-import { updateGuardState, resolvePlanningTotalPower } from './guard';
+import { updateGuardState, resolvePlanningTotalPower } from '../admission';
 import {
   type PlanSheddingResult,
   type SheddingDeps,

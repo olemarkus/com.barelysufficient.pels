@@ -1,6 +1,6 @@
 import {
   RESTORE_ADMISSION_RESERVE_KW,
-} from './planConstants';
+} from '../planConstants';
 
 export type RestoreAdmissionMetrics = {
   admissionReserveKw: number;

@@ -582,7 +582,7 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
       `packages/shared-domain/src/deadlineLabels.ts`,
       `lib/plan/deferredObjectives/settings.ts`,
-      `lib/plan/deferredObjectives/admission.ts`,
+      `lib/plan/admission/deferredObjective.ts`,
       `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `lib/plan/deferredObjectives/replanReason.ts`.
       Source: v2.9.0 release-review refresh, 2026-05-22.
@@ -1563,7 +1563,7 @@ consolidation + a11y polish (8 P2)`.*
       while still respecting the hard cap. Until this lands, the EV flow card should default to
       `soft` and hide the `hard` option from users.
       Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/plan/planBuilder.ts`, `lib/plan/deferredObjectives/admission.ts`,
+      Files: `lib/plan/planBuilder.ts`, `lib/plan/admission/deferredObjective.ts`,
       `flowCards/deadlineObjectiveCards.ts`, headroom and admission tests.
 - [ ] Close the EV deadline observability loop: measured deviation and richer trigger tokens.
       Two connected items: (a) emit the `measured_deviation` revision reserved in
@@ -2224,7 +2224,7 @@ should not be folded into the same PR.
 - [ ] Wire deferred-objective step intent into cascade control (future feature).
       Today `lib/plan/deferredObjectives/horizonPlanner.ts:158,188` computes a
       `requestedMinimumStepId` per planned bucket and emits it via
-      `lib/plan/deferredObjectives/admission.ts:53-57` on the `DeferredAdmissionDecision`,
+      `lib/plan/admission/deferredObjective.ts:53-57` on the `DeferredAdmissionDecision`,
       but no consumer reads it for control — it reaches diagnostics, log payloads,
       and flow tokens only. Smart tasks today are admission-only ("may this device
       run?"); they do not steer step level. The cascade picks step independently
@@ -2232,7 +2232,7 @@ should not be folded into the same PR.
       Future capability: opt-in path where the cascade consults the horizon's
       requested step as a step-down hint during soft overshoot. Likely gated on
       `enforcement === 'hard'` so soft objectives stay advisory per the
-      `lib/plan/deferredObjectives/admission.ts:72-77` design comment ("soft
+      `lib/plan/admission/deferredObjective.ts:72-77` design comment ("soft
       objectives should not bypass restore admission, cooldowns, or daily-budget
       logic"). Pairs naturally with the P2 about `enforcement: 'hard'` having no
       behavioral effect on EV deadlines.
@@ -2241,7 +2241,7 @@ should not be folded into the same PR.
       cap-on water heater emitting `requestedMinimumStepId:"low"` over 80/80
       horizon plans with no executor effect, while the cascade shed thermostats
       to absorb soft overshoot) is intentional.
-      Files: `lib/plan/deferredObjectives/admission.ts`,
+      Files: `lib/plan/admission/deferredObjective.ts`,
       `lib/plan/deferredObjectives/horizonPlanner.ts`,
       `lib/plan/shedding/selection.ts`, `lib/plan/shedding/candidates.ts`,
       `notes/deferred-load-objectives/` (design doc when picked up).

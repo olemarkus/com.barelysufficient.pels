@@ -4,7 +4,7 @@ import {
   RESTORE_ADMISSION_FLOOR_KW,
   SWAP_RESTORE_RESERVE_KW,
 } from '../planConstants';
-import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../planRestoreAdmission';
+import { buildRestoreAdmissionMetrics, type RestoreAdmissionMetrics } from '../admission';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
 import {
   formatDeviceReason,

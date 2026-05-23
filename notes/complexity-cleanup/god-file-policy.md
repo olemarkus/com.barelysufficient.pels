@@ -48,7 +48,7 @@ skips blank lines and comments.
 | `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` | 682 | Bucket A: split chart/view helpers when adding usage-history follow-up. |
 | `lib/app/appPowerRebuildScheduler.ts` | 651 | Bucket A: finish post-unification scheduler cleanup. |
 | `lib/price/priceService.ts` | 607 | Bucket B while spot/grid orchestration remains local. |
-| `lib/plan/planActivationBackoff.ts` | 576 | Bucket A: revisit after restore admission cleanup. |
+| `lib/plan/admission/activationBackoff.ts` | 576 | Bucket A: revisit after restore admission cleanup. |
 | `packages/settings-ui/src/ui/components.ts` | 570 | Bucket B for shared UI primitives unless it keeps growing. |
 | `packages/settings-ui/src/ui/power.ts` | 566 | Bucket B while the page remains one cohesive screen module. |
 | `packages/settings-ui/src/ui/budgetRedesign.ts` | 563 | Bucket A: move per-surface resolvers out. |

@@ -6,7 +6,7 @@ import {
   closeActivationAttemptForDevice,
   isActivationObservationActiveNow,
   syncActivationPenaltyState,
-} from './planActivationBackoff';
+} from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   ensureHeadroomEntry,
