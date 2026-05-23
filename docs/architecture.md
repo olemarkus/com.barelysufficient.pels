@@ -77,11 +77,27 @@ When data flows from a producing module to a consuming module (planner → UI, p
 
 Concretely: the planner emits a single `safePaceKw`. It does not emit `safePaceFromHardCapKw` and `safePaceFromDailyBudgetKw` for the consumer to combine. If a consumer needs to explain *why* the value is what it is, the producer also emits a separate `reason` field.
 
+## Peer DAG inside the domain layer
+
+The domain peers (`lib/device`, `lib/power`, `lib/objectives`, `lib/observer`, `lib/plan`, `lib/price`, `lib/dailyBudget`, `lib/executor`) are not flat. The cruiser enforces the directional edges below — any other peer-to-peer import fails the build.
+
+```
+executor → plan → {power, dailyBudget, price, objectives, observer}
+                ↘ device  (narrow, Phase 4 cleanup target)
+dailyBudget → {power, price}
+device → power    (estimatePower utility)
+power ↔ objectives  (type-only cycle, established)
+```
+
+The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-to-plan`, `no-observer-to-peer`, `no-price-to-peer`, …) exist as the gate for the ongoing `lib/app` dissolution: any helper currently in `lib/app/` that, if pushed into a peer, would create a forbidden edge identifies itself as cross-peer wiring residue. Wiring residue stays at the composition root (`app.ts`), not inside a peer.
+
 ## Transitional allowances
 
 A small number of modules still cross layers in ways the contract above forbids. These are listed in `TODO.md` and accepted as tightening work, not as new patterns to imitate:
 
 - `lib/utils/**` still has a few imports from `lib/device`, `lib/power`, and `lib/plan`. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
+- `lib/plan/**` imports the executor in two places (`planEngine.ts` instantiates `PlanExecutor`; `planReconcileState.ts` imports a drift predicate). The cruiser warns. Phase 3 of the architecture refactor moves these contracts into `lib/planContract/` so the executor↔plan boundary is symmetric.
+- `lib/plan/**` imports `DeviceManager` from `lib/device/` for type annotations. Type-erased at runtime today; Phase 4 narrows the planner to a device-control interface instead of the full class.
 
 If you find a cross-layer import that isn't in the TODO list, treat it as a bug, not a precedent.
 

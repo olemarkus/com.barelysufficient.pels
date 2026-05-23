@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer)/' },
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor)/' },
       to: { path: '^lib/app/' },
     },
     {
@@ -72,6 +72,75 @@ module.exports = {
       severity: 'warn',
       from: { path: '^lib/utils/' },
       to: { path: '^lib/(device|power|plan)/' },
+    },
+    // ---- Peer DAG: explicit inversions forbidden ----------------------------
+    // The domain peers form a (mostly) top-down DAG:
+    //   executor > plan > {power, dailyBudget, price, objectives, observer}
+    //   dailyBudget > {power, price}
+    //   device > power (estimatePower utility)
+    //   power <-> objectives (type-only cycle, file-distinct, established)
+    //
+    // The rules below forbid edges in the OPPOSITE direction. They are the
+    // gate for lib/app dissolution: every wiring helper that today lives in
+    // lib/app/ is a candidate to push into a peer; any push that creates one
+    // of these forbidden edges identifies the file as cross-peer wiring
+    // residue (must stay in app.ts or a successor wiring layer).
+    {
+      name: 'no-power-to-peer-except-objectives',
+      comment: 'Power is a producer; only the established power <-> objectives type cycle is allowed. All other peer edges forbidden.',
+      severity: 'error',
+      from: { path: '^lib/power/' },
+      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor)/' },
+    },
+    {
+      name: 'no-device-to-peer-except-power',
+      comment: 'Device is an SDK adapter; device may consume power (estimatePower utility), nothing else. All other peer edges forbidden.',
+      severity: 'error',
+      from: { path: '^lib/device/' },
+      to: { path: '^lib/(plan|price|dailyBudget|objectives|observer|executor)/' },
+    },
+    {
+      name: 'no-observer-to-peer',
+      comment: 'Observer is a leaf module; consumed by plan/executor, must not consume any other peer.',
+      severity: 'error',
+      from: { path: '^lib/observer/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|executor)/' },
+    },
+    {
+      name: 'no-price-to-peer',
+      comment: 'Price is a leaf (consumed by plan and dailyBudget); must not depend on other peers.',
+      severity: 'error',
+      from: { path: '^lib/price/' },
+      to: { path: '^lib/(device|power|plan|dailyBudget|objectives|observer|executor)/' },
+    },
+    {
+      name: 'no-objectives-to-peer-except-power',
+      comment: 'Objectives is leafward; power <-> objectives type cycle is allowed, all other peer edges forbidden.',
+      severity: 'error',
+      from: { path: '^lib/objectives/' },
+      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor)/' },
+    },
+    {
+      name: 'no-dailyBudget-to-peer',
+      comment: 'DailyBudget is consumed by plan; may consume power and price, must not depend on any other peer.',
+      severity: 'error',
+      from: { path: '^lib/dailyBudget/' },
+      to: { path: '^lib/(plan|device|objectives|observer|executor)/' },
+    },
+    // Existing inversions to track but not yet break — clean-up targets.
+    {
+      name: 'todo-tighten-plan-executor-boundary',
+      comment: 'TODO: extract executor-needed types/predicates into lib/planContract; plan should not import executor (Phase 3 in the architecture refactor).',
+      severity: 'warn',
+      from: { path: '^lib/plan/' },
+      to: { path: '^lib/executor/' },
+    },
+    {
+      name: 'todo-narrow-plan-device-dep',
+      comment: 'TODO: replace direct DeviceManager imports in plan with a narrow control interface (Phase 4 RuntimeContext narrowing).',
+      severity: 'warn',
+      from: { path: '^lib/plan/' },
+      to: { path: '^lib/device/' },
     },
   ],
   options: {
