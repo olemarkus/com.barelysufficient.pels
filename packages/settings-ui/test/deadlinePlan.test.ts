@@ -1264,6 +1264,105 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
   });
 
+  // Headline-qualifier decision (2026-05-23):
+  // The partial-schedule budget-bound hero pairs the live `Heating from HH:MM`
+  // / `Heating now` headline (from `resolveHeroHeadline` — `at_risk` keeps
+  // its live-state headline when a scheduled hour exists, per the
+  // `at_risk: queued first hour preserves the "Heating from HH:MM" live-state
+  // headline` regression above and the comment block in
+  // `deadlinePlanHero.ts:resolveHeroHeadline`) with the budget-used-up body
+  // sentence from `cannotMeetDailyBudgetExhausted`. No qualifier is added to
+  // the headline itself: the body sentence already carries the budget cause
+  // and the `At risk` chip already warns; folding `(budget capped)` into
+  // `Heating from 14:00` would over-load the live-state headline whose job
+  // is "what is the device doing right now?". The body sentence (written for
+  // the terminal `cannot_meet` tier) is reused on the recoverable `at_risk`
+  // tier — its tone reads as the still-honest "PELS can't reserve more
+  // before the deadline" and the chip already carries the recoverability
+  // signal (`At risk`, not `Cannot finish`). Documented here rather than in
+  // the source because the decision is about test scope, not the resolvers.
+  it('partial-schedule budget-bound at_risk: keeps the live `Heating from HH:MM` headline and routes the body to the budget cause', () => {
+    const now = new Date(2026, 0, 1, 12, 0, 0, 0);
+    // Deadline at 16:00 local; first planned hour at 14:00 (offset 2) — the
+    // live headline reads `Heating from 14:00` per `resolveHeroHeadline`.
+    const deadline = atLocalHour(now, 4);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 4 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 50 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 65,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      // Two scheduled hours starting at offset 2 — the live `Heating from
+      // HH:MM` headline is the "partial schedule" half of this regression.
+      plannedHourOffsets: [2, 3],
+      plannedKWhPerHour: 2,
+      targetTemperatureC: 65,
+      energyNeededKWh: 10,
+      planStatus: 'at_risk',
+      dailyBudgetExhaustedBucketCount: 3,
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    // Chip side: at-risk keeps the warning chip, not the alarm one.
+    expect(payload.hero.chips.some((chip) => chip.text === 'At risk' && chip.tone === 'warn')).toBe(true);
+    expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(false);
+    // Headline side: live state, no budget qualifier (see decision comment
+    // block above). 14:00 = now (12:00) + 2h offset.
+    expect(payload.hero.headline).toBe('Heating from 14:00');
+    // Body side: the budget-used-up sentence carries the cause; the
+    // device-blaming `may not reach the target` shortfall copy must not fire.
+    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
+    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    // Recourse side: Open Budget, not Adjust device — partial schedule does
+    // not change the recourse routing on the budget cause.
+    expect(payload.hero.recourse?.targetTab).toBe('budget');
+    expect(payload.hero.recourse?.label).toBe('Open Budget');
+    expect(payload.hero.recourse?.deviceId).toBeUndefined();
+  });
+
   it('routes a passed deadline to the completed state on the History tab', () => {
     const now = new Date(2026, 0, 1, 7, 0, 0, 0);
     const deadline = atLocalHour(now, -1); // already passed
@@ -3326,7 +3425,15 @@ describe('resolveConfidenceChipText', () => {
 });
 
 describe('variance-buffer estimate range (end-to-end through buildObjectivePayload)', () => {
-  const setup = (energyExpectedKWh?: number) => {
+  const setup = (options: {
+    energyExpectedKWh?: number;
+    planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
+    // Drives the cold-start chip via the active-plan provenance snapshot —
+    // mirrors how the producer pipeline gates the `Estimating` / `Refining`
+    // chip on `resolveSmartTaskLearning(plan.kwhPerUnitProvenance)`.
+    coldStartProvenance?: boolean;
+  } = {}) => {
+    const { energyExpectedKWh, planStatus = 'on_track', coldStartProvenance = false } = options;
     const now = new Date(2026, 0, 1, 12, 0, 0, 0);
     const deadline = atLocalHour(now, 6);
     const devices: TargetDeviceSnapshot[] = [{
@@ -3361,8 +3468,21 @@ describe('variance-buffer estimate range (end-to-end through buildObjectivePaylo
       targetTemperatureC: 65,
       energyNeededKWh: 10,
       ...(energyExpectedKWh !== undefined ? { energyExpectedKWh } : {}),
-      planStatus: 'on_track',
+      planStatus,
     });
+    if (coldStartProvenance) {
+      // Bootstrap-sourced provenance with zero accepted samples is the
+      // textbook cold-start state — `resolveSmartTaskLearning` returns true
+      // and the `Estimating` chip will be emitted for at-risk / queued
+      // heroes alongside `low` confidence.
+      activePlan.kwhPerUnitProvenance = {
+        source: 'bootstrap',
+        kWhPerUnit: null,
+        acceptedSamples: 0,
+        confidence: 'low',
+        lastAcceptedAtMs: null,
+      };
+    }
     const bootstrap = buildBootstrap({
       capacity_limit_kw: 8,
       deferred_objectives: {
@@ -3381,20 +3501,81 @@ describe('variance-buffer estimate range (end-to-end through buildObjectivePaylo
   };
 
   it('renders the expected…planned range and the why-note when a buffer is booked', () => {
-    const payload = setup(8); // expected 8, planned (booked) 10
+    const payload = setup({ energyExpectedKWh: 8 }); // expected 8, planned (booked) 10
     expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
     expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
   });
 
   it('collapses to a single figure with no why-note when expected equals planned (or is absent)', () => {
-    const collapsed = setup(10);
+    const collapsed = setup({ energyExpectedKWh: 10 });
     expect(collapsed.hero.metaLine).toContain('10.0 kWh');
     expect(collapsed.hero.metaLine).not.toContain('–');
     expect(collapsed.hero.varianceNote).toBeNull();
 
-    const legacy = setup(undefined); // pre-buffer plan: no expected figure
+    const legacy = setup({}); // pre-buffer plan: no expected figure
     expect(legacy.hero.metaLine).toContain('10.0 kWh');
     expect(legacy.hero.varianceNote).toBeNull();
+  });
+
+  it('suppresses the safety-margin sentence under a cannot-finish alert hero so it does not contradict the chip + body', () => {
+    // The calm "PELS books the high end of this range to leave a safety
+    // margin" reads as reassurance underneath a red "Cannot finish" chip and
+    // postmortem body — the two signals contradict each other. The chip +
+    // body own the row; the variance-margin sentence is gated out by the
+    // `alert` flag the hero passes through.
+    const payload = setup({ energyExpectedKWh: 8, planStatus: 'cannot_meet' });
+    expect(payload.hero.tone).toBe('alert');
+    expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
+    expect(payload.hero.varianceNote).toBeNull();
+  });
+
+  it('suppresses the safety-margin sentence when the cold-start `Estimating` chip is already shown', () => {
+    // Cold-start chip and variance-margin note both communicate "the range
+    // is wide / we're still learning". Stacking them produces `Charging now`
+    // / `Needs 8.0–10.0 kWh` / safety-margin note / `Estimating` — one
+    // uncertainty hedge too many on first impression. The chip wins; the
+    // sentence is suppressed for the cold-start branch only.
+    const payload = setup({
+      energyExpectedKWh: 8,
+      planStatus: 'at_risk',
+      coldStartProvenance: true,
+    });
+    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating' && chip.tone === 'muted')).toBe(true);
+    expect(payload.hero.varianceNote).toBeNull();
+  });
+
+  it('keeps the safety-margin sentence on a healthy on_track hero with a learned (non-cold-start) rate', () => {
+    // Regression for over-gating: an `on_track` hero past the cold-start
+    // threshold (provenance defaults to the test fixture's 8 accepted
+    // samples — "learned" per `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4`)
+    // must keep the sentence. The chip is suppressed (`on_track` is silent
+    // on confidence per `resolveLiveHeroConfidenceChipText`), so the
+    // sentence is the only place the user reads why the range exists.
+    const payload = setup({ energyExpectedKWh: 8, planStatus: 'on_track' });
+    expect(payload.hero.tone).toBe('good');
+    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating')).toBe(false);
+    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
+  });
+
+  it('keeps the safety-margin sentence on an on_track cold-start hero (no chip rendered there, no double-hedge)', () => {
+    // Cross-gate regression: `on_track` heroes never get the confidence chip
+    // (per `resolveLiveHeroConfidenceChipText` — the steady case carries no
+    // useful signal and a forever-`low` thermal rate would nag), so the
+    // cold-start `coldStartChipShown` gate must NOT fire here, even when
+    // the underlying provenance is cold-start. Without this regression, a
+    // chip-only gate would correctly suppress the sentence on at-risk
+    // cold-start (no double-hedge) but a producer-side bug that flipped the
+    // gate to "learning && bootstrap" rather than "chip shown" would
+    // accidentally suppress on on_track too. The sentence is the only thing
+    // explaining the range here, so it must stay.
+    const payload = setup({
+      energyExpectedKWh: 8,
+      planStatus: 'on_track',
+      coldStartProvenance: true,
+    });
+    expect(payload.hero.tone).toBe('good');
+    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating')).toBe(false);
+    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
   });
 });
 

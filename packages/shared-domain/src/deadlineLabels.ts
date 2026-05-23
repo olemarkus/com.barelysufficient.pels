@@ -972,11 +972,34 @@ export const formatEnergyEstimateKWh = (params: {
 // Returns the kind-specific "why we book extra time" note when the booked
 // energy carries a non-trivial buffer over the expected figure; null otherwise
 // (steady device / cold-start collapse / legacy plan). Detail surface only.
+//
+// `alert` and `coldStartChipShown` suppress the calm "books the high end"
+// sentence on heroes where it would either contradict or stack with another
+// signal:
+//   - `alert` (cannot-finish heroes): the safety-margin sentence reads as calm
+//     reassurance underneath a red "Cannot finish" chip + body postmortem; the
+//     two signals contradict each other and the calmer line loses. The chip +
+//     body already own that row.
+//   - `coldStartChipShown` (cold-start `Estimating` / `Refining` chip is
+//     rendered): the chip is itself the "we're still learning, range is wide"
+//     signal. Adding the safety-margin sentence on top stacks two pieces of
+//     uncertainty messaging into the same hero (`Charging now` / `Needs
+//     8.0-10.0 kWh` / safety-margin note / `Estimating`) which read as one
+//     hedge too many on first impression. Producers compute the chip-shown
+//     flag at the same spot and pass it in.
+//
+// Healthy `on_track` / `at_risk` / `queued` heroes with a learned (not
+// cold-start) rate keep the note — the user is choosing between range bounds
+// and the sentence answers "why is it a range?" without competition.
 export const resolveVarianceMarginNote = (params: {
   labels: DeadlineLabels;
   energyPlannedKWh: number;
   energyExpectedKWh?: number | null;
+  alert?: boolean;
+  coldStartChipShown?: boolean;
 }): string | null => {
+  if (params.alert === true) return null;
+  if (params.coldStartChipShown === true) return null;
   if (typeof params.energyExpectedKWh !== 'number') return null;
   // Guard sub-rounding jitter: only surface when the rounded figures differ.
   if (params.energyPlannedKWh.toFixed(1) === params.energyExpectedKWh.toFixed(1)) return null;
