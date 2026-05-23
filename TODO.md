@@ -96,28 +96,6 @@ patch releases, not release blockers; each item carries its own source/date.
       `packages/settings-ui/test/deadlinePlan.test.ts`,
       `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
-- [ ] Recovery no-progress disarm needs wall-clock floor + hysteresis
-      band. `lib/core/objectiveProfileRecovery.ts:99-104`. With
-      `RECOVERY_PROGRESS_EPSILON = 0.01` °C and 10s polling, sub-epsilon
-      sensor drift can either reset the counter indefinitely (noise
-      crossing zero) or disarm prematurely (first post-arm sample sees
-      large negative delta vs. the pre-drop baseline). Under
-      `power_source = flow`, four samples may span hours, muting the
-      safeguard entirely (the 24 h `RECOVERY_SAFETY_TIMEOUT_MS` still
-      fires).
-      Why P1: failure mode is "safeguard does nothing," not user-visible
-      breakage; safety timeout still catches the worst case.
-      Acceptance: gate counter reset on
-      `forwardDelta > 5 * RECOVERY_PROGRESS_EPSILON`; add
-      `RECOVERY_NO_PROGRESS_MIN_DURATION_MS ≈ 30 min` measured from
-      `recoveryArmedAtMs`; add a regression test pinning the slow
-      legitimate refill case (currently only the cap-shed cooling
-      pattern is tested).
-      Files: `lib/core/objectiveProfileRecovery.ts`,
-      `test/objectiveProfileRecovery.test.ts`.
-      Source: `pels-runtime-reality` + `adversarial-review`, v2.8.0
-      release-review pass.
-
 - [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
       rescue and hard-cap terminology. The rescue card should not
       over-promise: `Set what a smart task may do` may grant daily-budget

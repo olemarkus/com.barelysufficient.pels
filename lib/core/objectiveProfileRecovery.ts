@@ -16,6 +16,19 @@ export const RECOVERY_NO_PROGRESS_SAMPLE_LIMIT = 4;
 // Minimum forward-delta (in the device's own unit) that counts as progress.
 // Smaller-than-this jitter increments the no-progress counter.
 export const RECOVERY_PROGRESS_EPSILON = 0.01;
+// Hysteresis band: counter-reset requires a forward delta strictly larger than
+// this multiple of the progress epsilon. Sub-band jitter (the common case for
+// sensors at rest) is treated as no-progress so a slow, mostly-flat refill
+// can't perpetually re-arm the counter via positive noise crossings.
+export const RECOVERY_PROGRESS_RESET_MULTIPLIER = 5;
+// Wall-clock floor for the no-progress disarm path, measured from
+// `recoveryArmedAtMs`. With 10s polling, four consecutive no-progress samples
+// can accumulate in 40s; a heater whose first post-arm sample is still cooling
+// would then be disarmed long before any rebuild had a chance to start. 30 min
+// is long enough that a legitimate slow refill has had time to start producing
+// >5*EPSILON deltas, and short enough that a real cap-shed cooling pattern
+// isn't kept armed for hours when the planner could be reusing the slot.
+export const RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1000;
 
 export type RecoveryDisarmReason = 'recovered' | 'safety_timeout' | 'no_progress';
 
@@ -93,14 +106,22 @@ function resolveArmedRecovery(params: {
 
   // Forward-progress check: a cap-shed thermostat cools *away* from the pre-drop
   // value and would otherwise stay armed for the full 24h timeout. Increment a
-  // no-progress counter on any non-positive delta vs the previous sample; once
-  // it hits the limit, disarm with `no_progress`. Any positive delta resets it
-  // — a slow but trending-up rebuild stays armed normally.
+  // no-progress counter when the sample-to-sample delta fails to clear the
+  // hysteresis band (`5 * EPSILON`); once it hits the limit AND the armed
+  // window has been open at least `RECOVERY_NO_PROGRESS_MIN_DURATION_MS`,
+  // disarm with `no_progress`. Anything inside the hysteresis band is treated
+  // as no-progress so sub-epsilon sensor noise crossing zero can't perpetually
+  // reset the counter; the wall-clock floor prevents premature disarm under
+  // fast 10s polling where four near-flat samples can land in <1 min.
   const previousNoProgress = previous.recoveryNoProgressSamples ?? 0;
   const forwardDelta = sample.value - previous.lastSample.value;
-  const nextNoProgress = forwardDelta > RECOVERY_PROGRESS_EPSILON ? 0 : previousNoProgress + 1;
+  const resetThreshold = RECOVERY_PROGRESS_RESET_MULTIPLIER * RECOVERY_PROGRESS_EPSILON;
+  const nextNoProgress = forwardDelta > resetThreshold ? 0 : previousNoProgress + 1;
 
-  if (nextNoProgress >= RECOVERY_NO_PROGRESS_SAMPLE_LIMIT) {
+  if (
+    nextNoProgress >= RECOVERY_NO_PROGRESS_SAMPLE_LIMIT
+    && ageMs >= RECOVERY_NO_PROGRESS_MIN_DURATION_MS
+  ) {
     return disarm(previous, sample, 'no_progress');
   }
 
