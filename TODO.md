@@ -96,22 +96,28 @@ release, not v2.7.1 merge-blockers.*
       route (`DeadlinePlan` `loading` state + initial HTML in `#deadline-plan-root`). Overview
       panel already shipped its skeleton at v2.7.3; Settings panel is static navigation
       with no async load and intentionally has no skeleton.
-- [ ] Unify the hero and section-label primitive across every settings-UI surface.
-      Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
-      header, and deadline-plan hero should read as one component: same eyebrow (font-size,
-      letter-spacing, colour token), same headline weight / size / line-height, same status-tone
-      bindings (`data-tone="good|warn|alert"` → flattened tokens from the entry above), same
-      accent radial-gradient atmosphere rule, same supporting-text token. Same for section
-      labels (`eyebrow`) — one font-size + one weight + one colour token, applied uniformly.
-      Acceptance: a Playwright screenshot matrix of all primary surfaces at 320 / 480 px shows
-      hero typography and section-label typography each trace to a single source of truth in
-      `style.css`; the screenshot snapshots are committed and diff-gated; no surface defines its
-      own one-off hero rule.
-      Why P1 (demoted from P0 in release-review pass): the unfinished work is rebinding 5 panel
-      headers to the shared `.eyebrow` primitive plus consolidating duplicated chip/card/button
-      primitives. Both are refactor-for-coherence — the panels render today, just with subtle
-      per-page differences. No user-visible incorrectness, so does not gate the release.
-      *Sub-bullets from M3 visual pass (2026-05-14, after eco-palette landed):*
+- [ ] Consolidate the remaining duplicated chip / card / button / segmented-control /
+      ripple / elevation primitives across every settings-UI surface.
+      The hero + section-label rebind phase of the original "unify the hero primitive" P1
+      now ships in full — Overview hero, Budget header, Usage header, Smart tasks header,
+      Settings header, Advanced header, AND the deadline-plan hero all render through the
+      shared `.plan-hero` / `.pels-hero` primitive with the canonical `.eyebrow` +
+      `.plan-hero__headline` cascade and the same `data-tone="good|warn|alert|info"`
+      bindings. Regression coverage at `packages/settings-ui/test/heroPrimitiveRebind.test.ts`
+      pins every surface to the canonical shell + eyebrow + headline shape so a future
+      refactor can't silently revert.
+      What remains: chips, cards, buttons, segmented controls, ripples, and elevation are
+      still duplicated across views with subtle per-page variations (padding, border colour,
+      ripple behaviour, focus ring). A first-impression UI should read as one system, not
+      five-plus near-duplicates.
+      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer
+      rebound, no inline overrides beyond data-attribute state. Implementation may use the
+      existing custom primitives or `@material/web` — that choice stays with the P2 entry
+      below.
+      Why P1 (demoted from P0 in release-review pass): refactor-for-coherence — the surfaces
+      render today, just with subtle per-page differences. No user-visible incorrectness, so
+      does not gate the release.
+      *Reference — sub-bullets from the original M3 visual pass that are now closed:*
       - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
         warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
         power bar now renders segmented [managed][background] blocks on a single track,
@@ -119,25 +125,22 @@ release, not v2.7.1 merge-blockers.*
       - **Budget / Usage / Settings / Advanced headers rebound (2026-05-23 batch 7
         partial PR):** all four now render via `.plan-hero` / `.pels-hero` with the
         shared `.eyebrow` + `.plan-hero__headline` cascade; the per-surface
-        `.budget-page-header__title` one-off was dropped. The deadline-plan hero
-        (`DeadlinePlan.tsx`) still needs the same rebind — agent ran out of context
-        mid-flight; see commit message on PR for partial-completion rationale. Pin the
-        deadline-plan hero rebind as the next focused PR.
+        `.budget-page-header__title` one-off was dropped.
       - **Tonal-gradient mobile-media-query duplicates folded (same partial PR):**
         the four `data-tone="good|warn|alert|info"` overrides previously declared
         twice — once in the main `.plan-hero[data-tone="…"]` block and once in a
         mobile media query — now consolidate to a single declaration site.
+      - **Deadline-plan hero rebound (2026-05-23 batch 8 follow-up PR):** both the
+        ready (`DeadlineHero`) and pending (`PendingHero`) variants now render the
+        eyebrow as `<p class="eyebrow plan-hero__section-label">` and the headline
+        as `<h2 class="plan-hero__headline">`, matching the four sibling panels.
+        Tonal cascade (good/warn/alert/info) flows through `data-tone` on the shared
+        primitive; no per-surface tonal CSS remains.
       - **Info as a role is sparse on Overview** — only the Smart-task chip and the
         info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
-        neutral explanation), but worth confirming during hero work that we're not
-        artificially restraining it; if there's a natural "Price low / Price high" hint
-        for the hero meta-row, use info there.
-      Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
-      across views with subtle per-page variations (padding, border colour, ripple behaviour,
-      focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
-      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer rebound,
-      no inline overrides beyond data-attribute state. Implementation may use the existing custom
-      primitives or `@material/web` — that choice stays with the P2 entry below.
+        neutral explanation), but worth confirming during chip/card consolidation that
+        we're not artificially restraining it; if there's a natural "Price low / Price
+        high" hint for the hero meta-row, use info there.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
       `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
