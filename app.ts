@@ -46,6 +46,7 @@ import {
   resolveModeName as resolveModeNameHelper,
 } from './lib/utils/capacityHelpers';
 import {
+  DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH,
   DEVICE_LAST_CONTROLLED_MS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
@@ -248,8 +249,22 @@ class PelsApp extends Homey.App {
     = createDeferredObjectiveEndedBus();
   private readonly deferredObjectiveHoursRemainingBus: DeferredObjectiveHoursRemainingBus
     = createDeferredObjectiveHoursRemainingBus();
+  // Persist the integer-hour crossing latch via settings so an already-crossed
+  // threshold doesn't re-fire after an app restart. A throwing/missing read on
+  // cold-start is treated as "no persisted state" — the tracker falls back to
+  // first-observation seeding (pre-persistence behaviour). Per
+  // `feedback_homey_sdk_unreliable`, never wipe the latch on a single bad read.
   private readonly deferredObjectiveHoursRemainingTracker: DeferredObjectiveHoursRemainingTracker
-    = createDeferredObjectiveHoursRemainingTracker();
+    = createDeferredObjectiveHoursRemainingTracker({
+      load: () => this.homey.settings.get(DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH),
+      save: (latch) => {
+        try {
+          this.homey.settings.set(DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, latch);
+        } catch (error) {
+          this.error('Failed to persist deferred-objective hours-remaining latch', error);
+        }
+      },
+    });
   private capacitySettings = { limitKw: 10, marginKw: 0.2 };
   private capacityDryRun = true;
   private operatingMode = 'Home';

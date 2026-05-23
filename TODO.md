@@ -116,26 +116,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
       release-review refresh, 2026-05-22.
 
-- [ ] Persist or seed the `smart_task_hours_remaining` crossing latch so an
-      already-crossed threshold does not re-fire after app restart. Today the
-      crossing state is in-memory only; after restart the first observation for
-      an existing deadline arrives with `previousHoursRemaining: null`, and the
-      run listener treats that as a fresh crossing even though the card says it
-      fires once and re-arms when the ready-by time is rescheduled.
-      Why P1: restart-only duplicate Flow firing, not data loss or planner
-      correctness, but it violates the Flow card's user-visible contract.
-      Acceptance: persist the last emitted `(deviceId, deadlineAtMs,
-      hoursRemaining)` boundary or suppress/seal startup observations so only
-      new or re-armed tasks fire; add a regression for an app restart while an
-      existing task is already below the configured threshold.
-      Files: `lib/plan/deferredObjectives/hoursRemainingCrossings.ts`,
-      `flowCards/deadlineObjectiveCards.ts`,
-      `.homeycompose/flow/triggers/smart_task_hours_remaining.json`,
-      `test/deferredObjectiveHoursRemainingCrossings.test.ts`,
-      `test/deadlineObjectiveCards.test.ts`.
-      Source: `pels-runtime-reality`, v2.9.0 release-review refresh,
-      2026-05-22.
-
 - [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
       upstream has a non-breaking 6.x path. Current lock:
       `socket.io-client@4.8.3` -> `engine.io-client@6.6.4` ->
