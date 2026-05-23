@@ -251,19 +251,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: `pels-runtime-reality`, v2.9.0 release-review refresh,
       2026-05-22.
 
-- [ ] Align `docs/flow-cards.md` Smart task status-condition docs with
-      the actual condition dropdown. The public docs currently describe list
-      / detail statuses such as `Building plan…`, `Scheduled`, and
-      `Paused — unplugged`, but
-      `.homeycompose/flow/conditions/deadline_status_is.json` exposes only
-      `Waiting`, `On track`, `At risk`, `Cannot finish`, and `Satisfied`.
-      Update the docs so users do not build flows around statuses the
-      condition card cannot select.
-      Files: `docs/flow-cards.md`,
-      `.homeycompose/flow/conditions/deadline_status_is.json` (reference
-      only).
-      Source: v2.8.0 release-review leftovers, 2026-05-21.
-
 - [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
       upstream has a non-breaking 6.x path. Current lock:
       `socket.io-client@4.8.3` -> `engine.io-client@6.6.4` ->
