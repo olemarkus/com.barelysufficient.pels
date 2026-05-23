@@ -1944,5 +1944,131 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         reasonCode: 'feasible_above_floor',
       });
     });
+
+    it('splits headroom symmetrically even when one task carries a prior-cycle commitment and the other is fresh', () => {
+      // Sibling to the dual-fresh test above. The dual-fresh fixture
+      // covers two top-priority fully-reserved tasks both *without* an
+      // `activePlans` entry. This asymmetric variant pins the same split
+      // when one task (ev-1) carries an existing commitment from a prior
+      // cycle while the other (ev-2) is fresh — both should still count as
+      // eligible (count = 2) and each should see `reservedHeadroomKw / 2`
+      // (1.5 kW). The observable discriminator is the fresh task's verdict:
+      // with the correct split, ev-2's floor stays at `min` (1 kW), 5/6 kWh
+      // planned, and the climbed-band probe at `top` (3 kW × 4 = 12 kWh)
+      // fits → `at_risk: feasible_above_floor`. If a future regression
+      // dropped the committed task from the eligible count (count = 1),
+      // ev-2 would see the full 3 kW headroom, promote to `top`, and
+      // report `on_track` — this assertion catches that asymmetry.
+      const deadlineAtMs = resolveDeadlineAtMsFor('22:00');
+      // Mirror the prior-cycle commitment shape that `activePlanRecorder`
+      // would persist for a fully-reserved top-priority EV: a 5-hour
+      // schedule at the (then-current) min-step floor. The exact hour
+      // values don't matter to the eligibility filter — what matters is
+      // that `resolveCommittedHours` returns a non-undefined commitment
+      // (kind/deadline/signature all match the live objective) so the
+      // committed-replan path actually engages.
+      const committedHours = Array.from({ length: 5 }, (_, index) => ({
+        startsAtMs: NOW_MS + index * HOUR_MS,
+        plannedKWh: 1,
+      }));
+      // Signature must match `buildObjectiveSignature` for the live
+      // objective, otherwise `resolveCommittedHours` returns undefined and
+      // the test silently degrades to two fresh tasks. The objective uses
+      // `fullyReservedRescue`, so the signature's rescue tail is present.
+      const objectiveSignature = JSON.stringify([
+        'ev_soc',
+        null,
+        40 + (NEED_KWH_TO_REACH / 0.2),
+        deadlineAtMs,
+        'soft',
+        ['rescue', 'always', 'always'],
+      ]);
+      const activePlans: DeferredObjectiveActivePlansV1 = {
+        version: 1,
+        plansByDeviceId: {
+          'ev-1': {
+            deviceId: 'ev-1',
+            deviceName: 'ev-1',
+            objectiveKind: 'ev_soc',
+            targetTemperatureC: null,
+            targetPercent: 40 + (NEED_KWH_TO_REACH / 0.2),
+            deadlineAtMs,
+            startedAtMs: NOW_MS - HOUR_MS,
+            pending: false,
+            objectiveSignature,
+            commitment: {
+              committedAtMs: NOW_MS - HOUR_MS,
+              hours: committedHours,
+            },
+            original: {
+              revision: 1,
+              revisedAtMs: NOW_MS - HOUR_MS,
+              computedFromPricesUpTo: NOW_MS + 24 * HOUR_MS,
+              reason: 'flow_card',
+              hours: committedHours,
+              energyNeededKWh: NEED_KWH_TO_REACH,
+              planStatus: 'at_risk',
+            },
+            latest: {
+              revision: 1,
+              revisedAtMs: NOW_MS - HOUR_MS,
+              computedFromPricesUpTo: NOW_MS + 24 * HOUR_MS,
+              reason: 'flow_card',
+              hours: committedHours,
+              energyNeededKWh: NEED_KWH_TO_REACH,
+              planStatus: 'at_risk',
+            },
+          },
+        },
+      };
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [
+          buildPromotableDevice('ev-1'),
+          buildPromotableDevice('ev-2'),
+        ],
+        settings: normalizeDeferredObjectiveSettings({
+          version: 1,
+          objectivesByDeviceId: {
+            ...buildPromotableSettings('ev-1', fullyReservedRescue),
+            ...buildPromotableSettings('ev-2', fullyReservedRescue),
+          },
+        }),
+        powerTracker: buildPromotableTracker(['ev-1', 'ev-2']),
+        dailyBudgetSnapshot: buildSnapshot({
+          prices: Array.from({ length: 24 }, () => 5),
+          allowedCumKWh: generousAllowedCumKWh,
+          plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+        }),
+        priceOptimizationEnabled: true,
+        hardCapKw: HARDCAP_KW,
+        activePlans,
+      });
+      expect(diagnostics).toHaveLength(2);
+      const byDevice = new Map(diagnostics.map((d) => [d.deviceId, d]));
+      // The fresh task's verdict is the eligibility-split discriminator.
+      // count = 2 (committed task correctly included) → 1.5 kW share →
+      // floor stays at `min` → 5/6 short → climbed-band fits at top → at_risk.
+      // count = 1 (committed task wrongly excluded) → full 3 kW → floor
+      // promotes to `top` → 6/6 fits → on_track. The assertion is on the
+      // *fresh* verdict because the committed task's headroom is masked by
+      // its 1 kWh/h commitment cap — its verdict doesn't distinguish the
+      // split. Pin the fresh verdict (and reasonCode) to lock the split in.
+      expect(byDevice.get('ev-2')).toMatchObject({
+        status: 'at_risk',
+        reasonCode: 'feasible_above_floor',
+      });
+      // Sanity witness on the committed task. The 1 kWh/h commitment cap
+      // masks ev-1's status from distinguishing the split on its own, but
+      // `requestedMinimumStepId` still pins the current-bucket step the
+      // planner asked for. If a compound regression both dropped ev-1's
+      // commitment AND gave it the full 3 kW headroom alone (count = 1
+      // just for it), the fresh optimizer would pack the cheapest hours at
+      // top step (3 kWh/bucket) and `requestedMinimumStepId` would flip to
+      // `top`. Catches that combined-failure mode that the fresh-task
+      // verdict alone would miss.
+      expect(byDevice.get('ev-1')?.requestedMinimumStepId).toBe('min');
+    });
   });
 });

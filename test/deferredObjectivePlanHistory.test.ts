@@ -2,7 +2,7 @@ import {
   DeferredObjectivePlanHistoryRecorder,
   type PlanHistoryPersistDeps,
 } from '../lib/plan/deferredObjectives/planHistory';
-import { buildFinalHourFlush } from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
+import { buildFinalHourFlush, detectHourRollover } from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
@@ -1913,6 +1913,65 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         resolvePrice: () => ({ priceValue: 1.0, tone: 'expensive' }),
       });
       expect(flush).toBeNull();
+    });
+
+    it('round-trip: feeding the post-flush nextOpening back into detectHourRollover never re-attributes to the just-closed hour', () => {
+      // Behavioural complement to the structural pin above. The previous test
+      // pins `nextOpening.hourMs === opening.hourMs + ONE_HOUR_MS` — the
+      // *shape* of the post-flush record. This test pins the *consequence*:
+      // taking that record and replaying it through the rollover detector
+      // would NOT emit a contribution carrying `atMs === opening.hourMs`
+      // (the just-closed hour). Defends against a future refactor that wires
+      // the post-flush record back into the rollover path (e.g. one more
+      // detection pass before delete) from silently double-counting against
+      // the just-flushed hour.
+      //
+      // The detector is sensitive to the relative position of
+      // `opening.hourMs` vs `currentHourMs`: with the fix in place, replaying
+      // with a `nowMs` in any later hour emits contributions only against the
+      // *new* opening (`nextOpening.hourMs = 2*HOUR_MS`). Pre-fix
+      // (`nextOpening.hourMs = HOUR_MS`), the same replay would emit a second
+      // contribution at `atMs === HOUR_MS` — the just-flushed hour — and
+      // double-count. This test calls that boundary out explicitly.
+      const opening = { hourMs: HOUR_MS, value: 50 };
+      const flush = buildFinalHourFlush({
+        opening,
+        finalProgress: 51,
+        kWhPerUnit: 1.5,
+        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
+          ? { priceValue: 1.0, tone: 'expensive' }
+          : { priceValue: 2.0, tone: 'normal' }),
+      });
+      expect(flush).not.toBeNull();
+
+      // Replay with a `nowMs` in a later hour and a small forward delta.
+      // The rollover detector now sees a true hour boundary (from
+      // `nextOpening.hourMs = 2*HOUR_MS` to `currentHourMs = 3*HOUR_MS`) —
+      // any emitted contribution must anchor at the *new* opening
+      // (`2*HOUR_MS`), not at the original `opening.hourMs` (`HOUR_MS`,
+      // the just-flushed hour). Pre-fix, the post-flush `nextOpening.hourMs`
+      // would still be `HOUR_MS` and the detector would emit
+      // `atMs === HOUR_MS`, double-counting against the closed hour.
+      const replay = detectHourRollover({
+        opening: flush!.nextOpening,
+        nowProgress: 52,
+        nowMs: 3 * HOUR_MS + 5 * 60_000,
+        kWhPerUnit: 1.5,
+        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
+          ? { priceValue: 1.0, tone: 'expensive' }
+          : { priceValue: 2.0, tone: 'normal' }),
+      });
+      expect(replay).not.toBeNull();
+      // No contribution may carry the just-closed hour's anchor — this is
+      // the assertion that catches the regression.
+      for (const contribution of replay!.contributions) {
+        expect(contribution.atMs).not.toBe(opening.hourMs);
+      }
+      // Stronger: the only emitted contribution should land on the
+      // post-flush opening's hour (`2 * HOUR_MS`), confirming the replay
+      // correctly accounted forward, not back.
+      expect(replay!.contributions).toHaveLength(1);
+      expect(replay!.contributions[0]!.atMs).toBe(2 * HOUR_MS);
     });
   });
 
