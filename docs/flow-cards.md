@@ -77,6 +77,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Report stepped load** as **step** | Reports the selected stepped-load level directly, usually after a vendor-specific action card. |
 | **Report stepped load** matching **power** | Reports a power value and lets PELS match it to the configured stepped-load planning power. Accepts values such as `1750` or `1750 W`. |
 | **Report battery level for charger** | Stores battery percentage for a managed charger when the car or charger app exposes that value. Used by charge boost and charging Smart tasks. |
+| **Set EV charging phase** | Tells PELS the charger or car is now in **1-phase** or **3-phase** mode so power calculations match reality. Use it after the phase has already switched — this card does not switch the charger hardware. |
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Clear smart task** | Removes any active Smart task for a device. |

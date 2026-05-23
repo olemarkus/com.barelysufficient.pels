@@ -373,14 +373,18 @@ export const detectHourRollover = (params: {
     // progress-sample ring.
     return null;
   }
-  // Hour boundary crossed. Treat the *opening* snapshot's reading as the
-  // close-of-its-hour (the latest trustworthy reading we held for that hour)
-  // and the *current* reading as the new opening for the just-entered hour.
-  // This conservatively under-attributes when there were no observations in
-  // intervening hours (rare; default 30s plan cadence keeps coverage
-  // dense) — those hours simply don't get a contribution rather than a
-  // fabricated one. The closing-hour contribution lands on `opening.hourMs`
-  // because that is the hour that was just observed to end.
+  // Hour boundary crossed. The `opening` snapshot is the first trustworthy
+  // reading we anchored in its hour; the `nowProgress` reading is the first
+  // trustworthy reading we've seen in the just-entered hour. We attribute the
+  // full opening→now delta to `opening.hourMs` and re-anchor the opening at
+  // `nowProgress` for the new hour. This is conservative on both sides: any
+  // progress accumulated between `opening.value` and the true end-of-hour
+  // lands on `opening.hourMs` (where it largely belongs), and any progress
+  // between the start of the new hour and `nowProgress` is also folded into
+  // `opening.hourMs` rather than back-dated to the new hour. When observations
+  // skip intervening hours entirely, those hours stay blank rather than
+  // receiving a fabricated split — proration would require independent
+  // per-hour power telemetry (see the contract note above and `TODO.md`).
   const deliveredUnits = nowProgress - opening.value;
   const nextOpening: HourProgressSnapshot = { hourMs: currentHourMs, value: nowProgress };
   if (deliveredUnits <= 0) {
