@@ -147,9 +147,26 @@ Slice 1 floor-vs-climbed banding (same "don't assert a flat constant"
 philosophy, now on the rate axis), and needs the `pels-copy-and-terminology`
 gate so `at_risk` doesn't become an unactionable catch-all.
 
-Validation gate before building Step 3: instrument `displayConfidence` /
-band-residual at plan time and confirm mature devices reach `medium`/`high` after
-Steps 1–2. If they don't, Step 3 is still premature.
+Validation gate before building Step 3: ✅ plan-time instrumentation has
+**shipped** — `displayConfidence` and `energyExpectedKWh` are now emitted on
+every `deferred_objective_horizon_planned` event (PR #976), so the band-aware
+confidence and the integrated `k·SE` margin (`energyNeededKWh −
+energyExpectedKWh`) are derivable per plan cycle. The active-plan lifecycle
+events also carry `startedAtMs` / `deadlineAtMs` / target now (PR #979), and
+prod logs are retained across restarts with commit-stamped markers (PR #971),
+so the capture is self-contained. The gate is now **data-dependent**, not
+instrumentation-dependent: confirm a mature device reaches `medium`/`high`
+after Steps 1–2 *or* that the margin stays tight at `low` (in which case
+Step 2 may be less urgent than this design assumed). First observation
+(2026-05-23, "Connected 300", n≈540) is `displayConfidence: low` with margin
+≈10% of need — early signal that B's `k·SE` may already converge the practical
+margin tightly even when the label stays `low`. Needs a multi-day window + a
+fresh from-`n=0` baseline before deciding.
+
+If Step 3 is built, it must **reuse B's `k·SE` margin**, not invent a parallel
+one — the band-residual `k·σ` the design above describes IS the same uncertainty
+margin viewed verdict-side instead of sizing-side. Two parallel uncertainty
+margins (one in sizing, one in verdict) would double-count.
 
 Out of scope here: the P0's **missed-history** half (post-hoc classification of
 finalized runs) is a separate item; confidence-aware *live* verdicts don't
