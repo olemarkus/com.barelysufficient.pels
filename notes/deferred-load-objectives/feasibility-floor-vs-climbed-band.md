@@ -74,41 +74,20 @@ objectives previously emitted while `cannot_meet` would silently disappear.
   committed hours, so a committed hour over-delivers past its floor kWh" changes
   committed semantics and is deferred (Slice 2 territory).
 
-## Slice 2 — deferred design: reserved-headroom committed floor
+## Slice 2 — shipped (PR #983): reserved-headroom committed floor
 
-The open question (raised in design discussion, **not implemented**): when an
-objective is exempt from the daily budget **and** holds the
-`limit_lower_priority` rescue permission, the higher step is *as guaranteed as
-the min step* — both rest on "we can clear competitors up to the hard cap; only
-non-sheddable load can deny us." In that case the committed floor arguably should
-*rise* to the highest step the reserved headroom guarantees, not stay at min.
+Resolution pattern matches the Slice 2 sketch:
 
-Why it is deferred, not built:
+- Producer (`policyHorizon.ts`) resolves `reservedHeadroomKw = max(0, hardCapKw − plannedUncontrolledKw)` onto each bucket as a flat number.
+- Rescue boundary (`rescueReplan.ts`) resolves `fullyReserved` as `devicePriority === 1 && rescue.exemptFromBudget === 'always' && rescue.limitLowerPriorityDevices === 'always'` and attaches it as a flat boolean on the planner objective.
+- `horizonPlanner.ts:resolveFloorStep` consumes both as flat values and picks the highest active step whose `usefulPowerKw` fits the *minimum* `reservedHeadroomKw` across the horizon (safe in every hour). Min step otherwise.
 
-1. **No data path.** The horizon planner has no model of physical capacity
-   headroom. `policyHorizon.ts:27-30,55-56` models the *soft daily-budget*
-   per-bucket allowance only; physical capacity is enforced downstream at
-   admission / the capacity guard and never flows up. A committed higher floor
-   needs the producer to resolve a *forecast of reserved headroom across the
-   horizon* (cap − non-sheddable − higher-priority), including a non-sheddable
-   load forecast — a real cross-layer change governed by the
-   resolution-in-producer rule.
-2. **Revisits PR #944.** That PR deliberately left `horizonPlanner` untouched
-   ("under-promise, over-deliver"; boost delivers the higher run at runtime).
-   The discarded `guaranteedKw` approach there failed because it assumed headroom
-   and used the burst-rate soft limit (exceeding the hard cap). A correct Slice 2
-   must *verify* headroom, not assume it — otherwise it repeats that mistake.
-3. **Recovery backstop exists.** A higher committed floor that occasionally slips
-   is not catastrophic: the horizon re-solves every cycle (`resolveReplanReason`)
-   and re-allocates remaining energy across remaining hours, the deadline reserve
-   hour flips to `at_risk` with warning runway, and the rescue lane escalates.
-   This is what would make an aggressive-but-headroom-verified floor safe — but
-   it is the justification for Slice 2, not a substitute for the missing headroom
-   forecast.
+Strict-top-priority gate (`device.priority === 1`) is the v1 safety floor. The reserved-headroom forecast (`hardCap − uncontrolled`) implicitly assumes every controlled concurrent watt can be displaced — which only holds at the top. A non-top fully-reserved task is gated to the min step floor because a higher-priority controlled device (which `limit-lower-priority` cannot shed) could still deny the climb mid-bucket. Tracked as P2 below.
 
-Sketch if pursued: producer (capacity/observer layer) resolves a flat
-`reservedHeadroomKwByBucket` onto the horizon input; `resolveAllocation`'s floor
-step becomes "highest active step whose `usefulPowerKw` fits the bucket's
-reserved headroom" instead of always `activeSteps[0]`; min-step remains the floor
-for unreserved objectives. The `feasible_above_floor` band from Slice 1 still
-covers the genuinely-uncertain middle.
+Hard cap stays physical: this only changes which deterministic step the producer commits to. Capacity guard still enforces the wall; the per-cycle re-solve + deadline reserve still catch over-promise.
+
+## Climbed-band probe is correctly conservative
+
+A committed multi-step plan whose floor falls short and whose probe at `climbStep` also returns `cannot_meet` is *not* a probe failure — it's the commitment doing its job. Each hour's per-hour kWh cap (`committedHours[i].plannedUsefulEnergyKWh`) is the truth of the commitment; the probe respects that cap rather than second-guessing it, which is exactly the "no silent recovery from a stale commitment" guarantee the probe was designed to preserve. If you want the per-hour ceiling to be higher, the commitment must be made at a higher step — Slice 2's job.
+
+Prod evidence (`/tmp/pels` 2026-05-23, Connected 300, pre-Slice-2 deploy): `cannot_meet`, `floorShortfallCause: time_capacity`, `requestedMinimumStepId: low`, `plannedUsefulEnergyKWh: 8.91` vs needed 10.6, 8 buckets × 1.25 kWh each. This is the *correct* math for a commitment sized at min step — the probe at top step found no extra room because the commitment didn't reserve any. Slice 2 fixes this kind of case at the commitment layer for top-priority + fully-reserved tasks; broader "extend Slice 2 beyond priority 1" remainder is captured in TODO and depends on a richer headroom forecast (subtract higher-priority controlled load), not on a probe change.

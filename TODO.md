@@ -27,274 +27,38 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P0 Release Blockers
 
-- [ ] **Smart-task feasibility verdicts and delivery don't match physical
-      reality — chronic false `Cannot finish` / `missed` streaks.**
-      Surfaced by a live prod UI walk + `/tmp/pels` analysis on 2026-05-22
-      (two app sessions, restart ~06:50). "Connected 300" water heater
-      showed `4 of last 4 missed`. Three interlocking causes:
-      1. *Low-confidence learned rate — volatility UNCONFIRMED, likely an
-         early-learning transient, not a convergence failure.* The original
-         walk reported `kWhPerDegreeC` swinging `0.195 → 0.27 → 0.49 → 0.225`
-         in a day, all at `rateConfidence: low`, with the `0.49` reading
-         driving a `cannot_meet`. **Re-check against `/tmp/pels` on 2026-05-22
-         could NOT reproduce that swing**: the retained logs show the rate
-         stable at `0.225–0.244` (~9% drift) with `acceptedSamples` up to
-         **539** and still `rateConfidence: low`. So the rate has *converged*
-         (mean nailed down at n≈hundreds) — `low` is **not** non-convergence.
-         Per `feasibility-confidence.md` the persistent `low` is driven by an
-         energy-attribution **poisoning** artifact (Step 1, now fixed below)
-         plus a structurally-wrong global-mean dispersion model (Step 2) — only
-         *partly* irreducible thermal variance, NOT "by design" as an earlier
-         draft of this line claimed.
-         Sample rejection (`objective_profile_non_monotonic_time`,
-         `objective_profile_interval_too_short`) does occur but is **not**
-         starving the profile (539 accepted samples). The original
-         `0.195→0.49` swing was almost certainly an early-learning transient
-         (low n) in the pre-restart session, whose log was overwritten — or a
-         per-band/per-sample value misread as the mean. **Cannot be confirmed
-         until retained logs cover a fresh profile from n=0** (see the
-         retention fix + the data-collection follow-up below).
-      2. *Planner sizes feasibility on the most conservative step power.*
-         `resolvePlanningSpeedKw` (`planningSpeed.ts:41,48`) returns
-         `Math.min(...stepKws)` — the **lowest** non-zero step's useful
-         power, not full/peak power. So per-bucket capacity is sized to the
-         minimum step and under-counts what the device can actually
-         deliver, biasing toward `cannot_meet`. The executor, by contrast,
-         climbs to higher steps whenever capacity allows — logged
-         `low→medium` (`shed_invariant`), then `medium→max` held by
-         `insufficient_headroom` ×11 over ~7 min (06:55–07:01). Real
-         delivery therefore usually exceeds the planned floor, so a
-         `cannot_meet` built on the min-step assumption is often a false
-         negative. (The capacity guard is still a real upper bound when the
-         household is busy — it is not the conservative driver here.)
-      3. *Net effect.* The headline status is frequently wrong in **both**
-         directions, and the missed-history mixes genuine capacity-limited
-         misses with estimate-driven false misses (this subsumes the
-         earlier "cooling/at-target windows recorded as missed" concern —
-         those rows all started below target and reflect (1)+(2), not an
-         isolated classification bug).
-      Why P0: undermines trust in the entire smart-task feature; the most
-      prominent signals (`Cannot finish`, the missed streak) are
-      unreliable.
-      Investigation required before any fix — do **not** assume the fix is
-      simply "plan against the max step": peak steps depend on spare
-      capacity that is not guaranteed, so that would trade false
-      `cannot_meet` for false `on_track`. Design how feasibility should
-      weigh (a) a low-confidence rate, (b) the *realistically achievable*
-      step given typical spare capacity (rather than the worst-case min
-      step or best-case max), and (c) fixing the upstream sample-rejection
-      so the learned rate can converge. Consider separating "physically
-      can't deliver" from "estimate uncertain" in the status.
-      Note: the UI no longer *contradicts itself* about this (PR #962
-      removed the "can't determine why" dead-end + the >100% delivered
-      chip); this item is the underlying correctness root cause.
-      **Partially addressed (Slice 1, this branch):** cause #2's *status*
-      half is fixed — `horizonPlanner` now runs a classification-only
-      climbed-band probe at the top active step and reports `at_risk`
-      (`feasible_above_floor`) instead of a flat `cannot_meet` when the
-      floor falls short but climbing would fit. The commitment is still
-      sized off the min-step floor (`hard-cap-is-physical` preserved). This
-      is exactly the "separate 'physically can't deliver' from 'estimate
-      uncertain'" split. See `notes/deferred-load-objectives/feasibility-floor-vs-climbed-band.md`.
-      **Still open:** (a) cause #1 — re-diagnosed against `/tmp/pels`
-      2026-05-22 (see
-      `notes/deferred-load-objectives/feasibility-confidence.md`). The
-      original "rate never converges / fix sample-rejection / make bands
-      engage" framing is **disproven by the logs**: samples converge
-      (`acceptedSamples` 500+), the buffer fills (`bufferedSamples:64`) and
-      bands fit (`bandsCount:2`), the buffer is persisted (`power_tracker_state`,
-      30-day retention). The fix is **three steps in dependency order** (full
-      design + log evidence in `feasibility-confidence.md`):
-      (1) ✅ *Stop poisoning the estimate* — **SHIPPED.** `calculateEnergyKwh`
-      billed the whole baseline→rise interval at the baseline sample's single
-      `crediblePowerW`, but the device runs distinct steps (prod: 1193/1671/2865
-      W), so mid-window step changes were mis-attributed. Now accumulates
-      `Σ crediblePowerW_i × Δt_i` per sub-interval across the `rise_too_small`
-      skips that used to be discarded, persisting the partial sum
-      (`pendingEnergyKWh`/`subIntervalStartMs`/`subIntervalPowerW` on
-      `DeviceObjectiveProfile`) so an in-progress window survives restart/reload,
-      and invalidating the window on a power-=0 sub-interval (thermal coasting,
-      not electrical heat). No-skip windows stay byte-identical to the old
-      single-baseline bill.
-      (2) *Make confidence escape `low`* — prod `energyConfidence` is `low`
-      22/24, never `high`; `resolveProfileConfidence` uses global-mean
-      relative-std-dev, structurally wrong once bands exist. Judge by within-band
-      residual. (Band cap is not the constraint — `OBJECTIVE_PROFILE_MAX_BANDS`
-      is already 4; prod fits only 2, so the lever is split *quality* like the
-      `MIN_SSE_REDUCTION_FRACTION` threshold, not the constant.) Without this,
-      step 3 makes *everything* a permanent "At risk".
-      (3) *Confidence-aware verdict* — the horizon planner consumes no confidence
-      today; have `profileEnergyResolution` emit `energyNeededKWh ± margin`
-      (continuous band residual, not the 3-level enum) and report `at_risk`
-      (`estimate_uncertain`) on a within-margin shortfall, composing with the
-      Slice 1 floor-vs-climbed banding. Gate before building (3): ✅
-      plan-time instrumentation **shipped** — `displayConfidence` and
-      `energyExpectedKWh` per cycle on `deferred_objective_horizon_planned`
-      (PR #976), and `startedAtMs` / `deadlineAtMs` / `objectiveKind` /
-      `target*` on `active_plan_revision_*` (PR #979). Plan-time margin is
-      now derivable per cycle as `energyNeededKWh − energyExpectedKWh`. Gate
-      is now data-dependent: confirm a mature device reaches `medium`/`high`
-      after (1)+(2), **or** that the margin stays tight at `low`. **First
-      post-Step-1 signal (2026-05-23, "Connected 300", n≈540):**
-      `displayConfidence: low` with margin ≈ 10% of need (0.52 / 4.85 kWh) —
-      suggesting B's `k·SE` may already converge the practical margin
-      tightly even with the label pinned at `low`, which weakens the case
-      for Step 2 as an obligatory prerequisite for Step 3. Need a multi-day
-      window + a fresh from-`n=0` baseline (logs retained by PR #971's
-      commit-stamped markers since 2026-05-22) before deciding. P3
-      telemetry nit: `unitPerHour` (debug-only, unconsumed) is
-      polluted by no-power coast intervals so its logged `rateConfidence` reads
-      `low`. The P0's missed-history half is a separate item.
-      (b) Slice 2 —
-      raising the committed floor itself when reserved headroom guarantees a
-      higher step (exempt + `limit_lower_priority`), which needs a physical
-      headroom forecast plumbed into the horizon input and revisits PR #944
-      (design captured in the floor-vs-climbed-band note, not built).
-      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
-      `lib/plan/deferredObjectives/planningSpeed.ts`,
-      `lib/plan/deferredObjectives/bucketAllocation.ts`,
-      `lib/core/objectiveProfile*` (rate learning + sample rejection,
-      incl. `objectiveProfileSamples.ts`).
-      Source: live prod UI walk + `/tmp/pels` planner/executor trace,
-      2026-05-22.
-      Progress (Session A, telemetry only — does NOT close this P0): the
-      finalized-run history now carries plan-time provenance
-      (`rateConfidence`, `acceptedSamples`, `planningSpeedKw` on the revision
-      snapshot) and emits a `deferred_objective_history_finalized` structured
-      event per run with the resolved miss cause
-      (`budget_limited` / `low_confidence` / `energy_underestimate` /
-      `capacity_shortfall`). This separates estimate-driven false misses from
-      genuine capacity misses in the data so causes (1)+(2) can be quantified
-      before tuning. The history "Why" line is enriched for the
-      low-confidence and delivered-but-short cases. The actual fixes — learned-
-      rate convergence / sample-rejection (cause 1) and floor-vs-likely
-      feasibility banding (cause 2) — remain open as the follow-up sessions.
-      See `notes/smart-task-miss-attribution.md`.
-      Data-collection gate before touching cause #1 (opened 2026-05-22,
-      restated 2026-05-23): the volatility evidence is too weak to act on —
-      a single post-restart log window showed a converged rate (n≈539,
-      stable 0.225–0.244), and the earlier swing's log was overwritten on
-      restart. Prod logs are now retained across restarts (PR #971) with a
-      commit-stamped `===== PELS START … commit=… =====` marker per launch
-      so analysis never mixes pre-change logs. Needed before any cause-#1
-      tuning fix: (a) a multi-day retained window, and (b) a fresh
-      thermostat profile captured from n=0 to confirm or disprove the
-      early-learning swing. **Instrumentation is now complete** — every
-      lifecycle event carries the right fields: per-sample
-      (`objective_profile_sample_recorded`), per-plan-cycle
-      (`deferred_objective_horizon_planned` with `displayConfidence` +
-      `energyExpectedKWh`, PR #976), per-revision
-      (`active_plan_revision_*` with `startedAtMs`/`deadlineAtMs`/target,
-      PR #979), and per-finalized-run
-      (`deferred_objective_history_finalized` with cause + provenance,
-      PR #968). The remaining gap is duration + a from-zero baseline, not
-      instrumentation. **Early signal (2026-05-23 shower test):** on a
-      mature device (Connected 300, n≈540) the plan-time margin is ≈10% of
-      need at `displayConfidence: low`, suggesting B's `k·SE` already
-      converges the practical margin tightly — the recovery + `value_fell`
-      + accumulator-clear chain (Step 1) also exercised correctly under a
-      real draw-off, with `arm_recovery` armed and the partial accumulator
-      discarded as designed.
-
-- [x] ✅ **Smart-task detail hero shows "On track — no action needed yet"
-      on `at_risk` plans with an empty floor schedule.** **RESOLVED by
-      `b010bcc0`** (`fix(smart-task): suppress on-track headline on at-risk
-      empty-schedule plans`). Matches the acceptance criteria: the on-track
-      sentinel is now gated to `tone === 'good'`; an at-risk plan with no
-      `firstChargingHour` returns `null` so the chip + meta line carry the
-      warning, mirroring the alert branch. Regression test added in
-      `packages/settings-ui/test/deadlinePlan.test.ts` covering the
-      `feasible_above_floor` empty-schedule case. Original entry preserved
-      below for context.
-
-      The
-      floor-vs-climbed-band probe (commit `835908ee`, Slice-1 of the
-      feasibility P0 above) added a new verdict — `at_risk` /
-      `feasible_above_floor` — that yields an `at_risk` plan with **no**
-      floor-planned hours (`horizonPlanner.ts:304`). On that path the hero
-      builds with `tone === 'warn'` (`resolveHeroTone`,
-      `deadlinePlanHero.ts:93`) and `firstChargingHour === undefined`.
-      `resolveHeroHeadline` suppresses the headline only for
-      `tone === 'alert'` (`deadlinePlanHero.ts:115`), so warn + no charging
-      hour falls straight through to the literal
-      `'On track — no action needed yet'` (line 116) — directly
-      contradicting the amber `At risk` chip, the warn rim, and the "may
-      not reach the target" meta line beneath it. Same headline/status
-      contradiction that commits `a108c585` and `d38d2407` removed on the
-      `cannot_meet` branch; the suppression was applied only to the alert
-      tone and the new path reintroduces it on warn. The path is now common
-      (it is the Slice-1 status fix) and notification-firing
-      (`shouldFireNotification` fires on the empty-`at_risk` collapse), so a
-      user tapping in from an "at risk" notification reads the opposite at
-      headline height.
-      Why P0: misleading user-facing status on the most prominent line of
-      the detail hero; introduced this release on a reachable,
-      notification-firing path; the existing test only covers `at_risk`
-      *with* a `firstChargingHour`, so the case is untested.
-      Acceptance: gate the on-track sentinel to genuinely on-track plans —
-      return it only when `tone === 'good'`; for `tone === 'warn'` with no
-      `firstChargingHour`, suppress the headline (return `null`, mirroring
-      the alert branch so the At-risk chip + meta line carry it) or return
-      an at-risk-appropriate headline. Add a regression test for the
-      `feasible_above_floor` empty-schedule case asserting the headline is
-      not the on-track sentinel.
-      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`
-      (`resolveHeroHeadline`),
-      `packages/settings-ui/test/deadlinePlan.test.ts`.
-      Source: `pels-ux-fit`, v2.8.0→origin/main release-review pass,
-      2026-05-22.
-
-- [ ] **Budget-bound `cannot_meet` is mislabeled as physical, and
-      exempt-from-budget is not applied to the plan.** Distinct from the
-      min-step/confidence causes above. Prod 2026-05-22 (`d280c1ed`): "Connected
-      300" is a persistent `cannot_meet` with `plannedUsefulEnergyKWh` pinned at
-      one min-step bucket (1.182) despite ~9 h runway, 10–12 kW headroom, and
-      ~2.7 kWh needed. Root cause: the floor's per-bucket cap is the **soft daily
-      budget net of forecast background** — `max(0, perBucketBudgetKWh −
-      backgroundKWh)` (`policyHorizon.ts:260`) — not physical capacity.
-      **Prong C (classification SHIPPED, this branch):** `horizonPlanner`
-      `resolveBudgetBoundFeasibility` reclassifies a soft-budget-bound shortfall
-      (one that fits once the per-bucket cap is lifted, mirroring commitment mode)
-      as `at_risk`/`limited_by_daily_budget` instead of physical `cannot_meet`;
-      `cannot_meet` is reserved for the physically/time-infeasible case. The UI
-      budget-cause gate (`deadlinePlan.ts`) was widened to `(cannot_meet ||
-      at_risk) && dailyBudgetExhaustedAnywhere` so cumulative-exhaustion plans keep
-      the budget copy + "Open Budget" recourse. Subsumes the climbed-band gap (the
-      cap is step-independent). Remaining follow-ups (P1, not merge-blocking —
-      `pels-ux-fit`):
-      (i) the per-bucket *background squeeze* (`dailyBudgetExhaustedBucketCount: 0`
-      — the literal "Connected 300" prod case) is now de-alarmed but its copy still
-      reads device-side ("Adjust device" / lower the target). Thread the
-      producer-resolved budget-bound signal (`floorShortfallCause` /
-      `limited_by_daily_budget`, already on the debug payload) onto the persisted
-      active-plan revision (`deferredObjectiveActivePlans.ts`) and gate the hero
-      copy on it, so copy routing matches status routing for the squeeze case too.
-      (ii) the partial-schedule budget-bound hero pairs a live "Heating from HH:MM"
-      headline with the "budget used up" body — pin behavior with a test
-      (`plannedHourOffsets: [0,1]` + `at_risk` + count>0) and decide whether to add
-      a budget qualifier to the headline. P2: the budget meta sentence was written
-      for the terminal `cannot_meet` tier — confirm tone on the recoverable
-      `at_risk` tier during a live walk.
-      **Prong B (diagnosis-pending — do not guess a fix):** exempt-from-budget is
-      set but the plan stays budget-capped, so the planner's objective is not
-      seeing `rescue.exemptFromBudget === 'always'`. Card→settings write
-      (`flowCards/smartTaskRescueCard.ts`) and planner read (`appInit.ts`) look
-      correct, so confirm config-vs-code from the Prong-A telemetry (next restart)
-      or a live `objectivesByDeviceId['632c4190…'].rescue` check before any fix.
-      B2: `budgetExemptApplied` is gated on `isCurrentBucketPlanned`
-      (`diagnosticsBridge.ts:436`) so execution-exempt self-disarms when the
-      current bucket is "avoid"/empty — decide if intended.
-      **Prong A (landed):** rescue/exempt visibility added to
-      `deferred_objective_horizon_planned`.
-      Not data-gated. See
-      `notes/deferred-load-objectives/budget-bound-false-cannot-meet.md`.
-      Source: root-cause trace 2026-05-22.
+*(none open — recent closures shipped on the v2.9 train via PRs #975,
+#977, #978, #980, #982, #983; surviving follow-ups demoted to P1/P2.)*
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
 *v2.8.x release-review follow-ups. These are safe for patch releases,
 not release blockers; each item carries its own source/date. (The
 v2.8.0 card-title rename landed in PR #934.)*
+
+- [ ] **Squeeze-case budget-bound copy still reads device-side.** (Demoted from the v2.9 train's budget-bound
+      mislabel work — Prong C, PR #978.) Prong C reclassifies the per-bucket
+      background-squeeze case (`dailyBudgetExhaustedBucketCount: 0`, prod
+      Connected 300) as `at_risk: limited_by_daily_budget`, but the hero
+      copy still routes through the device-side branch ("Adjust device" /
+      lower the target). Thread the producer-resolved budget-bound signal
+      (`floorShortfallCause` / `limited_by_daily_budget`, already on the
+      debug payload) onto the persisted active-plan revision
+      (`deferredObjectiveActivePlans.ts`) so copy routing matches status
+      routing for the squeeze case too. Source: `pels-ux-fit` P1,
+      v2.8.0→origin/main release-review pass + Prong-C delivery,
+      2026-05-22/23.
+
+- [ ] **Pin partial-schedule budget-bound hero behavior with a test.**
+      (Demoted from Prong C, PR #978.) The partial-schedule
+      budget-bound hero pairs a live "Heating from HH:MM" headline with the
+      "budget used up" body. Add a regression test
+      (`plannedHourOffsets: [0,1]` + `at_risk` + count>0) and decide whether
+      to add a budget qualifier to the headline; the budget meta sentence
+      was written for the terminal `cannot_meet` tier, confirm tone on the
+      recoverable `at_risk` tier during a live walk. Files:
+      `packages/settings-ui/test/deadlinePlan.test.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
 - [ ] Recovery no-progress disarm needs wall-clock floor + hysteresis
       band. `lib/core/objectiveProfileRecovery.ts:99-104`. With
@@ -599,10 +363,42 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Extend Slice 2 floor promotion beyond priority 1.** (Demoted from the v2.9 train P0
+      closeout.) Slice 2 (PR #983) gates floor promotion on
+      `device.priority === 1 && both rescue permissions === 'always'`
+      because the reserved-headroom forecast (`hardCap − uncontrolled`)
+      implicitly assumes every controlled concurrent watt is displaceable,
+      which only holds at the absolute top. To safely promote non-top-
+      priority fully-reserved tasks, the producer needs a richer headroom
+      forecast that subtracts higher-priority controlled load
+      (`hardCap − uncontrolled − higherPriorityControlled`). Then the gate
+      can broaden to "highest priority present on this Homey." Defer until
+      prod evidence after Slice 2 deployment shows a long-tail
+      `cannot_meet` rate on non-top-priority tasks that warrants the
+      additional plumbing. Files:
+      `lib/plan/deferredObjectives/policyHorizon.ts`,
+      `lib/plan/deferredObjectives/rescueReplan.ts`,
+      `lib/dailyBudget/dailyBudgetBreakdown.ts` (forecast input).
+      Source: `pels-runtime-reality` P1 on PR #983, 2026-05-23.
+
+- [ ] **Validate the v2.9 train against retained prod logs.** (Carried forward from the v2.9 train P0
+      closeout.) Confirm the live `cannot_meet`
+      rate collapses across multi-day prod windows after the Cause #1 chain
+      (Steps 1–3) and Cause #2 Slices 1–2 land. Specifically: (a) confirm a
+      mature device reaches `medium`/`high` `displayConfidence` after Step
+      2, OR that the margin stays tight enough at `low` for Step 3 to
+      handle alone; (b) measure the post-Slice-2 ratio of true `cannot_meet`
+      vs `at_risk` (`feasible_above_floor` / `estimate_uncertain` /
+      `limited_by_daily_budget`); (c) capture a fresh from-`n=0` thermostat
+      profile to confirm or disprove the early-learning swing. Logs are
+      retained across restarts (PR #971, commit-stamped markers); the
+      remaining gap is duration, not instrumentation. Source: data-gated
+      follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
+
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
 overall `kwhPerUnit.confidence` now reflects the pooled within-band residual,
-so a converged multi-step device can escape `low` (the standing P0 #2 signal
+so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
 
@@ -795,8 +591,7 @@ were rolled back before they could land.*
       structured debug record per accepted/skipped sample. With several
       stepped loads under a long verbose debug session, confirm the
       pino destination is back-pressured or rotated — PELS sits at
-      ~30 MB headroom against the 160 MB Homey RSS ceiling (see
-      [[project_homey_rss_limit]]). Default off, so the risk is bounded
+      ~30 MB headroom against the 160 MB Homey RSS ceiling. Default off, so the risk is bounded
       to diagnostic sessions; this is a verification task, not a code
       change unless the destination turns out to buffer unboundedly.
       Files: `lib/app/appPowerCalibrationWiring.ts`, `lib/logging/`.
@@ -2173,6 +1968,20 @@ should not be folded into the same PR.
       `packages/shared-domain/src/deviceOverview.ts` (or new helper).
 
 ## P3 Future and Exploratory Work
+
+- [ ] Smart-task status oscillation at the cusp — quality-of-emit nit, not a
+      bug. When a committed plan sits right at the boundary between the
+      primary horizon and the deadline reserve hour, per-cycle re-solves can
+      flip between `on_track`, `at_risk: planned_using_deadline_reserve`, and
+      back as small inputs (current bucket clip, learned-rate jitter, partial
+      kWh placed in the current hour) tip allocation across the reserve
+      boundary. The verdicts are individually correct; the user-visible
+      flutter is the issue. Possible mitigations: hysteresis on the `at_risk`
+      → `on_track` transition, or smoothing the verdict over a small window.
+      Defer until a real user complaint surfaces — prod walk 2026-05-23 logged
+      this as a low-priority observation, not actionable yet.
+      Files: `lib/plan/deferredObjectives/horizonPlanner.ts:resolveStatus`,
+      possibly `activePlanSchedule.ts` for emit gating.
 
 - [ ] Surface mode-target misconfiguration to the user. When a managed temperature
       device has no target set for the active operating mode, the planner falls back
