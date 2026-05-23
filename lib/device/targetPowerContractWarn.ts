@@ -1,6 +1,6 @@
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { shouldEmitOnChange } from '../logging/logDedupe';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { DeviceCapabilityMap } from './managerControl';
 import {
   assessTargetPowerCapabilityOptions,
   TARGET_POWER_CAPABILITY_ID,

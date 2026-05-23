@@ -9,18 +9,18 @@ import {
   logEvCapabilityAccepted,
   logEvCapabilityRequest,
   logEvSnapshotChanges,
-} from '../lib/core/deviceManagerControl';
+} from '../lib/device/managerControl';
 import {
   buildTargets,
   getExactPowerCapabilityValue,
   getCurrentTemperature,
   resolveDeviceCapabilities,
-} from '../lib/core/deviceManagerParse';
+} from '../lib/device/managerParse';
 import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
 import {
   reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,
-} from '../lib/core/deviceManagerRuntime';
+} from '../lib/device/managerRuntime';
 import {
   getRawDevice,
   getRawDevices,
@@ -30,8 +30,8 @@ import {
   setRawCapabilityValue,
   setRestClient,
   writeErrorToStderr,
-} from '../lib/core/deviceManagerHomeyApi';
-import { fetchDevicesByIds } from '../lib/core/deviceManagerFetch';
+} from '../lib/device/managerHomeyApi';
+import { fetchDevicesByIds } from '../lib/device/managerFetch';
 
 const createLogger = () => ({
   log: vi.fn(),

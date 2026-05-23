@@ -3,9 +3,9 @@ import {
     clearLocalCapabilityWrite,
     formatBinaryState,
     type RecentLocalCapabilityWrites,
-} from './deviceManagerRealtimeSupport';
-import { isRealtimeControlCapability } from './deviceManagerRuntime';
-import type { PlanRealtimeUpdateEvent } from './deviceManagerRealtimeHandlers';
+} from './managerRealtimeSupport';
+import { isRealtimeControlCapability } from './managerRuntime';
+import type { PlanRealtimeUpdateEvent } from './managerRealtimeHandlers';
 
 export const LOCAL_BINARY_SETTLE_WINDOW_MS = 5 * 1000;
 

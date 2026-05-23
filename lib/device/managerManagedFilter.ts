@@ -1,4 +1,4 @@
-import type { DeviceManagerParseProviders, ParseDevicePurpose } from './deviceManagerParseDevice';
+import type { DeviceManagerParseProviders, ParseDevicePurpose } from './managerParseDevice';
 
 export type ManagedFilterDecision = {
   hasOracle: boolean;

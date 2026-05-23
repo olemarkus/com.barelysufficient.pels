@@ -7,7 +7,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import { getDeviceId } from './deviceManagerHelpers';
+import { getDeviceId } from './managerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from '../power/estimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -19,17 +19,17 @@ import {
   logEvSnapshotChanges,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
-} from './deviceManagerControl';
+} from './managerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import { type LiveDevicePowerWatts } from './deviceManagerEnergy';
-import { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
+import { type LiveDevicePowerWatts } from './managerEnergy';
+import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import {
   fetchDevicesByIds,
   fetchDevicesWithFallback,
   fetchLivePowerReport,
   type LivePowerReport,
-} from './deviceManagerFetch';
-import { isRealtimeControlCapability } from './deviceManagerRuntime';
+} from './managerFetch';
+import { isRealtimeControlCapability } from './managerRuntime';
 import {
   clearLocalCapabilityWrite,
   formatBinaryState,
@@ -37,22 +37,22 @@ import {
   getRecentLocalCapabilityWrite,
   recordLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
-} from './deviceManagerRealtimeSupport';
+} from './managerRealtimeSupport';
 import {
   hasRestClient,
   initHomeyHttpClient,
   resolveHomeyInstance,
   setRawCapabilityValue,
-} from './deviceManagerHomeyApi';
+} from './managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './deviceLiveFeed';
+import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
   handleRealtimeDeviceUpdate,
   type ObservedDeviceStateEvent,
   type PlanRealtimeUpdateEvent,
-} from './deviceManagerRealtimeHandlers';
-import type { DeviceFetchSource } from './deviceManagerFetch';
+} from './managerRealtimeHandlers';
+import type { DeviceFetchSource } from './managerFetch';
 import { normalizeError } from '../utils/errorUtils';
 import { shouldEmitWindowed } from '../logging/logDedupe';
 import {
@@ -63,7 +63,7 @@ import {
   notePendingBinarySettleObservation,
   startPendingBinarySettleWindow,
   type DeviceManagerBinarySettleState,
-} from './deviceManagerBinarySettle';
+} from './managerBinarySettle';
 import {
   createObservationState,
   getDebugObservedSources,
@@ -76,15 +76,15 @@ import {
   resolveLatestLocalWriteMs,
   type DeviceDebugObservedSources,
   type DeviceManagerObservationState,
-} from './deviceManagerObservation';
+} from './managerObservation';
 import {
   isDevicePowerCapable,
   parseDevice,
   parseDeviceList,
   type DeviceManagerParseProviders,
   type ParseDevicePurpose,
-} from './deviceManagerParseDevice';
-import { applyDeviceDriverOverride } from './deviceManagerParseIdentity';
+} from './managerParseDevice';
+import { applyDeviceDriverOverride } from './managerParseIdentity';
 import {
     buildNativeEvObservationDevice,
     normalizeNativeEvCapabilityUpdate,
@@ -94,8 +94,8 @@ import {
   resolveObservedNativeSteppedLoadReportedStepId,
   setObservedNativeSteppedLoadStep,
   syncNativeSteppedLoadCommandAdapters,
-} from './deviceManagerNativeSteppedCommand';
-import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
+} from './managerNativeSteppedCommand';
+import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
 import {
   isNativeSteppedLoadControlEnabled,
   isNativeSteppedLoadControlCapabilityId,
@@ -103,14 +103,14 @@ import {
   resolveTargetPowerReportedStepId,
 } from './nativeSteppedLoadWiring';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
-import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';
-import { applyDeviceCompatibilityMetadata } from './deviceCompatibility';
+import { isStateOfChargeCapabilityId } from './stateOfCharge';
+import { applyDeviceCompatibilityMetadata } from './compatibility';
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
-export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './deviceManagerObservation';
+export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './managerObservation';
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();

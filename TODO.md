@@ -1461,7 +1461,7 @@ consolidation + a11y polish (8 P2)`.*
       carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
       Remaining work is to move the last flow-backed binary transport details fully behind
       `DeviceManager`.
-      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
+      Files: `lib/executor/**`, `lib/device/manager.ts`, binary transport tests.
 - [ ] Define the binary operating precondition for temperature-lowered devices.
       `set_temperature` limiting currently lowers the target only. For devices that also expose
       binary control, decide whether an observed off state should be treated as drift and turned
@@ -1488,7 +1488,7 @@ consolidation + a11y polish (8 P2)`.*
       `lib/plan/planState.ts`, `lib/utils/appTypeGuards.ts`.
 - [ ] Replace deeply partial flow-reported capability state with a normalized runtime
       representation at the boundary.
-      Files: `lib/core/flowReportedCapabilities.ts`.
+      Files: `lib/device/flowReportedCapabilities.ts`.
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
@@ -1525,8 +1525,8 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
       applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
       third time inside `resolveParseDeviceIdentity`.
-      Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerParseDevice.ts`,
-      `lib/core/deviceManagerParseIdentity.ts`.
+      Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
+      `lib/device/managerParseIdentity.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
@@ -1667,7 +1667,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
 - [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
-      `lib/core/deviceManagerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
+      `lib/device/managerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
       `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
       device temperature value hasn't moved but another capability (target_temperature,
       measure_power, evcharger_charging_state, etc.) emits a fresh `lastUpdated`, the
@@ -1695,7 +1695,7 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
       restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
-      awaiting `refreshSnapshot()`; `lib/core/deviceManager.ts:1457-1460` emits
+      awaiting `refreshSnapshot()`; `lib/device/manager.ts:1457-1460` emits
       `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
       plan rebuild fires before the snapshot resolves and
       `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
@@ -1710,7 +1710,7 @@ consolidation + a11y polish (8 P2)`.*
       first `refreshSnapshot()` completes (or until a configurable bound expires).
       Regression: start the app with an unresolvable Homey Manager fetch and confirm no
       `deferred_objective_unknown` is emitted until the snapshot bound elapses.
-      Files: `app.ts`, `lib/core/deviceManager.ts`,
+      Files: `app.ts`, `lib/device/manager.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
@@ -2365,7 +2365,7 @@ should not be folded into the same PR.
 - [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
       Per-charger automation profile (enabled, target percent or kWh, ready-by time,
       enforcement, speed mode, optional manual kW and derating) plus a hook on the
-      `sessionStartedAtMs` boundary in `lib/core/deviceStateOfCharge.ts` that materializes the
+      `sessionStartedAtMs` boundary in `lib/device/stateOfCharge.ts` that materializes the
       defaults into a `DeferredObjectiveSettingsV1` entry through the same upsert path the flow
       card uses. Persistence must align with the shared `PersistedSettingsState<T>` helper from
       `notes/persisted-settings-state.md`.
@@ -2373,7 +2373,7 @@ should not be folded into the same PR.
       `set_ev_charge_deadline` manually, but the v1 flow-card path is workable without it.
       Design: `notes/ev-ready-by/README.md`.
       Files: new `packages/contracts/src/evChargerDefaults.ts`,
-      new `lib/app/evChargerDefaultsWiring.ts`, `lib/core/deviceStateOfCharge.ts`,
+      new `lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`,
       defaults / auto-trigger tests.
 - [ ] EV deadline polish: manual override actions and urgency rule.
       Add `charge_now` and `pause_until_next_planned_slot` flow actions. Add a

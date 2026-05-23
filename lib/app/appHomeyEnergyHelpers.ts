@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { DeviceManager } from '../core/deviceManager';
+import type { DeviceManager } from '../device/manager';
 import type { TimerRegistry } from './timerRegistry';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;

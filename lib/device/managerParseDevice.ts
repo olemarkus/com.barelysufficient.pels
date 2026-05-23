@@ -5,7 +5,7 @@ import {
     getDeviceId,
     getIsAvailable,
     resolveZoneLabel,
-} from './deviceManagerHelpers';
+} from './managerHelpers';
 import { estimatePower, type PowerEstimateState } from '../power/estimate';
 import {
     type FlowReportedCapabilityId,
@@ -17,37 +17,37 @@ import {
   getEvChargingState,
   resolveEvChargingStateBinaryEvidence,
   type DeviceCapabilityMap,
-} from './deviceManagerControl';
+} from './managerControl';
 import {
     buildTargets,
     getCurrentTemperature,
     resolveDeviceCapabilities,
-} from './deviceManagerParse';
+} from './managerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
     type LiveDevicePowerWatts,
-} from './deviceManagerEnergy';
-import { updateLastKnownPower } from './deviceManagerRuntime';
-import type { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
-import { resolveMeasuredPowerKw } from './deviceManagerMeasuredPower';
+} from './managerEnergy';
+import { updateLastKnownPower } from './managerRuntime';
+import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
+import { resolveMeasuredPowerKw } from './managerMeasuredPower';
 import {
     resolveCandidateCapabilities,
     resolveFlowCapabilityOverlay,
-} from './deviceManagerNativeEv';
-import { shouldSkipFlowBackedCandidate } from './deviceManagerFlowSupport';
+} from './managerNativeEv';
+import { shouldSkipFlowBackedCandidate } from './managerFlowSupport';
 import {
     resolveLastFreshDataMs,
     resolveBinaryControlObservation,
-} from './deviceManagerParseSnapshot';
-import { resolveStateOfChargeSnapshot } from './deviceStateOfCharge';
+} from './managerParseSnapshot';
+import { resolveStateOfChargeSnapshot } from './stateOfCharge';
 import type { StructuredDebugEmitter } from '../logging/logger';
-import { resolveDeviceParsedControlState } from './deviceManagerParsedControlState';
-import { resolveParseDeviceIdentity } from './deviceManagerParseIdentity';
+import { resolveDeviceParsedControlState } from './managerParsedControlState';
+import { resolveParseDeviceIdentity } from './managerParseIdentity';
 import {
     resolveManagedFilterDecision,
     shouldDropAfterControlState,
     shouldDropEarly,
-} from './deviceManagerManagedFilter';
+} from './managerManagedFilter';
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,

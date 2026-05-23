@@ -10,7 +10,7 @@ import {
   isSteppedLoadOffStep,
   sortSteppedLoadSteps,
 } from '../utils/deviceControlProfiles';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { DeviceCapabilityMap } from './managerControl';
 
 export const NATIVE_STEPPED_LOAD_CAPABILITY_IDS = [
   'max_power_3000',

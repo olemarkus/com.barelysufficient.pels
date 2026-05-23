@@ -6,7 +6,7 @@ import {
   mockHomeyInstance,
   setMockDrivers,
 } from './mocks/homey';
-import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
+import * as homeyApi from '../lib/device/managerHomeyApi';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 
 const wait = async (ms: number): Promise<void> => (

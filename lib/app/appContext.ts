@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
-import type { DeviceManager } from '../core/deviceManager';
+import type { DeviceManager } from '../device/manager';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
@@ -39,7 +39,7 @@ import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
 import type { PowerSampleRebuildState } from './appPowerHelpers';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
-import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../core/flowReportedCapabilities';
+import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../device/flowReportedCapabilities';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 

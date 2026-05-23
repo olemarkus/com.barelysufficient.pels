@@ -1,9 +1,9 @@
-import type { DeviceCapabilityMap } from './deviceManagerControl';
-import type { LiveDevicePowerWatts } from './deviceManagerEnergy';
+import type { DeviceCapabilityMap } from './managerControl';
+import type { LiveDevicePowerWatts } from './managerEnergy';
 import {
   getExactPowerCapabilityValue,
   type PowerCapabilityId,
-} from './deviceManagerParse';
+} from './managerParse';
 
 export type DeviceMeasuredPowerObservation = {
   measurePowerW?: number;

@@ -1,12 +1,12 @@
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { DeviceCapabilityMap } from './managerControl';
 import {
   isNativeSteppedLoadWiringCandidate,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadReportedStepId,
 } from './nativeSteppedLoadWiring';
-import { getDeviceId } from './deviceManagerHelpers';
+import { getDeviceId } from './managerHelpers';
 
 export type NativeSteppedLoadCommandAdapter = {
   kind: 'capability';

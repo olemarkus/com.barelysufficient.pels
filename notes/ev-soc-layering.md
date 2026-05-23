@@ -2,9 +2,9 @@
 
 ## Source-of-evidence metadata stays in the observation layer
 
-The observation layer (`lib/core/deviceStateOfCharge.ts`,
-`lib/core/deviceManagerObservation.ts`,
-`lib/core/flowReportedCapabilities.ts`) is responsible for resolving a
+The observation layer (`lib/device/stateOfCharge.ts`,
+`lib/device/managerObservation.ts`,
+`lib/device/flowReportedCapabilities.ts`) is responsible for resolving a
 device's SoC from whichever inputs are available — native capability values,
 flow-reported synthetic values, freshness timestamps. Downstream layers
 (plan / executor / contracts / UI) read the resolved `DeviceStateOfChargeSnapshot`

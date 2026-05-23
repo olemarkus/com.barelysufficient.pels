@@ -1,11 +1,11 @@
 import Homey from 'homey';
-import { DeviceManager } from '../lib/core/deviceManager';
-import { setRestClient, resetRestClient } from '../lib/core/deviceManagerHomeyApi';
+import { DeviceManager } from '../lib/device/manager';
+import { setRestClient, resetRestClient } from '../lib/device/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
   buildNativeEvObservationCapabilityObj,
   normalizeNativeEvCapabilityUpdate,
-} from '../lib/core/nativeEvWiring';
+} from '../lib/device/nativeEvWiring';
 import type { Logger, HomeyDeviceLike } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
 
