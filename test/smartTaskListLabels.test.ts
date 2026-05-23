@@ -109,6 +109,34 @@ describe('resolveVarianceMarginNote', () => {
     expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBeNull();
     expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8 })).toBeNull();
   });
+
+  it('suppresses the note under a cannot-finish alert hero so the calm sentence does not contradict the red chip', () => {
+    expect(resolveVarianceMarginNote({
+      labels,
+      energyPlannedKWh: 10,
+      energyExpectedKWh: 8,
+      alert: true,
+    })).toBeNull();
+  });
+
+  it('suppresses the note when the cold-start chip is shown so two uncertainty lines do not stack', () => {
+    expect(resolveVarianceMarginNote({
+      labels,
+      energyPlannedKWh: 10,
+      energyExpectedKWh: 8,
+      coldStartChipShown: true,
+    })).toBeNull();
+  });
+
+  it('keeps the note for a healthy learned-rate hero (no alert, no cold-start chip)', () => {
+    expect(resolveVarianceMarginNote({
+      labels,
+      energyPlannedKWh: 10,
+      energyExpectedKWh: 8,
+      alert: false,
+      coldStartChipShown: false,
+    })).toBe('why-note');
+  });
 });
 
 describe('formatSmartTaskCurrentValueLine', () => {

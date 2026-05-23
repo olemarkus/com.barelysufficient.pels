@@ -142,7 +142,12 @@ no longer treated as cold-start, so it renders no chip rather than nagging a
 settled task. The energy estimate instead shows as a range
 (`expected…planned`, e.g. `8.0–10.0 kWh`) on the detail hero, with a one-line
 note explaining PELS books the high end as a safety margin; the range collapses
-to a single figure once the buffer fades with learning.
+to a single figure once the buffer fades with learning. The safety-margin
+sentence is suppressed under cannot-finish (`tone === 'alert'`) heroes — the
+red chip + postmortem body own that row and the calm sentence would
+contradict them — and when the cold-start `Estimating` / `Refining` chip is
+already rendered, so the user never reads two uncertainty hedges (chip +
+sentence) on the same hero.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
