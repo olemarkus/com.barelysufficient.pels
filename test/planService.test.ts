@@ -10,6 +10,7 @@ import { formatDeviceOverview } from '../packages/shared-domain/src/deviceOvervi
 import type { DeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 import { buildBinaryObservation } from './utils/binaryObservationTestUtils';
+import { createMockPlanEngine } from './utils/planEngineMock';
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
@@ -53,6 +54,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       flow: {},
     } as any,
     planEngine: {
+        ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
@@ -91,6 +93,7 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(19, 'stable'))
@@ -138,6 +141,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const overviewDebugStructured = vi.fn();
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(
@@ -242,6 +246,7 @@ describe('PlanService', () => {
     const debugStructured = vi.fn();
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
           .mockResolvedValueOnce(summaryPlan)
@@ -279,6 +284,7 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'on',
           plannedState: 'keep',
@@ -344,6 +350,7 @@ describe('PlanService', () => {
     });
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(plan),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -383,6 +390,7 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           controlModel: 'stepped_load',
           currentState: 'on',
@@ -424,6 +432,7 @@ describe('PlanService', () => {
     });
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValueOnce(samePlan).mockResolvedValueOnce(samePlan),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -452,6 +461,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn()
           .mockResolvedValueOnce(buildPlan(20, 'keep', {}, {
             currentState: 'on',
@@ -511,6 +521,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
           .mockResolvedValueOnce(cooldownPlan)
@@ -546,6 +557,7 @@ describe('PlanService', () => {
     });
     const { service } = createPlanService({
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -573,6 +585,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -730,6 +743,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
           currentState: 'off',
           currentTarget: 20,
@@ -786,6 +800,7 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'keep', {}, { priority: 10 }))
@@ -838,6 +853,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(19, 'stable')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -868,6 +884,7 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', { totalKw: 1.0 }))
@@ -915,6 +932,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -998,6 +1016,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1058,6 +1077,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1143,6 +1163,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1229,6 +1250,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1290,6 +1312,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1355,6 +1378,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1408,6 +1432,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1456,6 +1481,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1515,6 +1541,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1585,6 +1612,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1656,6 +1684,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1713,6 +1742,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -1793,6 +1823,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
@@ -1906,6 +1937,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           currentTarget: 20,
@@ -1980,6 +2012,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
@@ -2095,6 +2128,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue({
           meta: {
             totalKw: 1,
@@ -2210,6 +2244,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(21, 'stable', {}, {
           currentState: 'on',
           currentTarget: 21,
@@ -2279,6 +2314,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -2356,6 +2392,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           plannedState: 'keep',
@@ -2417,6 +2454,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -2461,6 +2499,7 @@ describe('PlanService', () => {
     let resolveBuild: (() => void) | undefined;
     const syncPendingTargetCommands = vi.fn(() => true);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(
         async () => new Promise<DevicePlan>((resolve) => {
           resolveBuild = () => resolve(buildPlan(20, 'stable'));
@@ -2544,6 +2583,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot,
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -2610,6 +2650,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -2651,6 +2692,7 @@ describe('PlanService', () => {
     const settingsSet = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValue(buildPlan(20, 'stable')),
@@ -2703,6 +2745,7 @@ describe('PlanService', () => {
     }];
 
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi
         .fn()
         .mockResolvedValueOnce(buildPlan(20, 'stable', {}, {
@@ -2776,7 +2819,7 @@ describe('PlanService', () => {
         api: {},
         flow: {},
       } as any,
-      planEngine: {} as any,
+      planEngine: { ...createMockPlanEngine() } as any,
       getPlanDevices: () => [],
       getCapacityDryRun: () => true,
       isCurrentHourCheap: () => true,
@@ -2811,6 +2854,7 @@ describe('PlanService', () => {
     });
     const realtime = vi.fn().mockResolvedValue(undefined);
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(11);
         return buildPlan(20, 'stable');
@@ -2866,6 +2910,7 @@ describe('PlanService', () => {
     const error = vi.fn();
     const settingsSet = vi.fn();
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(async () => {
         vi.advanceTimersByTime(17);
         throw new Error('plan exploded');
@@ -3016,6 +3061,7 @@ describe('PlanService', () => {
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'stable'))
@@ -3054,6 +3100,7 @@ describe('PlanService', () => {
       structuredLog: structuredLog as any,
       schedulePostActuationRefresh,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'stable'))
@@ -3100,6 +3147,7 @@ describe('PlanService', () => {
     const { service, deps } = createPlanService({
       structuredLog: structuredLog as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
           .fn()
           .mockResolvedValueOnce(buildPlan(20, 'stable'))
@@ -3169,6 +3217,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           plannedState: 'keep',
@@ -3216,6 +3265,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable', {}, {
           currentState: 'off',
           plannedState: 'keep',
@@ -3272,6 +3322,7 @@ describe('PlanService', () => {
     });
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
     const planEngine = {
+      ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(steppedPlan),
       computeDynamicSoftLimit: vi.fn(() => 0),
       computeShortfallThreshold: vi.fn(() => 0),
@@ -3336,6 +3387,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -3387,6 +3439,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
@@ -3423,6 +3476,7 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: {
+        ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi.fn(),
         computeDynamicSoftLimit: vi.fn(() => 0),
         computeShortfallThreshold: vi.fn(() => 0),
