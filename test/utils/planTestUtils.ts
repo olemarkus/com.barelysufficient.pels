@@ -2,7 +2,7 @@ import type {
   DevicePlanDevice,
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
-import type { SteppedLoadProfile } from '../../lib/utils/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
 
 export const steppedProfile: SteppedLoadProfile = {

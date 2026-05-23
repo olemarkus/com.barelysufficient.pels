@@ -1,5 +1,9 @@
-import type { DeviceControlProfile, DeviceControlProfiles, SteppedLoadProfile, SteppedLoadStep } from './types';
-
+import type {
+  DeviceControlProfile,
+  DeviceControlProfiles,
+  SteppedLoadProfile,
+  SteppedLoadStep,
+} from '../../packages/contracts/src/types';
 // Keep these step-selection helpers mirrored with
 // packages/contracts/src/deviceControlProfiles.ts. The runtime/Jest/Homey
 // path cannot safely import that ESM contracts module directly.

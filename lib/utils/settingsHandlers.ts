@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import CapacityGuard from '../core/capacityGuard';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
-import type { SettingsUiLogEntry } from './types';
+import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,

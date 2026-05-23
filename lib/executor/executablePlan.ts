@@ -2,9 +2,9 @@ import type {
   DeviceControlAdapterSnapshot,
   SteppedLoadActualStepSource,
   SteppedLoadProfile,
+  TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
-} from '../utils/types';
-import type { TargetDeviceSnapshot } from '../utils/types';
+} from '../../packages/contracts/src/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
 export type ExecutablePlan = {

@@ -1,5 +1,6 @@
 import type { StructuredDebugEmitter } from '../logging/logger';
-import type { Logger, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { Logger } from '../utils/types';
 import {
   getCurrentOn,
   type DeviceCapabilityMap,

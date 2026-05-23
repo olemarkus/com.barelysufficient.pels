@@ -4,7 +4,7 @@ import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart

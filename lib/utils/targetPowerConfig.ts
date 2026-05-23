@@ -1,7 +1,4 @@
-import type {
-  TargetPowerSteppedLoadConfig,
-  TargetPowerSteppedLoadPreset,
-} from './types';
+import type { TargetPowerSteppedLoadConfig, TargetPowerSteppedLoadPreset } from '../../packages/contracts/src/types';
 
 type UnknownRecord = Record<string, unknown>;
 

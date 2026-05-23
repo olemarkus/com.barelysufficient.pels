@@ -1,6 +1,6 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile } from '../utils/types';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { resolveObservedCurrentState } from './planCurrentState';
 import { isObservedOff, isObservedOn } from '../observer/observedState';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';

@@ -10,7 +10,7 @@ import {
 } from '../lib/core/objectiveProfileRecovery';
 import type { DeviceObjectiveProfile } from '../lib/core/objectiveProfileTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;

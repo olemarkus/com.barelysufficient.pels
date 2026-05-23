@@ -9,7 +9,7 @@ import {
   isDeviceObservationStaleByAge,
 } from '../observer/observationFreshness';
 import type { PlanService } from '../plan/planService';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { TimerRegistry } from './timerRegistry';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];

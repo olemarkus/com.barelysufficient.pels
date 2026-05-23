@@ -1,89 +1,88 @@
 /* eslint-disable max-lines -- Device manager coordinates SDK setup, snapshots, realtime updates, and command writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
-import {
-    BinaryControlObservation,
-    HomeyDeviceLike,
-    Logger,
-    SteppedLoadProfile,
-    TargetDeviceSnapshot,
-} from '../utils/types';
+import type {
+  BinaryControlObservation,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getDeviceId } from './deviceManagerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './powerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import {
-    resolveEvChargingStateBinaryEvidence,
-    resolveEvCurrentOn,
-    logEvCapabilityAccepted,
-    logEvCapabilityRequest,
-    logEvSnapshotChanges,
-    toCapabilityTimestampMs,
-    type DeviceCapabilityMap,
+  resolveEvChargingStateBinaryEvidence,
+  resolveEvCurrentOn,
+  logEvCapabilityAccepted,
+  logEvCapabilityRequest,
+  logEvSnapshotChanges,
+  toCapabilityTimestampMs,
+  type DeviceCapabilityMap,
 } from './deviceManagerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { type LiveDevicePowerWatts } from './deviceManagerEnergy';
 import { DeviceMeasuredPowerResolver } from './deviceMeasuredPowerResolver';
 import {
-    fetchDevicesByIds,
-    fetchDevicesWithFallback,
-    fetchLivePowerReport,
-    type LivePowerReport,
+  fetchDevicesByIds,
+  fetchDevicesWithFallback,
+  fetchLivePowerReport,
+  type LivePowerReport,
 } from './deviceManagerFetch';
 import { isRealtimeControlCapability } from './deviceManagerRuntime';
 import {
-    clearLocalCapabilityWrite,
-    formatBinaryState,
-    formatTargetValue,
-    getRecentLocalCapabilityWrite,
-    recordLocalCapabilityWrite,
-    type RecentLocalCapabilityWrites,
+  clearLocalCapabilityWrite,
+  formatBinaryState,
+  formatTargetValue,
+  getRecentLocalCapabilityWrite,
+  recordLocalCapabilityWrite,
+  type RecentLocalCapabilityWrites,
 } from './deviceManagerRealtimeSupport';
 import {
-    hasRestClient,
-    initHomeyHttpClient,
-    resolveHomeyInstance,
-    setRawCapabilityValue,
+  hasRestClient,
+  initHomeyHttpClient,
+  resolveHomeyInstance,
+  setRawCapabilityValue,
 } from './deviceManagerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './deviceLiveFeed';
 import {
-    didMeasurePowerBecomeSignificantlyPositive,
-    handleRealtimeDeviceUpdate,
-    type ObservedDeviceStateEvent,
-    type PlanRealtimeUpdateEvent,
+  didMeasurePowerBecomeSignificantlyPositive,
+  handleRealtimeDeviceUpdate,
+  type ObservedDeviceStateEvent,
+  type PlanRealtimeUpdateEvent,
 } from './deviceManagerRealtimeHandlers';
 import type { DeviceFetchSource } from './deviceManagerFetch';
 import { normalizeError } from '../utils/errorUtils';
 import { shouldEmitWindowed } from '../logging/logDedupe';
 import {
-    clearAllPendingBinarySettleWindows,
-    clearPendingBinarySettleWindow,
-    createBinarySettleState,
-    hasPendingBinarySettleWindow,
-    notePendingBinarySettleObservation,
-    startPendingBinarySettleWindow,
-    type DeviceManagerBinarySettleState,
+  clearAllPendingBinarySettleWindows,
+  clearPendingBinarySettleWindow,
+  createBinarySettleState,
+  hasPendingBinarySettleWindow,
+  notePendingBinarySettleObservation,
+  startPendingBinarySettleWindow,
+  type DeviceManagerBinarySettleState,
 } from './deviceManagerBinarySettle';
 import {
-    createObservationState,
-    getDebugObservedSources,
-    mergeFresherCapabilityObservations,
-    recordCapabilityObservation,
-    recordDeviceUpdateObservation,
-    recordLocalWriteObservation,
-    recordSnapshotCapabilityObservations,
-    recordSnapshotRefreshObservations,
-    resolveLatestLocalWriteMs,
-    type DeviceDebugObservedSources,
-    type DeviceManagerObservationState,
+  createObservationState,
+  getDebugObservedSources,
+  mergeFresherCapabilityObservations,
+  recordCapabilityObservation,
+  recordDeviceUpdateObservation,
+  recordLocalWriteObservation,
+  recordSnapshotCapabilityObservations,
+  recordSnapshotRefreshObservations,
+  resolveLatestLocalWriteMs,
+  type DeviceDebugObservedSources,
+  type DeviceManagerObservationState,
 } from './deviceManagerObservation';
 import {
-    isDevicePowerCapable,
-    parseDevice,
-    parseDeviceList,
-    type DeviceManagerParseProviders,
-    type ParseDevicePurpose,
+  isDevicePowerCapable,
+  parseDevice,
+  parseDeviceList,
+  type DeviceManagerParseProviders,
+  type ParseDevicePurpose,
 } from './deviceManagerParseDevice';
 import { applyDeviceDriverOverride } from './deviceManagerParseIdentity';
 import {
@@ -91,17 +90,17 @@ import {
     normalizeNativeEvCapabilityUpdate,
 } from './nativeEvWiring';
 import {
-    observeNativeSteppedLoadCapabilityUpdate,
-    resolveObservedNativeSteppedLoadReportedStepId,
-    setObservedNativeSteppedLoadStep,
-    syncNativeSteppedLoadCommandAdapters,
+  observeNativeSteppedLoadCapabilityUpdate,
+  resolveObservedNativeSteppedLoadReportedStepId,
+  setObservedNativeSteppedLoadStep,
+  syncNativeSteppedLoadCommandAdapters,
 } from './deviceManagerNativeSteppedCommand';
 import { applyFreshnessOnlyCapabilityUpdate } from './deviceManagerFreshness';
 import {
-    isNativeSteppedLoadControlEnabled,
-    isNativeSteppedLoadControlCapabilityId,
-    resolveNativeSteppedLoadReportedStepId,
-    resolveTargetPowerReportedStepId,
+  isNativeSteppedLoadControlEnabled,
+  isNativeSteppedLoadControlCapabilityId,
+  resolveNativeSteppedLoadReportedStepId,
+  resolveTargetPowerReportedStepId,
 } from './nativeSteppedLoadWiring';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './deviceStateOfCharge';

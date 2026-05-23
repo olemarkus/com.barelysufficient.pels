@@ -6,7 +6,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableEvIntent,

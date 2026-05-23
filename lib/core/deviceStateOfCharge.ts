@@ -3,7 +3,7 @@ import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,
 } from './flowReportedCapabilities';
-import type { DeviceStateOfChargeSnapshot, TargetDeviceSnapshot } from '../utils/types';
+import type { DeviceStateOfChargeSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;
 export const EV_SOC_NATIVE_CAPABILITY_IDS = [

@@ -6,7 +6,7 @@ import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } 
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 

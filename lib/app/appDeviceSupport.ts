@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { isBooleanMap, isModeDeviceTargets } from '../utils/appTypeGuards';
 import {
   CONTROLLABLE_DEVICES,

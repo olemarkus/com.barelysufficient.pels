@@ -12,7 +12,7 @@ import {
   resolveSteppedLoadPlanningPowerKw,
   sortSteppedLoadSteps,
 } from '../lib/utils/deviceControlProfiles';
-import type { SteppedLoadProfile } from '../lib/utils/types';
+import type { SteppedLoadProfile } from '../packages/contracts/src/types';
 
 const buildProfile = (): SteppedLoadProfile => ({
   model: 'stepped_load',

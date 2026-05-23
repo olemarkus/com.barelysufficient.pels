@@ -5,7 +5,7 @@ import type {
   DeviceTargetPowerConfigs,
   EvBoostSettings,
   TemperatureBoostSettings,
-} from '../utils/types';
+} from '../../packages/contracts/src/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,

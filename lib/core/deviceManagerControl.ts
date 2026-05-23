@@ -1,4 +1,5 @@
-import type { Logger, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { Logger } from '../utils/types';
 
 export type DeviceCapabilityValue = {
   value?: unknown;

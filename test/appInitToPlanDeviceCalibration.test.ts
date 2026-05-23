@@ -18,7 +18,7 @@ import {
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 import type { AppContext } from '../lib/app/appContext';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const HOIAX_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',

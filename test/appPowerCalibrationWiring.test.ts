@@ -9,7 +9,7 @@ import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
 } from '../lib/observer/devicePowerCalibration';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../lib/utils/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../lib/utils/settingsKeys';
 
 const CONNECTED_300_PROFILE: SteppedLoadProfile = {

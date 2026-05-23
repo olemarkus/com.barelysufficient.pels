@@ -3,7 +3,7 @@
 // Static import goes through Vitest's esbuild transform, which handles `export =`.
 import MyApp from '../../app.ts';
 import { mockHomeyInstance } from '../mocks/homey';
-import type { TargetDeviceSnapshot } from '../../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 let appInstances: any[] = [];
 

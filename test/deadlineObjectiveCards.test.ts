@@ -16,7 +16,7 @@ import {
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives/diagnosticsBridge';
-import type { TargetDeviceSnapshot } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.

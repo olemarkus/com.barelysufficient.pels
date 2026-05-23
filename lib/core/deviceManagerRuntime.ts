@@ -1,5 +1,6 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
-import type { HomeyDeviceLike, Logger, TargetDeviceSnapshot } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
   formatBinaryState,
   formatTargetValue,
