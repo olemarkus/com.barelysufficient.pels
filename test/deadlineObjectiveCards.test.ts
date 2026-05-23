@@ -1177,6 +1177,70 @@ describe('deadline objective flow cards', () => {
     expect(await trigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(true);
   });
 
+  it('does not re-fire smart_task_hours_remaining across an app restart while remaining stays under the threshold', async () => {
+    // End-to-end restart regression: with a pre-existing deadline already
+    // below the user-configured 2h threshold, restarting the app (i.e.
+    // constructing a fresh tracker against the persisted latch) must NOT
+    // trigger a duplicate Flow fire on the first observation. The card's
+    // user-visible contract is "fires once and re-arms when the ready-by time
+    // is rescheduled".
+    const persistedStore: { value: unknown } = { value: undefined };
+    const buildPersistentTracker = (): DeferredObjectiveHoursRemainingTracker => (
+      createDeferredObjectiveHoursRemainingTracker({
+        load: () => persistedStore.value,
+        save: (latch) => { persistedStore.value = latch; },
+      })
+    );
+
+    // ---- Boot 1: pre-restart ----
+    const before = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+      hoursRemainingTracker: buildPersistentTracker(),
+    });
+    registerDeadlineObjectiveCards(before.deps);
+    const beforeTrigger = before.mock.triggers.get('smart_task_hours_remaining')!;
+    const deadlineAtMs = HH_MM_TO_UTC_MS(7, 0);
+    const diagnostics = [buildHoursRemainingDiagnostic({ deviceId: 'ev-1', deadlineAtMs })];
+    // Pre-restart cycle: ev-1 crosses the 2h boundary, fires once.
+    before.deps.getDeferredObjectiveHoursRemainingTracker!()!.observe({
+      diagnostics,
+      nowMs: deadlineAtMs - 2 * 60 * 60 * 1000,
+      bus: before.deps.getDeferredObjectiveHoursRemainingBus!()!,
+    });
+    expect(beforeTrigger.trigger).toHaveBeenCalledTimes(1);
+
+    // ---- Boot 2: post-restart ----
+    // A user-configured 2h-or-fewer Flow exists. Without persisted latch,
+    // boundary 1's first-after-restart crossing would carry
+    // `previousHoursRemaining = null` and the run listener's
+    // `previous === null` short-circuit would let the 2h flow re-fire. With
+    // the persisted latch, `previous = 2` → the 2h flow's
+    // `previous > threshold` gate is false (2 > 2 is false) and it stays
+    // silent.
+    const after = buildDeps({
+      snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
+      hoursRemainingBus: createDeferredObjectiveHoursRemainingBus(),
+      hoursRemainingTracker: buildPersistentTracker(),
+    });
+    registerDeadlineObjectiveCards(after.deps);
+    const afterTrigger = after.mock.triggers.get('smart_task_hours_remaining')!;
+    after.deps.getDeferredObjectiveHoursRemainingTracker!()!.observe({
+      diagnostics,
+      nowMs: deadlineAtMs - (60 * 60 * 1000), // 1h remaining now
+      bus: after.deps.getDeferredObjectiveHoursRemainingBus!()!,
+    });
+    // The 1h boundary IS a fresh crossing (1 < 2), so the bus does publish
+    // — what we're checking is the run-listener's gate for a 2h-threshold
+    // flow.
+    expect(afterTrigger.trigger).toHaveBeenCalledTimes(1);
+    const state = afterTrigger.trigger.mock.calls[0]![1];
+    // A 2h-threshold Flow fired pre-restart and must not re-fire post-restart.
+    expect(await afterTrigger.run!({ device: 'ev-1', hours: 2 }, state)).toBe(false);
+    // A 1h-threshold Flow IS this crossing's threshold — it fires.
+    expect(await afterTrigger.run!({ device: 'ev-1', hours: 1 }, state)).toBe(true);
+  });
+
   it('does not fire smart_task_hours_remaining when the threshold arg is missing or non-finite', async () => {
     const hoursRemainingBus = createDeferredObjectiveHoursRemainingBus();
     const { deps, mock } = buildDeps({
