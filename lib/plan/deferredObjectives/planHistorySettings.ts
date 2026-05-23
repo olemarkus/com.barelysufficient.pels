@@ -7,6 +7,8 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryEntryV1,
   DeferredObjectivePlanHistoryEntryV2,
+  DeferredObjectivePlanHistoryHourlyContribution,
+  DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryObservedInterval,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionLogEntry,
@@ -141,6 +143,30 @@ const isRevisionLogEntry = (
     && isFiniteNumber(v.hoursRemoved);
 };
 
+const isHourlyTone = (value: unknown): value is DeferredObjectivePlanHistoryHourlyTone => (
+  value === 'cheap' || value === 'normal' || value === 'expensive'
+);
+
+// Per-hour delivery contribution shape persisted on v4 entries. Recorder
+// writes hour-aligned `atMs` (positive), non-negative `deliveredKWh`, finite
+// `priceValue`, and a resolved tone (`recordHourlyDelivery` already rejects
+// non-finite price/delivered values — see `lib/plan/deferredObjectives/planHistory.ts`).
+// A tampered payload could smuggle NaN price into the postmortem totals or
+// an unknown tone string into the bar-strip colour mapper; reject those at
+// the persistence boundary.
+const isHourlyContribution = (
+  value: unknown,
+): value is DeferredObjectivePlanHistoryHourlyContribution => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.atMs)
+    && v.atMs > 0
+    && isFiniteNumber(v.deliveredKWh)
+    && v.deliveredKWh >= 0
+    && isFiniteNumber(v.priceValue)
+    && isHourlyTone(v.tone);
+};
+
 const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
   if (v.progressSamples !== undefined
     && (!Array.isArray(v.progressSamples) || !v.progressSamples.every(isProgressSample))) return false;
@@ -149,6 +175,15 @@ const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
   if (v.totalCost !== undefined && !isFiniteNumber(v.totalCost)) return false;
   if (v.revisions !== undefined
     && (!Array.isArray(v.revisions) || !v.revisions.every(isRevisionLogEntry))) return false;
+  // v4 hourly-contribution strip: drop the whole entry when any contribution
+  // is malformed so the postmortem bar strip can trust the persisted shape.
+  // Per-entry "drop only the bad row" would be friendlier but is overkill —
+  // the recorder writes via a single helper (`appendHourlyContribution`) that
+  // can't produce mixed-shape rows in practice, so a malformed row signals
+  // tampering or downgrade, not partial corruption.
+  if (v.hourlyContributions !== undefined
+    && (!Array.isArray(v.hourlyContributions)
+      || !v.hourlyContributions.every(isHourlyContribution))) return false;
   return true;
 };
 

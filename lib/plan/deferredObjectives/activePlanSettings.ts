@@ -3,6 +3,7 @@ import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -47,6 +48,18 @@ const isObjectiveKind = (value: unknown): value is 'temperature' | 'ev_soc' => (
   value === 'temperature' || value === 'ev_soc'
 );
 
+// Mirrors `isPlanStatus` in `planHistorySettings.ts`. The persisted revision's
+// `planStatus` drives the hero/status chip ("Can't fully meet" / cold-start /
+// on-track copy), so a tampered or downgraded payload that smuggled an unknown
+// string would surface garbage status text. v2.9 closeout hardening.
+const isPlanStatus = (value: unknown): value is DeferredObjectiveActivePlanStatusV1 => (
+  value === 'at_risk'
+    || value === 'cannot_meet'
+    || value === 'invalid'
+    || value === 'on_track'
+    || value === 'satisfied'
+);
+
 const isReason = (value: unknown): value is DeferredObjectiveActivePlanRevisionReason => (
   typeof value === 'string'
   && VALID_REASONS.has(value as DeferredObjectiveActivePlanRevisionReason)
@@ -66,6 +79,48 @@ const isOptionalNonEmptyString = (value: unknown): boolean => (
   value === undefined || (typeof value === 'string' && value.length > 0)
 );
 
+// `energyExpectedKWh` is the mean-based estimate (no variance buffer). Recorder
+// only writes a finite number; absence is the byte-stable "expected equals
+// planned" shape. Reject negative/non-finite values rather than letting them
+// reach the UI's range chip.
+const isOptionalFiniteNonNegative = (value: unknown): boolean => (
+  value === undefined || (isFiniteNumber(value) && value >= 0)
+);
+
+// `dailyBudgetExhaustedBucketCount` is the count of zero-cap horizon buckets.
+// Recorder suppresses zero to keep persisted revisions byte-stable; the
+// validator still accepts zero so a fixture or hand-edited payload that
+// round-trips through normalize() isn't dropped.
+const isOptionalNonNegativeCount = (value: unknown): boolean => (
+  value === undefined || (isFiniteNumber(value) && value >= 0)
+);
+
+// v2.9 hardening: `energyNeededKWh` and `planStatus` are required on every
+// revision the recorder writes (see `buildRevision` in `activePlanRecorder.ts`),
+// but the previous validator never checked them — a tampered or downgraded
+// payload could carry an unknown status string or NaN energy figure all the
+// way to the hero/status chip. `energyExpectedKWh` and
+// `dailyBudgetExhaustedBucketCount` are optional but must round-trip cleanly
+// when the recorder did persist them. Split out of `isRevision` so the top-
+// level guard stays under the cyclomatic-complexity cap.
+const hasValidRevisionEnergyFields = (v: Record<string, unknown>): boolean => (
+  isFiniteNumber(v.energyNeededKWh)
+    && isPlanStatus(v.planStatus)
+    && isOptionalFiniteNonNegative(v.energyExpectedKWh)
+    && isOptionalNonNegativeCount(v.dailyBudgetExhaustedBucketCount)
+);
+
+// `kwhPerUnitSource` is optional for backward compatibility with revisions
+// persisted before the bootstrap rate fallback shipped. Allow absence, but
+// if present require a known value rather than silently keeping garbage.
+// `planningSpeedKw` + `estimatedDurationText` are the per-revision duration
+// snapshot, optional for backward compatibility.
+const hasValidRevisionDurationFields = (v: Record<string, unknown>): boolean => (
+  (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource))
+    && isOptionalFinitePositive(v.planningSpeedKw)
+    && isOptionalNonEmptyString(v.estimatedDurationText)
+);
+
 const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 => {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
@@ -75,12 +130,8 @@ const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisio
     && isReason(v.reason)
     && Array.isArray(v.hours)
     && v.hours.every(isPlanHour)
-    // `kwhPerUnitSource` is optional for backward compatibility with revisions
-    // persisted before the bootstrap rate fallback shipped. Allow absence, but
-    // if present require a known value rather than silently keeping garbage.
-    && (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource))
-    && isOptionalFinitePositive(v.planningSpeedKw)
-    && isOptionalNonEmptyString(v.estimatedDurationText);
+    && hasValidRevisionEnergyFields(v)
+    && hasValidRevisionDurationFields(v);
 };
 
 const isProvenanceConfidence = (value: unknown): value is 'low' | 'medium' | 'high' | null => (
@@ -95,6 +146,12 @@ const isKwhPerUnitProvenance = (value: unknown): boolean => {
     && (v.kWhPerUnit === null || isFiniteNumber(v.kWhPerUnit))
     && isFiniteNumber(v.acceptedSamples)
     && isProvenanceConfidence(v.confidence)
+    // `displayConfidence` is the band-aware aggregate driving the smart-task
+    // chip; optional for backward compatibility with provenance snapshots
+    // persisted before it shipped. When present must be a known band (or
+    // `null` for bootstrap plans) — anything else means the payload was
+    // tampered and the chip would render garbage.
+    && (v.displayConfidence === undefined || isProvenanceConfidence(v.displayConfidence))
     && (v.lastAcceptedAtMs === null || isFiniteNumber(v.lastAcceptedAtMs));
 };
 
