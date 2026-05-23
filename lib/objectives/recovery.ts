@@ -28,6 +28,11 @@ export const RECOVERY_PROGRESS_RESET_MULTIPLIER = 5;
 // is long enough that a legitimate slow refill has had time to start producing
 // >5*EPSILON deltas, and short enough that a real cap-shed cooling pattern
 // isn't kept armed for hours when the planner could be reusing the slot.
+// Intentionally a poll-mode (`power_source = homey_energy`) safeguard only:
+// under `power_source = flow` sample intervals are typically 1-6 h, so the
+// four-sample counter is already the binding constraint and the floor is a
+// no-op. The 24 h `RECOVERY_SAFETY_TIMEOUT_MS` bounds the worst-case in
+// either mode.
 export const RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1000;
 
 export type RecoveryDisarmReason = 'recovered' | 'safety_timeout' | 'no_progress';

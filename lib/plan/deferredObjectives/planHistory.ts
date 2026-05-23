@@ -131,8 +131,10 @@ type InProgressRecord = Omit<
   // First trustworthy progress reading observed in the currently-open hour.
   // The internal hour-rollover detector uses this as the "hour opening"
   // anchor — when the next observation lands in a later hour bucket, the
-  // delta (opening → latest reading in the closing hour) is converted to
-  // delivered kWh using `lastKWhPerUnit` and emitted as a contribution.
+  // delta (opening → first reading in the *next* hour) is converted to
+  // delivered kWh using `lastKWhPerUnit` and attributed to `opening.hourMs`
+  // (the just-closed hour) as a contribution. See `detectHourRollover` in
+  // `planHistoryV4Helpers.ts` for the attribution contract.
   // `null` when no trustworthy reading has been observed yet (cold start,
   // sensor offline) so the rollover skips emission until coverage resumes.
   //
