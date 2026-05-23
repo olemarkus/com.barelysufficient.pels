@@ -95,19 +95,37 @@ const isOptionalNonNegativeCount = (value: unknown): boolean => (
   value === undefined || (isFiniteNumber(value) && value >= 0)
 );
 
+// `floorShortfallCause` is the producer-resolved verdict that routes the hero
+// recourse (budget-bound → `Open Budget`, otherwise device-side). Optional for
+// backward compatibility with revisions persisted before the field shipped;
+// when present must be a known enum value so a tampered payload can't smuggle
+// an unknown cause string to the consumer (which would then fall through to
+// the legacy heuristic — silently wrong, not loudly). Matches the contract
+// type `DeferredObjectiveActivePlanFloorShortfallCause`.
+const isOptionalFloorShortfallCause = (value: unknown): boolean => (
+  value === undefined
+    || value === 'budget'
+    || value === 'step_power'
+    || value === 'estimate'
+    || value === 'time_capacity'
+    || value === 'none'
+);
+
 // v2.9 hardening: `energyNeededKWh` and `planStatus` are required on every
 // revision the recorder writes (see `buildRevision` in `activePlanRecorder.ts`),
 // but the previous validator never checked them — a tampered or downgraded
 // payload could carry an unknown status string or NaN energy figure all the
-// way to the hero/status chip. `energyExpectedKWh` and
-// `dailyBudgetExhaustedBucketCount` are optional but must round-trip cleanly
-// when the recorder did persist them. Split out of `isRevision` so the top-
-// level guard stays under the cyclomatic-complexity cap.
+// way to the hero/status chip. `energyExpectedKWh`,
+// `dailyBudgetExhaustedBucketCount`, and `floorShortfallCause` are optional
+// but must round-trip cleanly when the recorder did persist them. Split out
+// of `isRevision` so the top-level guard stays under the cyclomatic-complexity
+// cap.
 const hasValidRevisionEnergyFields = (v: Record<string, unknown>): boolean => (
   isFiniteNumber(v.energyNeededKWh)
     && isPlanStatus(v.planStatus)
     && isOptionalFiniteNonNegative(v.energyExpectedKWh)
     && isOptionalNonNegativeCount(v.dailyBudgetExhaustedBucketCount)
+    && isOptionalFloorShortfallCause(v.floorShortfallCause)
 );
 
 // `kwhPerUnitSource` is optional for backward compatibility with revisions

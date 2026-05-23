@@ -30,6 +30,25 @@ export type DeferredObjectiveActivePlanRevisionReason =
 // plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap';
 
+// Producer-resolved verdict for what bound the floor schedule on this revision.
+// Mirrors the planner's `statusDetail` mapping in
+// `lib/plan/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
+// → `budget`, `feasible_above_floor` → `step_power`, `estimate_uncertain` →
+// `estimate`, `target_cannot_be_met` → `time_capacity`, anything else → `none`).
+// Persisted so the hero copy resolver can route a `cannot_meet` / `at_risk` plan
+// to the budget-bound recourse (`Open Budget`) without re-deriving cause from
+// `dailyBudgetExhaustedBucketCount` — which fails on the per-bucket background
+// squeeze case where the count stays at zero but the cause is still budget.
+// Optional so older persisted plans (without the field) continue to load and
+// the UI should fall back to the legacy `(cannot_meet || at_risk) &&
+// bucketCount > 0` derivation when absent.
+export type DeferredObjectiveActivePlanFloorShortfallCause =
+  | 'budget'
+  | 'step_power'
+  | 'estimate'
+  | 'time_capacity'
+  | 'none';
+
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;
@@ -82,6 +101,16 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // problem. Optional for backward compatibility — older persisted revisions
   // don't carry it and the UI should treat absence as zero.
   dailyBudgetExhaustedBucketCount?: number;
+  // Producer-resolved verdict for what bound the floor schedule. See the
+  // `DeferredObjectiveActivePlanFloorShortfallCause` doc above for the mapping
+  // table and the squeeze-case rationale. Persisting it lets the hero copy
+  // resolver route a `cannot_meet` / `at_risk` plan whose cause is `budget` to
+  // the `Open Budget` recourse even when `dailyBudgetExhaustedBucketCount`
+  // stays at zero (the per-bucket background squeeze case). Optional for
+  // backward compatibility — legacy revisions without the field fall back to
+  // the count-based heuristic so the consumer never branches on absence as a
+  // signal in itself.
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   // Planner's effective useful power (kW) used to estimate hours-of-work for
   // the current plan. Surfaced in the hero meta line ("Y.Y kW") so the user
   // can sanity-check estimated duration. Optional for backward compatibility.

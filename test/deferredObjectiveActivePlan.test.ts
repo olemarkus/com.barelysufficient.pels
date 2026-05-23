@@ -1314,6 +1314,91 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(exhausted.latest?.revision).toBe(2);
   });
 
+  it('persists floorShortfallCause from the diagnostic reasonCode (squeeze case)', () => {
+    // Prod squeeze repro: per-bucket background-squeeze leaves
+    // `dailyBudgetExhaustedBucketCount` at 0, but the planner still resolves
+    // `limited_by_daily_budget` as the statusDetail because the floor only
+    // fits with the per-bucket cap lifted. The recorder must persist
+    // `floorShortfallCause: 'budget'` so the hero copy routes the recourse
+    // to `Open Budget`, not `Adjust device`.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      reasonCode: 'limited_by_daily_budget',
+      dailyBudgetExhaustedBucketCount: 0,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1)], {
+        status: 'at_risk',
+        statusDetail: 'limited_by_daily_budget',
+        plannedUsefulEnergyKWh: 1,
+        unplannedUsefulEnergyKWh: 0.5,
+      }),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.latest?.floorShortfallCause).toBe('budget');
+    // Squeeze case: bucketCount stays at 0, but the cause is still budget.
+    expect(plan.latest?.dailyBudgetExhaustedBucketCount).toBeUndefined();
+    expect(plan.latest?.planStatus).toBe('at_risk');
+  });
+
+  it('omits floorShortfallCause when no shortfall is in play (byte-stable on healthy plans)', () => {
+    // Steady on-track plan with `planned_with_margin` resolves to
+    // `floorShortfallCause: 'none'` in the helper, which the recorder
+    // suppresses (sibling to the dailyBudgetExhaustedBucketCount: 0
+    // suppression) so legacy plans without the field stay byte-stable
+    // across revisions.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    expect(saved()!.plansByDeviceId.dev.latest?.floorShortfallCause).toBeUndefined();
+  });
+
+  it('emits a schedule_revised revision when floorShortfallCause flips within the same charging hours', () => {
+    // Same set of charging hours but the floor cause shifted from
+    // `feasible_above_floor` (step-power undercount) to
+    // `limited_by_daily_budget` (per-bucket squeeze). The hero recourse
+    // routing depends on the cause — without re-persisting, the UI would
+    // keep pointing at the device-side `Adjust device` button while the
+    // honest verdict is `Open Budget`.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const sharedPlan = makeHorizon([
+      makeBucket(2 * HOUR_MS, 1.5),
+      makeBucket(3 * HOUR_MS, 1.5),
+      makeBucket(4 * HOUR_MS, 1.5),
+    ]);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      reasonCode: 'feasible_above_floor',
+      horizonPlan: { ...sharedPlan, status: 'at_risk', statusDetail: 'feasible_above_floor' },
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.floorShortfallCause).toBe('step_power');
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      reasonCode: 'limited_by_daily_budget',
+      horizonPlan: { ...sharedPlan, status: 'at_risk', statusDetail: 'limited_by_daily_budget' },
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('schedule_revised');
+    expect(plan?.latest?.revision).toBe(2);
+    expect(plan?.latest?.floorShortfallCause).toBe('budget');
+  });
+
   it('writes a schedule_revised revision when source flips learned→bootstrap even with identical hours', () => {
     // Regression for PR #708 review: if the profile is pruned (or the device
     // is removed/re-added) and the bucket allocation happens to be
@@ -2056,6 +2141,53 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(
           normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
         ).toBeUndefined();
+      });
+
+      it('accepts a revision with a valid floorShortfallCause enum value', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'schedule_revised',
+              planStatus: 'at_risk',
+              floorShortfallCause: 'budget',
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.latest?.floorShortfallCause).toBe('budget');
+      });
+
+      it('drops a plan whose revision floorShortfallCause is an unknown enum value', () => {
+        // Tampered or downgraded payload smuggling an unknown cause string
+        // would silently fall through the UI's legacy heuristic if the
+        // validator accepted it. Drop the whole plan instead — sibling
+        // pattern to the `kwhPerUnitSource: 'totally_invalid'` case above.
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({
+              reason: 'flow_card',
+              floorShortfallCause: 'physics_violation',
+            }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('accepts a revision without floorShortfallCause (legacy v2.9-pre payload)', () => {
+        // Migration safety: revisions persisted before this field shipped do
+        // not carry it. The consumer falls back to the count-based heuristic
+        // when absent — silent acceptance is the byte-stable pre-field shape.
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card' }),
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.latest?.floorShortfallCause).toBeUndefined();
       });
 
       it('accepts a pristine v2.9 production-shape plan (legacy-payload migration anchor)', () => {
