@@ -30,7 +30,7 @@ import {
 import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
 import { withRebuildContext } from '../logging/logger';
 import type {
   SettingsUiPlanDeviceSnapshot,
@@ -156,11 +156,7 @@ export type PlanServiceDeps = {
   getCombinedPrices: () => unknown;
   getLastPowerUpdate: () => number | null;
   schedulePostActuationRefresh?: () => void;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
+  loggers?: Loggers;
   overviewDebugStructured?: StructuredDebugEmitter;
   isOverviewDebugEnabled?: () => boolean;
   isPlanDebugEnabled?: () => boolean;
@@ -186,14 +182,14 @@ export class PlanService {
   private lastTickedPlanRef: DevicePlan | null = null;
 
   constructor(private deps: PlanServiceDeps) {
-    this.idleClassifier = createIdleClassifier({ structuredLog: deps.structuredLog });
+    this.idleClassifier = createIdleClassifier({ structuredLog: deps.loggers?.structuredLog });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       getCombinedPrices: deps.getCombinedPrices,
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getLastPowerUpdate: deps.getLastPowerUpdate,
-      error: deps.error,
+      structuredLog: deps.loggers?.structuredLog,
     });
   }
 
@@ -437,7 +433,11 @@ export class PlanService {
         result = await operation();
       })
       .catch((error) => {
-        this.deps.error(errorMessage, normalizeError(error));
+        this.deps.loggers?.structuredLog?.error({
+          event: 'plan_operation_failed',
+          message: errorMessage,
+          error: normalizeError(error),
+        });
       })
       .finally(() => {
         onFinally?.();
@@ -460,7 +460,10 @@ export class PlanService {
     const driftedLivePlan = this.stampCurrentPowerFreshness(
       buildLiveStatePlan(plannedSnapshot, liveDevices),
     );
-    this.deps.logDebug('Realtime device drift detected, reapplying current plan');
+    this.deps.loggers?.debugStructured?.({
+      event: 'realtime_device_drift_detected',
+      message: 'Reapplying current plan',
+    });
     await this.applyPlanActions(driftedLivePlan, 'reconcile');
     this.deps.schedulePostActuationRefresh?.();
     return true;
@@ -494,7 +497,7 @@ export class PlanService {
     }
 
     if (debugSummaryState.changed && debugSummaryState.event) {
-      this.deps.debugStructured?.(debugSummaryState.event);
+      this.deps.loggers?.debugStructured?.(debugSummaryState.event);
     }
 
     this.lastActionPlanSignature = actionSignature;
@@ -527,7 +530,7 @@ export class PlanService {
   } {
     const { plan, actionChanged, detailChanged, metaChanged } = params;
     const shouldCheck = (actionChanged || detailChanged || metaChanged)
-      && Boolean(this.deps.debugStructured)
+      && Boolean(this.deps.loggers?.debugStructured)
       && (this.deps.isPlanDebugEnabled?.() ?? true);
     if (!shouldCheck) {
       return { event: null, signature: null, changed: false, emitted: false };
@@ -565,7 +568,10 @@ export class PlanService {
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps, this.idleClassifier))
-        .catch((err: unknown) => this.deps.error('Failed to emit plan_updated event', normalizeError(err)));
+        .catch((err: unknown) => this.deps.loggers?.structuredLog?.error({
+          event: 'plan_updated_emit_failed',
+          error: normalizeError(err),
+        }));
     }
   }
 
@@ -625,7 +631,7 @@ export class PlanService {
         stopSpan();
         const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
         if (rebuildLogLevel) {
-          this.deps.structuredLog?.[rebuildLogLevel]({
+          this.deps.loggers?.structuredLog?.[rebuildLogLevel]({
             event: 'plan_rebuild_completed',
             durationMs,
             buildMs: outcome.buildMs,
@@ -671,7 +677,10 @@ export class PlanService {
     const hadShedding = hasShedding(stampedPlan);
 
     if (isDryRun && hadShedding) {
-      this.deps.log('Dry run: shedding planned but not executed');
+      this.deps.loggers?.structuredLog?.info({
+        event: 'shedding_dry_run_skipped',
+        message: 'Dry run: shedding planned but not executed',
+      });
     }
 
     const { applyMs, appliedActions, deviceWriteCount, commandRequestCount } = await this.maybeApplyPlanChanges(
@@ -797,7 +806,10 @@ export class PlanService {
         this.refreshLatestPlanSnapshotPendingState();
       }
     } catch (error) {
-      this.deps.error('Failed to apply plan actions', normalizeError(error));
+      this.deps.loggers?.structuredLog?.error({
+        event: 'plan_actions_apply_failed',
+        error: normalizeError(error),
+      });
     }
     return {
       applyMs: Date.now() - applyStart,

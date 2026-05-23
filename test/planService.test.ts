@@ -47,6 +47,7 @@ const buildPlan = (
 };
 
 const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanService>[0]> = {}) => {
+  const { loggers: loggerOverrides, ...rest } = overrides;
   const deps = {
     homey: {
       settings: { set: vi.fn() },
@@ -69,11 +70,11 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
     isCurrentHourExpensive: () => false,
     getCombinedPrices: () => null,
     getLastPowerUpdate: () => null,
-    log: vi.fn(),
-    logDebug: vi.fn(),
-    error: vi.fn(),
+    loggers: {
+      ...loggerOverrides,
+    },
     isOverviewDebugEnabled: () => true,
-    ...overrides,
+    ...rest,
   };
 
   return { service: new PlanService(deps as ConstructorParameters<typeof PlanService>[0]), deps };
@@ -119,10 +120,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
     await service.rebuildPlanFromCache();
@@ -177,10 +175,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-      overviewDebugStructured,
+            overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
 
@@ -258,7 +253,7 @@ describe('PlanService', () => {
         applyPlanActions: vi.fn().mockResolvedValue(undefined),
         applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
       } as any,
-      debugStructured,
+      loggers: { debugStructured },
     });
 
     await service.rebuildPlanFromCache();
@@ -613,10 +608,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-      overviewDebugStructured,
+            overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
 
@@ -774,10 +766,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-      overviewDebugStructured,
+            overviewDebugStructured,
       isOverviewDebugEnabled: () => true,
     });
 
@@ -826,10 +815,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
     await service.rebuildPlanFromCache();
@@ -845,7 +831,7 @@ describe('PlanService', () => {
 
   it('normalizes plan_updated emission failures before logging', async () => {
     const realtime = vi.fn().mockRejectedValue('boom');
-    const error = vi.fn();
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
       homey: {
         settings: { set: vi.fn() },
@@ -868,16 +854,16 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error,
-    });
+      loggers: { structuredLog: structuredLog as any },
+          });
 
     await service.rebuildPlanFromCache();
     await Promise.resolve();
 
-    expect(error).toHaveBeenCalledWith('Failed to emit plan_updated event', expect.any(Error));
-    expect((error.mock.calls[0]?.[1] as Error).message).toBe('boom');
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_updated_emit_failed',
+      error: expect.objectContaining({ message: 'boom' }),
+    }));
   });
 
   it('keeps the latest in-memory plan snapshot fresh for meta-only changes', async () => {
@@ -910,10 +896,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
     await service.rebuildPlanFromCache();
@@ -956,10 +939,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -1031,10 +1011,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(
       null,
@@ -1100,10 +1077,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -1189,10 +1163,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(18, 'stable');
 
@@ -1279,10 +1250,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = decoratePlanWithPendingTargetCommands(buildPlan(18, 'stable'));
 
@@ -1337,10 +1305,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = {
       ...buildPlan(20, 'meter settling (30s remaining)', {}, {
@@ -1404,10 +1369,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -1455,10 +1417,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
       currentState: 'off',
@@ -1505,10 +1464,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(21, 'shed', {}, {
       currentState: 'on',
@@ -1569,10 +1525,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'cooldown', {}, {
       currentState: 'on',
@@ -1636,10 +1589,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -1708,10 +1658,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'off',
@@ -1766,10 +1713,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -1885,10 +1829,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
 
@@ -1965,10 +1906,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
 
@@ -2076,10 +2014,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
 
@@ -2196,10 +2131,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
 
@@ -2273,10 +2205,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
 
@@ -2338,10 +2267,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -2420,10 +2346,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
     await Promise.resolve();
@@ -2469,10 +2392,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
     await Promise.resolve();
@@ -2536,10 +2456,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     const rebuildPromise = service.rebuildPlanFromCache('serialize_rebuild');
     await Promise.resolve();
@@ -2602,10 +2519,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache('capture_live_devices_once');
 
@@ -2669,10 +2583,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache('binary_evidence_snapshot_refresh');
     expect(syncPendingBinaryCommands).toHaveBeenCalledWith([
@@ -2717,10 +2628,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache('test_identical.first');
     await service.rebuildPlanFromCache('test_identical.second');
@@ -2779,10 +2687,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache('seed_expected_on_state');
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
@@ -2826,10 +2731,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => ({ prices: [{ total: 10 }] }),
       getLastPowerUpdate: () => 123456,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     const plan = {
       meta: { totalKw: null, softLimitKw: 0, headroomKw: null },
@@ -2883,10 +2785,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache('test_reason.phase_trace');
 
@@ -2907,7 +2806,7 @@ describe('PlanService', () => {
   });
 
   it('records failed rebuild attempts in perf counters and traces', async () => {
-    const error = vi.fn();
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const settingsSet = vi.fn();
     const planEngine = {
       ...createMockPlanEngine(),
@@ -2936,10 +2835,8 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error,
-    });
+      loggers: { structuredLog: structuredLog as any },
+          });
 
     const beforePerf = getPerfSnapshot();
     await service.rebuildPlanFromCache('test_reason.failed');
@@ -2948,7 +2845,11 @@ describe('PlanService', () => {
     expect((afterPerf.counts.plan_rebuild_total || 0) - (beforePerf.counts.plan_rebuild_total || 0)).toBe(1);
     expect((afterPerf.counts.plan_rebuild_failed_total || 0) - (beforePerf.counts.plan_rebuild_failed_total || 0)).toBe(1);
     expect((afterPerf.durations.plan_rebuild_ms?.count || 0) - (beforePerf.durations.plan_rebuild_ms?.count || 0)).toBe(1);
-    expect(error).toHaveBeenCalledWith('Failed to rebuild plan', expect.any(Error));
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'plan_operation_failed',
+      message: 'Failed to rebuild plan',
+      error: expect.objectContaining({ message: 'plan exploded' }),
+    }));
 
     const trace = getRecentPlanRebuildTraces(1)[0];
     expect(trace).toEqual(expect.objectContaining({
@@ -2960,9 +2861,9 @@ describe('PlanService', () => {
   });
 
   it('suppresses structured rebuild logs for unchanged no-op rebuilds', async () => {
-    const structuredLog = { info: vi.fn() };
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
     });
 
     await service.rebuildPlanFromCache('seed');
@@ -2974,9 +2875,9 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for initial rebuild reasons even without action changes', async () => {
-    const structuredLog = { info: vi.fn() };
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
     });
 
     await service.rebuildPlanFromCache('seed');
@@ -3001,9 +2902,9 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for slow rebuilds even without action changes', async () => {
-    const structuredLog = { info: vi.fn() };
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
     });
 
     await service.rebuildPlanFromCache('seed');
@@ -3030,7 +2931,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed at debug level when actionChanged but no actions applied (dry-run)', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
       getCapacityDryRun: () => true,
     });
 
@@ -3059,7 +2960,7 @@ describe('PlanService', () => {
   it('emits plan_rebuild_completed with concrete deviceWriteCount when actuation wrote to devices', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
       planEngine: {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
@@ -3097,7 +2998,7 @@ describe('PlanService', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const schedulePostActuationRefresh = vi.fn();
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
       schedulePostActuationRefresh,
       planEngine: {
         ...createMockPlanEngine(),
@@ -3145,7 +3046,7 @@ describe('PlanService', () => {
   it('normalizes non-finite actuation counts to zero in rebuild logs and traces', async () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
       planEngine: {
         ...createMockPlanEngine(),
         buildDevicePlanSnapshot: vi
@@ -3189,9 +3090,9 @@ describe('PlanService', () => {
   });
 
   it('emits structured rebuild logs for failed rebuilds', async () => {
-    const structuredLog = { info: vi.fn() };
+    const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const { service, deps } = createPlanService({
-      structuredLog: structuredLog as any,
+      loggers: { structuredLog: structuredLog as any },
     });
     (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);
@@ -3245,10 +3146,7 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
     expect(applyPlanActions).toHaveBeenCalled();
@@ -3293,10 +3191,7 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.rebuildPlanFromCache();
     expect(applyPlanActions).toHaveBeenCalled();
@@ -3364,10 +3259,7 @@ describe('PlanService', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     const firstOutcome = await service.rebuildPlanFromCache('power_delta');
     const secondOutcome = await service.rebuildPlanFromCache('power_delta');
@@ -3412,10 +3304,7 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
       currentState: 'on',
@@ -3455,10 +3344,7 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.applySheddingToDevice('dev-1', 'Heater');
 
@@ -3492,10 +3378,7 @@ describe('PlanService', () => {
       getCombinedPrices: () => null,
       getLastPowerUpdate: () => null,
       schedulePostActuationRefresh,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
-    });
+          });
 
     await service.applySheddingToDevice('dev-1', 'Heater');
 
