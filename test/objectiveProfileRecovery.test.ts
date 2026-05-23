@@ -1,7 +1,7 @@
 import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
-} from '../lib/core/objectiveProfiles';
+} from '../lib/objectives/profiles';
 import {
   RECOVERY_NO_PROGRESS_MIN_DURATION_MS,
   RECOVERY_NO_PROGRESS_SAMPLE_LIMIT,
@@ -10,9 +10,9 @@ import {
   RECOVERY_SAFETY_TIMEOUT_MS,
   SHARP_FALL_SOC_PERCENT,
   SHARP_FALL_TEMPERATURE_C,
-} from '../lib/core/objectiveProfileRecovery';
-import type { DeviceObjectiveProfile } from '../lib/core/objectiveProfileTypes';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+} from '../lib/objectives/recovery';
+import type { DeviceObjectiveProfile } from '../lib/objectives/types';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);

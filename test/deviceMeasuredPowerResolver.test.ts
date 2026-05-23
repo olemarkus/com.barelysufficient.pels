@@ -1,4 +1,4 @@
-import { DeviceMeasuredPowerResolver } from '../lib/core/deviceMeasuredPowerResolver';
+import { DeviceMeasuredPowerResolver } from '../lib/device/measuredPowerResolver';
 
 const logger = {
   log: vi.fn(),

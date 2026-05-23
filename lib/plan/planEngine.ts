@@ -1,7 +1,7 @@
 import Homey from 'homey';
-import CapacityGuard from '../core/capacityGuard';
-import { DeviceManager } from '../core/deviceManager';
-import type { PowerTrackerState } from '../core/powerTracker';
+import CapacityGuard from '../power/capacityGuard';
+import { DeviceManager } from '../device/manager';
+import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
 import type { PlanActuationMode } from '../executor/executorTypes';

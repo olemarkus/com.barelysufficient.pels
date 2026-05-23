@@ -3,7 +3,7 @@ import {
   buildNullCapacityStateSummary,
   type CapacityStateSummarySource,
   type PlanCapacityStateSummary,
-} from '../core/capacityStateSummary';
+} from '../power/capacityStateSummary';
 import {
   buildComparableDeviceReason,
   getPlanReasonLabel,
@@ -24,7 +24,7 @@ import {
   type RemainingShedBehavior,
 } from './planRemainingSheddableLoad';
 
-export type { PlanCapacityStateSummary } from '../core/capacityStateSummary';
+export type { PlanCapacityStateSummary } from '../power/capacityStateSummary';
 
 type CapacityStateSummaryMetadata = {
   summarySource?: CapacityStateSummarySource;

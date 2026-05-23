@@ -102,11 +102,11 @@ If estimation regresses for a specific device shape, the relevant constants are:
 
 | Constant | File | Purpose |
 | --- | --- | --- |
-| `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE` | `lib/core/objectiveProfileBands.ts` | Cap on retained samples per device |
-| `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES` | `lib/core/objectiveProfileBands.ts` | Floor for any produced band (also gates band-fitting on the full buffer) |
-| `OBJECTIVE_PROFILE_MAX_BANDS` | `lib/core/objectiveProfileBands.ts` | Upper cap on band count |
-| `MIN_SSE_REDUCTION_FRACTION` | `lib/core/objectiveProfileBands.ts` | Minimum relative variance reduction to commit a split |
-| `EV_SOC_TAPER_ANCHOR` | `lib/core/objectiveProfileBands.ts` | Forced band edge for EV profiles |
+| `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE` | `lib/objectives/bands.ts` | Cap on retained samples per device |
+| `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES` | `lib/objectives/bands.ts` | Floor for any produced band (also gates band-fitting on the full buffer) |
+| `OBJECTIVE_PROFILE_MAX_BANDS` | `lib/objectives/bands.ts` | Upper cap on band count |
+| `MIN_SSE_REDUCTION_FRACTION` | `lib/objectives/bands.ts` | Minimum relative variance reduction to commit a split |
+| `EV_SOC_TAPER_ANCHOR` | `lib/objectives/bands.ts` | Forced band edge for EV profiles |
 | `MIN_BAND_SAMPLES_FOR_INTEGRATION` | `lib/plan/deferredObjectives/profileEnergyResolution.ts` | Below this, integrator uses the global mean for that portion |
 
 No settings UI surface yet — banded estimation is on by default with no gate.

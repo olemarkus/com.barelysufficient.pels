@@ -1,4 +1,4 @@
-import type { RealtimeDeviceReconcileChange } from '../core/deviceManagerRuntime';
+import type { RealtimeDeviceReconcileChange } from '../device/managerRuntime';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 
 export const REALTIME_DEVICE_RECONCILE_DEBOUNCE_MS = 250;

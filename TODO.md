@@ -82,39 +82,50 @@ patch releases, not release blockers; each item carries its own source/date.
       v2.8.0→origin/main release-review pass + Prong-C delivery,
       2026-05-22/23.
 
-- [ ] Flow, App Store, README, and public-doc copy cleanup for smart-task
-      rescue and hard-cap terminology. The rescue card should not
-      over-promise: `Set what a smart task may do` may grant daily-budget
-      leeway or let the existing boost path limit lower-priority devices, but
-      it still stays inside the hard cap and does not guarantee every target
-      can be rescued. Highest-priority copy fix: the
-      `allow_smart_task_rescue` hint must stop saying `gets the power it
-      needs` and must not promise that changing the permission `updates the
-      schedule right away`; use "gets more room when available" and "takes
-      effect on the next plan refresh" / equivalent. README / App Store copy
-      should say `hard cap` instead of `power limit` where the text means the
-      configured physical ceiling. Norwegian Enova wording should stay
-      relevant without sounding like PELS guarantees support eligibility. The
-      `smart_task_hours_remaining` trigger/card copy should use `hours` rather
-      than terse `h`, and make the card's arg title, title, and hint use the
-      same `or fewer` phrasing. Also soften `docs/smart-tasks.md`
-      rescue-leeway wording that currently says granting leeway is "harmless
-      when the task is already on track"; permissions persist, so the honest
-      claim is that they have no effect until the planned/rescue gate actually
-      applies. Reword `smartTaskRescueStrings.ts` errors to avoid planner /
-      internal terms: `Choose what this smart task may do.`, `Choose when this
-      applies: at no time, or while the smart task is scheduled to run.`, and
-      `That device has no smart task yet — add a smart task first.` Rephrase
-      `docs/daily-budget-weights.md` guidance that tells users to raise
-      capacity/load assumptions; use "lower the daily budget or review which
-      devices count as managed vs background" for the hard-cap physical model.
-      Files: `README.md`, `.homeycompose/app.json`,
-      `.homeycompose/flow/**/*smart_task*`, `docs/smart-tasks.md`,
-      `docs/daily-budget-weights.md`, `docs/stromstyring-norge.md`,
+- [ ] Flow card + in-app + public-doc copy cleanup for smart-task rescue.
+      The rescue card should not over-promise: `Set what a smart task may
+      do` may grant daily-budget leeway or let the existing boost path
+      limit lower-priority devices, but it still stays inside the hard cap
+      and does not guarantee every target can be rescued. Highest-priority
+      copy fix: the `allow_smart_task_rescue` hint must stop saying `gets
+      the power it needs` and must not promise that changing the permission
+      `updates the schedule right away`; use "gets more room when
+      available" and "takes effect on the next plan refresh" / equivalent.
+      Norwegian Enova wording should stay relevant without sounding like
+      PELS guarantees support eligibility. The `smart_task_hours_remaining`
+      trigger/card copy should use `hours` rather than terse `h`, and make
+      the card's arg title, title, and hint use the same `or fewer`
+      phrasing. Also soften `docs/smart-tasks.md` rescue-leeway wording
+      that currently says granting leeway is "harmless when the task is
+      already on track"; permissions persist, so the honest claim is that
+      they have no effect until the planned/rescue gate actually applies.
+      Reword `smartTaskRescueStrings.ts` errors to avoid planner / internal
+      terms: `Choose what this smart task may do.`, `Choose when this
+      applies: at no time, or while the smart task is scheduled to run.`,
+      and `That device has no smart task yet — add a smart task first.`
+      Rephrase `docs/daily-budget-weights.md` guidance that tells users to
+      raise capacity/load assumptions; use "lower the daily budget or
+      review which devices count as managed vs background" for the
+      hard-cap physical model.
+      NOTE (2026-05-23): the previous version of this entry also asked to
+      replace `power limit` with `hard cap` in `README.md` and
+      `.homeycompose/app.json` keywords. Reverted: the README + App Store
+      surfaces are pre-onboarding marketing copy where users have NOT yet
+      seen the in-app `hard cap` vocabulary, so jargon-leaking the
+      canonical term into discovery surfaces makes the description less
+      legible, not more. Keep the ambiguous everyday phrasing
+      ("hourly power limit") in README/app.json keywords; the in-app
+      surfaces (where users have a referent) stay on `hard cap` per
+      `notes/ui-terminology.md`.
+      Files: `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
+      `.homeycompose/flow/**/*smart_task_hours_remaining*`,
+      `docs/smart-tasks.md`, `docs/daily-budget-weights.md`,
+      `docs/stromstyring-norge.md`,
       `packages/shared-domain/src/smartTaskRescueStrings.ts`, generated
       `app.json` after `homey app validate`.
       Source: v2.8.0 release-review leftovers, 2026-05-21; v2.9.0
-      release-review refresh, 2026-05-22.
+      release-review refresh, 2026-05-22; README/App-Store scope reverted
+      2026-05-23.
 
 - [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
       upstream has a non-breaking 6.x path. Current lock:
@@ -137,11 +148,6 @@ release, not v2.7.1 merge-blockers.*
 
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
-
-- [ ] Refresh the PELS leaf icon to match the new eco palette. The current app icon and any
-      in-UI leaf graphic should align with the leaf-green primary (`#16a34a`) rather than the
-      previous emerald (`#10b981`). Out of scope for the redesigned settings UI; touches Homey
-      app metadata. Files: `assets/icon.svg`, `.homeycompose/app.json`, any in-UI SVG leaf.
 
 - [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
@@ -166,7 +172,7 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       settings UI mock and browser smoke tests.
-- [ ] Add loading skeletons across the five panels.
+- [x] Add loading skeletons across the five panels.
       Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
       identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
       Configure dialog opens shows a flat grey wall until the bootstrap fetch resolves.
@@ -174,6 +180,12 @@ release, not v2.7.1 merge-blockers.*
       card placeholders) and use it everywhere.
       Files: `packages/settings-ui/src/ui/views/*.tsx`,
       `packages/settings-ui/public/style.css`.
+      Shipped: Budget panel (HTML skeleton in `#budget-redesign-surface`), Usage panel
+      (HTML skeleton overlay + `data-loading` toggle, dropped by `renderPowerStats`),
+      Smart tasks past list (`DeadlinesHistoryList` `loading` state), Smart task plan SPA
+      route (`DeadlinePlan` `loading` state + initial HTML in `#deadline-plan-root`). Overview
+      panel already shipped its skeleton at v2.7.3; Settings panel is static navigation
+      with no async load and intentionally has no skeleton.
 - [ ] Unify the hero and section-label primitive across every settings-UI surface.
       Overview hero, Budget header, Usage header, Smart tasks header, Settings header, Advanced
       header, and deadline-plan hero should read as one component: same eyebrow (font-size,
@@ -193,19 +205,23 @@ release, not v2.7.1 merge-blockers.*
       - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
         warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
         power bar now renders segmented [managed][background] blocks on a single track,
-        and the section labels reuse the shared `.eyebrow` primitive. Budget / Usage /
-        Smart tasks / Settings / Advanced headers + the deadline-plan hero still need
-        the same rebind.
+        and the section labels reuse the shared `.eyebrow` primitive.
+      - **Budget / Usage / Settings / Advanced headers rebound (2026-05-23 batch 7
+        partial PR):** all four now render via `.plan-hero` / `.pels-hero` with the
+        shared `.eyebrow` + `.plan-hero__headline` cascade; the per-surface
+        `.budget-page-header__title` one-off was dropped. The deadline-plan hero
+        (`DeadlinePlan.tsx`) still needs the same rebind — agent ran out of context
+        mid-flight; see commit message on PR for partial-completion rationale. Pin the
+        deadline-plan hero rebind as the next focused PR.
+      - **Tonal-gradient mobile-media-query duplicates folded (same partial PR):**
+        the four `data-tone="good|warn|alert|info"` overrides previously declared
+        twice — once in the main `.plan-hero[data-tone="…"]` block and once in a
+        mobile media query — now consolidate to a single declaration site.
       - **Info as a role is sparse on Overview** — only the Smart-task chip and the
         info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
         neutral explanation), but worth confirming during hero work that we're not
         artificially restraining it; if there's a natural "Price low / Price high" hint
         for the hero meta-row, use info there.
-      - **Deadline-plan tonal hero gradient declarations duplicated in a mobile
-        media query.** The four `data-tone="good|warn|alert|info"` gradient
-        overrides added near `style.css:7268-7319` should fold into the same
-        shared hero primitive instead of carrying a second per-tone declaration
-        site.
       Chips, cards, buttons, segmented controls, ripples, and elevation are currently duplicated
       across views with subtle per-page variations (padding, border colour, ripple behaviour,
       focus ring). A first-impression UI should read as one system, not five-plus near-duplicates.
@@ -255,6 +271,21 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
+- [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
+      asymmetry when it wraps. PR #1016 routes the Budget header through
+      the shared `.plan-hero` primitive with a `.plan-hero__chips` row
+      carrying the price-level chip and the Plan/Adjust toggle. The
+      toggle uses `margin-left: auto` (style.css:4643) to sit flush
+      right when no chip is shown; when the row narrows below the
+      combined width the toggle wraps to its own flex line and the
+      `auto` margin pushes it to the right edge while the chip sits at
+      the left — readable but cosmetically asymmetric against the
+      headline below. Either drop the `margin-left: auto` (let the
+      parent's `justify-content` handle alignment) or align both edges
+      intentionally on wrap. Cosmetic; bounded one-rule fix.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
+
 - [ ] Eligibility-count flicker hardening for the new
       `countConcurrentEligibleTasks` helper. Today the count is read from
       `params.deviceById` (built from the cached target snapshot) plus
@@ -302,9 +333,9 @@ release, not v2.7.1 merge-blockers.*
       so the wall-clock floor is a no-op for flow mode; the
       `RECOVERY_SAFETY_TIMEOUT_MS = 24 h` still bounds the worst case.
       Add a one-line comment beside the constant in
-      `lib/core/objectiveProfileRecovery.ts` so future readers don't
+      `lib/objectives/recovery.ts` so future readers don't
       assume the floor bounds flow-mode disarm latency.
-      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
@@ -319,7 +350,7 @@ release, not v2.7.1 merge-blockers.*
       `missing_capacity` draft) rather than blindly raising the
       multiplier here; the right fix is likely a noise-aware threshold
       keyed to the device's observed jitter floor.
-      Files: `lib/core/objectiveProfileRecovery.ts`.
+      Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Make empty-deviceId on at-risk / pending recourse buttons detectable
@@ -507,7 +538,7 @@ block merge.*
       and confirm the model correctly returns `medium`, not `high`. If it
       over-promotes, tighten the high threshold for the banded path
       (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
-      `lib/core/objectiveProfileStats.ts`.
+      `lib/objectives/stats.ts`.
 - [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
       (integration interval extends outside band coverage) reads the now
       band-aware `kwhPerUnit.confidence`, while the energy estimate for the
@@ -521,7 +552,7 @@ block merge.*
       raw RSD from `{sampleCount, mean, m2}` directly. Files:
       `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
       `packages/contracts/src/objectiveProfileTypes.ts`,
-      `lib/core/objectiveProfiles.ts`.
+      `lib/objectives/profiles.ts`.
 - [ ] Log parity / doc drift. The structured-log field `energyConfidence`
       (`objective_profile_sample_recorded`) now silently shifts semantics
       (band-aware when bands exist), so old/new log dumps are no longer
@@ -582,7 +613,7 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
       `packages/shared-domain/src/deadlineLabels.ts`,
       `lib/plan/deferredObjectives/settings.ts`,
-      `lib/plan/deferredObjectives/admission.ts`,
+      `lib/plan/admission/deferredObjective.ts`,
       `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `lib/plan/deferredObjectives/replanReason.ts`.
       Source: v2.9.0 release-review refresh, 2026-05-22.
@@ -633,7 +664,7 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       Acceptance: replay the captured `bufferedSamples` through the band
       fitter offline and report the SSE-reduction value to know whether to
       lower `MIN_SSE_REDUCTION_FRACTION` or accept the current behaviour.
-      Files: `lib/core/objectiveProfileStats.ts` (band fitter),
+      Files: `lib/objectives/stats.ts` (band fitter),
       `lib/plan/deferredObjectives/profileEnergyResolution.ts` (consumer).
       Source: SHS multi-band live-walk 2026-05-23. Artifacts:
       `/tmp/thermal-multiband-live-20260523-132901/pels.settings.after.json`.
@@ -1041,7 +1072,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       keyed off by 1 day in zones like Europe/Oslo. Fix the backend to write
       `dailyTotals` keys with the Homey timezone (or normalise the UI to
       reparse both sources into one canonical zone-local representation).
-      Files: `lib/core/powerTracker.ts` (`formatDateUtc` -> zone-aware),
+      Files: `lib/power/tracker.ts` (`formatDateUtc` -> zone-aware),
       `packages/settings-ui/src/ui/power.ts` (or carry the dual-key
       normalisation here if backend can't change without a migration).
 - [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
@@ -1056,15 +1087,15 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       to per-hour counts, or compute a unified pattern by grouping merged
       day-hour entries before averaging.
       Files: `packages/settings-ui/src/ui/power.ts`,
-      `lib/core/powerTracker.ts` (`processDayHourBuckets`).
-- [ ] `processDayHourBuckets` in `lib/core/powerTracker.ts` over-counts the
+      `lib/power/tracker.ts` (`processDayHourBuckets`).
+- [ ] `processDayHourBuckets` in `lib/power/tracker.ts` over-counts the
       day count for boundary days that have their hours moved into
       `hourlyAverages` across multiple prune runs. Each prune that moves at
       least one hour of a given day calls the helper for that day, which
       increments count by 1 for all 24 weekday-hour slots. A day whose hours
       cross the threshold across two prune ticks therefore contributes count
       +2 instead of +1, biasing the typical-day averages slightly low.
-      Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
+      Files: `lib/power/tracker.ts` (`aggregateAndPruneHistory`).
 
       **Acceptance bar — fix all three of these consolidation candidates (or
       explicitly close each with a one-line "rejected because…" in the PR):**
@@ -1462,7 +1493,7 @@ consolidation + a11y polish (8 P2)`.*
       carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
       Remaining work is to move the last flow-backed binary transport details fully behind
       `DeviceManager`.
-      Files: `lib/executor/**`, `lib/core/deviceManager.ts`, binary transport tests.
+      Files: `lib/executor/**`, `lib/device/manager.ts`, binary transport tests.
 - [ ] Define the binary operating precondition for temperature-lowered devices.
       `set_temperature` limiting currently lowers the target only. For devices that also expose
       binary control, decide whether an observed off state should be treated as drift and turned
@@ -1485,11 +1516,11 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Normalize persisted optional state into runtime state with required maps immediately after
       loading. Keep persisted shape and runtime shape separate for power tracker, activation
       attempts, headroom cards, pending commands, and similar planner state.
-      Files: `lib/core/powerTracker.ts`, `packages/contracts/src/powerTrackerTypes.ts`,
+      Files: `lib/power/tracker.ts`, `packages/contracts/src/powerTrackerTypes.ts`,
       `lib/plan/planState.ts`, `lib/utils/appTypeGuards.ts`.
 - [ ] Replace deeply partial flow-reported capability state with a normalized runtime
       representation at the boundary.
-      Files: `lib/core/flowReportedCapabilities.ts`.
+      Files: `lib/device/flowReportedCapabilities.ts`.
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
@@ -1526,8 +1557,8 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
       applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
       third time inside `resolveParseDeviceIdentity`.
-      Files: `lib/core/deviceManager.ts`, `lib/core/deviceManagerParseDevice.ts`,
-      `lib/core/deviceManagerParseIdentity.ts`.
+      Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
+      `lib/device/managerParseIdentity.ts`.
 - [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
@@ -1564,7 +1595,7 @@ consolidation + a11y polish (8 P2)`.*
       while still respecting the hard cap. Until this lands, the EV flow card should default to
       `soft` and hide the `hard` option from users.
       Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/plan/planBuilder.ts`, `lib/plan/deferredObjectives/admission.ts`,
+      Files: `lib/plan/planBuilder.ts`, `lib/plan/admission/deferredObjective.ts`,
       `flowCards/deadlineObjectiveCards.ts`, headroom and admission tests.
 - [ ] Close the EV deadline observability loop: measured deviation and richer trigger tokens.
       Two connected items: (a) emit the `measured_deviation` revision reserved in
@@ -1668,14 +1699,14 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
 - [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
-      `lib/core/deviceManagerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
+      `lib/device/managerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
       `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
       device temperature value hasn't moved but another capability (target_temperature,
       measure_power, evcharger_charging_state, etc.) emits a fresh `lastUpdated`, the
       snapshot rebuilds with the *same* `value` and a flat-or-slightly-shifted floor —
       occasionally `-2` to `-4 ms` when one capability ages out of the `Math.max` and an
       older capability becomes the new winner. The monotonicity guard at
-      `lib/core/objectiveProfiles.ts:346` then emits an `objective_profile_sample_rejected
+      `lib/objectives/profiles.ts:346` then emits an `objective_profile_sample_rejected
       reasonCode:objective_profile_non_monotonic_time` event with `valueDelta:0`. In this
       audit window 14/27 sample rejections are this pattern. No correctness impact (the
       duplicate would not have improved learning) but the log noise burns 15-minute
@@ -1690,13 +1721,13 @@ consolidation + a11y polish (8 P2)`.*
       identical `(observedAtMs, value)` samples and (b) a sample with `observedAtMs` 4 ms
       less than previous and unchanged `value`; assert no rejection event fires in either case
       and `rejectedSamples` is not incremented.
-      Files: `lib/core/objectiveProfiles.ts`, `lib/core/objectiveProfileSamples.ts`,
+      Files: `lib/objectives/profiles.ts`, `lib/objectives/samples.ts`,
       sample-pipeline tests.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
       restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
-      awaiting `refreshSnapshot()`; `lib/core/deviceManager.ts:1457-1460` emits
+      awaiting `refreshSnapshot()`; `lib/device/manager.ts:1457-1460` emits
       `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
       plan rebuild fires before the snapshot resolves and
       `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
@@ -1711,13 +1742,13 @@ consolidation + a11y polish (8 P2)`.*
       first `refreshSnapshot()` completes (or until a configurable bound expires).
       Regression: start the app with an unresolvable Homey Manager fetch and confirm no
       `deferred_objective_unknown` is emitted until the snapshot bound elapses.
-      Files: `app.ts`, `lib/core/deviceManager.ts`,
+      Files: `app.ts`, `lib/device/manager.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
-      `lib/core/objectiveProfileSamples.ts:57-82` returns `kwhPerUnit:null` when neither
+      `lib/objectives/samples.ts:57-82` returns `kwhPerUnit:null` when neither
       `measuredPowerKw > 0` nor `reportedStep.planningPowerW > 0` is present at sample
-      time. `lib/core/objectiveProfiles.ts:436-438` then skips the band buffer update, so
+      time. `lib/objectives/profiles.ts:436-438` then skips the band buffer update, so
       the device's adaptive band fitter (per `notes/objective-profile-bands.md`) never
       sees any input. `Termostat Synne` in this audit window had `acceptedSamples:67` but
       `bandsCount:0`, `rateConfidence:"low"`, `energyConfidence:"low"`. For thermostats
@@ -1731,7 +1762,7 @@ consolidation + a11y polish (8 P2)`.*
       device-class default `planningPowerW` for the reported step when the user has not
       configured one, with a clear logging trace. Either path documents the requirement in
       `notes/objective-profile-bands.md`.
-      Files: `lib/core/objectiveProfileSamples.ts`, `lib/core/objectiveProfiles.ts`,
+      Files: `lib/objectives/samples.ts`, `lib/objectives/profiles.ts`,
       `notes/objective-profile-bands.md`, profile-sample tests.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
@@ -2117,7 +2148,7 @@ should not be folded into the same PR.
       `flowCards/smartTaskTokens.ts`; `notes/deferred-load-objectives/feasibility-confidence.md`
       and the matching TODO citation point at old `objectiveProfiles.ts`
       lines for energy-window math now living in
-      `lib/core/objectiveProfileEnergyAccumulator.ts`; and
+      `lib/objectives/energyAccumulator.ts`; and
       `notes/smart-task-ui/README.md` mentions a `Backup hours` history pill
       that is still future scope. Update or annotate the stale references so
       future reviewers do not chase missing surfaces.
@@ -2133,8 +2164,8 @@ should not be folded into the same PR.
       sub-interval timing) therefore rely on caller discipline instead of a
       load-time schema. Pre-existing gap, not a v2.9 regression; add a
       normalizer when touching profile persistence again.
-      Files: `lib/app/settingsUiApi.ts`, `lib/core/powerTrackerTypes.ts`,
-      `lib/core/objectiveProfiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
+      Files: `lib/app/settingsUiApi.ts`, `lib/power/trackerTypes.ts`,
+      `lib/objectives/profiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
       Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
 
 - [ ] Keep `recordHourlyDelivery` single-authoritative before wiring any
@@ -2225,7 +2256,7 @@ should not be folded into the same PR.
 - [ ] Wire deferred-objective step intent into cascade control (future feature).
       Today `lib/plan/deferredObjectives/horizonPlanner.ts:158,188` computes a
       `requestedMinimumStepId` per planned bucket and emits it via
-      `lib/plan/deferredObjectives/admission.ts:53-57` on the `DeferredAdmissionDecision`,
+      `lib/plan/admission/deferredObjective.ts:53-57` on the `DeferredAdmissionDecision`,
       but no consumer reads it for control — it reaches diagnostics, log payloads,
       and flow tokens only. Smart tasks today are admission-only ("may this device
       run?"); they do not steer step level. The cascade picks step independently
@@ -2233,7 +2264,7 @@ should not be folded into the same PR.
       Future capability: opt-in path where the cascade consults the horizon's
       requested step as a step-down hint during soft overshoot. Likely gated on
       `enforcement === 'hard'` so soft objectives stay advisory per the
-      `lib/plan/deferredObjectives/admission.ts:72-77` design comment ("soft
+      `lib/plan/admission/deferredObjective.ts:72-77` design comment ("soft
       objectives should not bypass restore admission, cooldowns, or daily-budget
       logic"). Pairs naturally with the P2 about `enforcement: 'hard'` having no
       behavioral effect on EV deadlines.
@@ -2242,7 +2273,7 @@ should not be folded into the same PR.
       cap-on water heater emitting `requestedMinimumStepId:"low"` over 80/80
       horizon plans with no executor effect, while the cascade shed thermostats
       to absorb soft overshoot) is intentional.
-      Files: `lib/plan/deferredObjectives/admission.ts`,
+      Files: `lib/plan/admission/deferredObjective.ts`,
       `lib/plan/deferredObjectives/horizonPlanner.ts`,
       `lib/plan/shedding/selection.ts`, `lib/plan/shedding/candidates.ts`,
       `notes/deferred-load-objectives/` (design doc when picked up).
@@ -2366,7 +2397,7 @@ should not be folded into the same PR.
 - [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
       Per-charger automation profile (enabled, target percent or kWh, ready-by time,
       enforcement, speed mode, optional manual kW and derating) plus a hook on the
-      `sessionStartedAtMs` boundary in `lib/core/deviceStateOfCharge.ts` that materializes the
+      `sessionStartedAtMs` boundary in `lib/device/stateOfCharge.ts` that materializes the
       defaults into a `DeferredObjectiveSettingsV1` entry through the same upsert path the flow
       card uses. Persistence must align with the shared `PersistedSettingsState<T>` helper from
       `notes/persisted-settings-state.md`.
@@ -2374,7 +2405,7 @@ should not be folded into the same PR.
       `set_ev_charge_deadline` manually, but the v1 flow-card path is workable without it.
       Design: `notes/ev-ready-by/README.md`.
       Files: new `packages/contracts/src/evChargerDefaults.ts`,
-      new `lib/app/evChargerDefaultsWiring.ts`, `lib/core/deviceStateOfCharge.ts`,
+      new `lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`,
       defaults / auto-trigger tests.
 - [ ] EV deadline polish: manual override actions and urgency rule.
       Add `charge_now` and `pause_until_next_planned_slot` flow actions. Add a

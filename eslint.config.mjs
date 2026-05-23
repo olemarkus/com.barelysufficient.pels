@@ -225,7 +225,7 @@ export default tseslint.config(
   },
   // Runtime hot paths - stricter perf-oriented iteration rules
   {
-    files: ['lib/core/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts'],
+    files: ['lib/device/**/*.ts', 'lib/plan/**/*.ts', 'lib/dailyBudget/**/*.ts', 'lib/objectives/**/*.ts', 'lib/power/**/*.ts'],
     rules: {
       // Perf-focused loop refactors may use local mutation; immutability is still enforced elsewhere.
       'functional/immutable-data': 'off',
@@ -398,7 +398,7 @@ export default tseslint.config(
     // DeviceManager still owns snapshot refresh, realtime drift reconciliation, and binary settle
     // windows over one shared mutable snapshot. Target: <=850 after the post-Phase-7 helper
     // cleanup trims the remaining orchestration bulk.
-    files: ['lib/core/deviceManager.ts'],
+    files: ['lib/device/manager.ts'],
     rules: {
       'max-lines': ['warn', { max: 900, skipBlankLines: true, skipComments: true }],
     },
@@ -406,7 +406,7 @@ export default tseslint.config(
   {
     // parseDevice keeps Homey snapshot normalization local while target/power parsing continues to
     // settle at the Homey boundary. Target: <=140 after the next helper extraction pass.
-    files: ['lib/core/deviceManagerParseDevice.ts'],
+    files: ['lib/device/managerParseDevice.ts'],
     rules: {
       'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
     },

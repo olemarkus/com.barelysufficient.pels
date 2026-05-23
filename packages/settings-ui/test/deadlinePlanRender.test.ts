@@ -150,6 +150,26 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
   },
 });
 
+describe('DeadlinePlan loading skeleton', () => {
+  it('renders the M3 skeleton primitive instead of a text-only placeholder', () => {
+    // The loading branch previously rendered a `<h1>Loading smart task</h1>` +
+    // muted text card. Replaced with the canonical `pels-skeleton-stack` so
+    // the panel keeps the same shape (hero + card) as the populated state and
+    // doesn't flash an oversized title that pushes the rest of the layout
+    // around when data arrives. SR text carries the panel copy.
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'loading' });
+    const card = mount.querySelector<HTMLElement>('.pels-surface-card');
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute('aria-busy')).toBe('true');
+    expect(card?.querySelector('.pels-skeleton-stack')).not.toBeNull();
+    expect(card?.querySelectorAll('.pels-skeleton').length).toBeGreaterThan(0);
+    expect(card?.querySelector('.visually-hidden')?.textContent).toBe('Loading smart task…');
+    // Regression: must NOT regress to the old plain-text loading title.
+    expect(card?.querySelector('.plan-card__title')).toBeNull();
+  });
+});
+
 describe('DeadlinePlan live-hero recourse button', () => {
   it('emits data-deadline-recourse-device-id so the dispatcher can deep-link the device-settings overlay', () => {
     // Regression for the at-risk "Adjust device" recourse dead-ending on the

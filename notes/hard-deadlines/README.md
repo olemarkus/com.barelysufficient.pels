@@ -145,7 +145,7 @@ bypasses the daily-tightened soft limit while still respecting the hard
 cap. Add the `enforcement` dropdown to the flow-card JSON in the same
 change so the surface and the behavior land together.
 
-Files: `lib/plan/planBuilder.ts`, `lib/plan/deferredObjectives/admission.ts`,
+Files: `lib/plan/planBuilder.ts`, `lib/plan/admission/deferredObjective.ts`,
 `flowCards/deadlineObjectiveCards.ts`,
 `.homeycompose/flow/actions/set_ev_charge_deadline.json`, headroom and
 admission tests.

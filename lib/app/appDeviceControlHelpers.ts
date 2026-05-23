@@ -4,7 +4,7 @@ import {
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
-import { isNativeSteppedLoadControlEnabled } from '../core/nativeSteppedLoadWiring';
+import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlan } from '../plan/planTypes';
 import type {
@@ -19,7 +19,7 @@ import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPo
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../core/steppedLoadSyntheticCapabilities';
+} from '../device/steppedLoadSyntheticCapabilities';
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,

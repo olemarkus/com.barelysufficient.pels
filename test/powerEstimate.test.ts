@@ -1,4 +1,4 @@
-import { estimatePower } from '../lib/core/powerEstimate';
+import { estimatePower } from '../lib/power/estimate';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 
 const logger = {

@@ -2,7 +2,7 @@ import type { PlanEngineState } from './planState';
 import {
   applyActivationPenalty,
   syncActivationPenaltyState,
-} from './planActivationBackoff';
+} from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   emitActivationTransitions,

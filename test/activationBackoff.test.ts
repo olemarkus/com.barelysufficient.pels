@@ -1,8 +1,10 @@
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-  ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
+} from '../lib/plan/admission/activationBackoff';
+import {
+  ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   closeActivationAttemptForShed,
   getActivationPenaltyLevel,
   getActivationRestoreBlockRemainingMs,
@@ -10,7 +12,7 @@ import {
   recordActivationSetback,
   syncConfirmedRestoreAttributionState,
   syncActivationPenaltyState,
-} from '../lib/plan/planActivationBackoff';
+} from '../lib/plan/admission';
 import {
   OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
   RESTORE_COOLDOWN_MS,
@@ -18,7 +20,7 @@ import {
 } from '../lib/plan/planConstants';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import { applyRestorePlan } from '../lib/plan/restore';
 import {
   evaluateHeadroomForDevice,

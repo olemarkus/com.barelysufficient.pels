@@ -5,9 +5,9 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import {
   observeNativeSteppedLoadCommandAdapter,
   setObservedNativeSteppedLoadStep,
-} from '../lib/core/deviceManagerNativeSteppedCommand';
+} from '../lib/device/managerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
-import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
 import type {
   DevicePlan,
   DevicePlanDevice,

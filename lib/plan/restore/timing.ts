@@ -1,5 +1,5 @@
 import type { PlanEngineState } from '../planState';
-import type { PowerTrackerState } from '../../core/powerTracker';
+import type { PowerTrackerState } from '../../power/tracker';
 import {
   RESTORE_COOLDOWN_MS,
   RESTORE_COOLDOWN_BACKOFF_MULTIPLIER,

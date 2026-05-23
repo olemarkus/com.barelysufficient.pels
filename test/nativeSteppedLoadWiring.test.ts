@@ -3,15 +3,15 @@ import {
   DeviceManager,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-} from '../lib/core/deviceManager';
+} from '../lib/device/manager';
 import {
   assessTargetPowerCapabilityOptions,
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
-} from '../lib/core/nativeSteppedLoadWiring';
-import { __resetNativeEvWiringLogStateForTests } from '../lib/core/deviceManagerNativeEv';
-import { setObservedNativeSteppedLoadStep } from '../lib/core/deviceManagerNativeSteppedCommand';
+} from '../lib/device/nativeSteppedLoadWiring';
+import { __resetNativeEvWiringLogStateForTests } from '../lib/device/managerNativeEv';
+import { setObservedNativeSteppedLoadStep } from '../lib/device/managerNativeSteppedCommand';
 import { applySteppedLoadCommand, type PlanExecutorSteppedContext } from '../lib/executor/steppedLoadExecutor';
 import { buildExecutableObservedDeviceState } from '../lib/executor/executablePlanProjection';
 import {
@@ -23,11 +23,11 @@ import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
-import { setRestClient } from '../lib/core/deviceManagerHomeyApi';
+import { setRestClient } from '../lib/device/managerHomeyApi';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../lib/core/steppedLoadSyntheticCapabilities';
+} from '../lib/device/steppedLoadSyntheticCapabilities';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',

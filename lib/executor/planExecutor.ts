@@ -1,6 +1,6 @@
 import Homey from 'homey';
-import CapacityGuard from '../core/capacityGuard';
-import { DeviceManager } from '../core/deviceManager';
+import CapacityGuard from '../power/capacityGuard';
+import { DeviceManager } from '../device/manager';
 import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';

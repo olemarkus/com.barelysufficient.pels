@@ -3,9 +3,9 @@ import {
   OBJECTIVE_PROFILE_RETENTION_MS,
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
-} from '../lib/core/objectiveProfiles';
-import type { DeviceObjectiveProfile } from '../lib/core/objectiveProfileTypes';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+} from '../lib/objectives/profiles';
+import type { DeviceObjectiveProfile } from '../lib/objectives/types';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);

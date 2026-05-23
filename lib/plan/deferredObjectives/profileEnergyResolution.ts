@@ -1,11 +1,11 @@
-import type { PowerTrackerState } from '../../core/powerTracker';
+import type { PowerTrackerState } from '../../power/tracker';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../packages/shared-domain/src/objectiveProfileBootstrap';
 import type {
   DeviceObjectiveProfile,
   ObjectiveProfileBand,
   ObjectiveProfileConfidence,
   ObjectiveProfileStat,
-} from '../../core/objectiveProfileTypes';
+} from '../../objectives/types';
 import type { DeferredObjectiveEnforcement, DeferredObjectiveKind } from './types';
 
 export type DeferredObjectiveKwhPerUnitSource = 'learned' | 'bootstrap';

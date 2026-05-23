@@ -8,8 +8,8 @@ import type {
   DeviceObjectiveProfile,
   ObjectiveProfileBand,
   ObjectiveProfileStat,
-} from '../lib/core/objectiveProfileTypes';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+} from '../lib/objectives/types';
+import type { PowerTrackerState } from '../lib/power/tracker';
 
 const stat = (mean: number): ObjectiveProfileStat => ({
   sampleCount: 20,

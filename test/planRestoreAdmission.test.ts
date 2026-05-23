@@ -1,9 +1,9 @@
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
-} from '../lib/plan/planRestoreAdmission';
+} from '../lib/plan/admission';
 
-describe('planRestoreAdmission', () => {
+describe('admission/reserve', () => {
   it('computes margin fields with a fixed 0.25kW admission reserve', () => {
     const result = buildRestoreAdmissionMetrics({ availableKw: 1.02, neededKw: 0.98 });
     expect(result.admissionReserveKw).toBeCloseTo(0.25, 6);

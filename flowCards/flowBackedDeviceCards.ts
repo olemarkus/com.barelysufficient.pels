@@ -1,8 +1,8 @@
 import type { HomeyDeviceLike } from '../lib/utils/types';
-import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
+import type { FlowReportedCapabilityId } from '../lib/device/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
-import { resolveFlowAugmentedDeviceType } from '../lib/core/flowReportedCapabilities';
-import { getCapabilities, resolveDeviceClassKey } from '../lib/core/deviceManagerHelpers';
+import { resolveFlowAugmentedDeviceType } from '../lib/device/flowReportedCapabilities';
+import { getCapabilities, resolveDeviceClassKey } from '../lib/device/managerHelpers';
 import { incPerfCounter, incPerfCounters } from '../lib/utils/perfCounters';
 import { readFlowDeviceArg, readFlowRawArg } from './flowArgParsers';
 import type { FlowCardDeps } from './registerFlowCards';

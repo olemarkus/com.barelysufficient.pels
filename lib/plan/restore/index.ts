@@ -8,7 +8,7 @@ import {
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanEngineState } from '../planState';
 import type { PlanContext } from '../planContext';
-import type { PowerTrackerState } from '../../core/powerTracker';
+import type { PowerTrackerState } from '../../power/tracker';
 import {
   RESTORE_ADMISSION_FLOOR_KW,
   RESTORE_BATCH_HEADROOM_FRACTION,
@@ -71,7 +71,7 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-} from '../planRestoreAdmission';
+} from '../admission';
 import {
   getRestoreNeed,
   reserveHeadroomForPendingRestores,

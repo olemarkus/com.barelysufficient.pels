@@ -20,7 +20,8 @@ This page is the public contributor reference. Use it when you are deciding wher
 │   lib/app/** · flowCards/**                                 │
 ├─────────────────────────────────────────────────────────────┤
 │ Domain modules                                              │
-│   lib/core/** · lib/plan/** · lib/price/** · lib/dailyBudget/** · lib/observer/**
+│   lib/device/** · lib/power/** · lib/objectives/** · lib/plan/**             │
+│   lib/price/** · lib/dailyBudget/** · lib/observer/**                       │
 ├─────────────────────────────────────────────────────────────┤
 │ Shared utilities                                            │
 │   lib/utils/** · packages/contracts/src/** · packages/shared-domain/src/**
@@ -36,7 +37,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
 | **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules. This is where dependency injection happens. | `lib/app/appPowerCalibrationWiring.ts`, `flowCards/registerFlowCards.ts` |
-| **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/core/deviceManager.ts`, `lib/observer/idleClassifier.ts` |
+| **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/manager.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
 
@@ -80,7 +81,7 @@ Concretely: the planner emits a single `safePaceKw`. It does not emit `safePaceF
 
 A small number of modules still cross layers in ways the contract above forbids. These are listed in `TODO.md` and accepted as tightening work, not as new patterns to imitate:
 
-- `lib/utils/**` still has a few imports from `lib/core` and `lib/plan`. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
+- `lib/utils/**` still has a few imports from `lib/device`, `lib/power`, and `lib/plan`. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
 
 If you find a cross-layer import that isn't in the TODO list, treat it as a bug, not a precedent.
 

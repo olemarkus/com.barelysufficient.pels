@@ -1,4 +1,4 @@
-import { buildPelsStatus } from '../lib/core/pelsStatus';
+import { buildPelsStatus } from '../lib/plan/pelsStatus';
 import { PriceLevel } from '../lib/price/priceLevels';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/restore/devices';
 import type { DevicePlan } from '../lib/plan/planTypes';

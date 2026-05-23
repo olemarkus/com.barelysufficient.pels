@@ -3,7 +3,7 @@
  * Only hourly hard cap violations should trigger shortfall.
  */
 
-import CapacityGuard from '../lib/core/capacityGuard';
+import CapacityGuard from '../lib/power/capacityGuard';
 
 describe('Daily Budget Shortfall Prevention', () => {
   let guard: CapacityGuard;

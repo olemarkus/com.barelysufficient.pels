@@ -1,4 +1,4 @@
-import { aggregateAndPruneHistory } from '../../lib/core/powerTracker';
+import { aggregateAndPruneHistory } from '../../lib/power/tracker';
 
 // Regression suite for TODO `power-tracker-tz-fix`: dailyTotals must be keyed by the
 // Homey-local calendar day. Without the timezone option, samples that fall on the wrong

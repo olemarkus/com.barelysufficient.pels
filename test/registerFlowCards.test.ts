@@ -1,6 +1,6 @@
 import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';

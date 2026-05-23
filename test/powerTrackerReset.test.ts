@@ -1,4 +1,4 @@
-import { PowerTrackerState } from '../lib/core/powerTracker';
+import { PowerTrackerState } from '../lib/power/tracker';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 // Replicating the logic we plan to use in the frontend

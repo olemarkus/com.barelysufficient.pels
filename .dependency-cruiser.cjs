@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(core|plan|price|dailyBudget|observer)/' },
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer)/' },
       to: { path: '^lib/app/' },
     },
     {
@@ -71,7 +71,7 @@ module.exports = {
       comment: 'TODO: remove remaining utils -> core/plan dependencies.',
       severity: 'warn',
       from: { path: '^lib/utils/' },
-      to: { path: '^lib/(core|plan)/' },
+      to: { path: '^lib/(device|power|plan)/' },
     },
   ],
   options: {

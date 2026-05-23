@@ -25,8 +25,8 @@ import type {
   DeviceManager,
   SteppedLoadStepRequestResult,
   SteppedLoadStepRequestTransport,
-} from '../core/deviceManager';
-import { PELS_TARGET_STEP_CAPABILITY_ID } from '../core/steppedLoadSyntheticCapabilities';
+} from '../device/manager';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../device/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 

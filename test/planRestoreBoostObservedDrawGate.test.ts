@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import { applyRestorePlan } from '../lib/plan/restore';
 import type { PlanContext } from '../lib/plan/planContext';
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import {
   buildPlanDevice,
   steppedPlanDevice,

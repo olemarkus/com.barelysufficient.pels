@@ -31,7 +31,7 @@ import {
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
-} from '../planActivationBackoff';
+} from '../admission';
 import { computeRestoreBufferKw } from './accounting';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
@@ -44,7 +44,7 @@ import {
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   type RestoreAdmissionMetrics,
-} from '../planRestoreAdmission';
+} from '../admission';
 import {
   buildActivationBackoffReason,
   buildMeterSettlingReason,

@@ -1,13 +1,13 @@
 /* eslint-disable max-lines -- Flow card registration stays centralized in this module. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
-import CapacityGuard from '../lib/core/capacityGuard';
+import CapacityGuard from '../lib/power/capacityGuard';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
-import type { FlowReportedCapabilityId } from '../lib/core/flowReportedCapabilities';
+import type { FlowReportedCapabilityId } from '../lib/device/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import {
   CAPACITY_LIMIT_KW,
@@ -20,8 +20,8 @@ import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/core/steppedLoadSyntheticCapabilities';
-import { isNativeSteppedLoadControlEnabled } from '../lib/core/nativeSteppedLoadWiring';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
+import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import {
   registerBudgetExemptionCards,
   registerBudgetExemptionCondition,

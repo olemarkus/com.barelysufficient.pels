@@ -4,7 +4,7 @@ import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
 } from '../utils/dateUtils';
-import { ACTIVATION_BACKOFF_MAX_LEVEL, type ActivationAttemptSource } from '../plan/planActivationBackoff';
+import { ACTIVATION_BACKOFF_MAX_LEVEL, type ActivationAttemptSource } from '../plan/admission';
 import type {
   DeviceDiagnosticsSummary,
   DeviceDiagnosticsStarvationCountingCause,

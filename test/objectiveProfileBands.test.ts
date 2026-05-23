@@ -4,8 +4,8 @@ import {
   OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE,
   appendSampleToBuffer,
   fitBandsFromSamples,
-} from '../lib/core/objectiveProfileBands';
-import type { ObjectiveProfileSampleObservation } from '../lib/core/objectiveProfileTypes';
+} from '../lib/objectives/bands';
+import type { ObjectiveProfileSampleObservation } from '../lib/objectives/types';
 
 const baseMs = Date.UTC(2026, 0, 1);
 

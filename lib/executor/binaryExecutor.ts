@@ -1,4 +1,4 @@
-import type { DeviceManager } from '../core/deviceManager';
+import type { DeviceManager } from '../device/manager';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {

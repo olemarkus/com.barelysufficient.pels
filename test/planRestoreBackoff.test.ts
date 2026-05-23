@@ -1,15 +1,17 @@
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import {
   ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-  ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   ACTIVATION_SETBACK_RESTORE_BLOCK_MS,
+} from '../lib/plan/admission/activationBackoff';
+import {
+  ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
   getActivationPenaltyLevel,
   getActivationRestoreBlockRemainingMs,
   recordActivationAttemptStart,
   recordActivationSetback,
-} from '../lib/plan/planActivationBackoff';
+} from '../lib/plan/admission';
 import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/restore/devices';
 import { planRestoreForSteppedDevice } from '../lib/plan/restore/helpers';

@@ -115,7 +115,7 @@ the next cycle returns to normal deadline tracking.
 ## Soft Temperature Runtime Semantics
 
 The first temperature UI stores the objective and lets horizon planning calculate planned hours.
-Runtime actuation for the cap-off case is now wired in `lib/plan/deferredObjectives/admission.ts`
+Runtime actuation for the cap-off case is now wired in `lib/plan/admission/deferredObjective.ts`
 and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings`:
 
 - The horizon planner computes the planned hours per cycle.
@@ -141,7 +141,7 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   once the diagnostic transitions to `satisfied`/`cannot_meet`, the override drops out and the
   setpoint reverts to the regular mode target. The override applies regardless of the
   capacity-based control toggle (cap-on and cap-off devices both pick it up).
-  Implementation: `buildDeferredTargetOverrides` in `lib/plan/deferredObjectives/admission.ts`
+  Implementation: `buildDeferredTargetOverrides` in `lib/plan/admission/deferredObjective.ts`
   derives the per-cycle map from `deferredEvaluations`; `resolvePlannedTarget` in
   `lib/plan/planDevices.ts` consumes it after applying the price-opt delta and before the
   capability clip. Capacity-based shedding (`set_temperature` shed action) still wins because
@@ -558,7 +558,7 @@ Those may exist internally or diagnostically, but users will expect "hit tempera
 
 Shipped v1 uses a learned `kWhPerUnit` (kWh per 1°C) multiplied by the remaining `ΔT` to derive
 `energyNeededKWh`. The profile learns from observed temperature rises with credible energy
-evidence (`lib/core/objectiveProfiles.ts`). There is no anchored "baseline temperature" in the
+evidence (`lib/objectives/profiles.ts`). There is no anchored "baseline temperature" in the
 shipped path — the profile is unit-rate based and `ΔT` carries the rest:
 
 ```ts
@@ -675,7 +675,7 @@ depends on the per-device Power-limit control setting:
   work. If the deadline objective was the reason PELS allowed charging, meeting the target removes
   that allowance and PELS should pause charging. It should not restart charging unless a new or
   changed deadline target, boost, or manual/user action asks for it. Implementation:
-  `applyDeferredObjectiveAdmission` (`lib/plan/deferredObjectives/admission.ts`) emits a terminal
+  `applyDeferredObjectiveAdmission` (`lib/plan/admission/deferredObjective.ts`) emits a terminal
   `ev_pause` for `satisfied + ev_soc + controllable=false`. The `planExecutor` cap-off branch
   routes that intent through `applyDeferredEvCommand`; the executor short-circuits when the
   charger is already paused, so per-cycle re-emission is idempotent.
@@ -740,7 +740,7 @@ optimistic.
 
 Shipped v1 uses one rate source plus EV bootstrap fallback:
 
-1. Learned `kWhPerUnit` profile (`lib/core/objectiveProfiles.ts`), or
+1. Learned `kWhPerUnit` profile (`lib/objectives/profiles.ts`), or
 2. For EV without a learned profile: `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`
    (`packages/shared-domain/src/objectiveProfileBootstrap.ts`). The recorder emits a
    `rate_refined` revision when learning takes over.
@@ -868,7 +868,7 @@ margin, without computing explicit milestones.
 
 EV SoC objectives need a kWh-per-percent value to convert "target 80%" into "X kWh required" before
 the horizon planner can allocate buckets. The value is normally learned from observed charging
-samples (`lib/core/objectiveProfiles.ts`), but SoC reporting depends on a plugged-in charge session,
+samples (`lib/objectives/profiles.ts`), but SoC reporting depends on a plugged-in charge session,
 so a learned profile is often unavailable when the user first sets a deadline.
 
 To unblock the first cycle, the diagnostic falls back to `BOOTSTRAP_EV_SOC_KWH_PER_PERCENT` (1.0,

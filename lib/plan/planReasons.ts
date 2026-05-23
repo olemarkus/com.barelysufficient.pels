@@ -13,7 +13,7 @@ import {
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
-} from './planActivationBackoff';
+} from './admission';
 import { computeBaseRestoreNeed, resolveRestorePowerSource } from './restore/accounting';
 import { getRestoreNeed } from './restore/support';
 import {
@@ -26,7 +26,7 @@ import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
-} from './planRestoreAdmission';
+} from './admission';
 import { sortByPriorityAsc } from './planSort';
 import { RESTORE_ADMISSION_FLOOR_KW, RESTORE_CONFIRM_RETRY_MS } from './planConstants';
 import { resolveCapacityRestoreBlockReason } from './restore/timing';
