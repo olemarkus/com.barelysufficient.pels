@@ -6,7 +6,7 @@ import type {
 import type { PowerTrackerState } from './powerTrackerTypes';
 import { shouldEmitRejectedProfileSample } from './objectiveProfileRejectionLogging';
 import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './objectiveProfileRecovery';
-import { updateProfileStat } from './objectiveProfileStats';
+import { applyBandedConfidence, updateProfileStat } from './objectiveProfileStats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './objectiveProfileBands';
 import { buildObjectiveProfileSample } from './objectiveProfileSamples';
 import {
@@ -286,6 +286,13 @@ function buildAcceptedProfileSample(params: {
     // measured from this baseline.
     ...CLEARED_ENERGY_ACCUMULATOR,
   };
+  // Once the bands are merged in, re-resolve the overall kWh/unit confidence
+  // against the pooled within-band residual (Step 2 of the Cause-#1 fix in
+  // `TODO.md`). The plain `updateProfileStat` above used the global `m2`,
+  // which on multi-step devices is inflated by between-step spread and pins
+  // confidence at `low` even when each step's rate has converged tightly.
+  // Per-band confidences are unchanged.
+  nextProfile.kwhPerUnit = applyBandedConfidence(nextProfile.kwhPerUnit, nextProfile.bands);
   debugStructured?.({
     event: 'objective_profile_sample_recorded',
     deviceId,

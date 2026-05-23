@@ -564,6 +564,47 @@ graceful but should ship in the next patch.*
 
 ## P2 Product, Observability, and Maintainability
 
+*Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
+(`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
+overall `kwhPerUnit.confidence` now reflects the pooled within-band residual,
+so a converged multi-step device can escape `low` (the standing P0 #2 signal
+seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
+block merge.*
+
+- [ ] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
+      RSD thresholds were calibrated for raw per-sample CV; pooled within-band
+      variance is structurally smaller, so a profile with only modest
+      between-band variance reduction could in principle reach `high` based
+      on a small lift. The smoking-gun test covers a tight-noise case; add a
+      mildly-different-band test (e.g. means 0.25/0.30, looser within-band m2)
+      and confirm the model correctly returns `medium`, not `high`. If it
+      over-promotes, tighten the high threshold for the banded path
+      (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
+      `lib/core/objectiveProfileStats.ts`.
+- [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
+      (integration interval extends outside band coverage) reads the now
+      band-aware `kwhPerUnit.confidence`, while the energy estimate for the
+      uncovered slice still uses the raw global `mean ± k·σ`. For thermal
+      devices with a uniform rate this is benign; for EV-style tapering where
+      the uncovered slice has a genuinely different rate, the chip could
+      over-promise. Cleanest fix: introduce a separate `bandedConfidence` field
+      on `ObjectiveProfileStat` so consumers opt in (chip reads
+      `bandedConfidence ?? confidence`; `resolveDisplayConfidence` fallback
+      keeps the raw `confidence`). Alternative: have the fallback re-compute
+      raw RSD from `{sampleCount, mean, m2}` directly. Files:
+      `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
+      `packages/contracts/src/objectiveProfileTypes.ts`,
+      `lib/core/objectiveProfiles.ts`.
+- [ ] Log parity / doc drift. The structured-log field `energyConfidence`
+      (`objective_profile_sample_recorded`) now silently shifts semantics
+      (band-aware when bands exist), so old/new log dumps are no longer
+      directly comparable for the same device after bands fit. Add a sibling
+      `globalEnergyConfidence` that always carries the raw-CV value, or rename.
+      Same shift applies to the comment at
+      `packages/shared-domain/src/deadlineLabels.ts:1126` describing
+      `provenance.confidence` as the "legacy raw-CV stat" — update to reflect
+      band-aware semantics.
+
 *v2.8.0 → origin/main release-review findings (2026-05-22). From the
 five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
 
