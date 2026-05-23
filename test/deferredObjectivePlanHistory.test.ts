@@ -2,6 +2,7 @@ import {
   DeferredObjectivePlanHistoryRecorder,
   type PlanHistoryPersistDeps,
 } from '../lib/plan/deferredObjectives/planHistory';
+import { buildFinalHourFlush } from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
@@ -1866,6 +1867,52 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         tone: 'cheap',
       });
       expect(entry.deliveredKWh).toBeCloseTo(3.0);
+    });
+
+    it('finalize-time flush advances the opening anchor to the next hour bucket', () => {
+      // Regression: `flushOpenHourAtFinalize` historically returned the
+      // just-closed `hourMs` as the new `nextOpening.hourMs`. Today the
+      // recorder deletes the in-progress record immediately after flushing, so
+      // the stale anchor never surfaces — but a future refactor that observes
+      // the returned record (e.g. one more rollover detection pass before
+      // delete) would re-attribute progress against the just-flushed hour and
+      // double-count. Pin the next-bucket shape directly on the pure helper so
+      // the contract is enforced regardless of caller discipline.
+      const opening = { hourMs: HOUR_MS, value: 50 };
+      const flush = buildFinalHourFlush({
+        opening,
+        finalProgress: 51,
+        kWhPerUnit: 1.5,
+        resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
+          ? { priceValue: 1.0, tone: 'expensive' }
+          : null),
+      });
+      expect(flush).not.toBeNull();
+      expect(flush!.contribution).toEqual({
+        atMs: HOUR_MS,
+        deliveredKWh: 1.5,
+        priceValue: 1.0,
+        tone: 'expensive',
+      });
+      // The fix: nextOpening points to the NEXT hour bucket, not the
+      // just-flushed one. The pre-fix value would have been `HOUR_MS` (the
+      // same bucket as `opening.hourMs`).
+      expect(flush!.nextOpening.hourMs).toBe(2 * HOUR_MS);
+      expect(flush!.nextOpening.hourMs).not.toBe(opening.hourMs);
+      expect(flush!.nextOpening.value).toBe(51);
+    });
+
+    it('finalize-time flush returns null when there is no opening anchor', () => {
+      // Cold start / no anchor: flush is a no-op. Matches
+      // `buildFinalHourContribution`'s null-on-no-anchor contract so the
+      // recorder's `flushOpenHourAtFinalize` wrapper short-circuits.
+      const flush = buildFinalHourFlush({
+        opening: null,
+        finalProgress: 51,
+        kWhPerUnit: 1.5,
+        resolvePrice: () => ({ priceValue: 1.0, tone: 'expensive' }),
+      });
+      expect(flush).toBeNull();
     });
   });
 

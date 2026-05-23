@@ -435,6 +435,32 @@ export const buildFinalHourContribution = (params: {
   };
 };
 
+// Finalize-time flush result: the contribution to fold into history plus the
+// next opening anchor to store on the in-progress record. Mirrors the
+// `nextOpening` semantics of `HourRolloverResult`: the next opening is always
+// the *next* hour bucket (`opening.hourMs + ONE_HOUR_MS`), never the
+// just-flushed hour — that way a (defensive) re-entry on the returned record
+// cannot re-attribute progress against the closed hour. Returns `null` when
+// `buildFinalHourContribution` would also return `null` (no opening anchor,
+// no measurable progress delta, no kWh/unit, or no price resolver).
+export const buildFinalHourFlush = (params: {
+  opening: HourProgressSnapshot | null;
+  finalProgress: number | null;
+  kWhPerUnit: number | null;
+  resolvePrice?: HourPriceResolver;
+}): {
+  contribution: DeferredObjectivePlanHistoryHourlyContribution;
+  nextOpening: HourProgressSnapshot;
+} | null => {
+  const contribution = buildFinalHourContribution(params);
+  if (contribution === null) return null;
+  const { opening, finalProgress } = params;
+  return {
+    contribution,
+    nextOpening: { hourMs: opening!.hourMs + ONE_HOUR_MS, value: finalProgress! },
+  };
+};
+
 // Append (or merge) a per-hour delivery contribution onto the running list
 // the recorder keeps on an in-progress run. If an entry already exists for
 // `next.atMs`, the kWh is summed and the latest price/tone wins — the
