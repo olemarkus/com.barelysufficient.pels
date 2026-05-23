@@ -59,23 +59,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: adversarial typing/contract review, v2.9.0 closeout,
       2026-05-23.
 
-- [ ] Smart-task list confidence chip should use the band-aware
-      `displayConfidence` chain. `packages/settings-ui/src/ui/deadlinesList.ts`
-      currently reads `plan.kwhPerUnitProvenance?.confidence`, the raw profile
-      confidence, while the detail hero uses
-      `displayConfidence ?? confidence ?? profileConfidence` via
-      `resolveChipConfidence`. On settled multi-step thermal devices, the list
-      can keep showing `Estimating` after the hero has correctly gone quiet.
-      Acceptance: prefer `plan.kwhPerUnitProvenance?.displayConfidence`, then
-      `plan.kwhPerUnitProvenance?.confidence`, then `null`, or route through
-      `resolveChipConfidence` with `profileConfidence: null`; add a list-card
-      regression for raw low + display high.
-      Files: `packages/settings-ui/src/ui/deadlinesList.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/test/deadlinePlan.test.ts` or list-card tests.
-      Source: adversarial typing/contract review, v2.9.0 closeout,
-      2026-05-23.
-
 - [ ] Emit `flow_permission_changed` for rescue-only smart-task permission
       changes. Rescue permissions are included in the active-plan objective
       signature, so toggling `allow_smart_task_rescue` currently routes through
