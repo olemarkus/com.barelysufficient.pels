@@ -36,6 +36,38 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] Smart task false-missed when user target exceeds device-side setpoint
+      cap. Connected 300 caps internally at ~60 °C; with a 65 °C smart-task
+      target, PELS commands max, the device responds max but its own
+      thermostat opens, sensor parks ~5–7 °C below target, idle detector
+      fails to promote because (a) cycling resets the idle streak —
+      `lib/observer/idleDetector.ts:97-103` `isEligibleForIdle` requires
+      `measuredIsIdle(measuredPowerKw)` and repeated power spikes during
+      cycling kick the device out of idle eligibility — and (b) the gap is
+      outside the 5 °C `NEAR_TARGET_TEMPERATURE_DELTA_C` band
+      (`lib/observer/idleDetector.ts:36-37`). Run finalises as missed despite
+      the device behaving correctly. Same wrong "missed" verdict surface as
+      the v2.8.x feasibility P0 work, via a different path.
+      Acceptance: new
+      `IdleClassification = 'active' | 'near_target_idle' | 'unresponsive' | 'capped_idle'`.
+      Detection signal — discriminator from `unresponsive`: stable
+      `measureTemperature` over N minutes + power *cycling* (not
+      monotonically low) + gap > `NEAR_TARGET_TEMPERATURE_DELTA_C`. Producer
+      wires `capped_idle` into the satisfied promotion in `planHistory.ts`
+      alongside `near_target_idle`. New miss-attribution cause `device_capped`
+      so finalised "Succeeded (stalled, device-capped)" rows render correctly,
+      with recourse text pointing at the device's own setpoint cap, not the
+      PELS hard cap. Reproducer needs a Connected 300 mock change first
+      (`internalCapC` setting that lets `measureTemperature` oscillate around
+      a lower-than-commanded effective target while the runtime stores the
+      commanded `target_temperature` verbatim).
+      Files: `lib/observer/idleDetector.ts`,
+      `lib/observer/idleClassifier.ts`,
+      `lib/plan/deferredObjectives/planHistory.ts`,
+      `packages/shared-domain/src/idleClassificationCopy.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`, new tests.
+      Source: user report + SHS code trace 2026-05-23, PELS commit 908cf37f.
+
 - [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
       `resolveVarianceMarginNote` returns the safety-margin sentence whenever
       planned energy exceeds expected energy, so the calm "books the high end"
@@ -622,6 +654,32 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       aggregate is acceptable for multi-band EV profiles (interacts with the
       conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
       review of PR #965.
+
+- [ ] Band fitter does not split textbook bimodal data with 6 samples (3 per
+      cluster, ~67 % mean separation). Multi-band SHS probe 2026-05-23 (PELS
+      v2.9.0) drove the Mill v2 mock through two consecutive regimes designed
+      to produce two clearly separated `kwhPerUnit` clusters: 4 walks at
+      1500 W (≈0.30 kWh/°C) in the 19–21 °C input range, then 4 walks at
+      2500 W (≈0.50 kWh/°C) in the 21–23 °C range. After the run,
+      `power_tracker_state.objectiveProfiles[device].bands` was empty despite
+      `bufferedSamples: 6`, `kwhPerUnit.mean: 0.40182`, `min: 0.3005`,
+      `max: 0.5007`, `confidence: medium`. The fitter holds the raw data and
+      chose not to split. Either `MIN_SSE_REDUCTION_FRACTION` is tuned for
+      stricter signal than this configuration provides, or the minimum
+      samples per candidate band exceeds 3. Without splits the band-aware
+      integration path in `profileEnergyResolution.integrateBands` stays
+      unused and `displayConfidence` keeps falling back to the global stat —
+      that did escape `low` under spread, but the per-band confidence-aware
+      Step 3 path can't fire.
+      No correctness regression — the conservative path is safe; the global
+      mean is honest. Observability finding worth tuning when convenient.
+      Acceptance: replay the captured `bufferedSamples` through the band
+      fitter offline and report the SSE-reduction value to know whether to
+      lower `MIN_SSE_REDUCTION_FRACTION` or accept the current behaviour.
+      Files: `lib/core/objectiveProfileStats.ts` (band fitter),
+      `lib/plan/deferredObjectives/profileEnergyResolution.ts` (consumer).
+      Source: SHS multi-band live-walk 2026-05-23. Artifacts:
+      `/tmp/thermal-multiband-live-20260523-132901/pels.settings.after.json`.
 
 - [ ] Calm-list discoverability of "what PELS has learned" (PR #970). Gating the
       confidence chip to cold-start + silencing it on `on_track` is correct for
@@ -1378,6 +1436,12 @@ consolidation + a11y polish (8 P2)`.*
       bootstrap rate (thermal mass varies orders of magnitude across devices), so the only fix
       is to tell the user. One-line copy fix on the pending-reason path: "Learning energy use
       — needs power readings from this device."
+      NOTE (2026-05-23): the user-visible `pendingReason: 'missing_capacity'` has TWO upstream
+      paths — `objective_missing_capacity` (no profile yet, this entry) AND
+      `objective_missing_charge_rate` (`resolveObjectiveSteps` returning `[]` on
+      non-stepped thermal devices). The second path is being closed in a sibling fix that adds
+      a thermal fallback to `resolveObjectiveSteps`; this copy entry only addresses the first
+      path.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
