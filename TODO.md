@@ -127,9 +127,22 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       today; have `profileEnergyResolution` emit `energyNeededKWh ± margin`
       (continuous band residual, not the 3-level enum) and report `at_risk`
       (`estimate_uncertain`) on a within-margin shortfall, composing with the
-      Slice 1 floor-vs-climbed banding. Gate before building (3): instrument
-      plan-time `displayConfidence` and confirm devices reach `medium`/`high`
-      after (1)+(2). P3 telemetry nit: `unitPerHour` (debug-only, unconsumed) is
+      Slice 1 floor-vs-climbed banding. Gate before building (3): ✅
+      plan-time instrumentation **shipped** — `displayConfidence` and
+      `energyExpectedKWh` per cycle on `deferred_objective_horizon_planned`
+      (PR #976), and `startedAtMs` / `deadlineAtMs` / `objectiveKind` /
+      `target*` on `active_plan_revision_*` (PR #979). Plan-time margin is
+      now derivable per cycle as `energyNeededKWh − energyExpectedKWh`. Gate
+      is now data-dependent: confirm a mature device reaches `medium`/`high`
+      after (1)+(2), **or** that the margin stays tight at `low`. **First
+      post-Step-1 signal (2026-05-23, "Connected 300", n≈540):**
+      `displayConfidence: low` with margin ≈ 10% of need (0.52 / 4.85 kWh) —
+      suggesting B's `k·SE` may already converge the practical margin
+      tightly even with the label pinned at `low`, which weakens the case
+      for Step 2 as an obligatory prerequisite for Step 3. Need a multi-day
+      window + a fresh from-`n=0` baseline (logs retained by PR #971's
+      commit-stamped markers since 2026-05-22) before deciding. P3
+      telemetry nit: `unitPerHour` (debug-only, unconsumed) is
       polluted by no-power coast intervals so its logged `rateConfidence` reads
       `low`. The P0's missed-history half is a separate item.
       (b) Slice 2 —
@@ -157,22 +170,44 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
       rate convergence / sample-rejection (cause 1) and floor-vs-likely
       feasibility banding (cause 2) — remain open as the follow-up sessions.
       See `notes/smart-task-miss-attribution.md`.
-      Data-collection gate before touching cause #1 (2026-05-22): the
-      volatility evidence is too weak to act on — a single post-restart log
-      window showed a converged rate (n≈539, stable 0.225–0.244), and the
-      earlier swing's log was overwritten on restart. Prod logs are now
-      retained across restarts with a commit-stamped `===== PELS START …
-      commit=… =====` marker per launch (so analysis never mixes pre-change
-      logs). Needed before any cause-#1 fix: (a) a multi-day retained window,
-      and (b) a fresh thermostat profile captured from n=0 to confirm or
-      disprove the early-learning swing. Until then the per-sample
-      (`objective_profile_sample_recorded`) and per-run
-      (`deferred_objective_history_finalized`) telemetry already emit
-      everything needed — the gap is duration + a from-zero baseline, not
-      instrumentation.
+      Data-collection gate before touching cause #1 (opened 2026-05-22,
+      restated 2026-05-23): the volatility evidence is too weak to act on —
+      a single post-restart log window showed a converged rate (n≈539,
+      stable 0.225–0.244), and the earlier swing's log was overwritten on
+      restart. Prod logs are now retained across restarts (PR #971) with a
+      commit-stamped `===== PELS START … commit=… =====` marker per launch
+      so analysis never mixes pre-change logs. Needed before any cause-#1
+      tuning fix: (a) a multi-day retained window, and (b) a fresh
+      thermostat profile captured from n=0 to confirm or disprove the
+      early-learning swing. **Instrumentation is now complete** — every
+      lifecycle event carries the right fields: per-sample
+      (`objective_profile_sample_recorded`), per-plan-cycle
+      (`deferred_objective_horizon_planned` with `displayConfidence` +
+      `energyExpectedKWh`, PR #976), per-revision
+      (`active_plan_revision_*` with `startedAtMs`/`deadlineAtMs`/target,
+      PR #979), and per-finalized-run
+      (`deferred_objective_history_finalized` with cause + provenance,
+      PR #968). The remaining gap is duration + a from-zero baseline, not
+      instrumentation. **Early signal (2026-05-23 shower test):** on a
+      mature device (Connected 300, n≈540) the plan-time margin is ≈10% of
+      need at `displayConfidence: low`, suggesting B's `k·SE` already
+      converges the practical margin tightly — the recovery + `value_fell`
+      + accumulator-clear chain (Step 1) also exercised correctly under a
+      real draw-off, with `arm_recovery` armed and the partial accumulator
+      discarded as designed.
 
-- [ ] **Smart-task detail hero shows "On track — no action needed yet"
-      on `at_risk` plans with an empty floor schedule.** The
+- [x] ✅ **Smart-task detail hero shows "On track — no action needed yet"
+      on `at_risk` plans with an empty floor schedule.** **RESOLVED by
+      `b010bcc0`** (`fix(smart-task): suppress on-track headline on at-risk
+      empty-schedule plans`). Matches the acceptance criteria: the on-track
+      sentinel is now gated to `tone === 'good'`; an at-risk plan with no
+      `firstChargingHour` returns `null` so the chip + meta line carry the
+      warning, mirroring the alert branch. Regression test added in
+      `packages/settings-ui/test/deadlinePlan.test.ts` covering the
+      `feasible_above_floor` empty-schedule case. Original entry preserved
+      below for context.
+
+      The
       floor-vs-climbed-band probe (commit `835908ee`, Slice-1 of the
       feasibility P0 above) added a new verdict — `at_risk` /
       `feasible_above_floor` — that yields an `at_risk` plan with **no**
@@ -637,8 +672,13 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       measured mean justifies. Current behaviour is intentional (reserve *and*
       judge against the buffer so an optimistic `on_track` can't silently miss);
       product question is whether the chip should instead judge against
-      `energyExpectedKWh` while the planner keeps reserving the buffer. Decide
-      with the PR-2 UI work that surfaces the expected…planned range.
+      `energyExpectedKWh` while the planner keeps reserving the buffer.
+      Decision can now be made: the expected…planned range UI + cold-start
+      chip have shipped (PR #970, commit `969395c6`), so the range exists
+      to back a "judge against expected" change. Compose with the Cause #1
+      Step 3 margin design (`feasibility-confidence.md`) — there should be
+      ONE margin definition shared between sizing (B's `k·SE`) and verdict
+      (within-margin shortfall → `at_risk`), not two parallel notions.
       Source: `pels-runtime-reality` review of PR #965.
 
 - [ ] Multi-band aggregate cap: the 2× `MAX_BUFFER_MULTIPLIER` clamp is applied
