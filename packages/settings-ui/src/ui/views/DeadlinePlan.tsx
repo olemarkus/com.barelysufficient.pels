@@ -15,6 +15,7 @@ import { attachTabShownResize } from '../chartVisibilityResize.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
+import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 
 // Matches the `.plan-chip--*` CSS variants in
@@ -895,6 +896,23 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   </section>
 );
 
+// Embeds the device-scoped past-runs list beneath the pending hero so the
+// user always sees their history evidence even when the live plan is still
+// warming up. Reuses the same `DeadlinesHistoryListRoot` the Smart-tasks tab
+// uses, so the empty-state copy, week grouping, and miss-streak badges stay
+// identical across surfaces. Renders nothing when no history has been fetched
+// yet or the device has no recorded entries — we intentionally suppress the
+// "Past tasks" heading in the empty case so a brand-new device with no prior
+// runs doesn't get a cosmetic empty section directly under the pending hero.
+const PriorRunsHistory = ({ history }: { history: DeadlinePlanHistoryView | undefined }) => {
+  if (!history || history.entries.length === 0) return null;
+  return (
+    <DeadlinesHistoryListRoot
+      state={{ status: 'ready', entries: history.entries, timeZone: history.timeZone }}
+    />
+  );
+};
+
 const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   if (loadState.status === 'history-detail') {
     // `key={entry.id}` forces Preact to remount the component when the user
@@ -941,7 +959,17 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     );
   }
   if (loadState.status === 'pending') {
-    return <PendingHero pending={loadState.pending} />;
+    // A brand-new active task with prior runs used to leave a tall empty page
+    // under the pending hero, hiding the history evidence the user may be
+    // looking for. Render the device-scoped past tasks below the hero whenever
+    // history fetched non-empty so the page never sells "there is nothing
+    // here yet" while real runs sit one fold away.
+    return (
+      <>
+        <PendingHero pending={loadState.pending} />
+        <PriorRunsHistory history={loadState.history} />
+      </>
+    );
   }
   if (loadState.status === 'unavailable') {
     const copy = deadlineLabels(loadState.objectiveKind).unavailableByReason[loadState.reason];
@@ -966,6 +994,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <DeadlineHero payload={loadState.payload} />
       <HorizonCard payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
+      <PriorRunsHistory history={loadState.history} />
     </>
   );
 };
