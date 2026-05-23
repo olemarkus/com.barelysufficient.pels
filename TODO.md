@@ -69,19 +69,6 @@ patch releases, not release blockers; each item carries its own source/date.
       Source: user report + SHS code trace 2026-05-23, PELS commit 908cf37f.
 
 
-- [ ] **Squeeze-case budget-bound copy still reads device-side.** (Demoted from the v2.9 train's budget-bound
-      mislabel work — Prong C, PR #978.) Prong C reclassifies the per-bucket
-      background-squeeze case (`dailyBudgetExhaustedBucketCount: 0`, prod
-      Connected 300) as `at_risk: limited_by_daily_budget`, but the hero
-      copy still routes through the device-side branch ("Adjust device" /
-      lower the target). Thread the producer-resolved budget-bound signal
-      (`floorShortfallCause` / `limited_by_daily_budget`, already on the
-      debug payload) onto the persisted active-plan revision
-      (`deferredObjectiveActivePlans.ts`) so copy routing matches status
-      routing for the squeeze case too. Source: `pels-ux-fit` P1,
-      v2.8.0→origin/main release-review pass + Prong-C delivery,
-      2026-05-22/23.
-
 - [ ] Flow card + in-app + public-doc copy cleanup for smart-task rescue.
       The rescue card should not over-promise: `Set what a smart task may
       do` may grant daily-budget leeway or let the existing boost path
@@ -285,6 +272,34 @@ release, not v2.7.1 merge-blockers.*
       intentionally on wrap. Cosmetic; bounded one-rule fix.
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
+
+- [ ] `cannot_meet` smart-task hero with `dailyBudgetExhaustedBucketCount > 0`
+      on pre-v2.9.x revisions still routes to "Open Budget" via the legacy
+      heuristic, but `resolveStatus` only returns `cannot_meet` when
+      `!budgetBound` — by construction the cause is `time_capacity`, not
+      `budget`. Pre-v2.9.x revisions (no `floorShortfallCause` on the
+      persisted record) take the legacy path; PR #1017 gates that legacy
+      clause on `floorShortfallCause === undefined`, so post-upgrade
+      revisions are correct, but the upgrade-day population still sees
+      the "Open Budget" misdirection until the recorder re-records each
+      plan. Acceptance: either short-circuit the legacy clause on
+      `planStatus === 'cannot_meet'` (since by construction the cause is
+      never `budget`) or accept the upgrade-day quirk and document.
+      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`.
+      Source: `pels-runtime-reality`, PR #1017 follow-up, 2026-05-23.
+
+- [ ] Widen `isOptionalFloorShortfallCause` validator from enum-strict
+      to "absent or string". A forward-compat cause string (e.g. a
+      future v2.10 cause variant that PELS v2.9.x doesn't recognise)
+      currently drops the WHOLE persisted plan via `.filter(isActivePlan)`
+      rather than just the unknown field. The recorder re-records on the
+      next cycle so the user briefly sees pending — not data loss, but
+      the whole revision history (including `original`) goes with the
+      drop. Widening the validator to accept any string and let
+      consumers fall back gracefully on unknown values preserves history
+      while still rejecting non-string garbage.
+      Files: `lib/plan/deferredObjectives/activePlanSettings.ts`.
+      Source: `pels-runtime-reality`, PR #1017 follow-up, 2026-05-23.
 
 - [ ] Eligibility-count flicker hardening for the new
       `countConcurrentEligibleTasks` helper. Today the count is read from

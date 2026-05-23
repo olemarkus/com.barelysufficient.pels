@@ -45,6 +45,11 @@ const buildHeaterActivePlan = (params: {
   energyExpectedKWh?: number;
   planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
   dailyBudgetExhaustedBucketCount?: number;
+  // Producer-resolved verdict for the floor shortfall. Existing fixtures omit
+  // this so the consumer's legacy fallback continues to fire (those tests
+  // were written against the count-based heuristic). New fixtures should set
+  // this to mirror the producer's mapping for the scenario under test.
+  floorShortfallCause?: 'budget' | 'step_power' | 'estimate' | 'time_capacity' | 'none';
   planningSpeedKw?: number;
   initialPlanningSpeedKw?: number;
 }): DeferredObjectiveActivePlanV1 => {
@@ -66,6 +71,9 @@ const buildHeaterActivePlan = (params: {
     planStatus: params.planStatus ?? ('on_track' as const),
     ...(params.dailyBudgetExhaustedBucketCount !== undefined
       ? { dailyBudgetExhaustedBucketCount: params.dailyBudgetExhaustedBucketCount }
+      : {}),
+    ...(params.floorShortfallCause !== undefined
+      ? { floorShortfallCause: params.floorShortfallCause }
       : {}),
     ...(params.planningSpeedKw !== undefined ? { planningSpeedKw: params.planningSpeedKw } : {}),
   };
@@ -1262,6 +1270,154 @@ describe('deadline plan page payload', () => {
     // absent so the click dispatcher's `length > 0` guard keeps the click on
     // the Budget tab without firing `open-device-detail`.
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
+  });
+
+  it('routes the per-bucket squeeze case (bucketCount: 0 + floorShortfallCause: budget) to Open Budget', () => {
+    // Prod squeeze repro: the planner sees a per-bucket background-squeeze and
+    // resolves `at_risk: limited_by_daily_budget`, but the cumulative
+    // `dailyBudgetExhaustedBucketCount` stays at 0 — only the producer's
+    // `floorShortfallCause: 'budget'` flag captures that the recourse belongs
+    // on the Budget tab. Pre-fix this regressed to the device-side `Adjust
+    // device` button.
+    const now = new Date(2026, 0, 1, 19, 0, 0, 0);
+    const deadline = atLocalHour(now, 3);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 3 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 50 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [],
+      plannedKWhPerHour: 0,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'at_risk',
+      // The squeeze signature: zero exhausted buckets, cause is still budget.
+      dailyBudgetExhaustedBucketCount: 0,
+      floorShortfallCause: 'budget',
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
+    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    expect(payload.hero.recourse?.targetTab).toBe('budget');
+    expect(payload.hero.recourse?.label).toBe('Open Budget');
+    expect(payload.hero.recourse?.deviceId).toBeUndefined();
+  });
+
+  it('keeps device-side routing when floorShortfallCause is step_power and no bucket has been exhausted', () => {
+    // Step-power undercount means the floor was short because climbing a
+    // higher step (within budget) would help — the cause is device-side, not
+    // budget. With `dailyBudgetExhaustedBucketCount: 0` the legacy backstop
+    // also stays silent, so neither the new flat field nor the legacy
+    // heuristic surface the budget recourse. The hero copy stays on the
+    // device-side `Adjust device` button as expected for step-bound floors.
+    const now = new Date(2026, 0, 1, 19, 0, 0, 0);
+    const deadline = atLocalHour(now, 3);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      currentOn: false,
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 3 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 50 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          heater: {
+            enabled: true,
+            kind: 'temperature',
+            enforcement: 'soft',
+            targetTemperatureC: 22,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, buildHeaterActivePlan({
+      now,
+      deadline,
+      plannedHourOffsets: [1],
+      plannedKWhPerHour: 1,
+      targetTemperatureC: 22,
+      energyNeededKWh: 4,
+      planStatus: 'at_risk',
+      dailyBudgetExhaustedBucketCount: 0,
+      floorShortfallCause: 'step_power',
+    }));
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.hero.recourse?.targetTab).toBe('overview');
+    expect(payload.hero.recourse?.label).toBe('Adjust device');
+    expect(payload.hero.metaLine).not.toMatch(/daily energy budget is already used up/i);
   });
 
   // Headline-qualifier decision (2026-05-23):

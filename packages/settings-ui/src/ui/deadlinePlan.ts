@@ -526,24 +526,28 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   // Older persisted revisions don't carry the count; treat absence as zero so
   // the budget-exhausted explanation only fires when the recorder actually
   // saw it. Two surfaces consume this signal:
-  //   - The cannot-meet body copy + recourse fire on a budget-bound verdict:
-  //     `cannot_meet` (physically capped by an exhausted budget) or the
-  //     reclassified `at_risk` (the planner now softens a floor shortfall that
-  //     is short only because of the daily budget to `at_risk`, not a physical
-  //     `cannot_meet`). Cumulative exhaustion (`dailyBudgetExhaustedBucketCount
-  //     > 0`) is exactly the case the planner reclassifies, so gating on
-  //     (cannot_meet || at_risk) + the count routes those plans to the budget
-  //     cause and the "Open Budget" recourse instead of the device-side
-  //     shortfall. (The per-bucket background squeeze leaves the count at 0 and
-  //     still falls through to the device-side copy — tracked as follow-up;
-  //     precise attribution needs the budget-bound flag threaded onto the
-  //     persisted revision.)
+  //   - The cannot-meet body copy + recourse fire on a budget-bound verdict.
+  //     The producer-resolved `latest.floorShortfallCause === 'budget'` is the
+  //     authoritative signal — it covers the per-bucket background-squeeze
+  //     case (`dailyBudgetExhaustedBucketCount: 0`, prod Connected 300) the
+  //     count-based heuristic misses. Per
+  //     `feedback_layering_resolution_in_producer`, the consumer reads the
+  //     flat producer field and stops; the legacy `(cannot_meet || at_risk)
+  //     && bucketCount > 0` clause is GATED on `floorShortfallCause ===
+  //     undefined` so it only fires for pre-v2.9.x revisions persisted
+  //     before the producer field shipped — never as a consumer-side
+  //     override of a producer verdict.
   //   - The queued headline-reason resolver fires on any plan status so a
   //     healthy on-track plan whose first hour falls after midnight can still
   //     surface "Today's budget is full — next cheap window after midnight."
+  //     That continues to read `dailyBudgetExhaustedBucketCount > 0` because it
+  //     asks a different question ("did the run-up have any exhausted
+  //     buckets?") that's orthogonal to the current shortfall cause.
   const dailyBudgetExhaustedAnywhere = (latest.dailyBudgetExhaustedBucketCount ?? 0) > 0;
-  const dailyBudgetExhausted = (latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk')
-    && dailyBudgetExhaustedAnywhere;
+  const dailyBudgetExhausted = latest.floorShortfallCause === 'budget'
+    || (latest.floorShortfallCause === undefined
+      && (latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk')
+      && dailyBudgetExhaustedAnywhere);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
 
   return {

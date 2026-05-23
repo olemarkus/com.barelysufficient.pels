@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import { formatEstimatedDuration, resolvePlanLevelDurationSnapshot } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
+import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
   hasPriceHorizonAdvanced,
   resolveHorizonPriceWatermark,
@@ -190,6 +191,11 @@ const buildRevision = (params: {
   // persisted plans without the field stay byte-stable across revisions and
   // consumers that haven't been updated keep falling back to zero.
   const exhaustedBuckets = params.diag.dailyBudgetExhaustedBucketCount;
+  // Producer-resolved floor-shortfall verdict. Suppress `none` so steady
+  // on-track plans stay byte-stable; `budget` covers the squeeze case
+  // (`dailyBudgetExhaustedBucketCount: 0` but the per-bucket cap still binds)
+  // — see the contract type for the full mapping.
+  const floorShortfallCause = resolveFloorShortfallCause(params.diag.reasonCode);
   const energyNeededKWh = roundKWh(horizonPlan.energyNeededKWh);
   // Mean-based expected energy, rounded to match `energyNeededKWh`. Persisted
   // only when it differs from the buffered figure, so steady devices stay
@@ -219,6 +225,7 @@ const buildRevision = (params: {
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
     ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),
+    ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),
     ...(estimatedDurationText !== null ? { estimatedDurationText } : {}),
   };
@@ -255,39 +262,38 @@ const isProvenanceConfidence = (
   value === 'low' || value === 'medium' || value === 'high'
 );
 
-// Treat absence as `learned` so legacy persisted revisions don't appear to
-// transition to `learned` on the first observation after upgrade.
-const resolveLatestKwhPerUnitSource = (
-  latest: DeferredObjectiveActivePlanRevisionV1,
-): 'learned' | 'bootstrap' => latest.kwhPerUnitSource ?? 'learned';
-
 // Caller already established `sameHourSchedule(latest.hours, hours)`. Returns
 // true when consumer-visible status fields drifted across the same set of
-// charging hours: `planStatus` transitions (on_track <-> at_risk <-> cannot_meet)
-// drive the "Can't fully meet" chip, and `dailyBudgetExhaustedBucketCount`
-// drives the per-bucket headroom explanation. Per-cycle drift in `plannedKWh`
-// / `energyNeededKWh` is intentionally NOT a persist trigger: an actively
-// charging EV shrinks `energyNeededKWh` monotonically every plan cycle
-// (~30s), and writing the persisted setting on every cycle was filling the
-// Homey settings I/O budget for no user-visible benefit. Treats missing
-// `dailyBudgetExhaustedBucketCount` as zero so legacy persisted revisions
-// don't thrash on the first cycle after upgrade.
+// charging hours. Tracked fields and the UI signal each drives:
+//   - `planStatus`                       → "Can't fully meet" chip
+//   - `dailyBudgetExhaustedBucketCount`  → per-bucket headroom explanation
+//   - `floorShortfallCause`              → hero recourse routing
+//     (budget-bound → `Open Budget`, otherwise device-side). Squeeze-case
+//     repro: `at_risk` stays put while cause flips from `feasible_above_floor`
+//     to `limited_by_daily_budget` as background load shifts the per-bucket
+//     cap binding; without re-persisting, the recourse would stay device-side.
+// Legacy fields absent on `latest` resolve to `none`/`0` so unchanged revisions
+// don't thrash on the first cycle after upgrade. Per-cycle drift in
+// `plannedKWh` / `energyNeededKWh` is intentionally NOT a persist trigger —
+// an actively charging EV shrinks `energyNeededKWh` monotonically every cycle.
 const hasMetadataDriftedWithinSchedule = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1;
   horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>;
   diag: DeferredObjectiveDiagnostic;
 }): boolean => {
   const { latest, horizonPlan, diag } = params;
-  const previousExhausted = latest.dailyBudgetExhaustedBucketCount ?? 0;
   return latest.planStatus !== horizonPlan.status
-    || previousExhausted !== diag.dailyBudgetExhaustedBucketCount;
+    || (latest.dailyBudgetExhaustedBucketCount ?? 0) !== diag.dailyBudgetExhaustedBucketCount
+    || (latest.floorShortfallCause ?? 'none') !== resolveFloorShortfallCause(diag.reasonCode);
 };
 
 const resolveSourceTransition = (params: {
   latest: DeferredObjectiveActivePlanRevisionV1;
   diag: DeferredObjectiveDiagnostic;
 }): { sourceChanged: boolean; sourceRefined: boolean } => {
-  const previousSource = resolveLatestKwhPerUnitSource(params.latest);
+  // Treat absence on `latest` as `learned` so legacy persisted revisions don't
+  // appear to transition on the first observation after upgrade.
+  const previousSource = params.latest.kwhPerUnitSource ?? 'learned';
   const nextSource = params.diag.kwhPerUnitSource;
   return {
     sourceChanged: nextSource !== null && previousSource !== nextSource,
