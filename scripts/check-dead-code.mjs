@@ -118,6 +118,8 @@ const allowedUnusedExportPatterns = [
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
+  // Consumed by packages/settings-ui/src/ui/views/PlanSteppedCard.tsx via cross-package relative import; ts-prune ignores cross-package edges.
+  /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_HELD_FALLBACK_STATUS$/,
   // Consumed by packages/settings-ui/src/ui/views/PlanDeviceCards.tsx via cross-package relative import; ts-prune ignores cross-package edges.
   /^packages\/shared-domain\/src\/deviceOverview\.ts:\d+ - resolveHeldStateActionLabel$/,
   // `deadlineLabels.ts` is pulled into ts-prune's graph by `flowCards/smartTaskTokens.ts`

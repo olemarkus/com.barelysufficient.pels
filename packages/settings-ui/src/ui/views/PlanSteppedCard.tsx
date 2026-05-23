@@ -11,6 +11,7 @@ import {
   resolveSteppedTemperatureText,
 } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import {
+  PLAN_STATE_HELD_FALLBACK_STATUS,
   resolvePlanStateKind,
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
@@ -112,7 +113,7 @@ export const PlanSteppedCard = ({
   const tempText = resolveSteppedTemperatureText(displayDev);
   const secondaryText = evState ?? tempText ?? null;
   const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
-  const statusText = resolvedStatusText ?? (stateKind === 'held' ? 'Limited — staying under the hard cap' : null);
+  const statusText = resolvedStatusText ?? (stateKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
 
   const cardClasses = [
     'device-row plan-card plan-card--stepped clickable',
