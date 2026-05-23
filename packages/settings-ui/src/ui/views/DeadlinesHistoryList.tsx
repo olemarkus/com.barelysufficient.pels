@@ -50,7 +50,7 @@ const resolveMissStreakBadges = (
   return badges;
 };
 
-const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState }) => {
+export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState }) => {
   if (state.status === 'hidden') return null;
   if (state.status === 'loading') {
     return (

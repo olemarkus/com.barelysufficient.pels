@@ -143,7 +143,14 @@ export const formatSmartTaskListConfidenceChipLabel = (params: {
   return formatConfidenceChipLabel(params.confidence);
 };
 
-export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions';
+// Row label carries the owner/edit affordance so both the detail
+// (`DeadlinePlan.tsx`) and list (`DeadlinesList.tsx`) surfaces signal that the
+// Flow editor owns the toggle. Hoisted from the value to the label so the
+// `(set via Flow)` scope reads as a property of the row (what kind of setting
+// this is) rather than scoping to the last joined permission clause. Lives
+// here so the wording can't drift between surfaces and runtime log
+// breadcrumbs that share the same row label.
+export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions (set via Flow)';
 export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devices may be limited separately.';
 
 const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
@@ -171,7 +178,8 @@ export const formatSmartTaskExtraPermissionsValue = (
       + `${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.limitLowerPriorityDevices]}`,
     );
   }
-  return parts.length > 0 ? parts.join(' · ') : null;
+  if (parts.length === 0) return null;
+  return parts.join(' · ');
 };
 
 // "currently 18.5 °C" / "currently 45 %" line shown on Smart-tasks list cards

@@ -76,25 +76,6 @@ patch releases, not release blockers; each item carries its own source/date.
       `packages/shared-domain/src/deadlineLabels.ts`.
       Source: adversarial runtime/copy review, v2.9.0 closeout, 2026-05-23.
 
-- [ ] Rescue extra-permissions rows need an owner/edit affordance. The detail
-      and list surfaces render granted rescue permissions as passive values
-      (`Extra permissions: May go over daily budget · May limit lower-priority
-      devices if at risk`) with no indication that the Flow editor owns the
-      toggle. Cheap fix: append a muted `(set via Flow)` suffix. Better fix:
-      deep-link to the Flow card editor if Homey exposes a stable target.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
-      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
-
-- [ ] Keep smart-task history visible while the detail hero is pending. The
-      pending branch in `DeadlinePlan.tsx` returns `<PendingHero />` alone, so
-      a brand-new active task with prior runs leaves a tall empty page and hides
-      the history evidence the user may be looking for. Render
-      `DeadlinePlanHistoryView` whenever `loadState.history` is non-empty,
-      regardless of pending/building status.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      Source: `pels-ux-fit`, v2.9.0 retrospective, 2026-05-23.
-
 - [ ] Gate duplicate variance-margin messaging on alert and cold-start heroes.
       `resolveVarianceMarginNote` returns the safety-margin sentence whenever
       planned energy exceeds expected energy, so the calm "books the high end"
@@ -440,6 +421,40 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
+- [ ] Smart-task extra-permissions row wraps mid-word at 320 px under
+      worst-case payload. `.deadline-list-card__when-row dd` uses
+      `overflow-wrap: anywhere`, so the longest composed value (both
+      permissions granted, `at_risk` mode) can split words like
+      "lower-prio | rity". No overflow risk; just visual noise at the
+      narrowest viewport. Consider a soft-break-friendly wrap (break on
+      separator / hyphen) or a line-clamp + tooltip for the worst case.
+      Files: `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
+      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
+
+- [ ] Smart-task detail pending branch renders `<PendingHero />` +
+      `<PriorRunsHistory />` as a `<>` fragment without an outer
+      `pels-surface-card`, while sibling states (`loading`, `error`,
+      `completed`, `history-missing`) all wrap their content in a card.
+      The history then sits flush against the panel background instead of
+      a card. Visually defensible (the history list owns its own card
+      stack) but inconsistent rhythm worth a follow-up to either wrap or
+      explicitly document why pending is the odd one out.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
+
+- [ ] Smart-task detail back button still sets `color: var(--text)` on the
+      `md-text-button` host. The PR #992 cascade cleanup removed the three
+      `!important` declarations and switched to the doubled-class
+      panel-scoped pattern, which works because the original `!important`
+      only beat competing light-DOM rules. The proper M3 idiom (already
+      used by the device-detail back button at `style.css:6637-6639`) is
+      `--md-sys-color-primary: var(--text)` rather than `color: var(--text)`
+      on the host, since the text color inside MD Web components routes
+      through their CSS-custom-property API.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
+
 - [ ] Finish the Budget hero copy-locality pass alongside
       `dailyBudgetHeroStrings.ts`. The v2.9 Rule-4 cleanup pulled the
       finish-of-day decision sentences and the `resolveHeadroomLine` template
@@ -484,27 +499,6 @@ release, not v2.7.1 merge-blockers.*
       `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
       2026-05-23.
-
-- [ ] Remove `!important` from the smart-task detail back button. The
-      `.deadline-plan-back-button` rule overrides border radius, background,
-      and color with `!important`, while the same file already documents the
-      doubled-class cascade pattern and uses it for the recourse button nearby.
-      Rewrite as
-      `#deadline-plan-panel md-text-button.deadline-plan-back-button.deadline-plan-back-button`
-      with no `!important`.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
-
-- [ ] Give the Usage return-link anchor a static fallback `href`.
-      `packages/settings-ui/public/index.html` ships
-      `<a class="usage-return-link__anchor" id="usage-return-link-anchor">`
-      without `href` until `showUsageReturnLink()` populates it. The container
-      is hidden by default and `clearUsageReturnLink()` repairs it later, so
-      this is narrow fallback hardening rather than release risk. Set the
-      static `href` to `#usage-panel`.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/usageReturnLink.ts`.
-      Source: `pels-m3-critic`, v2.9.0 retrospective, 2026-05-23.
 
 
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
