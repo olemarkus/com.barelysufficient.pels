@@ -1,8 +1,8 @@
 import { PriceLevel } from '../price/priceLevels';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import type { DevicePlan } from '../plan/planTypes';
-import type { DevicePlanDevice } from '../plan/planTypes';
-import { NEUTRAL_STARTUP_HOLD_REASON } from '../plan/restore/devices';
+import type { DevicePlan } from './planTypes';
+import type { DevicePlanDevice } from './planTypes';
+import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
 
 export function buildPelsStatus(params: {
   plan: DevicePlan;

@@ -1,6 +1,6 @@
-import type CapacityGuard from './capacityGuard';
-import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from './capacityModel';
-import type { PowerTrackerState } from './powerTracker';
+import type CapacityGuard from '../core/capacityGuard';
+import { resolveCapacitySoftLimitKw, resolveUsableCapacityKw } from '../core/capacityModel';
+import type { PowerTrackerState } from '../core/powerTracker';
 import { getHourBucketKey } from '../utils/dateUtils';
 
 type CapacityGuardView = Pick<

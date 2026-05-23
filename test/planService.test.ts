@@ -2,7 +2,7 @@ import { PlanService } from '../lib/plan/planService';
 import { buildExecutablePlan } from '../lib/executor/executablePlanProjection';
 import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
 import type { BinaryControlObservation } from '../packages/contracts/src/types';
-import * as pelsStatusModule from '../lib/core/pelsStatus';
+import * as pelsStatusModule from '../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../lib/utils/planRebuildTrace';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../packages/shared-domain/src/powerFreshness';

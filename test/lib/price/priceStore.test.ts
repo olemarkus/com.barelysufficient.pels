@@ -6,7 +6,7 @@ import {
   readPriceStore,
 } from '../../../lib/price/priceStore';
 import type { CombinedPricesV2 } from '../../../lib/price/priceTypes';
-import { buildPelsStatus } from '../../../lib/core/pelsStatus';
+import { buildPelsStatus } from '../../../lib/plan/pelsStatus';
 import { PriceLevel } from '../../../lib/price/priceLevels';
 import type { DevicePlan } from '../../../lib/plan/planTypes';
 
