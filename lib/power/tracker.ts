@@ -1,5 +1,5 @@
 import type CapacityGuard from './capacityGuard';
-import type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
+import type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
@@ -8,10 +8,10 @@ import {
   normalizeDevicePowerWById,
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
-} from './powerTrackerEnergy';
+} from './trackerEnergy';
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
-export type { PowerTrackerState, RecordPowerSampleParams } from './powerTrackerTypes';
+export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 const MIN_VALID_TIMESTAMP_MS = 100000000000, MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
 const ZERO_HOURS = Array.from({ length: 24 }, () => 0);
 

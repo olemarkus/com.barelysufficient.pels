@@ -1041,7 +1041,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       keyed off by 1 day in zones like Europe/Oslo. Fix the backend to write
       `dailyTotals` keys with the Homey timezone (or normalise the UI to
       reparse both sources into one canonical zone-local representation).
-      Files: `lib/core/powerTracker.ts` (`formatDateUtc` -> zone-aware),
+      Files: `lib/power/tracker.ts` (`formatDateUtc` -> zone-aware),
       `packages/settings-ui/src/ui/power.ts` (or carry the dual-key
       normalisation here if backend can't change without a migration).
 - [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
@@ -1056,15 +1056,15 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       to per-hour counts, or compute a unified pattern by grouping merged
       day-hour entries before averaging.
       Files: `packages/settings-ui/src/ui/power.ts`,
-      `lib/core/powerTracker.ts` (`processDayHourBuckets`).
-- [ ] `processDayHourBuckets` in `lib/core/powerTracker.ts` over-counts the
+      `lib/power/tracker.ts` (`processDayHourBuckets`).
+- [ ] `processDayHourBuckets` in `lib/power/tracker.ts` over-counts the
       day count for boundary days that have their hours moved into
       `hourlyAverages` across multiple prune runs. Each prune that moves at
       least one hour of a given day calls the helper for that day, which
       increments count by 1 for all 24 weekday-hour slots. A day whose hours
       cross the threshold across two prune ticks therefore contributes count
       +2 instead of +1, biasing the typical-day averages slightly low.
-      Files: `lib/core/powerTracker.ts` (`aggregateAndPruneHistory`).
+      Files: `lib/power/tracker.ts` (`aggregateAndPruneHistory`).
 
       **Acceptance bar — fix all three of these consolidation candidates (or
       explicitly close each with a one-line "rejected because…" in the PR):**
@@ -1484,7 +1484,7 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Normalize persisted optional state into runtime state with required maps immediately after
       loading. Keep persisted shape and runtime shape separate for power tracker, activation
       attempts, headroom cards, pending commands, and similar planner state.
-      Files: `lib/core/powerTracker.ts`, `packages/contracts/src/powerTrackerTypes.ts`,
+      Files: `lib/power/tracker.ts`, `packages/contracts/src/powerTrackerTypes.ts`,
       `lib/plan/planState.ts`, `lib/utils/appTypeGuards.ts`.
 - [ ] Replace deeply partial flow-reported capability state with a normalized runtime
       representation at the boundary.
@@ -2132,7 +2132,7 @@ should not be folded into the same PR.
       sub-interval timing) therefore rely on caller discipline instead of a
       load-time schema. Pre-existing gap, not a v2.9 regression; add a
       normalizer when touching profile persistence again.
-      Files: `lib/app/settingsUiApi.ts`, `lib/core/powerTrackerTypes.ts`,
+      Files: `lib/app/settingsUiApi.ts`, `lib/power/trackerTypes.ts`,
       `lib/objectives/profiles.ts`, `packages/contracts/src/powerTrackerTypes.ts`.
       Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
 

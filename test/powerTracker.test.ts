@@ -11,7 +11,7 @@ import {
   getUtcHour,
   aggregateAndPruneHistory,
   recordPowerSample,
-} from '../lib/core/powerTracker';
+} from '../lib/power/tracker';
 import {
   getHourBucketKey,
   truncateToUtcHour,

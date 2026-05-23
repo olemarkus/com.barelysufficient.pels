@@ -1,5 +1,5 @@
 import { buildPeriodicStatusLogFields } from '../lib/app/periodicStatus';
-import { recordPowerSample, type PowerTrackerState } from '../lib/core/powerTracker';
+import { recordPowerSample, type PowerTrackerState } from '../lib/power/tracker';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 describe('periodic status used kWh', () => {

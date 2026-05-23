@@ -60,8 +60,8 @@ describe('memory profile', () => {
     // Diagnostics
     profileRequire('diagnostics/deviceDiagnosticsService', '../lib/diagnostics/deviceDiagnosticsService', baseline);
 
-    // Core — broken down
-    profileRequire('core/powerEstimate', '../lib/core/powerEstimate', baseline);
+    // Core/Power — broken down
+    profileRequire('power/estimate', '../lib/power/estimate', baseline);
     profileRequire('core/powerMeasurement', '../lib/core/powerMeasurement', baseline);
     profileRequire('core/deviceManagerHelpers', '../lib/core/deviceManagerHelpers', baseline);
     profileRequire('core/deviceManagerParse', '../lib/core/deviceManagerParse', baseline);
@@ -73,8 +73,8 @@ describe('memory profile', () => {
     profileRequire('core/deviceManagerRealtimeHandlers', '../lib/core/deviceManagerRealtimeHandlers', baseline);
     profileRequire('core/deviceManagerRealtimeSupport', '../lib/core/deviceManagerRealtimeSupport', baseline);
     profileRequire('core/deviceLoad', '../lib/core/deviceLoad', baseline);
-    profileRequire('core/capacityGuard', '../lib/core/capacityGuard', baseline);
-    profileRequire('core/powerTracker', '../lib/core/powerTracker', baseline);
+    profileRequire('power/capacityGuard', '../lib/power/capacityGuard', baseline);
+    profileRequire('power/tracker', '../lib/power/tracker', baseline);
     profileRequire('core/deviceManager', '../lib/core/deviceManager', baseline);
 
     // App-level

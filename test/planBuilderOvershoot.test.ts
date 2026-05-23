@@ -1,4 +1,4 @@
-import CapacityGuard from '../lib/core/capacityGuard';
+import CapacityGuard from '../lib/power/capacityGuard';
 import { recordActivationAttemptStart } from '../lib/plan/admission';
 import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';

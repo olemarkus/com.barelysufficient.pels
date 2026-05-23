@@ -1,4 +1,4 @@
-import type { PowerTrackerState } from '../lib/core/powerTracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 import {

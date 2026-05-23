@@ -1,4 +1,4 @@
-import CapacityGuard from '../lib/core/capacityGuard';
+import CapacityGuard from '../lib/power/capacityGuard';
 import { PlanBuilder } from '../lib/plan/planBuilder';
 import { buildPlanContext } from '../lib/plan/planContext';
 import {

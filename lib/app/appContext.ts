@@ -1,7 +1,7 @@
 import type Homey from 'homey';
-import type CapacityGuard from '../core/capacityGuard';
+import type CapacityGuard from '../power/capacityGuard';
 import type { DeviceManager } from '../core/deviceManager';
-import type { PowerTrackerState } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { DeferredObjectiveActivePlanRecorder } from '../plan/deferredObjectives/activePlanRecorder';

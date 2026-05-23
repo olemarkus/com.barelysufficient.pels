@@ -163,7 +163,7 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.querySelector('.usage-row--daily')).toBeNull();
   });
 
-  // Regression: `aggregateAndPruneHistory` in `lib/core/powerTracker.ts` only
+  // Regression: `aggregateAndPruneHistory` in `lib/power/tracker.ts` only
   // moves buckets older than 30 days into `dailyTotals`. When both maps are
   // populated, the Daily-usage chart used to read from `dailyTotals` alone,
   // making it show the 14 days right before the 30-day cliff (e.g. 3–15 Apr on

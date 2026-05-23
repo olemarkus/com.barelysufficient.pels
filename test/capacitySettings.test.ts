@@ -11,7 +11,7 @@ vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
 
 // Mock CapacityGuard to capture limit updates.
 const capacityGuardInstances: any[] = [];
-vi.mock('../lib/core/capacityGuard', () => ({
+vi.mock('../lib/power/capacityGuard', () => ({
   default: class MockCapacityGuard {
     public setLimit = vi.fn();
     public setSoftMargin = vi.fn();

@@ -1,7 +1,7 @@
 import {
     recordPowerSample,
     PowerTrackerState,
-} from '../lib/core/powerTracker';
+} from '../lib/power/tracker';
 
 const mockRebuildPlan = vi.fn().mockResolvedValue(undefined);
 const mockSaveState = vi.fn();

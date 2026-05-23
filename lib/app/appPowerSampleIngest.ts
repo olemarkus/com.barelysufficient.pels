@@ -1,8 +1,8 @@
 import type Homey from 'homey';
-import type CapacityGuard from '../core/capacityGuard';
+import type CapacityGuard from '../power/capacityGuard';
 import { updateObjectiveProfilesFromSnapshot } from '../objectives/profiles';
-import type { PowerTrackerState } from '../core/powerTracker';
-import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../core/powerTracker';
+import type { PowerTrackerState } from '../power/tracker';
+import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../power/tracker';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';

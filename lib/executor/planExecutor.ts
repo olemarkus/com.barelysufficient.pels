@@ -1,5 +1,5 @@
 import Homey from 'homey';
-import CapacityGuard from '../core/capacityGuard';
+import CapacityGuard from '../power/capacityGuard';
 import { DeviceManager } from '../core/deviceManager';
 import {
   type DeviceReason,

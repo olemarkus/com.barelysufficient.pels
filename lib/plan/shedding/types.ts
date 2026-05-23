@@ -1,5 +1,5 @@
-import type CapacityGuard from '../../core/capacityGuard';
-import type { PowerTrackerState } from '../../core/powerTracker';
+import type CapacityGuard from '../../power/capacityGuard';
+import type { PowerTrackerState } from '../../power/tracker';
 import type { DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import type { PlanContext } from '../planContext';
 import type { PlanEngineState } from '../planState';
