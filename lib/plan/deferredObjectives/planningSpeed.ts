@@ -65,5 +65,21 @@ export const resolvePlanningSpeedKw = (device: PlanInputDevice | undefined): num
       return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
     }
   }
+  // Mirror the thermostat-class fallback in `objectiveSteps.ts` so the hero
+  // meta line (`kW · duration · mode`) and the planner's per-active-hour
+  // commit agree on the synthesised power. Without this parity the planner
+  // builds a horizon plan against the fallback rate while the hero degrades
+  // to the `hoursLeft` form — a producer/consumer disagreement that hides
+  // the rate the user is actually being charged against.
+  if (device.deviceType === 'temperature') {
+    const expected = firstPositiveFinite([
+      device.measuredPowerKw,
+      device.expectedPowerKw,
+      device.powerKw,
+    ]);
+    if (expected !== null) {
+      return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
+    }
+  }
   return null;
 };

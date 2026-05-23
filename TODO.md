@@ -1427,9 +1427,10 @@ consolidation + a11y polish (8 P2)`.*
       NOTE (2026-05-23): the user-visible `pendingReason: 'missing_capacity'` has TWO upstream
       paths — `objective_missing_capacity` (no profile yet, this entry) AND
       `objective_missing_charge_rate` (`resolveObjectiveSteps` returning `[]` on
-      non-stepped thermal devices). The second path is being closed in a sibling fix that adds
-      a thermal fallback to `resolveObjectiveSteps`; this copy entry only addresses the first
-      path.
+      non-stepped thermal devices). The second path is now closed by a
+      `measuredPowerKw` → `expectedPowerKw` → `powerKw` thermal fallback in
+      `resolveObjectiveSteps`; this copy entry only addresses the first path (no-profile
+      cold-start).
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
