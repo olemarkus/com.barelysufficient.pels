@@ -368,7 +368,10 @@ be collapsed into one object.
 > and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
 > `lib/plan/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
 > shipped types (e.g. `stableStatus`, `requiredAverageKw`, `conservativeNetGainKw`) are
-> aspirational and may never ship as named. Mode-related fields have moved with the deferred
+> aspirational and may never ship as named. **Shipped status enum is `cannot_meet`**, not the
+> aspirational `cannot_be_met` shown below; the Flow-card surface adds a third translation —
+> the deadline-status trigger emits `unachievable` (with legacy `cannot_meet` still accepted by
+> the runlistener for backward compat). Mode-related fields have moved with the deferred
 > mode-override design to [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
 
 ```ts

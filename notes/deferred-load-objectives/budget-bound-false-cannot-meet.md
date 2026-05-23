@@ -1,12 +1,19 @@
 # Budget-bound false `cannot_meet` (+ exempt-from-budget not applied)
 
-Status: Prong A (rescue/exempt telemetry) and Prong C (budget-bound vs physical
-status classification) shipped. Remaining: route the per-bucket *background
-squeeze* copy via a producer-resolved budget-bound flag on the persisted revision
-(P1 — the literal "Connected 300" case is de-alarmed but still shows device-side
-copy), and the Prong B exempt-not-applied diagnosis (gated on the telemetry / a
-live rescue check). Tracked in `TODO.md` P0. Not data-gated like the confidence
-(Cause #1) work.
+Status: **all prongs resolved.** Prong A (rescue/exempt telemetry — PR #977) and
+Prong C (budget-bound vs physical status classification — PR #978) shipped.
+Prong B (exempt-not-applied diagnosis) resolved by prod telemetry 2026-05-23:
+Connected 300 events show `rescueExemptMode: "always"`, `rescueLimitMode:
+"always"`, `budgetExemptApplied: true`, `limitLowerPriorityApplied: true` — the
+planner sees the rescue as designed. The 2026-05-22 symptom was a config-side
+state (rescue not yet set or set on a different device), not a wiring bug.
+Prong B2 (the `isCurrentBucketPlanned` self-disarm question) confirmed
+intentional per the field comment in `diagnosticsBridge.ts:98-101` — the rescue
+applies only "while the current bucket is a planned bucket … idle/background
+cycles stay normal," matching the `limitLowerPriorityApplied` companion. The
+P1 background-squeeze copy-routing follow-up (thread the producer-resolved
+budget-bound signal onto the persisted active-plan revision so squeeze-case
+copy reads budget-side) is tracked in `TODO.md` P1.
 
 ## Symptom (prod, 2026-05-22, commit `d280c1ed`)
 
@@ -44,23 +51,26 @@ bounds **every step equally**.
   climbing adds nothing → stays flat `cannot_meet`, never `at_risk`. Slice-1 only
   helps a step-power shortfall.
 
-## The twist: exempt-from-budget set but not applied (Prong B)
+## Prong B resolution (2026-05-23)
 
-`resolveHorizonPlanWithRescue` (`rescueReplan.ts`) rebuilds the horizon with the
-caps lifted (`exemptFromBudget: true`) only when
-`objective.rescue?.exemptFromBudget === 'always'`, and the diagnostic path uses it
-(`diagnosticsBridge.ts`). With exempt applied the floor would fill multiple buckets
-→ `on_track`. The plan stays budget-capped `cannot_meet`, so the planner's
-objective is not seeing `exemptFromBudget: 'always'`. Card→settings write
-(`flowCards/smartTaskRescueCard.ts`) and planner read (`appInit.ts` via
-`DEFERRED_OBJECTIVES_SETTINGS`) look correct in code, so this is likely config
-(wrong device / `when ≠ always`) or a load/snapshot drop of `.rescue`. Determine
-config-vs-code from the new telemetry (next restart) or a live
-`objectivesByDeviceId[...].rescue` check before any fix.
+The 2026-05-22 symptom (plan stays budget-capped despite exempt-from-budget set)
+turned out to be **config-side, not a wiring bug.** Prod telemetry from PR #977
+the next day shows `rescueExemptMode: "always"`, `budgetExemptApplied: true` on
+Connected 300 — the planner sees and applies the rescue as designed.
+`resolveHorizonPlanWithRescue` (`rescueReplan.ts`) rebuilds the horizon with
+caps lifted only when `objective.rescue?.exemptFromBudget === 'always'`; the
+2026-05-22 trace simply caught the rescue before it had been set to that mode
+(or on the wrong device). No code fix needed.
 
-B2: `budgetExemptApplied = rescue === 'always' && isCurrentBucketPlanned`
-(`diagnosticsBridge.ts`) — the execution-side exempt self-disarms when the current
-bucket is "avoid"/empty. Decide whether that coupling is intended.
+**B2 (the `isCurrentBucketPlanned` self-disarm question):** confirmed
+**intentional** per the field comment at `diagnosticsBridge.ts:98-101`:
+> True only while the current bucket is a planned bucket for a smart task whose
+> "exempt from budget" rescue permission is active. Admission consumes this
+> flat flag … idle/background cycles stay normal.
+
+The `limitLowerPriorityApplied` companion carries the same intent. Rescue
+applies during planner-scheduled hours; during planner-avoided hours the soft
+budget binds normally. Closed, no action needed.
 
 ## Telemetry (Prong A, landed)
 
