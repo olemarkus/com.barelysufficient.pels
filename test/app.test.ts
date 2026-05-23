@@ -6,10 +6,10 @@ import {
   MockDriver,
 } from './mocks/homey';
 import { schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
-import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
+import type { LiveFeedHealth } from '../lib/device/liveFeed';
 
 // Prevent real socket.io connections in app tests.
-vi.mock('../lib/core/deviceLiveFeed', () => {
+vi.mock('../lib/device/liveFeed', () => {
   const mockHealth: LiveFeedHealth = {
     subscriptionState: 'subscribed',
     lastLiveEventMs: null,
@@ -52,7 +52,7 @@ import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../lib/core/steppedLoadSyntheticCapabilities';
+} from '../lib/device/steppedLoadSyntheticCapabilities';
 
 const flushPromises = () => new Promise<void>((resolve) => {
   if (typeof setImmediate === 'function') {

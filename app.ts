@@ -5,7 +5,7 @@ import {
   DeviceManager,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-} from './lib/core/deviceManager';
+} from './lib/device/manager';
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
@@ -22,7 +22,7 @@ import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import { buildPeriodicStatusLogFields } from './lib/app/periodicStatus';
-import { getDeviceLoadSetting } from './lib/core/deviceLoad';
+import { getDeviceLoadSetting } from './lib/device/load';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -123,7 +123,7 @@ import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
-import type { ObservedDeviceStateEvent } from './lib/core/deviceManagerRealtimeHandlers';
+import type { ObservedDeviceStateEvent } from './lib/device/managerRealtimeHandlers';
 import {
   emitSettingsUiDevicesUpdatedForApp,
   emitSettingsUiPowerUpdatedForApp,
@@ -154,12 +154,12 @@ import {
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
-} from './lib/core/flowReportedCapabilities';
+} from './lib/device/flowReportedCapabilities';
 import {
   EV_SOC_CAPABILITY_ID,
   isStateOfChargeCapabilityId,
   updateStateOfChargeObservationFreshness,
-} from './lib/core/deviceStateOfCharge';
+} from './lib/device/stateOfCharge';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.

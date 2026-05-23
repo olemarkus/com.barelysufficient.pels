@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { DeviceManager } from '../core/deviceManager';
+import type { DeviceManager } from '../device/manager';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';

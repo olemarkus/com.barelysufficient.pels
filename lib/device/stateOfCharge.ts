@@ -1,4 +1,4 @@
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { DeviceCapabilityMap } from './managerControl';
 import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,

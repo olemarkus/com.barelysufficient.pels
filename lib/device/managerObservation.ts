@@ -6,19 +6,19 @@
  */
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
-import type { HandleRealtimeDeviceUpdateResult } from './deviceManagerRealtimeHandlers';
-import type { DeviceFetchSource } from './deviceManagerFetch';
-import { getDeviceId } from './deviceManagerHelpers';
+import type { HandleRealtimeDeviceUpdateResult } from './managerRealtimeHandlers';
+import type { DeviceFetchSource } from './managerFetch';
+import { getDeviceId } from './managerHelpers';
 import {
     resolveEvChargingStateBinaryEvidence,
     resolveEvCurrentOn,
-} from './deviceManagerControl';
+} from './managerControl';
 import {
     EV_SOC_NATIVE_CAPABILITY_IDS,
     isStateOfChargeCapabilityId,
     updateStateOfChargeFromRealtimeCapability,
     updateStateOfChargeSessionBoundary,
-} from './deviceStateOfCharge';
+} from './stateOfCharge';
 
 export type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 

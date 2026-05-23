@@ -1,6 +1,6 @@
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import { serializeLegacyStepFieldsFromEvidence } from '../plan/planSteppedLoadState';
-import { isNativeSteppedLoadControlEnabled } from '../core/nativeSteppedLoadWiring';
+import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
 import type {
   DeviceControlProfile,
   SteppedLoadActualStepSource,

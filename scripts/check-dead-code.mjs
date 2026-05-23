@@ -82,8 +82,8 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
   /^lib\/price\/priceStore\.ts:\d+ - __resetRefetchGuardForTest$/,
-  /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - setRestClient$/,
-  /^lib\/core\/deviceManagerHomeyApi\.ts:\d+ - resetRestClient$/,
+  /^lib\/device\/managerHomeyApi\.ts:\d+ - setRestClient$/,
+  /^lib\/device\/managerHomeyApi\.ts:\d+ - resetRestClient$/,
   // Compatibility barrel exports kept intentionally while call sites migrate off appPowerHelpers.ts.
   /^lib\/app\/appPowerHelpers\.ts:\d+ - schedulePlanRebuildFromPowerSample$/,
   /^lib\/app\/appPowerHelpers\.ts:\d+ - recordDailyBudgetCap$/,
@@ -111,8 +111,8 @@ const allowedUnusedExportPatterns = [
   /^lib\/app\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
   /^lib\/app\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
   /^lib\/utils\/opRssTracker\.ts:\d+ - __resetRssSupportProbeForTests$/,
-  /^lib\/core\/deviceManagerNativeEv\.ts:\d+ - __resetNativeEvWiringLogStateForTests$/,
-  /^lib\/core\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
+  /^lib\/device\/managerNativeEv\.ts:\d+ - __resetNativeEvWiringLogStateForTests$/,
+  /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),

@@ -1,8 +1,8 @@
-import type { FlowEffectiveRequiredCapabilityId } from './deviceManagerNativeEv';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { FlowEffectiveRequiredCapabilityId } from './managerNativeEv';
+import type { DeviceCapabilityMap } from './managerControl';
 import {
   getExactPowerCapabilityValue,
-} from './deviceManagerParse';
+} from './managerParse';
 import type {
   FlowReportedCapabilityId,
   FlowReportedCapabilitiesForDevice,

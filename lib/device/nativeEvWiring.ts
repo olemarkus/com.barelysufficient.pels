@@ -1,6 +1,6 @@
 import type { DeviceControlAdapterSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
-import type { DeviceCapabilityMap } from './deviceManagerControl';
+import type { DeviceCapabilityMap } from './managerControl';
 
 const ZAPTEC_NATIVE_REQUIRED_CAPABILITIES = [
   'charging_button',

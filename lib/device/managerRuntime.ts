@@ -6,12 +6,12 @@ import {
   formatTargetValue,
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
-} from './deviceManagerRealtimeSupport';
+} from './managerRealtimeSupport';
 import {
   resolveEvChargingStateBinaryEvidence,
   resolveEvCurrentOn,
-} from './deviceManagerControl';
-import { EV_SOC_CAPABILITY_ID } from './deviceStateOfCharge';
+} from './managerControl';
+import { EV_SOC_CAPABILITY_ID } from './stateOfCharge';
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 type RealtimeControlCapabilityId = NonNullable<TargetDeviceSnapshot['controlCapabilityId']>;

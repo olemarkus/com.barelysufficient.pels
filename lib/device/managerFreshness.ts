@@ -2,14 +2,14 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   resolveEvChargingStateBinaryEvidence,
   resolveEvCurrentOn,
-} from './deviceManagerControl';
+} from './managerControl';
 import {
   isStateOfChargeCapabilityId,
   updateStateOfChargeFromRealtimeCapability,
   updateStateOfChargeSessionBoundary,
-} from './deviceStateOfCharge';
-import { formatBinaryState } from './deviceManagerRealtimeSupport';
-import type { RealtimeDeviceReconcileChange } from './deviceManagerRuntime';
+} from './stateOfCharge';
+import { formatBinaryState } from './managerRealtimeSupport';
+import type { RealtimeDeviceReconcileChange } from './managerRuntime';
 
 export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;

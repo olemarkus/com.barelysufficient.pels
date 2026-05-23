@@ -9,9 +9,9 @@ import type {
   DeviceDebugObservedSource,
   DeviceDebugObservedSources,
   DeviceManager,
-} from '../core/deviceManager';
+} from '../device/manager';
 import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { DEVICES_API_PATH, getRawDevices } from '../core/deviceManagerHomeyApi';
+import { DEVICES_API_PATH, getRawDevices } from '../device/managerHomeyApi';
 import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';

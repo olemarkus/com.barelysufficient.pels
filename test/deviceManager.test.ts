@@ -1,9 +1,9 @@
-import { DeviceManager, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/core/deviceManager';
+import { DeviceManager, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/device/manager';
 import {
     createObservationState,
     mergeFresherCapabilityObservations,
-} from '../lib/core/deviceManagerObservation';
-import type { LiveFeedHealth } from '../lib/core/deviceLiveFeed';
+} from '../lib/device/managerObservation';
+import type { LiveFeedHealth } from '../lib/device/liveFeed';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isManagedFilterActive } from '../lib/app/appDeviceSupport';
@@ -11,10 +11,10 @@ import {
     mockHomeyInstance,
 } from './mocks/homey';
 import Homey from 'homey';
-import * as homeyApi from '../lib/core/deviceManagerHomeyApi';
+import * as homeyApi from '../lib/device/managerHomeyApi';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
-vi.mock('../lib/core/deviceLiveFeed', () => {
+vi.mock('../lib/device/liveFeed', () => {
     const mockHealth: LiveFeedHealth = {
         subscriptionState: 'subscribed',
         lastLiveEventMs: null,

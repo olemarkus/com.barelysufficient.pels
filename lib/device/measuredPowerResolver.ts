@@ -1,6 +1,6 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { Logger } from '../utils/types';
-import type { DeviceMeasuredPowerObservation } from './deviceMeasuredPowerReader';
+import type { DeviceMeasuredPowerObservation } from './measuredPowerReader';
 
 const MIN_METER_DELTA_HOURS = 1 / 3600; // Require at least 1 second between readings
 

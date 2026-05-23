@@ -56,7 +56,7 @@ estimate trustworthy.
 The deferred-objective subsystem already ships enough infrastructure to deliver the temperature
 deadline feature end-to-end and to display EV deadline plans without actuating them:
 
-- EV SoC observation with session validity (`lib/core/deviceStateOfCharge.ts`): fresh / stale
+- EV SoC observation with session validity (`lib/device/stateOfCharge.ts`): fresh / stale
   status, session start on plug-in, invalidation on plug-out.
 - Per-device learned profile (`lib/objectives/profiles.ts`) storing `kwhPerUnit` (kWh per 1%)
   and `unitPerHour` (%/hour) with EMA confidence.
@@ -252,7 +252,7 @@ objective for the same device; whether re-plug after a partial session
 re-fires.
 
 Files: new `packages/contracts/src/evChargerDefaults.ts`, new
-`lib/app/evChargerDefaultsWiring.ts`, `lib/core/deviceStateOfCharge.ts`.
+`lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`.
 
 #### Manual override actions and deadline-imminent urgency rule
 

@@ -13,7 +13,7 @@ import {
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../lib/core/steppedLoadSyntheticCapabilities';
+} from '../lib/device/steppedLoadSyntheticCapabilities';
 import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const steppedProfiles: DeviceControlProfiles = {
