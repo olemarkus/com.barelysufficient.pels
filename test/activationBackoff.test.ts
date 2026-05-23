@@ -19,7 +19,7 @@ import {
 import type { PlanContext } from '../lib/plan/planContext';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { PowerTrackerState } from '../lib/core/powerTracker';
-import { applyRestorePlan } from '../lib/plan/planRestore';
+import { applyRestorePlan } from '../lib/plan/restore';
 import {
   evaluateHeadroomForDevice,
   syncHeadroomCardState,

@@ -1,56 +1,56 @@
 /* eslint-disable max-lines -- Restore helper decisions and their countdown metadata are kept together. */
-import type { DevicePlanDevice } from './planTypes';
-import type { RestoreTiming } from './planRestoreTiming';
-import type { PlanEngineState } from './planState';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import type { DevicePlanDevice } from '../planTypes';
+import type { RestoreTiming } from './timing';
+import type { PlanEngineState } from '../planState';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import {
   buildComparableDeviceReason,
   formatDeviceReason,
   PLAN_REASON_CODES,
-} from '../../packages/shared-domain/src/planReasonSemantics';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
+} from '../../../packages/shared-domain/src/planReasonSemantics';
+import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import {
   getSteppedRestoreCandidates,
   NEUTRAL_STARTUP_HOLD_REASON,
-} from './planRestoreDevices';
+} from './devices';
 import {
   resolveCapacityRestoreBlockReason,
   resolveMeterSettlingCountdownTiming,
   resolveMeterSettlingRemainingSec,
-} from './planRestoreTiming';
+} from './timing';
 import {
   getSteppedLoadNextRestoreStep,
   resolveSteppedLoadRestoreDeltaKw,
-} from './planSteppedLoad';
+} from '../planSteppedLoad';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadLowestStep,
   getSteppedLoadOffStep,
-} from '../utils/deviceControlProfiles';
+} from '../../utils/deviceControlProfiles';
 import {
   getActivationPenaltyLevel,
   getActivationRestoreBlockCountdownTiming,
   getActivationRestoreBlockRemainingMs,
-} from './planActivationBackoff';
-import { computeRestoreBufferKw } from './planRestoreAccounting';
-import { RESTORE_ADMISSION_FLOOR_KW } from './planConstants';
-import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
+} from '../planActivationBackoff';
+import { computeRestoreBufferKw } from './accounting';
+import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
+import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
 import {
   countShedDevices,
   hasOtherDevicesBlockingSteppedRestore,
-} from './planRestoreCoordination';
+} from './coordination';
 import {
   buildRestoreAdmissionLogFields,
   buildRestoreAdmissionMetrics,
   resolveRestoreDecisionPhase,
   type RestoreAdmissionMetrics,
-} from './planRestoreAdmission';
+} from '../planRestoreAdmission';
 import {
   buildActivationBackoffReason,
   buildMeterSettlingReason,
   buildRestoreHeadroomReason,
-} from './planReasonStrings';
-import { applySteppedRestoreAttemptHold } from './planSteppedRestoreHold';
+} from '../planReasonStrings';
+import { applySteppedRestoreAttemptHold } from '../planSteppedRestoreHold';
 
 export type SteppedSwapExecutor = (params: {
   dev: DevicePlanDevice;

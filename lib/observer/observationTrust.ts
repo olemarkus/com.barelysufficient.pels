@@ -12,7 +12,7 @@
  *    signals (e.g. SoC `status !== 'fresh'`) collapse to `undefined`.
  *  - **Generic trust gate** (`isDeviceObservationTrusted`) — for consumers
  *    that need a yes/no "is this observation safe to act on" before reading
- *    other signals (recovery confirmability in `planRestoreCoordination`,
+ *    other signals (recovery confirmability in `plan/restore/coordination`,
  *    diagnostics evidence eligibility in `planDiagnostics` and the deferred
  *    objectives bridge).
  */

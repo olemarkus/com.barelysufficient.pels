@@ -3,7 +3,7 @@ import type { StructuredDebugEmitter } from '../logging/logger';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
-import { computeRestoreBufferKw } from './planRestoreAccounting';
+import { computeRestoreBufferKw } from './restore/accounting';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from './planDebugDedupe';
 import {
   buildPendingSteppedRestoreHold,

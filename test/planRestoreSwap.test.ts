@@ -7,7 +7,7 @@ import {
   computeRestoreBufferKw,
   estimateRestorePower,
   resolveRestorePowerSource,
-} from '../lib/plan/planRestoreAccounting';
+} from '../lib/plan/restore/accounting';
 import { buildRestoreHeadroomReason } from '../lib/plan/planReasonStrings';
 import { getCurrentDrawKw, getRestoreDrawKw } from '../lib/observer/observedPower';
 import { PENDING_RESTORE_WINDOW_MS } from '../lib/plan/planConstants';

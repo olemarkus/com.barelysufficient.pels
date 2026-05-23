@@ -2,10 +2,10 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { computeBaseRestoreNeed } from './planRestoreAccounting';
+import { computeBaseRestoreNeed } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildRestoreNeedReason, buildShortfallReason } from './planReasonStrings';
-import { getInactiveReason, getEvRestoreStateBlockReason } from './planRestoreDevices';
+import { getInactiveReason, getEvRestoreStateBlockReason } from './restore/devices';
 import type { DevicePlanDevice } from './planTypes';
 
 function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): string | null {

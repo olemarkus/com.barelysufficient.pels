@@ -9,7 +9,7 @@ type CooldownDisplayDevice = CooldownDevice & {
 // Canonical cooldown durations, in seconds. Used as the denominator for the
 // ring animation so a given `remainingSec` always maps to the same fill ratio
 // across re-renders and page reloads. Values mirror the runtime defaults in
-// lib/plan/planRestoreTiming.ts and docs/technical.md. Exponential backoff on
+// lib/plan/restore/timing.ts and docs/technical.md. Exponential backoff on
 // restore means the actual base may be smaller; the ring simply starts at a
 // partial fill in that case, which is acceptable.
 const COOLDOWN_BASE_SEC: Record<string, number> = {

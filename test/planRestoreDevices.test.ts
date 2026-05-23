@@ -8,7 +8,7 @@ import {
   isRestoreLiveEligibleDevice,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
-} from '../lib/plan/planRestoreDevices';
+} from '../lib/plan/restore/devices';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';
 

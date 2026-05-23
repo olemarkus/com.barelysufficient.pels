@@ -11,12 +11,12 @@ import {
   recordActivationSetback,
 } from '../lib/plan/planActivationBackoff';
 import { RESTORE_ADMISSION_FLOOR_KW, SWAP_TIMEOUT_MS } from '../lib/plan/planConstants';
-import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/planRestoreDevices';
-import { planRestoreForSteppedDevice } from '../lib/plan/planRestoreHelpers';
+import { NEUTRAL_STARTUP_HOLD_REASON } from '../lib/plan/restore/devices';
+import { planRestoreForSteppedDevice } from '../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
-import { applyRestorePlan } from '../lib/plan/planRestore';
-import { resolveMeterSettlingRemainingSec } from '../lib/plan/planRestoreTiming';
+import { applyRestorePlan } from '../lib/plan/restore';
+import { resolveMeterSettlingRemainingSec } from '../lib/plan/restore/timing';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from './utils/deviceReasonTestUtils';

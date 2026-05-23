@@ -11,7 +11,7 @@ import { buildPlanContext, type PlanContext, type SoftLimitSource } from './plan
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { buildPlanCapacityStateSummary } from './planLogging';
 import { buildInitialPlanDevices } from './planDevices';
-import { applyRestorePlan, type RestorePlanResult } from './planRestore';
+import { applyRestorePlan, type RestorePlanResult } from './restore';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './planUsage';
 import { syncHeadroomCardState } from './planHeadroomDevice';
 import {
