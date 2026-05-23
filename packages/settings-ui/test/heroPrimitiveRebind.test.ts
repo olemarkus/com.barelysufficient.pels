@@ -275,6 +275,14 @@ describe('DeadlinePlan hero consumes the shared hero primitive', () => {
     // Tone binding flows from the producer through `data-tone` — same
     // attribute every other hero uses.
     expect(hero?.getAttribute('data-tone')).toBe('good');
+    // The headline is an `<h2>` (matching the four sibling panels) so
+    // screen readers see the same heading structure across surfaces. The
+    // eyebrow is a `<p>` so the canonical typography cascade (`<p>` margins
+    // reset via `.eyebrow`) lands the same way every other hero renders.
+    const headline = hero?.querySelector('.plan-hero__headline');
+    expect(headline?.tagName.toLowerCase()).toBe('h2');
+    const eyebrow = hero?.querySelector('.eyebrow.plan-hero__section-label');
+    expect(eyebrow?.tagName.toLowerCase()).toBe('p');
   });
 
   it('pending-state hero walks the canonical eyebrow + headline contract', () => {
@@ -283,5 +291,11 @@ describe('DeadlinePlan hero consumes the shared hero primitive', () => {
     const hero = mount.querySelector('section.plan-hero.pels-hero');
     expectCanonicalHeroShape(hero);
     expect(hero?.getAttribute('data-tone')).toBe('info');
+    // Same shell shape as the ready hero — the pending variant must not
+    // silently revert to a `<div>` headline / `<span>` eyebrow.
+    const headline = hero?.querySelector('.plan-hero__headline');
+    expect(headline?.tagName.toLowerCase()).toBe('h2');
+    const eyebrow = hero?.querySelector('.eyebrow.plan-hero__section-label');
+    expect(eyebrow?.tagName.toLowerCase()).toBe('p');
   });
 });

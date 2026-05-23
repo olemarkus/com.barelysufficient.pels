@@ -202,9 +202,9 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       ))}
     </div>
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label eyebrow" id="deadline-plan-title">{payload.hero.sectionLabel}</span>
+      <p class="eyebrow plan-hero__section-label" id="deadline-plan-title">{payload.hero.sectionLabel}</p>
       {payload.hero.headline !== null && (
-        <div class="plan-hero__headline">{payload.hero.headline}</div>
+        <h2 class="plan-hero__headline">{payload.hero.headline}</h2>
       )}
       {payload.hero.headlineReason !== null && (
         <div class="plan-hero__subline plan-hero__subline--reason">{payload.hero.headlineReason}</div>
@@ -875,8 +875,8 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
       ))}
     </div>
     <div class="plan-hero__section">
-      <span class="plan-hero__section-label eyebrow" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</span>
-      <div class="plan-hero__headline">{pending.hero.headline}</div>
+      <p class="eyebrow plan-hero__section-label" id="deadline-plan-pending-title">{pending.hero.sectionLabel}</p>
+      <h2 class="plan-hero__headline">{pending.hero.headline}</h2>
       {pending.hero.headlineReason !== null && (
         <div class="plan-hero__subline plan-hero__subline--reason">{pending.hero.headlineReason}</div>
       )}
