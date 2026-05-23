@@ -376,5 +376,8 @@
   },
   "2.8.0": {
     "en": "Add trigger card and global tokan containing calculated prices per hour."
+  },
+  "2.9.0": {
+    "en": "Add the option to allow smart tasks to exempt from budget and to limit other devices. Also add option to switch phase mode for EV chargers."
   }
 }
