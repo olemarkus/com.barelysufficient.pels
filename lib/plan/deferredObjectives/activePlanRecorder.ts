@@ -15,6 +15,7 @@ import {
   resolveReplanReason,
 } from './replanReason';
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import { buildActivePlanLifecycleFields } from './activePlanLifecycleFields';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 import type { DeferredObjectiveRescuePermissions } from './settings';
@@ -32,6 +33,7 @@ import { buildObjectiveSignature } from './activePlanSignature';
 const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null
 );
+
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
@@ -478,6 +480,7 @@ export class DeferredObjectiveActivePlanRecorder {
       event: 'active_plan_revision_pending',
       deviceId: diag.deviceId,
       reason: 'awaiting_horizon_plan',
+      ...buildActivePlanLifecycleFields(diag, this.plans[diag.deviceId]!.startedAtMs),
     });
   }
 
@@ -523,6 +526,7 @@ export class DeferredObjectiveActivePlanRecorder {
       revision: 1,
       reason,
       hourCount: hours.length,
+      ...buildActivePlanLifecycleFields(diag, startedAtMs),
     });
   }
 
@@ -615,6 +619,7 @@ export class DeferredObjectiveActivePlanRecorder {
       revision: nextRevision,
       reason,
       hourCount: effectiveHours.length,
+      ...buildActivePlanLifecycleFields(diag, current.startedAtMs),
     });
     if (shouldFireNotification(latest.hours.length, effectiveHours.length, horizonPlan.status)) {
       this.deps.onRevisionWritten?.({
