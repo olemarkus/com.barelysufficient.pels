@@ -425,6 +425,170 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.statusDetail).toBe('target_cannot_be_met');
   });
 
+  // ---------- Slice 2: reserved-headroom committed-floor promotion ----------
+  // When the objective is fully reserved (both `exemptFromBudget` and
+  // `limitLowerPriorityDevices` set to 'always'), the planner promotes the
+  // committed floor from `activeSteps[0]` to the highest step the per-bucket
+  // `reservedHeadroomKw` forecast supports (v1: per-horizon minimum across
+  // buckets). The commitment is still physical — `hard-cap-is-physical` holds.
+
+  it('promotes the committed floor to the top step when reserved headroom fits and the task is fully reserved', () => {
+    // Need 18 kWh across 8h. Min step = 1 kW → 8 kWh → cannot_meet. Top step
+    // = 3 kW → 24 kWh → fits. reservedHeadroomKw = 4 (≥ top step). With
+    // `fullyReserved`, the floor is promoted to the top step and the plan is
+    // on_track. (Without promotion, this is exactly the false `cannot_meet`
+    // that motivates Slice 2.)
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 18,
+        deadlineAtMs: NOW_MS + (8 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: Array.from({ length: 8 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 4 })),
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(18);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(0);
+  });
+
+  it('promotes the floor only as high as the minimum per-bucket headroom allows', () => {
+    // headroom = 2.5 → fits medium step (2 kW) but not max (3 kW). Floor goes
+    // to medium. Need 16 kWh in 8h → 8h × 2 kW = 16 kWh → fits.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 16,
+        deadlineAtMs: NOW_MS + (8 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: Array.from({ length: 8 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 2.5 })),
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(16);
+  });
+
+  it('keeps the floor at min step when even the minimum headroom does not fit a higher step', () => {
+    // headroom = 0.5 — less than min step (1 kW). Promotion picks the
+    // rightmost step that fits, defaulting to the min step when even it
+    // doesn't. Need 4 kWh in 4h → at min step 4 kWh fits exactly.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 4,
+        deadlineAtMs: NOW_MS + (4 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: Array.from({ length: 4 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 0.5 })),
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(4);
+    // The per-bucket placed kWh shows the floor stayed at min step (1 kW × 1h = 1).
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('uses the minimum across buckets (per-horizon v1) — a single tight bucket holds the whole horizon to min step', () => {
+    // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). The v1
+    // per-horizon model uses the *minimum* so the chosen floor is safe in
+    // every bucket. → floor stays at min step → 1 kWh/h × 8h = 8 kWh placed
+    // out of 18 needed. The shortfall is still climbable (Slice-1 catches it)
+    // so the verdict softens to `at_risk`/`feasible_above_floor`, not a flat
+    // miss — which is the correct composition of Slices 1 + 2.
+    const headrooms = [4, 4, 0.5, 4, 4, 4, 4, 4];
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 18,
+        deadlineAtMs: NOW_MS + (8 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: headrooms.map((h, i) => bucket(i, 'neutral', { reservedHeadroomKw: h })),
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    // Floor stayed at min step → max ~1 kWh placed per bucket.
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    // 8 buckets × 1 kWh — confirms the floor did not promote.
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(8);
+  });
+
+  it('falls back to min step when any bucket lacks a reservedHeadroomKw forecast — we cannot promise more than we can verify', () => {
+    // Two buckets carry headroom = 4; one is missing the forecast field. The
+    // resolver fails closed (returns min step) — Slice 2 only promotes when
+    // the producer has resolved a forecast for every horizon bucket. The
+    // shortfall remains classified by Slice-1's climbed-band probe.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 8,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { reservedHeadroomKw: 4 }),
+        bucket(1, 'neutral'), // no reservedHeadroomKw
+        bucket(2, 'neutral', { reservedHeadroomKw: 4 }),
+      ],
+    });
+
+    // Climbed-band probe (top step) DOES fit 8 kWh in 3 h (3 × 3 = 9), so the
+    // verdict softens to at_risk. Slice-2's job is only "verify we can promote
+    // the *floor*"; classification correctness still belongs to Slice 1.
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('does not promote the floor when the objective is not fully reserved (even with ample headroom)', () => {
+    // Same scenario as the smoking-gun test (need 18 in 8h, headroom 4), but
+    // `fullyReserved: false` — the partial-rescue / no-rescue case. Floor must
+    // stay at min step; we have no physical guarantee for the higher step.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 18,
+        deadlineAtMs: NOW_MS + (8 * HOUR_MS),
+        fullyReserved: false,
+      }),
+      steps: defaultSteps,
+      buckets: Array.from({ length: 8 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 4 })),
+    });
+
+    // The climbed-band probe (Slice 1) still picks up that climbing fits
+    // — that's the existing behavior — so this is `at_risk`/feasible_above_floor.
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    // Floor itself stayed at min step.
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('is a no-op for single-step devices (the only available step is already the floor)', () => {
+    // Single-step EV-style device: the promotion path short-circuits — there is
+    // no higher step to promote to. Behavior is identical to pre-Slice-2.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 1,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+        fullyReserved: true,
+      }),
+      steps: [{ id: 'one', usefulPowerKw: 1 }],
+      buckets: [bucket(0, 'neutral', { reservedHeadroomKw: 4 })],
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
   it('preserves deadline margin before using a preferred bucket inside the reserve window', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,

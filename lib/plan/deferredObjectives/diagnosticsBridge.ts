@@ -10,13 +10,12 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
 import type { PlanInputDevice } from '../planTypes';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
-import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
+import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveCommittedHours } from './resolveCommittedHours';
-import { firstPositiveFinite, resolvePlanningSpeedKw } from './planningSpeed';
+import { resolvePlanningSpeedKw } from './planningSpeed';
 import {
   resolveObjectiveProgress,
   type DeferredObjectiveProgressResolution,
@@ -32,10 +31,7 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
-import type {
-  DeferredObjectiveHorizonPlan,
-  DeferredObjectiveStep,
-} from './types';
+import type { DeferredObjectiveHorizonPlan } from './types';
 
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
@@ -136,6 +132,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  hardCapKw?: number | null;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   return Object.entries(params.settings.objectivesByDeviceId)
@@ -255,6 +252,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  hardCapKw?: number | null;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -303,6 +301,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
       priceOptimizationEnabled,
       dailyBudgetSnapshot,
       activePlans,
+      hardCapKw: params.hardCapKw,
     });
   }
 
@@ -311,6 +310,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
+    hardCapKw: params.hardCapKw,
   });
   if (policyHorizon.reasonCode) {
     const knownInputs = buildPolicyGatedKnownInputs(
@@ -339,6 +339,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
     activePlans,
+    hardCapKw: params.hardCapKw,
   });
 };
 
@@ -355,6 +356,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   priceOptimizationEnabled: boolean;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  hardCapKw?: number | null;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -424,6 +426,11 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     policyHorizon,
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
+    hardCapKw: params.hardCapKw,
+    // Strict top-priority gate for Slice-2 floor promotion; see comment in
+    // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
+    // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.
+    devicePriority: device.priority,
   });
 
   return {
@@ -553,28 +560,3 @@ const buildKnownEnergyFields = (params: {
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
 });
 
-const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[] => {
-  const profile = device.steppedLoadProfile;
-  if (profile) {
-    return sortSteppedLoadSteps(profile.steps).map((step) => ({
-      id: step.id,
-      usefulPowerKw: resolveStepDeliveryUsefulKw(device, step.id, step.planningPowerW / 1000),
-    }));
-  }
-  // EV chargers go through the same calibrated lookup as stepped devices so
-  // the allocator's per-step useful power agrees with the hero's planning-
-  // speed reading. Without this, a confident calibration below nameplate
-  // would let the allocator over-promise delivery while the hero shows a
-  // slower speed.
-  const planning = device.planningPowerKw;
-  if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
-    return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning) }];
-  }
-  if (device.deviceClass === 'evcharger') {
-    const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
-    if (expected !== null) {
-      return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
-    }
-  }
-  return [];
-};

@@ -44,6 +44,18 @@ export const resolveHorizonPlanWithRescue = (params: {
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   priceOptimizationEnabled: boolean;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  // Threaded through to the exempt rebuild so its rebuilt buckets carry the
+  // same per-bucket `reservedHeadroomKw` forecast as the baseline buckets —
+  // a fully-reserved task running on the exempt rebuild still needs the
+  // forecast for Slice 2's floor-step promotion.
+  hardCapKw?: number | null;
+  // Device priority on the same scale used by `planSort` (lower number = more
+  // important; `1` is top). Slice-2 floor promotion only fires when the device
+  // is strictly top-priority: the reserved-headroom forecast
+  // (`hardCap − uncontrolled`) implicitly assumes any controlled concurrent
+  // load can be displaced, which is only true at priority 1. Non-top-priority
+  // tasks stay on the min-step floor even with both rescue permissions set.
+  devicePriority?: number;
 }): RescueHorizonResult => {
   const {
     nowMs,
@@ -58,6 +70,23 @@ export const resolveHorizonPlanWithRescue = (params: {
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
   } = params;
+  // `fullyReserved` resolved here, at the rescue boundary that already owns
+  // rescue-permission interpretation. Three conjuncts:
+  //  1. exempt-from-budget `'always'` lifts the soft daily-budget cap.
+  //  2. limit-lower-priority `'always'` lets the task displace lower-priority
+  //     controlled devices when claiming physical headroom.
+  //  3. device is strictly top priority (`=== 1`). The reserved-headroom
+  //     forecast (`hardCap − uncontrolled`) implicitly assumes every controlled
+  //     concurrent watt can be displaced, which only holds at the top. A
+  //     non-top task with both permissions can still be denied by a *higher*-
+  //     priority controlled device (which `limit-lower-priority` cannot shed),
+  //     so the capacity guard would catch the wall but verdicts would
+  //     oscillate. Strict `=== 1` is the safe v1 floor; broader semantics
+  //     ("highest priority *present* on this Homey") tracked as TODO.
+  // Anything weaker stays at the min-step floor.
+  const fullyReserved = params.devicePriority === 1
+    && objective.rescue?.exemptFromBudget === 'always'
+    && objective.rescue?.limitLowerPriorityDevices === 'always';
   const planForBuckets = (
     buckets: ResolvedHorizonBuckets,
   ): DeferredObjectiveHorizonPlan => planDeferredObjectiveHorizon({
@@ -68,6 +97,7 @@ export const resolveHorizonPlanWithRescue = (params: {
       enforcement: objective.enforcement,
       energyNeededKWh,
       energyExpectedKWh: energyExpectedKWh ?? undefined,
+      fullyReserved,
       deadlineAtMs,
       deadlineMarginMs: DEFAULT_DEADLINE_RESERVE_MS,
     },
@@ -89,6 +119,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
     exemptFromBudget: true,
+    hardCapKw: params.hardCapKw,
   });
   if (exemptHorizon.reasonCode) {
     // Exempt rebuild failed — fall back to the budget-capped baseline and its real count.

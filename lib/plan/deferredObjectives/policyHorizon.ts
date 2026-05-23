@@ -55,6 +55,13 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
   exemptFromBudget?: boolean;
+  // Configured hard cap in kW. When provided alongside the daily-budget
+  // snapshot's `plannedUncontrolledKWh`, each bucket gets a
+  // `reservedHeadroomKw` forecast (`hardCapKw − plannedUncontrolledKw`) that a
+  // fully-reserved smart task can use to promote its committed floor step
+  // (Slice 2 of Cause #2 in `TODO.md`). Optional: missing → no forecast → the
+  // planner stays on the min-step floor.
+  hardCapKw?: number | null;
 }): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
@@ -62,6 +69,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     priceOptimizationEnabled,
     dailyBudgetSnapshot,
     exemptFromBudget = false,
+    hardCapKw = null,
   } = params;
   if (!priceOptimizationEnabled) {
     return unavailable('objective_price_feature_disabled');
@@ -75,7 +83,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     return unavailable('objective_missing_price_horizon');
   }
   return {
-    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget),
+    buckets: mapPolicyBuckets(sourceBuckets, exemptFromBudget, hardCapKw),
     horizonBucketCount: sourceBuckets.length,
     dailyBudgetExhaustedBucketCount: countDailyBudgetExhausted(sourceBuckets),
     reasonCode: null,
@@ -231,12 +239,14 @@ const coversHorizon = (params: {
 const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
+  hardCapKw: number | null,
 ): DeferredObjectiveHorizonBucket[] => {
   const ranked = rankPrices(buckets.map((bucket) => bucket.price));
   return buckets.map((bucket, index) => {
     const priceFactor = bucket.priceFactor;
     const rankedScore = ranked[index] ?? 1;
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
+    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw);
     return {
       id: bucket.id,
       startMs: bucket.startMs,
@@ -244,8 +254,27 @@ const mapPolicyBuckets = (
       preference: resolveBucketPreference(priceFactor, rankedScore),
       policyScore: priceFactor ?? rankedScore,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
+      ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
     };
   });
+};
+
+// Reserved physical headroom for a fully-reserved smart task in this bucket:
+// `hardCapKw − planned uncontrolled load` (the cap minus the non-PELS-managed
+// forecast — controlled lower-priority devices can be displaced up to the cap
+// because the task holds both the budget-exempt and limit-lower-priority
+// rescue permissions). Clamped at 0. Returns null when either input is missing
+// so the planner falls back to the min-step floor.
+const resolveReservedHeadroomKw = (
+  bucket: PolicyBucketSource,
+  hardCapKw: number | null,
+): number | null => {
+  if (hardCapKw === null || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return null;
+  if (bucket.backgroundKWh === null) return null;
+  const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
+  if (durationHours <= 0) return null;
+  const uncontrolledKw = bucket.backgroundKWh / durationHours;
+  return Math.max(0, hardCapKw - uncontrolledKw);
 };
 
 const resolveMaxUsefulEnergyKWh = (

@@ -664,6 +664,7 @@ export class PlanBuilder {
       dailyBudgetSnapshot,
       priceOptimizationEnabled: this.priceOptimizationEnabled,
       activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
+      hardCapKw: this.capacitySettings.limitKw,
     });
   }
 
