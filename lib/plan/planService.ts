@@ -292,20 +292,19 @@ export class PlanService {
     );
   }
 
-  // eslint-disable-next-line complexity
   syncLivePlanStateInline(source: PendingTargetObservationSource): boolean {
-    const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands?.() ?? false;
-    const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands?.() ?? false;
+    const hasPendingTargetCommands = this.deps.planEngine.hasPendingTargetCommands();
+    const hasPendingBinaryCommands = this.deps.planEngine.hasPendingBinaryCommands();
     if (!hasPendingTargetCommands && !hasPendingBinaryCommands) {
       return false;
     }
 
     const liveDevices = this.deps.getPlanDevices();
     const pendingTargetChanged = hasPendingTargetCommands
-      ? (this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, source) ?? false)
+      ? this.deps.planEngine.syncPendingTargetCommands(liveDevices, source)
       : false;
     const pendingBinaryChanged = hasPendingBinaryCommands
-      ? (this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, source) ?? false)
+      ? this.deps.planEngine.syncPendingBinaryCommands(liveDevices, source)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
     if (!this.latestPlanSnapshot) {
@@ -701,9 +700,9 @@ export class PlanService {
   }
 
   private async buildPlanForRebuild(reason: string): Promise<{ plan: DevicePlan; buildMs: number }> {
-    const liveDevices = this.deps.getPlanDevices() ?? [];
-    this.deps.planEngine.syncPendingTargetCommands?.(liveDevices, 'rebuild');
-    this.deps.planEngine.syncPendingBinaryCommands?.(liveDevices, 'rebuild');
+    const liveDevices = this.deps.getPlanDevices();
+    this.deps.planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
+    this.deps.planEngine.syncPendingBinaryCommands(liveDevices, 'rebuild');
     const buildStart = Date.now();
     this.currentBuildReason = reason;
     if (this.deps.planEngine.state) {
@@ -720,7 +719,7 @@ export class PlanService {
         this.deps.planEngine.state.currentRebuildReason = null;
       }
     }
-    this.deps.planEngine.prunePendingTargetCommands?.(plan);
+    this.deps.planEngine.prunePendingTargetCommands(plan);
     plan = this.decoratePlanWithPendingTargetCommands(plan);
     return {
       plan,
@@ -774,7 +773,7 @@ export class PlanService {
     changes: PlanChangeSet,
     isDryRun: boolean,
   ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number; commandRequestCount: number }> {
-    const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions?.(plan) ?? false;
+    const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions(plan);
     if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
       return { applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0 };
     }
@@ -880,7 +879,7 @@ export class PlanService {
   }
 
   private decoratePlanWithPendingTargetCommands(plan: DevicePlan): DevicePlan {
-    return this.deps.planEngine.decoratePlanWithPendingTargetCommands?.(plan) ?? plan;
+    return this.deps.planEngine.decoratePlanWithPendingTargetCommands(plan);
   }
 
 }
