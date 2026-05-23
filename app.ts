@@ -21,7 +21,7 @@ import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/core/powerTracker';
 import { PriceLevel } from './lib/price/priceLevels';
-import { buildPeriodicStatusLogFields } from './lib/core/periodicStatus';
+import { buildPeriodicStatusLogFields } from './lib/app/periodicStatus';
 import { getDeviceLoadSetting } from './lib/core/deviceLoad';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {

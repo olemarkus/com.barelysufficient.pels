@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { buildPelsStatus } from '../core/pelsStatus';
+import { buildPelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../utils/timingConstants';

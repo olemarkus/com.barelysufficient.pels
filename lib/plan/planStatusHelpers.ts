@@ -1,4 +1,4 @@
-import { buildPelsStatus } from '../core/pelsStatus';
+import { buildPelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
 import type { DevicePlan } from './planTypes';
 
