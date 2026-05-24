@@ -216,7 +216,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
         <div class="plan-hero__recourse">
           <button
             type="button"
-            class="plan-hero__recourse-button"
+            class="pels-button"
             data-deadline-recourse-tab={payload.hero.recourse.targetTab}
             data-deadline-recourse-device-id={payload.hero.recourse.deviceId ?? ''}
           >
@@ -855,10 +855,10 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
 // PendingHero mirrors `DeadlineHero` for the active-plan ready path: the
 // headlineReason subline sits directly below the headline (same render slot
 // as the queued-hero "why" subline) and the recourse button reuses the
-// cannot-meet `plan-hero__recourse-button` shape so the dispatcher in
-// `deadlinePlanMount.ts` handles both surfaces with a single delegated click
-// handler. The view never branches on pendingReason — both fields arrive
-// pre-resolved from the producer.
+// canonical `.pels-button` shape so the dispatcher in `deadlinePlanMount.ts`
+// handles both surfaces with a single delegated click handler. The view
+// never branches on pendingReason — both fields arrive pre-resolved from
+// the producer.
 const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero pels-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
@@ -878,7 +878,7 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
         <div class="plan-hero__recourse">
           <button
             type="button"
-            class="plan-hero__recourse-button"
+            class="pels-button"
             data-deadline-recourse-tab={pending.hero.recourse.targetTab}
             data-deadline-recourse-device-id={pending.hero.recourse.deviceId ?? ''}
           >

@@ -182,7 +182,7 @@ describe('DeadlinePlan live-hero recourse button', () => {
       status: 'ready',
       payload: buildReadyPayloadWithDeviceRecourse('dev_heater_42'),
     });
-    const button = mount.querySelector<HTMLButtonElement>('.plan-hero__recourse-button');
+    const button = mount.querySelector<HTMLButtonElement>('.plan-hero__recourse .pels-button');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
     expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
