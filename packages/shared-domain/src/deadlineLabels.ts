@@ -1042,7 +1042,7 @@ export const formatDeadlineCostMetaLine = (params: {
 };
 
 // Resolver for the "Delivered so far" hero subline. Branches by plan status:
-//   - `cannot_meet`            → `Delivered X of Y kWh · still {curr} of {target} · won't reach by {deadline}`
+//   - `cannot_meet`            → `Delivered X of Y kWh · still {curr} of {target}`
 //   - on-track / at-risk / queued → `Delivered X of Y kWh · {start →} {curr} of {target}`
 //
 // The "start → current" arrow is rendered only when `startProgress` is known
@@ -1052,7 +1052,14 @@ export const formatDeadlineCostMetaLine = (params: {
 //
 // `targetUnit` is `°C` / `%` and matches `DeadlineLabels.targetUnit`. The
 // caller formats `deadlineTime` (e.g. `16:00`) — shared-domain stays free of
-// locale and Date helpers.
+// locale and Date helpers. `deadlineTime` is retained in the input shape so
+// callers don't have to branch on status to decide whether to pass it, but it
+// is unused after the cannot-meet branch dropped its `· won't reach by` tail
+// (TODO ~1586): the chip ("Cannot finish") + meta line ("Not enough time for
+// this target. …") already announce the verdict; restating it as a third tail
+// on the magnitude line read as alarm spam in the 2026-05-16 live walk. The
+// "still {curr} of {target}" stem (vs the on-track "now …") still tonally
+// pairs with the alert chip without re-asserting the failure.
 //
 // Returns `null` when planned energy is non-finite / zero (no allocation yet,
 // or revision predates the field) or when both delivered and progress data
@@ -1070,6 +1077,9 @@ export const formatDeadlineDeliveredSoFarLine = (params: {
   startProgress: number | null;
   targetValue: number;
   targetUnit: '°C' | '%';
+  // Kept for backward compatibility with callers (the live cannot-meet hero
+  // and the unit tests). Unused after the `won't reach by` tail was dropped;
+  // see header comment.
   deadlineTime: string;
 }): string | null => {
   if (!Number.isFinite(params.plannedTotalKWh) || params.plannedTotalKWh <= 0) return null;
@@ -1080,8 +1090,7 @@ export const formatDeadlineDeliveredSoFarLine = (params: {
   const currentLabel = formatProgressValueForUnit(params.currentProgress, params.targetUnit);
   const targetLabel = formatProgressValueForUnit(params.targetValue, params.targetUnit);
   if (params.status === 'cannot_meet') {
-    return `${energyPart} · still ${currentLabel} of ${targetLabel} target `
-      + `· won’t reach by ${params.deadlineTime}`;
+    return `${energyPart} · still ${currentLabel} of ${targetLabel} target`;
   }
   // Compare formatted labels rather than raw numeric deltas: for percent
   // values (`Math.round`) two readings 0.4 percentage points apart still
