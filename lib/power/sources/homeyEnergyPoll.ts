@@ -1,16 +1,27 @@
 import type Homey from 'homey';
-import type { DeviceManager } from '../device/manager';
-import type { TimerRegistry } from './timerRegistry';
+import type { TimerRegistry } from '../../app/timerRegistry';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 
-export class AppHomeyEnergyHelpers {
+/**
+ * Whole-home power source that polls Homey Energy every 10 s when the
+ * `power_source` setting is `homey_energy`. Hands each sample to the
+ * injected `recordPowerSample(watts)` callback — knows nothing about
+ * what the consumer does with it.
+ *
+ * Lives under `lib/power/sources/` because it produces the whole-home
+ * power signal; the per-device shape of devices is irrelevant here.
+ * The actual Homey SDK call (`pollHomePower`) is injected so this file
+ * does not depend on `lib/device/` (per the power mandate codified in
+ * `.dependency-cruiser.cjs`).
+ */
+export class HomeyEnergyPollSource {
   private pollInterval?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: {
     homey: Homey.App['homey'];
     timers: TimerRegistry;
-    getDeviceManager: () => DeviceManager | undefined;
+    pollHomePower: () => Promise<number | null | undefined>;
     recordPowerSample: (powerW: number) => Promise<void>;
     logDebug: (topic: 'devices', ...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
@@ -43,7 +54,7 @@ export class AppHomeyEnergyHelpers {
   }
 
   async pollNow(): Promise<void> {
-    const homePowerW = await this.deps.getDeviceManager()?.pollHomePowerW();
+    const homePowerW = await this.deps.pollHomePower();
     if (typeof homePowerW === 'number') {
       this.deps.logDebug('devices', `Homey Energy poll: ${homePowerW}W`);
       await this.deps.recordPowerSample(homePowerW);
