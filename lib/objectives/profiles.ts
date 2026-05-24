@@ -6,7 +6,7 @@ import type {
 import type { PowerTrackerState } from '../power/trackerTypes';
 import { shouldEmitRejectedProfileSample } from './rejectionLogging';
 import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } from './recovery';
-import { applyBandedConfidence, updateProfileStat } from './stats';
+import { applyBandedConfidence, resolveProfileConfidence, updateProfileStat } from './stats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './bands';
 import { buildObjectiveProfileSample } from './samples';
 import {
@@ -286,6 +286,12 @@ function buildAcceptedProfileSample(params: {
     // measured from this baseline.
     ...CLEARED_ENERGY_ACCUMULATOR,
   };
+  // Snapshot the raw-CV (global) confidence *before* `applyBandedConfidence`
+  // overrides `kwhPerUnit.confidence`, so `globalEnergyConfidence` below
+  // stays comparable with pre-Step-2 log dumps for the same device.
+  const globalEnergyConfidence = nextProfile.kwhPerUnit
+    ? resolveProfileConfidence(nextProfile.kwhPerUnit)
+    : null;
   // Once the bands are merged in, re-resolve the overall kWh/unit confidence
   // against the pooled within-band residual (Step 2 of the Cause-#1 fix in
   // `TODO.md`). The plain `updateProfileStat` above used the global `m2`,
@@ -293,6 +299,9 @@ function buildAcceptedProfileSample(params: {
   // confidence at `low` even when each step's rate has converged tightly.
   // Per-band confidences are unchanged.
   nextProfile.kwhPerUnit = applyBandedConfidence(nextProfile.kwhPerUnit, nextProfile.bands);
+  // `energyConfidence` reflects banded data when bands have fit (best-available
+  // signal); `globalEnergyConfidence` always carries the raw-CV value so
+  // old/new log dumps stay directly comparable across the Step-2 cutover.
   debugStructured?.({
     event: 'objective_profile_sample_recorded',
     deviceId,
@@ -306,6 +315,7 @@ function buildAcceptedProfileSample(params: {
     acceptedSamples: nextProfile.acceptedSamples,
     rateConfidence: nextProfile.unitPerHour.confidence,
     energyConfidence: nextProfile.kwhPerUnit?.confidence ?? null,
+    globalEnergyConfidence,
     powerSource: previousSample.powerSource ?? null,
     bufferedSamples: nextProfile.samples?.length ?? 0,
     bandsCount: nextProfile.bands?.length ?? 0,
