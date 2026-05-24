@@ -62,7 +62,11 @@ export const resolveHorizonPlanWithRescue = (params: {
   // `reservedHeadroomKw` is divided equally across sibling tasks rather than
   // each producer publishing the full forecast independently. Defaults to `1`
   // so single-task callers and partial-rescue callers keep legacy behaviour.
-  concurrentEligibleCount?: number;
+  //
+  // A function form lets the count drop on late-horizon buckets where one
+  // of the eligible tasks has already passed its deadline — see
+  // `concurrentEligibleCount` in `buildDeferredObjectivePolicyHorizon`.
+  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
 }): RescueHorizonResult => {
   const {
     nowMs,

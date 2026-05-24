@@ -71,7 +71,13 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // stays unaware of sibling tasks — see
   // `feedback_layering_resolution_in_producer`. Defaults to `1` (legacy /
   // single-task behavior). Values `<= 0` or non-finite are treated as `1`.
-  concurrentEligibleCount?: number;
+  //
+  // A function form lets the count vary per bucket: a task whose deadline
+  // sits inside the horizon stops sharing the headroom on later buckets
+  // where it is no longer eligible (see "over-counts in late-horizon
+  // buckets" TODO entry). The number form is preserved for legacy callers
+  // and tests; the function receives the bucket's UTC start ms.
+  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
 }): DeferredObjectivePolicyHorizonResult => {
   const {
     nowMs,
@@ -251,15 +257,23 @@ const mapPolicyBuckets = (
   buckets: PolicyBucketSource[],
   exemptFromBudget: boolean,
   hardCapKw: number | null,
-  concurrentEligibleCount: number,
+  concurrentEligibleCount: number | ((bucketStartMs: number) => number),
 ): DeferredObjectiveHorizonBucket[] => {
   const ranked = rankPrices(buckets.map((bucket) => bucket.price));
-  const sharePerTask = resolveEligibleShare(concurrentEligibleCount);
+  // Resolve the eligible count per bucket so a task that drops out of
+  // eligibility mid-horizon (its deadline passes) stops dividing the
+  // reserved headroom on later buckets. Number callers collapse to a
+  // constant share regardless of bucket start.
+  const shareForBucket = (bucketStartMs: number): number => (
+    typeof concurrentEligibleCount === 'function'
+      ? resolveEligibleShare(concurrentEligibleCount(bucketStartMs))
+      : resolveEligibleShare(concurrentEligibleCount)
+  );
   return buckets.map((bucket, index) => {
     const priceFactor = bucket.priceFactor;
     const rankedScore = ranked[index] ?? 1;
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
-    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw, sharePerTask);
+    const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw, shareForBucket(bucket.startMs));
     return {
       id: bucket.id,
       startMs: bucket.startMs,

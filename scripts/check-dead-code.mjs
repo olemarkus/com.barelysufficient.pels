@@ -45,6 +45,8 @@ const allowedOrphans = new Set([
 const deferredObjectiveBarrelExports = [
   'buildDeferredObjectiveDiagnostics',
   'buildDeferredObjectivePolicyHorizon',
+  'ConcurrentEligibleTaskTracker',
+  'ELIGIBILITY_ABANDON_GRACE_MS',
   'createEmptyDeferredObjectiveSettings',
   'DeferredObjectiveDeadlineResolution',
   'DeferredObjectiveDiagnostic',

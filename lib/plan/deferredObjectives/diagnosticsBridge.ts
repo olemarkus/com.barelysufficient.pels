@@ -31,7 +31,10 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
-import { countConcurrentEligibleTasks } from './concurrentEligibleTasks';
+import {
+  ConcurrentEligibleTaskTracker,
+  resolveConcurrentEligibleCount,
+} from './concurrentEligibleTasks';
 import type { DeferredObjectiveHorizonPlan } from './types';
 
 export type DeferredObjectiveDiagnosticReasonCode =
@@ -134,15 +137,29 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
+  // Optional stateful tracker that remembers each eligible device across
+  // cycles so a transient SDK-side device-snapshot eviction does not flicker
+  // the eligibility count downward for one cycle (`feedback_homey_sdk_unreliable`).
+  // The tracker also caches each task's deadline so per-bucket counts can drop
+  // tasks once their deadline has passed (late-horizon buckets). Callers that
+  // omit it fall back to a one-shot count, which is fine for tests but lets
+  // verdicts flicker in production — see the rationale on
+  // `ConcurrentEligibleTaskTracker`.
+  concurrentEligibleTracker?: ConcurrentEligibleTaskTracker;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
-  // Count the priority-1 fully-reserved smart tasks once per cycle so the
-  // per-task `policyHorizon` producer can split each bucket's reserved
+  // Resolve the priority-1 fully-reserved smart-task count once per cycle so
+  // the per-task `policyHorizon` producer can split each bucket's reserved
   // headroom equally across siblings instead of each eligible task promoting
-  // to the full forecast and double-booking the slot.
-  const concurrentEligibleCount = countConcurrentEligibleTasks({
+  // to the full forecast and double-booking the slot. With a tracker present
+  // we hand the producer a per-bucket resolver so a task whose deadline has
+  // passed mid-horizon stops counting in later buckets' denominators; without
+  // one we fall back to the legacy one-shot count.
+  const concurrentEligibleCount = resolveConcurrentEligibleCount({
     settings: params.settings,
     deviceById,
+    nowMs: params.nowMs,
+    tracker: params.concurrentEligibleTracker,
   });
   return Object.entries(params.settings.objectivesByDeviceId)
     .flatMap(([deviceId, objective]) => {
@@ -263,7 +280,7 @@ const buildDeferredObjectiveDiagnostic = (params: {
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
-  concurrentEligibleCount?: number;
+  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -371,7 +388,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
-  concurrentEligibleCount?: number;
+  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,

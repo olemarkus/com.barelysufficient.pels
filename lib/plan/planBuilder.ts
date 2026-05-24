@@ -51,6 +51,7 @@ import {
 } from './admission';
 import {
   buildDeferredObjectiveDiagnostics,
+  ConcurrentEligibleTaskTracker,
   emitDeferredObjectiveDiagnostics,
   emitDeferredObjectiveStatusTransitions,
   type DeferredObjectiveDiagnostic,
@@ -124,6 +125,17 @@ const OVERSHOOT_DELTA_EPSILON_KW = 0.05;
 const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
 
 export class PlanBuilder {
+  // Stateful tracker for the priority-1 fully-reserved smart-task count. Held
+  // at the builder so its grace-window state (devices observed within the
+  // last `ELIGIBILITY_ABANDON_GRACE_MS`) survives across plan cycles —
+  // without that, a transient SDK-side device-snapshot eviction flickers the
+  // count down for one cycle and survivor diagnostics oscillate
+  // `on_track` ↔ `at_risk: feasible_above_floor`. Not persisted across PELS
+  // restarts; on restart the first cycle rebuilds the map, accepting one
+  // potential flicker window in exchange for keeping the eligibility model
+  // off the settings contract.
+  private concurrentEligibleTracker = new ConcurrentEligibleTaskTracker();
+
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
   private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
@@ -668,6 +680,7 @@ export class PlanBuilder {
       priceOptimizationEnabled: this.priceOptimizationEnabled,
       activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
       hardCapKw: this.capacitySettings.limitKw,
+      concurrentEligibleTracker: this.concurrentEligibleTracker,
     });
   }
 

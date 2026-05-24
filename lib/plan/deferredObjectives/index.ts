@@ -40,6 +40,10 @@ export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export {
+  ConcurrentEligibleTaskTracker,
+  ELIGIBILITY_ABANDON_GRACE_MS,
+} from './concurrentEligibleTasks';
+export {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
 } from './settings';

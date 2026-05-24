@@ -481,34 +481,36 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
 
-- [ ] Eligibility-count flicker hardening for the new
-      `countConcurrentEligibleTasks` helper. Today the count is read from
-      `params.deviceById` (built from the cached target snapshot) plus
-      persisted PELS settings, so a transient SDK-side device-snapshot
-      eviction (Homey SDK miss per `feedback_homey_sdk_unreliable`) drops
-      that task from the count for one plan cycle and surviving siblings
-      briefly see `headroom / (N-1)` — diagnostic verdicts can oscillate
-      `on_track` ↔ `at_risk: feasible_above_floor` across adjacent
-      cycles. Capacity guard still holds, so this is verdict-flicker
-      hardening rather than a control bug. Consider an abandon-grace
-      window analogous to `planHistory.ts:48` (`ABANDON_GRACE_MS`) — count
-      should only drop after the device has been absent for one full
-      cooldown window.
-      Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
-      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
+- [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
+      promotion. PR #1018's `capped_idle` discriminator requires a
+      20-min observation window before classification can fire; a
+      Connected 300 task with a 1-hour deadline gets at most one
+      classification opportunity (window opens ~20 min in, deadline at
+      60 min). If the cycling pattern hasn't established by then or
+      only one half of the duty cycle has occurred, the run finalises
+      as a real miss. Not a correctness bug — graceful degradation back
+      to the existing classification — but the user experience for
+      short-deadline runs is unchanged. Acceptance: either shorten the
+      window for short-deadline runs (risk: more false positives) or
+      document the limitation in `notes/idle-classification.md`.
+      Files: `lib/observer/idleDetector.ts`,
+      `notes/idle-classification.md`.
+      Source: `pels-runtime-reality`, PR #1018 follow-up, 2026-05-23.
 
-- [ ] `countConcurrentEligibleTasks` over-counts in late-horizon buckets
-      where one of the eligible tasks' deadlines has already passed. The
-      count is computed once per cycle from settings + device map, with no
-      `deadlineAtMs` or `nowMs` input, so a task that drops out of
-      eligibility mid-horizon stays in the per-bucket denominator across
-      all buckets in the union horizon. Strictly conservative
-      (survivors get a smaller slice in late buckets, never larger), so
-      hard-cap invariant is intact. Consider a per-bucket count that
-      respects deadline expiry to tighten the diagnostic verdict on
-      late-horizon buckets.
-      Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
-      Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
+- [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
+      noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
+      0.01 °C epsilon), Mill/Adax/Glamox sensors that report 0.1-0.2 °C
+      jitter will keep clearing the band and resetting the no-progress
+      counter, so the `no_progress` disarm never trips and only the
+      24-hour `RECOVERY_SAFETY_TIMEOUT_MS` bounds the worst case. The
+      wall-clock floor caps the harm to "won't disarm during the first
+      30 min", but past 30 min a noisy device is back to the original
+      stuck-state. Couple to the open thermostat-noise work (stashed
+      `missing_capacity` draft) rather than blindly raising the
+      multiplier here; the right fix is likely a noise-aware threshold
+      keyed to the device's observed jitter floor.
+      Files: `lib/objectives/recovery.ts`.
+      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Harden the rescue-only replan-reason routing against partial /
       combined toggle scenarios. The PR-998 regression suite covers
