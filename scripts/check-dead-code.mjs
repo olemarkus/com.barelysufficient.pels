@@ -112,6 +112,7 @@ const allowedUnusedExportPatterns = [
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
   /^lib\/diagnostics\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
+  /^lib\/logging\/logger\.ts:\d+ - __resetLoggerCacheGuardForTest$/,
   /^lib\/utils\/opRssTracker\.ts:\d+ - __resetRssSupportProbeForTests$/,
   /^lib\/device\/managerNativeEv\.ts:\d+ - __resetNativeEvWiringLogStateForTests$/,
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
