@@ -14,7 +14,7 @@ import {
   createEmptyPowerCalibrationSnapshot,
   POWER_CALIBRATION_CONSTANTS,
   recordSample,
-} from '../lib/observer/devicePowerCalibration';
+} from '../lib/device/devicePowerCalibration';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 import type { AppContext } from '../lib/app/appContext';

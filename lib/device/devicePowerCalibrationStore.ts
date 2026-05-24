@@ -4,7 +4,7 @@
  * Holds the calibration snapshot in memory, accepts per-device samples that
  * the device manager dispatches whenever an observation actually mutated the
  * snapshot, debounces writes back to Homey settings, and periodically prunes
- * stale entries. Pure-store logic lives in `lib/observer/devicePowerCalibration.ts`.
+ * stale entries. Pure-store logic lives in `lib/device/devicePowerCalibration.ts`.
  */
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
@@ -19,7 +19,7 @@ import {
   normalizePowerCalibrationSnapshot,
   pruneStale,
   recordSample,
-} from '../observer/devicePowerCalibration';
+} from './devicePowerCalibration';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';

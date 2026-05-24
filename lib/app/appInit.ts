@@ -4,7 +4,7 @@ import {
   getDeliveryPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
-} from '../observer/devicePowerCalibration';
+} from '../device/devicePowerCalibration';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';

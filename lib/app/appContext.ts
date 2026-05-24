@@ -37,7 +37,7 @@ import type {
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
-import type { PowerSampleRebuildState } from './appPowerHelpers';
+import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
 import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../device/flowReportedCapabilities';

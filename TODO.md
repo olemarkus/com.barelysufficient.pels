@@ -2498,7 +2498,7 @@ should not be folded into the same PR.
       `99ad7631` had not been re-synced) and re-bundled it as part of the
       same commit so source and shipped bundle are now in lock-step.
 
-- [ ] Move PR #882's hardcoded user copy into shared-domain helpers.
+- [x] Move PR #882's hardcoded user copy into shared-domain helpers.
       PR #882 introduced two inline strings the PR description acknowledged
       as exceptions (TV-stue temperature placeholder at
       `PlanDeviceCards.tsx:462`; projected-energy text at
@@ -2510,6 +2510,18 @@ should not be folded into the same PR.
       Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
       `packages/settings-ui/src/ui/views/PlanHero.tsx`,
       `packages/shared-domain/src/deviceOverview.ts` (or new helper).
+      Done: (1) the TV-stue "Temperature unavailable" placeholder was
+      already replaced in PR #893 (`refactor(plan): plannedTarget is
+      non-nullable on the temperature path`) — `resolveTemperatureLine`
+      in `packages/shared-domain/src/planTemperatureCardText.ts` now
+      emits `target N° · sensor unavailable` when the sensor reading is
+      missing, and the inline placeholder in `PlanDeviceCards.tsx` is
+      gone. (2) The projected-energy text moved to
+      `formatProjectedEnergySubline` in
+      `packages/shared-domain/src/planHeroSummary.ts`; `PlanHero.tsx`
+      now imports the helper instead of the inline template. Producer
+      owns the `toFixed(2)` formatting per
+      `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
 

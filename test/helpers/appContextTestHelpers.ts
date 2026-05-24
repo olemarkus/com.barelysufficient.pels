@@ -13,7 +13,7 @@ import type { DebugLoggingTopic } from '../../lib/utils/debugLogging';
 import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
-import { createEmptyPowerCalibrationSnapshot } from '../../lib/observer/devicePowerCalibration';
+import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {

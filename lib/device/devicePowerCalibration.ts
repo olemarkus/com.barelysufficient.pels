@@ -2,10 +2,10 @@
  * Per-device-per-step power calibration store.
  *
  * Pure functions over a {@link PowerCalibrationSnapshot}: callers own the
- * snapshot and pass it in / get the updated value out. The wiring layer
- * (`lib/app/appPowerCalibrationWiring.ts`) loads, persists, and dispatches
- * samples; this module only contains the EMA math, gating policy, and query
- * helpers.
+ * snapshot and pass it in / get the updated value out. The settings-store
+ * layer (`lib/device/devicePowerCalibrationStore.ts`) loads, persists, and
+ * dispatches samples; this module only contains the EMA math, gating
+ * policy, and query helpers.
  *
  * Two query primitives are exposed for admission / delivery decisions.
  * Samples are accepted only inside the configured step band, so learned

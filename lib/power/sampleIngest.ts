@@ -1,14 +1,24 @@
 import type Homey from 'homey';
-import type CapacityGuard from '../power/capacityGuard';
-import { updateObjectiveProfilesFromSnapshot } from '../objectives/profiles';
-import type { PowerTrackerState } from '../power/tracker';
-import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from '../power/tracker';
-import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../plan/planUsage';
+import type CapacityGuard from './capacityGuard';
+import type { PowerTrackerState } from './tracker';
+import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
+
+/**
+ * Whole-home power sample ingest pipeline.
+ *
+ * Lives in `lib/power/` per the mandate: this owns the post-arrival flow
+ * for a whole-home sample (snapshot of current devices → controlled /
+ * uncontrolled / exempt split → objective profile update → tracker
+ * record → capacity guard notify).
+ *
+ * Cross-peer concerns (objective-profile update, controlled/uncontrolled
+ * split, daily-budget cap recording) are reached via injected callbacks
+ * so this file does not import from `lib/objectives/`, `lib/plan/`, or
+ * `lib/dailyBudget/` (per the no-power-to-peer rule in dep-cruiser).
+ */
 
 export type PowerTrackerPersistReason =
   | 'scheduled'
@@ -18,9 +28,19 @@ export type PowerTrackerPersistReason =
   | 'uninit'
   | 'write';
 
+/** Narrow shape of the daily-budget snapshot needed for cap recording. */
+export type DailyBudgetCapSnapshot = {
+  todayKey: string;
+  days: Record<string, {
+    budget: { enabled: boolean };
+    buckets: { plannedKWh: number[]; startUtc: string[] };
+    currentBucketIndex: number;
+  } | undefined>;
+} | null;
+
 export function recordDailyBudgetCap(params: {
   powerTracker: PowerTrackerState;
-  snapshot: DailyBudgetUiPayload | null;
+  snapshot: DailyBudgetCapSnapshot;
 }): PowerTrackerState {
   const { powerTracker, snapshot } = params;
   const today = snapshot?.days?.[snapshot.todayKey] ?? null;
@@ -59,6 +79,19 @@ const buildFreshMeasuredDevicePowerWById = (params: {
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };
 
+export type SplitControlledUsage = (params: {
+  devices: TargetDeviceSnapshot[];
+  totalKw: number | null;
+}) => { controlledKw: number | null; uncontrolledKw: number | null };
+
+export type SumBudgetExemptUsage = (devices: TargetDeviceSnapshot[]) => number | null;
+
+export type UpdateObjectiveProfiles = (params: {
+  state: PowerTrackerState;
+  devices: TargetDeviceSnapshot[];
+  nowMs: number;
+}) => PowerTrackerState;
+
 export async function recordPowerSampleForApp(params: {
   currentPowerW: number;
   nowMs?: number;
@@ -68,7 +101,9 @@ export async function recordPowerSampleForApp(params: {
   capacityGuard?: CapacityGuard;
   schedulePlanRebuild: () => Promise<void>;
   saveState: (state: PowerTrackerState) => void;
-  objectiveProfileDebugStructured?: StructuredDebugEmitter;
+  splitControlledUsage: SplitControlledUsage;
+  sumBudgetExemptUsage: SumBudgetExemptUsage;
+  updateObjectiveProfiles: UpdateObjectiveProfiles;
 }): Promise<void> {
   const snapshotStart = Date.now();
   const {
@@ -80,25 +115,26 @@ export async function recordPowerSampleForApp(params: {
     capacityGuard,
     schedulePlanRebuild,
     saveState,
-    objectiveProfileDebugStructured,
+    splitControlledUsage,
+    sumBudgetExemptUsage,
+    updateObjectiveProfiles,
   } = params;
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
   const { controlledKw } = snapshot.length
-    ? splitControlledUsageKw({
+    ? splitControlledUsage({
       devices: snapshot,
       totalKw: currentPowerW / 1000,
     })
     : { controlledKw: null };
-  const exemptKw = snapshot.length ? sumBudgetExemptLiveUsageKw(snapshot) : null;
+  const exemptKw = snapshot.length ? sumBudgetExemptUsage(snapshot) : null;
   const controlledPowerW = controlledKw !== null ? Math.max(0, controlledKw * 1000) : undefined;
   const exemptPowerW = exemptKw !== null ? Math.max(0, exemptKw * 1000) : undefined;
   const currentDevicePowerWById = buildFreshMeasuredDevicePowerWById({ devices: snapshot, nowMs });
-  const profilingState = updateObjectiveProfilesFromSnapshot({
+  const profilingState = updateObjectiveProfiles({
     state: powerTracker,
     devices: snapshot,
     nowMs,
-    debugStructured: objectiveProfileDebugStructured,
   });
   addPerfDuration('power_sample_snapshot_ms', Date.now() - snapshotStart);
   await recordPowerSampleCore({
@@ -157,13 +193,13 @@ export function prunePowerTrackerHistoryForApp(params: {
   }
 }
 
-export function updateDailyBudgetAndRecordCapForApp(params: {
+export function updateDailyBudgetAndRecordCapForApp<TOptions>(params: {
   powerTracker: PowerTrackerState;
   dailyBudgetService: {
-    updateState: (options?: DailyBudgetUpdateStateOptions) => void;
-    getSnapshot: () => DailyBudgetUiPayload | null;
+    updateState: (options?: TOptions) => void;
+    getSnapshot: () => DailyBudgetCapSnapshot;
   };
-  options?: DailyBudgetUpdateStateOptions;
+  options?: TOptions;
 }): PowerTrackerState {
   const { powerTracker, dailyBudgetService, options } = params;
   dailyBudgetService.updateState(options);

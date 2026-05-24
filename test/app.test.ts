@@ -5,7 +5,7 @@ import {
   MockDevice,
   MockDriver,
 } from './mocks/homey';
-import { schedulePlanRebuildFromPowerSample } from '../lib/app/appPowerHelpers';
+import { schedulePlanRebuildFromPowerSample } from '../lib/plan/rebuildScheduler/powerDriven';
 import type { LiveFeedHealth } from '../lib/device/liveFeed';
 
 // Prevent real socket.io connections in app tests.

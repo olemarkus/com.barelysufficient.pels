@@ -1,4 +1,4 @@
-import { recordPowerSampleForApp } from '../lib/app/appPowerHelpers';
+import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import type CapacityGuard from '../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
@@ -7,7 +7,7 @@ import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/restore/
 import { estimateRestorePower } from '../lib/plan/restore/accounting';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { updateGuardState } from '../lib/plan/admission';
-import { sumControlledUsageKw } from '../lib/plan/planUsage';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { mockHomeyInstance } from './mocks/homey';
 import {
   buildPlanDevice,
@@ -254,6 +254,9 @@ describe('P1 bug proofs', () => {
       capacitySettings: { limitKw: 10, marginKw: 0.2 },
       getLatestTargetSnapshot: () => [rawDevice],
       powerTracker: tracker,
+      splitControlledUsage: splitControlledUsageKw,
+      sumBudgetExemptUsage: sumBudgetExemptLiveUsageKw,
+      updateObjectiveProfiles: ({ state }) => state,
       schedulePlanRebuild: vi.fn().mockResolvedValue(undefined),
       saveState: (nextState) => {
         tracker = nextState;

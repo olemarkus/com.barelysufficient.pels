@@ -10,7 +10,7 @@
  *
  * Types only — the runtime value `POWER_CALIBRATION_VERSION` and the factory
  * `createEmptyPowerCalibrationSnapshot` live in
- * `lib/observer/devicePowerCalibration.ts` so Homey runtime code does not
+ * `lib/device/devicePowerCalibration.ts` so Homey runtime code does not
  * value-import from contracts (which is deploy-excluded). The settings UI
  * may import the runtime version via `packages/shared-domain/**` if it ever
  * needs to inspect calibration state.
