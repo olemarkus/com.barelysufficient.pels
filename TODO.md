@@ -1896,15 +1896,15 @@ consolidation + a11y polish (8 P2)`.*
       for no-progress samples, duplicate samples, and SoC rises below the minimum-delta threshold.
       Files: EV learning store / sample acceptance code under
       `lib/plan/deferredObjectives/**` or `lib/core/**`, new EV learning tests under `test/`.
-- [ ] Hide duplicate responsive tab controls from the accessibility tree. Playwright snapshots
-      showed duplicate tab labels, indicating both the desktop and mobile navigation surfaces are
-      exposed simultaneously rather than the inactive one being hidden via `aria-hidden` or
-      removed from the DOM. Decide whether to render only the active surface or mark the inactive
-      one as inert, and assert in an a11y test that each destination appears exactly once in the
-      accessibility tree at 320px and 480px.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`, navigation shell code under
-      `packages/settings-ui/src/ui/**`, a11y / e2e tests.
+- [x] Hide duplicate responsive tab controls from the accessibility tree. Audit (2026-05-24)
+      found a single `md-tabs#shell-nav` surface in `packages/settings-ui/public/index.html` and
+      no dynamically rendered second nav; a CDP `Accessibility.getFullAXTree` snapshot in both
+      Chromium and Firefox at 320 px and 480 px reported exactly one `role=tab` node per
+      destination (Overview / Budget / Usage / Smart tasks / Settings) — the suspected duplicate
+      surface does not exist. Locked the invariant in with a regression test
+      (`layout-regressions.spec.ts` › "exposes each top-nav destination exactly once in the
+      a11y tree at 320px / 480px") so a future bottom-nav redesign that forgets to hide the
+      inactive surface fails CI.
 - [ ] Debounce or sequence plan rebuilds around budget/price-shaping toggle changes. Toggling daily
       budget or price-shaping briefly produced `objective_missing_price_horizon` plan reasons
       before recovering. The reason is correct in isolation, but the transient flash makes the
