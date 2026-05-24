@@ -808,7 +808,7 @@ const HistoryDetailHero = ({
       <div class="plan-hero__recourse plan-history-detail__recourse">
         <button
           type="button"
-          class="plan-hero__recourse-button"
+          class="pels-button"
           data-deadline-recourse-tab={hero.recourse.targetTab}
           data-deadline-recourse-device-id={hero.recourse.deviceId ?? ''}
         >

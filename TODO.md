@@ -143,9 +143,41 @@ release, not v2.7.1 merge-blockers.*
       render today, just with subtle per-page differences. No user-visible incorrectness, so
       does not gate the release.
       *Remaining primitive-type phases (one PR each, lowest blast first):*
-      - **Button** — text/elevated/filled MD Web wrappers + custom
-        `.plan-hero__recourse-button` and other per-page button styles. Widespread but
-        bounded to a handful of variant classes. Probably the next-lowest blast radius.
+      - **Button — native primitive consolidated (2026-05-24 batch 10 PR).** The
+        per-page `.plan-hero__recourse-button` (scoped + doubled-class hack
+        under `#deadline-plan-panel`) was retired in favour of a canonical
+        `.pels-button` native-button class shared by all three native recourse
+        CTAs (DeadlinePlan ready hero, DeadlinePlan pending hero, history-
+        detail hero). Canonical choice was Option A: keep MD Web wrappers
+        (`<md-text-button>`, `<md-filled-button>`, `<md-outlined-button>`) as
+        the source of truth for MD Web buttons -- they already ship M3-correct
+        focus rings, state-layer ripples, ARIA, and the 48 px touch-target
+        floor; `.pels-button` only exists for the small set of CTAs that need
+        a real `<button>` (event delegation, no shadow DOM). Regression
+        coverage at `packages/settings-ui/test/buttonPrimitiveRebind.test.ts`
+        pins the no-legacy-`.plan-hero__recourse-button` invariant + canonical
+        shell + 48 px floor + focus ring + disabled state contract.
+        *Still open for follow-up sub-PRs:*
+        - **MD Web ghost-decoration cleanup.** `.btn` / `.btn ghost` / `.btn
+          secondary` / `.btn primary` are still applied as ghost companions on
+          ~20 MD Web button hosts in `public/index.html` and a handful of
+          `views/*.tsx` consumers. MD Web buttons render in shadow DOM and
+          ignore host `color` / `background` / `border`, so those classes
+          paint almost nothing today (only `.btn.is-busy`'s host-level
+          `opacity` + `cursor` reach the user; the host `.btn:focus-visible`
+          outline doubles up on MD Web's own shadow-DOM focus ring rather
+          than replacing it). Fan-out is wide (~25 sites) but the visible
+          delta is nil — separate PR to keep this batch focused on the
+          primitive shape.
+        - **`.plan-history-detail__chart-toggle` ghost button.** Small
+          ghost-button shape on the trajectory-chart toggle that overlaps the
+          `.pels-button` vocabulary; rebind once the chart-toggle e2e at
+          `packages/settings-ui/tests/e2e/deadline-recorder-to-history.spec.ts`
+          is updated to the canonical selector.
+        - **Per-page MD Web layout helpers** (`.budget-context-action`,
+          `.budget-page-header__action`, `.dry-run-banner__action`) stay --
+          they're legit positioning / MD-Web-custom-property overrides on top
+          of the MD Web button, not duplicate primitive shells.
       - **Card** — `.pels-surface-card` already exists as the canonical primitive;
         consolidation effort is rebinding the per-page `.plan-card` / `.deadline-list-card`
         / `.detail-card` / `.detail-diagnostics-card` / `.pels-device-card` consumers.
