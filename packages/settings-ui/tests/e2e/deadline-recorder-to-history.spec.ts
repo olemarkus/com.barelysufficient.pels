@@ -326,8 +326,12 @@ test.describe('Deadline recorder → history UI round-trip', () => {
 
       // PR 3 collapses the chart by default on the Succeeded receipt shape
       // (this fixture is `outcome: 'met'`). Click the "View details" toggle
-      // to render the chart before asserting its Y-axis labels fit.
-      await page.locator('.plan-history-detail__chart-toggle').click();
+      // to render the chart before asserting its Y-axis labels fit. The
+      // toggle now rebinds onto the canonical `.pels-button` primitive with
+      // a `.plan-history-detail__chart-toggle` decorator chain (batch 12);
+      // the chained selector pins both the primitive and the page-local
+      // decorator so an accidental drop on either side fails fast.
+      await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
 
       const chart = page.locator('.deadline-horizon-chart');
       await expect(chart).toBeVisible();
