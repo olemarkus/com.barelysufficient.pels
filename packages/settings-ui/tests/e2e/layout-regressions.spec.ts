@@ -46,6 +46,26 @@ const expectNoHorizontalOverflow = async (page: Page, label: string) => {
 };
 
 test.describe('settings shell layout regressions', () => {
+  // Lock in the a11y-tree invariant: each top destination must be reachable
+  // exactly once. The TODO entry (~line 1899) suspected a hidden mobile-nav
+  // surface duplicated tabs at narrow widths; a CDP / getByRole audit at
+  // 320 px and 480 px found a single `md-tabs` shell and zero duplicates, so
+  // this test pins that contract in case a future mobile-nav redesign adds a
+  // second surface without hiding the inactive one from assistive tech.
+  const TAB_DESTINATIONS = ['Overview', 'Budget', 'Usage', 'Smart tasks', 'Settings'] as const;
+  for (const width of [320, 480] as const) {
+    test(`exposes each top-nav destination exactly once in the a11y tree at ${width}px`, async ({ page }) => {
+      await openApp(page, width);
+      await expect(page.getByRole('tablist', { name: 'PELS settings sections' })).toBeVisible();
+      for (const name of TAB_DESTINATIONS) {
+        await expect(
+          page.getByRole('tab', { name, exact: true }),
+          `tab "${name}" must appear exactly once at ${width}px`,
+        ).toHaveCount(1);
+      }
+    });
+  }
+
   test('keeps redesigned shell navigation compact at 320px', async ({ page }) => {
     await openApp(page, 320);
     const tabMetrics = await page.getByRole('tablist', { name: 'PELS settings sections' }).locator('[role="tab"]')
