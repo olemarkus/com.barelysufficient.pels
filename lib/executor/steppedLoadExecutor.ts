@@ -28,17 +28,12 @@ import type {
 } from '../device/manager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../device/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('executor/stepped-load');
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-  structuredLog?: {
-    info: (obj: object) => void;
-    error: (obj: object) => void;
-  };
-  debugStructured?: StructuredDebugEmitter;
   buildBinaryControlDeps: () => {
     state: PlanEngineState;
     deviceManager: DeviceManager;
@@ -146,7 +141,7 @@ export const applySteppedLoadCommand = async (
 /* eslint-enable complexity */
 
 const logSteppedLoadStepViolation = (
-  ctx: PlanExecutorSteppedContext,
+  _ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   name: string,
   desiredStepId?: string,
@@ -154,7 +149,10 @@ const logSteppedLoadStepViolation = (
   const stepDetail = action.current.stepIsOffStep
     ? `${action.current.stepForShed?.stepId ?? 'unknown'} (off-step)`
     : `${action.current.stepForShed?.stepId ?? 'unknown'} -> ${desiredStepId ?? 'unknown'}`;
-  ctx.logDebug(`Capacity: ${name} violates keep invariant: step=${stepDetail}`);
+  logger.debug({
+    event: 'executor_stepped_log_debug',
+    msg: `Capacity: ${name} violates keep invariant: step=${stepDetail}`,
+  });
 };
 
 const logSteppedLoadRestoreViolations = (
@@ -318,7 +316,10 @@ export const applySteppedLoadRestore = async (
   }
   const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
   if (snapshot?.currentOn === false) {
-    ctx.logDebug(`Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`);
+    logger.debug({
+      event: 'executor_stepped_log_debug',
+      msg: `Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`,
+    });
   }
   if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return false;
   // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
@@ -373,7 +374,7 @@ export const applySteppedLoadShedOff = async (
       const now = Date.now();
       ctx.recordShedActuation(action.id, name, now);
     }
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'binary_command_applied',
       deviceId: action.id,
       deviceName: name,
@@ -382,7 +383,7 @@ export const applySteppedLoadShedOff = async (
       mode,
       reasonCode: mode === 'reconcile' ? 'reconcile_shed' : 'full_shed_to_off',
     });
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'stepped_load_binary_transition_applied',
       deviceId: action.id,
       deviceName: name,
@@ -395,13 +396,17 @@ export const applySteppedLoadShedOff = async (
     });
     return true;
   } catch (error) {
-    ctx.error(`Failed to turn off stepped-load device ${name} via binary control`, error);
+    logger.error({
+      event: 'executor_stepped_error',
+      msg: `Failed to turn off stepped-load device ${name} via binary control`,
+      err: error,
+    });
     return false;
   }
 };
 
 const logSteppedLoadCommandSkip = (
-  ctx: PlanExecutorSteppedContext,
+  _ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
@@ -415,7 +420,7 @@ const logSteppedLoadCommandSkip = (
   },
 ): false => {
   const { action, mode, reasonCode, logMessage, fields } = params;
-  ctx.debugStructured?.({
+  logger.debug({
     event: 'stepped_load_command_skipped',
     reasonCode,
     deviceId: action.id,
@@ -425,7 +430,7 @@ const logSteppedLoadCommandSkip = (
     actuationMode: mode,
     ...fields,
   });
-  ctx.logDebug(logMessage);
+  logger.debug({ event: 'executor_stepped_log_debug', msg: logMessage });
   return false;
 };
 
@@ -463,7 +468,7 @@ const markAcceptedSteppedLoadCommand = (
 };
 
 const logAcceptedSteppedLoadCommand = (
-  ctx: PlanExecutorSteppedContext,
+  _ctx: PlanExecutorSteppedContext,
   params: AcceptedSteppedLoadCommandParams,
 ): void => {
   const {
@@ -489,7 +494,7 @@ const logAcceptedSteppedLoadCommand = (
     binaryTarget: null,
     transitionPhase: 'settled',
   };
-  ctx.structuredLog?.info({
+  logger.info({
     event: 'stepped_load_command_requested',
     deviceId: action.id,
     deviceName: action.name,
@@ -594,7 +599,7 @@ const executeSteppedLoadCommand = async (
       commandTransport: result.transport,
     });
   } catch (error) {
-    ctx.structuredLog?.error({
+    logger.error({
       event: 'stepped_load_command_failed',
       reasonCode: 'command_failed',
       deviceId: action.id,
@@ -603,7 +608,11 @@ const executeSteppedLoadCommand = async (
       planningPowerW: desiredStep.planningPowerW,
       mode,
     });
-    ctx.error(`Failed to request stepped-load command for ${action.name}`, error);
+    logger.error({
+      event: 'executor_stepped_error',
+      msg: `Failed to request stepped-load command for ${action.name}`,
+      err: error,
+    });
     return false;
   }
 };
@@ -619,7 +628,7 @@ const resolvePlanningCurrentA = (
 };
 
 const logSteppedLoadRestoreSkip = (
-  ctx: PlanExecutorSteppedContext,
+  _ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
     mode: PlanActuationMode;
@@ -644,7 +653,7 @@ const logSteppedLoadRestoreSkip = (
     skipDetailCode,
     desiredStepId,
   } = params;
-  ctx.debugStructured?.({
+  logger.debug({
     event: 'restore_command_skipped',
     reasonCode,
     ...(skipDetailCode ? { skipDetailCode } : {}),
@@ -689,7 +698,7 @@ const executeSteppedLoadRestoreBinary = async (
       actuationMode: mode,
     });
     if (!applied) return false;
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'stepped_load_binary_transition_applied',
       deviceId: action.id,
       deviceName: name,
@@ -723,7 +732,11 @@ const executeSteppedLoadRestoreBinary = async (
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to restore stepped-load device ${name} via binary control`, error);
+    logger.error({
+      event: 'executor_stepped_error',
+      msg: `Failed to restore stepped-load device ${name} via binary control`,
+      err: error,
+    });
     return false;
   } finally {
     ctx.state.pendingRestores.delete(action.id);
@@ -743,14 +756,17 @@ const applyKeepInvariantShedBlock = (
   if (!lowestNonZeroStep || !desiredStep || desiredStep.planningPowerW <= lowestNonZeroStep.planningPowerW) {
     return false;
   }
-  ctx.logDebug(`Capacity: skip stepped-load restore for ${name}, shed invariant: `
-    + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`);
+  logger.debug({
+    event: 'executor_stepped_log_debug',
+    msg: `Capacity: skip stepped-load restore for ${name}, shed invariant: `
+      + `desiredStep=${desiredStepId} exceeds lowestNonZeroStep=${lowestNonZeroStep.id}`,
+  });
   const prevBlock = ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const unchanged = prevBlock !== undefined
     && prevBlock.desiredStepId === desiredStepId
     && prevBlock.lowestNonZeroStepId === lowestNonZeroStep.id;
   if (!unchanged) {
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'restore_keep_invariant_shed_blocked',
       reasonCode: 'shed_invariant',
       deviceId: action.id,

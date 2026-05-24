@@ -148,11 +148,6 @@ export class PlanEngine {
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
-      structuredLog: deps.structuredLog,
-      debugStructured: deps.debugStructured,
-      log: deps.log,
-      logDebug: deps.logDebug,
-      error: deps.error,
     };
 
     this.builder = new PlanBuilder(builderDeps, this.state);
