@@ -445,17 +445,6 @@ export default tseslint.config(
     },
   },
   {
-    // appInit.ts hosts the runtime wiring for plan/price/deferred-objective
-    // services. v2.8.0 added a per-hour price+tone resolver that consumes
-    // `entry.isCheap`/`entry.isExpensive` from the persisted V2 combined-prices
-    // store. Target: <=500 once the resolver moves into a dedicated module
-    // alongside the other deferred-objective wiring (tracked in TODO.md).
-    files: ['lib/app/appInit.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
     // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
     files: ['lib/price/priceService.ts'],

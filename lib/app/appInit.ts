@@ -1,240 +1,43 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
-import {
-  getAdmissionPowerKw,
-  getDeliveryPowerKw,
-  hasRecentDrawAt,
-  isStepCalibrationConfident,
-} from '../device/devicePowerCalibration';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
 import { PriceFlowTagPublisher } from '../price/priceFlowTags';
-import { flattenAllHours, readPriceStore } from '../price/priceStore';
-import {
-  resolvePostmortemTone,
-  type PostmortemTone,
-} from '../../packages/shared-domain/src/postmortemTone';
+import { readPriceStore } from '../price/priceStore';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { FlowHomeyLike } from '../utils/types';
-import type { StepPowerCalibrationView } from '../plan/planTypes';
-import { firstPositiveFinite } from '../plan/deferredObjectives/planningSpeed';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
   applyDeferredObjectiveChange,
-  DeferredObjectiveActivePlanRecorder,
-  DeferredObjectivePlanHistoryRecorder,
-  normalizeDeferredObjectiveActivePlans,
-  normalizeDeferredObjectivePlanHistory,
   normalizeDeferredObjectiveSettings,
-  type DeferredObjectiveBackfillConfig,
 } from '../plan/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../plan/deferredObjectives/settings';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
 import {
-  DEFERRED_OBJECTIVES_SETTINGS,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
-  DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
-  DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
-} from '../utils/settingsKeys';
-import { isFiniteNumber } from '../utils/appTypeGuards';
+  disableDeferredObjectiveInSettings,
+  requireDeferredObjectiveActivePlanRecorder,
+  requireDeferredObjectivePlanHistoryRecorder,
+  WATERMARK_IDLE_REFRESH_MS,
+  writeWatermark,
+} from './appInit/deferredRecorders';
+import {
+  buildStepPowerCalibrationView,
+  resolveHasRecentObservedDrawAtSelectedStep,
+} from './appInit/calibrationViews';
+
+export {
+  createDeferredObjectiveActivePlanRecorder,
+  createDeferredObjectivePlanHistoryRecorder,
+  persistDeferredObjectiveObservationWatermark,
+} from './appInit/deferredRecorders';
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
     throw new Error('DeviceManager must be initialized before plan engine setup.');
   }
   return ctx.deviceManager;
-}
-
-const toBackfillConfig = (
-  deviceId: string,
-  entry: DeferredObjectiveSettingsEntry,
-): DeferredObjectiveBackfillConfig | null => {
-  // Deadlines are one-shot and the runtime auto-disables on pass, so a still-enabled
-  // objective with a past `deadlineAtMs` is exactly the "PELS was off through the deadline"
-  // case we want to back-fill. Disabled entries either have an existing observed history row
-  // (runtime saw the pass) or were cleared by the user before passing — either way back-fill
-  // should ignore them.
-  if (!entry.enabled) return null;
-  if (entry.kind === 'temperature') {
-    return {
-      deviceId,
-      deviceName: null,
-      objectiveKind: 'temperature',
-      deadlineAtMs: entry.deadlineAtMs,
-      targetTemperatureC: entry.targetTemperatureC,
-      targetPercent: null,
-    };
-  }
-  return {
-    deviceId,
-    deviceName: null,
-    objectiveKind: 'ev_soc',
-    deadlineAtMs: entry.deadlineAtMs,
-    targetTemperatureC: null,
-    targetPercent: entry.targetPercent,
-  };
-};
-
-const readWatermark = (ctx: AppContext): number | null => {
-  const raw: unknown = ctx.homey.settings.get(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK);
-  return isFiniteNumber(raw) ? raw : null;
-};
-
-/**
- * Advance the deferred-objective observation watermark to "now". If the recorder is still
- * dirty (its `save` callback returned `false`, meaning the last flush attempt didn't actually
- * persist), the watermark is left alone — otherwise the next startup back-fill would skip the
- * window containing the entries that never made it to disk, dropping that history silently.
- */
-export const persistDeferredObjectiveObservationWatermark = (
-  ctx: AppContext,
-  recorder: DeferredObjectivePlanHistoryRecorder | undefined,
-): void => {
-  if (recorder?.isDirty()) return;
-  writeWatermark(ctx, Date.now());
-};
-
-const writeWatermark = (ctx: AppContext, ms: number): void => {
-  try {
-    ctx.homey.settings.set(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK, ms);
-  } catch (error) {
-    ctx.error('Failed to persist deferred-objective observation watermark', error);
-  }
-};
-
-export function createDeferredObjectivePlanHistoryRecorder(
-  ctx: AppContext,
-): DeferredObjectivePlanHistoryRecorder {
-  const recorder = new DeferredObjectivePlanHistoryRecorder({
-    load: () => normalizeDeferredObjectivePlanHistory(
-      ctx.homey.settings.get(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING),
-    ),
-    save: (next) => {
-      try {
-        ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, next);
-        return true;
-      } catch (error) {
-        ctx.error('Failed to persist deferred-objective plan history', error);
-        return false;
-      }
-    },
-    endedBus: ctx.deferredObjectiveEndedBus,
-    // Resolve hourly spot price + tone for the internal hour-rollover
-    // detector. Reads the persisted V2 combined-prices store directly so
-    // the postmortem consumes the producer's already-resolved
-    // `isCheap`/`isExpensive` flags (per `feedback_layering_resolution_in_producer`).
-    // Missing entries / unloaded payload return `null` so the postmortem
-    // skips that hour rather than fabricating a contribution.
-    resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
-    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
-  });
-  runStartupBackfill(ctx, recorder);
-  return recorder;
-}
-
-// Look up the persisted V2 combined-prices entry whose hour-aligned
-// `startsAt` equals `hourStartMs` and map its already-resolved
-// `isCheap`/`isExpensive` flags onto the postmortem tone enum (via the
-// shared-domain `resolvePostmortemTone` helper). Returns `null` when no
-// entry covers the hour, when `total` is non-finite, or when the payload
-// hasn't loaded yet — all three are best-effort skip cases.
-const resolveHourPriceFromContext = (
-  ctx: AppContext,
-  hourStartMs: number,
-): { priceValue: number; tone: PostmortemTone } | null => {
-  const store = readPriceStore(
-    { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
-    new Date(),
-    ctx.homey.clock.getTimezone(),
-  );
-  if (!store) return null;
-  for (const entry of flattenAllHours(store)) {
-    const entryStart = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(entryStart) || entryStart !== hourStartMs) continue;
-    if (!Number.isFinite(entry.total)) return null;
-    return { priceValue: entry.total, tone: resolvePostmortemTone(entry) };
-  }
-  return null;
-};
-
-function runStartupBackfill(
-  ctx: AppContext,
-  recorder: DeferredObjectivePlanHistoryRecorder,
-): void {
-  const watermark = readWatermark(ctx);
-  if (watermark === null) {
-    // First boot with this version (or the setting was lost). Seed the watermark to now so a
-    // future crash/restart can back-fill from this moment forward — otherwise a deadline that
-    // elapses during a PELS-off window before the first history flush would be lost. We
-    // intentionally don't back-fill on this path: there's no prior observation window, and
-    // inventing one (e.g. 30 days back) could fabricate "unknown" entries for objectives the
-    // user only just configured.
-    writeWatermark(ctx, Date.now());
-    return;
-  }
-  const settings = normalizeDeferredObjectiveSettings(
-    ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
-  );
-  const configs = Object.entries(settings.objectivesByDeviceId)
-    .map(([deviceId, entry]) => toBackfillConfig(deviceId, entry))
-    .filter((c): c is DeferredObjectiveBackfillConfig => c !== null);
-  const nowMs = Date.now();
-  if (configs.length === 0) {
-    // No enabled objectives — advance the watermark anyway. We successfully scanned a window
-    // that produced nothing, and on the next restart we don't need to re-scan it.
-    // Caveat: a future "enable an objective" action can't retroactively recover deadlines
-    // that elapsed inside this skipped window — that fidelity gap is acknowledged in
-    // PR-description and would need per-objective enable timestamps to fix.
-    writeWatermark(ctx, nowMs);
-    return;
-  }
-  recorder.backfillFromConfig(configs, watermark, nowMs);
-  if (recorder.isDirty()) {
-    // Back-fill produced new entries — only advance the watermark if we actually persisted
-    // them. A failed save keeps the entries in memory for a later retry; leaving the
-    // watermark in place means the next startup re-runs the scan idempotently.
-    if (!recorder.flushIfDirty()) return;
-  }
-  writeWatermark(ctx, nowMs);
-}
-
-function requireDeferredObjectivePlanHistoryRecorder(
-  ctx: AppContext,
-): DeferredObjectivePlanHistoryRecorder {
-  if (!ctx.deferredObjectivePlanHistoryRecorder) {
-    throw new Error('DeferredObjectivePlanHistoryRecorder must be initialized before plan engine setup.');
-  }
-  return ctx.deferredObjectivePlanHistoryRecorder;
-}
-
-export function createDeferredObjectiveActivePlanRecorder(
-  ctx: AppContext,
-): DeferredObjectiveActivePlanRecorder {
-  return new DeferredObjectiveActivePlanRecorder({
-    load: () => normalizeDeferredObjectiveActivePlans(
-      ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING),
-    ),
-    save: (next) => {
-      try {
-        ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
-      } catch (error) {
-        ctx.error('Failed to persist deferred-objective active plans', error);
-      }
-    },
-    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
-    onRevisionWritten: (event) => ctx.deferredObjectivePlanRevisionBus.publish(event),
-  });
-}
-
-function requireDeferredObjectiveActivePlanRecorder(
-  ctx: AppContext,
-): DeferredObjectiveActivePlanRecorder {
-  if (!ctx.deferredObjectiveActivePlanRecorder) {
-    throw new Error('DeferredObjectiveActivePlanRecorder must be initialized before plan engine setup.');
-  }
-  return ctx.deferredObjectiveActivePlanRecorder;
 }
 
 function requirePlanEngine(ctx: AppContext) {
@@ -283,13 +86,6 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
   })
 );
 
-// How long the deferred-objective observation watermark can be stale before we advance it
-// during normal observe ticks. Without this idle advance the watermark only moves forward
-// when a deadline finalizes — so a user enabling a new objective during a long quiet period
-// followed by a crash would cause startup back-fill to enumerate that objective's deadlines
-// back to a far-stale watermark, fabricating "unknown" entries for periods when the objective
-// wasn't yet enabled. Five minutes keeps watermark drift small without spamming settings I/O.
-const WATERMARK_IDLE_REFRESH_MS = 5 * 60 * 1000;
 
 export function createPlanEngine(ctx: AppContext) {
   let lastWatermarkPersistMs = 0;
@@ -369,30 +165,6 @@ export function createPlanEngine(ctx: AppContext) {
     error: (...args: unknown[]) => ctx.error(...args),
   });
 }
-
-const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
-  const current = normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS));
-  const entry = current.objectivesByDeviceId[deviceId];
-  if (!entry || !entry.enabled) return;
-  const next = {
-    ...current,
-    objectivesByDeviceId: {
-      ...current.objectivesByDeviceId,
-      [deviceId]: { ...entry, enabled: false },
-    },
-  };
-  ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
-  // Drop in-memory status + active plan so flow conditions like
-  // `deadline_status_is` and the deadline UI agree with the persisted state
-  // immediately, instead of seeing the last published snapshot until the
-  // next plan cycle's forget-sweep runs.
-  ctx.deferredObjectiveStatusBus?.forgetDevice(deviceId);
-  // Re-arm the hours-remaining crossing latch so a later re-enabled task with
-  // the same deadline still fires its lead-time trigger rather than treating
-  // the stale boundary as already crossed.
-  ctx.deferredObjectiveHoursRemainingTracker?.forgetDevice(deviceId);
-  ctx.deferredObjectiveActivePlanRecorder?.clearForDevice(deviceId);
-};
 
 export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
@@ -523,8 +295,6 @@ function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
   return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
 }
 
-const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
-
 export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
@@ -551,102 +321,4 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
   };
-}
-
-function buildStepPowerCalibrationView(
-  ctx: AppContext,
-  device: TargetDeviceSnapshot,
-): Record<string, StepPowerCalibrationView> | undefined {
-  const profile = device.steppedLoadProfile;
-  if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
-    return buildSteppedCalibrationView(ctx, device, profile.steps);
-  }
-  // EV chargers ship a single useful "charge" step rather than a stepped
-  // profile. The deferred-objective planner (`resolveObjectiveSteps`) and
-  // the hero planning-speed reading both go through
-  // `resolveStepDeliveryUsefulKw`, so producing a synthetic 1-step view here
-  // unifies the calibration path for both stepped and binary loads instead
-  // of duplicating the lookup logic.
-  if (device.deviceClass === 'evcharger') {
-    return buildEvChargerCalibrationView(ctx, device);
-  }
-  return undefined;
-}
-
-function buildSteppedCalibrationView(
-  ctx: AppContext,
-  device: TargetDeviceSnapshot,
-  steps: NonNullable<TargetDeviceSnapshot['steppedLoadProfile']>['steps'],
-): Record<string, StepPowerCalibrationView> | undefined {
-  const snapshot = ctx.getPowerCalibrationSnapshot();
-  const deviceEntry = snapshot.devices[device.id];
-  if (!deviceEntry) return undefined;
-  const entries = steps.flatMap((step): Array<[string, StepPowerCalibrationView]> => {
-    if (!step || typeof step.id !== 'string') return [];
-    if (step.planningPowerW <= 0) return [];
-    if (!deviceEntry.steps[step.id]) return [];
-    const nameplateKw = step.planningPowerW / 1000;
-    return [[step.id, {
-      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, step.id, nameplateKw),
-      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, step.id, nameplateKw),
-    }]];
-  });
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
-}
-
-function buildEvChargerCalibrationView(
-  ctx: AppContext,
-  device: TargetDeviceSnapshot,
-): Record<string, StepPowerCalibrationView> | undefined {
-  const nameplateKw = firstPositiveFinite([
-    device.planningPowerKw,
-    device.expectedPowerKw,
-    device.powerKw,
-  ]);
-  if (nameplateKw === null) return undefined;
-  const snapshot = ctx.getPowerCalibrationSnapshot();
-  const stepId = 'charge';
-  // Even when no calibration entries exist yet we expose the nameplate
-  // values so the hero planning-speed reading has a useful default. The
-  // calibration accessors fall back to nameplate when no confident sample
-  // exists, so this stays consistent with stepped devices.
-  return {
-    [stepId]: {
-      admissionPowerKw: getAdmissionPowerKw(snapshot, device.id, stepId, nameplateKw),
-      deliveryPowerKw: getDeliveryPowerKw(snapshot, device.id, stepId, nameplateKw),
-    },
-  };
-}
-
-function resolveHasRecentObservedDrawAtSelectedStep(
-  ctx: AppContext,
-  device: TargetDeviceSnapshot,
-): boolean | undefined {
-  // Use the observed step (reportedStepId) only. Falling back to
-  // `selectedStepId` would convert "no observation yet" into a concrete
-  // `false` for a step the device may never have visited, blocking boost
-  // escalation during the warmup window — the gate's contract treats
-  // `undefined` as "no calibration opinion, keep the legacy bypass."
-  const stepId = device.reportedStepId;
-  if (typeof stepId !== 'string' || stepId.length === 0) return undefined;
-  const snapshot = ctx.getPowerCalibrationSnapshot();
-  const planningPowerW = device.steppedLoadProfile?.steps.find((step) => step.id === stepId)?.planningPowerW;
-  const nameplateKw = isFiniteNumber(planningPowerW) && planningPowerW > 0
-    ? planningPowerW / 1000
-    : undefined;
-  // Warm-up samples (below the confidence threshold) must not produce a
-  // concrete `false` — the gate would treat that as authoritative and
-  // suppress boost escalation for newly-paired devices.
-  if (!isStepCalibrationConfident(snapshot, device.id, stepId, nameplateKw)) return undefined;
-  // Use the AppContext clock so the planner can be tested deterministically
-  // and so this stays consistent with other plan-input enrichment helpers
-  // (per state-management/AGENTS.md "use a single clock per cycle").
-  return hasRecentDrawAt({
-    snapshot,
-    deviceId: device.id,
-    stepId,
-    windowMs: BOOST_RECENT_DRAW_WINDOW_MS,
-    nowMs: ctx.getNow().getTime(),
-    nameplateKw,
-  });
 }
