@@ -1289,6 +1289,20 @@ md-filled-button.is-busy {
   min-width: 0;
 }
 
+/* Power-week heatmap container. Sizing previously mutated inline from
+ * `powerWeekChartEcharts.ts` (height/min-height/-webkit-tap-highlight-color)
+ * and cleared in `dispose`. Hoisting to CSS keeps the chart's physical
+ * footprint in the stylesheet and lets the component own DOM lifecycle
+ * only. The 240 px literal matches `DEFAULT_CHART_HEIGHT` in the
+ * ECharts renderer and follows the same physical-chart convention as
+ * `.deadline-horizon-chart` (chart heights aren't theme-relative, so no
+ * design token is needed). */
+.power-week-chart {
+  height: 240px;
+  min-height: 240px;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .plan-row__meta {
   display: grid;
   grid-template-columns: 1fr;
