@@ -1181,13 +1181,28 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       action language and keeps the "smart task" anchor consistent with
       the `Smart tasks` eyebrow.
 
-- [ ] Refresh stale smart-task UX notes that still mention "move deadline
+- [x] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
       the canonical recourse pair as `Lower daily budget` / `Review device`;
       `notes/smart-task-ui/README.md` still has two older references around the
       recovering-from-mistake and history-detail CTA sketches. Deferred from
       the v2.7.4 lovability U3 copy review because the PR only changes active
       confidence/status chips.
+      Shipped: both replacements were already landed in `eeb8e400` (docs:
+      capture release-review follow-up cleanup, 2026-05-21) — this entry was
+      created later and not crossed off at the time.
+      - `notes/smart-task-ui/README.md:93-94`: `No CTA to lower the daily
+        budget or move the deadline later.` → `No CTA to lower the daily
+        budget or review the device settings that affected the missed run.`
+        (recovering-from-mistake persona).
+      - `notes/smart-task-ui/README.md:152`: `\`Lower daily budget\` / \`Move
+        deadline later\` (composed from reason)` → `\`Lower daily budget\` /
+        \`Review device\` (composed from reason)` (asymmetric-treatment
+        Next-step CTA table cell).
+      No other occurrences in `notes/smart-task-ui/README.md`; the only
+      remaining "Move deadline later" mention in `notes/` is the canonical
+      retirement explanation in `ui-terminology.md:185`, which is the source
+      of truth and intentionally documents the prior copy.
 
 - [ ] Add explicit backup-hour reservations for committed smart-task schedules.
       Day-zero committed schedules now keep the first full-horizon allocation

@@ -61,7 +61,7 @@ describe('memory profile', () => {
     profileRequire('diagnostics/deviceDiagnosticsService', '../lib/diagnostics/deviceDiagnosticsService', baseline);
 
     // Power/Device — broken down
-    profileRequire('power/estimate', '../lib/power/estimate', baseline);
+    profileRequire('device/power-estimate', '../lib/device/devicePowerEstimate', baseline);
     profileRequire('device/managerHelpers', '../lib/device/managerHelpers', baseline);
     profileRequire('device/managerParse', '../lib/device/managerParse', baseline);
     profileRequire('device/managerControl', '../lib/device/managerControl', baseline);
