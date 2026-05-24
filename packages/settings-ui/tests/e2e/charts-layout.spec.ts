@@ -398,7 +398,12 @@ test.describe('Settings UI chart layout', () => {
       const rect = container.getBoundingClientRect();
       const svg = container.querySelector('svg');
       if (!svg) return { ok: false, reason: 'no svg' } as const;
-      const legendLabels = ['Planned trajectory', 'Revised trajectory', 'Measured Heating', 'Target'];
+      // When originalPlan and finalPlan differ, the original series is named
+      // "Initial schedule" (not "Planned trajectory") so the user can
+      // distinguish the two staircases at a glance. This test exercises the
+      // dual-staircase configuration via the differentiated buildRevisedPlan()
+      // fixture above, so assert the dual labels.
+      const legendLabels = ['Initial schedule', 'Revised trajectory', 'Measured Heating', 'Target'];
       const texts = Array.from(svg.querySelectorAll('text'));
       const legendTexts = texts.filter((node) => (
         node instanceof SVGTextElement
