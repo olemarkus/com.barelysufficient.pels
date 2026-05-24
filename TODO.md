@@ -956,12 +956,22 @@ were rolled back before they could land.*
       Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
       Source: live prod UI walk, 2026-05-22.
 
-- [ ] Docs vocabulary sweep: "capacity step" still appears in
+- [x] Docs vocabulary sweep: "capacity step" still appears in
       `docs/smart-tasks.md` and the `docs/cost-saving-functions.md`
       neighbourhood. Index and Getting Started were reframed to "hourly
       limit / power-based tariff" in PR #931; remaining occurrences
       should be reconciled so the docs are internally consistent.
       Source: `pels-copy-and-terminology` agent, PR #931 review.
+      Resolution: case-insensitive `capacity step` / `capacity-step`
+      grep across `docs/` returned a single literal occurrence at
+      `docs/smart-tasks.md:115` (`Power limiting protects the capacity
+      step.`), replaced with `Power limiting protects the hard cap.`
+      to match the canonical "hard cap" phrasing used elsewhere in the
+      same file (e.g. line 66) and the index. `docs/cost-saving-functions.md`
+      only contained the already-established "capacity tariff step"
+      vocabulary (line 31), which mirrors `docs/index.md:58` and the
+      water-heater use case, so no rewrite was needed.
+      Files touched: `docs/smart-tasks.md`.
 
 - [ ] Verify structured-debug back-pressure on the `power_calibration` topic.
       `lib/app/appPowerCalibrationWiring.ts:522-542` emits one
