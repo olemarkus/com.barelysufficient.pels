@@ -59,7 +59,7 @@ release, not v2.7.1 merge-blockers.*
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
 
-- [ ] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
+- [x] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
       terminology.
       The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
       docs still teach old wording and old navigation. Replace visible `headroom`, `soft limit`,
@@ -71,6 +71,15 @@ release, not v2.7.1 merge-blockers.*
       Files: `.homeycompose/capabilities/*.json`, `.homeycompose/flow/**/*.json`,
       `docs/configuration.md`, `docs/getting-started.md`, relevant generated `app.json` after
       `homey app validate`.
+      Shipped: pre-existing commits `bc80cc94`, `4540dcac`, `4b261603`, `31b174fc`, `7490b208`
+      already landed the capability/flow/doc rewrites. Final drift caught in batch9: the
+      `pels_hourly_limit_kw` locale override in `locales/en.json` still said
+      `Current hourly limit` while the capability JSON had moved to `Current safe pace`; the
+      locale wins at runtime via `homey.__()`, so users saw the stale string. Locale realigned
+      to `Current safe pace` so capability + locale + UI all agree. Per PR #1013, README.md
+      and `.homeycompose/app.json` keywords stay as-is (pre-onboarding marketing copy).
+      Token id `name: "shortfall"` on the `deadline_ended` trigger is preserved as a stable
+      contract identifier (visible label is `Gap to target`).
 - [ ] Make the browser Homey stub reliable enough for future screenshot UI audits.
       Keep audit states at the Homey SDK boundary instead of injecting component props. Add missing
       route handlers for diagnostics, deferred-objective history, refresh/reset actions, and daily

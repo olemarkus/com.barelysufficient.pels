@@ -13,7 +13,7 @@
       "title": "Used this hour"
     },
     "pels_hourly_limit_kw": {
-      "title": "Current hourly limit"
+      "title": "Current safe pace"
     },
     "pels_shortfall": {
       "title": "Manual action needed"
