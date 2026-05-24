@@ -1561,11 +1561,11 @@ md-filled-button.is-busy {
   gap: var(--spacing-3);
 }
 
-/* `.plan-history-card` is a pure layout decorator on `.pels-surface-card`.
-   The canonical primitive provides padding, border, radius, surface tier
-   and the M3 elevation contract; this rule only overrides the default grid
-   layout to a top-down flex column (the card stacks header + device label +
-   progress lines in a tight rhythm) and tightens the inter-line gap. */
+/* `.plan-history-card` — decorator on `.pels-surface-card` (see canonical-
+   primitives preamble above `.pels-surface-card`). Only overrides the
+   default grid layout to a top-down flex column (the card stacks header +
+   device label + progress lines in a tight rhythm) and tightens the inter-
+   line gap. */
 .plan-history-card {
   display: flex;
   flex-direction: column;
@@ -1611,11 +1611,11 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-1);
 }
 
-/* `.plan-history-card--link` adds the anchor-reset (no underline / inherit
-   colour) + a hover background tint so the past-plan link reads as
-   actionable on the smart-tasks history list. Focus ring + elevation lift
-   come from the canonical `.pels-surface-card[data-interactive]` hook the
-   host sets in markup. */
+/* `.plan-history-card--link` — link-role decorator on `.plan-history-card`
+   (see canonical-primitives preamble above `.pels-surface-card`). Anchor-
+   reset (no underline / inherit colour) + a hover background tint mark the
+   past-plan link as actionable. Focus ring + elevation lift ride the
+   canonical `.pels-surface-card[data-interactive]` hook the host sets. */
 .plan-history-card--link {
   text-decoration: none;
   color: inherit;
@@ -2492,26 +2492,53 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-2);
 }
 
+/* ===========================================================================
+ * Canonical primitives — rule of thumb
+ * ---------------------------------------------------------------------------
+ * Several PELS UI primitives (`.pels-surface-card`, `.pels-hero` / `.plan-
+ * hero`, `.plan-chip`, `.pels-button`, `.segmented`) own a single visual
+ * contract — padding, gap, border, radius, surface tier, focus ring, touch
+ * target — that every consumer surface inherits. Per-page classes layered on
+ * top (e.g. `.deadline-list-card`, `.plan-history-card`, `.plan-history-card
+ * --link`, `.detail-diagnostics-card`, `.budget-redesign-card`) are
+ * DECORATORS: they only override what their role specifically needs
+ * (typically layout / hover / role-specific decoration) and never redeclare
+ * the contract their canonical primitive carries.
+ *
+ * Two cascade idioms recur on top of this:
+ *  - Doubled-class selectors (`.X.X`, specificity `(0,2,0)`) beat the
+ *    unscoped canonical without `!important` when a decorator needs to
+ *    override a canonical declaration — see `.plan-history-detail__chart-
+ *    toggle.plan-history-detail__chart-toggle` for the pattern.
+ *  - Panel-scoped overrides (`#some-panel .selector`, specificity `(1,1,0)`)
+ *    win against the bare canonical but tie with other panel-scoped rules,
+ *    so source order is the tie-breaker — put the decorator AFTER the
+ *    canonical cascade in the file.
+ *
+ * Tonal state on the card / hero / chip primitives uses one shared API
+ * (`data-tone="good|warn|alert|info|muted"`); the legacy `.plan-card[data-
+ * state-kind="…"]` aliases on the device-row card resolve onto the same
+ * `--color-state-*-bg/-border` cascade so existing markup keeps working.
+ *
+ * The canonical-primitives region begins here with `.pels-surface-card`;
+ * `.pels-hero` / `.plan-chip` / `.pels-button` live earlier in the file
+ * with their own per-primitive notes. Per-decorator blocks under each
+ * primitive carry only a one-line pointer to this preamble plus any
+ * decorator-specific contract details.
+ * ===========================================================================
+ */
+
 /* `.pels-surface-card` is the canonical card primitive. Every card-shaped
    surface across the settings UI (device cards, smart-task list cards, past-
    plan history cards, device-detail diagnostics cards, budget redesign cards,
    usage cards) walks this shell — padding, gap, radius, border, surface
-   tier, isolation, and the default `--md-elevation-level: 1` are all owned
-   here so per-page variants can NOT silently fork the visual contract.
-
+   tier, isolation, and the default `--md-elevation-level: 1` are owned here.
    Per-page decorators (`.plan-card`, `.deadline-list-card`, `.plan-history-
    card`, `.usage-card`, `.budget-redesign-card`, `.budget-chart-card`,
    `.budget-confidence-card`, `.deadline-horizon-card`, `.pels-device-card`,
-   etc.) only carry the layout / hover / role-specific decoration on top of
-   the canonical surface — they no longer redeclare the bg / border / radius
-   / padding their host inherits from `.pels-surface-card`.
-
-   Tonal state lives in either the data attribute (`data-tone="good|warn|
-   alert|info|muted"`, the canonical form shared with `.plan-hero` and
-   `.plan-chip`) or the legacy `.plan-card[data-state-kind="…"]` aliases
-   the device-row card still uses. Both resolve onto the same `--color-
-   state-*-bg/-border` cascade so new consumers can pick the data-tone
-   form without a forced mass migration. */
+   etc.) only override layout / hover / role-specific decoration on top of
+   this surface — see the canonical-primitives preamble above for the
+   primitive / decorator rule of thumb. */
 .pels-surface-card {
   --md-elevation-level: 1;
   --md-ripple-hover-color: var(--pels-status-good);
@@ -4591,12 +4618,11 @@ details[open] > summary .disclosure-chevron {
   gap: 12px;
 }
 
-/* `.detail-diagnostics-card` is a pure decorator on `.pels-surface-card` —
-   the canonical primitive provides padding, border, radius, surface tier.
-   Previously this rule redeclared bg/border with a hardcoded `10px` radius
-   (a token violation) and a `12px` literal padding; rebinding onto the
-   canonical drops those forks. Sub-element typography (e.g.
-   `.detail-diagnostics-card h4`) stays in this block. */
+/* `.detail-diagnostics-card` — decorator on `.pels-surface-card` (see
+   canonical-primitives preamble above `.pels-surface-card`). Previously
+   forked bg/border with a hardcoded `10px` radius (a token violation) and
+   `12px` literal padding; rebinding onto the canonical dropped those forks.
+   Sub-element typography (e.g. `.detail-diagnostics-card h4`) stays here. */
 
 .detail-diagnostics-list {
   display: grid;
@@ -6246,14 +6272,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-2);
 }
 
-/* `.deadline-list-card` is a layout + link decorator on `.pels-surface-card`.
-   The canonical primitive provides padding, border, radius, surface tier
-   and overflow / isolation; this rule overrides the default grid template
-   to a two-column [content | chevron] shape, tightens the inline gap, and
-   carries the link-anchor reset (`color: inherit`, `text-decoration: none`)
-   so the `<a>` host inherits text styling from the surface. Hover / focus
-   border-accent + outline ride the canonical `data-interactive` hook in
-   markup. */
+/* `.deadline-list-card` — layout + link decorator on `.pels-surface-card`
+   (see canonical-primitives preamble above `.pels-surface-card`). Overrides
+   the default grid template to a two-column [content | chevron] shape,
+   tightens the inline gap, and carries the link-anchor reset (`color:
+   inherit`, `text-decoration: none`) so the `<a>` host inherits text
+   styling. Hover/focus elevation lift + outline ride the canonical
+   `data-interactive` hook; only the accent border swap is local. */
 .deadline-list-card {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--spacing-2) var(--spacing-3);
@@ -6265,7 +6290,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .deadline-list-card:hover,
 .deadline-list-card:focus-visible {
   border-color: var(--accent);
-  background: var(--color-surface-3);
 }
 
 .deadline-list-card__header {
