@@ -2931,7 +2931,7 @@ should not be folded into the same PR.
       parameter expansion (`${PWD:t}`).
       Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
       `scripts/resolve-homey-id.mjs`.
-- [ ] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
+- [x] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
       Surfaced by adversarial-review on v2.7.2 PR 1 (schema v3→v4). The in-memory
       `InProgressRecord.revisions` array is rebuilt with `[...existing, newEntry]` on every
       cycle that observes a new revision (`appendRevisionLogIfNew` in
@@ -2939,10 +2939,9 @@ should not be folded into the same PR.
       entries due to the active-plan recorder's per-cycle dedupe, so the persisted size is
       bounded in practice. A pathological replan loop (prices oscillate, `rate_refined`
       keeps firing) could push the array large; the rebuild path is O(n²) over the run.
-      Add `MAX_REVISIONS_PER_ENTRY = 64` with drop-oldest semantics mirroring
-      `PROGRESS_SAMPLES_PER_ENTRY_CAP`, or switch the recorder to a `push`-based mutation
-      pattern guarded by a single dirty flag.
-      Why P3: speculative future-proofing; no observed pathological trigger today.
+      Shipped `MAX_REVISIONS_PER_ENTRY = 64` with a drop-oldest `.slice(-cap)` in the
+      append path, mirroring `PROGRESS_SAMPLES_PER_ENTRY_CAP`. In-memory only — existing
+      persisted entries with `<= 64` revisions load identically; no schema change.
       Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
       `lib/plan/deferredObjectives/planHistory.ts` (`InProgressRecord.revisions`).
 - [ ] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
