@@ -20,6 +20,20 @@ export const RECOVERY_PROGRESS_EPSILON = 0.01;
 // this multiple of the progress epsilon. Sub-band jitter (the common case for
 // sensors at rest) is treated as no-progress so a slow, mostly-flat refill
 // can't perpetually re-arm the counter via positive noise crossings.
+//
+// Known limitation: at 0.05 °C reset threshold (5 × the 0.01 °C epsilon),
+// noisy panel-heater sensors (Mill / Adax / Glamox class, with 0.1-0.2 °C
+// sample-to-sample jitter) frequently clear this band on positive noise
+// crossings, so the no-progress counter is reset before reaching
+// `RECOVERY_NO_PROGRESS_SAMPLE_LIMIT` and the `no_progress` disarm path
+// rarely trips on noisy devices. The `RECOVERY_NO_PROGRESS_MIN_DURATION_MS`
+// floor caps the visible harm to "won't disarm during the first 30 min", but
+// past that floor a noisy device on a cap-shed cooling pattern is back to the
+// stuck-state and only the 24 h `RECOVERY_SAFETY_TIMEOUT_MS` bounds the
+// worst case. The right fix is a noise-aware threshold keyed to the device's
+// observed jitter floor (rather than blindly raising the multiplier here,
+// which would also delay disarm on quiet sensors) — coupled to the stashed
+// thermostat-noise work, not handled inline.
 export const RECOVERY_PROGRESS_RESET_MULTIPLIER = 5;
 // Wall-clock floor for the no-progress disarm path, measured from
 // `recoveryArmedAtMs`. With 10s polling, four consecutive no-progress samples
