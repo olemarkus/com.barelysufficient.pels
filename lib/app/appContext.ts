@@ -23,6 +23,7 @@ import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
+import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../utils/debugLogging';
 import type {
   DeviceControlProfiles,
@@ -135,7 +136,7 @@ export type AppContext = {
   evaluateHeadroomForDevice: (
     params: Parameters<PlanService['evaluateHeadroomForDevice']>[0],
   ) => HeadroomForDeviceDecision | null;
-  getCombinedHourlyPrices: () => unknown;
+  getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getDailyBudgetUiPayload: () => DailyBudgetUiPayload | null;
   getLatestPlanSnapshotForUi: () => SettingsUiPlanSnapshot | null;
   getPowerCalibrationSnapshot: () => PowerCalibrationSnapshot;
