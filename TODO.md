@@ -290,6 +290,39 @@ release, not v2.7.1 merge-blockers.*
       mirroring `formatEvSnapshot()`. Source: `pels-runtime-reality` P2 on
       chip 4.1c, 2026-05-24.
 
+- [ ] **Restore per-topic debug gating in lib/logging.** Chips 4.1d+ migrated
+      runtime modules to `getLogger(module)` and dropped the topic-gated
+      `debugStructured` injection. Previously, a user could enable just the
+      `binary_commands` debug topic and get only those events; now enabling
+      debug raises pino's level for *every* module logger. The regression is
+      dormant in production (root logger defaults to `info`, so
+      `binary_command_skipped` etc. are filtered before serialization) but
+      becomes a flood the moment anyone bumps the level. Add a topic registry
+      to `lib/logging`: `enableTopic('binary_commands')` raises just the
+      `plan/binary-*` module loggers to debug; everything else stays at info.
+      Mapping topic → module-name-glob lives in lib/logging (not the call sites).
+      Source: `chatgpt-codex-connector` P1 on PR #1037 (chip 4.1d), 2026-05-24.
+
+- [ ] **Move `delete state.pendingBinaryCommands[deviceId]` to try/finally
+      in `executeBinaryCommand`.** Today the failure branch (catch) deletes
+      the pending entry. If a newer command for the same device is issued
+      while the first is in-flight and that older request fails, the catch
+      could delete the newer pending entry that already replaced it.
+      Restructure with a per-request token gate (the success path leaves
+      the pending entry alive for `syncPendingBinaryCommands` to confirm —
+      not a simple `finally`). Source: `gemini-code-assist` medium on PR
+      #1037 (lib/plan/planBinaryControl.ts:~191), 2026-05-24.
+
+- [ ] **Pass `snapshot` to `executeBinaryCommand` instead of re-fetching via
+      `deviceManager.getSnapshot().find()`.** The EV-action success branch
+      currently does `formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId))`
+      to log post-actuation state. This is O(N) per call and the caller
+      already has the original snapshot (pre-actuation). Either accept losing
+      post-actuation freshness (use the original snapshot) or have
+      DeviceManager expose `getSnapshotByDeviceId(id)`. Source:
+      `gemini-code-assist` medium on PR #1037
+      (lib/plan/planBinaryControl.ts:~259), 2026-05-24.
+
 - [ ] **Guardrail `getLogger` against runtime-interpolated module names.** Today
       `getLogger(module)` in `lib/logging/logger.ts` caches one proxy per
       distinct `module` string. Module-scope `const logger = getLogger('plan/x')`

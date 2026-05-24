@@ -216,7 +216,6 @@ export class PlanEngine {
       state: this.state,
       liveDevices: devices,
       source,
-      logDebug: (message) => this.logDebugFn(message),
       onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
         this.executor.handleConfirmedBinaryCommand({
           deviceId,

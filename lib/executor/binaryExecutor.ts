@@ -42,11 +42,6 @@ export type PlanExecutorBinaryContext = {
       logContext: 'capacity' | 'capacity_control_off';
       actuationMode: PlanActuationMode;
     }) => Promise<void>;
-    log: (...args: unknown[]) => void;
-    logDebug: (...args: unknown[]) => void;
-    error: (...args: unknown[]) => void;
-    structuredLog?: PinoLogger;
-    debugStructured?: StructuredDebugEmitter;
   };
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
