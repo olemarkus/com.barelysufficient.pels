@@ -1794,7 +1794,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/tests/e2e/**`,
       `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
       ignored `output/` artifacts only.
-- [ ] Make the browser Homey stub follow the injected SDK handoff more closely.
+- [x] Make the browser Homey stub follow the injected SDK handoff more closely.
       After assigning `window.Homey`, call `window.onHomeyReady?.(Homey)` so full-browser audits
       exercise the same delivery path as Homey's injected settings SDK. Keep the existing global
       fallback covered for compatibility.
