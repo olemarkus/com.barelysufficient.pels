@@ -193,7 +193,7 @@
           "en": "Smart task ended for [[device]]"
         },
         "hint": {
-          "en": "Fires once when a smart task ends. The [[outcome]] tag tells you how it ended — succeeded (target reached and held), missed (ready-by time passed before reaching the target), or abandoned (cleared by hand or the device dropped out). Values are stable lowercase ids — filter on them downstream."
+          "en": "Fires once when a smart task ends. The [[outcome]] tag tells you how it ended — succeeded (target reached and held), missed (ready-by time passed before reaching the target), or abandoned (cleared by hand or the device dropped out). Values are stable lowercase ids — filter on them downstream. The [[shortfall_known]] flag is false when the device-side delta was not observable and [[shortfall]] fell back to 0; gate any numeric comparison on it."
         },
         "args": [
           {
@@ -227,6 +227,13 @@
             "type": "number",
             "title": {
               "en": "Gap to target"
+            }
+          },
+          {
+            "name": "shortfall_known",
+            "type": "boolean",
+            "title": {
+              "en": "Gap to target known"
             }
           }
         ],

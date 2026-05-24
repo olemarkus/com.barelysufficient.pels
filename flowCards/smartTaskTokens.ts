@@ -33,30 +33,42 @@ const roundForToken = (value: number | null, decimals: number): number => {
   return Math.round(value * factor) / factor;
 };
 
-const computeShortfall = (event: DeferredObjectiveEndedEvent): number => {
-  if (event.outcome === 'succeeded') return 0;
+// `known === false` flags the SDK-imposed fallback path: Homey number tokens
+// cannot be null, so when the device-side delta is unobservable (target or
+// final-progress sample missing) `value` collapses to 0. Flow authors should
+// gate any numeric comparison on `known` so they can tell that "0" from a real
+// "missed by exactly 0" outcome.
+const computeShortfall = (event: DeferredObjectiveEndedEvent): {
+  value: number;
+  known: boolean;
+} => {
+  if (event.outcome === 'succeeded') return { value: 0, known: true };
   if (event.objectiveKind === 'temperature'
     && event.targetTemperatureC !== null
     && event.finalProgressC !== null) {
     const delta = event.targetTemperatureC - event.finalProgressC;
-    return delta > 0 ? delta : 0;
+    return { value: delta > 0 ? delta : 0, known: true };
   }
   if (event.objectiveKind === 'ev_soc'
     && event.targetPercent !== null
     && event.finalProgressPercent !== null) {
     const delta = event.targetPercent - event.finalProgressPercent;
-    return delta > 0 ? delta : 0;
+    return { value: delta > 0 ? delta : 0, known: true };
   }
-  return 0;
+  return { value: 0, known: false };
 };
 
 export const buildSmartTaskEndedTokens = (
   event: DeferredObjectiveEndedEvent,
-): Record<string, unknown> => ({
-  device_name: event.deviceName ?? event.deviceId,
-  outcome: event.outcome,
-  shortfall: roundForToken(computeShortfall(event), 2),
-});
+): Record<string, unknown> => {
+  const shortfall = computeShortfall(event);
+  return {
+    device_name: event.deviceName ?? event.deviceId,
+    outcome: event.outcome,
+    shortfall: roundForToken(shortfall.value, 2),
+    shortfall_known: shortfall.known,
+  };
+};
 
 export const buildSmartTaskStatusTokens = (
   snapshot: DeferredObjectiveStatusSnapshot,
