@@ -180,6 +180,13 @@
     </section>
 
     <section class="card panel hidden" id="usage-panel" data-panel="usage" data-loading="true" aria-labelledby="usage-hero-headline">
+      <!-- Visually-hidden panel landmark heading. The visible eyebrow
+           ("Energy history") plus the dynamic kWh `<h2>` inside `.usage-hero`
+           carry the on-screen identity; this `<h2>` exists purely so the
+           document outline keeps a stable, topical heading for screen-reader
+           heading navigation (matches the h2 landmark on Overview / Budget /
+           Smart tasks / Settings). Restored after PR #881's hero trim. -->
+      <h2 class="visually-hidden">Usage</h2>
       <!-- First-paint skeleton — visible while `data-loading="true"` is set.
            Removed by `renderPowerStats` once usage history loads; CSS hides
            the surrounding usage hero/cards/footer until then so the panel
