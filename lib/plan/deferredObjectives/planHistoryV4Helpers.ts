@@ -37,6 +37,19 @@ export type HourPriceResolver = (
 // `test/runtimePackaging.test.ts`). Keep both copies in sync.
 export const PROGRESS_SAMPLES_PER_ENTRY_CAP = 48;
 
+// Runtime safety cap on `InProgressRecord.revisions[]` length. Realistic runs
+// see 5-10 entries thanks to the active-plan recorder's per-cycle dedupe, but
+// a pathological replan loop (prices oscillating, `rate_refined` firing every
+// cycle) could push the array large. The rebuild path in
+// `appendRevisionLogIfNew` is `[...existing, newEntry]` — O(n) per push, O(n²)
+// over the run — and the result is persisted to history, so an unbounded array
+// would inflate the JSON entry size too. Drop-oldest semantics mirror
+// `PROGRESS_SAMPLES_PER_ENTRY_CAP`: the most recent revisions are the most
+// relevant for postmortem, the first revision-of-the-run is already on
+// `originalPlan`. In-memory cap only; existing persisted entries with
+// `<= MAX_REVISIONS_PER_ENTRY` revisions load identically.
+export const MAX_REVISIONS_PER_ENTRY = 64;
+
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 // Floor a timestamp to its containing hour. Used to bucket progress samples
@@ -323,12 +336,19 @@ export const appendRevisionLogIfNew = (
   if (existing.some((entry) => entry.atMs === nextRevision.revisedAtMs)) return existing.slice();
   const previousHours = previousFinalPlan?.hours ?? [];
   const { hoursAdded, hoursRemoved } = diffHourSchedules(previousHours, nextRevision.hours);
-  return [...existing, {
+  const appended: DeferredObjectivePlanHistoryRevisionLogEntry[] = [...existing, {
     atMs: nextRevision.revisedAtMs,
     reasonId: nextRevision.reason,
     hoursAdded,
     hoursRemoved,
   }];
+  // Drop-oldest if a pathological replan loop pushed the array over the cap.
+  // The slice preserves the newest entries (most relevant for postmortem); the
+  // first revision-of-the-run is already captured on `originalPlan`.
+  if (appended.length > MAX_REVISIONS_PER_ENTRY) {
+    return appended.slice(-MAX_REVISIONS_PER_ENTRY);
+  }
+  return appended;
 };
 
 // Symmetric-difference counts of `startsAtMs` between two hour schedules.

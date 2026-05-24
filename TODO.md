@@ -1552,15 +1552,14 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
       (markup consolidation for #1 and #3), `settings/style.css` (regen).
 
-- [ ] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
+- [x] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/05-settings-advanced-480-1.png`):
       the page header reads "Device diagnostics" but the page contains Debug logging
       categories + Daily-budget tuning + Data management + Device cleanup + Device
-      log. Rename to "Diagnostics & maintenance" or similar so users can predict
-      what they'll find under the entry.
-      Files: `packages/settings-ui/src/ui/views/AdvancedSettings.tsx` (or markup
-      equivalent), `packages/shared-domain/src/...` (copy helper if heading sourced
-      from there).
+      log. Renamed to "Diagnostics & maintenance" so users can predict what
+      they'll find under the entry. Literal H2 lives in
+      `packages/settings-ui/public/index.html:518` (synced to
+      `settings/index.html` via `npm run build:settings`).
 
 - [ ] Settings → Electricity prices: two `<select>` controls render at different
       contrast on the same page. Live-walk 2026-05-16
@@ -2942,7 +2941,7 @@ should not be folded into the same PR.
       parameter expansion (`${PWD:t}`).
       Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
       `scripts/resolve-homey-id.mjs`.
-- [ ] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
+- [x] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
       Surfaced by adversarial-review on v2.7.2 PR 1 (schema v3→v4). The in-memory
       `InProgressRecord.revisions` array is rebuilt with `[...existing, newEntry]` on every
       cycle that observes a new revision (`appendRevisionLogIfNew` in
@@ -2950,10 +2949,9 @@ should not be folded into the same PR.
       entries due to the active-plan recorder's per-cycle dedupe, so the persisted size is
       bounded in practice. A pathological replan loop (prices oscillate, `rate_refined`
       keeps firing) could push the array large; the rebuild path is O(n²) over the run.
-      Add `MAX_REVISIONS_PER_ENTRY = 64` with drop-oldest semantics mirroring
-      `PROGRESS_SAMPLES_PER_ENTRY_CAP`, or switch the recorder to a `push`-based mutation
-      pattern guarded by a single dirty flag.
-      Why P3: speculative future-proofing; no observed pathological trigger today.
+      Shipped `MAX_REVISIONS_PER_ENTRY = 64` with a drop-oldest `.slice(-cap)` in the
+      append path, mirroring `PROGRESS_SAMPLES_PER_ENTRY_CAP`. In-memory only — existing
+      persisted entries with `<= 64` revisions load identically; no schema change.
       Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
       `lib/plan/deferredObjectives/planHistory.ts` (`InProgressRecord.revisions`).
 - [ ] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
