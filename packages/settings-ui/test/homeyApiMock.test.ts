@@ -1,7 +1,9 @@
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_BOOTSTRAP_KEYS,
+  SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH,
+  SETTINGS_UI_REFRESH_DEVICES_PATH,
 } from '../../contracts/src/settingsUiApi.ts';
 import { UNMANAGED_RESERVE_MODE } from '../../contracts/src/dailyBudgetConstants.ts';
 import { createHomeyMock, getUnhandledDeclaredHomeyApiRoutes, type MockHomeyClient } from './helpers/homeyApiMock';
@@ -87,5 +89,86 @@ describe('homeyApiMock', () => {
       enabled: true,
       dailyBudgetKWh: 5,
     })).rejects.toThrow('Daily budget must be between 20 and 360 kWh.');
+  });
+
+  describe('device endpoints', () => {
+    it('serves zero devices from /ui_devices when none are configured', async () => {
+      const homey = createHomeyMock();
+
+      await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
+        .resolves.toEqual({ devices: [] });
+    });
+
+    it('serves the explicit uiState.devices array from /ui_devices', async () => {
+      const homey = createHomeyMock({
+        uiState: {
+          devices: [
+            { id: 'dev-1', name: 'Heater', targets: [], currentOn: true },
+            { id: 'dev-2', name: 'EV', targets: [], currentOn: false },
+          ],
+        },
+      });
+
+      const result = await callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH);
+
+      expect(result).toEqual({
+        devices: [
+          { id: 'dev-1', name: 'Heater', targets: [], currentOn: true },
+          { id: 'dev-2', name: 'EV', targets: [], currentOn: false },
+        ],
+      });
+    });
+
+    it('returns the same explicit array shape from /ui_refresh_devices', async () => {
+      const homey = createHomeyMock({
+        uiState: {
+          devices: [{ id: 'dev-1', name: 'Heater', targets: [], currentOn: true }],
+        },
+      });
+
+      await expect(callHomeyApi(homey, 'POST', SETTINGS_UI_REFRESH_DEVICES_PATH))
+        .resolves.toEqual({
+          devices: [{ id: 'dev-1', name: 'Heater', targets: [], currentOn: true }],
+        });
+    });
+
+    it('falls back to target_devices_snapshot when uiState.devices is omitted (deprecated)', async () => {
+      const homey = createHomeyMock({
+        settings: {
+          target_devices_snapshot: [
+            { id: 'legacy-1', name: 'Legacy', targets: [], currentOn: true },
+          ],
+        },
+      });
+
+      await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
+        .resolves.toEqual({
+          devices: [
+            { id: 'legacy-1', name: 'Legacy', targets: [], currentOn: true },
+          ],
+        });
+    });
+
+    it('prefers explicit uiState.devices over target_devices_snapshot setting', async () => {
+      const homey = createHomeyMock({
+        settings: {
+          target_devices_snapshot: [
+            { id: 'should-be-ignored', name: 'Legacy', targets: [], currentOn: true },
+          ],
+        },
+        uiState: {
+          devices: [
+            { id: 'served', name: 'Live', targets: [], currentOn: false },
+          ],
+        },
+      });
+
+      await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
+        .resolves.toEqual({
+          devices: [
+            { id: 'served', name: 'Live', targets: [], currentOn: false },
+          ],
+        });
+    });
   });
 });
