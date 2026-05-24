@@ -34,13 +34,16 @@ import {
 import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
 import { resolvePriceLevelChip } from '../../../shared-domain/src/priceLevelChips.ts';
 import {
-  CHART_FINISHED_OVER_DAILY_BUDGET,
-  CHART_FINISHED_WITHIN_BUDGET,
+  DAILY_BUDGET_DISABLED_OFF,
+  DAILY_BUDGET_DISABLED_WAITING,
+  DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
-  composeHeadroomLeftToday,
-  composeHeadroomLineWithEstimate,
-  composeHeadroomOverBudgetUsed,
+  composeBudgetRemainingLineWithEstimate,
+  composeBudgetRemainingToday,
+  composeBudgetUsedOver,
+  resolveChartSubtitle as resolveSharedChartSubtitle,
+  resolveTodayLine as resolveSharedTodayLine,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
@@ -197,10 +200,6 @@ export const resolveDeltaPill = (
 const SPLIT_COVERAGE_THRESHOLD = 0.5;
 const BACKGROUND_SHARE_GAP = 0.1;
 
-const HEADLINE_LABEL_BY_VIEW: Record<BudgetDayView, string> = {
-  yesterday: "Yesterday's total", today: 'Projected today', tomorrow: 'Planned for tomorrow',
-};
-
 const sumElapsed = (values: number[], buckets: number): number => {
   let total = 0;
   for (let index = 0; index < buckets && index < values.length; index += 1) {
@@ -273,11 +272,11 @@ export const resolveHeadroomLine = (
   // numbers don't read as if they should add up.
   const remaining = payload.state.remainingKWh;
   const status = Number.isFinite(remaining) && remaining < 0
-    ? composeHeadroomOverBudgetUsed(formatKWh(Math.abs(remaining), 1))
-    : composeHeadroomLeftToday(formatKWh(remaining, 1));
+    ? composeBudgetUsedOver(formatKWh(Math.abs(remaining), 1))
+    : composeBudgetRemainingToday(formatKWh(remaining, 1));
   const cost = computeEstimatedCost({ payload, view: 'today' });
   if (cost === null) return status;
-  return composeHeadroomLineWithEstimate(status, formatCost(cost, costDisplay));
+  return composeBudgetRemainingLineWithEstimate(status, formatCost(cost, costDisplay));
 };
 
 const resolveNoPlanLine = (view: BudgetDayView, budgetEnabled: boolean): string => {
@@ -299,18 +298,7 @@ const resolveTomorrowLine = (payload: DailyBudgetDayPayload): string => (
 const resolveTodayLine = (
   payload: DailyBudgetDayPayload,
   status: BudgetStatus,
-): string | null => {
-  if (status === 'within') return null;
-  const cause = resolveDominantCause(payload);
-  if (status === 'tight') {
-    return cause === 'background'
-      ? 'Close to budget — driven by background usage.'
-      : 'PELS is shaping flexible use to stay within budget.';
-  }
-  return cause === 'background'
-    ? 'Background usage is higher than expected today.'
-    : 'Managed devices used more than expected — check device priorities.';
-};
+): string | null => resolveSharedTodayLine(status, resolveDominantCause(payload));
 
 export const resolveDecisionLine = (
   payload: DailyBudgetDayPayload | null,
@@ -336,7 +324,7 @@ export const resolveHeroData = (
   if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
       headlineLabel: null,
-      comparison: budgetEnabled ? 'Waiting for daily budget data' : 'Daily budget off',
+      comparison: budgetEnabled ? DAILY_BUDGET_DISABLED_WAITING : DAILY_BUDGET_DISABLED_OFF,
       delta: null,
       headroomLine: null,
       splitLine: null,
@@ -346,7 +334,7 @@ export const resolveHeroData = (
     };
   }
   return {
-    headlineLabel: HEADLINE_LABEL_BY_VIEW[view],
+    headlineLabel: DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW[view],
     comparison: formatComparisonLine(viewPayload, view),
     delta: resolveDeltaPill(viewPayload, view, status),
     headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,
@@ -363,19 +351,13 @@ const resolveChartSubtitle = (params: {
   mode: BudgetRedesignChartMode;
   status: BudgetStatus;
   priceReliable: boolean;
-}): string => {
-  const { payload, view, mode, status, priceReliable } = params;
-  if (mode === 'hourlyPlan') {
-    if (priceReliable && payload.budget.priceShapingEnabled) return 'Budget follows cheaper hours.';
-    if (payload.budget.priceShapingEnabled) return 'Cheaper-hour context needs price data.';
-    return 'Shows how the budget is distributed through the day.';
-  }
-  if (view === 'yesterday') return status === 'over' ? CHART_FINISHED_OVER_DAILY_BUDGET : CHART_FINISHED_WITHIN_BUDGET;
-  if (view === 'tomorrow') return 'Shows the planned cumulative budget.';
-  if (status === 'over') return 'Projected to finish over budget.';
-  if (status === 'tight') return 'Close to the daily budget.';
-  return 'On track to finish within budget.';
-};
+}): string => resolveSharedChartSubtitle({
+  view: params.view,
+  mode: params.mode,
+  status: params.status,
+  priceReliable: params.priceReliable,
+  priceShapingEnabled: Boolean(params.payload.budget.priceShapingEnabled),
+});
 
 // Mirrors the `hasSplit` gate in `buildHourlyOption`: when the planner
 // separated controllable vs. background buckets, the chart renders two
