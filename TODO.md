@@ -1856,7 +1856,7 @@ consolidation + a11y polish (8 P2)`.*
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
-- [ ] Add `objective_missing_capacity` user-facing copy for thermal smart tasks. A new water
+- [x] Add `objective_missing_capacity` user-facing copy for thermal smart tasks. A new water
       heater (or any thermal device without `measure_power`) never builds a `kWhPerUnit`
       profile, so the diagnostics bridge emits `objective_missing_capacity` and the task sits
       "Waiting" indefinitely with no explanation. Thermal objectives intentionally have no
@@ -1870,6 +1870,12 @@ consolidation + a11y polish (8 P2)`.*
       `measuredPowerKw` → `expectedPowerKw` → `powerKw` thermal fallback in
       `resolveObjectiveSteps`; this copy entry only addresses the first path (no-profile
       cold-start).
+      DONE (2026-05-24): exported `PENDING_REASON_MISSING_CAPACITY_COPY` in
+      `packages/shared-domain/src/deadlineLabels.ts` as the canonical user-facing
+      one-liner; the thermal `missing_capacity` pending-hero resolver derives its
+      headline + metaLine from the constant (split on the em-dash, body
+      re-capitalised) so headline + body combined read as the one-line copy.
+      `headlineReason` is suppressed to keep the hero a single coherent sentence.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
