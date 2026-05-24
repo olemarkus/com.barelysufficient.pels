@@ -7,7 +7,7 @@ import {
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
 } from '../lib/app/appDebugHelpers';
-import { resetRestClient, setRestClient } from '../lib/device/managerHomeyApi';
+import { resetRestClient, setRestClient } from '../lib/device/transport/managerHomeyApi';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];

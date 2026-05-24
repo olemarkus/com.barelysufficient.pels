@@ -2,11 +2,11 @@ import type { FlowEffectiveRequiredCapabilityId } from './managerNativeEv';
 import type { DeviceCapabilityMap } from './managerControl';
 import {
   getExactPowerCapabilityValue,
-} from './managerParse';
+} from './transport/managerParse';
 import type {
   FlowReportedCapabilityId,
   FlowReportedCapabilitiesForDevice,
-} from './flowReportedCapabilities';
+} from './transport/flowReportedCapabilities';
 
 export function shouldSkipFlowBackedCandidate(params: {
   flowAugmentedDeviceType: 'binary' | 'evcharger' | 'unsupported';

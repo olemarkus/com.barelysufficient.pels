@@ -32,7 +32,7 @@ import type Homey from 'homey';
 import { io, type Manager as SocketIOManager, type Socket as SocketIOSocket } from 'socket.io-client';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';
-import { resolveHomeyInstance } from './managerHomeyApi';
+import { resolveHomeyInstance } from './transport/managerHomeyApi';
 import { normalizeError } from '../utils/errorUtils';
 import { getLogger } from '../logging/logger';
 

@@ -1,9 +1,31 @@
 import Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
-import type { DeviceManager } from '../device/manager';
+import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+
+/**
+ * Subset of the device transport surface that the executor needs: read
+ * snapshots (`DeviceObservation`) plus the actuation primitives it dispatches.
+ * Defined locally so the executor does not have to import the concrete
+ * `DeviceManager` class — see PR #2 of the observer/transport split
+ * (`notes/state-management/observer-transport-split.md`). The transport
+ * exposes these methods in the same shape that `DeviceManager` does today.
+ */
+export type PlanExecutorDeviceTransport = DeviceObservation & {
+  setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
+  requestSteppedLoadStep: (params: {
+    deviceId: string;
+    profile: SteppedLoadProfile;
+    desiredStepId: string;
+    planningPowerW: number;
+    planningCurrentA: number;
+    actuationMode?: 'plan' | 'reconcile';
+    previousStepId?: string;
+  }) => Promise<SteppedLoadStepRequestResult>;
+};
 import type {
   ExecutableBinaryIntent,
   ExecutableEvIntent,
@@ -71,7 +93,7 @@ import {
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
-  deviceManager: DeviceManager;
+  deviceManager: PlanExecutorDeviceTransport;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
@@ -153,7 +175,7 @@ export class PlanExecutor {
   private steppedExecutorContext?: PlanExecutorSteppedContext;
   private binaryExecutorContext?: PlanExecutorBinaryContext;
 
-  private get deviceManager(): DeviceManager {
+  private get deviceManager(): PlanExecutorDeviceTransport {
     return this.deps.deviceManager;
   }
 

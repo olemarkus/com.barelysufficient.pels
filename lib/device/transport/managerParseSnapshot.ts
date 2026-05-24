@@ -1,12 +1,12 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getLogger } from '../../logging/logger';
 import {
   getCanSetControl,
   resolveEvChargingStateBinaryEvidence,
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
-} from './managerControl';
+} from '../managerControl';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 const moduleLogger = getLogger('device/parse-snapshot');

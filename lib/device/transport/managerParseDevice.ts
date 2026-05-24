@@ -1,12 +1,12 @@
-import type { DeviceControlProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { DeviceControlProfile, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import {
     getCapabilities,
     getDeviceId,
     getIsAvailable,
     resolveZoneLabel,
 } from './managerHelpers';
-import { estimatePower, type PowerEstimateState } from './devicePowerEstimate';
+import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
 import {
     type FlowReportedCapabilityId,
     type FlowReportedCapabilitiesForDevice,
@@ -17,7 +17,7 @@ import {
   getEvChargingState,
   resolveEvChargingStateBinaryEvidence,
   type DeviceCapabilityMap,
-} from './managerControl';
+} from '../managerControl';
 import {
     buildTargets,
     getCurrentTemperature,
@@ -26,21 +26,21 @@ import {
 import {
     hasPotentialHomeyEnergyEstimate,
     type LiveDevicePowerWatts,
-} from './managerEnergy';
-import { updateLastKnownPower } from './managerRuntime';
-import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
-import { resolveMeasuredPowerKw } from './managerMeasuredPower';
+} from '../managerEnergy';
+import { updateLastKnownPower } from '../managerRuntime';
+import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
+import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
 import {
     resolveCandidateCapabilities,
     resolveFlowCapabilityOverlay,
-} from './managerNativeEv';
-import { shouldSkipFlowBackedCandidate } from './managerFlowSupport';
+} from '../managerNativeEv';
+import { shouldSkipFlowBackedCandidate } from '../managerFlowSupport';
 import {
     resolveLastFreshDataMs,
     resolveBinaryControlObservation,
 } from './managerParseSnapshot';
-import { resolveStateOfChargeSnapshot } from './stateOfCharge';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { resolveStateOfChargeSnapshot } from '../stateOfCharge';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
 import {

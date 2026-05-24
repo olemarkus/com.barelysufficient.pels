@@ -25,11 +25,11 @@ import {
 import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
-import type {
-  SteppedLoadStepRequestResult,
-  SteppedLoadStepRequestTransport,
-} from '../device/manager';
-import { PELS_TARGET_STEP_CAPABILITY_ID } from '../device/steppedLoadSyntheticCapabilities';
+import {
+  PELS_TARGET_STEP_CAPABILITY_ID,
+  type SteppedLoadStepRequestResult,
+  type SteppedLoadStepRequestTransport,
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 

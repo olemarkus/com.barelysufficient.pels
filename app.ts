@@ -129,7 +129,7 @@ import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
-import type { ObservedDeviceStateEvent } from './lib/device/managerRealtimeHandlers';
+import type { ObservedDeviceStateEvent } from './lib/device/transport/managerRealtimeHandlers';
 import {
   emitSettingsUiDevicesUpdatedForApp,
   emitSettingsUiPowerUpdatedForApp,
@@ -160,7 +160,7 @@ import {
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
   type FlowReportedCapabilitiesForDevice,
-} from './lib/device/flowReportedCapabilities';
+} from './lib/device/transport/flowReportedCapabilities';
 import {
   EV_SOC_CAPABILITY_ID,
   isStateOfChargeCapabilityId,

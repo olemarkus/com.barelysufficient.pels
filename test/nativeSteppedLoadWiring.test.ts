@@ -24,11 +24,11 @@ import type { DevicePlanDevice } from '../lib/plan/planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../lib/utils/types';
 import { mockHomeyInstance } from './mocks/homey';
-import { setRestClient } from '../lib/device/managerHomeyApi';
+import { setRestClient } from '../lib/device/transport/managerHomeyApi';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../lib/device/steppedLoadSyntheticCapabilities';
+} from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',

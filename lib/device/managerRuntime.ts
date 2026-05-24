@@ -6,7 +6,7 @@ import {
   formatTargetValue,
   getRecentLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
-} from './managerRealtimeSupport';
+} from './transport/managerRealtimeSupport';
 import {
   resolveEvChargingStateBinaryEvidence,
   resolveEvCurrentOn,

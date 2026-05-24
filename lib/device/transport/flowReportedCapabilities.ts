@@ -1,5 +1,5 @@
-import type { HomeyDeviceLike } from '../utils/types';
-import type { DeviceCapabilityMap, DeviceCapabilityValue } from './managerControl';
+import type { HomeyDeviceLike } from '../../utils/types';
+import type { DeviceCapabilityMap, DeviceCapabilityValue } from '../managerControl';
 import { getCapabilities, resolveDeviceClassKey } from './managerHelpers';
 
 export const FLOW_REPORTED_CAPABILITY_IDS = [

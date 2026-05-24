@@ -2,7 +2,7 @@ import type { Logger as PinoLogger } from '../logging/logger';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../device/steppedLoadSyntheticCapabilities';
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type { SteppedLoadDesiredRuntimeState } from './appDeviceControlHelpers';
 
 export function emitSteppedFeedbackLog(params: {
