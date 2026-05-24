@@ -6681,6 +6681,35 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-1);
 }
 
+/* Hourly-heatmap week-navigation chevrons (prev / next week). Before this
+ * decorator, the bare `<md-text-button>` chevrons rendered as accent-tinted
+ * 24 px icons with no visible button chrome — they read as decoration, not
+ * affordance (TODO ~1599, live-walk 2026-05-16). Doubled-class selector
+ * (0,2,0) beats MD Web's shadow `:host` defaults and Homey's host
+ * `button { ... }` stylesheet without `!important`; no panel scope needed
+ * since nothing else competes for these chevrons. Properties NOT redeclared
+ * ride the canonical `md-text-button { min-height: var(--pels-touch-target-
+ * min); ... }` rule (~line 364), so the 48 px touch-target floor stays
+ * guaranteed.
+ *
+ * `min-width: var(--pels-touch-target-min)` squares the hit-box so a
+ * single-glyph chevron meets the M3 48 × 48 floor; `--md-sys-color-primary`
+ * routes the SVG fill through MD Web's CSS-custom-property API so the icon
+ * resolves to `--text` (gray-50 ≈ #e6ecf5) on the `--pels-surface-container-
+ * high` ground (≈ #232b38) — ~12:1 contrast, comfortably WCAG AAA. We avoid
+ * the accent-green default that competed with the heatmap-cell palette. */
+.heatmap-nav-chevron.heatmap-nav-chevron {
+  --md-sys-color-primary: var(--text);
+  min-width: var(--pels-touch-target-min);
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-high);
+}
+
+.heatmap-nav-chevron.heatmap-nav-chevron[disabled] {
+  opacity: var(--opacity-disabled);
+}
+
 .usage-footer {
   display: flex;
   flex-direction: column;
