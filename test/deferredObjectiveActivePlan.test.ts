@@ -619,6 +619,82 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('schedule_revised');
     });
+
+    it('emits flow_permission_changed on a single-permission toggle when the other rescue permission stays granted', () => {
+      // Cascade-stability pin (PR #998 follow-up): mirrors the shape
+      // `withRescuePermission(entry, 'exemptFromBudget', 'always')` would
+      // produce when the existing entry already carries
+      // `limitLowerPriorityDevices: 'always'`. The `key === ...` ternary in
+      // `withRescuePermission` keeps the non-targeted permission intact, so the
+      // recorder sees the rescue tail flip from `['rescue', null, 'always']` to
+      // `['rescue', 'always', 'always']` — `baseChanged = false`,
+      // `rescueChanged = true` → `rescueOnly = true` → routes to
+      // `flow_permission_changed`. A refactor that broke the ternary (e.g. by
+      // discarding the prior permission) would still set the rescue tail but
+      // also move things around enough that this assertion would catch the
+      // regression at the recorder boundary.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Pre-state: only `limitLowerPriorityDevices` is granted; `exemptFromBudget`
+      // is absent (the user has never set it, or set it to 'never' which the
+      // flow card stores as absent).
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        rescue: { limitLowerPriorityDevices: 'always' },
+      })], HOUR_MS);
+
+      // Post-state: user toggles `exempt_from_budget` to `always`. The flow
+      // card's `withRescuePermission` carries the prior
+      // `limitLowerPriorityDevices: 'always'` forward unchanged. Schedule is
+      // unchanged so the only signature delta is the rescue tail.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('flow_permission_changed');
+      expect(plan?.latest?.revision).toBe(2);
+    });
+
+    it('emits flow_permission_changed when a rescue toggle and a planStatus drift land in the same cycle', () => {
+      // Cascade-priority pin (PR #998 follow-up): a rescue permission flip
+      // simultaneous with a `planStatus` drift on identical hours must still
+      // route to `flow_permission_changed`. On its own the status drift would
+      // route to `schedule_revised` (see the negative test directly above);
+      // here the rescue change forces `objectiveChanged = true` AND
+      // `rescueOnly = true`, so `resolveReplanReason` picks the dedicated
+      // `flow_permission_changed` reason before falling through to
+      // `schedule_revised`. A refactor that reordered the cascade (e.g. by
+      // checking `metadataDriftedWithinSchedule` first) would silently swap
+      // the reasons and the history detail would name the wrong cause.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Pre-state: no rescue, status 'on_track' (the default in `makeHorizon`).
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+
+      // Post-state: enable `exempt_from_budget` AND drift the status to
+      // 'at_risk' on the same bucket layout. The cascade must pick the rescue
+      // reason; the status drift is irrelevant once the signature differs.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        rescue: { exemptFromBudget: 'at_risk' },
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+        ], { status: 'at_risk', statusDetail: 'planned_using_deadline_reserve' }),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('flow_permission_changed');
+      expect(plan?.latest?.revision).toBe(2);
+    });
   });
 
   it('freezes initialPlanningSpeedKw and initialEstimatedDurationText at first-revision time', () => {
