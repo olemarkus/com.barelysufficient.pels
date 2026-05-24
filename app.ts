@@ -116,6 +116,7 @@ import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './li
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import {
   createRootLogger,
+  setRootLogger,
   type Logger as PinoLogger,
   type StructuredDebugEmitter,
 } from './lib/logging/logger';
@@ -773,13 +774,11 @@ class PelsApp extends Homey.App {
         err: normalizeError(error),
       });
     };
-    this.structuredLogger = createRootLogger(
-      createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
-    );
-    this.structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
+    const structuredLogger = this.installStructuredLogger();
+    structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
     this.startResourceWarningListeners();
     this.stopHeapSnapshotHandler = installHeapSnapshotHandler({
-      logger: this.structuredLogger.child({ component: 'heap' }),
+      logger: structuredLogger.child({ component: 'heap' }),
     });
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled(), logStartupStepFailure);
     this.startPerfLogging();
@@ -864,13 +863,17 @@ class PelsApp extends Homey.App {
     this.dailyBudgetService.loadSettings();
     this.dailyBudgetService.loadState();
   }
+  private installStructuredLogger(): PinoLogger {
+    const logger = createRootLogger(
+      createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
+    );
+    setRootLogger(logger);
+    this.structuredLogger = logger;
+    return logger;
+  }
   private async initDeviceManager(): Promise<void> {
-    if (!this.structuredLogger) {
-      this.structuredLogger = createRootLogger(
-        createHomeyDestination({ log: (...a) => this.log(...a), error: (...a) => this.error(...a) }),
-      );
-    }
-    const structuredLog = this.structuredLogger.child({ component: 'devices' });
+    const structuredLogger = this.structuredLogger ?? this.installStructuredLogger();
+    const structuredLog = structuredLogger.child({ component: 'devices' });
     this.deviceManager = new DeviceManager(this, {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),

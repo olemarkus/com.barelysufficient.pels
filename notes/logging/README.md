@@ -17,10 +17,18 @@ This note is for contributors changing runtime logging.
 
 ## Current Model
 
-- Root logger is created in `app.ts` with `createRootLogger(createHomeyDestination(...))`.
+- Root logger is created in `app.ts` with `createRootLogger(createHomeyDestination(...))` and
+  registered process-wide with `setRootLogger(...)`.
+- Modules obtain a scoped child via `getLogger('<module-name>')` from `lib/logging/logger.ts`.
+  The child inherits the root's ALS mixin (so `rebuildId` and other `runWithContext` values
+  land on every line) and adds a stable `module` binding for filtering.
+- Prefer `getLogger(module)` over receiving a logger through deps. Treat logging as an
+  ambient capability — the ALS context is the Node-side equivalent of Go's
+  `context.Context` for request-scoped values. This eliminates the deps-propagation
+  problem where every layer redeclares `structuredLog?` / `debugStructured?`.
 - Transport still routes by Homey SDK log level callbacks, but payloads should remain JSON
   objects with stable field names.
-- AsyncLocalStorage already exists in `lib/logging/alsContext.ts` and currently injects
+- AsyncLocalStorage lives in `lib/logging/alsContext.ts` and currently injects
   `rebuildId` through `withRebuildContext(...)`.
 - `incidentId` is still attached manually by `CapacityGuard`; other important flows still lack
   automatic correlation IDs.
@@ -104,6 +112,8 @@ This note is for contributors changing runtime logging.
 - Add bounded `reasonCode` fields for important failure and fallback events.
 - Emit compact boundary snapshot events only at key lifecycle points, not continuously.
 - Keep child logger bindings for stable component/module fields and ALS for flow-scoped IDs.
+- New modules should declare `const logger = getLogger('<module-name>')` at module scope and
+  emit through it directly. Do not add `structuredLog?` / `debugStructured?` to deps types.
 
 ## Contributor Guidance
 
