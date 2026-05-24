@@ -2,7 +2,10 @@ import { h } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
-import { resolvePlanGenericReasonText } from '../../../../shared-domain/src/planReasonFormatting.ts';
+import {
+  readDeviceReasonDetail,
+  resolveReportedLoadAfterPauseText,
+} from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_LABEL,
@@ -283,9 +286,9 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
   && dev.measuredPowerKw > 0.05
 );
 
-const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => resolvePlanGenericReasonText({
+const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => resolveReportedLoadAfterPauseText({
   measuredPowerKw: dev.measuredPowerKw,
-  detail: (dev.reason as { detail?: unknown } | undefined)?.detail,
+  detail: readDeviceReasonDetail(dev.reason),
 });
 
 // ─── Generic plan card ────────────────────────────────────────────────────────

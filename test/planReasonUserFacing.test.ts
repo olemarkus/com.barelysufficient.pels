@@ -2,7 +2,8 @@ import {
   PLAN_REASON_CODES,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
-  resolvePlanGenericReasonText,
+  readDeviceReasonDetail,
+  resolveReportedLoadAfterPauseText,
   type DeviceReason,
 } from '../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -250,7 +251,7 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
   });
 });
 
-describe('resolvePlanGenericReasonText', () => {
+describe('resolveReportedLoadAfterPauseText', () => {
   // Mirrors the pre-extraction inline formatter in
   // packages/settings-ui/src/ui/views/PlanDeviceCards.tsx so the test
   // anchors the helper's output to the wording the Overview generic card
@@ -268,28 +269,28 @@ describe('resolvePlanGenericReasonText', () => {
   };
 
   it('renders the plain "Still reporting … kW after pause" sentence without a detail', () => {
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: 1.234, detail: null }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 1.234, detail: null }))
       .toBe('Still reporting 1.2 kW after pause');
   });
 
   it('appends the trimmed detail with an em-dash separator when present', () => {
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' }))
       .toBe('Still reporting 7.2 kW after pause — EV charger ignored pause');
   });
 
   it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: undefined, detail: null }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: undefined, detail: null }))
       .toBe('Still reporting – kW after pause');
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: Number.NaN, detail: null }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: Number.NaN, detail: null }))
       .toBe('Still reporting – kW after pause');
   });
 
   it('drops non-string and empty detail values silently', () => {
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: undefined }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: undefined }))
       .toBe('Still reporting 2.0 kW after pause');
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: '   ' }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: '   ' }))
       .toBe('Still reporting 2.0 kW after pause');
-    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: 42 }))
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: 42 }))
       .toBe('Still reporting 2.0 kW after pause');
   });
 
@@ -303,7 +304,41 @@ describe('resolvePlanGenericReasonText', () => {
       { measuredPowerKw: 2, detail: '   ' },
     ];
     for (const c of cases) {
-      expect(resolvePlanGenericReasonText(c)).toBe(referenceFormat(c.measuredPowerKw, c.detail));
+      expect(resolveReportedLoadAfterPauseText(c)).toBe(referenceFormat(c.measuredPowerKw, c.detail));
     }
+  });
+});
+
+describe('readDeviceReasonDetail', () => {
+  // The cast at the PlanDeviceCards.tsx call site is now a published contract
+  // between settings-ui and the shared-domain helper. This helper centralises
+  // the narrowing so non-object values, nullish values, and objects without
+  // `detail` all return `undefined` without an `as` cast leaking into callers.
+  it('returns undefined for non-object inputs', () => {
+    expect(readDeviceReasonDetail(undefined)).toBeUndefined();
+    expect(readDeviceReasonDetail(null)).toBeUndefined();
+    expect(readDeviceReasonDetail('string')).toBeUndefined();
+    expect(readDeviceReasonDetail(42)).toBeUndefined();
+    expect(readDeviceReasonDetail(true)).toBeUndefined();
+  });
+
+  it('returns undefined for objects without a `detail` property', () => {
+    expect(readDeviceReasonDetail({ code: 'none' })).toBeUndefined();
+    expect(readDeviceReasonDetail({})).toBeUndefined();
+  });
+
+  it('returns the raw `detail` value when present, including null and non-string', () => {
+    expect(readDeviceReasonDetail({ code: 'keep', detail: 'recently restored' }))
+      .toBe('recently restored');
+    expect(readDeviceReasonDetail({ code: 'keep', detail: null })).toBeNull();
+    // Non-string `detail` values are returned as-is; downstream consumers
+    // (e.g. `resolveReportedLoadAfterPauseText`) decide whether to render them.
+    expect(readDeviceReasonDetail({ code: 'other', detail: 42 })).toBe(42);
+  });
+
+  it('narrows a DeviceReason from the snapshot boundary without an `as` cast', () => {
+    const reason: DeviceReason = { code: PLAN_REASON_CODES.capacity, detail: 'over budget' };
+    // Treat `reason` as `unknown` to match the snapshot-boundary call site.
+    expect(readDeviceReasonDetail(reason as unknown)).toBe('over budget');
   });
 });
