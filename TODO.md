@@ -1250,7 +1250,7 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
 
-- [ ] Extract a `resolvePlanGenericReasonText` helper alongside
+- [x] Extract a `resolvePlanGenericReasonText` helper alongside
       `resolveTemperatureReasonLine` so the `"Still reporting … after pause
       — …"` sentence currently duplicated across
       `planTemperatureCardText.ts` and `planSteppedCardText.ts` lives at
@@ -1264,6 +1264,19 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       Files: `packages/shared-domain/src/planSteppedCardText.ts`,
       `packages/shared-domain/src/planTemperatureCardText.ts`,
       `packages/shared-domain/src/planReasonFormatting.ts`.
+      Shipped: `resolvePlanGenericReasonText(params: { measuredPowerKw:
+      number | undefined; detail: unknown })` now lives in
+      `packages/shared-domain/src/planReasonFormatting.ts` (re-exported via
+      `planReasonSemantics.ts`). On audit the sentence only ever lived in
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`
+      (`resolveReportedLoadReason`), not in either card-text helper — the
+      TODO's "duplicated across temperature/stepped" description was stale.
+      The single delegating call site is `PlanDeviceCards.tsx`
+      `resolveReportedLoadReason`; covered by
+      `test/planReasonUserFacing.test.ts`
+      `describe('resolvePlanGenericReasonText')` including a
+      character-for-character `referenceFormat` comparison against the
+      pre-extraction inline formatter.
 
 - [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
       `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the

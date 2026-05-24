@@ -2,6 +2,7 @@ import {
   PLAN_REASON_CODES,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
+  resolvePlanGenericReasonText,
   type DeviceReason,
 } from '../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -245,6 +246,64 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
     for (const { reason } of cases) {
       const text = formatDeviceReasonUserFacing(reason);
       expect(text).not.toMatch(BANNED);
+    }
+  });
+});
+
+describe('resolvePlanGenericReasonText', () => {
+  // Mirrors the pre-extraction inline formatter in
+  // packages/settings-ui/src/ui/views/PlanDeviceCards.tsx so the test
+  // anchors the helper's output to the wording the Overview generic card
+  // shipped before the move into shared-domain.
+  const referenceFormat = (measuredPowerKw: number | undefined, detailRaw: unknown): string => {
+    const measured = typeof measuredPowerKw === 'number' && Number.isFinite(measuredPowerKw)
+      ? measuredPowerKw.toFixed(1)
+      : '–';
+    const detail = typeof detailRaw === 'string' && detailRaw.trim().length > 0
+      ? detailRaw.trim()
+      : null;
+    return detail
+      ? `Still reporting ${measured} kW after pause — ${detail}`
+      : `Still reporting ${measured} kW after pause`;
+  };
+
+  it('renders the plain "Still reporting … kW after pause" sentence without a detail', () => {
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: 1.234, detail: null }))
+      .toBe('Still reporting 1.2 kW after pause');
+  });
+
+  it('appends the trimmed detail with an em-dash separator when present', () => {
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' }))
+      .toBe('Still reporting 7.2 kW after pause — EV charger ignored pause');
+  });
+
+  it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: undefined, detail: null }))
+      .toBe('Still reporting – kW after pause');
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: Number.NaN, detail: null }))
+      .toBe('Still reporting – kW after pause');
+  });
+
+  it('drops non-string and empty detail values silently', () => {
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: undefined }))
+      .toBe('Still reporting 2.0 kW after pause');
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: '   ' }))
+      .toBe('Still reporting 2.0 kW after pause');
+    expect(resolvePlanGenericReasonText({ measuredPowerKw: 2, detail: 42 }))
+      .toBe('Still reporting 2.0 kW after pause');
+  });
+
+  it('matches the pre-extraction inline formatter character-for-character', () => {
+    const cases: ReadonlyArray<{ measuredPowerKw: number | undefined; detail: unknown }> = [
+      { measuredPowerKw: 1.234, detail: null },
+      { measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' },
+      { measuredPowerKw: 0.06, detail: 'still drawing' },
+      { measuredPowerKw: undefined, detail: 'unknown source' },
+      { measuredPowerKw: Number.NaN, detail: null },
+      { measuredPowerKw: 2, detail: '   ' },
+    ];
+    for (const c of cases) {
+      expect(resolvePlanGenericReasonText(c)).toBe(referenceFormat(c.measuredPowerKw, c.detail));
     }
   });
 });

@@ -2,6 +2,7 @@ import { h } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
+import { resolvePlanGenericReasonText } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_LABEL,
@@ -280,17 +281,10 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
   && dev.measuredPowerKw > 0.05
 );
 
-const normalizeInlineDetail = (detail: unknown): string | null => (
-  typeof detail === 'string' && detail.trim().length > 0 ? detail.trim() : null
-);
-
-const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => {
-  const measured = formatKw(dev.measuredPowerKw);
-  const detail = normalizeInlineDetail((dev.reason as { detail?: unknown } | undefined)?.detail);
-  return detail
-    ? `Still reporting ${measured} kW after pause — ${detail}`
-    : `Still reporting ${measured} kW after pause`;
-};
+const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => resolvePlanGenericReasonText({
+  measuredPowerKw: dev.measuredPowerKw,
+  detail: (dev.reason as { detail?: unknown } | undefined)?.detail,
+});
 
 // ─── Generic plan card ────────────────────────────────────────────────────────
 

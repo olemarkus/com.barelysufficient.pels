@@ -4,6 +4,7 @@ import {
   formatDeviceReason,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
+  resolvePlanGenericReasonText,
 } from './planReasonFormatting.js';
 import { buildComparablePlanReason } from './planReasonParsing.js';
 
@@ -14,6 +15,7 @@ export {
   formatDeviceReason,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
+  resolvePlanGenericReasonText,
   buildComparablePlanReason,
 };
 export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore.js';
