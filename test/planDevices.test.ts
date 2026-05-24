@@ -1,3 +1,4 @@
+import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanContext } from '../lib/plan/planContext';
@@ -29,6 +30,10 @@ const defaultDeps: PlanDevicesDeps = {
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
 };
+
+let logCapture: LoggerCapture;
+beforeEach(() => { logCapture = captureLogger(); });
+afterEach(() => { logCapture.restore(); });
 
 describe('buildInitialPlanDevices', () => {
   it('applies temperature boost hysteresis for stepped temperature devices', () => {
@@ -94,7 +99,6 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('emits a structured debug event when temperature boost becomes active', () => {
-    const debugStructured = vi.fn();
     const state = createPlanEngineState();
 
     buildInitialPlanDevices({
@@ -109,11 +113,10 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       guardInShortfall: false,
-      deps: { ...defaultDeps, debugStructured },
+      deps: defaultDeps,
     });
 
-    expect(debugStructured).toHaveBeenCalledWith({
-      event: 'temperature_boost_state_changed',
+    expect(logCapture.findEvent('temperature_boost_state_changed')).toMatchObject({
       deviceId: 'tank',
       deviceName: 'Water tank',
       active: true,
@@ -126,7 +129,6 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('emits a structured debug event when temperature boost ends', () => {
-    const debugStructured = vi.fn();
     const state = createPlanEngineState();
     state.temperatureBoostActiveByDevice.tank = true;
 
@@ -142,15 +144,14 @@ describe('buildInitialPlanDevices', () => {
       shedSet: new Set(),
       shedReasons: new Map(),
       guardInShortfall: false,
-      deps: { ...defaultDeps, debugStructured },
+      deps: defaultDeps,
     });
 
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'temperature_boost_state_changed',
+    expect(logCapture.findEvent('temperature_boost_state_changed')).toMatchObject({
       deviceId: 'tank',
       active: false,
       previousActive: true,
-    }));
+    });
   });
 
   it('does not independently shed devices when hourly budget is exhausted without a shedSet decision', () => {
