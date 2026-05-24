@@ -21,7 +21,12 @@ type GroupManagedState = 'all' | 'partial' | 'none';
 
 const buildStateChip = (label: string, title: string): HTMLElement => {
   const chip = document.createElement('span');
-  chip.className = 'chip chip--neutral device-row__state-chip';
+  // Rebind to the canonical `.plan-chip` primitive (2026-05-24 chip
+  // consolidation). `--muted` matches the legacy `chip--neutral` tonal
+  // intent; `device-row__state-chip` keeps the row-local padding /
+  // line-height override.
+  chip.className = 'plan-chip plan-chip--muted device-row__state-chip';
+  chip.dataset.tone = 'muted';
   chip.textContent = label;
   setTooltip(chip, title);
   return chip;
