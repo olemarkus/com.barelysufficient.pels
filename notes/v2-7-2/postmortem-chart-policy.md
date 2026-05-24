@@ -16,13 +16,17 @@
 | Historic detail, outcome=Unknown, **no plan recorded** (v2.9.x) | **no chart card at all** — same shape as Abandoned | Nothing to draw. Backfill-synthesized entries always land here. |
 
 The producer-side flag backing this table is `chartCollapsedByDefault`
-(Succeeded=true, Missed=false, Abandoned=true, Replaced=true, Unknown=true),
-resolved in
+(Succeeded=`true`, Missed=`false`, Abandoned=`true`, Replaced=`true`,
+Unknown=`true`), resolved in
 `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`. The view
-layer never branches on outcome — it consumes the flat boolean. Abandoned
-and Replaced additionally carry `quietAbandoned: true` so the view drops
-the chart card section entirely (the boolean alone doesn't disambiguate
-"collapsed chart card with a toggle" from "no chart card at all").
+layer never branches on outcome — it consumes the flat boolean. These are
+the `chartCollapsedByDefault` values only; whether the chart card is
+*rendered at all* is a separate `quietAbandoned` discriminator, and for
+Unknown that discriminator flips per `hasRecordedPlan` (see prose below).
+Abandoned and Replaced additionally carry `quietAbandoned: true` so the
+view drops the chart card section entirely (the boolean alone doesn't
+disambiguate "collapsed chart card with a toggle" from "no chart card at
+all").
 
 `unknown` outcomes split on the presence of `originalPlan` /
 `finalPlan` provenance: with a recorded plan they flip

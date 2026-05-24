@@ -43,9 +43,9 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 // three shared-domain reason helpers (`planSteppedCardText.ts`,
 // `planTemperatureCardText.ts`, `planReasonFormatting.ts`) still inline the
 // same literal — consolidating those three onto this constant alongside a
-// richer `resolvePlanGenericReasonText` helper is tracked in `TODO.md` under
-// the P2 "Overview device-card status copy" item. Rule 4 (UI text shared with
-// logs) holds because the values match across all five sites.
+// richer `resolveReportedLoadAfterPauseText` helper is tracked in `TODO.md`
+// under the P2 "Overview device-card status copy" item. Rule 4 (UI text
+// shared with logs) holds because the values match across all five sites.
 export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Limited by the hard cap';
 
 // Mirror status line for `dailyBudget` reason-code holds. Daily-budget pacing
