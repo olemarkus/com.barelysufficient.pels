@@ -1,4 +1,5 @@
 import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getLogger } from '../../logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice } from '../planTypes';
 import type { PlanEngineState } from '../planState';
@@ -12,6 +13,8 @@ import {
   syncActivationPenaltyState,
 } from '../admission';
 import { computeBaseRestoreNeed, computePendingRestorePowerKw } from './accounting';
+
+const logger = getLogger('plan/restore-support');
 
 export function reserveHeadroomForPendingRestores(params: {
   rawHeadroom: number;
@@ -43,7 +46,8 @@ export function reserveHeadroomForPendingRestores(params: {
     }
     devices.push({ deviceId });
   }
-  debugStructured?.({
+  const emit = debugStructured ?? ((payload) => logger.debug(payload));
+  emit({
     event: 'restore_headroom_reserved',
     pendingKw: pending.pendingKw,
     deviceIds: pending.deviceIds,
