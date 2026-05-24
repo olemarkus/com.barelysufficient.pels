@@ -1,3 +1,4 @@
+import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { buildComparablePlanReason } from '../../shared-domain/src/planReasonSemantics.ts';
 import { buildHomeyApiMock, emitHomeyEvent, installHomeyMock } from './helpers/homeyApiMock';
 
@@ -244,17 +245,24 @@ const loadSettingsScript = async () => {
   });
 };
 
+const DEFAULT_SETTINGS_DEVICES = [
+  {
+    id: 'dev-1',
+    name: 'Heater',
+    targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+  },
+];
+
 const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => {
   const homeySettings = { ...settings };
   delete homeySettings.planSnapshot;
+  // `target_devices_snapshot` is intentionally not part of the settings store.
+  // Devices are routed through `uiState.devices` so that the mock matches
+  // production's `/ui_devices` contract (live in-memory device snapshot, not
+  // persisted setting). The `target_devices_snapshot` key on the test input
+  // is just an ergonomic alias and is stripped here.
+  delete homeySettings.target_devices_snapshot;
   return {
-    target_devices_snapshot: [
-      {
-        id: 'dev-1',
-        name: 'Heater',
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-      },
-    ],
     operating_mode: 'Home',
     capacity_priorities: {},
     mode_device_targets: {},
@@ -265,12 +273,18 @@ const buildSettingsHomeyState = (settings: Record<string, unknown> = {}) => {
   };
 };
 
-const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => installHomeyMock({
-  settings: buildSettingsHomeyState(settings),
-  uiState: {
-    plan: settings.planSnapshot,
-  },
-});
+const installSettingsHomeyMock = (settings: Record<string, unknown> = {}) => {
+  const explicitDevices = Object.prototype.hasOwnProperty.call(settings, 'target_devices_snapshot')
+    ? settings.target_devices_snapshot
+    : DEFAULT_SETTINGS_DEVICES;
+  return installHomeyMock({
+    settings: buildSettingsHomeyState(settings),
+    uiState: {
+      devices: Array.isArray(explicitDevices) ? explicitDevices as TargetDeviceSnapshot[] : [],
+      plan: settings.planSnapshot,
+    },
+  });
+};
 
 describe('settings script', () => {
   beforeEach(() => {
@@ -339,6 +353,9 @@ describe('settings script', () => {
         capacity_margin_kw: 0.4,
         capacity_dry_run: false,
       }),
+      uiState: {
+        devices: DEFAULT_SETTINGS_DEVICES as TargetDeviceSnapshot[],
+      },
       apiHandlers: {
         'GET /ui_bootstrap': async () => {
           throw new Error('bootstrap unavailable');
@@ -923,8 +940,7 @@ describe('settings script', () => {
   });
 
   it('shows empty state when no devices support target temperature', async () => {
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => cb(null, []));
+    installSettingsHomeyMock({ target_devices_snapshot: [] });
     // @ts-ignore mutate mock
     global.Homey.set = vi.fn((key, val, cb) => cb && cb(null));
     await loadSettingsScript();
@@ -935,31 +951,21 @@ describe('settings script', () => {
 
   it('allows toggling managed and capacity control for a socket device', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'socket-1',
+          name: 'Kitchen Socket',
+          deviceClass: 'socket',
+          deviceType: 'onoff',
+          targets: [],
+          powerCapable: true,
+          powerKw: 0.125,
+        },
+      ],
+    });
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
-      if (key === 'target_devices_snapshot') {
-        return cb(null, [
-          {
-            id: 'socket-1',
-            name: 'Kitchen Socket',
-            deviceClass: 'socket',
-            deviceType: 'onoff',
-            targets: [],
-            powerCapable: true,
-            powerKw: 0.125,
-          },
-        ]);
-      }
-      if (key === 'operating_mode') return cb(null, 'Home');
-      if (key === 'capacity_priorities') return cb(null, {});
-      if (key === 'mode_device_targets') return cb(null, {});
-      if (key === 'controllable_devices') return cb(null, {});
-      if (key === 'managed_devices') return cb(null, {});
-      if (key === 'price_optimization_settings') return cb(null, {});
-      return cb(null, null);
-    });
 
     await loadSettingsScript();
 
@@ -997,33 +1003,23 @@ describe('settings script', () => {
 
   it('allows toggling managed and capacity control for an off socket with Homey energy metadata', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'socket-2',
+          name: 'Hall Socket',
+          deviceClass: 'socket',
+          deviceType: 'onoff',
+          targets: [],
+          currentOn: false,
+          powerCapable: true,
+          expectedPowerSource: 'default',
+          powerKw: 1,
+        },
+      ],
+    });
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
-      if (key === 'target_devices_snapshot') {
-        return cb(null, [
-          {
-            id: 'socket-2',
-            name: 'Hall Socket',
-            deviceClass: 'socket',
-            deviceType: 'onoff',
-            targets: [],
-            currentOn: false,
-            powerCapable: true,
-            expectedPowerSource: 'default',
-            powerKw: 1,
-          },
-        ]);
-      }
-      if (key === 'operating_mode') return cb(null, 'Home');
-      if (key === 'capacity_priorities') return cb(null, {});
-      if (key === 'mode_device_targets') return cb(null, {});
-      if (key === 'controllable_devices') return cb(null, {});
-      if (key === 'managed_devices') return cb(null, {});
-      if (key === 'price_optimization_settings') return cb(null, {});
-      return cb(null, null);
-    });
 
     await loadSettingsScript();
 
@@ -1946,28 +1942,22 @@ describe('Plan sorting', () => {
 
   it('uses the device target step for mode inputs and saves normalized values', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
+    installSettingsHomeyMock({
+      target_devices_snapshot: [
+        {
+          id: 'dev-1',
+          name: 'Connected 300',
+          deviceType: 'temperature',
+          targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
+        },
+      ],
+      capacity_priorities: { Home: { 'dev-1': 1 } },
+      mode_device_targets: { Home: { 'dev-1': 46 } },
+      managed_devices: { 'dev-1': true },
+      controllable_devices: { 'dev-1': true },
+    });
     // @ts-ignore mutate mock
     global.Homey.set = setSpy;
-    // @ts-ignore mutate mock
-    global.Homey.get = vi.fn((key, cb) => {
-      if (key === 'target_devices_snapshot') {
-        return cb(null, [
-          {
-            id: 'dev-1',
-            name: 'Connected 300',
-            deviceType: 'temperature',
-            targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
-          },
-        ]);
-      }
-      if (key === 'operating_mode') return cb(null, 'Home');
-      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
-      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 46 } });
-      if (key === 'managed_devices') return cb(null, { 'dev-1': true });
-      if (key === 'controllable_devices') return cb(null, { 'dev-1': true });
-      if (key === 'price_optimization_settings') return cb(null, {});
-      return cb(null, null);
-    });
 
     await loadSettingsScript();
 
