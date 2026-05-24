@@ -4,7 +4,7 @@ import path from 'node:path';
 
 // First-paint loading skeletons across the panels. Overview already wires
 // the canonical `pels-skeleton-stack` primitive (verified at v2.7.3); this
-// file extends the contract to Budget, Usage, and the Smart task plan SPA
+// file extends the contract to Budget, Usage, and the Smart task SPA
 // route so all panels share the same M3 shimmer placeholder instead of a
 // flat grey wall while the bootstrap fetch resolves.
 //
@@ -90,7 +90,7 @@ describe('panel loading skeletons (public/index.html)', () => {
     });
   });
 
-  describe('Smart task plan (deadline-plan-root)', () => {
+  describe('Smart task (deadline-plan-root)', () => {
     it('mounts a skeleton card inside the deadline-plan surface so the SPA route never paints a text-only loading title', () => {
       const root = document.querySelector('#deadline-plan-root');
       expect(root).not.toBeNull();
@@ -103,7 +103,7 @@ describe('panel loading skeletons (public/index.html)', () => {
     it('carries panel-specific SR copy', () => {
       const srText = document
         .querySelector('#deadline-plan-root .pels-surface-card > .visually-hidden');
-      expect(srText?.textContent).toBe('Loading smart task plan…');
+      expect(srText?.textContent).toBe('Loading smart task…');
     });
   });
 });

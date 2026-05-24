@@ -1417,17 +1417,32 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `settings/style.css` `.tippy-box[data-theme~='pels']` rule
       block.
 
-- [ ] Smart-task error banners + "plan" wording on smart-task surfaces.
-      `deadlinePlanMount.ts:27,221,273` and `deadlinePlan.ts:500` inline
-      strings like `"Smart task plan data could not be loaded: …"` and
-      `"Smart task plan unavailable"`. Two issues: (1) Rule 4 — strings
-      should live in `packages/shared-domain/**`; (2) `notes/ui-terminology.md
-      § Plan vs deadline` reserves *plan* for the planning layer. Use
-      `"Smart task record not found"` at `DeadlinePlan.tsx:815` as the
-      model. Source: `pels-copy-and-terminology` agent.
-      Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
+- [x] Smart-task error banners + "plan" wording on smart-task surfaces.
+      Lifted the six user-facing banner strings to shared-domain and dropped
+      "plan" from the SR loading copy + panel aria-label so smart-task
+      surfaces match `notes/ui-terminology.md § Plan vs deadline`:
+      - `SMART_TASK_BANNER_LOAD_ERROR_PREFIX` = `"Smart task data could not
+        be loaded: "` (composed with the transport cause in
+        `deadlinePlanMount.ts`).
+      - `SMART_TASK_BANNER_UNAVAILABLE_TITLE` = `"Smart task unavailable"`
+        (was `"Smart task plan unavailable"` in user reports).
+      - `SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE` = `"Smart task data is
+        not available for this device."` (was inlined in `deadlinePlan.ts`).
+      - `SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE` /
+        `SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY` for the
+        history-missing card.
+      - `SMART_TASK_LOADING_LABEL` = `"Loading smart task…"` (was
+        `"Loading smart task plan…"` in `public/index.html`).
+      Also dropped "plan" from the two log-only strings in
+      `deadlinePlanMount.ts` and the panel aria-label
+      (`"Smart task plan"` → `"Smart task"`) so debugger and SR users
+      see the same noun the user sees. Source:
+      `pels-copy-and-terminology` agent.
+      Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:823,832`.
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/public/index.html`.
 
 - [x] Pre-existing jargon in `packages/shared-domain/src/deviceOverview.ts:135-140,178,187`.
       Replaced raw Shed/Restore jargon with terminology-guide wording:
