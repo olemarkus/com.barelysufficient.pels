@@ -200,7 +200,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
     ].join(' / ');
 
     const card = document.createElement('section');
-    card.className = 'detail-diagnostics-card';
+    card.className = 'pels-surface-card detail-diagnostics-card';
 
     const title = document.createElement('h4');
     title.textContent = DIAGNOSTICS_WINDOW_LABELS[windowKey];
@@ -225,7 +225,7 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   });
 
   const starvationCard = document.createElement('section');
-  starvationCard.className = 'detail-diagnostics-card';
+  starvationCard.className = 'pels-surface-card detail-diagnostics-card';
 
   const starvationTitle = document.createElement('h4');
   starvationTitle.textContent = 'Starvation details';

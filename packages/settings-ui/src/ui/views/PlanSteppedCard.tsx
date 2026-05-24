@@ -116,7 +116,7 @@ export const PlanSteppedCard = ({
   const statusText = resolvedStatusText ?? (stateKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
 
   const cardClasses = [
-    'device-row plan-card plan-card--stepped clickable',
+    'pels-surface-card device-row plan-card plan-card--stepped clickable',
     (stateKind === 'idle' || stateKind === 'manual') ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 

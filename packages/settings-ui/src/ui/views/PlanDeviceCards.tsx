@@ -309,7 +309,7 @@ export const PlanGenericCard = ({
   const presentation = resolveStatePresentation(displayDev);
 
   const cardClasses = [
-    'device-row plan-card clickable',
+    'pels-surface-card device-row plan-card clickable',
     (presentation.kind === 'idle' || presentation.kind === 'manual') ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
@@ -412,7 +412,7 @@ export const PlanTemperatureCard = ({
   const { kind } = resolveStatePresentation(displayDev);
 
   const cardClasses = [
-    'device-row plan-card plan-card--temperature clickable',
+    'pels-surface-card device-row plan-card plan-card--temperature clickable',
     (kind === 'idle' || kind === 'manual') ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
 
