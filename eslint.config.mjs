@@ -377,15 +377,6 @@ export default tseslint.config(
     },
   },
   {
-    // dailyBudgetService now hosts snapshot caching, adjacent-day seeding, and price-store
-    // wiring in one place. Target: <=500 once the snapshot/seeding logic is extracted into
-    // its own helper alongside `dailyBudgetSnapshotState.ts`.
-    files: ['lib/dailyBudget/dailyBudgetService.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // priceConfig is at the limit after the per-field rollback / overlapping-save-safety
     // hardening. Target: <=500 once the device-detail price-opt rollback helpers are extracted
     // into a shared utility alongside `state.priceOptimizationSettings`.
@@ -427,28 +418,6 @@ export default tseslint.config(
     files: ['lib/executor/planExecutor.ts'],
     rules: {
       'max-lines': ['warn', { max: 800, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Flow-card registration is a centralized, low-churn procedural surface for the Homey app.
-    // Target: <=600 unless the registration surface starts to accumulate real behavioral branches.
-    files: ['flowCards/registerFlowCards.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 600, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    files: [
-      'drivers/pels_insights/device.ts',
-    ],
-    rules: {
-      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    files: ['lib/price/priceLowestFlowEvaluator.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
     },
   },
   {
