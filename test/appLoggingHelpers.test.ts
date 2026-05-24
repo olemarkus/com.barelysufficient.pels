@@ -1,4 +1,4 @@
-import { buildDebugLoggingTopics } from '../lib/app/appLoggingHelpers';
+import { buildDebugLoggingTopics } from '../lib/utils/debugLoggingSettings';
 import { ALL_DEBUG_LOGGING_TOPICS } from '../lib/utils/debugLogging';
 import { DEBUG_LOGGING_TOPICS } from '../lib/utils/settingsKeys';
 

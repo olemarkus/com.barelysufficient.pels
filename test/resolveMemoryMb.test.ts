@@ -1,5 +1,5 @@
 import v8 from 'node:v8';
-import { resolveMemoryMb } from '../lib/app/appResourceWarningHelpers';
+import { resolveMemoryMb } from '../lib/diagnostics/resourceWarnings';
 
 const MB = 1024 * 1024;
 const enoent = (): never => {

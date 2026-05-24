@@ -1,4 +1,4 @@
-import { buildPeriodicStatusLogFields } from '../lib/app/periodicStatus';
+import { buildPeriodicStatusLogFields } from '../lib/diagnostics/periodicStatus';
 import { recordPowerSample, type PowerTrackerState } from '../lib/power/tracker';
 import { getHourBucketKey } from '../lib/utils/dateUtils';
 

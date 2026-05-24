@@ -11,7 +11,7 @@ import {
   resolveSmapsDetail,
   _resetSmapsCacheForTests,
   __resetSmapsDetailCacheForTests,
-} from '../lib/app/smapsRollup.ts';
+} from '../lib/diagnostics/smapsRollup.ts';
 
 const sampleSmaps = [
   // anon mapping (private, no path)
