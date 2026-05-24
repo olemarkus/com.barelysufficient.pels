@@ -74,7 +74,7 @@ describe('mountDeadlinePlan boot failure', () => {
     // And the failure round-trips so it shows up in `/tmp/pels` instead of
     // disappearing into a swallowed catch.
     expect(logSettingsErrorMock).toHaveBeenCalledExactlyOnceWith(
-      'Failed to load smart task plan boot data',
+      'Failed to load smart task boot data',
       cause,
       'mountDeadlinePlan',
     );

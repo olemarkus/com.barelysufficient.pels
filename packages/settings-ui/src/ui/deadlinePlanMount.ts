@@ -8,6 +8,7 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
+  SMART_TASK_BANNER_LOAD_ERROR_PREFIX,
   SMART_TASK_USAGE_RETURN_CONTEXT,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -29,7 +30,7 @@ const describeError = (error: unknown): string => {
 };
 
 const buildBootErrorMessage = (error: unknown): string => (
-  `Smart task data could not be loaded: ${describeError(error)}`
+  `${SMART_TASK_BANNER_LOAD_ERROR_PREFIX}${describeError(error)}`
 );
 
 const DEADLINE_PLAN_REFRESH_DEBOUNCE_MS = 200;
@@ -294,7 +295,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   } catch (error) {
     if (isStale()) return;
     await logSettingsError(
-      'Failed to load smart task plan boot data',
+      'Failed to load smart task boot data',
       error,
       'mountDeadlinePlan',
     );
@@ -346,7 +347,7 @@ const subscribeToRuntimeRefresh = (): boolean => {
       renderActiveMount();
     } catch (error) {
       await logSettingsError(
-        'Background refresh of smart task plan failed',
+        'Background refresh of smart task failed',
         error,
         'mountDeadlinePlan.refresh',
       );

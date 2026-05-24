@@ -9,6 +9,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -582,7 +583,7 @@ export const resolveDeadlinePlanLoadState = (
     // Genuinely unknown device or feature gated off — keep the legacy error
     // card. Lifecycle transitions (passed deadline, auto-disable) go through
     // the `completed` branch instead.
-    return { status: 'error', message: 'Smart task data is not available for this device.', history };
+    return { status: 'error', message: SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE, history };
   }
   if (renderInput.status === 'completed') {
     return { status: 'completed', objectiveKind: renderInput.kind, history };
