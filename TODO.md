@@ -749,7 +749,7 @@ so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
 
-- [ ] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
+- [x] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
       RSD thresholds were calibrated for raw per-sample CV; pooled within-band
       variance is structurally smaller, so a profile with only modest
       between-band variance reduction could in principle reach `high` based
@@ -758,7 +758,13 @@ block merge.*
       and confirm the model correctly returns `medium`, not `high`. If it
       over-promotes, tighten the high threshold for the banded path
       (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
-      `lib/objectives/stats.ts`.
+      `lib/objectives/stats.ts`. **Done 2026-05-24:** banded high threshold
+      tightened 0.35 → 0.20 in `resolveBandedProfileConfidence`
+      (`lib/objectives/stats.ts`). New fixture (means 0.25/0.30, m2=0.07,
+      RSD≈0.321) pins the `medium` verdict; existing five fixtures
+      (tight-noise high, medium, low, buffer-drift, weighted-mean-fallback)
+      all unaffected. Raw-CV path (`resolveProfileConfidence`) intentionally
+      unchanged.
 - [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
       (integration interval extends outside band coverage) reads the now
       band-aware `kwhPerUnit.confidence`, while the energy estimate for the
@@ -950,12 +956,22 @@ were rolled back before they could land.*
       Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
       Source: live prod UI walk, 2026-05-22.
 
-- [ ] Docs vocabulary sweep: "capacity step" still appears in
+- [x] Docs vocabulary sweep: "capacity step" still appears in
       `docs/smart-tasks.md` and the `docs/cost-saving-functions.md`
       neighbourhood. Index and Getting Started were reframed to "hourly
       limit / power-based tariff" in PR #931; remaining occurrences
       should be reconciled so the docs are internally consistent.
       Source: `pels-copy-and-terminology` agent, PR #931 review.
+      Resolution: case-insensitive `capacity step` / `capacity-step`
+      grep across `docs/` returned a single literal occurrence at
+      `docs/smart-tasks.md:115` (`Power limiting protects the capacity
+      step.`), replaced with `Power limiting protects the hard cap.`
+      to match the canonical "hard cap" phrasing used elsewhere in the
+      same file (e.g. line 66) and the index. `docs/cost-saving-functions.md`
+      only contained the already-established "capacity tariff step"
+      vocabulary (line 31), which mirrors `docs/index.md:58` and the
+      water-heater use case, so no rewrite was needed.
+      Files touched: `docs/smart-tasks.md`.
 
 - [ ] Verify structured-debug back-pressure on the `power_calibration` topic.
       `lib/app/appPowerCalibrationWiring.ts:522-542` emits one

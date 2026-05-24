@@ -40,7 +40,10 @@ import {
   supportsTemperatureBoostDevice,
 } from './planTemperatureBoost';
 import { addPerfDuration } from '../utils/perfCounters';
+import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
+
+const logger = getLogger('plan/devices');
 
 export type PlanDevicesDeps = {
   getPriorityForDevice: (deviceId: string) => number;
@@ -215,10 +218,18 @@ function resolveTemperatureSeed(
   const fallback = target?.value;
   const payload = { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null };
   if (typeof fallback === 'number' && Number.isFinite(fallback)) {
-    deps.debugStructured?.({ event: 'missing_mode_target', ...payload });
+    if (deps.debugStructured) {
+      deps.debugStructured({ event: 'missing_mode_target', ...payload });
+    } else {
+      logger.debug({ event: 'missing_mode_target', ...payload });
+    }
     return { kind: 'fallback', value: fallback };
   }
-  deps.debugStructured?.({ event: 'missing_mode_target_and_current_target', ...payload });
+  if (deps.debugStructured) {
+    deps.debugStructured({ event: 'missing_mode_target_and_current_target', ...payload });
+  } else {
+    logger.debug({ event: 'missing_mode_target_and_current_target', ...payload });
+  }
   return { kind: 'skip' };
 }
 function applyPriceOptimizationDelta(

@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
+import { getLogger } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
 import {
   buildComparableDeviceReason,
@@ -78,6 +79,8 @@ import {
 } from './support';
 import { buildMeterSettlingReason, buildShortfallReason } from '../planReasonStrings';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
+
+const logger = getLogger('plan/restore');
 
 export type RestoreDeps = {
   powerTracker: PowerTrackerState;
@@ -1060,13 +1063,27 @@ function attemptSwapRestore(params: {
       plannedState: 'shed',
       reason: { code: PLAN_REASON_CODES.swappedOut, targetName: dev.name },
     });
-    deps.debugStructured?.({
+    if (deps.debugStructured) {
+
+      deps.debugStructured({
       event: 'restore_swap_shed',
       shedDeviceId: shedDev.id,
       shedDeviceName: shedDev.name,
       forDeviceId: dev.id,
       forDeviceName: dev.name,
     });
+
+    } else {
+
+      logger.debug({
+      event: 'restore_swap_shed',
+      shedDeviceId: shedDev.id,
+      shedDeviceName: shedDev.name,
+      forDeviceId: dev.id,
+      forDeviceName: dev.name,
+    });
+
+    }
     markDeviceSwappedOutFor(swapState, shedDev.id, dev.id);
   }
   setDevice(deviceMap, dev.id, buildSwapPendingTargetUpdate(dev));
@@ -1131,7 +1148,9 @@ function rejectSwapRestoreWithCandidates(params: {
     swap,
     rejectedDeviceUpdate,
   }));
-  deps.debugStructured?.({
+  if (deps.debugStructured) {
+
+    deps.debugStructured({
     event: 'restore_rejected',
     restoreType: 'swap',
     deviceId: dev.id,
@@ -1152,6 +1171,32 @@ function rejectSwapRestoreWithCandidates(params: {
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
+
+  } else {
+
+    logger.debug({
+    event: 'restore_rejected',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    reason: formatDeviceReason(swap.reason),
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    neededKw: restoreNeed.needed,
+    availableKw: availableHeadroom,
+    effectiveAvailableKw: swap.effectiveHeadroom,
+    ...buildRestoreAdmissionLogFields(swap.admission),
+    minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+    swapReserveKw: swap.reserveKw,
+    decision: 'rejected',
+    rejectionReason: 'insufficient_headroom',
+    decisionReason: formatDeviceReason(swap.reason),
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  });
+
+  }
   return { availableHeadroom, restoredOneThisCycle: false };
 }
 
@@ -1163,7 +1208,9 @@ function emitSwapApprovedDebug(params: {
   deps: RestoreDeps;
 }): void {
   const { dev, phase, restoreNeed, swap, deps } = params;
-  deps.debugStructured?.({
+  if (deps.debugStructured) {
+
+    deps.debugStructured({
     event: 'restore_swap_approved',
     restoreType: 'swap',
     deviceId: dev.id,
@@ -1181,6 +1228,29 @@ function emitSwapApprovedDebug(params: {
     penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
     penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
   });
+
+  } else {
+
+    logger.debug({
+    event: 'restore_swap_approved',
+    restoreType: 'swap',
+    deviceId: dev.id,
+    deviceName: dev.name,
+    phase,
+    shedDeviceIds: swap.toShed.map((d) => d.id),
+    neededKw: restoreNeed.needed,
+    potentialHeadroomKw: swap.potentialHeadroom,
+    effectiveHeadroomKw: swap.effectiveHeadroom,
+    ...buildRestoreAdmissionLogFields(swap.admission),
+    swapReserveKw: swap.reserveKw,
+    estimatedPowerKw: restoreNeed.devPower,
+    powerSource: resolveRestorePowerSource(dev),
+    decision: 'admitted',
+    penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+    penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+  });
+
+  }
 }
 
 function rejectSwapRestoreWithoutMeasurement(params: {
