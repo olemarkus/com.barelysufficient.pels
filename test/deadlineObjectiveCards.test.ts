@@ -547,11 +547,12 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'done' })).toBe(true);
   });
 
-  // Backward-compat regression: the initial release of `deadline_status_is`
-  // (May 10–12 2026) exposed 'none' in its dropdown to mean "no active smart
-  // task". Users who built flows during that window have 'none' persisted as
-  // the chosen status. The `isLegacyNoneStatusMatch` guard keeps those flows
-  // working after the dropdown was replaced with the canonical 5-value set.
+  // Backward-compat regression: the initial in-dev `deadline_status_is`
+  // dropdown (2026-05-10 → 2026-05-12, never shipped to a published release —
+  // v2.7.0 bumped 2026-05-16) exposed 'none' to mean "no active smart task".
+  // The `isLegacyNoneStatusMatch` guard keeps any flows carrying that id
+  // working — both pre-release test installs from that window and flows that
+  // were hand-edited at the JSON level (Homey allows it for advanced users).
   it('deadline_status_is accepts legacy none id as "no active task" from initial release', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],

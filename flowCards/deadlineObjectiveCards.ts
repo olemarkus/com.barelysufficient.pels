@@ -166,10 +166,19 @@ const mapPreviousStatusToFlowStatus = (
   previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'],
 ): SmartTaskActiveFlowStatus | null => mapInternalTaskStatusToFlowStatus(previousStatus);
 
-// Handles the 'none' dropdown value that was shipped in the initial
-// `deadline_status_is` condition card from May 10–12 2026 (before the
-// dropdown was refactored to the canonical 5-value set). Users who created
-// flows during that window may have 'none' persisted as their chosen status.
+// Backward-compat for the 'none' dropdown id from the initial
+// `deadline_status_is` card (committed 2026-05-10 as `3ba281d7`, refactored
+// out 2026-05-12 as `d67e0d97`). v2.7.0 — the first release to ship the card
+// — was bumped 2026-05-16, so 'none' never reached a published version.
+// The compat path is kept anyway because (a) pre-release test installs in
+// that window may persist 'none' in flow args and (b) advanced users can
+// hand-edit flow card JSON in Homey, so a flow may carry an id outside the
+// shipped dropdown set.
+//
+// See `normalizeSmartTaskStatusArg` above for the other four legacy ids
+// (`pending_prices`, `cannot_meet`, `cannot_finish`, `done`) — 'none' is
+// handled separately here because its truth depends on a settings lookup
+// rather than a simple alias rewrite.
 //
 // Semantics: 'none' means "no active smart task for this device", i.e. the
 // device has no enabled objective entry in settings. Returns `null` for any

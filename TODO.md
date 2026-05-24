@@ -1880,16 +1880,28 @@ consolidation + a11y polish (8 P2)`.*
       `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
       needed).
-- [ ] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
-      The runlistener accepts legacy dropdown ids (`'none'`, `'pending_prices'`, `'cannot_meet'`,
-      `'cannot_finish'`, `'done'`) that don't appear in the shipped dropdown JSON for the
-      `deadline_status_is` condition. Either confirm older PELS releases stored these ids in
-      user flows (in which case keep the compatibility layer and add a comment + note entry
-      documenting the accepted ids) or remove it as dead code. The current state — code accepts
-      ids that have never been part of the public API — is technically harmless but invites
-      future confusion.
-      Files: `flowCards/deadlineObjectiveCards.ts`, `.homeycompose/flow/conditions/deadline_status_is.json`
-      (for documentation only).
+- [x] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
+      DONE (2026-05-24): chose Option A (keep the compat layer + tighten the
+      comment). Git-history audit of `.homeycompose/flow/conditions/deadline_status_is.json`
+      shows the dropdown shipped `'cannot_meet'` and `'none'` only between
+      `3ba281d7` (2026-05-10) and `d67e0d97` (2026-05-12); the first version
+      to publish the card was v2.7.0 on 2026-05-16 (commit `155ad896`), so no
+      public release ever carried `'none'` or `'cannot_meet'` in the
+      dropdown. The other three legacy ids (`pending_prices`, `cannot_finish`,
+      `done`) were never in a shipped dropdown at all. The compat layer is
+      kept because (a) pre-release test installs in that 2-day window may
+      persist `'none'` in flow args and (b) advanced users can hand-edit the
+      flow card JSON in Homey, so a flow may carry an id outside the shipped
+      set; the runtime cost is a string compare on a path that already needs
+      the settings read it consumes. Tightened the inline comment block on
+      `isLegacyNoneStatusMatch` to cite the actual commit history (not a
+      vague "users who created flows during that window" claim that implied a
+      public release shipped with `'none'`) and pointed at
+      `normalizeSmartTaskStatusArg` for the other four legacy aliases. Tests
+      already cover all five legacy ids (`test/deadlineObjectiveCards.test.ts`
+      lines 511, 538, 547, 563, 577); only the regression-test docstring was
+      updated to match the new wording.
+      Files: `flowCards/deadlineObjectiveCards.ts`, `test/deadlineObjectiveCards.test.ts`.
 - [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
       uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
       plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
