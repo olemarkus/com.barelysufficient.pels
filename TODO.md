@@ -990,7 +990,7 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
       review of PR #965.
 
-- [ ] Band fitter does not split textbook bimodal data with 6 samples (3 per
+- [x] Band fitter does not split textbook bimodal data with 6 samples (3 per
       cluster, ~67 % mean separation). Multi-band SHS probe 2026-05-23 (PELS
       v2.9.0) drove the Mill v2 mock through two consecutive regimes designed
       to produce two clearly separated `kwhPerUnit` clusters: 4 walks at
@@ -998,21 +998,23 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       2500 W (≈0.50 kWh/°C) in the 21–23 °C range. After the run,
       `power_tracker_state.objectiveProfiles[device].bands` was empty despite
       `bufferedSamples: 6`, `kwhPerUnit.mean: 0.40182`, `min: 0.3005`,
-      `max: 0.5007`, `confidence: medium`. The fitter holds the raw data and
-      chose not to split. Either `MIN_SSE_REDUCTION_FRACTION` is tuned for
-      stricter signal than this configuration provides, or the minimum
-      samples per candidate band exceeds 3. Without splits the band-aware
-      integration path in `profileEnergyResolution.integrateBands` stays
-      unused and `displayConfidence` keeps falling back to the global stat —
-      that did escape `low` under spread, but the per-band confidence-aware
-      Step 3 path can't fire.
-      No correctness regression — the conservative path is safe; the global
-      mean is honest. Observability finding worth tuning when convenient.
-      Acceptance: replay the captured `bufferedSamples` through the band
-      fitter offline and report the SSE-reduction value to know whether to
-      lower `MIN_SSE_REDUCTION_FRACTION` or accept the current behaviour.
-      Files: `lib/objectives/stats.ts` (band fitter),
-      `lib/plan/deferredObjectives/profileEnergyResolution.ts` (consumer).
+      `max: 0.5007`, `confidence: medium`.
+      **Analysis (2026-05-25, see `test/objectiveProfileBandsShsReplay.test.ts`):**
+      `MIN_SSE_REDUCTION_FRACTION` is NOT the active constraint. The natural
+      bimodal split at idx 3 yields a 99.94% SSE reduction — two orders of
+      magnitude above the 10% floor. The active blocker is the entry-level
+      gate `samples.length >= OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2 = 16`;
+      the buffer held 6, so `fitBandsFromSamples` returns `undefined` at the
+      guard before any SSE math runs. Even bypassing the entry gate, the
+      per-band 8-sample floor (`firstSplit = start + 8`, `lastSplit = end - 8`)
+      would skip every candidate split (largest cluster on either side = 3).
+      **Decision: accept current behaviour.** The 8-per-band minimum is a
+      deliberate noise-floor protection documented in
+      `notes/objective-profile-bands.md`; lowering it to 3 to admit this case
+      would risk one outlier dominating any short bimodal sequence. The prod
+      run was undersized for band fitting (needs ≥16 buffered samples with
+      ≥8 per cluster). Rationale added to constant comments in
+      `lib/objectives/bands.ts`. Replay regression test pins the gate decision.
       Source: SHS multi-band live-walk 2026-05-23. Artifacts:
       `/tmp/thermal-multiband-live-20260523-132901/pels.settings.after.json`.
 
