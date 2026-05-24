@@ -4,7 +4,6 @@ import {
   formatSmartTaskCurrentValueLine,
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskLearning,
-  resolveVarianceMarginNote,
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
@@ -94,48 +93,6 @@ describe('formatEnergyEstimateKWh', () => {
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBe('8.0 kWh');
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8, energyExpectedKWh: 8 })).toBe('8.0 kWh');
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8 })).toBe('8.0 kWh');
-  });
-});
-
-describe('resolveVarianceMarginNote', () => {
-  const labels = { varianceMarginNote: 'why-note' } as never;
-
-  it('returns the kind note when a buffer is booked', () => {
-    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 10, energyExpectedKWh: 8 })).toBe('why-note');
-  });
-
-  it('returns null when there is no buffer, the figures round equal, or expected is absent', () => {
-    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8, energyExpectedKWh: 8 })).toBeNull();
-    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBeNull();
-    expect(resolveVarianceMarginNote({ labels, energyPlannedKWh: 8 })).toBeNull();
-  });
-
-  it('suppresses the note under a cannot-finish alert hero so the calm sentence does not contradict the red chip', () => {
-    expect(resolveVarianceMarginNote({
-      labels,
-      energyPlannedKWh: 10,
-      energyExpectedKWh: 8,
-      alert: true,
-    })).toBeNull();
-  });
-
-  it('suppresses the note when the cold-start chip is shown so two uncertainty lines do not stack', () => {
-    expect(resolveVarianceMarginNote({
-      labels,
-      energyPlannedKWh: 10,
-      energyExpectedKWh: 8,
-      coldStartChipShown: true,
-    })).toBeNull();
-  });
-
-  it('keeps the note for a healthy learned-rate hero (no alert, no cold-start chip)', () => {
-    expect(resolveVarianceMarginNote({
-      labels,
-      energyPlannedKWh: 10,
-      energyExpectedKWh: 8,
-      alert: false,
-      coldStartChipShown: false,
-    })).toBe('why-note');
   });
 });
 

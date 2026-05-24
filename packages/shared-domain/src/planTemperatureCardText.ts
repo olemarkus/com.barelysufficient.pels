@@ -1,5 +1,10 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
-import { resolvePlanStateKind } from './planStateLabels.js';
+import {
+  PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_STATUS,
+  resolvePlanStateKind,
+} from './planStateLabels.js';
 import type { DeviceOverviewSnapshot } from './deviceOverview.js';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
@@ -90,8 +95,8 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (kind === 'idle') return null;
   if (kind === 'resuming') return 'Resuming';
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return "Limited — staying within today's budget";
-  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return "Limited — this hour is near the hard cap";
-  if (isLimitedReason(reasonCode)) return 'Limited — staying under the hard cap';
+  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
+  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
+  if (isLimitedReason(reasonCode)) return PLAN_STATE_HELD_FALLBACK_STATUS;
   return kind === 'held' ? 'Lowered by PELS' : null;
 };

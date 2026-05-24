@@ -229,7 +229,6 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     headlineReason: null,
     subline: 'Connected 300 → 65 °C',
     metaLine: 'Needs 12.5 kWh · 3.0 kW · 4 h',
-    varianceNote: null,
     costMetaLine: null,
     deliveredSoFarLine: null,
     recourse: null,

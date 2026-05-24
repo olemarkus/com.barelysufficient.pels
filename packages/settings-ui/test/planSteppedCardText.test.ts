@@ -494,7 +494,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Limited — staying under the hard cap');
+      )).toBe('Limited by the hard cap');
     });
 
     it('returns shed invariant status with count and max step', () => {

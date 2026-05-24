@@ -52,14 +52,14 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       expected: 'Manual action needed — hard cap may be exceeded',
     },
     {
-      label: 'capacity shed maps to the staying-under-cap label',
+      label: 'capacity shed maps to the hard-cap label',
       reason: { code: PLAN_REASON_CODES.capacity, detail: null },
-      expected: 'Limited — staying under the hard cap',
+      expected: 'Limited by the hard cap',
     },
     {
-      label: 'daily budget shed maps to the today\'s budget label',
+      label: 'daily budget shed maps to the today\'s daily-budget label',
       reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null },
-      expected: "Limited — staying within today's budget",
+      expected: "Limited by today's daily budget",
     },
     {
       label: 'hourly budget shed maps to the hourly hard cap label',

@@ -144,7 +144,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Shed to max',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
-      statusMsg: 'Limited — staying under the hard cap',
+      statusMsg: 'Limited by the hard cap',
     });
   });
 

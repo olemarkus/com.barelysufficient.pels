@@ -6,7 +6,7 @@ Canonical user-facing vocabulary for PELS. Follow it in UI labels, help text, st
 
 > User-facing UI should say **what happens**. Advanced docs may explain why the planner does it.
 
-Prefer: `Limited — staying under the hard cap`
+Prefer: `Limited by the hard cap`
 Avoid: `Shed due to capacity`
 
 Concrete words over jargon: `limited`, not `shed`; `resume`, not `restore`; `available power`, not `headroom`; `safety margin`, not `soft margin`. The migration to this vocabulary is complete in the settings UI — the older terms only survive in internal code identifiers, legacy Homey flow card names (see [`docs/flow-cards.md`](../docs/flow-cards.md)), and raw planner reason strings documented in [`docs/plan-states.md`](../docs/plan-states.md).
@@ -140,14 +140,9 @@ than `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP` (4) accepted samples — and is
 `low` confidence forever (thermal devices, from inherent per-hour variance) is
 no longer treated as cold-start, so it renders no chip rather than nagging a
 settled task. The energy estimate instead shows as a range
-(`expected…planned`, e.g. `8.0–10.0 kWh`) on the detail hero, with a one-line
-note explaining PELS books the high end as a safety margin; the range collapses
-to a single figure once the buffer fades with learning. The safety-margin
-sentence is suppressed under cannot-finish (`tone === 'alert'`) heroes — the
-red chip + postmortem body own that row and the calm sentence would
-contradict them — and when the cold-start `Estimating` / `Refining` chip is
-already rendered, so the user never reads two uncertainty hedges (chip +
-sentence) on the same hero.
+(`expected…planned`, e.g. `8.0–10.0 kWh`) on the detail hero; the range
+collapses to a single figure once the buffer fades with learning. The range
+itself signals approximation — no narrating sentence sits beneath it.
 
 Rule: a temperature device must never render the words *charge*, *charging*, or *EV* in user-facing text.
 
@@ -195,9 +190,9 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ### Smart-task Flow permissions
 
-The `allow_smart_task_rescue` Flow action grants permission; it must not promise a guaranteed outcome. Copy may say PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets more room when available. Always keep the hard-cap boundary explicit: rescue permissions stay inside the hard cap and do not guarantee the target.
+The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
 
-Use `while the smart task is scheduled to run` / `while it's scheduled to run` for the shipped `always` mode. Avoid `planned to run` in user-facing error text, and avoid saying a permission change "updates the schedule right away" unless the UI really shows a new schedule immediately. Prefer `takes effect on the next plan refresh` or a similarly honest sentence.
+Use `while the smart task is scheduled to run` / `while it's scheduled to run` for the shipped `always` mode. Avoid `planned to run` in user-facing error text. Permission changes take effect on the next plan refresh, not immediately; copy should say so when it states the timing at all.
 
 Visible Flow labels and hints use full words for time units: `hours`, not `h`.
 
@@ -221,7 +216,7 @@ The Overview hero does not chip the mode — see
 1. **Concrete action words.** `limited`, not `shed`. `resume`, not `restore`. `available power`, not `headroom`.
 2. **Units in labels.** `Hard cap (kW)`, `Daily budget (kWh)`, `Cheap-hour boost (°C)`.
 3. **No abbreviations in visible labels.** No bare `Cap`, no `delta`.
-4. **Chips are short; reason lines are longer.** Chip: `Limited`. Reason: `staying within today's budget`.
+4. **Chips are short; reason lines are longer.** Chip: `Limited`. Reason: `by today's daily budget`.
 5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap`, `headroom cooldown` belong in advanced diagnostics only.
 6. **Don't rename established user-facing terms unless the change is clearly better.** Confusion from renaming has a cost too. `Budget`, `Managed`/`Unmanaged`, `Capacity`, `Priority`, `Mode` stay.
 

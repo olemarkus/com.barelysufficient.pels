@@ -109,7 +109,7 @@ describe('allow_smart_task_rescue flow card', () => {
   it('throws when the device has no smart task', async () => {
     const app = await initApp();
     await expect(listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' }))
-      .rejects.toThrow(/no smart task/i);
+      .rejects.toThrow(/add a smart task for this device first/i);
     await app.onUninit?.();
   });
 

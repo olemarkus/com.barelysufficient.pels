@@ -69,6 +69,6 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.2,
       plannedTarget: 21,
       reason: { code: 'daily_budget', detail: null },
-    })).toBe("Limited — staying within today's budget");
+    })).toBe("Limited by today's daily budget");
   });
 });

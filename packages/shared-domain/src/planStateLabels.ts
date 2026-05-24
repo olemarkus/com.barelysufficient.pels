@@ -46,7 +46,20 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 // richer `resolvePlanGenericReasonText` helper is tracked in `TODO.md` under
 // the P2 "Overview device-card status copy" item. Rule 4 (UI text shared with
 // logs) holds because the values match across all five sites.
-export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Limited — staying under the hard cap';
+export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Limited by the hard cap';
+
+// Mirror status line for `dailyBudget` reason-code holds. Daily-budget pacing
+// is the binding constraint instead of the hard cap. Direct attribution
+// (`Limited by …`) matches `PLAN_STATE_HELD_FALLBACK_STATUS` so the two
+// statuses read in the same shape.
+export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
+
+// Sibling status for `hourlyBudget` holds: the planner is holding the device
+// back because the current hour is close to the hard cap. Different from
+// `PLAN_STATE_HELD_FALLBACK_STATUS` (a generic capacity shed) — this surface
+// names the hour rather than the cap directly because the precise trigger is
+// "approaching" not "at" the cap.
+export const PLAN_STATE_HOURLY_BUDGET_STATUS = 'Limited — this hour is near the hard cap';
 
 const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
 
