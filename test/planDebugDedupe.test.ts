@@ -96,7 +96,9 @@ describe('planDebugDedupe', () => {
     expect(debugStructured).toHaveBeenCalledTimes(2);
   });
 
-  it('does not cache signatures when no emitter is configured', () => {
+  it('skips work entirely when no emitter is configured and module logger is silent', () => {
+    // Default test root is silent — no debugStructured override means nothing emits,
+    // so the dedupe optimization should bail out before computing a signature.
     const state = createPlanEngineState();
 
     emitRestoreDebugEventOnChange({
