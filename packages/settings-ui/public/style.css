@@ -1746,34 +1746,6 @@ md-filled-button.is-busy {
   font-variant-numeric: tabular-nums;
 }
 
-/* Chart toggle on the Succeeded receipt shape ("View details" / "Hide
- * details"). Renders as a recognisable ghost button — visible affordance,
- * keyboard-focusable, M3 touch-target minimum. Borrows the ghost-button
- * primitive so we don't introduce a page-local custom button. The label
- * reads "details" not "schedule" so the toggle doesn't overload the
- * deadline-plan "schedule" vocabulary (v2.7.2/PR10). */
-.plan-history-detail__chart-toggle {
-  align-self: flex-start;
-  min-height: var(--pels-touch-target-min);
-  padding: var(--spacing-1) var(--spacing-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--pels-text-primary);
-  font: inherit;
-  cursor: pointer;
-}
-
-.plan-history-detail__chart-toggle:hover,
-.plan-history-detail__chart-toggle:focus-visible {
-  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
-}
-
-.plan-history-detail__chart-toggle:focus-visible {
-  outline: 2px solid var(--color-state-info-border);
-  outline-offset: 2px;
-}
-
 /* Recourse CTA modifier on the history-detail hero. The base
  * `.plan-hero__recourse` already adds `margin-top: var(--spacing-3)` for
  * the live-hero ordering where the button sits at the end. On the history
@@ -2429,6 +2401,71 @@ md-filled-button.is-busy {
 #deadline-plan-panel button.pels-button.pels-button:disabled {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
+}
+
+/* Chart toggle on the Succeeded receipt shape ("View details" / "Hide
+ * details"). Lives next to the H2 chart-card title; rebound onto the
+ * canonical `.pels-button` primitive (batch 12 follow-up to the batch 10
+ * primitive consolidation) but keeps its quiet ghost identity through
+ * this decorator chain so it doesn't visually compete with the H2.
+ * Going filled (the canonical visual) would have promoted a disclosure
+ * toggle to look like a primary CTA — wrong information hierarchy for
+ * the surface. The label reads "details" not "schedule" so the toggle
+ * doesn't overload the deadline-plan "schedule" vocabulary (v2.7.2/PR10).
+ *
+ * The decorator MUST live below the `.pels-button` cascade above
+ * (including the `#deadline-plan-panel button.pels-button.pels-button`
+ * panel-scoped block): the panel-scoped chart-toggle selector below
+ * carries the same specificity `(1,2,1)` as the panel-scoped
+ * `.pels-button` block, so source order is the tie-breaker. The bare
+ * doubled-class selector matches the `(0,2,0)` decorator pattern used
+ * elsewhere in the file and beats the unscoped `.pels-button {…}`
+ * cascade `(0,1,0)` without needing `!important`.
+ *
+ * Properties NOT redeclared here ride the canonical `.pels-button`:
+ * min-height (touch-target floor), border-radius, color, font-family,
+ * cursor, transition, disabled state (opacity + not-allowed cursor),
+ * appearance reset. Properties redeclared override the filled visuals
+ * back to the ghost identity: transparent background, narrower padding,
+ * inherited font-weight (so the button label doesn't compete with the
+ * H2), and an info-color focus outline (the canonical accent green
+ * would clash on the ghost ground). */
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
+  align-self: flex-start;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-color: var(--color-border-subtle);
+  background: transparent;
+  font-weight: inherit;
+}
+
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
+  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
+  border-color: var(--color-border-subtle);
+}
+
+.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
+  outline: 2px solid var(--color-state-info-border);
+  outline-offset: 2px;
+}
+
+#deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
+  align-self: flex-start;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-color: var(--color-border-subtle);
+  background: transparent;
+  font-weight: inherit;
+}
+
+#deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
+#deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
+  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
+  border-color: var(--color-border-subtle);
+}
+
+#deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
+  outline: 2px solid var(--color-state-info-border);
+  outline-offset: 2px;
 }
 
 .plan-hero__energy-support {

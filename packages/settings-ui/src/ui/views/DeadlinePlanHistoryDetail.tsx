@@ -1171,7 +1171,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
             {hero.chartCollapsedByDefault && (
               <button
                 type="button"
-                class="plan-history-detail__chart-toggle"
+                class="pels-button plan-history-detail__chart-toggle"
                 aria-expanded={!chartCollapsed}
                 onClick={() => setChartCollapsed(!chartCollapsed)}
               >

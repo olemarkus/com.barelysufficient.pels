@@ -162,11 +162,22 @@ release, not v2.7.1 merge-blockers.*
         pins the no-legacy-`.plan-hero__recourse-button` invariant + canonical
         shell + 48 px floor + focus ring + disabled state contract.
         *Still open for follow-up sub-PRs:*
-        - **`.plan-history-detail__chart-toggle` ghost button.** Small
-          ghost-button shape on the trajectory-chart toggle that overlaps the
-          `.pels-button` vocabulary; rebind once the chart-toggle e2e at
+        - **`.plan-history-detail__chart-toggle` ghost button — done
+          (2026-05-24 batch 12 PR).** The trajectory-chart toggle now
+          chains the canonical `.pels-button` primitive with a
+          `.plan-history-detail__chart-toggle` decorator that keeps
+          the page-local ghost-button visual (transparent background,
+          narrower padding, lighter hover/focus tint, font-weight
+          inherit). Going filled would have visually competed with the
+          H2 chart-card title it sits beside, so the decorator wins.
+          The e2e at
           `packages/settings-ui/tests/e2e/deadline-recorder-to-history.spec.ts`
-          is updated to the canonical selector.
+          was rebound onto `button.pels-button.plan-history-detail__chart-toggle`
+          and the rebind regression at
+          `packages/settings-ui/test/buttonPrimitiveRebind.test.ts` now
+          pins both ends of the chain (primitive + decorator) plus the
+          doubled-class cascade that beats the panel-scoped `.pels-button`
+          fill.
         - **Per-page MD Web layout helpers** (`.budget-context-action`,
           `.budget-page-header__action`, `.dry-run-banner__action`) stay --
           they're legit positioning / MD-Web-custom-property overrides on top
