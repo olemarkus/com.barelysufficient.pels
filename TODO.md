@@ -781,11 +781,11 @@ release, not v2.7.1 merge-blockers.*
       `Using cheaper hours (price data unavailable)` (line 262)~~, the
       five-line `resolveNoPlanLine` block (282-290), `resolveTomorrowLine`
       strings (293-295), ~~the `Managed … · Background …` split-line template
-      (236)~~, `Hourly plan` / `Progress` chart titles (391), the
-      `High` / `Medium` / `Low` confidence-band labels (405-407), the
-      `Showing tomorrow's plan…` / `Showing today's plan…` comparison
-      labels (487, 494), and the `Adjust budget` button label at
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:229`. Lift
+      (236)~~, ~~`Hourly plan` / `Progress` chart titles (391)~~, the
+      ~~`High` / `Medium` / `Low` confidence-band labels (405-407)~~, the
+      ~~`Showing tomorrow's plan…` / `Showing today's plan…` comparison
+      labels (487, 494)~~, and the ~~`Adjust budget` button label at
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:229`~~. Lift
       each into a shared-domain helper or constant that runtime logging
       can reach for parity. Bundle in batches by section (hero subtitle,
       chart subtitle, no-plan sentences, etc.) rather than one giant move.
@@ -804,11 +804,27 @@ release, not v2.7.1 merge-blockers.*
       (`composeManagedBackgroundLine`) all moved into
       `packages/shared-domain/src/dailyBudgetHeroStrings.ts` with their
       kWh formatting; `budgetRedesignResolvers.ts` consumes them and
-      computes nothing locally. *Remaining for follow-up batches:*
-      `resolveNoPlanLine` block, `resolveTomorrowLine` strings,
-      `Hourly plan` / `Progress` chart titles, `High` / `Medium` / `Low`
-      confidence-band labels, the `Showing today's/tomorrow's plan…`
-      comparison labels, and the `Adjust budget` button label.
+      computes nothing locally.
+      *Second wave done (2026-05-25):* chart titles + confidence labels +
+      comparison labels + adjust-button batch lifted —
+      `Hourly plan` / `Progress` chart titles
+      (`BUDGET_CHART_TITLE_HOURLY_PLAN` / `BUDGET_CHART_TITLE_PROGRESS`,
+      consumed by both `resolveChartData` and the `ToggleGroup` in
+      `BudgetOverview.tsx` so the heading and the toggle option labels
+      share one source), `High` / `Medium` / `Low` confidence-band labels
+      (`BUDGET_CONFIDENCE_LABEL_HIGH` / `BUDGET_CONFIDENCE_LABEL_MEDIUM` /
+      `BUDGET_CONFIDENCE_LABEL_LOW`, with a new `BudgetConfidenceLabel`
+      type narrowing `BudgetConfidenceData['label']` to those constants),
+      `Showing tomorrow's plan — tomorrow's prices are in.` /
+      `Showing today's plan — tomorrow's prices not yet available.`
+      comparison labels (`BUDGET_COMPARISON_SHOWING_TOMORROW` /
+      `BUDGET_COMPARISON_SHOWING_TODAY`), and the `Adjust budget` button
+      label (`BUDGET_ADJUST_BUDGET_BUTTON`). All visible wording preserved
+      byte-for-byte.
+      *Remaining for follow-up batches:* `resolveNoPlanLine` block (five
+      sentences covering the budget-enabled vs disabled tomorrow / today
+      / yesterday cases) and the two `resolveTomorrowLine` strings
+      (price-shaping reliable vs fallback).
 
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
