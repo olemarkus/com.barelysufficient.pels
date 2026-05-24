@@ -470,22 +470,6 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
 
-- [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
-      promotion. PR #1018's `capped_idle` discriminator requires a
-      20-min observation window before classification can fire; a
-      Connected 300 task with a 1-hour deadline gets at most one
-      classification opportunity (window opens ~20 min in, deadline at
-      60 min). If the cycling pattern hasn't established by then or
-      only one half of the duty cycle has occurred, the run finalises
-      as a real miss. Not a correctness bug — graceful degradation back
-      to the existing classification — but the user experience for
-      short-deadline runs is unchanged. Acceptance: either shorten the
-      window for short-deadline runs (risk: more false positives) or
-      document the limitation in `notes/idle-classification.md`.
-      Files: `lib/observer/idleDetector.ts`,
-      `notes/idle-classification.md`.
-      Source: `pels-runtime-reality`, PR #1018 follow-up, 2026-05-23.
-
 - [ ] Eligibility-count flicker hardening for the new
       `countConcurrentEligibleTasks` helper. Today the count is read from
       `params.deviceById` (built from the cached target snapshot) plus
@@ -514,22 +498,6 @@ release, not v2.7.1 merge-blockers.*
       late-horizon buckets.
       Files: `lib/plan/deferredObjectives/concurrentEligibleTasks.ts`.
       Source: `pels-runtime-reality`, PR #1003 follow-up, 2026-05-23.
-
-
-- [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
-      noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
-      0.01 °C epsilon), Mill/Adax/Glamox sensors that report 0.1-0.2 °C
-      jitter will keep clearing the band and resetting the no-progress
-      counter, so the `no_progress` disarm never trips and only the
-      24-hour `RECOVERY_SAFETY_TIMEOUT_MS` bounds the worst case. The
-      wall-clock floor caps the harm to "won't disarm during the first
-      30 min", but past 30 min a noisy device is back to the original
-      stuck-state. Couple to the open thermostat-noise work (stashed
-      `missing_capacity` draft) rather than blindly raising the
-      multiplier here; the right fix is likely a noise-aware threshold
-      keyed to the device's observed jitter floor.
-      Files: `lib/objectives/recovery.ts`.
-      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
 - [ ] Harden the rescue-only replan-reason routing against partial /
       combined toggle scenarios. The PR-998 regression suite covers
