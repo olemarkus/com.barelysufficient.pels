@@ -4,6 +4,11 @@ import {
   formatShortfallReason,
   type DeviceReason,
 } from '../packages/shared-domain/src/planReasonSemantics';
+import {
+  PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_STATUS,
+} from '../packages/shared-domain/src/planStateLabels';
 
 const BANNED = /\b(shed|restore|headroom|shortfall|backoff|invariant|soft limit|controlled|uncontrolled)\b/i;
 
@@ -54,17 +59,17 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
     {
       label: 'capacity shed maps to the hard-cap label',
       reason: { code: PLAN_REASON_CODES.capacity, detail: null },
-      expected: 'Limited by the hard cap',
+      expected: PLAN_STATE_HELD_FALLBACK_STATUS,
     },
     {
       label: 'daily budget shed maps to the today\'s daily-budget label',
       reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null },
-      expected: "Limited by today's daily budget",
+      expected: PLAN_STATE_DAILY_BUDGET_STATUS,
     },
     {
       label: 'hourly budget shed maps to the hourly hard cap label',
       reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
-      expected: 'Limited — this hour is near the hard cap',
+      expected: PLAN_STATE_HOURLY_BUDGET_STATUS,
     },
     {
       label: 'cooldown restore maps to the waiting-to-resume label',

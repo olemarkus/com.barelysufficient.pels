@@ -7,12 +7,16 @@ import {
   resolveDeltaPill,
   resolveDominantCause,
   resolveEffectiveLocalView,
-  resolveHeadroomLine,
+  resolveBudgetRemainingLine,
   resolveHeroData,
   resolvePlanPayload,
   resolveSplitLine,
 } from '../src/ui/budgetRedesign.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
+import {
+  YESTERDAY_FINISHED_OVER_BUDGET,
+  YESTERDAY_FINISHED_WITHIN_BUDGET,
+} from '../../shared-domain/src/dailyBudgetHeroStrings';
 
 const costDisplay = { unit: 'kr', divisor: 100 } as const;
 
@@ -152,8 +156,8 @@ describe('resolveDecisionLine', () => {
 
   it('summarises yesterday outcomes', () => {
     const payload = buildPayload();
-    expect(resolveDecisionLine(payload, 'yesterday', 'over')).toBe('Yesterday finished over budget.');
-    expect(resolveDecisionLine(payload, 'yesterday', 'within')).toBe('Yesterday finished within budget.');
+    expect(resolveDecisionLine(payload, 'yesterday', 'over')).toBe(YESTERDAY_FINISHED_OVER_BUDGET);
+    expect(resolveDecisionLine(payload, 'yesterday', 'within')).toBe(YESTERDAY_FINISHED_WITHIN_BUDGET);
   });
 
   it('points to cheaper hours for tomorrow when shaped', () => {
@@ -324,15 +328,15 @@ describe('resolveDominantCause', () => {
   });
 });
 
-describe('resolveHeadroomLine', () => {
+describe('resolveBudgetRemainingLine', () => {
   it('frames positive remaining as energy left in the budget', () => {
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveHeadroomLine(payload, costDisplay)).toMatch(/^7\.7 kWh left in today's budget/);
+    expect(resolveBudgetRemainingLine(payload, costDisplay)).toMatch(/^7\.7 kWh left in today's budget/);
   });
 
   it('frames negative remaining as already-used overdraw', () => {
     const payload = buildPayload({ remainingKWh: -1.3 });
-    expect(resolveHeadroomLine(payload, costDisplay))
+    expect(resolveBudgetRemainingLine(payload, costDisplay))
       .toMatch(/^1\.3 kWh over budget already used/);
   });
 });

@@ -110,7 +110,7 @@ const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetO
     headlineLabel: null,
     comparison: 'Daily budget off',
     delta: null,
-    headroomLine: null,
+    budgetRemainingLine: null,
     splitLine: null,
     priceTagline: null,
     decision: null,

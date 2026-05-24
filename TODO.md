@@ -635,7 +635,7 @@ release, not v2.7.1 merge-blockers.*
       "· est. 6.50 kr today"). All callsites in `budgetRedesign.ts` updated;
       no other importers existed.
 
-- [ ] Route test/doc anchors through the shared-domain copy constants.
+- [x] Route test/doc anchors through the shared-domain copy constants.
       `test/deviceOverview.test.ts:147`, `test/planReasonUserFacing.test.ts:57`,
       `packages/settings-ui/test/budgetRedesign.test.ts:155-156`, and
       `docs/plan-states.md:35,55` hardcode `Limited by the hard cap` /
@@ -649,8 +649,21 @@ release, not v2.7.1 merge-blockers.*
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
       2026-05-23; reworded 2026-05-24 after the undersell walk-back
       (961904f8) standardised the "Limited by …" wording across helpers.
+      Done 2026-05-24 (bundled with the `headroomLine`/`resolveHeadroomLine`
+      symbol rename): `test/deviceOverview.test.ts` now imports
+      `PLAN_STATE_HELD_FALLBACK_STATUS` from
+      `packages/shared-domain/src/planStateLabels`; `test/planReasonUserFacing.test.ts`
+      imports `PLAN_STATE_HELD_FALLBACK_STATUS` (line 57),
+      `PLAN_STATE_DAILY_BUDGET_STATUS` (line 62), and
+      `PLAN_STATE_HOURLY_BUDGET_STATUS` (line 67 — opportunistic pin while in
+      the same expected-cases table); `packages/settings-ui/test/budgetRedesign.test.ts`
+      imports `YESTERDAY_FINISHED_OVER_BUDGET` / `YESTERDAY_FINISHED_WITHIN_BUDGET`
+      from `packages/shared-domain/src/dailyBudgetHeroStrings` for the
+      yesterday decision-line assertions. `docs/plan-states.md` lookup tables
+      stay verbatim because markdown can't import; the doc is human reference
+      and the literal strings are the pedagogical value.
 
-- [ ] Finish the `Headroom` Rule-1 sweep in settings-ui. After PR #1049
+- [x] Finish the `Headroom` Rule-1 sweep in settings-ui. After PR #1049
       purged `Headroom` from `dailyBudgetHeroStrings.ts`, two internal
       settings-ui symbols still carry the banned term:
       `BudgetHeroData.headroomLine` (field at
@@ -668,6 +681,16 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `packages/settings-ui/test/budgetRedesign.test.ts`.
       Source: `pels-copy-and-terminology`, PR #1049 follow-up, 2026-05-24.
+      Done 2026-05-24 (bundled with the test/doc anchor pivot above):
+      renamed `BudgetHeroData.headroomLine` → `budgetRemainingLine` and
+      `resolveHeadroomLine` → `resolveBudgetRemainingLine`; updated every
+      importer in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/test/budgetRedesign.test.ts`,
+      `packages/settings-ui/test/heroPrimitiveRebind.test.ts`, and
+      `packages/settings-ui/test/chipPrimitiveRebind.test.ts`. No visible
+      string changed; the produced subline still reads
+      "… left in today's budget" / "… over budget already used".
 
 - [ ] Lift the remaining inlined visible strings in
       `packages/settings-ui/src/ui/budgetRedesign.ts` into

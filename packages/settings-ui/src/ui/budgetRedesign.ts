@@ -262,7 +262,7 @@ const resolvePriceTagline = (
   return isPriceReliable(payload) ? 'Using cheaper hours' : 'Using cheaper hours (price data unavailable)';
 };
 
-export const resolveHeadroomLine = (
+export const resolveBudgetRemainingLine = (
   payload: DailyBudgetDayPayload,
   costDisplay: CostDisplay,
 ): string => {
@@ -326,7 +326,7 @@ export const resolveHeroData = (
       headlineLabel: null,
       comparison: budgetEnabled ? DAILY_BUDGET_DISABLED_WAITING : DAILY_BUDGET_DISABLED_OFF,
       delta: null,
-      headroomLine: null,
+      budgetRemainingLine: null,
       splitLine: null,
       priceTagline: null,
       decision: resolveNoPlanLine(view, budgetEnabled),
@@ -337,7 +337,7 @@ export const resolveHeroData = (
     headlineLabel: DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW[view],
     comparison: formatComparisonLine(viewPayload, view),
     delta: resolveDeltaPill(viewPayload, view, status),
-    headroomLine: view === 'today' ? resolveHeadroomLine(viewPayload, costDisplay) : null,
+    budgetRemainingLine: view === 'today' ? resolveBudgetRemainingLine(viewPayload, costDisplay) : null,
     splitLine: view === 'today' ? resolveSplitLine(viewPayload) : null,
     priceTagline: resolvePriceTagline(viewPayload, view),
     decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
