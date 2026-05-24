@@ -768,6 +768,18 @@ export const formatPlanHistoryPostmortem = (
       sentence: 'PELS was restarted during this smart task — the outcome was reconstructed from settings.',
     };
   }
+  // When a plan was recorded (PR #1074: hero re-shows the collapsed chart
+  // card as evidence) the bare "could not determine" sentence reads
+  // disjointly next to the "View details" toggle — the user sees an
+  // affordance but no preview of what they'd be expanding. Lead them to it
+  // by naming the plan that the disclosure exposes.
+  const hasRecordedPlan = entry.originalPlan !== null || entry.finalPlan !== null;
+  if (hasRecordedPlan) {
+    return {
+      variant: 'unknown',
+      sentence: "PELS made a plan for this smart task but couldn't observe how it finished.",
+    };
+  }
   return {
     variant: 'unknown',
     sentence: 'PELS could not determine how this smart task finished.',

@@ -335,6 +335,39 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.variant).toBe('unknown');
       expect(result.sentence.length).toBeGreaterThan(0);
     });
+
+    // PR #1074 follow-up: hero re-shows the collapsed chart card when a plan
+    // was recorded, so the postmortem sentence must bridge to the "View
+    // details" affordance rather than stop at the bare "could not determine"
+    // fallback. The no-plan branch keeps the original wording so the
+    // single-sentence hero shape stays byte-identical.
+    it('keeps the bare "could not determine" sentence when no plan was recorded', () => {
+      const entry = buildEntry({
+        outcome: 'unknown',
+        discoveredFrom: 'observation',
+        finalProgressC: null,
+        originalPlan: null,
+        finalPlan: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('unknown');
+      expect(result.sentence).toBe('PELS could not determine how this smart task finished.');
+    });
+
+    it('previews the recorded plan in the sentence when originalPlan or finalPlan is present', () => {
+      const entry = buildEntry({
+        outcome: 'unknown',
+        discoveredFrom: 'observation',
+        finalProgressC: null,
+        originalPlan: buildSnapshot(),
+        finalPlan: null,
+      });
+      const result = formatPlanHistoryPostmortem(entry, 'UTC');
+      expect(result.variant).toBe('unknown');
+      expect(result.sentence).toBe(
+        "PELS made a plan for this smart task but couldn't observe how it finished.",
+      );
+    });
   });
 });
 
