@@ -1100,19 +1100,26 @@ were rolled back before they could land.*
       `packages/settings-ui/tests/e2e/settings-smoke.spec.ts`.
       Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
 
-- [ ] Power-week chart height duplicated across JS and CSS.
-      `DEFAULT_CHART_HEIGHT = 240` in
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts:27` and the
-      `.power-week-chart { height: 240px; min-height: 240px; }` rule in
-      `packages/settings-ui/public/style.css:1314-1316` are two literal
-      sources for the same physical value. If one is changed without the
-      other, the container box and the SVG viewport will diverge. Recommended
-      follow-up: either add a `--pels-chart-week-height` token consumed by
-      both layers (CSS via `var()`, JS via `getComputedStyle`), or
-      cross-reference the two literals in code comments more tightly so a
-      future edit to one is forced to consider the other.
-      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/public/style.css`, `settings/style.css`.
+- [x] Power-week chart height duplicated across JS and CSS.
+      Done via `refactor/p2-chart-week-height-token`: promoted to
+      `--pels-chart-week-height` (literal `240px` in
+      `tokens/component.json` → regenerated to `settings/tokens.css`).
+      `.power-week-chart` consumes `var(--pels-chart-week-height)` for
+      both `height` and `min-height` in `packages/settings-ui/public/style.css`
+      (synced to `settings/style.css`); `powerWeekChartEcharts.ts` now
+      reads the token via `getComputedStyle().getPropertyValue(
+      '--pels-chart-week-height')` in a new `resolveChartHeight` helper
+      that feeds both the `initEcharts` constructor and the subsequent
+      `chart.resize` call (fallback constant matches the token's literal
+      source value). Pattern mirrors PR #1118 (`--pels-chart-cell-radius`)
+      end-to-end. Regression locked by
+      `packages/settings-ui/test/chartWeekHeightToken.test.ts` (4 cases:
+      tokens.css declaration, public/style.css `height`+`min-height`
+      consumption, runtime `getComputedStyle` read, fallback path).
+      Files: `tokens/component.json`, `settings/tokens.css`,
+      `packages/settings-ui/public/style.css`, `settings/style.css`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/test/chartWeekHeightToken.test.ts`.
       Source: `pels-m3-critic` agent, PR #1061 follow-up, 2026-05-24.
 
 - [x] Heatmap `disposePowerWeekChart` inline-style cleanup.

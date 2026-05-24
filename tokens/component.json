@@ -214,6 +214,10 @@
         "value": "{radius.xs}",
         "comment": "Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer."
       },
+      "week-height": {
+        "value": "240px",
+        "comment": "Power-week heatmap container height shared by `.power-week-chart` in style.css (height/min-height) and `resolveChartHeight` in powerWeekChartEcharts.ts (ECharts viewport via `initEcharts`/`chart.resize`). Promoted from parallel `240px` / `240` literals so the container box and the SVG viewport cannot drift. Literal value (not an alias) — chart heights are physical-pixel, not theme-relative; cf. `.deadline-horizon-chart`."
+      },
       "current-border": { "value": "{color.state.info.border}" },
       "grid": { "value": "{color.border.strong}" },
       "muted": { "value": "{color.semantic.text.muted}" },

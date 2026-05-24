@@ -24,7 +24,13 @@ type HeatmapPalette = {
   tooltipBorder: string;
 };
 
-const DEFAULT_CHART_HEIGHT = 240;
+// Fallback matches the `--pels-chart-week-height` token value in
+// `tokens/component.json` (currently a literal `240px`). Reading the token
+// via `getComputedStyle` keeps the ECharts viewport in lockstep with the
+// `.power-week-chart` container box (`height`/`min-height` in
+// `public/style.css`) without two parallel literals.
+const DEFAULT_CHART_HEIGHT_FALLBACK = 240;
+const CHART_HEIGHT_VAR = '--pels-chart-week-height';
 const DEFAULT_CHART_WIDTH = 480;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const MAX_POWER_HEATMAP_DATE_KEYS = 370;
@@ -32,6 +38,12 @@ const MAX_POWER_HEATMAP_DATE_KEYS = 370;
 let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
+
+const resolveChartHeight = (element: HTMLElement): number => {
+  const raw = getComputedStyle(element).getPropertyValue(CHART_HEIGHT_VAR).trim();
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CHART_HEIGHT_FALLBACK;
+};
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -41,7 +53,7 @@ const resolveChartSize = (element: HTMLElement) => {
   const fallbackWidth = viewportWidth > 0
     ? Math.min(DEFAULT_CHART_WIDTH, viewportWidth)
     : DEFAULT_CHART_WIDTH;
-  return { width: width > 0 ? width : fallbackWidth, height: DEFAULT_CHART_HEIGHT };
+  return { width: width > 0 ? width : fallbackWidth, height: resolveChartHeight(element) };
 };
 
 const HEATMAP_PALETTE_VARS = {
