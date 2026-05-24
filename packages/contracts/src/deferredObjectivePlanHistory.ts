@@ -93,6 +93,21 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   // plan never resolved a planning speed and on legacy entries. Added in
   // v2.7.4.
   planningSpeedKw?: number;
+  // Mean-based plan total (no variance buffer), pulled from the active plan's
+  // most recent revision at finalize time. Persisted so the UI render path can
+  // resolve the same `missCause` the runtime log emits — without this field the
+  // shared attribution helper would fall back to comparing delivered energy
+  // against the buffered `plannedKWh` sum (mean + k·SE) and mislabel a
+  // cold-start run as `capacity_shortfall` when delivery actually met the
+  // underlying mean. Optional — absent on entries persisted before this field
+  // shipped, on the backfill `discoveredFrom: 'backfill'` path (synthesized from
+  // settings without a live plan), and on observation-derived runs whose plan
+  // never resolved `energyExpectedKWh` (steady devices where the planner omits
+  // the field once it equals the buffered total). Consumers must treat absence
+  // as "fall back to the buffered comparison" — same behaviour as before this
+  // field shipped, so legacy entries render no-worse-than-before. Producer
+  // writes a finite positive number when present.
+  energyExpectedKWh?: number;
 };
 
 // Price-tier classification for a single hour's delivery contribution. The

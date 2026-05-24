@@ -142,6 +142,59 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     });
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('energy_underestimate');
   });
+
+  it('does not label a wide-buffer high-confidence run delivering the mean as capacity_shortfall', () => {
+    // Regression for the v2.8.0→main release-review `pels-runtime-reality`
+    // finding: runs with a wide `k·SE` buffer persist a buffered
+    // `plannedKWh` total (mean + k·SE) on the snapshot's hours, so the
+    // buffered comparison would call the run a capacity miss even when
+    // delivered energy met the underlying mean estimate. The snapshot uses
+    // `rateConfidence: 'high'` so the low-confidence branch can't hide the
+    // bug; the only thing inflating `plannedKWh` is the variance buffer.
+    // Verifies both halves of the fix —
+    // (a) without the mean argument the classifier still reads
+    // `capacity_shortfall` (legacy behaviour, no UI regression), and
+    // (b) threading `energyExpectedKWh` from the live revision flips the
+    // attribution to `energy_underestimate` because the mean was met.
+    const snapshot = buildSnapshot({
+      // Buffered plan total = 5.0 kWh across two hours (mean 3.0 + k·SE 2.0).
+      hours: [
+        { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2.5 },
+        { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 2.5 },
+      ],
+      energyNeededKWh: 5.0,
+      rateConfidence: 'high',
+      acceptedSamples: 12,
+    });
+    const entry = buildEntry({ deliveredKWh: 3.2, finalPlan: snapshot });
+
+    // (a) Legacy behaviour: buffered comparison flags capacity shortfall.
+    const buffered = resolveDeferredPlanHistoryMissAttribution(entry);
+    expect(buffered.cause).toBe('capacity_shortfall');
+    expect(buffered.deliveredAtOrAbovePlan).toBe(false);
+
+    // (b) Mean-aware comparison: delivered 3.2 ≥ mean 3.0 × 0.95.
+    const meanAware = resolveDeferredPlanHistoryMissAttribution(entry, 3.0);
+    expect(meanAware.cause).toBe('energy_underestimate');
+    expect(meanAware.deliveredAtOrAbovePlan).toBe(true);
+    // The reported `plannedKWh` still surfaces the buffered total — the fix
+    // only shifts the comparison basis, not the raw input passthrough.
+    expect(meanAware.plannedKWh).toBeCloseTo(5.0);
+  });
+
+  it('falls back to the buffered comparison when energyExpectedKWh is zero or invalid', () => {
+    // Defensive: a non-positive / NaN / undefined mean must not silently
+    // disable the floor comparison. The classifier should reuse the buffered
+    // `plannedKWh` instead — matching the legacy code path so UI renders of
+    // historical entries (which always pass null) stay deterministic.
+    const entry = buildEntry({
+      deliveredKWh: 12,
+      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry, 0).cause).toBe('capacity_shortfall');
+    expect(resolveDeferredPlanHistoryMissAttribution(entry, Number.NaN).cause).toBe('capacity_shortfall');
+    expect(resolveDeferredPlanHistoryMissAttribution(entry, null).cause).toBe('capacity_shortfall');
+  });
 });
 
 describe('formatRefinedMissCause', () => {
