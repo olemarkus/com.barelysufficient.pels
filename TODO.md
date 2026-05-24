@@ -1070,15 +1070,25 @@ were rolled back before they could land.*
       water-heater use case, so no rewrite was needed.
       Files touched: `docs/smart-tasks.md`.
 
-- [ ] Verify structured-debug back-pressure on the `power_calibration` topic.
-      `lib/app/appPowerCalibrationWiring.ts:522-542` emits one
-      structured debug record per accepted/skipped sample. With several
-      stepped loads under a long verbose debug session, confirm the
-      pino destination is back-pressured or rotated — PELS sits at
-      ~30 MB headroom against the 160 MB Homey RSS ceiling. Default off, so the risk is bounded
-      to diagnostic sessions; this is a verification task, not a code
-      change unless the destination turns out to buffer unboundedly.
-      Files: `lib/app/appPowerCalibrationWiring.ts`, `lib/logging/`.
+- [x] Verify structured-debug back-pressure on the `power_calibration` topic.
+      Verification only — the destination is already bounded.
+      Traced `createCalibrationSnapshotMutationHook` in
+      `lib/device/devicePowerCalibrationStore.ts:522-553` (renamed from the
+      old `appPowerCalibrationWiring.ts` location) through
+      `app.ts#getStructuredDebugEmitter` (no-op when topic off) →
+      pino root logger → `lib/logging/homeyDestination.ts`. The Writable
+      destination runs `_write` synchronously: parse the JSON line,
+      forward to Homey SDK `this.log()` / `this.error()`, invoke
+      `callback()` immediately. Node's internal stream buffer never
+      accumulates because pino writes synchronously and the destination
+      drains synchronously; the only retained state is a partial last
+      line (single pending record) and the per-(device, step) 30 s
+      debounce already caps the emit rate to ~2/min/device/step under
+      steady load. Rotation is handled externally by the Homey
+      supervisor (see `/tmp/pels/start.*.{stdout,stderr}.log`).
+      Documented inline at the emit block; no code change beyond the
+      verification comment.
+      Files touched: `lib/device/devicePowerCalibrationStore.ts`.
       Source: `pels-runtime-reality` agent, v2.7.3 release-review pass.
 
 - [x] Active-mode card heading hierarchy on the Settings landing page.

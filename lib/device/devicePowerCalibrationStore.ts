@@ -520,6 +520,15 @@ export function createCalibrationSnapshotMutationHook(params: {
       lastIngestMsByDeviceStep.set(debounceKey, nowMs);
     }
     if (!outcome || !debugStructured) return;
+    // Memory back-pressure: bounded. The `power_calibration` topic is off by
+    // default, and `getStructuredDebugEmitter` (app.ts) returns a no-op when
+    // the topic is disabled. When enabled, each call hits the pino root logger
+    // whose destination (`lib/logging/homeyDestination.ts`) is a sync Writable
+    // that invokes `callback()` immediately and dispatches the JSON line to
+    // Homey SDK `this.log()` / `this.error()` — no in-memory queue, no
+    // unbounded buffer; rotation is handled externally by the Homey supervisor.
+    // The per-(device, step) debounce above further caps the emit rate to
+    // roughly two records per minute per device under steady load.
     if (outcome.accepted) {
       debugStructured({
         event: 'power_calibration_sample_accepted',
