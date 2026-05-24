@@ -10,7 +10,7 @@ vi.mock('node:fs', () => ({
   },
 }));
 
-import { resolveFdCount, __resetFdCountProbeForTests } from '../lib/app/perfLogging';
+import { resolveFdCount, __resetFdCountProbeForTests } from '../lib/diagnostics/perfLogging';
 
 describe('resolveFdCount probe', () => {
   beforeEach(() => {

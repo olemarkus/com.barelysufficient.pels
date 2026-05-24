@@ -3,7 +3,7 @@ import { cleanupApps, createApp } from './utils/appTestUtils';
 
 const resolveSmapsSummaryMock = vi.fn();
 
-vi.mock('../lib/app/smapsRollup', () => ({
+vi.mock('../lib/diagnostics/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
 }));
 

@@ -1,6 +1,6 @@
 import v8 from 'node:v8';
 import type Homey from 'homey';
-import { resolveSmapsSummary } from './smapsRollup';
+import { resolveSmapsSummary } from '../diagnostics/smapsRollup';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';

@@ -1,5 +1,5 @@
 import { incPerfCounter } from '../lib/utils/perfCounters';
-import { startPerfLogger } from '../lib/app/perfLogging';
+import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 
 const resolveSmapsSummaryMock = vi.fn();
 const startCpuSpikeMonitorMock = vi.fn((params: unknown) => {
@@ -7,7 +7,7 @@ const startCpuSpikeMonitorMock = vi.fn((params: unknown) => {
   return vi.fn();
 });
 
-vi.mock('../lib/app/smapsRollup', () => ({
+vi.mock('../lib/diagnostics/smapsRollup', () => ({
   resolveSmapsSummary: () => resolveSmapsSummaryMock(),
   resolveSmapsDetail: () => null,
 }));

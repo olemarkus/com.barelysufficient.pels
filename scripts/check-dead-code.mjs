@@ -109,9 +109,9 @@ const allowedUnusedExportPatterns = [
   // in `lib/app/settingsUiAppRuntime.ts`.
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
-  /^lib\/app\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
-  /^lib\/app\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
-  /^lib\/app\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
+  /^lib\/diagnostics\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
+  /^lib\/diagnostics\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
+  /^lib\/diagnostics\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
   /^lib\/utils\/opRssTracker\.ts:\d+ - __resetRssSupportProbeForTests$/,
   /^lib\/device\/managerNativeEv\.ts:\d+ - __resetNativeEvWiringLogStateForTests$/,
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,

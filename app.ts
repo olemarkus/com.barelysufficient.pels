@@ -22,7 +22,7 @@ import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
-import { buildPeriodicStatusLogFields } from './lib/app/periodicStatus';
+import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
@@ -101,7 +101,7 @@ import {
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveStatusBus,
 } from './lib/plan/deferredObjectives';
-import { buildDebugLoggingTopics } from './lib/app/appLoggingHelpers';
+import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
@@ -110,11 +110,11 @@ import {
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
-import { startPerfLogger } from './lib/app/perfLogging';
+import { startPerfLogger } from './lib/diagnostics/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
-import { startResourceWarningListeners as startResourceWarnings } from './lib/app/appResourceWarningHelpers';
-import { installHeapSnapshotHandler } from './lib/app/heapSnapshotHandler';
+import { startResourceWarningListeners as startResourceWarnings } from './lib/diagnostics/resourceWarnings';
+import { installHeapSnapshotHandler } from './lib/diagnostics/heapSnapshotHandler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './lib/app/appBootMigrations';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';

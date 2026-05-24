@@ -77,8 +77,8 @@ describe('memory profile', () => {
     profileRequire('device/manager', '../lib/device/manager', baseline);
 
     // App-level
-    profileRequire('app/appResourceWarningHelpers', '../lib/app/appResourceWarningHelpers', baseline);
-    profileRequire('app/perfLogging', '../lib/app/perfLogging', baseline);
+    profileRequire('app/appResourceWarningHelpers', '../lib/diagnostics/resourceWarnings', baseline);
+    profileRequire('app/perfLogging', '../lib/diagnostics/perfLogging', baseline);
     const final = rss();
     log(`\n[Memory Profile] final RSS=${(final / MB).toFixed(1)} MB  total delta=${((final - baseline) / MB).toFixed(1)} MB\n`);
 

@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import { getPerfSnapshotAndResetWindow, type PerfSnapshot } from '../utils/perfCounters';
 import { startCpuSpikeMonitor } from '../utils/cpuSpikeMonitor';
-import { resolveMemoryMb } from './appResourceWarningHelpers';
-import { drainGcWindow, startGcObserver } from './gcObserver';
+import { resolveMemoryMb } from '../diagnostics/resourceWarnings';
+import { drainGcWindow, startGcObserver } from '../diagnostics/gcObserver';
 import { drainOpRssWindow } from '../utils/opRssTracker';
-import { resolveSmapsDetail, resolveSmapsSummary } from './smapsRollup';
+import { resolveSmapsDetail, resolveSmapsSummary } from '../diagnostics/smapsRollup';
 
 const NON_RETRYABLE_FD_PROBE_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM']);
 
