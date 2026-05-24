@@ -158,7 +158,6 @@ export const applyBinarySheddingToDevice = async (
     deviceId,
     deviceName,
     snapshotState,
-    logDebug: (...args: unknown[]) => logger.debug({ event: 'executor_binary_log_debug', msg: args.join(' ') }),
   })) {
     return false;
   }
