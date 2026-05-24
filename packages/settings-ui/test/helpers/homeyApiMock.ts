@@ -1,6 +1,7 @@
 import type { Mock } from 'vitest';
 import { buildComparablePlanReason } from '../../../shared-domain/src/planReasonSemantics.ts';
 import type { DailyBudgetModelSettings } from '../../../contracts/src/dailyBudgetTypes.ts';
+import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
@@ -55,6 +56,15 @@ export type MockHomeyUiState = {
   deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
   deferredObjectiveHistory?: unknown;
   deviceDiagnostics?: unknown;
+  // Explicit device list returned by the `/ui_devices` and
+  // `/ui_refresh_devices` handlers. Mirrors production's
+  // `getSettingsUiDevicesPayload`, which serves the live in-memory device
+  // snapshot (managed + unmanaged-eligible) rather than the persisted
+  // `target_devices_snapshot` setting. Tests should configure this explicitly
+  // when they need to assert against device-API consumers; legacy callers that
+  // still seed `target_devices_snapshot` continue to work via the backward-
+  // compat fallback in the handlers, but new tests should prefer this field.
+  devices?: TargetDeviceSnapshot[];
   homeyDevices?: unknown;
   plan?: unknown;
   power?: unknown;
@@ -240,6 +250,23 @@ const buildUiDiagnostics = async (homey: MockHomeyClient) => {
   return buildEmptyDiagnosticsPayload();
 };
 
+// Resolve the device list served by `/ui_devices` and `/ui_refresh_devices`.
+// Production's `getSettingsUiDevicesPayload` reads live in-memory device data
+// (managed + unmanaged-eligible) from the app, not from any persisted setting.
+// Tests should configure devices through `uiState.devices` so the mock surface
+// matches that contract.
+//
+// @deprecated fallback: when `uiState.devices` is undefined, the handler still
+// reads the `target_devices_snapshot` setting so older tests that pre-date
+// this refactor keep passing. Prefer `uiState.devices` for new tests; the
+// fallback will be removed once all callers migrate.
+const resolveUiDevices = async (homey: MockHomeyClient): Promise<TargetDeviceSnapshot[]> => {
+  const explicit = getUiOverride(homey, 'devices');
+  if (Array.isArray(explicit)) return explicit as TargetDeviceSnapshot[];
+  const legacy = await getHomeySetting(homey, 'target_devices_snapshot');
+  return Array.isArray(legacy) ? legacy as TargetDeviceSnapshot[] : [];
+};
+
 const buildUiBootstrap = async (homey: MockHomeyClient) => ({
   settings: Object.fromEntries(await Promise.all(
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
@@ -261,7 +288,7 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
 const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFactory> = {
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
-    devices: await getHomeySetting(homey, 'target_devices_snapshot') || [],
+    devices: await resolveUiDevices(homey),
   }),
   [buildRouteKey('GET', SETTINGS_UI_PLAN_PATH)]: (homey) => async () => ({
     plan: await buildUiPlan(homey),
@@ -275,7 +302,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getUiOverride(homey, 'dailyBudget') ?? null,
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
-    devices: await getHomeySetting(homey, 'target_devices_snapshot') || [],
+    devices: await resolveUiDevices(homey),
   }),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),

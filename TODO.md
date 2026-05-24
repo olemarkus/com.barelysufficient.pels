@@ -1817,10 +1817,14 @@ consolidation + a11y polish (8 P2)`.*
       fallback covered for compatibility.
       Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
       settings UI boot tests.
-- [ ] Update the Settings UI Homey API mock to stop serving devices from
+- [x] Update the Settings UI Homey API mock to stop serving devices from
       `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
       from runtime app state, so the mock should model live device data explicitly and avoid
       masking runtime-backed device API regressions.
+      Shape: `createHomeyMock({ uiState: { devices: TargetDeviceSnapshot[] } })` powers the
+      `/ui_devices` and `/ui_refresh_devices` handlers; a deprecated fallback still reads the
+      `target_devices_snapshot` setting when `uiState.devices` is undefined, so legacy callers
+      keep working until they migrate.
       Files: `packages/settings-ui/test/helpers/homeyApiMock.ts`, settings UI tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
