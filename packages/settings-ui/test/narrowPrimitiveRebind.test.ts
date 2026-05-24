@@ -284,3 +284,119 @@ describe('ripple primitive: `<md-ripple>` is the single source of truth', () => 
         );
     });
 });
+
+// ─── Phase 6: Elevation ──────────────────────────────────────────────────────
+
+describe('elevation primitive: `<md-elevation>` is the single source of truth', () => {
+    it('exposes `MdElevation` via the shared materialWebJSX wrapper', () => {
+        const source = fs.readFileSync(
+            path.join(SETTINGS_UI_SRC, 'ui', 'views', 'materialWebJSX.tsx'),
+            'utf8',
+        );
+        expect(source).toMatch(/export const MdElevation\s*=/);
+        expect(source).toContain("h('md-elevation'");
+    });
+
+    it('every JSX consumer imports MdElevation from materialWebJSX (not re-wraps it)', () => {
+        const offending: string[] = [];
+        SOURCE_FILES.forEach((file) => {
+            if (file.endsWith('materialWebJSX.tsx')) return;
+            const text = fs.readFileSync(file, 'utf8');
+            const declarations = text.match(/(?:const|let|function)\s+MdElevation\b/g) ?? [];
+            if (declarations.length > 0) {
+                offending.push(`${file}: ${declarations.join(', ')}`);
+            }
+        });
+        expect(
+            offending,
+            `MdElevation re-declared outside materialWebJSX:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('every MdElevation JSX call site uses only `aria-hidden="true"`', () => {
+        const offending: string[] = [];
+        SOURCE_FILES.forEach((file) => {
+            if (file.endsWith('materialWebJSX.tsx')) return;
+            const text = fs.readFileSync(file, 'utf8');
+            const matches = text.match(/<MdElevation[^/>]*\/?>/g) ?? [];
+            matches.forEach((match) => {
+                const normalized = match.replace(/\s+/g, ' ').trim();
+                if (normalized !== '<MdElevation aria-hidden="true" />') {
+                    offending.push(`${file}: ${normalized}`);
+                }
+            });
+        });
+        expect(
+            offending,
+            `MdElevation call sites with divergent props:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('every raw `<md-elevation>` markup site uses only `aria-hidden="true"`', () => {
+        const offending: string[] = [];
+        const matches = INDEX_HTML.match(/<md-elevation\b[^>]*>/g) ?? [];
+        matches.forEach((match) => {
+            const normalized = match.replace(/\s+/g, ' ').trim();
+            const acceptable = /^<md-elevation\s+aria-hidden="true"\s*>?$/.test(normalized);
+            if (!acceptable) {
+                offending.push(`index.html: ${normalized}`);
+            }
+        });
+        expect(
+            offending,
+            `raw <md-elevation> markup with divergent attrs:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('canonical card surfaces drive elevation via `--md-elevation-level` tokens', () => {
+        // `.plan-card` + `.pels-surface-card` share the elevation surface. The
+        // resting level is `1`; hover / focus lifts to `3`; active settles at
+        // `2`. Verify the cascade is still expressed as token mutations rather
+        // than raw `box-shadow` declarations — otherwise the MD elevation
+        // language drifts away from the surrounding surfaces.
+        expect(STYLE_CSS).toMatch(/\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-elevation-level:\s*1/);
+        expect(STYLE_CSS).toMatch(/\.plan-card:hover[\s\S]*?--md-elevation-level:\s*3/);
+        expect(STYLE_CSS).toMatch(/\.plan-card:active\s*\{[^}]*--md-elevation-level:\s*2/);
+    });
+
+    it('every `box-shadow` declaration uses a shared token, `none`, or a small contrast outline', () => {
+        // Scan every `box-shadow:` line and bucket it:
+        //   1. `var(--shadow-…)`        — token-backed elevation (canonical)
+        //   2. `none`                   — explicit reset (allowed)
+        //   3. `inset … 1px var(--…)`   — 1 px inset hairline border (allowed)
+        //   4. `0 0 0 {1,2,3}px …`      — 1-3 px contrast / focus ring (allowed)
+        //   5. `0 0 4px 0 var(--…)`     — chart-tone glow, single-element decoration (allowed)
+        //   6. anything else            — RAW elevation that should become a
+        //                                 token (fail the assertion)
+        //
+        // We accept the contrast-outline class because outlines on chart
+        // ticks / focus rings genuinely aren't "card elevation" — they're
+        // 1-3 px borders implemented via box-shadow so they can sit outside
+        // the element's flow. The assertion's job is to catch a fresh
+        // `box-shadow: 0 4px 12px rgba(…)` slipping in on a card surface.
+        const lines = STYLE_CSS.split('\n');
+        const offending: { line: number; text: string }[] = [];
+        lines.forEach((line, i) => {
+            // Skip @media / comment lines via the leading regex anchor.
+            const match = line.match(/^\s*box-shadow:\s*(.+?);?\s*$/);
+            if (!match) return;
+            const value = (match[1] ?? '').trim();
+            if (value === 'none' || value === 'none !important') return;
+            if (/^var\(--shadow-[a-z-]+\)/.test(value)) return;
+            // Inset 1 px hairline: `inset 0 0 0 1px var(--…)` or
+            // `inset 0 1px 0 …` (top-edge highlight).
+            if (/^inset\s+0\s+(?:0\s+0\s+)?1px\s+/.test(value)) return;
+            // 1-3 px contrast / focus outline: `0 0 0 {Npx} {colour}`.
+            if (/^0\s+0\s+0\s+(?:0?\.5|1|2|3)px\s+/.test(value)) return;
+            // Chart-tone glow: `0 0 4px 0 var(--pels-chart-hour-tone-glow)`.
+            if (/^0\s+0\s+4px\s+0\s+var\(/.test(value)) return;
+            offending.push({ line: i + 1, text: line.trim() });
+        });
+        expect(
+            offending,
+            `raw box-shadow declarations that should use a token or be tagged contrast-outline:\n${
+                offending.map((o) => `  style.css:${o.line}: ${o.text}`).join('\n')
+            }`,
+        ).toHaveLength(0);
+    });
+});
