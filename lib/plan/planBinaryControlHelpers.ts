@@ -16,6 +16,30 @@ export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
 export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 export type BinaryControlActuationMode = 'plan' | 'reconcile';
 
+/**
+ * The plan layer hands one of these to the executor per cycle for each
+ * device that should actuate. The plan has already recorded the matching
+ * `pendingBinaryCommands` entry on the engine state before producing the
+ * decision; executor dispatches and, on failure, clears the entry back
+ * out via `dispatchBinaryControlDecision`.
+ *
+ * Keep this struct flat and serializable — it is the structural seam the
+ * cruiser rule pins between `lib/plan/` (decision producer) and
+ * `lib/executor/` (transport dispatcher).
+ */
+export type BinaryControlDecision = {
+  deviceId: string;
+  name: string;
+  capabilityId: BinaryControlPlan['capabilityId'];
+  desired: boolean;
+  flowBackedControl: boolean;
+  logContext: BinaryControlLogContext;
+  actuationMode: BinaryControlActuationMode;
+  restoreSource?: BinaryControlRestoreSource;
+  reason?: string;
+  isEv: boolean;
+};
+
 export function shouldSkipBinaryControl(params: {
   controlPlan: BinaryControlPlan | null;
   deviceManager: DeviceObservation;
@@ -214,6 +238,56 @@ export function buildFlowBackedEvBinaryControlRequestLogMessage(
     return `${prefix}: ${actionText} ${name} (reconcile after drift)`;
   }
   const actionText = desired ? 'requested charging resume for' : 'requested charging pause for';
+  const suffix = !desired && reason ? ` (${reason})` : '';
+  return `${prefix}: ${actionText} ${name}${suffix}`;
+}
+
+export function buildBinaryControlLogMessage(params: {
+  logContext: BinaryControlLogContext;
+  desired: boolean;
+  name: string;
+  reason?: string;
+  restoreSource?: BinaryControlRestoreSource;
+  actuationMode?: BinaryControlActuationMode;
+}): string {
+  const {
+    logContext,
+    desired,
+    name,
+    reason,
+    restoreSource = 'current_plan',
+    actuationMode = 'plan',
+  } = params;
+  if (desired) {
+    const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
+    const suffix = resolveBinaryRestoreSuffix({ logContext, restoreSource, actuationMode });
+    return `${prefix}: turning on ${name}${suffix}`;
+  }
+  if (actuationMode === 'reconcile') {
+    return `Capacity: turned off ${name} (reconcile after drift)`;
+  }
+  if (reason && logContext === 'capacity') {
+    return `Capacity: turned off ${name} (${reason})`;
+  }
+  if (logContext === 'capacity') {
+    return `Capacity: turned off ${name} (shedding)`;
+  }
+  return `Capacity control off: turned off ${name}`;
+}
+
+export function buildEvBinaryControlLogMessage(
+  logContext: BinaryControlLogContext,
+  desired: boolean,
+  name: string,
+  reason?: string,
+  actuationMode: BinaryControlActuationMode = 'plan',
+): string {
+  const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
+  if (actuationMode === 'reconcile') {
+    const actionText = desired ? 'resumed charging for' : 'paused charging for';
+    return `${prefix}: ${actionText} ${name} (reconcile after drift)`;
+  }
+  const actionText = desired ? 'resumed charging for' : 'paused charging for';
   const suffix = !desired && reason ? ` (${reason})` : '';
   return `${prefix}: ${actionText} ${name}${suffix}`;
 }

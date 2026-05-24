@@ -1,6 +1,6 @@
 import Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
-import { DeviceManager } from '../device/manager';
+import type { DeviceManager } from '../device/manager';
 import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -118,7 +118,7 @@ export class PlanExecutor {
   }
 
   private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
-  private readonly boundBuildBinaryControlDeps = () => this.buildBinaryControlDeps();
+  private readonly boundBuildBinaryControlTransport = () => this.buildBinaryControlTransport();
   private readonly boundMarkSteppedLoadDesiredStepIssued = (params: {
     deviceId: string;
     desiredStepId: string;
@@ -176,10 +176,11 @@ export class PlanExecutor {
     return this.deps.getOperatingMode();
   }
 
-  private buildBinaryControlDeps() {
+  private buildBinaryControlTransport() {
     return {
-      state: this.state,
-      deviceManager: this.deviceManager,
+      observation: this.deviceManager,
+      setCapability: (deviceId: string, capabilityId: string, value: boolean) =>
+        this.deviceManager.setCapability(deviceId, capabilityId, value),
       triggerFlowBackedBinaryControlRequest: (params: {
         deviceId: string;
         name: string;
@@ -347,7 +348,8 @@ export class PlanExecutor {
     if (!this.steppedExecutorContext) {
       this.steppedExecutorContext = {
         state: this.state,
-        buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
+        observation: this.deviceManager,
+        buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
@@ -366,9 +368,9 @@ export class PlanExecutor {
     if (!this.binaryExecutorContext) {
       this.binaryExecutorContext = {
         state: this.state,
-        deviceManager: this.deviceManager,
+        observation: this.deviceManager,
         capacityDryRun: this.capacityDryRun,
-        buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
+        buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         getRestoreLogSource: this.boundGetRestoreLogSource,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
