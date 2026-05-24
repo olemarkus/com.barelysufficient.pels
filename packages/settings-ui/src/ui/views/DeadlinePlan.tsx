@@ -966,6 +966,15 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     // looking for. Render the device-scoped past tasks below the hero whenever
     // history fetched non-empty so the page never sells "there is nothing
     // here yet" while real runs sit one fold away.
+    //
+    // No outer `pels-surface-card` wrapper here — mirrors the `ready` branch
+    // (hero + sibling cards as a fragment): `.pels-hero` is itself a
+    // card-shaped surface (border, radius, surface tier) and the
+    // `PriorRunsHistory` entries own their own `.pels-surface-card` stack.
+    // Wrapping would double-card the hero and nest history rows inside an
+    // extra container, breaking parity with `ready`. The placeholder states
+    // (`loading`, `error`, `completed`, `history-missing`) wrap because they
+    // have only flat copy with no hero/card primitive of their own.
     return (
       <>
         <PendingHero pending={loadState.pending} />
