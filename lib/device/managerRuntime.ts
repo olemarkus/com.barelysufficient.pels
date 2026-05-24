@@ -12,6 +12,9 @@ import {
   resolveEvCurrentOn,
 } from './managerControl';
 import { EV_SOC_CAPABILITY_ID } from './stateOfCharge';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('device/manager-runtime');
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
 type RealtimeControlCapabilityId = NonNullable<TargetDeviceSnapshot['controlCapabilityId']>;
@@ -62,7 +65,7 @@ export function updateLastKnownPower(params: {
   })) {
     return;
   }
-  logger.structuredLog?.debug({
+  (logger.structuredLog ?? moduleLogger).debug({
     event: 'power_estimate_peak_updated',
     deviceId,
     deviceName: deviceLabel,

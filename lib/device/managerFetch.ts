@@ -1,6 +1,9 @@
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import { isHomeyDeviceLike } from '../utils/types';
+
+const moduleLogger = getLogger('device/manager-fetch');
 import {
   extractLiveHomePowerWatts,
   extractLivePowerWattsByDeviceId,
@@ -116,7 +119,7 @@ export async function fetchLivePowerReport(params: {
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
     const homePowerW = extractLiveHomePowerWatts(report);
     const deviceCount = Object.keys(byDeviceId).length;
-    debugStructured?.({
+    (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'energy_live_report_received',
       source: 'homey_energy',
       homePowerW,

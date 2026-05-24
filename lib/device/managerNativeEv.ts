@@ -37,6 +37,9 @@ import {
   warnIfTargetPowerCapabilityViolatesContract,
 } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('device/native-ev');
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -476,7 +479,7 @@ function logNativeEvCandidate(params: {
   })) {
     return;
   }
-  logger.structuredLog?.debug({
+  (logger.structuredLog ?? moduleLogger).debug({
     event: 'native_ev_candidate_detected',
     deviceId: device.id,
     deviceName: device.name,
