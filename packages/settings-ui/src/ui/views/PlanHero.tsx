@@ -10,6 +10,7 @@ import {
   formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
+  formatProjectedEnergySubline,
   type HeroMeterMarkerLabels,
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import {
@@ -529,9 +530,7 @@ const EnergySection = ({
   // status chip says "Above budget". The minutes-remaining subline was
   // dropped for the same reason (the projection marker implies the time
   // axis). Reducing the subline count keeps the energy section calm.
-  const projectedText = scale.projectedKWh !== null
-    ? `projected ${scale.projectedKWh.toFixed(2)} kWh`
-    : null;
+  const projectedText = formatProjectedEnergySubline(scale.projectedKWh);
   // Tone mapping mirrors the CSS contract in style.css (".plan-hero__subline
   // [data-tone='warn']"): only the warn rung paints amber. The critical /
   // alert rung deliberately falls through to the neutral subline color so
