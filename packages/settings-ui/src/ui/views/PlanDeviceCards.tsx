@@ -26,6 +26,7 @@ import {
 import { resolveHeldStateActionLabel } from '../../../../shared-domain/src/deviceOverview.ts';
 import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
@@ -91,7 +92,8 @@ export const DeadlineChip = (
   // role; in a clickable card the chip's destination is then ambiguous.
   // Naming it after the device disambiguates from the parent card-navigation
   // hit-target. Spec: TODO #3 (2026-05-16).
-  const ariaLabel = deviceName ? `Smart task for ${deviceName}` : 'Smart task';
+  const displayName = deviceName ? formatDisplayDeviceName(deviceName) : '';
+  const ariaLabel = displayName !== '' ? `Smart task for ${displayName}` : 'Smart task';
   return (
     <a
       class="plan-chip plan-chip--info plan-chip--link"
@@ -324,6 +326,7 @@ export const PlanGenericCard = ({
   }
 
   const starvationBadge = formatStarvationBadge(dev.starvation);
+  const displayName = formatDisplayDeviceName(dev.name);
 
   return (
     <article
@@ -332,7 +335,7 @@ export const PlanGenericCard = ({
       data-state-kind={presentation.kind}
       tabIndex={0}
       role="button"
-      aria-label={`Open device details for ${dev.name}`}
+      aria-label={`Open device details for ${displayName}`}
       {...cardActivationProps(dev.id)}
     >
       <MdElevation aria-hidden="true" />
@@ -340,7 +343,7 @@ export const PlanGenericCard = ({
 
       <div class="plan-card__header">
         <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{dev.name}</h3>
+          <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
           {shouldShowStateChip(presentation.kind, hasTimer) && (
@@ -413,6 +416,7 @@ export const PlanTemperatureCard = ({
   const temperatureLine = resolveTemperatureLine(displayDev);
   const reasonLine = resolveTemperatureReasonLine(displayDev);
   const starvationBadge = formatStarvationBadge(dev.starvation);
+  const displayName = formatDisplayDeviceName(dev.name);
 
   return (
     <article
@@ -421,7 +425,7 @@ export const PlanTemperatureCard = ({
       data-state-kind={kind}
       tabIndex={0}
       role="button"
-      aria-label={`Open device details for ${dev.name}`}
+      aria-label={`Open device details for ${displayName}`}
       {...cardActivationProps(dev.id)}
     >
       <MdElevation aria-hidden="true" />
@@ -429,7 +433,7 @@ export const PlanTemperatureCard = ({
 
       <div class="plan-card__header">
         <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{dev.name}</h3>
+          <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
           {dev.temperatureBoostActive === true && (

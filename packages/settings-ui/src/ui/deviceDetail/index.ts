@@ -91,6 +91,7 @@ import {
 } from './controlMode.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
@@ -101,7 +102,7 @@ const getCurrentDetailDeviceId = () => currentDetailDeviceId;
 const getDeviceById = (deviceId: string) => state.latestDevices.find((device) => device.id === deviceId) || null;
 
 const setDeviceDetailTitle = (name: string) => {
-  if (deviceDetailTitle) deviceDetailTitle.textContent = name;
+  if (deviceDetailTitle) deviceDetailTitle.textContent = formatDisplayDeviceName(name);
 };
 
 const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {

@@ -15,6 +15,7 @@ import {
   resolvePlanStateKind,
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
 import { DeadlineChip } from './PlanDeviceCards.tsx';
@@ -119,6 +120,7 @@ export const PlanSteppedCard = ({
     'pels-surface-card device-row plan-card plan-card--stepped clickable',
     (stateKind === 'idle' || stateKind === 'manual') ? 'plan-card--dim' : '',
   ].filter(Boolean).join(' ');
+  const displayName = formatDisplayDeviceName(dev.name);
 
   return (
     <article
@@ -127,7 +129,7 @@ export const PlanSteppedCard = ({
       data-state-kind={stateKind}
       tabIndex={0}
       role="button"
-      aria-label={`Open device details for ${dev.name}`}
+      aria-label={`Open device details for ${displayName}`}
       {...cardActivationProps(dev.id)}
     >
       <MdElevation aria-hidden="true" />
@@ -135,7 +137,7 @@ export const PlanSteppedCard = ({
 
       <div class="plan-card__header">
         <div class="plan-card__title-wrap">
-          <h3 class="plan-card__title">{dev.name}</h3>
+          <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
           {chip && <span class={`plan-chip plan-chip--${chip.tone}`}>{chip.label}</span>}

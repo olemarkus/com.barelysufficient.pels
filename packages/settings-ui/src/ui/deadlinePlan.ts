@@ -17,6 +17,7 @@ import {
   type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { buildPlanInputs, resolveKwhPerUnitDisplayRate } from './deadlinePlanInputs.ts';
 import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
 import {
@@ -137,7 +138,7 @@ const buildTimeline = (params: {
     ? formatTemperature(params.progressTarget)
     : `${Math.round(params.progressTarget)}%`;
   return {
-    ariaLabel: `Smart task schedule for ${params.device.name}`,
+    ariaLabel: `Smart task schedule for ${formatDisplayDeviceName(params.device.name)}`,
     progressFloor: Math.min(normalizedProgressFloor, params.progressTarget - 1),
     progressCeilingValue: params.progressTarget,
     progressCeilingLabel,
@@ -269,7 +270,7 @@ const buildPendingHero = (params: {
     sectionLabel: params.labels.sectionLabel,
     headline: copy.headline,
     headlineReason: copy.headlineReason,
-    subline: `${params.device.name} • Target ${target} by ${deadline}`,
+    subline: `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`,
     metaLine: copy.body,
     recourse: copy.recourse,
   };
