@@ -1009,17 +1009,39 @@ were rolled back before they could land.*
       Files: `lib/app/appPowerCalibrationWiring.ts`, `lib/logging/`.
       Source: `pels-runtime-reality` agent, v2.7.3 release-review pass.
 
-- [ ] Active-mode card heading hierarchy on the Settings landing page.
-      The v2.7.4 active-mode-card simplification dropped
-      `<h3 id="settings-active-mode-summary">Mode: Home</h3>` and the
-      section's H3 styling. Page heading nav now jumps from
-      `h2 "Configure PELS"` straight to nav items. Function intact
-      (`md-filled-select` carries the answer); structural-semantic
-      regression only. Decide whether to promote the `field__label`
-      to a heading or accept the flatter hierarchy on Settings.
+- [x] Active-mode card heading hierarchy on the Settings landing page.
+      Shipped via `fix/p2-active-mode-heading`: the `.settings-current-mode`
+      label is now an `<h3 class="field__label settings-current-mode__heading"
+      id="settings-active-mode-summary">Current mode</h3>` so the Settings
+      landing page reads `h2 "Configure PELS" -> h3 "Current mode"` instead
+      of jumping straight to the nav cards. Promotion approach chosen over
+      re-introducing a separate heading to avoid redundant "Mode" + "Current
+      mode" text; the surrounding `.settings-current-mode` section and the
+      `#active-mode-select` both target the restored
+      `settings-active-mode-summary` id via `aria-labelledby`. CSS neutralises
+      browser `<h3>` defaults (margin / font-size / line-height) so the
+      visual treatment matches the pre-v2.7.4 label.
       Files: `packages/settings-ui/public/index.html`,
-      `settings/index.html`, `packages/settings-ui/public/style.css`.
+      `packages/settings-ui/public/style.css`, `settings/index.html`,
+      `settings/style.css`, `packages/settings-ui/test/settings.test.ts`,
+      `packages/settings-ui/test/heroPrimitiveRebind.test.ts`,
+      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts`.
       Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
+
+- [ ] Power-week chart height duplicated across JS and CSS.
+      `DEFAULT_CHART_HEIGHT = 240` in
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts:27` and the
+      `.power-week-chart { height: 240px; min-height: 240px; }` rule in
+      `packages/settings-ui/public/style.css:1314-1316` are two literal
+      sources for the same physical value. If one is changed without the
+      other, the container box and the SVG viewport will diverge. Recommended
+      follow-up: either add a `--pels-chart-week-height` token consumed by
+      both layers (CSS via `var()`, JS via `getComputedStyle`), or
+      cross-reference the two literals in code comments more tightly so a
+      future edit to one is forced to consider the other.
+      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/public/style.css`, `settings/style.css`.
+      Source: `pels-m3-critic` agent, PR #1061 follow-up, 2026-05-24.
 
 - [x] Heatmap `disposePowerWeekChart` inline-style cleanup.
       Done via `refactor/p2-heatmap-inline-style`: the `#power-list`

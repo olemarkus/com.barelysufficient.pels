@@ -91,6 +91,24 @@ describe('index.html panel headers consume the shared hero primitive', () => {
     expect(headline?.classList.contains('plan-hero__headline')).toBe(true);
   });
 
+  // The active-mode card sits between the `h2 "Configure PELS"` hero and the
+  // nav-card list; without an h3 rung the screen-reader heading nav jumps
+  // straight from h2 to navigation. The label is promoted to an h3 so the
+  // hierarchy stays h2 -> h3 within the Settings landing page.
+  it('Settings active-mode card carries an h3 heading rung under the Settings h2', () => {
+    const doc = mountIndexFragment();
+    const heading = doc.querySelector('#settings-active-mode-summary');
+    expect(heading, 'active-mode heading must exist').not.toBeNull();
+    expect(heading?.tagName.toLowerCase()).toBe('h3');
+    expect(heading?.textContent?.trim()).toBe('Current mode');
+    expect(heading?.classList.contains('field__label')).toBe(true);
+    // Same id used to label both the surrounding section and the select.
+    const section = doc.querySelector('#settings-panel .settings-current-mode');
+    expect(section?.getAttribute('aria-labelledby')).toBe('settings-active-mode-summary');
+    const select = doc.querySelector('#active-mode-select');
+    expect(select?.getAttribute('aria-labelledby')).toBe('settings-active-mode-summary');
+  });
+
   it('Advanced panel header rebinds to .plan-hero.pels-hero', () => {
     const doc = mountIndexFragment();
     const advancedHero = doc.querySelector('#advanced-panel > header');

@@ -62,10 +62,10 @@ const buildDom = () => {
     </div>
     <section class="panel hidden" id="settings-panel" data-panel="settings">
       <section class="settings-form-card settings-current-mode">
-        <label class="field settings-current-mode__field">
-          <span class="field__label" id="settings-current-mode-label">Current mode</span>
-          <md-filled-select id="active-mode-select" aria-labelledby="settings-current-mode-label"></md-filled-select>
-        </label>
+        <h3 class="field__label settings-current-mode__heading" id="settings-active-mode-summary">Current mode</h3>
+        <div class="field settings-current-mode__field">
+          <md-filled-select id="active-mode-select" aria-labelledby="settings-active-mode-summary"></md-filled-select>
+        </div>
         <p class="muted settings-current-mode__hint">Priorities and temperatures stay in Modes.</p>
       </section>
       <button data-settings-target="limits"></button>
@@ -1209,11 +1209,11 @@ describe('settings script', () => {
     await loadSettingsScript();
 
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
-    const activeModeSummary = document.querySelector('#settings-active-mode-summary');
-    const activeModeLabel = document.querySelector('#settings-current-mode-label');
+    const activeModeHeading = document.querySelector<HTMLElement>('#settings-active-mode-summary');
 
-    expect(activeModeSummary).toBeNull();
-    expect(activeModeLabel?.textContent).toBe('Current mode');
+    expect(activeModeHeading).not.toBeNull();
+    expect(activeModeHeading?.tagName).toBe('H3');
+    expect(activeModeHeading?.textContent).toBe('Current mode');
     expect(activeModeSelect.value).toBe('Home');
 
     // Change active mode to 'Away' - should auto-save on change

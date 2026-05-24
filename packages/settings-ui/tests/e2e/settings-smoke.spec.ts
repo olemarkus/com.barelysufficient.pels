@@ -109,8 +109,9 @@ test.describe('Settings UI (smoke)', () => {
 
     await page.getByRole('tab', { name: 'Settings' }).click();
     const activeSelect = page.locator('#active-mode-select');
-    await expect(page.locator('#settings-active-mode-summary')).toHaveCount(0);
-    await expect(page.locator('#settings-current-mode-label')).toHaveText('Current mode');
+    const activeHeading = page.locator('#settings-active-mode-summary');
+    await expect(activeHeading).toHaveText('Current mode');
+    await expect(activeHeading).toHaveJSProperty('tagName', 'H3');
     await expect(activeSelect).toHaveJSProperty('value', 'Home');
     await expect(page.locator('#active-mode-select md-select-option[value="Away"]')).toHaveCount(1);
 
