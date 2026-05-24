@@ -1999,6 +1999,18 @@ consolidation + a11y polish (8 P2)`.*
       ~13 others (run `grep -rln "as DeviceManager\|: DeviceManager" test/` for
       the full list). Source: `pels-layering-guardian` P2-2 on PR #1095,
       2026-05-24.
+- [ ] Move pending-binary-command bookkeeping fully into observer as part of
+      the PR #4 step of the observer/transport split. Today PR #1b leaves
+      `state.pendingBinaryCommands[deviceId]` writes inside plan
+      (`decideBinaryControl` records) and deletes inside executor
+      (`dispatchBinaryControlDecision` clears on failure). The split is
+      acknowledged transitional — see the doc comment on
+      `dispatchBinaryControlDecision`. Cleaner shape post-#4: dispatcher
+      returns a discriminated result (`{ok: false, reason: 'dispatch_failed'} |
+      {ok: true}`) and a sync helper in observer consumes the failure to clear
+      pending, so writes and deletes are both observer-owned. Source:
+      `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
+- [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
       keep trimming any delegates that no longer buy readability or testability.

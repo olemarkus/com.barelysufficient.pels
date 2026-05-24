@@ -143,11 +143,24 @@ module.exports = {
       to: { path: '^lib/executor/' },
     },
     {
-      name: 'todo-narrow-plan-device-dep',
-      comment: 'TODO: replace direct DeviceManager imports in plan with a narrow control interface (Phase 4 RuntimeContext narrowing).',
-      severity: 'warn',
+      name: 'no-plan-to-device',
+      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceManager class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exception: the DeviceObservation interface itself. Runtime-coupling rule — type-only imports do not surface here (dep-cruiser default), and the remaining type-only DeviceManager surface in executor is removed by PR #2 when DeviceManager becomes a facade.',
+      severity: 'error',
       from: { path: '^lib/plan/' },
-      to: { path: '^lib/device/' },
+      to: {
+        path: '^lib/device/',
+        pathNot: '^lib/device/deviceObservation\\.ts$',
+      },
+    },
+    {
+      name: 'no-executor-to-device-internals',
+      comment: 'Executor consumes the DeviceObservation interface and the synthetic-capability contract; it must not have a runtime dependency on the DeviceManager class or other device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). The synthetic-capability exception is removed in PR #2 when it moves to packages/contracts/. Runtime-coupling rule — dep-cruiser does not surface type-only imports by default, so the following remaining type-only DeviceManager references in executor + plan survive this rule and are removed by PR #2 when DeviceManager becomes a facade: lib/executor/planExecutor.ts (DeviceManager type), lib/executor/steppedLoadExecutor.ts (manager types for SteppedLoadStepRequestResult/Transport), lib/plan/planEngine.ts (DeviceManager type).',
+      severity: 'error',
+      from: { path: '^lib/executor/' },
+      to: {
+        path: '^lib/device/',
+        pathNot: '^lib/device/(deviceObservation|steppedLoadSyntheticCapabilities)\\.ts$',
+      },
     },
   ],
   options: {
