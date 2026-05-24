@@ -2686,13 +2686,24 @@ should not be folded into the same PR.
       at_risk regression at `deadlinePlan.test.ts:1448` already pins the desired body-copy
       reuse (budget cause sentence + Open Budget recourse on at_risk + budget), and
       removing the fold would invert that intentional design.
-- [ ] Always show observed coverage on smart-task history cards. Today
-      `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
-      hiding the case where the planner thought a device was active but it drew no power.
-      Flip to always show "Observed N of M planned hours" — N=0 is the actionable case.
+- [x] Always show observed coverage on smart-task history cards. v2.9.x —
+      `formatPlanHistoryObservedCoverage` was time-based ("Brief gap (Xm)" / "Not observed
+      for Yh") and silently collapsed to null whenever ≥99 % of the [start, deadline]
+      window carried a diagnostic stream, hiding the planner-vs-reality mismatch where the
+      planner allocated hours but the device drew no power. Rewrote the helper to count
+      planned hour buckets (M = `plannedKWh > 0` buckets in finalPlan / originalPlan) and
+      buckets touched by `observedIntervals` (N), emitting `"Observed N of M planned
+      hours"` whenever M > 0 so the N=0-of-M=5 case surfaces as visible signal. Backfill
+      branch and the no-plan/no-active-buckets null branch unchanged. Re-enabled
+      `coverageLine` on the history-detail hero for Succeeded / Missed / unknown-with-plan
+      shapes (still suppressed on quiet abandoned/replaced). Test:
+      `test/deferredPlanHistoryObservedCoverage.test.ts` (`formatPlanHistoryObservedCoverage`
+      → 9 cases, including the canonical "Observed 0 of 5 planned hours" actionable
+      assertion).
       Files: `packages/shared-domain/src/deferredPlanHistory.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
+      `packages/settings-ui/test/deadlinePlanHistory.test.ts`,
+      `test/deferredPlanHistoryObservedCoverage.test.ts`.
 - [ ] Cross-kind copy sharing in `deadlineLabels.ts` — revisit when first kind-specific
       divergence lands. Temperature and EV share byte-identical `cannotMeetShortfall` and
       `cannotMeetFallback` strings (only `cannotMeetDailyBudgetExhausted` differs by the noun).

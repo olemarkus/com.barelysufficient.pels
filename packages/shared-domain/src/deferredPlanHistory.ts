@@ -243,10 +243,6 @@ const formatDurationMs = (ms: number): string => {
   return `${hours}h ${minutes}m`;
 };
 
-const sumObservedMs = (
-  intervals: ReadonlyArray<{ fromMs: number; toMs: number }>,
-): number => intervals.reduce((acc, interval) => acc + Math.max(0, interval.toMs - interval.fromMs), 0);
-
 // True when the snapshot recorded the planner's daily-budget cap collapsing
 // on at least one bucket in the run-up. The recorder persists positive
 // counts only (`captureRevisionSnapshot` filters zeros), so the helper
@@ -900,29 +896,59 @@ export const formatPlanHistoryRevisionEntry = (
 };
 
 /**
- * Returns a short human-readable note about how complete the observation was for the entry, or
- * `null` if coverage was effectively full (≥99% of the [start, deadline] window). Used by the
- * settings UI to explain entries that may have data gaps (PELS off, diagnostics unavailable).
+ * Returns a short human-readable note about how many of the planner's allocated hours we
+ * actually observed the device drawing power during. Resolves to `"Observed N of M planned
+ * hours"` whenever the recorded plan carries at least one active hour (`plannedKWh > 0`) so
+ * the N=0-of-M>0 case — the planner thought the device was active but it never drew power —
+ * surfaces as a visible, actionable signal rather than silently disappearing.
+ *
+ * Returns `"No observations recorded — smart task reconstructed from settings"` for backfill
+ * entries (no live observation stream to count against) and `null` when no active plan hours
+ * were ever recorded (legacy entries without snapshots, unobserved zero-plan runs) so the
+ * surface stays quiet on entries where there's nothing meaningful to report.
+ *
+ * Counts hour buckets, not seconds: M is the number of planned buckets with `plannedKWh > 0`
+ * across the final plan (preferred — planner's last word) or original plan (fallback). N is
+ * the number of those buckets whose `[startsAtMs, startsAtMs + 1h)` window overlaps any
+ * `observedIntervals` slice — matches the same hour-overlap rule used by the chart's
+ * `observed` axis (`buildHistoryDetailRows`).
+ *
+ * Lives in shared-domain so the same string can feed runtime log breadcrumbs alongside the
+ * settings UI (per `feedback_ui_text_shared_with_logs.md`).
  */
 export const formatPlanHistoryObservedCoverage = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'observedIntervals' | 'discoveredFrom' | 'startedAtMs' | 'deadlineAtMs'
+    'observedIntervals' | 'discoveredFrom' | 'originalPlan' | 'finalPlan'
   >,
 ): string | null => {
   if (entry.discoveredFrom === 'backfill') return 'No observations recorded — smart task reconstructed from settings';
+  // Final plan is the planner's last word; the original plan is the cold-start fallback when
+  // the run finalized before a replan. Mirrors the snapshot-pick rule used by the other
+  // history-detail producers (`pickLastPlan`, `buildHistoryDetailRows`) so the coverage line
+  // doesn't drift from the chart's "planned" axis.
+  const lastPlan = pickLastPlan(entry);
+  if (lastPlan === null) return null;
+  const plannedBuckets = lastPlan.hours.filter(
+    (hour) => Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0,
+  );
+  if (plannedBuckets.length === 0) return null;
   // Entries from older storage or from a test stub that predates the v2 contract may arrive
-  // without `observedIntervals`; without this guard the reduce below would throw and crash
-  // the surrounding component. Treat missing data as "no coverage info" rather than a hard
-  // failure — the contract is enforced at the persistence boundary, not in the renderer.
-  if (!Array.isArray(entry.observedIntervals)) return null;
-  const windowMs = Math.max(0, entry.deadlineAtMs - entry.startedAtMs);
-  if (windowMs < MINUTE_MS) return null;
-  const observedMs = Math.min(windowMs, sumObservedMs(entry.observedIntervals));
-  const missingMs = Math.max(0, windowMs - observedMs);
-  if (missingMs <= Math.max(MINUTE_MS, windowMs * 0.01)) return null;
-  if (missingMs >= HOUR_MS) return `Not observed for ${formatDurationMs(missingMs)}`;
-  return `Brief gap (${formatDurationMs(missingMs)}) in observation`;
+  // without `observedIntervals`; treat missing data as "zero observed buckets" so the
+  // surface still surfaces the actionable case (planner thought N hours active, observed 0)
+  // instead of silently dropping. The contract is enforced at the persistence boundary, not
+  // in the renderer.
+  const intervals = Array.isArray(entry.observedIntervals) ? entry.observedIntervals : [];
+  const observedBuckets = plannedBuckets.filter((hour) => {
+    const hourEndMs = hour.startsAtMs + HOUR_MS;
+    return intervals.some((interval) => interval.fromMs < hourEndMs && interval.toMs > hour.startsAtMs);
+  }).length;
+  // Singularize the noun for the M === 1 case ("…of 1 planned hour") — matches the
+  // `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}` pattern elsewhere in this
+  // file. M === 0 is short-circuited above so the helper never has to render "0 planned
+  // hours" as the denominator.
+  const noun = plannedBuckets.length === 1 ? 'hour' : 'hours';
+  return `Observed ${observedBuckets} of ${plannedBuckets.length} planned ${noun}`;
 };
 
 // ─── Actual-vs-plan trajectory chart data (v2.7.2 PR 4) ───────────────────────
