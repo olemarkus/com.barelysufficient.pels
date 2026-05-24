@@ -2680,13 +2680,17 @@ should not be folded into the same PR.
       `notes/deferred-load-objectives/` (design doc when picked up).
       Source: investigation 2026-05-18 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 
-- [ ] Add Playwright assertion that the segmented short/full labels never co-render.
+- [x] Add Playwright assertion that the segmented short/full labels never co-render.
       PR 3.2 introduced a dual-label pattern on `.segmented__option-label--full` /
       `--short` toggled by `@media (max-width: 360px)`. If a future CSS regression
       breaks the toggle, both spans could render concurrently. A 480 px probe
       asserting `--short` width is 0, and a 320 px probe asserting `--full` width
       is 0, would catch the dual-render regression.
       Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
+      Done: `packages/settings-ui/tests/e2e/segmented-short-full-labels.spec.ts`
+      ("segmented dual-label exclusivity" — 480 px and 320 px probes on the
+      Budget day picker; CSS hides via `display: none`, so `toBeHidden()` /
+      `toBeVisible()` match the runtime behavior).
 
 - [x] Overview device-name trailing whitespace. Live-walk 2026-05-16:
       `aria-label="Open device details for Termostat gang "` and several others
