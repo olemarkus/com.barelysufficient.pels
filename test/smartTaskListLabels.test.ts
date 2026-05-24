@@ -1,10 +1,12 @@
 import {
+  deadlineLabels,
   formatConfidenceChipLabel,
   formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskLearning,
   SMART_TASK_HISTORY_EYEBROW,
+  SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
 import {
@@ -144,5 +146,32 @@ describe('smart-task history copy constants', () => {
     expect(SMART_TASK_PAST_EMPTY_COPY).toBe(
       "No completed tasks yet — they'll appear here after a smart task finishes.",
     );
+  });
+});
+
+describe('at_risk vs cannot_meet chip labels', () => {
+  // Pins the chip-text split: an `at_risk` plan must read "At risk" (recoverable
+  // shortfall — amber rim), while a `cannot_meet` plan reads "Cannot finish"
+  // (physical impossibility — red rim). Folding them back together at any
+  // surface would erase the recoverability signal even though the hero rim and
+  // chip tone already say something is different. Both labels live in
+  // shared-domain (per `feedback_ui_text_shared_with_logs.md`) so runtime
+  // breadcrumbs and the UI render identical text.
+  it('exposes distinct strings for at_risk and cannot_meet on every kind', () => {
+    const tempLabels = deadlineLabels('temperature');
+    const evLabels = deadlineLabels('ev_soc');
+    expect(tempLabels.atRiskChipLabel).toBe('At risk');
+    expect(tempLabels.cannotMeetChipLabel).toBe('Cannot finish');
+    expect(evLabels.atRiskChipLabel).toBe('At risk');
+    expect(evLabels.cannotMeetChipLabel).toBe('Cannot finish');
+    expect(tempLabels.atRiskChipLabel).not.toBe(tempLabels.cannotMeetChipLabel);
+    expect(evLabels.atRiskChipLabel).not.toBe(evLabels.cannotMeetChipLabel);
+  });
+
+  it('mirrors the smart-task list status labels so detail and list never drift', () => {
+    expect(deadlineLabels('temperature').atRiskChipLabel)
+      .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
+    expect(deadlineLabels('ev_soc').atRiskChipLabel)
+      .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
   });
 });

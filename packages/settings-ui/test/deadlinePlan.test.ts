@@ -3454,26 +3454,26 @@ describe('deadline plan page payload', () => {
   });
 });
 
-describe('hero tone resolution', () => {
+describe('resolveDeadlineHeroTone', () => {
   it('maps cannot_meet to alert so the rim agrees with the Cannot-finish chip', async () => {
-    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroTone('cannot_meet')).toBe('alert');
+    const { resolveDeadlineHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveDeadlineHeroTone('cannot_meet')).toBe('alert');
   });
 
   it('maps at_risk to warn so an amber rim flags a recoverable shortfall', async () => {
-    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroTone('at_risk')).toBe('warn');
+    const { resolveDeadlineHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveDeadlineHeroTone('at_risk')).toBe('warn');
   });
 
   it('maps on_track and satisfied to good so a healthy plan reads green', async () => {
-    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroTone('on_track')).toBe('good');
-    expect(resolveHeroTone('satisfied')).toBe('good');
+    const { resolveDeadlineHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveDeadlineHeroTone('on_track')).toBe('good');
+    expect(resolveDeadlineHeroTone('satisfied')).toBe('good');
   });
 
   it('maps invalid to info — the planner could not produce a valid plan, neutral rim', async () => {
-    const { resolveHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
-    expect(resolveHeroTone('invalid')).toBe('info');
+    const { resolveDeadlineHeroTone } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveDeadlineHeroTone('invalid')).toBe('info');
   });
 });
 

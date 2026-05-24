@@ -19,7 +19,7 @@ import {
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { buildPlanInputs, resolveKwhPerUnitDisplayRate } from './deadlinePlanInputs.ts';
-import { buildHero, resolveHeroTone } from './deadlinePlanHero.ts';
+import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
 import {
   formatDeadlineFull,
   formatDeadlineShort,
@@ -597,7 +597,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
         activePlan!.initialEstimatedDurationText ?? latest.estimatedDurationText,
       ),
       kwhPerUnitSource: latest.kwhPerUnitSource,
-      tone: resolveHeroTone(latest.planStatus),
+      tone: resolveDeadlineHeroTone(latest.planStatus),
       plannedTotalCost: costAndDelivery.plannedTotalCost,
       deliveredCostSoFar: costAndDelivery.deliveredCostSoFar,
       costUnit: input.costDisplay.unit,

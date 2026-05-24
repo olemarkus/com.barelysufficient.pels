@@ -2668,25 +2668,24 @@ should not be folded into the same PR.
       `ui/deviceDetail/index.ts`, `ui/advanced.ts`, `ui/deadlinePlan.ts`,
       `ui/deadlinePlanHero.ts`.
 
-- [ ] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
-      Two distinct exports share the same name with different signatures
-      (`PaceContext → 'ok'|'warn'|'alert'` vs `DeferredObjectiveActivePlanStatusV1 →
-      DeadlinePlanHeroTone`). Not a runtime issue today (Vitest/TS scope them per module) but
-      a future global rename or IDE auto-import could pick the wrong symbol. Rename one — e.g.
-      the deadline helper to `resolveDeadlineHeroTone` or the usage helper to
-      `resolveUsagePaceTone`.
-      Files: `packages/settings-ui/src/ui/usageHero.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
-- [ ] Split chip label for `at_risk` plans vs `cannot_meet` plans.
-      `deadlinePlan.ts:365` folds `at_risk` into `cannotMeet`, and `deadlineLabels.ts:212/290`
-      labels the resulting chip "Cannot finish" — but `at_risk` is a recoverable shortfall, not
-      an impossibility. The PR that added the hero-tone split now visually distinguishes the
-      two (amber rim vs red rim), but the chip text still reads the same. Consider either a
-      separate `atRiskChipLabel` ("At risk") or stop folding `at_risk` into `cannotMeet` at the
-      payload-build layer.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
+- [x] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
+      Done: renamed the deadline-plan helper to `resolveDeadlineHeroTone` and left
+      `usageHero.ts:resolveHeroTone` untouched — fewer callsite churn (2 callers updated:
+      `deadlinePlan.ts` production + the `resolveDeadlineHeroTone` describe block in
+      `packages/settings-ui/test/deadlinePlan.test.ts`). A doc comment in
+      `deadlinePlanHero.ts` now points back to the usage-side sibling so the distinction
+      stays auditable.
+- [x] Split chip label for `at_risk` plans vs `cannot_meet` plans.
+      Done at the chip-label layer (already shipped in `Align smart task confidence chips`
+      on 2026-05-19 — `atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk` = "At risk",
+      `cannotMeetChipLabel: 'Cannot finish'`; `resolveHeroStatusChip` routes them with
+      `warn` vs `alert` tones). This pass pins the split with a regression test in
+      `test/smartTaskListLabels.test.ts` (`at_risk vs cannot_meet chip labels`) so a future
+      collapse can't re-merge them. The `cannotMeet` boolean fold at
+      `deadlinePlan.ts:500` is intentionally left — the partial-schedule budget-bound
+      at_risk regression at `deadlinePlan.test.ts:1448` already pins the desired body-copy
+      reuse (budget cause sentence + Open Budget recourse on at_risk + budget), and
+      removing the fold would invert that intentional design.
 - [ ] Always show observed coverage on smart-task history cards. Today
       `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
       hiding the case where the planner thought a device was active but it drew no power.
