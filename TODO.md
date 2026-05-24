@@ -424,7 +424,7 @@ release, not v2.7.1 merge-blockers.*
 
 *Session P2 deferrals from batch 21 reviews (2026-05-24).*
 
-- [ ] Postmortem copy for `unknown`-with-plan doesn't bridge to the "View
+- [x] Postmortem copy for `unknown`-with-plan doesn't bridge to the "View
       details" chart affordance. The fallback sentence "PELS could not
       determine how this smart task finished." reads coherently when the
       hero is one-sentence (the `unknown`-no-plan branch). With a plan
@@ -436,8 +436,13 @@ release, not v2.7.1 merge-blockers.*
       smart task but couldn't observe how it finished."
       Files: `packages/shared-domain/src/deferredPlanHistory.ts:776-778`.
       Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+      *Done 2026-05-24:* `formatPlanHistoryPostmortem` now discriminates on
+      `originalPlan/finalPlan` presence and emits "PELS made a plan for
+      this smart task but couldn't observe how it finished." when a plan
+      was recorded; the no-plan branch keeps the original wording byte-
+      identically. Tests assert both branches.
 
-- [ ] Comment about Abandoned + RevisionsCard interaction is stale. The
+- [x] Comment about Abandoned + RevisionsCard interaction is stale. The
       block at `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx:1219-1220`
       claims "Abandoned entries default collapsed and the card follows
       the same 'log when asked for' rhythm" — but Abandoned has
@@ -449,6 +454,10 @@ release, not v2.7.1 merge-blockers.*
       default collapsed; the card opens on demand").
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
       Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+      *Done 2026-05-24:* comment rewritten to name Unknown-with-plan as
+      the actual default-collapsed/opens-on-demand case and call out that
+      Abandoned/Replaced stay quiet (`quietAbandoned: true` → no toggle,
+      `RevisionsCard` never shows).
 
 - [ ] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
       could disambiguate `chartCollapsedByDefault` vs `quietAbandoned`.
