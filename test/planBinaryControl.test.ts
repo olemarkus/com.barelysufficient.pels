@@ -8,6 +8,7 @@ import {
 } from '../lib/plan/planBinaryControl';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
+import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 
 let logCapture: LoggerCapture;
 
@@ -43,10 +44,10 @@ describe('plan binary control helpers', () => {
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000);
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockResolvedValue(undefined),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -155,12 +156,12 @@ describe('plan binary control helpers', () => {
     const error = vi.fn();
     const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
     const debugStructured = vi.fn();
-    const deviceManager = {
+    const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([
         { id: 'ev1', name: 'EV', currentOn: true, evChargingState: 'plugged_in_charging', controlCapabilityId: 'evcharger_charging' },
       ]),
-    };
+    });
 
     await expect(setBinaryControl({
       state,
@@ -251,10 +252,10 @@ describe('plan binary control helpers', () => {
     const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
     const log = vi.fn();
     const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
-    const deviceManager = {
+    const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([]),
-    };
+    });
 
     await expect(setBinaryControl({
       state,
@@ -308,10 +309,10 @@ describe('plan binary control helpers', () => {
     const state = createPlanEngineState();
     const failure = new Error('device unavailable');
     const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
-    const deviceManager = {
+    const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockRejectedValue(failure),
       getSnapshot: vi.fn().mockReturnValue([]),
-    };
+    });
 
     await expect(setBinaryControl({
       state,
@@ -348,10 +349,10 @@ describe('plan binary control helpers', () => {
   it('does not resend the same standard binary command while it is pending', async () => {
     const state = createPlanEngineState();
     const logDebug = vi.fn();
-    const deviceManager = {
+    const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([]),
-    };
+    });
 
     const debugStructured = vi.fn();
     await expect(setBinaryControl({
@@ -407,7 +408,7 @@ describe('plan binary control helpers', () => {
     const log = vi.fn();
     const logDebug = vi.fn();
     const debugStructured = vi.fn();
-    const deviceManager = {
+    const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([{
         id: 'socket1',
@@ -416,7 +417,7 @@ describe('plan binary control helpers', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
       }]),
-    };
+    });
 
     await expect(setBinaryControl({
       state,
@@ -452,10 +453,10 @@ describe('plan binary control helpers', () => {
 
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockResolvedValue(undefined),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -512,10 +513,10 @@ describe('plan binary control helpers', () => {
 
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockResolvedValue(undefined),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -685,10 +686,10 @@ describe('plan binary control helpers', () => {
 
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockResolvedValue(undefined),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -746,10 +747,10 @@ describe('plan binary control helpers', () => {
 
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockResolvedValue(undefined),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -1095,10 +1096,10 @@ describe('plan binary control helpers', () => {
     const logDebug = vi.fn();
     const error = vi.fn();
     const debugStructured = vi.fn();
-    const failingManager = {
+    const failingManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockRejectedValue(new Error('kaput')),
       getSnapshot: vi.fn().mockReturnValue([]),
-    };
+    });
 
     await expect(setBinaryControl({
       state,
@@ -1219,10 +1220,10 @@ describe('plan binary control helpers', () => {
 
     await expect(setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability: vi.fn().mockRejectedValue(new Error('kaput')),
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       updateLocalSnapshot: vi.fn(),
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -1280,10 +1281,10 @@ describe('binary control plan requires onoff capability (Group 1.3)', () => {
 
     const result = await setBinaryControl({
       state,
-      deviceManager: {
+      deviceManager: withGetSnapshotByDeviceId({
         setCapability,
         getSnapshot: vi.fn().mockReturnValue([]),
-      } as never,
+      }) as never,
       log: vi.fn(),
       logDebug: vi.fn(),
       error: vi.fn(),

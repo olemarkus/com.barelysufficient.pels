@@ -54,7 +54,7 @@ export const applyBinaryRestore = async (
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent || intent.kind !== 'restore' || intent.source !== 'controlled') return false;
-  const snapshot = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  const snapshot = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
     canApplyRestoreSnapshot(ctx, {
       snapshot,
@@ -99,7 +99,7 @@ export const applyUncontrolledBinaryRestore = async (
   if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
   const lastShed = ctx.state.lastDeviceShedMs[intent.deviceId];
   if (!lastShed) return false;
-  const entry = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  const entry = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
     canApplyRestoreSnapshot(ctx, {
       snapshot: entry,
@@ -152,7 +152,7 @@ export const applyBinarySheddingToDevice = async (
     trackPendingShed = true,
   } = params;
   if (ctx.capacityDryRun) return false;
-  const snapshotState = ctx.deviceManager.getSnapshot().find((d) => d.id === deviceId);
+  const snapshotState = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
   if (!skipPrecheck && shouldSkipShedding({
     state: ctx.state,
     deviceId,
@@ -189,7 +189,7 @@ export const applyDeferredEvCommand = async (
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent) return false;
-  const snapshot = ctx.deviceManager.getSnapshot().find((d) => d.id === intent.deviceId) ?? observed?.snapshot;
+  const snapshot = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
 
   if (intent.kind === 'ev_pause') {
@@ -451,7 +451,7 @@ const turnOffDevice = async (
     reason,
     snapshot,
   } = params;
-  const snapshotEntry = snapshot ?? ctx.deviceManager.getSnapshot().find((entry) => entry.id === deviceId);
+  const snapshotEntry = snapshot ?? ctx.deviceManager.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
   if (snapshotEntry?.deviceClass === 'evcharger') {
     logger.debug({
