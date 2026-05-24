@@ -1484,7 +1484,15 @@ md-primary-tab.tab[active]:hover {
    The data-attribute form matches `.plan-hero` / `.pels-hero` so a future
    chip rebound from a hero context can carry the same `data-tone` value
    without a class swap. New consumers should prefer the data-attribute
-   form; existing modifier sites continue to work. */
+   form; existing modifier sites continue to work.
+
+   `.plan-chip--link` is an *additive role modifier*, not a tone — it layers
+   a tappable affordance (touch target, cursor, hover/focus/active states)
+   over an underlying tonal chip (today every link consumer pairs it with
+   `--info` for the link-blue background). There is intentionally no
+   `[data-tone="link"]` companion rule: `data-tone` is reserved for tonal
+   state, and a tone-only link would ship without its touch target. Use the
+   `.plan-chip--link` class form when you need link affordances. */
 .plan-chip {
   display: inline-flex;
   align-items: center;
@@ -1585,12 +1593,15 @@ md-primary-tab.tab[active]:hover {
   transform: translateY(1px);
 }
 
-/* `strong` inside a chip carries the chip's text colour at bold weight with
-   a tighter letter-spacing — matches the inline-numeric callouts that the
-   pre-consolidation `.chip strong` selector targeted. */
+/* `strong` inside a chip inherits the chip's colour + the chip's own
+   `--chip-font-weight` (semibold). The earlier `.chip strong` cascade bumped
+   weight to bold, but at xs font size the 1-step lift above the chip's own
+   semibold is easily lost — visual emphasis intent is unclear. No current
+   consumer renders `<strong>` inside a `.plan-chip`; if that changes, the
+   tighter letter-spacing carries the typographic intent without leaning on
+   a barely-perceptible weight step. */
 .plan-chip strong {
   color: inherit;
-  font-weight: var(--font-weight-bold);
   letter-spacing: -0.01em;
 }
 
