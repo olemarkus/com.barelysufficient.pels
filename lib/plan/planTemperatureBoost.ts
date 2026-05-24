@@ -2,7 +2,9 @@ import type { PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import { getTrustedCurrentTemperatureC } from '../observer/observationTrust';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('plan/temperature-boost');
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
@@ -37,12 +39,11 @@ export function emitTemperatureBoostStateChange(params: {
   dev: PlanInputDevice;
   previousActive: boolean;
   active: boolean;
-  debugStructured?: StructuredDebugEmitter;
 }): void {
-  const { dev, previousActive, active, debugStructured } = params;
-  if (!debugStructured || previousActive === active) return;
+  const { dev, previousActive, active } = params;
+  if (previousActive === active) return;
   const boostBelowC = dev.temperatureBoost?.boostBelowC;
-  debugStructured({
+  logger.debug({
     event: 'temperature_boost_state_changed',
     deviceId: dev.id,
     deviceName: dev.name,
