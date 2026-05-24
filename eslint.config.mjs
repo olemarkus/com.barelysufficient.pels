@@ -456,19 +456,6 @@ export default tseslint.config(
     },
   },
   {
-    // The smart-task live-plan producer keeps payload synthesis, cost/delivery resolvers,
-    // hourly chart-row builders, and provenance/diagnostics rows in one file so the data
-    // flow for one render cycle reads top-to-bottom. v2.7.2 PR 2 added the live cost
-    // derivation, delivered-so-far prorate logic, and the `resolveProratedActualKWh`
-    // helper, pushing the file slightly past 500 lines. Target: <=500 once a later PR
-    // splits payload synthesis from chart-row construction (tracked in `TODO.md` as a
-    // v2.7.2 follow-up).
-    files: ['packages/settings-ui/src/ui/deadlinePlan.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
     // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
     files: ['lib/price/priceService.ts'],

@@ -9,24 +9,22 @@ import {
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
-  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
-  type DeadlineLabels,
-  type DeadlineLiveState,
   type DeadlinePendingContext,
-  type DeadlinePendingPriceSource,
-  type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { buildPlanInputs, resolveKwhPerUnitDisplayRate } from './deadlinePlanInputs.ts';
 import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
 import {
-  formatDeadlineFull,
   formatDeadlineShort,
   formatHourLabel,
-  formatTarget,
   formatTemperature,
 } from './deadlinePlanFormatters.ts';
+import {
+  buildPendingHero,
+  resolvePendingPriceContext,
+  resolvePendingReason,
+} from './deadlinePlanPending.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import {
@@ -60,35 +58,6 @@ type ObjectivePlanInput = {
 };
 
 const formatPrice = (total: number): string => total.toFixed(2);
-
-// Pending heroes share the hero chip ordering `[kind, state, …]`. The state
-// chip uses the same shared label map as the live hero so the three Smart-
-// task surfaces (list / hero / device card) never disagree on chip copy.
-const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
-  if (reason === 'invalid_session') return 'paused_unplugged';
-  return 'building_plan';
-};
-
-// Pending-hero state chip tone, routed through the same
-// `SMART_TASK_LIST_STATUS_CHIP_VARIANT` map the list card reads so the
-// "Building plan…" / "Paused — unplugged" pill never shows a different
-// colour on the list and the detail surface (per TODO 2163 — the prior
-// `'info'`-vs-`'muted'` drift on `Building plan…` flagged in release
-// review). The pending hero only ever resolves to `building_plan` /
-// `paused_unplugged` via `resolvePendingLiveState`; the broader
-// `DeadlineLiveState` union (`active` / `queued` / `ok`) doesn't reach
-// this resolver in practice, so the fallback simply mirrors the
-// `building_plan` variant. The `as` casts narrow the variant union
-// (`string`) to the chip-tone subset since the variant map is typed
-// `Record<…, string>` for change resilience.
-const pendingChipTone = (
-  liveState: DeadlineLiveState,
-): DeadlinePlanPendingPayload['hero']['chips'][number]['tone'] => {
-  if (liveState === 'paused_unplugged') {
-    return SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_unplugged as 'warn';
-  }
-  return SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan as 'muted';
-};
 
 const resolveActualDeviceKwh = (params: {
   bootstrap: SettingsUiBootstrap;
@@ -210,70 +179,6 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   // misleading "Deadline complete" copy.
   if (!objective.enabled) return { kind: 'absent' };
   return { kind: 'active', context: { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
-};
-
-const resolvePendingReason = (
-  activePlan: DeferredObjectiveActivePlanV1 | null,
-): DeadlinePlanPendingReason => activePlan?.pendingReason ?? 'awaiting_horizon_plan';
-
-// Narrow the unknown `combinedPrices` payload to the two fields we care about
-// for pending-hero copy. Returns 'unknown' / null when the payload is missing
-// or unrecognised so the copy falls back to neutral wording. `deviceName` /
-// `deadlineTime` are appended by `buildPendingPayload` once the resolved
-// objective context is in hand — keeping the price-only fields here means
-// `resolveRenderInput` can share one helper for the absent-plan and ready-
-// but-no-prices branches.
-const resolvePendingPriceContext = (prices: SettingsUiPricesPayload): Pick<
-  DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'
-> => {
-  const combined = prices.combinedPrices;
-  if (!combined || typeof combined !== 'object') {
-    return { priceSource: 'unknown', lastFetchedShort: null };
-  }
-  const record = combined as { priceScheme?: unknown; lastFetched?: unknown };
-  return {
-    priceSource: resolvePriceSource(record.priceScheme),
-    lastFetchedShort: formatLastFetched(record.lastFetched),
-  };
-};
-
-const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
-  if (scheme === 'flow') return 'external_flow';
-  if (scheme === 'norway' || scheme === 'homey') return 'managed';
-  return 'unknown';
-};
-
-const formatLastFetched = (raw: unknown): string | null => {
-  if (typeof raw !== 'string' || raw.length === 0) return null;
-  const ms = new Date(raw).getTime();
-  if (!Number.isFinite(ms)) return null;
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-};
-
-const buildPendingHero = (params: {
-  device: TargetDeviceSnapshot;
-  objective: DeferredObjectiveSettingsEntry;
-  labels: DeadlineLabels;
-  deadlineAtMs: number;
-  pendingReason: DeadlinePlanPendingReason;
-  pendingContext: DeadlinePendingContext;
-}): DeadlinePlanPendingPayload['hero'] => {
-  const target = formatTarget(params.objective);
-  const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const copy = params.labels.pendingHeroByReason[params.pendingReason](params.pendingContext);
-  const liveState = resolvePendingLiveState(params.pendingReason);
-  return {
-    chips: [
-      { text: params.labels.kindChipLabel, tone: 'info' },
-      { text: params.labels.liveStateChipLabel[liveState], tone: pendingChipTone(liveState) },
-    ],
-    sectionLabel: params.labels.sectionLabel,
-    headline: copy.headline,
-    headlineReason: copy.headlineReason,
-    subline: `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`,
-    metaLine: copy.body,
-    recourse: copy.recourse,
-  };
 };
 
 const buildPendingPayload = (
