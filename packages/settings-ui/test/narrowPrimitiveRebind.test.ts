@@ -180,3 +180,107 @@ describe('segmented primitive: canonical `.segmented` is the single source of tr
         expect(segmented?.getAttribute('role')).toBe('radiogroup');
     });
 });
+
+// ─── Phase 5: Ripple ─────────────────────────────────────────────────────────
+
+describe('ripple primitive: `<md-ripple>` is the single source of truth', () => {
+    it('exposes `MdRipple` via the shared materialWebJSX wrapper', () => {
+        const source = fs.readFileSync(
+            path.join(SETTINGS_UI_SRC, 'ui', 'views', 'materialWebJSX.tsx'),
+            'utf8',
+        );
+        expect(source).toMatch(/export const MdRipple\s*=/);
+        expect(source).toContain("h('md-ripple'");
+    });
+
+    it('every JSX consumer imports MdRipple from materialWebJSX (not re-wraps it)', () => {
+        // Allow the wrapper itself to declare MdRipple; every other surface
+        // must import it. Catches an accidental local `const MdRipple = …`
+        // re-declaration that would silently fork the props contract.
+        const offending: string[] = [];
+        SOURCE_FILES.forEach((file) => {
+            if (file.endsWith('materialWebJSX.tsx')) return;
+            const text = fs.readFileSync(file, 'utf8');
+            const declarations = text.match(/(?:const|let|function)\s+MdRipple\b/g) ?? [];
+            if (declarations.length > 0) {
+                offending.push(`${file}: ${declarations.join(', ')}`);
+            }
+        });
+        expect(
+            offending,
+            `MdRipple re-declared outside materialWebJSX:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('every MdRipple JSX call site uses only `aria-hidden="true"` (no divergent props)', () => {
+        // Audit every `<MdRipple … />` invocation and confirm it carries the
+        // canonical `aria-hidden="true"` flag — no surface-specific props
+        // (`attached`, custom colour overrides, event handlers) that would
+        // fork the consumer contract.
+        const offending: string[] = [];
+        SOURCE_FILES.forEach((file) => {
+            if (file.endsWith('materialWebJSX.tsx')) return;
+            const text = fs.readFileSync(file, 'utf8');
+            const matches = text.match(/<MdRipple[^/>]*\/?>/g) ?? [];
+            matches.forEach((match) => {
+                // Strip whitespace then expect exactly: <MdRipple aria-hidden="true" />
+                const normalized = match.replace(/\s+/g, ' ').trim();
+                if (normalized !== '<MdRipple aria-hidden="true" />') {
+                    offending.push(`${file}: ${normalized}`);
+                }
+            });
+        });
+        expect(
+            offending,
+            `MdRipple call sites with divergent props:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('every raw `<md-ripple>` markup site uses only `aria-hidden="true"` (no divergent attrs)', () => {
+        // Mirror the JSX rule for plain HTML — settings/index.html is allowed
+        // to use `<md-ripple>` directly (no preact wrapper for the static
+        // panels) but must carry the same canonical attribute shape.
+        const offending: string[] = [];
+        const matches = INDEX_HTML.match(/<md-ripple\b[^/>]*\/?>/g) ?? [];
+        matches.forEach((match) => {
+            const normalized = match.replace(/\s+/g, ' ').trim();
+            // Accept either self-closing or paired tag opener; reject any
+            // attribute other than aria-hidden="true".
+            const acceptable = /^<md-ripple\s+aria-hidden="true"\s*\/?>$/.test(normalized);
+            if (!acceptable) {
+                offending.push(`index.html: ${normalized}`);
+            }
+        });
+        expect(
+            offending,
+            `raw <md-ripple> markup with divergent attrs:\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('does not declare a competing `.ripple` / `.has-ripple` shell in style.css', () => {
+        // The state-layer ripple is supplied by `<md-ripple>` (shadow DOM).
+        // A bespoke `.ripple` / `.has-ripple` class would mean the primitive
+        // has been forked back into a custom CSS-only equivalent — exactly
+        // the duplication this consolidation set out to retire.
+        const lines = STYLE_CSS.split('\n');
+        const offending = lines.filter((line) => /^\s*\.(has-)?ripple(\s*\{|\s*,|\s+[a-z[])/.test(line));
+        expect(
+            offending,
+            `unexpected custom ripple shell(s):\n${offending.join('\n')}`,
+        ).toHaveLength(0);
+    });
+
+    it('shares the ripple-tint tokens on the canonical card shells', () => {
+        // The ripple's hover / pressed colour comes from `--md-ripple-*-color`
+        // declared on the card surface (`.plan-card`, `.pels-surface-card`).
+        // Declaring it on every per-page card class instead would mean each
+        // surface re-picks its ripple colour, drifting over time. Verify both
+        // canonical surfaces still carry the shared declaration.
+        expect(STYLE_CSS).toMatch(
+            /\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-ripple-hover-color/,
+        );
+        expect(STYLE_CSS).toMatch(
+            /\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-ripple-pressed-color/,
+        );
+    });
+});
