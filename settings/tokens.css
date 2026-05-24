@@ -180,6 +180,7 @@
   --pels-chart-heatmap-border: var(--color-surface-1);
   --pels-chart-disabled-bar: var(--color-surface-4);
   --pels-chart-unreliable-cell: var(--color-surface-5);
+  --pels-chart-cell-radius: var(--radius-xs); /** Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer. */
   --pels-chart-grid: var(--color-border-strong);
   --pels-chart-tooltip-border: var(--color-border-medium);
   --chip-padding-block: var(--spacing-1);

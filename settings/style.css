@@ -3529,14 +3529,16 @@ md-filled-button.is-busy {
  * `powerWeekChartEcharts.ts` use:
  *   background     = --pels-chart-unreliable-cell
  *   border (1 px)  = --pels-chart-heatmap-border
- *   border-radius  = var(--radius-xs)
+ *   border-radius  = var(--pels-chart-cell-radius)
  * Render the swatch as a 10x10 square (the cell is ~10 px tall at 240 px chart
- * height) with the same fill + border + radius.
+ * height) with the same fill + border + radius. The radius token is
+ * chart-scoped (not the generic `--radius-xs`) so changing the cell shape
+ * here and in the renderer touches a single source of truth.
  */
 .usage-legend__swatch--unreliable {
   width: 10px;
   height: 10px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--pels-chart-cell-radius);
   background: var(--pels-chart-unreliable-cell);
   border: 1px solid var(--pels-chart-heatmap-border);
 }
