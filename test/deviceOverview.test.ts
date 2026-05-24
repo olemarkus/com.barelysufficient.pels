@@ -98,7 +98,7 @@ describe('device overview formatter', () => {
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'on → off',
-      stateMsg: 'Shed (powered off)',
+      stateMsg: 'Turned off',
       usageMsg: 'Unknown',
       statusMsg: 'Waiting before resuming (10s)',
     });
@@ -112,7 +112,7 @@ describe('device overview formatter', () => {
       shedAction: 'turn_off',
     })).toEqual({
       powerMsg: 'off',
-      stateMsg: 'Shed (powered off)',
+      stateMsg: 'Turned off',
       usageMsg: 'Unknown',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
@@ -143,7 +143,7 @@ describe('device overview formatter', () => {
       reason: r('shed due to capacity'),
     })).toEqual({
       powerMsg: null,
-      stateMsg: 'Shed to max',
+      stateMsg: 'Limited to max',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
       statusMsg: PLAN_STATE_HELD_FALLBACK_STATUS,
     });

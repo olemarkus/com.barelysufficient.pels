@@ -1429,12 +1429,14 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx:823,832`.
 
-- [ ] Pre-existing jargon in `packages/shared-domain/src/deviceOverview.ts:135-140,178,187`.
-      Still emits raw `"Shed (charging paused)"`, `"Shed (lowered
-      temperature)"`, `"Shed to {step}"`, `"Shed (reduced step)"`, `"Shed
-      (powered off)"`, `"Restore requested"`. Terminology guide mandates
-      `Limited`, `Charging paused`, `Lowered`, `Turned off`, and
-      `Resume requested`. Not introduced by v2.7.1 — pre-existing cleanup.
+- [x] Pre-existing jargon in `packages/shared-domain/src/deviceOverview.ts:135-140,178,187`.
+      Replaced raw Shed/Restore jargon with terminology-guide wording:
+      - `"Shed (charging paused)"` → `"Charging paused"` (lines 135, 178)
+      - `"Shed (lowered temperature)"` → `"Lowered"` (line 136)
+      - `` `Shed to ${step}` `` → `` `Limited to ${step}` `` (line 138)
+      - `"Shed (reduced step)"` → `"Limited"` (line 138)
+      - `"Shed (powered off)"` → `"Turned off"` (line 140)
+      - `"Restore requested"` → `"Resume requested"` (line 187)
       Source: `pels-copy-and-terminology` agent.
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `notes/ui-terminology.md`.

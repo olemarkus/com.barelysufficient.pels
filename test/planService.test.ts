@@ -374,7 +374,7 @@ describe('PlanService', () => {
         expect.objectContaining({
           event: 'device_overview_changed',
           deviceId: 'dev-2',
-          stateMsg: 'Shed (powered off)',
+          stateMsg: 'Turned off',
           usageMsg: 'Measured: 0.00 kW / Expected: 1.20 kW',
         }),
       ],
