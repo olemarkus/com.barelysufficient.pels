@@ -12,6 +12,9 @@ import {
   recordActivationSetback,
 } from './admission';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('plan/executor-support');
 
 const isShedThrottled = (params: {
   state: Pick<PlanEngineState, 'lastDeviceShedMs'>;
@@ -40,16 +43,19 @@ export const shouldSkipUnavailable = (params: {
   snapshot: TargetDeviceSnapshot | undefined;
   name: string;
   operation: string;
-  logDebug: (...args: unknown[]) => void;
 }): boolean => {
   const {
     snapshot,
     name,
     operation,
-    logDebug,
   } = params;
   if (snapshot?.available !== false) return false;
-  logDebug(`Capacity: skip ${operation} for ${name}, device unavailable`);
+  logger.debug({
+    event: 'plan_executor_skip_unavailable',
+    deviceName: name,
+    operation,
+    msg: `Capacity: skip ${operation} for ${name}, device unavailable`,
+  });
   return true;
 };
 
@@ -58,7 +64,6 @@ export const shouldSkipShedding = (params: {
   deviceId: string;
   deviceName: string;
   snapshotState: TargetDeviceSnapshot | undefined;
-  logDebug: (...args: unknown[]) => void;
   nowTs?: number;
 }): boolean => {
   const {
@@ -66,32 +71,61 @@ export const shouldSkipShedding = (params: {
     deviceId,
     deviceName,
     snapshotState,
-    logDebug,
   } = params;
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = snapshotState?.currentOn === false;
   if (snapshotState?.deviceClass === 'evcharger') {
-    logDebug(`Actuator: evaluating EV shed for ${deviceName} (${formatEvSnapshot(snapshotState)})`);
+    const evSnapshot = formatEvSnapshot(snapshotState);
+    logger.debug({
+      event: 'plan_shed_eval_ev',
+      deviceId,
+      deviceName,
+      evSnapshot,
+      msg: `Actuator: evaluating EV shed for ${deviceName} (${evSnapshot})`,
+    });
   }
   if (isUnavailable) {
-    logDebug(`Actuator: skip shedding ${deviceName}, device unavailable`);
+    logger.debug({
+      event: 'plan_shed_skipped',
+      reasonCode: 'unavailable',
+      deviceId,
+      deviceName,
+      msg: `Actuator: skip shedding ${deviceName}, device unavailable`,
+    });
     return true;
   }
 
   const nowTs = params.nowTs ?? Date.now();
   const throttledElapsedMs = isShedThrottled({ state, deviceId, nowTs });
   if (throttledElapsedMs !== null) {
-    logDebug(
-      `Actuator: skip shedding ${deviceName}, throttled (${throttledElapsedMs}ms since last)`,
-    );
+    logger.debug({
+      event: 'plan_shed_skipped',
+      reasonCode: 'throttled',
+      deviceId,
+      deviceName,
+      throttledElapsedMs,
+      msg: `Actuator: skip shedding ${deviceName}, throttled (${throttledElapsedMs}ms since last)`,
+    });
     return true;
   }
   if (state.pendingSheds.has(deviceId)) {
-    logDebug(`Actuator: skip shedding ${deviceName}, already in progress`);
+    logger.debug({
+      event: 'plan_shed_skipped',
+      reasonCode: 'already_in_progress',
+      deviceId,
+      deviceName,
+      msg: `Actuator: skip shedding ${deviceName}, already in progress`,
+    });
     return true;
   }
   if (isAlreadyOff) {
-    logDebug(`Actuator: skip shedding ${deviceName}, already off in snapshot`);
+    logger.debug({
+      event: 'plan_shed_skipped',
+      reasonCode: 'already_off',
+      deviceId,
+      deviceName,
+      msg: `Actuator: skip shedding ${deviceName}, already off in snapshot`,
+    });
     return true;
   }
   return false;
