@@ -2782,14 +2782,18 @@ should not be folded into the same PR.
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/deadlinePlanResolvers.ts`.
-- [ ] Distinguish "missed by an unknown amount" from "missed by exactly 0 kWh" on the
-      `deadline_missed` flow trigger. The Homey SDK rejects `null` for `number`-typed tokens
-      (see `homey-apps-sdk-v3/lib/FlowCardTrigger.js`), so `shortfall_kwh` currently falls back
-      to `0` when the device-side delta is unknown. Today `shortfall_text` carries the
-      qualitative fallback (empty string for unknown), but a dedicated `shortfall_known: boolean`
-      token would let user flows gate numeric comparisons cleanly.
-      Files: `flowCards/deadlineObjectiveCards.ts`, `.homeycompose/flow/triggers/deadline_missed.json`,
-      flow-card tests.
+- [x] Distinguish "missed by an unknown amount" from "missed by exactly 0 kWh" on the
+      `deadline_ended` flow trigger (the only trigger that surfaces a missed deadline today;
+      the old `deadline_missed` name in this note pre-dates the v2.x rename). The Homey SDK
+      rejects `null` for `number`-typed tokens (see `homey-apps-sdk-v3/lib/FlowCardTrigger.js`),
+      so `shortfall` falls back to `0` when the device-side delta is unobservable.
+      Added a `shortfall_known: boolean` token (true when `outcome === 'succeeded'`, or when
+      both the target and final-progress samples are finite for the active `objectiveKind`;
+      false when one is null and the numeric token had to fall back to 0). Existing
+      `shortfall` semantics unchanged.
+      Files: `flowCards/smartTaskTokens.ts` (`computeShortfall` now returns
+      `{ value, known }`), `.homeycompose/flow/triggers/deadline_ended.json`, regenerated
+      `app.json`, `test/deadlineObjectiveCards.test.ts`.
 - [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
       usage history can explain which step or mode was active during each measured period.
       Files: future device-level step-change tracker; usage-history UI.
