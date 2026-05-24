@@ -11,7 +11,7 @@ import {
   resolveHeroData,
   resolvePlanPayload,
   resolveSplitLine,
-} from '../src/ui/budgetRedesign.ts';
+} from '../src/ui/budgetRedesignResolvers.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
 import {
   YESTERDAY_FINISHED_OVER_BUDGET,
