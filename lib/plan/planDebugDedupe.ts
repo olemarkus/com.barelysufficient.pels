@@ -1,21 +1,35 @@
 import { roundLogValue } from '../logging/logDedupe';
+import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngineState } from './planState';
+
+const logger = getLogger('plan/debug-dedupe');
 
 export function emitRestoreDebugEventOnChange(params: {
   state: PlanEngineState;
   key: string;
   payload: Record<string, unknown>;
   signaturePayload?: Record<string, unknown>;
+  /** Deprecated. Pass-through still accepted while callers migrate to the
+   *  module logger; future chips drop this. New callers should omit it. */
   debugStructured?: StructuredDebugEmitter;
 }): void {
   const { state, key, payload, signaturePayload, debugStructured } = params;
+  // Skip the recursive normalization + JSON.stringify when nothing would
+  // emit anyway. Module-logger path uses pino's level check (cheap); the
+  // legacy debugStructured path is presence-gated (the caller hands us a
+  // function only when the topic is enabled).
+  const willEmit = debugStructured !== undefined || logger.isLevelEnabled('debug');
+  if (!willEmit) return;
   const signature = JSON.stringify(normalizeSignatureValue(signaturePayload ?? payload));
   if (state.restoreDecisionLogByKey[key] === signature) return;
-  if (!debugStructured) return;
   const restoreDecisionLogByKey = state.restoreDecisionLogByKey;
   restoreDecisionLogByKey[key] = signature;
-  debugStructured(payload);
+  if (debugStructured) {
+    debugStructured(payload);
+  } else {
+    logger.debug(payload);
+  }
 }
 
 export function clearRestoreDebugEvent(state: PlanEngineState, key: string): void {
