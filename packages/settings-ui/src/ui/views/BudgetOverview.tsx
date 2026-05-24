@@ -15,6 +15,12 @@ import {
   type BudgetRedesignChartMode,
   type BudgetRedesignDayView,
 } from '../budgetRedesignChart.ts';
+import {
+  BUDGET_ADJUST_BUDGET_BUTTON,
+  BUDGET_CHART_TITLE_HOURLY_PLAN,
+  BUDGET_CHART_TITLE_PROGRESS,
+  type BudgetConfidenceLabel,
+} from '../../../../shared-domain/src/dailyBudgetHeroStrings.ts';
 import type { DailyBudgetDayPayload } from '../../../../contracts/src/dailyBudgetTypes.ts';
 import type { CostDisplay } from '../dailyBudgetCost.ts';
 import { formatKWh } from '../dailyBudgetFormat.ts';
@@ -63,7 +69,7 @@ export type BudgetChartData = {
 } | null;
 
 export type BudgetConfidenceData = {
-  label: 'High' | 'Medium' | 'Low';
+  label: BudgetConfidenceLabel;
   percent: string;
   details: Array<{ label: string; value: string }>;
 } | null;
@@ -226,7 +232,7 @@ const AllocationWarningBanner = ({
       id="budget-redesign-allocation-warning-action"
       onClick={onAdjustClick}
     >
-      Adjust budget
+      {BUDGET_ADJUST_BUDGET_BUTTON}
     </MdTextButton>
   </section>
 );
@@ -314,8 +320,8 @@ const BudgetChartCard = ({
         </div>
         <ToggleGroup
           options={[
-            { value: 'progress' as const, label: 'Progress' },
-            { value: 'hourlyPlan' as const, label: 'Hourly plan' },
+            { value: 'progress' as const, label: BUDGET_CHART_TITLE_PROGRESS },
+            { value: 'hourlyPlan' as const, label: BUDGET_CHART_TITLE_HOURLY_PLAN },
           ]}
           value={chart.mode}
           ariaLabel="Budget chart view"

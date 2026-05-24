@@ -14,10 +14,18 @@ import type {
   BudgetRedesignDayView,
 } from './budgetRedesignChart.ts';
 import {
+  BUDGET_CHART_TITLE_HOURLY_PLAN,
+  BUDGET_CHART_TITLE_PROGRESS,
+  BUDGET_COMPARISON_SHOWING_TODAY,
+  BUDGET_COMPARISON_SHOWING_TOMORROW,
+  BUDGET_CONFIDENCE_LABEL_HIGH,
+  BUDGET_CONFIDENCE_LABEL_LOW,
+  BUDGET_CONFIDENCE_LABEL_MEDIUM,
   BUDGET_HERO_CLOSE_TO_BUDGET,
   BUDGET_HERO_ON_BUDGET,
   BUDGET_HERO_USING_CHEAPER_HOURS,
   BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES,
+  type BudgetConfidenceLabel,
   DAILY_BUDGET_DISABLED_OFF,
   DAILY_BUDGET_DISABLED_WAITING,
   DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW,
@@ -349,7 +357,7 @@ export const resolveChartData = (
     showProjection: mode === 'progress' && view === 'today',
     showSplit: isHourly && hasPlannedSplitBuckets(viewPayload),
     costDisplay,
-    chartTitle: isHourly ? 'Hourly plan' : 'Progress',
+    chartTitle: isHourly ? BUDGET_CHART_TITLE_HOURLY_PLAN : BUDGET_CHART_TITLE_PROGRESS,
     chartSubtitle: resolveChartSubtitle({ payload: viewPayload, view, mode, status, priceReliable }),
     caveat: isHourly && priceShaping && !priceReliable
       ? 'Price alignment unavailable. Add or refresh prices to show cheaper-hour context.'
@@ -357,15 +365,13 @@ export const resolveChartData = (
   };
 };
 
-type ConfidenceBand = NonNullable<BudgetConfidenceData>['label'];
-
 const CONFIDENCE_HIGH_THRESHOLD = 0.75;
 const CONFIDENCE_MEDIUM_THRESHOLD = 0.45;
 
-const confidenceBand = (value: number): ConfidenceBand => {
-  if (value >= CONFIDENCE_HIGH_THRESHOLD) return 'High';
-  if (value >= CONFIDENCE_MEDIUM_THRESHOLD) return 'Medium';
-  return 'Low';
+const confidenceBand = (value: number): BudgetConfidenceLabel => {
+  if (value >= CONFIDENCE_HIGH_THRESHOLD) return BUDGET_CONFIDENCE_LABEL_HIGH;
+  if (value >= CONFIDENCE_MEDIUM_THRESHOLD) return BUDGET_CONFIDENCE_LABEL_MEDIUM;
+  return BUDGET_CONFIDENCE_LABEL_LOW;
 };
 
 const formatConfidencePercent = (value: number): string => `${Math.floor(value * 100)}%`;
@@ -445,13 +451,13 @@ export const resolveComparisonDay = (
       dayView: 'tomorrow',
       activeDay: activeTomorrow,
       candidateDay: candidateTomorrow,
-      label: 'Showing tomorrow’s plan — tomorrow’s prices are in.',
+      label: BUDGET_COMPARISON_SHOWING_TOMORROW,
     };
   }
   return {
     dayView: 'today',
     activeDay: resolveViewPayload(activePayload, 'today'),
     candidateDay: resolveViewPayload(candidatePayload, 'today'),
-    label: 'Showing today’s plan — tomorrow’s prices not yet available.',
+    label: BUDGET_COMPARISON_SHOWING_TODAY,
   };
 };

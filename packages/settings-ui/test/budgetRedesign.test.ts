@@ -1,6 +1,7 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes';
 import {
   resolveBudgetPlannedDayKWh,
+  resolveChartData,
   resolveComparisonDay,
   resolveConfidenceData,
   resolveDecisionLine,
@@ -14,6 +15,13 @@ import {
 } from '../src/ui/budgetRedesignResolvers.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
 import {
+  BUDGET_CHART_TITLE_HOURLY_PLAN,
+  BUDGET_CHART_TITLE_PROGRESS,
+  BUDGET_COMPARISON_SHOWING_TODAY,
+  BUDGET_COMPARISON_SHOWING_TOMORROW,
+  BUDGET_CONFIDENCE_LABEL_HIGH,
+  BUDGET_CONFIDENCE_LABEL_LOW,
+  BUDGET_CONFIDENCE_LABEL_MEDIUM,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
   composeBudgetHeroOverBy,
@@ -209,6 +217,14 @@ describe('resolveChartData', () => {
     const payload = buildPayload({ enabled: true });
     expect(resolvePlanPayload(payload, false)).toBeNull();
   });
+
+  it('uses the shared-domain chart titles so the toggle and heading stay in lockstep', () => {
+    const payload = buildPayload();
+    const hourly = resolveChartData(payload, 'today', 'hourlyPlan', 'within', costDisplay);
+    const progress = resolveChartData(payload, 'today', 'progress', 'within', costDisplay);
+    expect(hourly?.chartTitle).toBe(BUDGET_CHART_TITLE_HOURLY_PLAN);
+    expect(progress?.chartTitle).toBe(BUDGET_CHART_TITLE_PROGRESS);
+  });
 });
 
 describe('resolveDeltaPill', () => {
@@ -373,13 +389,13 @@ describe('resolveConfidenceData', () => {
   it('labels high confidence at the upper threshold', () => {
     const payload = buildPayload({ confidence: 0.75, confidenceDebug });
     expect(resolveConfidenceData(payload, 'today', 'within')).toEqual({
-      label: 'High',
+      label: BUDGET_CONFIDENCE_LABEL_HIGH,
       percent: '75%',
       details: [
         { label: 'Usage days', value: '12' },
         { label: 'Planned days', value: '4' },
-        { label: 'Usage regularity', value: 'High' },
-        { label: 'Managed-device fit', value: 'Medium' },
+        { label: 'Usage regularity', value: BUDGET_CONFIDENCE_LABEL_HIGH },
+        { label: 'Managed-device fit', value: BUDGET_CONFIDENCE_LABEL_MEDIUM },
       ],
     });
   });
@@ -387,26 +403,26 @@ describe('resolveConfidenceData', () => {
   it('does not round the shown percent into the next band', () => {
     const payload = buildPayload({ confidence: 0.749 });
     expect(resolveConfidenceData(payload, 'today', 'within')).toMatchObject({
-      label: 'Medium',
+      label: BUDGET_CONFIDENCE_LABEL_MEDIUM,
       percent: '74%',
     });
   });
 
   it('labels medium confidence from the lower threshold', () => {
     const payload = buildPayload({ confidence: 0.45 });
-    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe('Medium');
+    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe(BUDGET_CONFIDENCE_LABEL_MEDIUM);
     expect(resolveConfidenceData(payload, 'today', 'within')?.percent).toBe('45%');
   });
 
   it('labels low confidence below the medium threshold', () => {
     const payload = buildPayload({ confidence: 0.44 });
-    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe('Low');
+    expect(resolveConfidenceData(payload, 'today', 'within')?.label).toBe(BUDGET_CONFIDENCE_LABEL_LOW);
   });
 
   it('shows the main value without details when debug data is missing', () => {
     const payload = buildPayload({ confidence: 0.72 });
     expect(resolveConfidenceData(payload, 'today', 'within')).toEqual({
-      label: 'Medium',
+      label: BUDGET_CONFIDENCE_LABEL_MEDIUM,
       percent: '72%',
       details: [],
     });
@@ -476,7 +492,9 @@ describe('resolveComparisonDay', () => {
     expect(result.dayView).toBe('tomorrow');
     expect(result.activeDay).toBe(tomorrow);
     expect(result.candidateDay).toBe(tomorrow);
-    expect(result.label).toMatch(/tomorrow/i);
+    // Anchor on the shared-domain constant so a runtime log quoting the
+    // comparison label stays in lockstep with the UI byte-for-byte.
+    expect(result.label).toBe(BUDGET_COMPARISON_SHOWING_TOMORROW);
   });
 
   it('falls back to today when tomorrow payload is missing', () => {
@@ -486,8 +504,7 @@ describe('resolveComparisonDay', () => {
     const result = resolveComparisonDay(active, candidate);
     expect(result.dayView).toBe('today');
     expect(result.activeDay).toBe(today);
-    expect(result.label).toMatch(/today/i);
-    expect(result.label).toMatch(/not yet available/i);
+    expect(result.label).toBe(BUDGET_COMPARISON_SHOWING_TODAY);
   });
 
   it("falls back to today when tomorrow's prices are not reliable", () => {

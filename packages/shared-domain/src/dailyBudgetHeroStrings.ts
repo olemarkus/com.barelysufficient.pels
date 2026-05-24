@@ -111,6 +111,40 @@ export const resolveTodayLine = (
     : 'Managed devices used more than expected — check device priorities.';
 };
 
+// Chart titles for the progress / hourly-plan toggle. Both labels are used
+// twice in settings-ui: once as the chart card heading (driven by
+// `resolveChartData` in `budgetRedesignResolvers.ts`) and once as the
+// ToggleGroup option labels in `BudgetOverview.tsx`. Lifting them keeps the
+// two call sites — and any runtime log quoting the chart heading — in lockstep.
+export const BUDGET_CHART_TITLE_HOURLY_PLAN = 'Hourly plan';
+export const BUDGET_CHART_TITLE_PROGRESS = 'Progress';
+
+// Plan-confidence band labels rendered in the hero confidence card and the
+// expanded confidence detail rows. The label values are also part of
+// `BudgetConfidenceData['label']`, so re-exporting them as constants lets the
+// settings-ui type narrow to a literal union built from the shared-domain
+// source instead of duplicating the spellings.
+export const BUDGET_CONFIDENCE_LABEL_HIGH = 'High';
+export const BUDGET_CONFIDENCE_LABEL_MEDIUM = 'Medium';
+export const BUDGET_CONFIDENCE_LABEL_LOW = 'Low';
+export type BudgetConfidenceLabel =
+  | typeof BUDGET_CONFIDENCE_LABEL_HIGH
+  | typeof BUDGET_CONFIDENCE_LABEL_MEDIUM
+  | typeof BUDGET_CONFIDENCE_LABEL_LOW;
+
+// Adjust-vs-active comparison labels shown above the side-by-side budget
+// charts. Both strings preserve the original em-dash continuation so a runtime
+// logger can quote them verbatim. The "tomorrow" form is selected when both
+// payloads have reliable tomorrow prices (see `resolveComparisonDay`); the
+// "today" form is the fallback.
+export const BUDGET_COMPARISON_SHOWING_TOMORROW = 'Showing tomorrow’s plan — tomorrow’s prices are in.';
+export const BUDGET_COMPARISON_SHOWING_TODAY = 'Showing today’s plan — tomorrow’s prices not yet available.';
+
+// Allocation-warning banner action label. Rendered as the `MdTextButton`
+// inside `AllocationWarningBanner` (`BudgetOverview.tsx`); lifted so the same
+// wording can be referenced from runtime logs without duplicating the literal.
+export const BUDGET_ADJUST_BUDGET_BUTTON = 'Adjust budget';
+
 // Chart subtitle for the progress / hourly-plan charts. Mirrors the
 // `resolveDecisionLine` taxonomy but with chart-specific phrasing that drops
 // the time anchor (the chart title already names the day).
