@@ -1167,13 +1167,19 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
       Source: `adversarial-review`, v2.8.0 release-review pass.
 
-- [ ] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
+- [x] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
       while the eyebrow says `'Smart tasks'`. Per
       `feedback_terminology_plan_vs_deadline`, surface this with the
       consistent "smart task" / "ready-by" vocabulary — e.g. "Add your
       first smart task" or "Schedule a ready-by time".
       Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
       Source: `pels-ux-fit`, v2.8.0 release-review pass.
+      Resolved: empty-state headline now reads
+      `'Add your first smart task'` (in
+      `packages/shared-domain/src/deadlinesListHero.ts`); pairs naturally
+      with the body stanza's "Add heating task" / "Add charging task"
+      action language and keeps the "smart task" anchor consistent with
+      the `Smart tasks` eyebrow.
 
 - [ ] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
