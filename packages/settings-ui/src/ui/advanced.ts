@@ -20,6 +20,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
 type HomeyApiDevice = {
   id: string;
@@ -105,7 +106,7 @@ const renderAdvancedDeviceOptions = () => {
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
     .forEach((device) => {
-      advancedDeviceSelect.appendChild(createSelectOption(device.id, device.name));
+      advancedDeviceSelect.appendChild(createSelectOption(device.id, formatDisplayDeviceName(device.name)));
     });
 };
 
@@ -246,7 +247,7 @@ const refreshUiAfterDeviceCleanup = () => {
 const resolveApiDeviceLabel = (device: HomeyApiDevice) => {
   const { id, name } = device;
   const className = typeof device.class === 'string' ? device.class : '';
-  const parts = [`${name} (${id})`];
+  const parts = [`${formatDisplayDeviceName(name)} (${id})`];
   if (className) parts.push(className);
   return parts.join(' · ');
 };
@@ -432,7 +433,7 @@ export const initAdvancedDeviceCleanupHandlers = () => {
     }
     resetClearConfirmation();
     const device = state.latestDevices.find((entry) => entry.id === deviceId);
-    const deviceLabel = device ? device.name : `device ${deviceId}`;
+    const deviceLabel = device ? formatDisplayDeviceName(device.name) : `device ${deviceId}`;
 
     try {
       setClearButtonBusy(true);
@@ -497,7 +498,7 @@ export const initAdvancedDeviceLoggerHandlers = () => {
       await showToast('Device not found. Refresh the list and try again.', 'warn');
       return;
     }
-    const deviceName = device.name;
+    const deviceName = formatDisplayDeviceName(device.name);
 
     try {
       setApiDeviceButtonsBusy(true);

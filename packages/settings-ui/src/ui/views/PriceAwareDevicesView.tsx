@@ -2,6 +2,7 @@ import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
 import { MdIconButton, MdOutlinedButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
 import { ArrowBackIcon } from './icons.tsx';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
 export type PriceAwareDevicesViewProps = {
   optimizationEnabled: boolean;
@@ -158,10 +159,11 @@ const DeviceRow = ({
 }) => {
   const cheapBoost = Math.max(DELTA_MIN, device.cheapDelta);
   const expensiveReduction = Math.max(DELTA_MIN, -device.expensiveDelta);
+  const displayName = formatDisplayDeviceName(device.name);
 
   return (
     <div class="price-aware-grid__row">
-      <span class="price-aware-grid__name">{device.name}</span>
+      <span class="price-aware-grid__name">{displayName}</span>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label" aria-hidden="true">
           <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap"></span>
@@ -174,8 +176,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase cheap-hour boost for ${device.name}`}
-          decreaseLabel={`Decrease cheap-hour boost for ${device.name}`}
+          increaseLabel={`Increase cheap-hour boost for ${displayName}`}
+          decreaseLabel={`Decrease cheap-hour boost for ${displayName}`}
           onChange={(val) => onCheapChange(val)}
         />
       </div>
@@ -191,8 +193,8 @@ const DeviceRow = ({
           max={DELTA_MAX}
           step={DELTA_STEP}
           unit="°C"
-          increaseLabel={`Increase expensive-hour reduction for ${device.name}`}
-          decreaseLabel={`Decrease expensive-hour reduction for ${device.name}`}
+          increaseLabel={`Increase expensive-hour reduction for ${displayName}`}
+          decreaseLabel={`Decrease expensive-hour reduction for ${displayName}`}
           onChange={(val) => onExpensiveChange(-val)}
         />
       </div>

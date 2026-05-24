@@ -29,6 +29,7 @@ import {
   resolveGroupManagedState,
   type DeviceGroup,
 } from './deviceListPresentation.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
 export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
@@ -159,7 +160,7 @@ const buildRedesignNameCell = (device: TargetDeviceSnapshot): HTMLElement => {
   nameWrap.className = 'pels-device-card__name device-row__name';
   const nameText = document.createElement('span');
   nameText.className = 'device-row__title';
-  nameText.textContent = device.name;
+  nameText.textContent = formatDisplayDeviceName(device.name);
   nameWrap.appendChild(nameText);
   appendDeviceStateChips(nameWrap, device);
   return nameWrap;
@@ -205,8 +206,9 @@ const createRedesignDetailButton = (device: TargetDeviceSnapshot): HTMLElement =
   const button = document.createElement('md-icon-button');
   button.className = 'pels-device-card__detail-button';
   button.setAttribute('type', 'button');
-  button.setAttribute('aria-label', `Open settings for ${device.name}`);
-  setTooltip(button, `Open settings for ${device.name}`);
+  const displayName = formatDisplayDeviceName(device.name);
+  button.setAttribute('aria-label', `Open settings for ${displayName}`);
+  setTooltip(button, `Open settings for ${displayName}`);
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const icon = document.createElementNS(SVG_NS, 'svg');

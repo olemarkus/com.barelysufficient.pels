@@ -19,6 +19,7 @@ import {
   type DeadlinesListBaselineState,
   type DeadlinesListHeroCopy,
 } from '../../../../shared-domain/src/deadlinesListHero.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveBrowserTimeZone } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../../contracts/src/objectiveProfileTypes.ts';
@@ -118,7 +119,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">
-        <h3 class="deadline-list-card__title">{card.deviceName}</h3>
+        <h3 class="deadline-list-card__title">{formatDisplayDeviceName(card.deviceName)}</h3>
         <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
         <StatusChip statusId={card.statusId} />
         {confidenceLabel !== null && (

@@ -2653,14 +2653,20 @@ should not be folded into the same PR.
       is 0, would catch the dual-render regression.
       Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
 
-- [ ] Overview device-name trailing whitespace. Live-walk 2026-05-16:
+- [x] Overview device-name trailing whitespace. Live-walk 2026-05-16:
       `aria-label="Open device details for Termostat gang "` and several others
       ("Synne ", "vaskerom ", "kontor ", "bad tredje ", "hovedsoverom "). Likely
       user-entered in Homey itself, but a `String#trimEnd` on display would be
       polite and avoid screen-reader pauses.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` (device
-      name rendering), `packages/shared-domain/src/...` (any per-device label
-      helper).
+      Helper: `packages/shared-domain/src/displayDeviceName.ts`
+      (`formatDisplayDeviceName`). Display-only — persisted state stays
+      verbatim. Callsites: `views/PlanDeviceCards.tsx` (generic + temperature
+      cards, DeadlineChip), `views/PlanSteppedCard.tsx`,
+      `views/PriceAwareDevicesView.tsx`, `views/DeadlinesList.tsx`,
+      `views/DeadlinesHistoryList.tsx`, `views/DeadlinePlanHistory.tsx`,
+      `views/DeadlinePlanHistoryDetail.tsx`, `ui/modes.ts`, `ui/devices.ts`,
+      `ui/deviceDetail/index.ts`, `ui/advanced.ts`, `ui/deadlinePlan.ts`,
+      `ui/deadlinePlanHero.ts`.
 
 - [ ] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
       Two distinct exports share the same name with different signatures

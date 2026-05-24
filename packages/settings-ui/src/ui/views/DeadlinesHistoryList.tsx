@@ -3,6 +3,7 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/sr
 import { SMART_TASK_PAST_EMPTY_COPY } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import { groupPlanHistoryByIsoWeek } from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { PlanHistoryCard } from './DeadlinePlanHistory.tsx';
 
 export type DeadlinesHistoryListState =
@@ -93,7 +94,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
         <ul class="deadlines-history__miss-streaks" aria-label="Miss streaks">
           {badges.map((badge) => (
             <li key={badge.deviceId} class="deadlines-history__miss-streak">
-              <span class="deadlines-history__miss-streak-device">{badge.deviceName}</span>
+              <span class="deadlines-history__miss-streak-device">{formatDisplayDeviceName(badge.deviceName)}</span>
               {' — '}
               <span class="deadlines-history__miss-streak-count">{badge.line}</span>
             </li>

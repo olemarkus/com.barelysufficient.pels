@@ -26,6 +26,7 @@ import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
 
 type MaterialTextFieldElement = HTMLElement & {
@@ -214,7 +215,7 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
 
   const name = document.createElement('div');
   name.className = 'device-row__name';
-  name.textContent = device.name;
+  name.textContent = formatDisplayDeviceName(device.name);
 
   const desired = getDesiredTarget(device);
   const input = buildModeTargetInput(device, desired);

@@ -8,6 +8,7 @@ import {
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 
 type DeadlinePlanHistoryProps = {
@@ -29,6 +30,10 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   // the target by > 5 °C / > 10 %. Null on the other outcomes so the line is
   // suppressed cleanly — view never branches on `outcome` itself.
   const overshootLine = formatPlanHistoryOvershootLine(entry);
+  // Trim trailing/leading whitespace from user-entered Homey device names so
+  // the displayed row isn't padded. Empty / whitespace-only names collapse the
+  // device line — matches the pre-fix falsy guard on the raw value.
+  const displayDeviceName = entry.deviceName ? formatDisplayDeviceName(entry.deviceName) : '';
   return (
     <a
       class="pels-surface-card plan-history-card plan-history-card--link"
@@ -40,7 +45,7 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
         <span class="plan-history-card__deadline">{deadlineLine}</span>
         <span class={`plan-chip plan-chip--${tone}`}>{outcomeLabel}</span>
       </header>
-      {entry.deviceName && <div class="plan-history-card__device">{entry.deviceName}</div>}
+      {displayDeviceName !== '' && <div class="plan-history-card__device">{displayDeviceName}</div>}
       {progressLine && (
         <div class="plan-history-card__progress">
           {progressLine}

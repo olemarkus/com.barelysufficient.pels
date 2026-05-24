@@ -21,6 +21,7 @@ import {
   deadlineLabels,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
+import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
@@ -722,7 +723,7 @@ const HistoryDetailHero = ({
     </p>
     <header class="plan-history-detail__hero-header">
       <h1 class="plan-card__title plan-history-detail__heading">
-        {hero.heading.deviceName !== null && `${hero.heading.deviceName} — `}
+        {hero.heading.deviceName !== null && `${formatDisplayDeviceName(hero.heading.deviceName)} — `}
         <span class="plan-history-detail__heading-when">{hero.heading.deadlineLine}</span>
       </h1>
     </header>
@@ -1134,10 +1135,13 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
     && rows.some((row) => Math.abs(row.originalKWh - row.finalKWh) > 0.001);
   // Screen-reader label mirrors the visible heading shape: scoping eyebrow
   // ("Smart task") → device name (when present) → timestamp.
-  const ariaHeading = entry.deviceName
-    ? `${entry.deviceName} — ${deadlineLine}`
+  // Trim trailing/leading whitespace so screen readers don't pause on the
+  // padded name; whitespace-only names collapse to the timestamp-only branch.
+  const displayHeadingName = entry.deviceName ? formatDisplayDeviceName(entry.deviceName) : '';
+  const ariaHeading = displayHeadingName !== ''
+    ? `${displayHeadingName} — ${deadlineLine}`
     : deadlineLine;
-  const trajectoryAriaLabel = `Progress trajectory for ${entry.deviceName ?? 'this smart task'}`;
+  const trajectoryAriaLabel = `Progress trajectory for ${displayHeadingName !== '' ? displayHeadingName : 'this smart task'}`;
   const hasChartData = chartData.mode === 'trajectory'
     ? (chartData.plannedOriginal.length > 0 || chartData.observed.length > 0)
     : (entry.originalPlan !== null || entry.finalPlan !== null);

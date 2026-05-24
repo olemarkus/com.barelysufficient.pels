@@ -10,6 +10,7 @@ import {
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
 import {
   formatDeadlineFull,
@@ -355,7 +356,7 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const headline = resolveHeroHeadline(params);
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const subline = `${params.device.name} • Target ${target} by ${deadline}`;
+  const subline = `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`;
   const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
   const baseMetaLine = formatMetaLine({
     energyNeededKWh: params.energyNeededKWh,
