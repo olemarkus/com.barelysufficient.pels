@@ -749,7 +749,7 @@ so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
 
-- [ ] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
+- [x] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
       RSD thresholds were calibrated for raw per-sample CV; pooled within-band
       variance is structurally smaller, so a profile with only modest
       between-band variance reduction could in principle reach `high` based
@@ -758,7 +758,13 @@ block merge.*
       and confirm the model correctly returns `medium`, not `high`. If it
       over-promotes, tighten the high threshold for the banded path
       (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
-      `lib/objectives/stats.ts`.
+      `lib/objectives/stats.ts`. **Done 2026-05-24:** banded high threshold
+      tightened 0.35 → 0.20 in `resolveBandedProfileConfidence`
+      (`lib/objectives/stats.ts`). New fixture (means 0.25/0.30, m2=0.07,
+      RSD≈0.321) pins the `medium` verdict; existing five fixtures
+      (tight-noise high, medium, low, buffer-drift, weighted-mean-fallback)
+      all unaffected. Raw-CV path (`resolveProfileConfidence`) intentionally
+      unchanged.
 - [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
       (integration interval extends outside band coverage) reads the now
       band-aware `kwhPerUnit.confidence`, while the energy estimate for the
