@@ -1,11 +1,11 @@
-import type { StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { Logger } from '../utils/types';
+import type { StructuredDebugEmitter } from '../../logging/logger';
+import { getLogger } from '../../logging/logger';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { Logger } from '../../utils/types';
 import {
   getCurrentOn,
   type DeviceCapabilityMap,
-} from './managerControl';
+} from '../managerControl';
 import { resolveParsedControlState } from './managerParseSnapshot';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 

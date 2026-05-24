@@ -11,14 +11,14 @@ import {
   resolveFlowAugmentedDeviceType,
   type FlowReportedCapabilitiesForDevice,
   type FlowReportedCapabilityId,
-} from './flowReportedCapabilities';
+} from './transport/flowReportedCapabilities';
 import {
   applyNativeEvWiringOverlay,
   hasOfficialEvChargerCapabilities,
 } from './nativeEvWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
-import { resolveDeviceCapabilities } from './managerParse';
-import type { DeviceManagerParseProviders } from './managerParseDevice';
+import { resolveDeviceCapabilities } from './transport/managerParse';
+import type { DeviceManagerParseProviders } from './transport/managerParseDevice';
 import {
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,

@@ -2,7 +2,7 @@ import { DeviceManager, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_
 import {
     createObservationState,
     mergeFresherCapabilityObservations,
-} from '../lib/device/managerObservation';
+} from '../lib/device/transport/managerObservation';
 import type { LiveFeedHealth } from '../lib/device/liveFeed';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
@@ -11,7 +11,7 @@ import {
     mockHomeyInstance,
 } from './mocks/homey';
 import Homey from 'homey';
-import * as homeyApi from '../lib/device/managerHomeyApi';
+import * as homeyApi from '../lib/device/transport/managerHomeyApi';
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../lib/device/liveFeed', () => {

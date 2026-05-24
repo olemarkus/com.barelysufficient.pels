@@ -1,5 +1,5 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { DeviceCapabilityMap } from './managerControl';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { DeviceCapabilityMap } from '../managerControl';
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;

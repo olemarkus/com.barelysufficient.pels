@@ -2027,6 +2027,27 @@ consolidation + a11y polish (8 P2)`.*
       {ok: true}`) and a sync helper in observer consumes the failure to clear
       pending, so writes and deletes are both observer-owned. Source:
       `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
+- [ ] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
+      split left it at `lib/device/stateOfCharge.ts`; today's placement
+      satisfies the design's stated goal ("neither side has to import the
+      other") because both transport- and stay-put consumers reach it as a
+      sibling without crossing into transport/. Two viable destinations:
+      (a) the cheap path — **just move into `lib/device/transport/`**, since
+      every current consumer is transport-side (`transport/managerObservation.ts`,
+      `transport/managerRealtimeHandlers.ts`, `transport/managerParseDevice.ts`)
+      or part of `lib/device/manager.ts` / `managerRuntime.ts` (both fine as
+      cross-folder imports), converting today's `transport/managerObservation →
+      ../stateOfCharge → transport/flowReportedCapabilities` back-edge into a
+      clean intra-transport import; (b) the deeper path — extract pure SoC
+      math to `lib/utils/` or `packages/shared-domain/src/`, which also
+      requires relocating or duplicating the structural type deps
+      (`DeviceCapabilityMap` from `managerControl.ts`,
+      `FlowReportedCapabilitiesForDevice` / `FlowReportedCapabilityEntry`
+      from `transport/flowReportedCapabilities.ts`). PR #3 (DeviceTransport
+      extraction) is a natural place to decide. Source: PR #2 secondary
+      cleanup + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24.
+      Files: `lib/device/stateOfCharge.ts`, `lib/device/managerControl.ts`,
+      `lib/device/transport/flowReportedCapabilities.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and

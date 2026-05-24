@@ -4,21 +4,21 @@
 /* eslint-disable max-params --
  * Internal helpers mirror observation fields directly to keep this move-only split simple.
  */
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { HomeyDeviceLike } from '../utils/types';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './managerRealtimeHandlers';
 import type { DeviceFetchSource } from './managerFetch';
 import { getDeviceId } from './managerHelpers';
 import {
     resolveEvChargingStateBinaryEvidence,
     resolveEvCurrentOn,
-} from './managerControl';
+} from '../managerControl';
 import {
     EV_SOC_NATIVE_CAPABILITY_IDS,
     isStateOfChargeCapabilityId,
     updateStateOfChargeFromRealtimeCapability,
     updateStateOfChargeSessionBoundary,
-} from './stateOfCharge';
+} from '../stateOfCharge';
 
 export type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 

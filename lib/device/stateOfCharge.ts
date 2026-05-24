@@ -2,7 +2,7 @@ import type { DeviceCapabilityMap } from './managerControl';
 import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,
-} from './flowReportedCapabilities';
+} from './transport/flowReportedCapabilities';
 import type { DeviceStateOfChargeSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;

@@ -7,7 +7,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import { getDeviceId } from './managerHelpers';
+import { getDeviceId } from './transport/managerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './devicePowerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -28,7 +28,7 @@ import {
   fetchDevicesWithFallback,
   fetchLivePowerReport,
   type LivePowerReport,
-} from './managerFetch';
+} from './transport/managerFetch';
 import { isRealtimeControlCapability } from './managerRuntime';
 import {
   clearLocalCapabilityWrite,
@@ -37,13 +37,13 @@ import {
   getRecentLocalCapabilityWrite,
   recordLocalCapabilityWrite,
   type RecentLocalCapabilityWrites,
-} from './managerRealtimeSupport';
+} from './transport/managerRealtimeSupport';
 import {
   hasRestClient,
   initHomeyHttpClient,
   resolveHomeyInstance,
   setRawCapabilityValue,
-} from './managerHomeyApi';
+} from './transport/managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
@@ -52,8 +52,8 @@ import {
   handleRealtimeDeviceUpdate,
   type ObservedDeviceStateEvent,
   type PlanRealtimeUpdateEvent,
-} from './managerRealtimeHandlers';
-import type { DeviceFetchSource } from './managerFetch';
+} from './transport/managerRealtimeHandlers';
+import type { DeviceFetchSource } from './transport/managerFetch';
 import { normalizeError } from '../utils/errorUtils';
 import { shouldEmitWindowed } from '../logging/logDedupe';
 import {
@@ -77,15 +77,15 @@ import {
   resolveLatestLocalWriteMs,
   type DeviceDebugObservedSources,
   type DeviceManagerObservationState,
-} from './managerObservation';
+} from './transport/managerObservation';
 import {
   isDevicePowerCapable,
   parseDevice,
   parseDeviceList,
   type DeviceManagerParseProviders,
   type ParseDevicePurpose,
-} from './managerParseDevice';
-import { applyDeviceDriverOverride } from './managerParseIdentity';
+} from './transport/managerParseDevice';
+import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import {
     buildNativeEvObservationDevice,
     normalizeNativeEvCapabilityUpdate,
@@ -96,14 +96,17 @@ import {
   setObservedNativeSteppedLoadStep,
   syncNativeSteppedLoadCommandAdapters,
 } from './managerNativeSteppedCommand';
-import { applyFreshnessOnlyCapabilityUpdate } from './managerFreshness';
+import { applyFreshnessOnlyCapabilityUpdate } from './transport/managerFreshness';
 import {
   isNativeSteppedLoadControlEnabled,
   isNativeSteppedLoadControlCapabilityId,
   resolveNativeSteppedLoadReportedStepId,
   resolveTargetPowerReportedStepId,
 } from './nativeSteppedLoadWiring';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
+import {
+  PELS_MEASURE_STEP_CAPABILITY_ID,
+  type SteppedLoadStepRequestResult,
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { applyDeviceCompatibilityMetadata } from './compatibility';
 import type { DeviceObservation } from './deviceObservation';
@@ -114,7 +117,7 @@ const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
-export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './managerObservation';
+export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
@@ -130,12 +133,6 @@ export type SnapshotRefreshMetrics = {
     temperatureUnknownDevices: number;
     unavailableDevices: number;
 };
-
-export type SteppedLoadStepRequestTransport = 'native_capability' | 'flow';
-
-export type SteppedLoadStepRequestResult =
-    | { requested: false }
-    | { requested: true; transport: SteppedLoadStepRequestTransport };
 
 type SteppedLoadFlowTriggerCard = {
     trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;

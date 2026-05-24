@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { setRestClient } from '../../lib/device/managerHomeyApi';
+import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
 
 type MockCapabilityMutationBehavior = {
   updateActual?: boolean;

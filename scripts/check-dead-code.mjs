@@ -84,8 +84,8 @@ const allowedUnusedExportPatterns = [
   /^lib\/utils\/settingsKeys\.ts:\d+ - DAILY_BUDGET_BREAKDOWN_ENABLED$/,
   /^lib\/utils\/planRebuildTrace\.ts:\d+ - clearPlanRebuildTracesForTests$/,
   /^lib\/price\/priceStore\.ts:\d+ - __resetRefetchGuardForTest$/,
-  /^lib\/device\/managerHomeyApi\.ts:\d+ - setRestClient$/,
-  /^lib\/device\/managerHomeyApi\.ts:\d+ - resetRestClient$/,
+  /^lib\/device\/transport\/managerHomeyApi\.ts:\d+ - setRestClient$/,
+  /^lib\/device\/transport\/managerHomeyApi\.ts:\d+ - resetRestClient$/,
   // Compatibility barrel exports kept intentionally while call sites migrate off appPowerHelpers.ts.
   /^lib\/app\/appPowerHelpers\.ts:\d+ - schedulePlanRebuildFromPowerSample$/,
   /^lib\/app\/appPowerHelpers\.ts:\d+ - recordDailyBudgetCap$/,

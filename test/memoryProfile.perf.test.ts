@@ -62,15 +62,15 @@ describe('memory profile', () => {
 
     // Power/Device — broken down
     profileRequire('device/power-estimate', '../lib/device/devicePowerEstimate', baseline);
-    profileRequire('device/managerHelpers', '../lib/device/managerHelpers', baseline);
-    profileRequire('device/managerParse', '../lib/device/managerParse', baseline);
+    profileRequire('device/transport/managerHelpers', '../lib/device/transport/managerHelpers', baseline);
+    profileRequire('device/transport/managerParse', '../lib/device/transport/managerParse', baseline);
     profileRequire('device/managerControl', '../lib/device/managerControl', baseline);
-    profileRequire('device/managerFetch', '../lib/device/managerFetch', baseline);
+    profileRequire('device/transport/managerFetch', '../lib/device/transport/managerFetch', baseline);
     profileRequire('device/managerEnergy', '../lib/device/managerEnergy', baseline);
     profileRequire('device/managerRuntime', '../lib/device/managerRuntime', baseline);
-    profileRequire('device/managerHomeyApi', '../lib/device/managerHomeyApi', baseline);
-    profileRequire('device/managerRealtimeHandlers', '../lib/device/managerRealtimeHandlers', baseline);
-    profileRequire('device/managerRealtimeSupport', '../lib/device/managerRealtimeSupport', baseline);
+    profileRequire('device/transport/managerHomeyApi', '../lib/device/transport/managerHomeyApi', baseline);
+    profileRequire('device/transport/managerRealtimeHandlers', '../lib/device/transport/managerRealtimeHandlers', baseline);
+    profileRequire('device/transport/managerRealtimeSupport', '../lib/device/transport/managerRealtimeSupport', baseline);
     profileRequire('device/load', '../lib/device/load', baseline);
     profileRequire('power/capacityGuard', '../lib/power/capacityGuard', baseline);
     profileRequire('power/tracker', '../lib/power/tracker', baseline);

@@ -1,12 +1,12 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { HomeyDeviceLike } from '../utils/types';
-import { resolveEvChargingStateBinaryEvidence } from './managerControl';
+import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { HomeyDeviceLike } from '../../utils/types';
+import { resolveEvChargingStateBinaryEvidence } from '../managerControl';
 import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
 import {
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
-} from './managerRuntime';
-import { isStateOfChargeCapabilityId } from './stateOfCharge';
+} from '../managerRuntime';
+import { isStateOfChargeCapabilityId } from '../stateOfCharge';
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;

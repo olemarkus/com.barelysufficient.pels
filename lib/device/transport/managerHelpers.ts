@@ -1,4 +1,4 @@
-import type { HomeyDeviceLike } from '../utils/types';
+import type { HomeyDeviceLike } from '../../utils/types';
 
 const SUPPORTED_DEVICE_CLASSES = new Set([
   'thermostat',

@@ -388,7 +388,7 @@ export default tseslint.config(
   {
     // parseDevice keeps Homey snapshot normalization local while target/power parsing continues to
     // settle at the Homey boundary. Target: <=140 after the next helper extraction pass.
-    files: ['lib/device/managerParseDevice.ts'],
+    files: ['lib/device/transport/managerParseDevice.ts'],
     rules: {
       'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
     },
