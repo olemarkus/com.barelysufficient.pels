@@ -1596,7 +1596,7 @@ device-card vertical rhythm floor, em-dash punctuation drift) shipped in
 v2.7.3 — see commit `chore(v2.7.3): Overview card-rhythm + chip-primitive
 consolidation + a11y polish (8 P2)`.*
 
-- [ ] Usage heatmap week-navigation chevrons have no visible chrome + use the
+- [x] Usage heatmap week-navigation chevrons have no visible chrome + use the
       wrong ARIA attribute. Live walk 2026-05-16
       (`/tmp/pels-rewalk/usage/08-heatmap-close.png`): `<md-text-button>`
       chevrons render as tiny bare green icons with no visible affordance, AND
@@ -1607,6 +1607,16 @@ consolidation + a11y polish (8 P2)`.*
       so users see something tappable.
       Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or wherever
       the heatmap week-nav lives), `packages/settings-ui/public/style.css`.
+      Done: a11y audit confirmed the chevrons already carry real `aria-label`
+      attributes (`Previous week` / `Next week`) — no `data-aria-label` typo
+      remained in the tree. Visible-chrome fix added a `.heatmap-nav-chevron`
+      decorator class on the canonical `<md-text-button>` primitive (keeps M3
+      focus-ring, ripple, ARIA, 48 px touch-target floor); doubled-class
+      cascade with `--pels-surface-container-high` ground, `--pels-surface-outline`
+      border, `--radius-md`, `min-width: var(--pels-touch-target-min)` to square
+      the hit-box, and `--md-sys-color-primary: var(--text)` so the chevron icon
+      reads ~12:1 on the dark ground (WCAG AAA) instead of competing with the
+      heatmap-cell accent palette.
 
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
