@@ -1,7 +1,7 @@
 import { vi } from 'vitest';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
 import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
-import { AppHomeyEnergyHelpers } from '../../lib/app/appHomeyEnergyHelpers';
+import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -123,10 +123,10 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),
   });
-  const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new AppHomeyEnergyHelpers({
+  const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
     homey,
     timers,
-    getDeviceManager: () => undefined,
+    pollHomePower: async () => null,
     recordPowerSample: vi.fn(async () => undefined),
     logDebug: vi.fn(),
     error: vi.fn(),
