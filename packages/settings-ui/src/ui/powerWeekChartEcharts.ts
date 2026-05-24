@@ -74,14 +74,10 @@ const resolveCellRadius = (container: HTMLElement): number => {
 
 let detachTabShownResize: (() => void) | null = null;
 
-const clearPlotInlineStyles = (container: HTMLElement | null) => {
-  if (!container) return;
-  container.style.removeProperty('height');
-  container.style.removeProperty('min-height');
-  container.style.removeProperty('-webkit-tap-highlight-color');
-};
-
-export const disposePowerWeekChart = (container?: HTMLElement) => {
+// Container sizing (height / min-height / -webkit-tap-highlight-color) lives
+// in `.power-week-chart` (see `packages/settings-ui/public/style.css`). This
+// module owns the ECharts lifecycle only; CSS owns the physical footprint.
+export const disposePowerWeekChart = (_container?: HTMLElement) => {
   if (plotResizeObserver) {
     plotResizeObserver.disconnect();
     plotResizeObserver = null;
@@ -94,7 +90,6 @@ export const disposePowerWeekChart = (container?: HTMLElement) => {
     plot.dispose();
     plot = null;
   }
-  clearPlotInlineStyles(container ?? plotContainer);
   plotContainer = null;
 };
 
@@ -103,15 +98,12 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
 
   disposePowerWeekChart();
   container.replaceChildren();
-  container.style.setProperty('height', `${DEFAULT_CHART_HEIGHT}px`);
-  container.style.setProperty('min-height', `${DEFAULT_CHART_HEIGHT}px`);
 
   plot = initEcharts(container, undefined, {
     renderer: 'svg',
     ...resolveChartSize(container),
   });
   plotContainer = container;
-  container.style.setProperty('-webkit-tap-highlight-color', 'transparent');
 
   if (typeof ResizeObserver === 'function') {
     plotResizeObserver = new ResizeObserver(() => {
