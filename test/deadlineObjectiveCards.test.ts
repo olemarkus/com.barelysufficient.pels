@@ -844,6 +844,7 @@ describe('deadline objective flow cards', () => {
       device_name: 'Boiler',
       outcome: 'missed',
       shortfall: 5,
+      shortfall_known: true,
     });
     expect(state).toEqual({ deviceId: 'heater-1' });
     expect(await trigger.run!({ device: 'heater-1' }, state)).toBe(true);
@@ -861,6 +862,63 @@ describe('deadline objective flow cards', () => {
       device_name: 'Boiler',
       outcome: 'succeeded',
       shortfall: 0,
+      shortfall_known: true,
+    });
+  });
+
+  it('publishes deadline_ended with shortfall_known=false when the device-side delta is unobservable', async () => {
+    const endedBus = createDeferredObjectiveEndedBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      endedBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_ended')!;
+
+    // Missed outcome with no `finalProgressC` sample — the SDK forces a
+    // numeric 0 fallback, so `shortfall_known` must signal "unknown".
+    endedBus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      objectiveKind: 'temperature',
+      outcome: 'missed',
+      targetTemperatureC: 55,
+      targetPercent: null,
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
+      metAtMs: null,
+      finalProgressC: null,
+      finalProgressPercent: null,
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.trigger.mock.calls[0]![0]).toEqual({
+      device_name: 'Boiler',
+      outcome: 'missed',
+      shortfall: 0,
+      shortfall_known: false,
+    });
+
+    // Abandoned outcome on an EV charger with both target and final-progress
+    // samples present — delta is observable, so `shortfall_known` is true.
+    endedBus.publish({
+      deviceId: 'heater-1',
+      deviceName: 'Boiler',
+      objectiveKind: 'ev_soc',
+      outcome: 'abandoned',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
+      metAtMs: null,
+      finalProgressC: null,
+      finalProgressPercent: 73,
+    });
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+    expect(trigger.trigger.mock.calls[1]![0]).toEqual({
+      device_name: 'Boiler',
+      outcome: 'abandoned',
+      shortfall: 7,
+      shortfall_known: true,
     });
   });
 
