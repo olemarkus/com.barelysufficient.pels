@@ -8,7 +8,11 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import { formatEstimatedDuration, resolvePlanLevelDurationSnapshot } from './activePlanDuration';
+import {
+  formatEstimatedDuration,
+  resolvePlanLevelDurationSnapshot,
+  toPersistedPlanLevelDurationFields,
+} from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
@@ -604,8 +608,21 @@ export class DeferredObjectiveActivePlanRecorder {
     const nextProvenance = provenance
       ?? (current.objectiveKind === diag.objectiveKind ? current.kwhPerUnitProvenance : undefined);
     const snapshot = resolvePlanLevelDurationSnapshot({ current, revision, reason });
+    // Drop the prior snapshot fields from `...current` so the
+    // `objective_changed` reset path can genuinely omit them when the new
+    // revision has no usable planning speed. `toPersistedPlanLevelDurationFields`
+    // then re-adds the keys only when the resolved snapshot has a value, so
+    // the persisted JSON.stringify output stays identical to the prior
+    // explicit-undefined idiom while the in-memory shape no longer exposes
+    // `undefined` keys that violate `exactOptionalPropertyTypes`-style
+    // contracts.
+    const {
+      initialPlanningSpeedKw: _droppedSnapshotSpeed,
+      initialEstimatedDurationText: _droppedSnapshotDurationText,
+      ...currentWithoutSnapshot
+    } = current;
     this.plans[diag.deviceId] = {
-      ...current,
+      ...currentWithoutSnapshot,
       deviceName: diag.deviceName ?? current.deviceName,
       objectiveKind: diag.objectiveKind,
       targetTemperatureC: diagTargetTemperatureC(diag),
@@ -615,13 +632,7 @@ export class DeferredObjectiveActivePlanRecorder {
         ? { committedAtMs: nowMs, hours }
         : current.commitment,
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
-      // Explicit set so an `objective_changed` reset can drop the snapshot to
-      // `undefined` when the new revision has no usable planning speed; the
-      // conditional-spread idiom used elsewhere would silently carry the
-      // prior value forward through `...current`. JSON.stringify omits
-      // `undefined` so the persisted record stays compatible.
-      initialPlanningSpeedKw: snapshot.initialPlanningSpeedKw,
-      initialEstimatedDurationText: snapshot.initialEstimatedDurationText,
+      ...toPersistedPlanLevelDurationFields(snapshot),
       latest: revision,
     };
     this.dirty = true;

@@ -59,3 +59,25 @@ export const resolvePlanLevelDurationSnapshot = (params: {
       : (params.current.initialEstimatedDurationText ?? params.revision.estimatedDurationText),
   };
 };
+
+// Persisted shape for the plan-level duration snapshot: spreadable subset that
+// only carries keys whose values are defined. Callers spread the result into
+// the active plan object so the `objective_changed` reset path can drop the
+// keys entirely (instead of leaving explicit `undefined` values that violate
+// `exactOptionalPropertyTypes`-style contracts) while non-reset replans still
+// preserve/backfill the prior snapshot values via `resolvePlanLevelDurationSnapshot`.
+export type PersistedPlanLevelDurationFields = Partial<{
+  initialPlanningSpeedKw: number;
+  initialEstimatedDurationText: string;
+}>;
+
+export const toPersistedPlanLevelDurationFields = (
+  snapshot: PlanLevelDurationSnapshot,
+): PersistedPlanLevelDurationFields => ({
+  ...(snapshot.initialPlanningSpeedKw !== undefined
+    ? { initialPlanningSpeedKw: snapshot.initialPlanningSpeedKw }
+    : {}),
+  ...(snapshot.initialEstimatedDurationText !== undefined
+    ? { initialEstimatedDurationText: snapshot.initialEstimatedDurationText }
+    : {}),
+});
