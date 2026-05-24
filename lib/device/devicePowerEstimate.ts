@@ -3,7 +3,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getLogger } from '../logging/logger';
 
-const moduleLogger = getLogger('power/estimate');
+const moduleLogger = getLogger('device/power-estimate');
 
 export type PowerEstimateState = {
   expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;

@@ -4,7 +4,7 @@ import type { DeviceCapabilityMap } from './managerControl';
 import { updateLastKnownPower } from './managerRuntime';
 import { readDeviceMeasuredPowerObservation } from './measuredPowerReader';
 import type { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
-import type { PowerEstimateState } from '../power/estimate';
+import type { PowerEstimateState } from './devicePowerEstimate';
 
 export function resolveMeasuredPowerKw(params: {
   deviceId: string;

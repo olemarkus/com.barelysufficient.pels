@@ -77,7 +77,7 @@ module.exports = {
     // The domain peers form a (mostly) top-down DAG:
     //   executor > plan > {power, dailyBudget, price, objectives, observer}
     //   dailyBudget > {power, price}
-    //   device > power (estimatePower utility)
+    //   device > power (whole-home capacity gating, tracker types)
     //   power <-> objectives (type-only cycle, file-distinct, established)
     //
     // The rules below forbid edges in the OPPOSITE direction. They are the
@@ -85,6 +85,13 @@ module.exports = {
     // lib/app/ is a candidate to push into a peer; any push that creates one
     // of these forbidden edges identifies the file as cross-peer wiring
     // residue (must stay in app.ts or a successor wiring layer).
+    //
+    // lib/power/ mandate: WHOLE-HOME power only. Sample collection from
+    // Homey, hourly/daily bucket retention, capacity threshold gating, and
+    // household energy accounting (including the per-device kWh rollup that
+    // feeds the whole-home view). Per-device instantaneous power estimation
+    // belongs with the device layer (lib/device/devicePowerEstimate.ts);
+    // per-device calibration storage belongs with the device layer too.
     {
       name: 'no-power-to-peer-except-objectives',
       comment: 'Power is a producer; only the established power <-> objectives type cycle is allowed. All other peer edges forbidden.',
@@ -94,7 +101,7 @@ module.exports = {
     },
     {
       name: 'no-device-to-peer-except-power',
-      comment: 'Device is an SDK adapter; device may consume power (estimatePower utility), nothing else. All other peer edges forbidden.',
+      comment: 'Device is an SDK adapter; device may consume power (whole-home capacity/tracker types), nothing else. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/device/' },
       to: { path: '^lib/(plan|price|dailyBudget|objectives|observer|executor)/' },
