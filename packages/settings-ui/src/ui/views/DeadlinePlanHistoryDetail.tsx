@@ -136,6 +136,14 @@ type Palette = {
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
+  // Neutral on-good fill used by the trajectory chart's "Reached target"
+  // markPoint. Pinned to a status-neutral token so the marker stays legible
+  // even if a future variant attaches `metAtMs` to a non-`good` hero tone
+  // (today the marker only renders on `good` heroes, but the planner-state
+  // colour `palette.observed` would silently mis-contrast under a warn-tone
+  // gradient). Paired with `palette.text` (= `--pels-text-primary`) for the
+  // stroke so the dot reads as a hero-agnostic ring + dot.
+  statusOnGood: string;
 };
 
 const cssVar = (element: HTMLElement, name: string, fallback = ''): string => (
@@ -152,6 +160,7 @@ const resolvePalette = (element: HTMLElement): Palette => ({
   tooltipBackground: cssVar(element, '--color-overlay-toast'),
   tooltipText: cssVar(element, '--color-semantic-text-primary'),
   tooltipBorder: cssVar(element, '--color-border-medium'),
+  statusOnGood: cssVar(element, '--pels-status-on-good'),
 });
 
 const resolveChartSize = (element: HTMLElement): { height: number; width: number } => {
@@ -241,10 +250,14 @@ export const buildHistoryDetailChartOption = (
     // left edge as `.2 kWh` on every history-detail row). `left: 8` is the
     // padding inside the auto-expanded grid; ECharts adds the label width on
     // top of it. `bottom: 32` makes equivalent room for the x-axis tick
-    // labels under containLabel. `top: 44` matches the live `DeadlinePlan.tsx`
-    // chart so a two-line legend (`width: '100%'`) has the same vertical
-    // headroom on both surfaces.
-    grid: { top: 44, left: 8, right: 16, bottom: 32, containLabel: true },
+    // labels under containLabel. `top: 60` reserves vertical headroom for a
+    // two-line legend wrap at 320 px (the trajectory legend can carry up to
+    // 4 entries — "Planned trajectory" / "Revised trajectory" / "Measured
+    // Heating" / "Target" — and wraps to two rows inside narrow containers).
+    // The legacy bar chart's 3-entry legend stays single-line at every
+    // supported width, but we keep the same reserve so a future series
+    // addition can't silently crowd the chart-top edge here either.
+    grid: { top: 60, left: 8, right: 16, bottom: 32, containLabel: true },
     tooltip: {
       trigger: 'axis',
       appendToBody: true,
@@ -490,7 +503,10 @@ export const buildHistoryDetailTrajectoryOption = (
       textStyle: { color: palette.muted, fontSize: 11 },
       inactiveColor: palette.grid,
     },
-    grid: { top: 44, left: 8, right: 16, bottom: 32, containLabel: true },
+    // `top: 60` matches the legacy bar chart; reserves vertical headroom
+    // for a 2-line legend wrap at 320 px when the trajectory carries the
+    // full 4-entry legend (Planned / Revised / Measured / Target).
+    grid: { top: 60, left: 8, right: 16, bottom: 32, containLabel: true },
     tooltip: {
       trigger: 'axis',
       appendToBody: true,
@@ -544,11 +560,19 @@ export const buildHistoryDetailTrajectoryOption = (
         // The metAtMs marker sits on the planned staircase — the postmortem
         // sentence "Hit 65 °C at 11:57" lands here. Only attached to the
         // original series so a revised overlay doesn't double-mark.
+        // Marker style is pinned to neutral tokens (`statusOnGood` fill +
+        // `text` stroke) rather than `palette.observed`/`palette.text` taken
+        // together as a planner-state pair. Today the marker only renders
+        // when the hero tone is `good`; the neutral pinning means a future
+        // variant that attaches `metAtMs` to a non-`good` hero (e.g. a
+        // hypothetical `met-with-overshoot` reclassified to `warn`) still
+        // reads correctly without threading hero tone into the option
+        // builder.
         markPoint: data.metAtMs !== null && data.metMarkerValue !== null && !hasPlannedFinal
           ? {
             symbol: 'circle',
             symbolSize: 10,
-            itemStyle: { color: palette.observed, borderColor: palette.text, borderWidth: 1 },
+            itemStyle: { color: palette.statusOnGood, borderColor: palette.text, borderWidth: 1 },
             label: { show: false },
             data: [{
               name: MET_MARK_NAME,
@@ -565,11 +589,13 @@ export const buildHistoryDetailTrajectoryOption = (
         lineStyle: { color: palette.device, width: 2 },
         itemStyle: { color: palette.device },
         data: toEchartsData(data.plannedFinal!),
+        // See note above on the original-series markPoint — same tone-neutral
+        // pinning applies on the revised overlay.
         markPoint: data.metAtMs !== null && data.metMarkerValue !== null
           ? {
             symbol: 'circle',
             symbolSize: 10,
-            itemStyle: { color: palette.observed, borderColor: palette.text, borderWidth: 1 },
+            itemStyle: { color: palette.statusOnGood, borderColor: palette.text, borderWidth: 1 },
             label: { show: false },
             data: [{
               name: MET_MARK_NAME,

@@ -2969,28 +2969,24 @@ should not be folded into the same PR.
       consistency. Strings are correct as-is; this is logger-parity hygiene.
       Files: `packages/shared-domain/src/deferredPlanHistoryChartData.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
-- [ ] markPoint tone-aware for the "Reached target" dot on the history-detail chart.
-      Surfaced by pels-m3-critic on v2.7.2 PR 4 as P2. The `metAtMs` markPoint uses
-      `palette.observed` (green) fill regardless of hero tone. In practice the marker only
-      renders when `outcome === 'met'` → hero tone is always `good` (green gradient) and
-      contrast is fine. Defensive design: if a future variant ever attaches `metAtMs` to a
-      warn-tone shape (e.g. `met-with-overshoot` if it gets re-classified), green-on-warn
-      would be low-contrast. Either pin the marker to neutral tokens (`--pels-status-on-good`
-      fill + `--pels-text-primary` stroke), or thread hero tone into
-      `buildHistoryDetailTrajectoryOption` so the marker style branches.
-      Why P3: today the marker only renders on `good` heroes; the contrast concern is
-      defensive against a hypothetical future variant.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
-- [ ] Test history-detail chart legend wrap at 320 px and bump `grid.top` if needed.
-      Surfaced by pels-m3-critic on v2.7.2 PR 4 as P2. Trajectory legend has 4 entries
-      ('Planned trajectory' / 'Revised trajectory' / 'Measured Heating' / 'Target') and may
-      wrap to two rows at 320 px, crowding the chart top edge. Static `grid.top: 44` reserves
-      single-line height. Either dynamic grid-top calculation or bump to 60 unconditionally;
-      mirror PR 1's `containLabel: true` pattern. Add a 320 px Playwright snapshot to
-      regression-protect.
-      Why P3: cosmetic at narrow width; chart still renders correctly.
+- [x] markPoint tone-aware for the "Reached target" dot on the history-detail chart.
+      Pinned the markPoint to neutral tokens (`--pels-status-on-good` fill +
+      `--pels-text-primary` stroke via the existing `palette.text` field) so the marker
+      stays legible if a future variant ever attaches `metAtMs` to a non-`good` hero tone.
+      Threaded a new `statusOnGood` field through `Palette` / `resolvePalette` and applied
+      it on both the original and revised-overlay `markPoint` configs.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`.
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
+- [x] Test history-detail chart legend wrap at 320 px and bump `grid.top` if needed.
+      Bumped `grid.top` from 44 → 60 px on both `buildHistoryDetailChartOption` (legacy)
+      and `buildHistoryDetailTrajectoryOption`, mirroring PR 1's `containLabel: true`
+      pattern. Added a 320 px Playwright probe in `charts-layout.spec.ts` that mounts a
+      trajectory-mode entry (4-entry legend) and asserts the legend's bottom edge sits
+      above the chart's first y-axis tick. Added unit tests pinning the new value on
+      both option builders.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`,
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
 - [ ] Hoist the `useEchartsMount` helper from `DeadlinePlanHistoryDetail.tsx` to a shared
       module in `echartsRegistry.ts`. PR 4 introduced the helper file-locally, but the
       same init/dispose/resize pattern exists in `powerWeekChartEcharts.ts`,

@@ -73,6 +73,10 @@ const stubPalette = {
   device: '#0ff', deviceMuted: '#222', observed: '#0f0',
   text: '#fff', muted: '#888', grid: '#333',
   tooltipBackground: '#000', tooltipText: '#fff', tooltipBorder: '#444',
+  // Distinct from `observed` so the markPoint pinning test can prove the
+  // marker reads from the neutral on-good token, not the planner-state
+  // observed colour.
+  statusOnGood: '#abcdef',
 };
 
 describe('DeadlinePlanHistoryDetail', () => {
@@ -698,6 +702,128 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(plannedSeries?.markPoint?.data[0]?.coord[1]).toBe(65);
     });
 
+    // Pins the markPoint to neutral tokens (statusOnGood fill + text stroke)
+    // rather than the planner-state pair (`observed` fill + `text` stroke).
+    // The marker only renders on `good` heroes today, but a future variant
+    // attaching `metAtMs` to a non-`good` tone would otherwise silently
+    // mis-contrast against a warn-tone gradient. Asserts both the original
+    // (single-staircase) and revised (two-staircase) branches read from the
+    // same neutral tokens.
+    it('pins the metAtMs markPoint to neutral status-on-good tokens (tone-aware)', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Heating',
+      ) as {
+        series: Array<{
+          name: string;
+          markPoint?: { itemStyle?: { color?: string; borderColor?: string } };
+        }>;
+      };
+      const planned = option.series.find((s) => s.name === 'Planned trajectory');
+      // Marker fill must be the neutral on-good token (stubbed `#abcdef`),
+      // NOT the planner-state `observed` green (`#0f0`). Stroke matches
+      // `palette.text` (= `--pels-text-primary` in the live palette).
+      expect(planned?.markPoint?.itemStyle?.color).toBe('#abcdef');
+      expect(planned?.markPoint?.itemStyle?.color).not.toBe('#0f0');
+      expect(planned?.markPoint?.itemStyle?.borderColor).toBe('#fff');
+    });
+
+    it('pins the revised-overlay metAtMs markPoint to the same neutral tokens', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const original = buildRevision({ kwhPerUnitMean: 0.5 });
+      // Distinct revised snapshot (more hours) so the trajectory has a
+      // second-staircase overlay and the revised branch's markPoint is the
+      // one that carries the dot.
+      const revised = buildRevision({
+        kwhPerUnitMean: 0.5,
+        hours: [
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1.5 },
+        ],
+      });
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        originalPlan: original,
+        finalPlan: revised,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Heating',
+      ) as {
+        series: Array<{
+          name: string;
+          markPoint?: { itemStyle?: { color?: string; borderColor?: string } };
+        }>;
+      };
+      const revisedSeries = option.series.find((s) => s.name === 'Revised trajectory');
+      expect(revisedSeries?.markPoint?.itemStyle?.color).toBe('#abcdef');
+      expect(revisedSeries?.markPoint?.itemStyle?.borderColor).toBe('#fff');
+    });
+
+    // Pins the trajectory grid.top to 60 px so the 4-entry legend (Planned /
+    // Revised / Measured / Target) has room to wrap to two rows at 320 px
+    // without crowding the chart-top edge. Regression-protect: a future
+    // tweak that drops the reserve back to 44 will fail this test, signalling
+    // a 320 px Playwright snapshot is needed to confirm whatever new value
+    // still clears the wrap.
+    it('reserves 60 px grid.top on the trajectory chart for 2-line legend wrap', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const { resolveHistoryDetailChartData } =
+        await import('../../shared-domain/src/deferredPlanHistory');
+      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+      });
+      const chartData = resolveHistoryDetailChartData(entry);
+      const option = buildHistoryDetailTrajectoryOption(
+        chartData,
+        stubPalette,
+        'UTC',
+        'Measured Heating',
+      ) as { grid: { top: number; bottom: number; containLabel: boolean } };
+      expect(option.grid.top).toBe(60);
+      // `containLabel: true` is the load-bearing pattern from PR 1 that
+      // gives ECharts room to auto-fit the y-axis labels; keep it pinned.
+      expect(option.grid.containLabel).toBe(true);
+    });
+
     it('uses % unit formatting for EV SoC entries', async () => {
       const { buildHistoryDetailTrajectoryOption } =
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
@@ -754,6 +880,29 @@ describe('DeadlinePlanHistoryDetail', () => {
       // regression test in `deadline-recorder-to-history.spec.ts` continues
       // to assert against `kWh` labels.
       expect(option.yAxis.axisLabel.formatter(1.2)).toContain('kWh');
+    });
+
+    // Same grid.top pinning as the trajectory builder — keeps both chart
+    // option builders aligned so a future divergence between them shows up
+    // in the test suite, not in a regressed UI.
+    it('reserves 60 px grid.top on the legacy bar chart for legend-wrap headroom', async () => {
+      const { buildHistoryDetailChartOption, buildHistoryDetailRows } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const revision = buildRevision();
+      delete (revision as { kwhPerUnitMean?: number }).kwhPerUnitMean;
+      const rows = buildHistoryDetailRows(revision, revision, [], 'UTC', {
+        startedAtMs: DEADLINE_MS - 2 * HOUR_MS,
+        deadlineAtMs: DEADLINE_MS,
+      });
+      const option = buildHistoryDetailChartOption(
+        rows,
+        stubPalette,
+        true,
+        true,
+        'Measured Heating',
+      ) as { grid: { top: number; containLabel: boolean } };
+      expect(option.grid.top).toBe(60);
+      expect(option.grid.containLabel).toBe(true);
     });
   });
 
