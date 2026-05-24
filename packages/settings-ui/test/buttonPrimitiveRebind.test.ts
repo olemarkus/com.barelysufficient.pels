@@ -205,4 +205,85 @@ describe('button primitive: every native-button recourse CTA walks the canonical
     expect(hits[0]).toMatch(/class="pels-button"/);
     expect(hits[0]).not.toMatch(/plan-hero__recourse-button/);
   });
+
+  // Batch 12 (P2 follow-up): the chart-toggle ghost button on the Succeeded
+  // receipt shape was deferred from the batch 10 rebind because an e2e
+  // selector pinned the per-page class. It now chains the canonical
+  // `.pels-button` primitive + a `.plan-history-detail__chart-toggle`
+  // decorator that overrides the ghost-specific visuals (transparent bg,
+  // narrower padding, hover/focus tint). Pin both ends of the chain so
+  // a future drop of either side fails fast.
+  it('DeadlinePlanHistoryDetail chart toggle chains `.pels-button` + decorator', () => {
+    const text = fs.readFileSync(DEADLINE_HISTORY_DETAIL_TSX, 'utf8');
+    const collapsed = text.replace(/\s+/g, ' ');
+    // The toggle is the only `<button>` carrying both classes on the
+    // history-detail surface, so a single combined match is sufficient.
+    const regex = /<button[^>]*class="pels-button plan-history-detail__chart-toggle"[^>]*>/g;
+    const matches = collapsed.match(regex) ?? [];
+    expect(
+      matches,
+      'expected the chart toggle to chain `.pels-button plan-history-detail__chart-toggle`',
+    ).toHaveLength(1);
+    // Defensive: aria-expanded is part of the toggle contract; if a future
+    // edit drops it, the disclosure stops being announced to screen readers.
+    expect(matches[0]).toMatch(/aria-expanded=/);
+  });
+});
+
+// --- Chart-toggle decorator beats the panel-scoped `.pels-button` cascade --
+
+describe('button primitive: `.plan-history-detail__chart-toggle` decorator preserves the ghost visual', () => {
+  // The chain (`.pels-button .plan-history-detail__chart-toggle`) only works
+  // if the decorator's rules can actually beat the panel-scoped doubled-class
+  // `.pels-button` cascade that paints the filled-CTA visuals. The decorator
+  // must therefore carry its own doubled-class rule (outside the panel scope)
+  // AND a panel-scoped doubled-class rule (inside `#deadline-plan-panel`) to
+  // win specificity on both surfaces. Pin both forms so a future edit can't
+  // accidentally collapse them into a single bare-class rule that silently
+  // shifts the toggle from ghost to filled.
+  it('declares a doubled-class decorator rule so the bare selector wins (0,2,0)', () => {
+    expect(STYLE_CSS).toMatch(
+      /^\.plan-history-detail__chart-toggle\.plan-history-detail__chart-toggle\s*\{/m,
+    );
+  });
+
+  it('declares a panel-scoped doubled-class rule so the decorator wins inside `#deadline-plan-panel`', () => {
+    expect(STYLE_CSS).toMatch(
+      /#deadline-plan-panel\s+button\.plan-history-detail__chart-toggle\.plan-history-detail__chart-toggle\s*\{/,
+    );
+  });
+
+  it('keeps the ghost background (transparent) on the decorator', () => {
+    // Filled `.pels-button` paints `background: var(--pels-surface-container-high)`;
+    // the ghost decorator must override with `transparent`. If a future
+    // edit drops the override, the toggle silently becomes a filled CTA
+    // that visually competes with the H2 it sits beside.
+    expect(STYLE_CSS).toMatch(
+      /\.plan-history-detail__chart-toggle\.plan-history-detail__chart-toggle\s*\{[^}]*background:\s*transparent/,
+    );
+  });
+
+  it('positions the panel-scoped decorator AFTER the panel-scoped `.pels-button` block (source-order tie-break)', () => {
+    // Inside `#deadline-plan-panel`, both the canonical `.pels-button`
+    // doubled-class block and the chart-toggle doubled-class decorator
+    // carry specificity `(1,2,1)`. When specificity ties, the *later*
+    // rule wins. If a future cleanup re-orders the file and moves the
+    // decorator above the canonical block, the toggle silently shifts
+    // to filled — exactly the regression the e2e selector and the
+    // visual-contract assertions above are meant to catch, but those
+    // signal too late (test failure / pixel shift). Pin the ordering
+    // explicitly so the wrong move fails at source-grep time.
+    const pelsButtonScoped = STYLE_CSS.indexOf(
+      '#deadline-plan-panel button.pels-button.pels-button {',
+    );
+    const chartToggleScoped = STYLE_CSS.indexOf(
+      '#deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {',
+    );
+    expect(pelsButtonScoped).toBeGreaterThan(-1);
+    expect(chartToggleScoped).toBeGreaterThan(-1);
+    expect(
+      chartToggleScoped,
+      'chart-toggle panel-scoped decorator must appear after the panel-scoped `.pels-button` block so source-order tie-break favours the ghost decorator',
+    ).toBeGreaterThan(pelsButtonScoped);
+  });
 });
