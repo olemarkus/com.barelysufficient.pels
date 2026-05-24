@@ -40,7 +40,7 @@ export const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiv
   // `expectedPowerKw` / `powerKw` (which the power estimator populates from
   // the load setting / Homey Energy approximation). EV chargers do not use
   // `measuredPowerKw` here because their `expectedPowerKw` is the calibrated
-  // 1-step view from `appInit.buildEvChargerCalibrationView` and the
+  // 1-step view from `appInit/calibrationViews.buildEvChargerCalibrationView` and the
   // existing branch above is the documented invariant for EV planning speed.
   // Mill-/Adax-/Glamox-shaped Norwegian panel heaters report class
   // `thermostat`, `onoff` + `target_temperature` + `measure_power`, no

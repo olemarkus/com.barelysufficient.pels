@@ -1451,6 +1451,22 @@
     },
   };
 
-  // Expose globally.
+  // Expose globally. Two paths matter here:
+  //   1. `window.Homey = Homey` — legacy global fallback. `waitForHomey()` in
+  //      `packages/settings-ui/src/ui/homey.ts` polls this if the ready promise
+  //      never resolves, and a handful of tests still read it directly.
+  //   2. `window.onHomeyReady(Homey)` — the path Homey's injected settings SDK
+  //      uses in production (`/homey.js` calls it once it has built the client).
+  //      `public/index.html` wires that callback to resolve
+  //      `window.__PELS_HOMEY_READY__`, which is the preferred entry point.
+  // Keeping both means full-browser audits exercise the production handoff
+  // while existing tests that rely on the global keep working.
   window.Homey = Homey;
+  if (typeof window.onHomeyReady === 'function') {
+    try {
+      window.onHomeyReady(Homey);
+    } catch (e) {
+      console.error('[homey.stub] onHomeyReady threw', e);
+    }
+  }
 })();
