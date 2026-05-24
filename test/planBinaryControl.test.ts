@@ -193,7 +193,6 @@ describe('plan binary control helpers', () => {
       },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('already pending'));
     expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
@@ -340,6 +339,7 @@ describe('plan binary control helpers', () => {
       getSnapshot: vi.fn().mockReturnValue([]),
     };
 
+    const debugStructured = vi.fn();
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
@@ -347,6 +347,7 @@ describe('plan binary control helpers', () => {
       log: vi.fn(),
       logDebug,
       error: vi.fn(),
+      debugStructured,
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -367,6 +368,7 @@ describe('plan binary control helpers', () => {
       log: vi.fn(),
       logDebug,
       error: vi.fn(),
+      debugStructured,
       deviceId: 'socket1',
       name: 'Socket',
       desired: false,
@@ -381,13 +383,17 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('already pending'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'already_pending',
+    }));
   });
 
   it('skips a standard binary command when the latest snapshot already matches the desired state', async () => {
     const state = createPlanEngineState();
     const log = vi.fn();
     const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const deviceManager = {
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([{
@@ -406,6 +412,7 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error: vi.fn(),
+      debugStructured,
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
@@ -422,9 +429,10 @@ describe('plan binary control helpers', () => {
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect(log).not.toHaveBeenCalled();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: skip binary command for Socket, already on in current snapshot',
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'already_matched',
+    }));
   });
 
   it('clears pending standard binary commands once the live state confirms them', async () => {
@@ -1057,6 +1065,7 @@ describe('plan binary control helpers', () => {
     const log = vi.fn();
     const logDebug = vi.fn();
     const error = vi.fn();
+    const debugStructured = vi.fn();
     const failingManager = {
       setCapability: vi.fn().mockRejectedValue(new Error('kaput')),
       getSnapshot: vi.fn().mockReturnValue([]),
@@ -1069,13 +1078,17 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error,
+      debugStructured,
       deviceId: 'ev1',
       name: 'EV',
       desired: false,
       snapshot: { id: 'ev1', name: 'EV', deviceClass: 'evcharger' },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('no binary control plan'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: expect.stringMatching(/missing_(onoff_capability|control_targets)/),
+    }));
 
     await expect(setBinaryControl({
       state,
@@ -1084,6 +1097,7 @@ describe('plan binary control helpers', () => {
       log,
       logDebug,
       error,
+      debugStructured,
       deviceId: 'ev1',
       name: 'EV',
       desired: false,
@@ -1096,7 +1110,10 @@ describe('plan binary control helpers', () => {
       },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('capability not setable'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'capability_not_setable',
+    }));
 
     await expect(setBinaryControl({
       state,
@@ -1144,24 +1161,20 @@ describe('plan binary control helpers', () => {
     );
   });
 
-  it('logs the clearing stale message when getPendingBinaryCommand removes an expired entry', () => {
+  it('removes an expired entry when getPendingBinaryCommand observes a stale pending', () => {
     const state = createPlanEngineState();
     state.pendingBinaryCommands.socket1 = {
       capabilityId: 'onoff',
       desired: false,
       startedMs: 1_000,
     };
-    const logDebug = vi.fn();
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
-    const pending = getPendingBinaryCommand(state, 'socket1', logDebug);
+    const pending = getPendingBinaryCommand(state, 'socket1');
     nowSpy.mockRestore();
 
     expect(pending).toBeUndefined();
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: clearing stale pending binary command for socket1: onoff=false after 20000ms (timeout 15000ms)',
-    );
   });
 
   it('clears pending EV commands after a failed capability write', async () => {
