@@ -245,32 +245,6 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
-- [ ] `.plan-chip[data-tone="link"]` API gap. PR #1028 ships the
-      dual BEM + `data-tone` API for tonal chips
-      (`good|warn|alert|info|muted` etc.), but `.plan-chip--link` is a
-      role modifier (tappable affordance) with NO `[data-tone="link"]`
-      companion rule. A new consumer that writes `data-tone="link"`
-      following the "prefer the data-attribute form" guidance would get
-      the info background but no hover/focus affordance + no touch
-      target. Either document `--link` as an additive role modifier
-      (not a tone) in the chip-primitive comment, or add a
-      `.plan-chip[data-tone="link"]` rule that mirrors the
-      `--link` modifier (cursor, transitions, hover/focus, touch
-      target).
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1028 follow-up, 2026-05-24.
-
-- [ ] `.plan-chip strong { font-weight: var(--font-weight-bold) }` is a
-      1-step contrast bump above the chip's own `--chip-font-weight`
-      (semibold) at the xs font size — easily lost. Consider dropping
-      the override and letting `<strong>` inherit the chip's weight, or
-      document the intent in the chip-primitive comment. Pre-existing
-      parity behavior carried forward from the retired `.chip strong`
-      selector; not a new violation, but worth tightening when the
-      primitive sees its next pass.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1028 follow-up, 2026-05-24.
-
 - [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
       asymmetry when it wraps. PR #1016 routes the Budget header through
       the shared `.plan-hero` primitive with a `.plan-hero__chips` row
