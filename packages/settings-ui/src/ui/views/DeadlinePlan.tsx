@@ -843,7 +843,13 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
         {provenanceRows.map((row) => (
           <div key={row.label} class="plan-inputs__row">
             <dt class="plan-inputs__row-label">{row.label}</dt>
-            <dd class="plan-inputs__row-value">{row.value}</dd>
+            <dd
+              class={row.tone === null
+                ? 'plan-inputs__row-value'
+                : `plan-inputs__row-value plan-inputs__row-value--${row.tone}`}
+            >
+              {row.value}
+            </dd>
           </div>
         ))}
       </dl>
