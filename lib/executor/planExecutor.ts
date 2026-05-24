@@ -31,7 +31,9 @@ import {
   shouldSkipUnavailable,
 } from '../plan/planExecutorSupport';
 import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from '../plan/planSteppedLoad';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('executor/plan');
 import {
   applyShedTemperaturePlan,
   applyTargetUpdate,
@@ -97,11 +99,6 @@ export type PlanExecutorDeps = {
   }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
 };
 
 export type PlanActuationResult = {
@@ -120,9 +117,6 @@ export class PlanExecutor {
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
   }
 
-  private readonly boundLog = (...args: unknown[]): void => this.log(...args);
-  private readonly boundLogDebug = (...args: unknown[]): void => this.logDebug(...args);
-  private readonly boundError = (...args: unknown[]): void => this.error(...args);
   private readonly boundGetShedBehavior = (deviceId: string) => this.getShedBehavior(deviceId);
   private readonly boundBuildBinaryControlDeps = () => this.buildBinaryControlDeps();
   private readonly boundMarkSteppedLoadDesiredStepIssued = (params: {
@@ -216,18 +210,6 @@ export class PlanExecutor {
     });
   }
 
-  private log(...args: unknown[]): void {
-    this.deps.log(...args);
-  }
-
-  private logDebug(...args: unknown[]): void {
-    this.deps.logDebug(...args);
-  }
-
-  private error(...args: unknown[]): void {
-    this.deps.error(...args);
-  }
-
   private recordShedActuation(deviceId: string, name: string, now: number): void {
     this.state.lastInstabilityMs = now;
     this.recordControlTimestamp(deviceId, now);
@@ -288,7 +270,7 @@ export class PlanExecutor {
     if (!pending.flowBackedControl) return;
 
     const now = params.confirmedAtMs ?? Date.now();
-    this.deps.structuredLog?.info({
+    logger.info({
       event: 'binary_command_applied',
       deviceId,
       deviceName: liveDevice.name,
@@ -326,7 +308,11 @@ export class PlanExecutor {
       this.deps.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, this.state.lastDeviceControlledMs);
       this.lastControlledPersistenceDirty = false;
     } catch (error) {
-      this.error('Failed to persist device last-controlled timestamps', error as Error);
+      logger.error({
+        event: 'executor_plan_error',
+        msg: 'Failed to persist device last-controlled timestamps',
+        err: error as Error,
+      });
     }
   }
 
@@ -342,11 +328,6 @@ export class PlanExecutor {
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
         logTargetRetryComparison: this.deps.logTargetRetryComparison,
-        structuredLog: this.deps.structuredLog,
-        debugStructured: this.deps.debugStructured,
-        log: this.boundLog,
-        logDebug: this.boundLogDebug,
-        error: this.boundError,
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         recordActivationAttemptStarted: this.boundRecordActivationAttemptStarted,
@@ -358,8 +339,6 @@ export class PlanExecutor {
     this.targetExecutorContext.operatingMode = this.operatingMode;
     this.targetExecutorContext.syncLivePlanStateAfterTargetActuation = this.deps.syncLivePlanStateAfterTargetActuation;
     this.targetExecutorContext.logTargetRetryComparison = this.deps.logTargetRetryComparison;
-    this.targetExecutorContext.structuredLog = this.deps.structuredLog;
-    this.targetExecutorContext.debugStructured = this.deps.debugStructured;
     this.targetExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
     return this.targetExecutorContext;
   }
@@ -368,10 +347,6 @@ export class PlanExecutor {
     if (!this.steppedExecutorContext) {
       this.steppedExecutorContext = {
         state: this.state,
-        logDebug: this.boundLogDebug,
-        error: this.boundError,
-        structuredLog: this.deps.structuredLog,
-        debugStructured: this.deps.debugStructured,
         buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
         markSteppedLoadDesiredStepIssued: this.boundMarkSteppedLoadDesiredStepIssued,
         recordShedActuation: this.boundRecordShedActuation,
@@ -383,8 +358,6 @@ export class PlanExecutor {
     }
 
     this.steppedExecutorContext.state = this.state;
-    this.steppedExecutorContext.structuredLog = this.deps.structuredLog;
-    this.steppedExecutorContext.debugStructured = this.deps.debugStructured;
     this.steppedExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
     return this.steppedExecutorContext;
   }
@@ -395,10 +368,6 @@ export class PlanExecutor {
         state: this.state,
         deviceManager: this.deviceManager,
         capacityDryRun: this.capacityDryRun,
-        structuredLog: this.deps.structuredLog,
-        debugStructured: this.deps.debugStructured,
-        logDebug: this.boundLogDebug,
-        error: this.boundError,
         buildBinaryControlDeps: this.boundBuildBinaryControlDeps,
         getRestoreLogSource: this.boundGetRestoreLogSource,
         recordShedActuation: this.boundRecordShedActuation,
@@ -409,8 +378,6 @@ export class PlanExecutor {
 
     this.binaryExecutorContext.state = this.state;
     this.binaryExecutorContext.capacityDryRun = this.capacityDryRun;
-    this.binaryExecutorContext.structuredLog = this.deps.structuredLog;
-    this.binaryExecutorContext.debugStructured = this.deps.debugStructured;
     this.binaryExecutorContext.deviceDiagnostics = this.deps.deviceDiagnostics;
     return this.binaryExecutorContext;
   }
@@ -473,18 +440,14 @@ export class PlanExecutor {
   ): Promise<boolean> {
     const command = buildExecutableTargetCommand(intent, observed);
     if (this.capacityDryRun) {
-      this.log(
-        `Capacity (dry run): would set ${command?.targetCap || 'target'} `
-        + `for ${intent.name} to ${intent.desired}°C (shedding)`,
-      );
+      logger.info({ event: 'executor_plan_log', msg: `Capacity (dry run): would set ${command?.targetCap || 'target'} `
+        + `for ${intent.name} to ${intent.desired}°C (shedding)` });
       return false;
     }
     if (!command) return false;
     if (Object.is(command.observedValue, command.desired)) {
-      this.logDebug(
-        `Capacity: skip setting ${command.targetCap || 'target'} `
-        + `for ${intent.name}, already at ${intent.desired}°C`,
-      );
+      logger.debug({ event: 'executor_plan_log_debug', msg: `Capacity: skip setting ${command.targetCap || 'target'} `
+        + `for ${intent.name}, already at ${intent.desired}°C` });
       return false;
     }
     const result = await applyShedTemperaturePlan(this.buildTargetExecutorContext(), command);
@@ -552,7 +515,7 @@ export class PlanExecutor {
         deviceId,
         deviceName,
         snapshotState,
-        logDebug: (...args: unknown[]) => this.logDebug(...args),
+        logDebug: (...args: unknown[]) => logger.debug({ event: 'executor_plan_log_debug', msg: args.join(' ') }),
       })) {
         return false;
       }
@@ -619,13 +582,14 @@ export class PlanExecutor {
     const total = this.capacityGuard ? this.capacityGuard.getLastTotalPower() : null;
     const totalStr = total === null ? 'unknown' : total.toFixed(2);
 
-    this.log(
-      `Capacity shortfall: projected hard-cap budget breach, over by `
-      + `~${deficitKw.toFixed(2)}kW `
-      + `(total ${totalStr}kW, `
-      + `threshold ${shortfallThreshold.toFixed(2)}kW, `
-      + `soft ${softLimit.toFixed(2)}kW)`,
-    );
+    logger.info({
+      event: 'executor_plan_log',
+      msg: `Capacity shortfall: projected hard-cap budget breach, over by `
+        + `~${deficitKw.toFixed(2)}kW `
+        + `(total ${totalStr}kW, `
+        + `threshold ${shortfallThreshold.toFixed(2)}kW, `
+        + `soft ${softLimit.toFixed(2)}kW)`,
+    });
 
     this.state.inShortfall = true;
     this.deps.homey.settings.set('capacity_in_shortfall', true);
@@ -634,14 +598,18 @@ export class PlanExecutor {
     // Trigger flow card
     const card = this.deps.homey.flow?.getTriggerCard?.('capacity_shortfall');
     if (card && typeof card.trigger === 'function') {
-      card.trigger({}).catch((err: Error) => this.error('Failed to trigger capacity_shortfall', err));
+      card.trigger({}).catch((err: Error) => logger.error({
+        event: 'executor_plan_error',
+        msg: 'Failed to trigger capacity_shortfall',
+        err,
+      }));
     }
   }
 
   public async handleShortfallCleared(): Promise<void> {
     if (!this.state.inShortfall) return; // Not in shortfall state
 
-    this.log('Capacity shortfall resolved');
+    logger.info({ event: 'executor_plan_log', msg: 'Capacity shortfall resolved' });
     this.state.inShortfall = false;
     this.deps.homey.settings.set('capacity_in_shortfall', false);
     incPerfCounter('settings_set.capacity_in_shortfall');
@@ -659,7 +627,10 @@ export class PlanExecutor {
       const executablePlan = buildExecutablePlan(plan);
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
-      const logCapacityDebug = (...args: unknown[]) => this.logDebug(...args);
+      const logCapacityDebug = (...args: unknown[]) => logger.debug({
+        event: 'executor_plan_log_debug',
+        msg: args.join(' '),
+      });
       const hasShedDevices = hasExecutableShedDevices(plan, executablePlan);
       this.logUnderspecifiedSteppedShedDevices(plan, executablePlan, mode);
       let deviceWriteCount = 0;
@@ -743,10 +714,11 @@ export class PlanExecutor {
           if (await this.applyBinaryRestoreIntent(intent.binary, observed, mode)) deviceWriteCount += 1;
           if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
         } catch (error) {
-          this.error(
-            `Failed to apply action for ${intent.name}; continuing with remaining devices`,
-            error,
-          );
+          logger.error({
+            event: 'executor_plan_error',
+            msg: `Failed to apply action for ${intent.name}; continuing with remaining devices`,
+            err: error,
+          });
         }
       }
       return { deviceWriteCount, commandRequestCount };
@@ -765,9 +737,8 @@ export class PlanExecutor {
   }
 
   private logUnderspecifiedSteppedShedDevices(plan: DevicePlan, exec: ExecutablePlan, mode: PlanActuationMode): void {
-    if (!this.deps.debugStructured) return;
     for (const dropped of findDroppedSteppedShedIntents(plan, exec)) {
-      this.deps.debugStructured({
+      logger.debug({
         event: 'stepped_load_shed_intent_dropped',
         reasonCode: 'underspecified_set_step',
         actuationMode: mode,

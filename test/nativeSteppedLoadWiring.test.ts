@@ -1,4 +1,5 @@
 import Homey from 'homey';
+import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import {
   DeviceManager,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
@@ -119,6 +120,10 @@ const restoreMockRestClient = () => {
     put: (path, body) => mockHomeyInstance.api.put(path, body),
   });
 };
+
+let logCapture: LoggerCapture;
+beforeEach(() => { logCapture = captureLogger(); });
+afterEach(() => { logCapture.restore(); });
 
 describe('native stepped-load wiring', () => {
   beforeEach(() => {
@@ -790,7 +795,7 @@ describe('native stepped-load wiring', () => {
       previousStepId: 'max',
     });
     expect(trigger).not.toHaveBeenCalled();
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       deviceId: 'hoiax-1',
       targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
@@ -875,7 +880,7 @@ describe('native stepped-load wiring', () => {
     }, {
       deviceId: 'synthetic-target-power-1',
     });
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       deviceId: 'synthetic-target-power-1',
       targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
@@ -966,7 +971,7 @@ describe('native stepped-load wiring', () => {
     }, {
       deviceId: 'zaptec-go-1',
     });
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       deviceId: 'zaptec-go-1',
       targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,

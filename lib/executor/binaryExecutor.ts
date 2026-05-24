@@ -1,6 +1,6 @@
 import type { DeviceManager } from '../device/manager';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
@@ -23,14 +23,12 @@ import type {
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 
+const logger = getLogger('executor/binary');
+
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
   deviceManager: DeviceManager;
   capacityDryRun: boolean;
-  structuredLog?: PinoLogger;
-  debugStructured?: StructuredDebugEmitter;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
   buildBinaryControlDeps: () => {
     state: PlanEngineState;
     deviceManager: DeviceManager;
@@ -69,7 +67,13 @@ export const applyBinaryRestore = async (
   }
   if (snapshot.currentOn !== false) return false;
   if (snapshot.deviceClass === 'evcharger') {
-    ctx.logDebug(`Capacity: evaluating EV restore for ${intent.name} (${formatEvSnapshot(snapshot)})`);
+    logger.debug({
+      event: 'ev_restore_evaluating',
+      deviceId: intent.deviceId,
+      deviceName: intent.name,
+      logContext: 'capacity',
+      evSnapshot: formatEvSnapshot(snapshot),
+    });
   }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
@@ -108,10 +112,13 @@ export const applyUncontrolledBinaryRestore = async (
   }
   if (entry.currentOn !== false) return false;
   if (entry.deviceClass === 'evcharger') {
-    ctx.logDebug(
-      `Capacity control off: evaluating EV restore for ${intent.name} `
-      + `(${formatEvSnapshot(entry)})`,
-    );
+    logger.debug({
+      event: 'ev_restore_evaluating',
+      deviceId: intent.deviceId,
+      deviceName: intent.name,
+      logContext: 'capacity_control_off',
+      evSnapshot: formatEvSnapshot(entry),
+    });
   }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot: entry,
@@ -151,7 +158,7 @@ export const applyBinarySheddingToDevice = async (
     deviceId,
     deviceName,
     snapshotState,
-    logDebug: (...args: unknown[]) => ctx.logDebug(...args),
+    logDebug: (...args: unknown[]) => logger.debug({ event: 'executor_binary_log_debug', msg: args.join(' ') }),
   })) {
     return false;
   }
@@ -212,7 +219,7 @@ export const applyDeferredEvCommand = async (
 };
 
 const canApplyRestoreSnapshot = (
-  ctx: PlanExecutorBinaryContext,
+  _ctx: PlanExecutorBinaryContext,
   params: {
     snapshot?: TargetDeviceSnapshot;
     deviceId: string;
@@ -229,7 +236,7 @@ const canApplyRestoreSnapshot = (
     mode,
   } = params;
   if (!snapshot) {
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'missing_snapshot',
       deviceId,
@@ -238,14 +245,17 @@ const canApplyRestoreSnapshot = (
       actuationMode: mode,
     });
     if (logContext === 'capacity') {
-      ctx.logDebug(`Capacity: skip restoring ${name}, no snapshot available`);
+      logger.debug({
+        event: 'executor_binary_log_debug',
+        msg: `Capacity: skip restoring ${name}, no snapshot available`,
+      });
     }
     return false;
   }
   if (!canTurnOnDevice(snapshot)) {
     const evReason = getEvRestoreBlockReason(snapshot);
     const suffix = evReason ? ` (${evReason})` : '';
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'not_setable',
       deviceId,
@@ -254,7 +264,10 @@ const canApplyRestoreSnapshot = (
       actuationMode: mode,
     });
     if (logContext === 'capacity') {
-      ctx.logDebug(`Capacity: skip restoring ${name}, cannot turn on from current snapshot${suffix}`);
+      logger.debug({
+        event: 'executor_binary_log_debug',
+        msg: `Capacity: skip restoring ${name}, cannot turn on from current snapshot${suffix}`,
+      });
     }
     return false;
   }
@@ -278,7 +291,7 @@ const applyBinaryRestoreWithSnapshot = async (
     mode,
   } = params;
   if (ctx.state.pendingRestores.has(deviceId)) {
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'restore_command_skipped',
       reasonCode: 'already_in_progress',
       deviceId,
@@ -286,7 +299,7 @@ const applyBinaryRestoreWithSnapshot = async (
       logContext: 'capacity',
       actuationMode: mode,
     });
-    ctx.logDebug(`Capacity: skip restoring ${name}, already in progress`);
+    logger.debug({ event: 'executor_binary_log_debug', msg: `Capacity: skip restoring ${name}, already in progress` });
     return false;
   }
   ctx.state.pendingRestores.add(deviceId);
@@ -308,7 +321,7 @@ const applyBinaryRestoreWithSnapshot = async (
         snapshot.controlCapabilityId ?? 'onoff',
       );
       if (!flowBackedControl) {
-        ctx.structuredLog?.info({
+        logger.info({
           event: 'binary_command_applied',
           deviceId,
           deviceName: name,
@@ -322,7 +335,7 @@ const applyBinaryRestoreWithSnapshot = async (
       }
       return true;
     } catch (error) {
-      ctx.error(`Failed to turn on ${name} via DeviceManager`, error);
+      logger.error({ event: 'executor_binary_error', msg: `Failed to turn on ${name} via DeviceManager`, err: error });
       return false;
     }
   } finally {
@@ -359,7 +372,7 @@ const applyCapacityControlOffRestoreWithSnapshot = async (
       snapshot.controlCapabilityId ?? 'onoff',
     );
     if (!flowBackedControl) {
-      ctx.structuredLog?.info({
+      logger.info({
         event: 'binary_command_applied',
         deviceId,
         deviceName: name,
@@ -373,7 +386,7 @@ const applyCapacityControlOffRestoreWithSnapshot = async (
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to restore ${name} via DeviceManager`, error);
+    logger.error({ event: 'executor_binary_error', msg: `Failed to restore ${name} via DeviceManager`, err: error });
     return false;
   }
 };
@@ -442,14 +455,18 @@ const turnOffDevice = async (
   const snapshotEntry = snapshot ?? ctx.deviceManager.getSnapshot().find((entry) => entry.id === deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
   if (snapshotEntry?.deviceClass === 'evcharger') {
-    ctx.logDebug(`Capacity: preparing EV shed for ${name} (${formatEvSnapshot(snapshotEntry)})`);
+    logger.debug({
+      event: 'ev_shed_preparing',
+      deviceName: name,
+      evSnapshot: formatEvSnapshot(snapshotEntry),
+    });
   }
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
     const now = Date.now();
     // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
     ctx.state.lastDeviceShedMs[deviceId] = now;
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'binary_command_skipped',
       reasonCode: hasTarget ? 'missing_onoff_capability' : 'missing_control_targets',
       deviceId,
@@ -460,9 +477,9 @@ const turnOffDevice = async (
       hasTargets: hasTarget,
       capabilityId: snapshotEntry?.controlCapabilityId ?? null,
     });
-    ctx.logDebug(hasTarget
+    logger.debug({ event: 'executor_binary_log_debug', msg: hasTarget
       ? `Capacity: skip turn_off for ${name}, device has no onoff capability`
-      : `Capacity: skip turn_off for ${name}, device has no onoff or temperature target`);
+      : `Capacity: skip turn_off for ${name}, device has no onoff or temperature target` });
     return false;
   }
   const now = Date.now();
@@ -483,7 +500,7 @@ const turnOffDevice = async (
       snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
     );
     if (!flowBackedControl) {
-      ctx.structuredLog?.info({
+      logger.info({
         event: 'binary_command_applied',
         deviceId,
         deviceName: name,
@@ -496,7 +513,7 @@ const turnOffDevice = async (
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to turn off ${name} via DeviceManager`, error);
+    logger.error({ event: 'executor_binary_error', msg: `Failed to turn off ${name} via DeviceManager`, err: error });
     return false;
   }
 };
