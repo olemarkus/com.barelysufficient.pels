@@ -6,6 +6,7 @@ import {
   resolveHeldStateActionLabel,
 } from '../packages/shared-domain/src/deviceOverview';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../packages/shared-domain/src/planStateLabels';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 
 const r = legacyDeviceReason;
@@ -144,7 +145,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Shed to max',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
-      statusMsg: 'Limited by the hard cap',
+      statusMsg: PLAN_STATE_HELD_FALLBACK_STATUS,
     });
   });
 

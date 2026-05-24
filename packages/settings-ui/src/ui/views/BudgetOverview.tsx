@@ -39,7 +39,7 @@ export type BudgetHeroData = {
   headlineLabel: string | null;
   comparison: string;
   delta: { label: string; tone: BudgetDeltaTone } | null;
-  headroomLine: string | null;
+  budgetRemainingLine: string | null;
   splitLine: string | null;
   priceTagline: string | null;
   decision: string | null;
@@ -187,8 +187,8 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
           </span>
         )}
       </div>
-      {hero.headroomLine !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.headroomLine}</div>
+      {hero.budgetRemainingLine !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted">{hero.budgetRemainingLine}</div>
       )}
       {hero.splitLine !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.splitLine}</div>
