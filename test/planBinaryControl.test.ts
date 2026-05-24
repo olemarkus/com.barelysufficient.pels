@@ -7,6 +7,17 @@ import {
   syncPendingBinaryCommands,
 } from '../lib/plan/planBinaryControl';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
+import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
+
+let logCapture: LoggerCapture;
+
+beforeEach(() => {
+  logCapture = captureLogger();
+});
+
+afterEach(() => {
+  logCapture.restore();
+});
 
 const binaryObservation = (
   capabilityId: 'onoff' | 'evcharger_charging',
@@ -55,7 +66,6 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(true);
 
     nowSpy.mockReturnValue(61_000);
-    const waitingLog = vi.fn();
     const changed = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -68,7 +78,6 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'snapshot_refresh',
-      logDebug: waitingLog,
     });
 
     expect(changed).toBe(true);
@@ -78,12 +87,15 @@ describe('plan binary control helpers', () => {
       lastObservedValue: false,
       lastObservedSource: 'snapshot_refresh',
     });
-    expect(waitingLog).toHaveBeenCalledWith(
-      'Capacity: waiting for onoff confirmation for Connected 300; observed off via snapshot_refresh, expected on',
-    );
+    expect(logCapture.findEvent('pending_binary_command_waiting')).toMatchObject({
+      deviceName: 'Connected 300',
+      capabilityId: 'onoff',
+      observedValue: 'off',
+      expected: 'on',
+      source: 'snapshot_refresh',
+    });
 
     nowSpy.mockReturnValue(77_000);
-    const timeoutLog = vi.fn();
     const timedOut = syncPendingBinaryCommands({
       state,
       liveDevices: [{
@@ -96,16 +108,20 @@ describe('plan binary control helpers', () => {
         targets: [],
       }],
       source: 'snapshot_refresh',
-      logDebug: timeoutLog,
     });
     nowSpy.mockRestore();
 
     expect(timedOut).toBe(true);
     expect(state.pendingBinaryCommands['connected-300']).toBeUndefined();
-    expect(timeoutLog).toHaveBeenCalledWith(
-      'Capacity: cleared stale pending binary command for Connected 300: onoff=true after 76000ms '
-      + '(timeout 75000ms); last observed off via snapshot_refresh',
-    );
+    expect(logCapture.findEvent('pending_binary_command_timed_out')).toMatchObject({
+      deviceName: 'Connected 300',
+      capabilityId: 'onoff',
+      desired: true,
+      ageMs: 76000,
+      timeoutMs: 75000,
+      lastObservedValue: false,
+      lastObservedSource: 'snapshot_refresh',
+    });
   });
 
   it('resolves binary control plans and EV restore blocks', () => {
@@ -170,7 +186,7 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(true);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', true);
     expect(updateLocalSnapshot).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith('Capacity: resumed charging for EV');
+    expect(logCapture.findEvent('binary_command_succeeded')).toMatchObject({ deviceName: 'EV', capabilityId: 'evcharger_charging', desired: true });
 
     await expect(setBinaryControl({
       state,
@@ -193,15 +209,14 @@ describe('plan binary control helpers', () => {
       },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'binary_command_skipped',
+    expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
       reasonCode: 'already_pending',
       deviceId: 'ev1',
       desired: true,
       capabilityId: 'evcharger_charging',
       logContext: 'capacity',
       actuationMode: 'plan',
-    }));
+    });
 
     vi.spyOn(Date, 'now').mockReturnValue(state.pendingBinaryCommands.ev1.startedMs + 20_000);
     await expect(setBinaryControl({
@@ -226,7 +241,9 @@ describe('plan binary control helpers', () => {
       reason: 'shedding',
     })).resolves.toBe(true);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('socket1', 'onoff', false);
-    expect(log).toHaveBeenCalledWith('Capacity: turned off Socket (shedding)');
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded', deviceName: 'Socket', capabilityId: 'onoff', desired: false,
+    }));
   });
 
   it('requests flow-backed binary control through a trigger instead of writing the native capability', async () => {
@@ -273,16 +290,14 @@ describe('plan binary control helpers', () => {
       actuationMode: 'plan',
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith('Capacity: requested turn off for Socket (shedding)');
-    expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'flow_backed_binary_command_requested',
+    expect(logCapture.findEvent('flow_backed_binary_command_requested')).toMatchObject({
       deviceId: 'socket1',
       deviceName: 'Socket',
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
       actuationMode: 'plan',
-    }));
+    });
     expect(state.pendingBinaryCommands.socket1).toMatchObject({
       capabilityId: 'onoff',
       desired: false,
@@ -319,8 +334,7 @@ describe('plan binary control helpers', () => {
       logContext: 'capacity',
     })).resolves.toBe(false);
 
-    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'binary_command_failed',
+    expect(logCapture.findEvent('binary_command_failed')).toMatchObject({
       reasonCode: 'device_manager_write_failed',
       deviceId: 'socket1',
       deviceName: 'Socket',
@@ -328,7 +342,7 @@ describe('plan binary control helpers', () => {
       desired: false,
       logContext: 'capacity',
       actuationMode: 'plan',
-    }));
+    });
   });
 
   it('does not resend the same standard binary command while it is pending', async () => {
@@ -383,10 +397,9 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'binary_command_skipped',
+    expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
       reasonCode: 'already_pending',
-    }));
+    });
   });
 
   it('skips a standard binary command when the latest snapshot already matches the desired state', async () => {
@@ -428,11 +441,10 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(log).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'binary_command_skipped',
+    expect(logCapture.findEvent('binary_command_succeeded')).toBeUndefined();
+    expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
       reasonCode: 'already_matched',
-    }));
+    });
   });
 
   it('clears pending standard binary commands once the live state confirms them', async () => {
@@ -487,9 +499,12 @@ describe('plan binary control helpers', () => {
 
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: confirmed onoff for Socket at off via device_update',
-    );
+    expect(logCapture.findEvent('pending_binary_command_confirmed')).toMatchObject({
+      deviceName: 'Socket',
+      capabilityId: 'onoff',
+      observedValue: 'off',
+      source: 'device_update',
+    });
   });
 
   it('keeps a pending restore when telemetry still shows the device off', async () => {
@@ -544,9 +559,13 @@ describe('plan binary control helpers', () => {
       lastObservedValue: false,
       lastObservedSource: 'rebuild',
     });
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: waiting for onoff confirmation for Socket; observed off via rebuild, expected on',
-    );
+    expect(logCapture.findEvent('pending_binary_command_waiting')).toMatchObject({
+      deviceName: 'Socket',
+      capabilityId: 'onoff',
+      observedValue: 'off',
+      expected: 'on',
+      source: 'rebuild',
+    });
   });
 
   it('does not settle a binary command from stale snapshot evidence', () => {
@@ -713,9 +732,13 @@ describe('plan binary control helpers', () => {
       lastObservedValue: false,
       lastObservedSource: 'snapshot_refresh',
     });
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: waiting for onoff confirmation for Socket; observed off via snapshot_refresh, expected on',
-    );
+    expect(logCapture.findEvent('pending_binary_command_waiting')).toMatchObject({
+      deviceName: 'Socket',
+      capabilityId: 'onoff',
+      observedValue: 'off',
+      expected: 'on',
+      source: 'snapshot_refresh',
+    });
   });
 
   it('confirms pending EV commands from charging state, not only currentOn', async () => {
@@ -769,9 +792,12 @@ describe('plan binary control helpers', () => {
 
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.ev1).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: confirmed evcharger_charging for EV at paused via device_update',
-    );
+    expect(logCapture.findEvent('pending_binary_command_confirmed')).toMatchObject({
+      deviceName: 'EV',
+      capabilityId: 'evcharger_charging',
+      observedValue: 'paused',
+      source: 'device_update',
+    });
   });
 
   it('does not settle a pending EV pause from raw false while charging state is still charging', () => {
@@ -898,9 +924,12 @@ describe('plan binary control helpers', () => {
 
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.ev1).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: confirmed evcharger_charging for EV at charging via device_update',
-    );
+    expect(logCapture.findEvent('pending_binary_command_confirmed')).toMatchObject({
+      deviceName: 'EV',
+      capabilityId: 'evcharger_charging',
+      observedValue: 'charging',
+      source: 'device_update',
+    });
   });
 
   it('does not settle EV resume by recomputing old state evidence from a newer charging state', () => {
@@ -1085,7 +1114,7 @@ describe('plan binary control helpers', () => {
       snapshot: { id: 'ev1', name: 'EV', deviceClass: 'evcharger' },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: expect.stringMatching(/missing_(onoff_capability|control_targets)/),
     }));
@@ -1110,7 +1139,7 @@ describe('plan binary control helpers', () => {
       },
       logContext: 'capacity',
     })).resolves.toBe(false);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
     }));
@@ -1133,7 +1162,10 @@ describe('plan binary control helpers', () => {
       },
       logContext: 'capacity_control_off',
     })).resolves.toBe(false);
-    expect(error).toHaveBeenCalledWith('Failed to turn on Socket via DeviceManager', expect.any(Error));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_failed',
+      msg: 'Failed to turn on Socket via DeviceManager',
+    }));
   });
 
   it('clears stale pending binary commands even when the device is no longer present', () => {
@@ -1156,9 +1188,13 @@ describe('plan binary control helpers', () => {
 
     expect(changed).toBe(true);
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: cleared stale pending binary command for device socket1: onoff=false after 20000ms (timeout 15000ms)',
-    );
+    expect(logCapture.findEvent('pending_binary_command_timed_out')).toMatchObject({
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      ageMs: 20000,
+      timeoutMs: 15000,
+    });
   });
 
   it('removes an expired entry when getPendingBinaryCommand observes a stale pending', () => {
@@ -1207,7 +1243,10 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
 
     expect(state.pendingBinaryCommands.ev1).toBeUndefined();
-    expect(error).toHaveBeenCalledWith('Failed to resume EV charging for EV via DeviceManager', expect.any(Error));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_failed',
+      msg: 'Failed to resume EV charging for EV via DeviceManager',
+    }));
   });
 });
 

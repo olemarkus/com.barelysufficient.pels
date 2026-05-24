@@ -1,11 +1,10 @@
 import type { DeviceManager } from '../device/manager';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
-import {
-  getPendingBinaryCommandWindowMs,
-  isPendingBinaryCommandActive,
-} from './planObservationPolicy';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { isPendingBinaryCommandActive } from './planObservationPolicy';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('plan/binary-helpers');
 
 export type BinaryControlPlan = {
   capabilityId: 'onoff' | 'evcharger_charging';
@@ -24,7 +23,6 @@ export function shouldSkipBinaryControl(params: {
   desired: boolean;
   logContext: BinaryControlLogContext;
   actuationMode: BinaryControlActuationMode;
-  debugStructured?: StructuredDebugEmitter;
   name: string;
   snapshot?: TargetDeviceSnapshot;
   state: PlanEngineState;
@@ -36,14 +34,13 @@ export function shouldSkipBinaryControl(params: {
     desired,
     logContext,
     actuationMode,
-    debugStructured,
     name,
     snapshot,
     state,
   } = params;
   if (!controlPlan) {
     const hasTargets = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
-    debugStructured?.({
+    logger.debug({
       event: 'binary_command_skipped',
       reasonCode: hasTargets ? 'missing_onoff_capability' : 'missing_control_targets',
       deviceId,
@@ -57,7 +54,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (!controlPlan.canSet) {
-    debugStructured?.({
+    logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
       deviceId,
@@ -70,7 +67,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (shouldSkipAlreadyMatched({ deviceManager, controlPlan, deviceId, desired, snapshot })) {
-    debugStructured?.({
+    logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'already_matched',
       deviceId,
@@ -83,7 +80,7 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired })) {
-    debugStructured?.({
+    logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
       deviceId,
@@ -136,23 +133,6 @@ export function getPendingBinaryCommand(
   }
   delete pendingBinaryCommands[deviceId];
   return undefined;
-}
-
-export function buildPendingBinaryTimeoutLogMessage(params: {
-  pending: PlanEngineState['pendingBinaryCommands'][string];
-  name: string;
-  ageMs: number;
-  tense?: 'clearing' | 'cleared';
-}): string {
-  const { pending, name, ageMs, tense = 'cleared' } = params;
-  const timeoutMs = getPendingBinaryCommandWindowMs(pending);
-  const observedSuffix = pending.lastObservedSource
-    ? `; last observed ${formatPendingBinaryObservedValue(pending.capabilityId, pending.lastObservedValue)} `
-      + `via ${pending.lastObservedSource}`
-    : '';
-  return `Capacity: ${tense} stale pending binary command for ${name}: `
-    + `${pending.capabilityId}=${pending.desired} after ${ageMs}ms `
-    + `(timeout ${timeoutMs}ms)${observedSuffix}`;
 }
 
 export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {

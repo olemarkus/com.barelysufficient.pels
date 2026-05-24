@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecutor';
+import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
 import {
@@ -149,6 +150,10 @@ const buildExecutor = (
     debugStructured,
   };
 };
+
+let logCapture: LoggerCapture;
+beforeEach(() => { logCapture = captureLogger(); });
+afterEach(() => { logCapture.restore(); });
 
 describe('PlanExecutor restore logging', () => {
   it('continues applying later devices when stepped-load projection fails for one device', async () => {
@@ -426,12 +431,15 @@ describe('PlanExecutor restore logging', () => {
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
-    const { executor, deps, deviceManager } = buildExecutor(state);
+    const { executor, deviceManager } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan());
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(deps.log).toHaveBeenCalledWith('Capacity: turning on Heater (restored from shed state)');
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (restored from shed state)',
+    }));
   });
 
   it('does not actuate a binary restore while meter settling keeps an off device in keep state', async () => {
@@ -498,7 +506,7 @@ describe('PlanExecutor restore logging', () => {
       { deviceId: 'dev-1' },
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'flow_backed_binary_command_requested',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -628,12 +636,15 @@ describe('PlanExecutor restore logging', () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
     state.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
-    const { executor, deps, deviceManager } = buildExecutor(state);
+    const { executor, deviceManager } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan());
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(deps.log).toHaveBeenCalledWith('Capacity: turning on Heater (to match current plan)');
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (to match current plan)',
+    }));
   });
 
   it('does not start a new restore cycle when reconcile turns a device back on', async () => {
@@ -642,12 +653,15 @@ describe('PlanExecutor restore logging', () => {
     state.lastDeviceRestoreMs['dev-1'] = state.lastRestoreMs;
     const previousLastRestoreMs = state.lastRestoreMs;
     const previousDeviceRestoreMs = state.lastDeviceRestoreMs['dev-1'];
-    const { executor, deviceManager, deps, state: nextState } = buildExecutor(state);
+    const { executor, deviceManager, state: nextState } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan(), 'reconcile');
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(deps.log).toHaveBeenCalledWith('Capacity: turning on Heater (reconcile after drift)');
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (reconcile after drift)',
+    }));
     expect(nextState.lastRestoreMs).toBe(previousLastRestoreMs);
     expect(nextState.lastDeviceRestoreMs['dev-1']).toBe(previousDeviceRestoreMs);
     expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
@@ -1671,7 +1685,7 @@ describe('PlanExecutor stepped loads', () => {
       actualStepId: 'low',
       actualStepSource: 'reported',
     });
-    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -1684,7 +1698,10 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('turning on Tank'));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: expect.stringContaining('turning on Tank'),
+    }));
   });
 
   it('does not restore a stepped device when planned state is shed', async () => {
@@ -1965,7 +1982,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
     }));
 
-    expect(noTargetsDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'missing_control_targets',
       deviceId: 'dev-1',
@@ -1995,7 +2012,7 @@ describe('PlanExecutor stepped loads', () => {
       desiredStepId: 'off',
     }));
 
-    expect(missingCapabilityDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'missing_onoff_capability',
       deviceId: 'dev-1',

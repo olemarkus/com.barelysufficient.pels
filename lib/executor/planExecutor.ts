@@ -194,11 +194,6 @@ export class PlanExecutor {
         logContext: 'capacity' | 'capacity_control_off';
         actuationMode: PlanActuationMode;
       }) => this.triggerFlowBackedBinaryControlRequest(params),
-      log: this.log.bind(this),
-      logDebug: this.logDebug.bind(this),
-      error: this.error.bind(this),
-      structuredLog: this.deps.structuredLog,
-      debugStructured: this.deps.debugStructured,
     };
   }
 

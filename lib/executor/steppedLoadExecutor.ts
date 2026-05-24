@@ -28,7 +28,7 @@ import type {
 } from '../device/manager';
 import { PELS_TARGET_STEP_CAPABILITY_ID } from '../device/steppedLoadSyntheticCapabilities';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
@@ -42,11 +42,6 @@ export type PlanExecutorSteppedContext = {
   buildBinaryControlDeps: () => {
     state: PlanEngineState;
     deviceManager: DeviceManager;
-    log: (...args: unknown[]) => void;
-    logDebug: (...args: unknown[]) => void;
-    error: (...args: unknown[]) => void;
-    structuredLog?: PinoLogger;
-    debugStructured?: StructuredDebugEmitter;
   };
   requestSteppedLoadStep: (params: {
     deviceId: string;
