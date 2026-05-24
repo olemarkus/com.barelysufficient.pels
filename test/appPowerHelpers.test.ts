@@ -23,8 +23,8 @@ import {
   createCalibrationSnapshotMutationHook,
 } from '../lib/app/appPowerCalibrationWiring';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/app/appPowerRebuildShortfallSuppression';
-import { PlanRebuildScheduler } from '../lib/app/planRebuildScheduler';
+import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
+import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 
 const createCapacityGuardMock = (params: {
