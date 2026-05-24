@@ -22,10 +22,19 @@ import {
   BUDGET_CONFIDENCE_LABEL_HIGH,
   BUDGET_CONFIDENCE_LABEL_LOW,
   BUDGET_CONFIDENCE_LABEL_MEDIUM,
+  BUDGET_NO_PLAN_ENABLE_FOR_TODAY,
+  BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW,
+  BUDGET_NO_PLAN_TODAY_PREPARING,
+  BUDGET_NO_PLAN_TOMORROW_WAITING,
+  BUDGET_NO_PLAN_YESTERDAY_WAITING,
+  BUDGET_TOMORROW_PLAN_READY,
+  BUDGET_TOMORROW_PRICE_SHAPED,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
   composeBudgetHeroOverBy,
   composeManagedBackgroundLine,
+  resolveNoPlanLine,
+  resolveTomorrowLine,
 } from '../../shared-domain/src/dailyBudgetHeroStrings';
 
 const costDisplay = { unit: 'kr', divisor: 100 } as const;
@@ -93,16 +102,16 @@ const buildPayload = (overrides: {
 describe('resolveDecisionLine', () => {
   it('asks to wait when budget is enabled but data is missing', () => {
     expect(resolveDecisionLine(enabledPayload, 'today', 'noPlan'))
-      .toBe('PELS is preparing the daily plan. Check again shortly.');
+      .toBe(BUDGET_NO_PLAN_TODAY_PREPARING);
   });
 
   it('asks to enable daily budget when off', () => {
-    expect(resolveDecisionLine(null, 'today', 'noPlan')).toBe('Enable daily budget to build a daily plan.');
+    expect(resolveDecisionLine(null, 'today', 'noPlan')).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TODAY);
   });
 
   it('points to price setup without assuming prices are the only missing tomorrow input', () => {
     expect(resolveDecisionLine(null, 'tomorrow', 'noPlan', true))
-      .toBe("Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.");
+      .toBe(BUDGET_NO_PLAN_TOMORROW_WAITING);
   });
 
   it('does not imply budget is off when persisted settings say it is enabled', () => {
@@ -176,12 +185,12 @@ describe('resolveDecisionLine', () => {
       price: Array.from({ length: 24 }, () => 1.0),
     });
     expect(resolveDecisionLine(payload, 'tomorrow', 'within'))
-      .toBe('Most planned use is shifted toward cheaper hours.');
+      .toBe(BUDGET_TOMORROW_PRICE_SHAPED);
   });
 
   it('uses generic ready line for tomorrow when not shaped', () => {
     const payload = buildPayload();
-    expect(resolveDecisionLine(payload, 'tomorrow', 'within')).toBe("Tomorrow's budget plan is ready.");
+    expect(resolveDecisionLine(payload, 'tomorrow', 'within')).toBe(BUDGET_TOMORROW_PLAN_READY);
   });
 });
 
@@ -189,7 +198,7 @@ describe('resolveHeroData', () => {
   it('uses persisted disabled state even when the day payload is still enabled', () => {
     const hero = resolveHeroData(buildPayload({ enabled: true }), 'today', costDisplay, 'within', false);
     expect(hero.comparison).toBe('Daily budget off');
-    expect(hero.decision).toBe('Enable daily budget to build a daily plan.');
+    expect(hero.decision).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TODAY);
     expect(hero.headlineLabel).toBeNull();
   });
 
@@ -651,5 +660,38 @@ describe('composeManagedBackgroundLine', () => {
   it('substitutes a placeholder for non-finite sides instead of NaN', () => {
     expect(composeManagedBackgroundLine(Number.NaN, 4)).toBe('Managed -- kWh · Background 4.0 kWh');
     expect(composeManagedBackgroundLine(4, Number.NaN)).toBe('Managed 4.0 kWh · Background -- kWh');
+  });
+});
+
+describe('resolveNoPlanLine', () => {
+  it('asks the user to wait for tomorrow when the feature is on', () => {
+    expect(resolveNoPlanLine('tomorrow', true)).toBe(BUDGET_NO_PLAN_TOMORROW_WAITING);
+  });
+
+  it('cites missing yesterday history when the feature is on', () => {
+    expect(resolveNoPlanLine('yesterday', true)).toBe(BUDGET_NO_PLAN_YESTERDAY_WAITING);
+  });
+
+  it('announces today preparation when the feature is on', () => {
+    expect(resolveNoPlanLine('today', true)).toBe(BUDGET_NO_PLAN_TODAY_PREPARING);
+  });
+
+  it('nudges to enable the feature for tomorrow when off', () => {
+    expect(resolveNoPlanLine('tomorrow', false)).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW);
+  });
+
+  it('nudges to enable the feature for today/yesterday when off', () => {
+    expect(resolveNoPlanLine('today', false)).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TODAY);
+    expect(resolveNoPlanLine('yesterday', false)).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TODAY);
+  });
+});
+
+describe('resolveTomorrowLine', () => {
+  it('names the price shift when shaping is active', () => {
+    expect(resolveTomorrowLine(true)).toBe(BUDGET_TOMORROW_PRICE_SHAPED);
+  });
+
+  it('falls back to the generic ready line when shaping is not active', () => {
+    expect(resolveTomorrowLine(false)).toBe(BUDGET_TOMORROW_PLAN_READY);
   });
 });

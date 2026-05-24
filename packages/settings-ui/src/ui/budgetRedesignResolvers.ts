@@ -37,7 +37,9 @@ import {
   composeBudgetUsedOver,
   composeManagedBackgroundLine,
   resolveChartSubtitle as resolveSharedChartSubtitle,
+  resolveNoPlanLine as resolveSharedNoPlanLine,
   resolveTodayLine as resolveSharedTodayLine,
+  resolveTomorrowLine as resolveSharedTomorrowLine,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
@@ -248,20 +250,8 @@ export const resolveBudgetRemainingLine = (
   return composeBudgetRemainingLineWithEstimate(status, formatCost(cost, costDisplay));
 };
 
-const resolveNoPlanLine = (view: BudgetDayView, budgetEnabled: boolean): string => {
-  if (budgetEnabled && view === 'tomorrow') {
-    return "Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.";
-  }
-  if (budgetEnabled && view === 'yesterday') return 'Yesterday history is not available yet.';
-  if (budgetEnabled) return 'PELS is preparing the daily plan. Check again shortly.';
-  if (view === 'tomorrow') return 'Enable daily budget to plan tomorrow.';
-  return 'Enable daily budget to build a daily plan.';
-};
-
 const resolveTomorrowLine = (payload: DailyBudgetDayPayload): string => (
-  isPriceReliable(payload) && payload.budget.priceShapingEnabled
-    ? 'Most planned use is shifted toward cheaper hours.'
-    : "Tomorrow's budget plan is ready."
+  resolveSharedTomorrowLine(isPriceReliable(payload) && payload.budget.priceShapingEnabled)
 );
 
 const resolveTodayLine = (
@@ -275,7 +265,7 @@ export const resolveDecisionLine = (
   status: BudgetStatus,
   budgetEnabled = payload?.budget.enabled === true,
 ): string | null => {
-  if (!payload || status === 'noPlan') return resolveNoPlanLine(view, budgetEnabled);
+  if (!payload || status === 'noPlan') return resolveSharedNoPlanLine(view, budgetEnabled);
   if (view === 'yesterday') {
     return status === 'over' ? YESTERDAY_FINISHED_OVER_BUDGET : YESTERDAY_FINISHED_WITHIN_BUDGET;
   }
@@ -298,7 +288,7 @@ export const resolveHeroData = (
       budgetRemainingLine: null,
       splitLine: null,
       priceTagline: null,
-      decision: resolveNoPlanLine(view, budgetEnabled),
+      decision: resolveSharedNoPlanLine(view, budgetEnabled),
       heroTone: 'ok',
     };
   }
