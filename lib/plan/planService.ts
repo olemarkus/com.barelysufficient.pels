@@ -31,7 +31,9 @@ import { recordPlanRebuildTrace } from '../utils/planRebuildTrace';
 import { normalizeError } from '../utils/errorUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
-import { withRebuildContext } from '../logging/logger';
+import { getLogger, withRebuildContext } from '../logging/logger';
+
+const logger = getLogger('plan/service');
 import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanSnapshot,
@@ -433,7 +435,7 @@ export class PlanService {
         result = await operation();
       })
       .catch((error) => {
-        this.deps.loggers?.structuredLog?.error({
+        (this.deps.loggers?.structuredLog ?? logger).error({
           event: 'plan_operation_failed',
           message: errorMessage,
           error: normalizeError(error),
@@ -460,7 +462,7 @@ export class PlanService {
     const driftedLivePlan = this.stampCurrentPowerFreshness(
       buildLiveStatePlan(plannedSnapshot, liveDevices),
     );
-    this.deps.loggers?.debugStructured?.({
+    (this.deps.loggers?.debugStructured ?? ((p: Record<string, unknown>) => logger.debug(p)))({
       event: 'realtime_device_drift_detected',
       message: 'Reapplying current plan',
     });
@@ -497,7 +499,8 @@ export class PlanService {
     }
 
     if (debugSummaryState.changed && debugSummaryState.event) {
-      this.deps.loggers?.debugStructured?.(debugSummaryState.event);
+      const emit = this.deps.loggers?.debugStructured ?? ((p: Record<string, unknown>) => logger.debug(p));
+      emit(debugSummaryState.event);
     }
 
     this.lastActionPlanSignature = actionSignature;
@@ -568,7 +571,7 @@ export class PlanService {
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps, this.idleClassifier))
-        .catch((err: unknown) => this.deps.loggers?.structuredLog?.error({
+        .catch((err: unknown) => (this.deps.loggers?.structuredLog ?? logger).error({
           event: 'plan_updated_emit_failed',
           error: normalizeError(err),
         }));
@@ -631,7 +634,7 @@ export class PlanService {
         stopSpan();
         const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
         if (rebuildLogLevel) {
-          this.deps.loggers?.structuredLog?.[rebuildLogLevel]({
+          (this.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel]({
             event: 'plan_rebuild_completed',
             durationMs,
             buildMs: outcome.buildMs,
@@ -677,7 +680,7 @@ export class PlanService {
     const hadShedding = hasShedding(stampedPlan);
 
     if (isDryRun && hadShedding) {
-      this.deps.loggers?.structuredLog?.info({
+      (this.deps.loggers?.structuredLog ?? logger).info({
         event: 'shedding_dry_run_skipped',
         message: 'Dry run: shedding planned but not executed',
       });
@@ -806,7 +809,7 @@ export class PlanService {
         this.refreshLatestPlanSnapshotPendingState();
       }
     } catch (error) {
-      this.deps.loggers?.structuredLog?.error({
+      (this.deps.loggers?.structuredLog ?? logger).error({
         event: 'plan_actions_apply_failed',
         error: normalizeError(error),
       });
