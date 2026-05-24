@@ -131,10 +131,13 @@ release, not v2.7.1 merge-blockers.*
       the no-legacy-`.chip` invariant + canonical-shell-on-every-surface
       contract. Dead-but-styled selectors (`.plan-row__chip`,
       `.price-row .chip.price-normal`) are gone.
-      What remains: cards, buttons, segmented controls, ripples, and elevation
-      are still duplicated across views with subtle per-page variations
-      (padding, border colour, ripple behaviour, focus ring). A first-impression
-      UI should read as one system, not five-plus near-duplicates.
+      What remains: the card-consumer rebind sweep (`.plan-card` /
+      `.deadline-list-card` / `.detail-card` / `.detail-diagnostics-card` /
+      `.pels-device-card` onto the canonical `.pels-surface-card`) is the
+      last per-page-variant primitive still pending — segmented controls,
+      ripples, and elevation all shipped in the 2026-05-24 batch 11 PR
+      (phases 4-6 below). Once the card sweep PR (MM) lands this entry
+      ships in full.
       Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer
       rebound, no inline overrides beyond data-attribute state. Implementation may use the
       existing custom primitives or `@material/web` — that choice stays with the P2 entry
@@ -171,13 +174,40 @@ release, not v2.7.1 merge-blockers.*
         consolidation effort is rebinding the per-page `.plan-card` / `.deadline-list-card`
         / `.detail-card` / `.detail-diagnostics-card` / `.pels-device-card` consumers.
         Effort is breadth, not depth.
-      - **Segmented control** — narrower scope; `.segmented` is already canonical.
-        Audit per-page overrides and rebind.
-      - **Ripple** — `MdRipple` already used in `DeadlinesList`; audit per-page
-        ripple styles + behaviour, rebind to the shared component.
-      - **Elevation** — `MdElevation` already used in a few cards; audit for raw
-        `box-shadow` declarations that should defer to elevation tokens / the
-        shared component.
+      - **Segmented control — landed (2026-05-24 batch 11 PR, phase 4).** `.segmented`
+        + `.segmented__option` are the single canonical shell across every consumer
+        (Plan/Adjust toggle, day-toggle, Progress/Hourly plan, 7d/14d,
+        All/Weekday/Weekend, Current/History plan, device-detail When-limiting).
+        Leaky `.segmented--power-limiting` per-page modifier was retired; the
+        narrow-viewport rule now scopes to `#device-detail-panel .segmented` under
+        the existing `@media (max-width: 430px)` gate so the primitive itself
+        carries no panel-specific variant. Both renderers (imperative
+        `createToggleGroup` in `components.ts` and preact `ToggleGroup` in
+        `BudgetOverview.tsx`) build the same DOM shape. Regression coverage at
+        `packages/settings-ui/test/narrowPrimitiveRebind.test.ts` (phase 4 section)
+        pins the canonical shell + bans `.segmented--…` modifiers + verifies
+        both renderers produce identical DOM.
+      - **Ripple — landed (2026-05-24 batch 11 PR, phase 5).** `<md-ripple>` (via
+        `MdRipple` JSX wrapper from `materialWebJSX.tsx` or the raw element in
+        `index.html`) is the single source of truth for the state-layer ripple.
+        Every consumer mounts it with the canonical
+        `<MdRipple aria-hidden="true" />` shape — no `attached` prop, no custom
+        colour override, no event handlers. The ripple-tint tokens
+        (`--md-ripple-hover-color`, `--md-ripple-pressed-color`) live on the
+        shared `.plan-card` / `.pels-surface-card` cascade. No custom `.ripple`
+        / `.has-ripple` shell exists. Regression coverage at the same test file
+        (phase 5 section).
+      - **Elevation — landed (2026-05-24 batch 11 PR, phase 6).** `<md-elevation>`
+        (via `MdElevation` JSX wrapper or raw element in `index.html`) is the
+        single source of truth for card surface lift. Every consumer mounts it
+        with the canonical `<MdElevation aria-hidden="true" />` shape. The
+        elevation cascade (resting `--md-elevation-level: 1`, hover/focus `3`,
+        active `2`) lives on `.plan-card` + `.pels-surface-card` so every card
+        surface picks the same lift from the same source. Every `box-shadow`
+        declaration in `style.css` either resolves to a shared `var(--shadow-*)`
+        token, an explicit `none` reset, a 1 px inset hairline, a 1-3 px
+        contrast/focus outline, or the chart-tone glow — no raw card
+        elevation. Regression coverage at the same test file (phase 6 section).
       *Reference — sub-bullets from the original M3 visual pass that are now closed:*
       - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
         warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the

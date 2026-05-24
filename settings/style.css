@@ -7182,7 +7182,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     grid-template-columns: 1fr;
   }
 
-  #device-detail-panel .segmented--power-limiting {
+  /* At ≤430 px the device-detail slide-over collapses to a single column;
+   * the segmented control follows so the option labels stay readable instead
+   * of being squeezed into a 96 px floor that wraps mid-word. Lives inside
+   * the existing narrow-viewport media query rather than under a per-page
+   * `--power-limiting` modifier so the primitive stays free of panel-scoped
+   * tonal variants. */
+  #device-detail-panel .segmented {
     grid-template-columns: 1fr;
   }
 }
