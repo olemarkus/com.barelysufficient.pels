@@ -338,14 +338,16 @@ export const resolveDeliveredSoFarLine = (
   if (params.currentProgress === null || params.targetValue === null) return null;
   // `cannotMeet === true` on the BuildHeroInput collapses both `cannot_meet`
   // and `at_risk` together (so the chip surface stays in sync). For the
-  // delivered-so-far line we want the "won't reach" copy *only* on the
-  // physically-can't-deliver case — `tone === 'alert'` is the producer's
+  // delivered-so-far line we want the "still {curr} of {target}" stem *only*
+  // on the physically-can't-deliver case — `tone === 'alert'` is the producer's
   // already-resolved signal for that, derived from `planStatus`. At-risk
-  // (`tone === 'warn'`) keeps the on-track-shaped phrasing so the line stays
-  // hopeful while the chip still warns.
-  const isWontReach = params.cannotMeet && params.tone === 'alert';
+  // (`tone === 'warn'`) keeps the on-track-shaped phrasing ("now …") so the
+  // line stays hopeful while the chip still warns. The cannot-meet branch no
+  // longer appends "won't reach by HH:MM" — the chip + meta line already
+  // announce the verdict; see `formatDeadlineDeliveredSoFarLine`.
+  const isCannotMeet = params.cannotMeet && params.tone === 'alert';
   return formatDeadlineDeliveredSoFarLine({
-    status: isWontReach ? 'cannot_meet' : 'on_track_or_queued',
+    status: isCannotMeet ? 'cannot_meet' : 'on_track_or_queued',
     deliveredKWh: params.deliveredKWh,
     plannedTotalKWh: params.plannedTotalKWh,
     currentProgress: params.currentProgress,

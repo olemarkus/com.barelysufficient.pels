@@ -94,10 +94,12 @@ export type DeadlinePlanPayload = {
     // cost unit is missing (Flow / Homey without `priceUnit`).
     costMetaLine: string | null;
     // `Delivered X of Y kWh · …` subline. Two visible branches collapse the
-    // planner status union: cannot-meet renders the `won't reach by HH:MM`
-    // form, every other status renders the on-track-shaped form. Null when
-    // there is no plan to summarise (queued without allocation, no current
-    // reading, etc.).
+    // planner status union: cannot-meet renders the `still {curr} of {target}`
+    // stem (the alert chip + meta line already say "Cannot finish" / "Not
+    // enough time …" so this line stays magnitude-only, per TODO ~1586 /
+    // 2026-05-16 live walk), every other status renders the on-track-shaped
+    // form with `now …` or the `start → current` arrow. Null when there is no
+    // plan to summarise (queued without allocation, no current reading, etc.).
     deliveredSoFarLine: string | null;
     // Recourse action surfaced below the meta line on cannot-finish heroes.
     // Resolved producer-side so the view dispatches on a stable slug
