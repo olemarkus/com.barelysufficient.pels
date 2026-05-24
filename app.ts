@@ -56,23 +56,27 @@ import { isNumberMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
   cancelPendingPowerRebuild,
   executePendingPowerRebuild,
+  PowerSampleRebuildState,
+  schedulePlanRebuildFromSignal,
+} from './lib/plan/rebuildScheduler/powerDriven';
+import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
   updateDailyBudgetAndRecordCapForApp,
-  PowerSampleRebuildState,
   type PowerTrackerPersistReason,
   recordPowerSampleForApp,
-  schedulePlanRebuildFromSignal,
-} from './lib/app/appPowerHelpers';
+} from './lib/power/sampleIngest';
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
   loadPowerCalibrationStore,
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
-} from './lib/app/appPowerCalibrationWiring';
+} from './lib/device/devicePowerCalibrationStore';
 import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './lib/plan/planUsage';
+import { updateObjectiveProfilesFromSnapshot } from './lib/objectives/profiles';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
@@ -1506,7 +1510,12 @@ class PelsApp extends Homey.App {
         getLatestTargetSnapshot: () => this.latestTargetSnapshot,
         powerTracker: this.powerTracker,
         capacityGuard: this.capacityGuard,
-        objectiveProfileDebugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
+        splitControlledUsage: (params) => splitControlledUsageKw(params),
+        sumBudgetExemptUsage: (devices) => sumBudgetExemptLiveUsageKw(devices),
+        updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
+          ...params,
+          debugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
+        }),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({
             scheduler: this.planRebuildScheduler,

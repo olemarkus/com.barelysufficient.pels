@@ -11,7 +11,7 @@ import {
   pruneStale,
   recordSample,
   type RecordSampleInput,
-} from '../lib/observer/devicePowerCalibration';
+} from '../lib/device/devicePowerCalibration';
 
 const baseSample = (overrides: Partial<RecordSampleInput> = {}): RecordSampleInput => ({
   deviceId: 'dev1',

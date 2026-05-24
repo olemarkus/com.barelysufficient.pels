@@ -4,11 +4,11 @@ import {
   loadPowerCalibrationStore,
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
-} from '../lib/app/appPowerCalibrationWiring';
+} from '../lib/device/devicePowerCalibrationStore';
 import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
-} from '../lib/observer/devicePowerCalibration';
+} from '../lib/device/devicePowerCalibration';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../lib/utils/settingsKeys';
 
