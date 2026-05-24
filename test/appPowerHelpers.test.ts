@@ -18,8 +18,8 @@ import {
 import {
   type PowerSampleRebuildState,
   schedulePlanRebuildFromPowerSample,
-  schedulePlanRebuildFromSignal,
 } from '../lib/plan/rebuildScheduler/powerDriven';
+import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,

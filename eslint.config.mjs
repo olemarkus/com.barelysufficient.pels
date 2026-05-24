@@ -413,11 +413,11 @@ export default tseslint.config(
   },
   {
     // The compatibility wrapper still keeps power-sample state and promise plumbing local while
-    // PlanRebuildScheduler owns the cross-intent queue. Target: trim back below 575 once the
-    // remaining wrapper state is either deleted or extracted.
+    // PlanRebuildScheduler owns the cross-intent queue. `schedulePlanRebuildFromPowerSample`
+    // remains a long orchestration function — keep `max-lines-per-function` raised until
+    // its decision-table flow can be split.
     files: ['lib/plan/rebuildScheduler/powerDriven.ts'],
     rules: {
-      'max-lines': ['warn', { max: 625, skipBlankLines: true, skipComments: true }],
       'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
     },
   },

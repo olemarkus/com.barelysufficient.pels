@@ -57,8 +57,8 @@ import {
   cancelPendingPowerRebuild,
   executePendingPowerRebuild,
   PowerSampleRebuildState,
-  schedulePlanRebuildFromSignal,
 } from './lib/plan/rebuildScheduler/powerDriven';
+import { schedulePlanRebuildFromSignal } from './lib/plan/rebuildScheduler/signalDriven';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
