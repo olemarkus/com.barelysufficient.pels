@@ -13,6 +13,7 @@ import {
   buildPlanDevice,
   steppedInputDevice,
 } from './utils/planTestUtils';
+import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
@@ -32,10 +33,10 @@ const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) 
 
 const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
   const desiredSteppedTrigger = { trigger: vi.fn().mockResolvedValue(true) };
-  const deviceManager = {
+  const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
-  };
+  });
   const deps: PlanExecutorDeps = {
     homey: {
       ...mockHomeyInstance,

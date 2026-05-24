@@ -1957,7 +1957,39 @@ consolidation + a11y polish (8 P2)`.*
       needs durable storage, extract a small persistence helper/queue instead of adding more
       direct settings writes to the executor.
       Files: `lib/executor/planExecutor.ts`.
-- [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
+- [ ] Split `DeviceManager` into `lib/device/transport/` (SDK seam + per-control-model wiring
+      + parse pipeline, produces normalized snapshots and admit-or-suppressed events) and
+      `lib/observer/` (state store, freshness, pending, settle, realtime fanout). Executor
+      calls `transport.write(...)` directly; observer subscribes to transport events.
+      Plan stops importing `lib/device/**` entirely — binary-control writes at
+      `lib/plan/planBinaryControl.ts:217` and the `deviceManager.getSnapshot()` calls at
+      `:257` / `lib/plan/planBinaryControlHelpers.ts:107` move to executor / observer reads.
+      Promotes `todo-narrow-plan-device-dep` (`.dependency-cruiser.cjs:146-151`) to error and
+      adds a new error rule binding executor away from `lib/device/**`. Settle suppression
+      runs in transport's parse pipeline via a `pendingPredicate` callback injected by
+      `lib/app/` and backed by observer.
+      Sequencing: (1a) `getSnapshotByDeviceId` helper + `DeviceObservation` read interface;
+      (1b) restructure plan to return binary control decisions, move dispatch to executor,
+      promote cruiser rules;
+      (2) move read-side files into transport, DeviceManager becomes a facade;
+      (3) extract `DeviceTransport`, DeviceManager goes away;
+      (4) move pending/settle into observer and wire the injected predicate;
+      (5) three-way realtime split — translation in transport, drift detection in executor,
+      reapply trigger in wiring.
+      Design: `notes/state-management/observer-transport-split.md`.
+      Files: `lib/device/**`, `lib/observer/**`, `lib/executor/**`, `lib/plan/planBinaryControl*.ts`,
+      `lib/app/appDeviceControlSteppedState.ts`, `.dependency-cruiser.cjs`,
+      `notes/state-management/README.md`, `docs/architecture.md`.
+- [ ] Sweep remaining test files with ad-hoc `{ getSnapshot: vi.fn() }` mocks typed as
+      `DeviceManager` and migrate them to `test/utils/deviceObservationMock.ts`'s
+      `withGetSnapshotByDeviceId` helper. Tests pass today because their code paths
+      don't exercise the migrated reads, but later PRs in the observer/transport
+      split will migrate more sites and may surface silent `undefined` returns from
+      these stubs. Known sites include `test/appDebugHelpers.test.ts`,
+      `test/shed_restore.test.ts`, `test/deferredObjectiveAdmission.test.ts`, and
+      ~13 others (run `grep -rln "as DeviceManager\|: DeviceManager" test/` for
+      the full list). Source: `pels-layering-guardian` P2-2 on PR #1095,
+      2026-05-24.
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
       keep trimming any delegates that no longer buy readability or testability.

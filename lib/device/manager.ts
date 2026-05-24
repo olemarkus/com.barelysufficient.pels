@@ -106,6 +106,7 @@ import {
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { applyDeviceCompatibilityMetadata } from './compatibility';
+import type { DeviceObservation } from './deviceObservation';
 
 const moduleLogger = getLogger('device/manager');
 
@@ -151,7 +152,7 @@ type DeviceManagerOptions = {
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
 };
 
-export class DeviceManager extends EventEmitter {
+export class DeviceManager extends EventEmitter implements DeviceObservation {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;
@@ -1435,6 +1436,9 @@ export class DeviceManager extends EventEmitter {
     }
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
+    getSnapshotByDeviceId(deviceId: string): TargetDeviceSnapshot | undefined {
+        return this.latestSnapshotById.get(deviceId);
+    }
     getUiPickerDevices(): TargetDeviceSnapshot[] {
         if (this.latestRawDevices.length === 0) return [];
         return parseDeviceList({

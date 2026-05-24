@@ -18,6 +18,7 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../lib/plan/planReconcileState';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
+import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
 const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
@@ -84,7 +85,7 @@ const buildExecutor = (
     flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
   } as const;
   const debugStructured = vi.fn();
-  const deviceManager = {
+  const deviceManager = withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
     requestSteppedLoadStep: vi.fn(async (params: {
@@ -114,7 +115,7 @@ const buildExecutor = (
       void Promise.resolve(triggerPromise);
       return { requested: true, transport: 'flow' as const };
     }),
-  };
+  });
   const deps: PlanExecutorDeps = {
     homey: {
       settings: { set: vi.fn() },
