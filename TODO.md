@@ -161,17 +161,6 @@ release, not v2.7.1 merge-blockers.*
         pins the no-legacy-`.plan-hero__recourse-button` invariant + canonical
         shell + 48 px floor + focus ring + disabled state contract.
         *Still open for follow-up sub-PRs:*
-        - **MD Web ghost-decoration cleanup.** `.btn` / `.btn ghost` / `.btn
-          secondary` / `.btn primary` are still applied as ghost companions on
-          ~20 MD Web button hosts in `public/index.html` and a handful of
-          `views/*.tsx` consumers. MD Web buttons render in shadow DOM and
-          ignore host `color` / `background` / `border`, so those classes
-          paint almost nothing today (only `.btn.is-busy`'s host-level
-          `opacity` + `cursor` reach the user; the host `.btn:focus-visible`
-          outline doubles up on MD Web's own shadow-DOM focus ring rather
-          than replacing it). Fan-out is wide (~25 sites) but the visible
-          delta is nil — separate PR to keep this batch focused on the
-          primitive shape.
         - **`.plan-history-detail__chart-toggle` ghost button.** Small
           ghost-button shape on the trajectory-chart toggle that overlaps the
           `.pels-button` vocabulary; rebind once the chart-toggle e2e at

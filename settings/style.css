@@ -1084,83 +1084,21 @@ md-primary-tab.tab[active]:hover {
   opacity: var(--opacity-disabled);
 }
 
-.btn {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  min-height: var(--pels-touch-target-min);
-  padding: var(--spacing-3) var(--spacing-4);
-  font-weight: var(--font-weight-bold);
-  cursor: pointer;
-  background: var(--color-surface-4);
-  color: var(--text);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.btn.primary {
-  background: linear-gradient(120deg, var(--accent), var(--accent-strong));
-  color: var(--color-semantic-text-inverse);
-  box-shadow: var(--shadow-primary-glow);
-}
-
-.btn.secondary {
-  border-color: var(--panel-border);
-}
-
-.btn.ghost {
-  border-color: var(--panel-border);
-  background: var(--color-surface-1);
-}
-
-.btn:disabled {
-  opacity: var(--opacity-disabled);
-  cursor: not-allowed;
-}
-
-.btn:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-.slide-panel__footer .btn {
-  width: 100%;
-}
-
-.btn:not(:disabled):active {
-  transform: translateY(0);
-  box-shadow: var(--shadow-inset-soft);
-}
-
-.btn.is-busy {
+/* Busy state for MD Web buttons (used by advanced.ts's setApiDeviceButtonsBusy
+ * / setClearButtonBusy helpers on `md-outlined-button` hosts). The host's
+ * `cursor` + `opacity` properties DO reach the user even though MD Web
+ * renders in shadow DOM: `cursor` is a host-level pointer affordance and
+ * `opacity` composites the entire host tree. The legacy `.btn` / `.btn.ghost`
+ * / `.btn.secondary` / `.btn.primary` ghost-decoration companions that
+ * wrapped this rule were dropped (batch 11) -- their `color` / `background`
+ * / `border` / `transform` declarations painted nothing the shadow DOM let
+ * through. Selector is scoped to MD Web button tags so a future `is-busy`
+ * consumer elsewhere doesn't inherit the busy affordance by accident. */
+md-outlined-button.is-busy,
+md-text-button.is-busy,
+md-filled-button.is-busy {
   cursor: progress;
   opacity: 0.8;
-}
-
-.btn.confirming {
-  border-color: var(--color-semantic-danger);
-  color: var(--color-semantic-danger);
-}
-
-.btn:not(:disabled):hover {
-  transform: translateY(-1px);
-  background-color: color-mix(in srgb, var(--accent) 8%, var(--color-surface-4));
-}
-
-.btn.primary:not(:disabled):hover {
-  /* Primary already uses a gradient; reinforce with a subtle brightness lift. */
-  filter: brightness(1.08);
-}
-
-.btn.ghost:not(:disabled):hover {
-  background-color: color-mix(in srgb, var(--accent) 8%, var(--color-surface-1));
-}
-
-.btn.confirming:not(:disabled):hover {
-  transform: none;
-  background-color: color-mix(in srgb, var(--color-semantic-danger) 12%, var(--color-surface-4));
 }
 
 .pill {
@@ -4634,8 +4572,10 @@ details[open] > summary .disclosure-chevron {
   max-width: none;
 }
 
-.detail-stepped-row > .btn:disabled,
-.detail-stepped-row > .btn:not(:disabled) {
+/* Push the per-step "Remove" md-text-button to the row's trailing edge.
+ * The button doesn't carry a `.btn` class (it's an md-text-button created in
+ * `steppedLoadDraft.ts`), so target it by tag selector. */
+.detail-stepped-row > md-text-button {
   justify-self: end;
 }
 
@@ -4674,7 +4614,10 @@ details[open] > summary .disclosure-chevron {
     display: none;
   }
 
-  .detail-stepped-row .btn {
+  /* Narrow-viewport override: the stepped-row md-text-button (created by
+   * `steppedLoadDraft.ts`) shifts to leading-edge alignment because the row
+   * collapses to a single column at 360 px. */
+  .detail-stepped-row md-text-button {
     justify-self: start;
   }
 
@@ -7006,7 +6949,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   grid-column: 1 / -1;
 }
 
-#modes-panel .inline-actions .btn {
+/* Force Add / Delete / Rename MD Web buttons to fill their grid column. The
+ * host's width / min-width / padding-inline DO reach layout (they set the
+ * host's outer box), unlike inner-paint properties the shadow DOM swallows.
+ * Targeted by tag selector now that the legacy `.btn` decorations have been
+ * retired. */
+#modes-panel .inline-actions md-outlined-button {
   min-width: 0;
   width: 100%;
   padding-inline: var(--spacing-2);
@@ -7187,7 +7135,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     grid-column: 1 / -1;
   }
 
-  #modes-panel .inline-actions .btn {
+  #modes-panel .inline-actions md-outlined-button {
     width: 100%;
     min-width: 0;
     padding-inline: var(--spacing-2);
