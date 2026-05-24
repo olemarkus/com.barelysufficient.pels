@@ -95,7 +95,10 @@ export type DeadlinePlanHistoryHeroPayload = {
   // Whether the hero is the quiet abandoned-shape — eyebrow + one sentence
   // + Material `<details>` expansion, no chart card, no recourse. Resolved
   // here so the view layer never branches on outcome to drop the chart
-  // card. v2.7.3.
+  // card. True for `abandoned` / `replaced`, and for `unknown` entries with
+  // no recorded plan. `unknown` entries that carry a plan flip this to
+  // false so the chart renders as evidence (still collapsed by default via
+  // `chartCollapsedByDefault: true`). v2.7.3 + v2.9.x.
   quietAbandoned: boolean;
   // Three-row receipt timeline rendered beneath the outcome line on
   // Succeeded heroes. `null` on Missed / Abandoned, and on Succeeded
@@ -247,7 +250,18 @@ export const buildHistoryDetailHero = (
   // collapses to eyebrow + outcome sentence + Material `<details>`. No
   // chart card by default, no recourse — the temptation to "make it
   // useful" is exactly what makes archives feel like audits.
+  //
+  // Exception (v2.9.x — TODO from PR #887 copilot reviewer): `unknown`
+  // outcomes that carry a recorded plan (originalPlan / finalPlan) flip
+  // `quietAbandoned: false` so the view re-renders the chart card as
+  // evidence ("a plan WAS made, we just don't know if it ran"). The card
+  // stays collapsed by default so the muted "we don't know what happened"
+  // semantics survive — the user opts in via the same "View details"
+  // toggle Succeeded uses. `abandoned` / `replaced` keep the quiet shape:
+  // the user-initiated swap is the answer, not a plan diagnosis.
   const abandonedDetails = formatPlanHistoryAbandonedDetails(entry, timeZone);
+  const hasRecordedPlan = entry.originalPlan !== null || entry.finalPlan !== null;
+  const showChartForUnknown = entry.outcome === 'unknown' && hasRecordedPlan;
   return {
     tone: 'muted',
     chip: { text: chipLabel, tone: 'muted' },
@@ -265,7 +279,7 @@ export const buildHistoryDetailHero = (
     whyLine: null,
     recourse: null,
     chartCollapsedByDefault: true,
-    quietAbandoned: true,
+    quietAbandoned: !showChartForUnknown,
     receiptTimeline: null,
     shortfallChip: null,
     costNarrative: null,

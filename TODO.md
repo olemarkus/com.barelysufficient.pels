@@ -1223,7 +1223,7 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
 
-- [ ] Smart-task history-detail hero treats `unknown` outcomes as
+- [x] Smart-task history-detail hero treats `unknown` outcomes as
       `quietAbandoned` (no chart card) alongside `abandoned`/`replaced`.
       copilot reviewer on PR #887 (`deadlinePlanHistoryDetailHero.ts:242`)
       noted the chart policy note only calls out Abandoned + Replaced as the
@@ -1231,6 +1231,16 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       chart as evidence when a plan was recorded. Decide whether `unknown`
       should fall back to a collapsed-chart shape or stay quiet, and update
       `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
+      Resolved: `unknown` with a recorded plan (`originalPlan` or
+      `finalPlan` present) now renders the chart card collapsed (same shape
+      as Succeeded — "View details" toggle); `unknown` without a recorded
+      plan stays quiet (same shape as Abandoned). Discriminator is plan
+      presence, not outcome value. `abandoned`/`replaced` unchanged.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
+      `notes/v2-7-2/postmortem-chart-policy.md`. Tests:
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` —
+      "Unknown shape with recorded plan" and "Unknown shape with no
+      recorded plan".
 
 - [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
