@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('power/capacity-guard');
 import {
   buildNullCapacityStateSummary,
   type PlanCapacityStateSummary,
@@ -208,7 +211,7 @@ export default class CapacityGuard {
     const thresholdW = Math.round(this.getShortfallThreshold() * 1000);
     const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
     const summary = capacityStateSummary ?? this.capacityStateSummaryProvider();
-    this.structuredLog?.info({
+    (this.structuredLog ?? moduleLogger).info({
       event: 'hard_cap_shortfall_detected',
       incidentId: this.incidentId,
       powerW,
@@ -235,7 +238,7 @@ export default class CapacityGuard {
     const now = Date.now();
     if (this.shortfallClearStartTime === null) {
       this.shortfallClearStartTime = now;
-      this.structuredLog?.info({
+      (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovery_started',
         incidentId: this.incidentId,
         sustainRequiredMs: CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS,
@@ -245,7 +248,7 @@ export default class CapacityGuard {
     if (now - this.shortfallClearStartTime >= CapacityGuard.SHORTFALL_CLEAR_SUSTAIN_MS) {
       const powerW = Math.round((this.mainPowerKw ?? 0) * 1000);
       const thresholdW = Math.round(shortfallThreshold * 1000);
-      this.structuredLog?.info({
+      (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovered',
         incidentId: this.incidentId,
         powerW,
@@ -263,7 +266,7 @@ export default class CapacityGuard {
 
   private resetShortfallClearTimer(): void {
     if (this.shortfallClearStartTime !== null) {
-      this.structuredLog?.info({
+      (this.structuredLog ?? moduleLogger).info({
         event: 'hard_cap_shortfall_recovery_reset',
         incidentId: this.incidentId,
       });
