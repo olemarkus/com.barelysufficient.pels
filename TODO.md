@@ -105,7 +105,7 @@ release, not v2.7.1 merge-blockers.*
       route (`DeadlinePlan` `loading` state + initial HTML in `#deadline-plan-root`). Overview
       panel already shipped its skeleton at v2.7.3; Settings panel is static navigation
       with no async load and intentionally has no skeleton.
-- [ ] Consolidate the remaining duplicated chip / card / button / segmented-control /
+- [ ] Consolidate the remaining duplicated card / button / segmented-control /
       ripple / elevation primitives across every settings-UI surface.
       The hero + section-label rebind phase of the original "unify the hero primitive" P1
       now ships in full — Overview hero, Budget header, Usage header, Smart tasks header,
@@ -115,10 +115,25 @@ release, not v2.7.1 merge-blockers.*
       bindings. Regression coverage at `packages/settings-ui/test/heroPrimitiveRebind.test.ts`
       pins every surface to the canonical shell + eyebrow + headline shape so a future
       refactor can't silently revert.
-      What remains: chips, cards, buttons, segmented controls, ripples, and elevation are
-      still duplicated across views with subtle per-page variations (padding, border colour,
-      ripple behaviour, focus ring). A first-impression UI should read as one system, not
-      five-plus near-duplicates.
+      The chip primitive rebind phase also ships now (batch 9, this PR): the
+      legacy `.chip` shell with `chip--ok` / `chip--boost` / `chip--neutral` /
+      `chip--alert` tonal variants is retired, and the two remaining consumers
+      (device-list state chip in `deviceListPresentation.ts`, mode-row
+      `.priority-badge` companion class) rebind onto the canonical `.plan-chip`
+      primitive (or drop the redundant class entirely, in the priority-badge
+      case where the pill fully overrides every chip style). `.plan-chip` now
+      carries both the BEM tonal modifiers (`--good|--warn|--alert|--info|
+      --muted|--limited`) AND the canonical `data-tone="…"` attribute API used
+      by `.plan-hero` — both resolve onto the same tonal style so new consumers
+      pick the data-attribute form without forcing a mass migration. Regression
+      coverage at `packages/settings-ui/test/chipPrimitiveRebind.test.ts` pins
+      the no-legacy-`.chip` invariant + canonical-shell-on-every-surface
+      contract. Dead-but-styled selectors (`.plan-row__chip`,
+      `.price-row .chip.price-normal`) are gone.
+      What remains: cards, buttons, segmented controls, ripples, and elevation
+      are still duplicated across views with subtle per-page variations
+      (padding, border colour, ripple behaviour, focus ring). A first-impression
+      UI should read as one system, not five-plus near-duplicates.
       Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer
       rebound, no inline overrides beyond data-attribute state. Implementation may use the
       existing custom primitives or `@material/web` — that choice stays with the P2 entry
@@ -126,6 +141,21 @@ release, not v2.7.1 merge-blockers.*
       Why P1 (demoted from P0 in release-review pass): refactor-for-coherence — the surfaces
       render today, just with subtle per-page differences. No user-visible incorrectness, so
       does not gate the release.
+      *Remaining primitive-type phases (one PR each, lowest blast first):*
+      - **Button** — text/elevated/filled MD Web wrappers + custom
+        `.plan-hero__recourse-button` and other per-page button styles. Widespread but
+        bounded to a handful of variant classes. Probably the next-lowest blast radius.
+      - **Card** — `.pels-surface-card` already exists as the canonical primitive;
+        consolidation effort is rebinding the per-page `.plan-card` / `.deadline-list-card`
+        / `.detail-card` / `.detail-diagnostics-card` / `.pels-device-card` consumers.
+        Effort is breadth, not depth.
+      - **Segmented control** — narrower scope; `.segmented` is already canonical.
+        Audit per-page overrides and rebind.
+      - **Ripple** — `MdRipple` already used in `DeadlinesList`; audit per-page
+        ripple styles + behaviour, rebind to the shared component.
+      - **Elevation** — `MdElevation` already used in a few cards; audit for raw
+        `box-shadow` declarations that should defer to elevation tokens / the
+        shared component.
       *Reference — sub-bullets from the original M3 visual pass that are now closed:*
       - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
         warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
@@ -145,6 +175,17 @@ release, not v2.7.1 merge-blockers.*
         as `<h2 class="plan-hero__headline">`, matching the four sibling panels.
         Tonal cascade (good/warn/alert/info) flows through `data-tone` on the shared
         primitive; no per-surface tonal CSS remains.
+      - **Chip primitive rebind landed (2026-05-24 batch 9 PR):** `.plan-chip` is
+        the single canonical chip shell; legacy `.chip` + `chip--{ok|boost|neutral|
+        alert}` retired; `data-tone="…"` API added alongside the BEM modifiers for
+        consistency with `.plan-hero`; per-page chip wrappers
+        (`.device-row__state-chip`, `.plan-history-detail__outcome-chip`,
+        `.plan-history-detail__cost-narrative-chip`, `.plan-history-detail__
+        shortfall-chip`, `.pels-device-card__count-chip`,
+        `.hourly-strip__legend-item`, `.budget-page-header__chips`) stay as
+        localized layout / typography overrides on top of the canonical shell —
+        they don't fork the tonal vocabulary so they don't violate the "one
+        chip family" invariant.
       - **Info as a role is sparse on Overview** — only the Smart-task chip and the
         info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
         neutral explanation), but worth confirming during chip/card consolidation that
@@ -192,6 +233,32 @@ release, not v2.7.1 merge-blockers.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] `.plan-chip[data-tone="link"]` API gap. PR #1028 ships the
+      dual BEM + `data-tone` API for tonal chips
+      (`good|warn|alert|info|muted` etc.), but `.plan-chip--link` is a
+      role modifier (tappable affordance) with NO `[data-tone="link"]`
+      companion rule. A new consumer that writes `data-tone="link"`
+      following the "prefer the data-attribute form" guidance would get
+      the info background but no hover/focus affordance + no touch
+      target. Either document `--link` as an additive role modifier
+      (not a tone) in the chip-primitive comment, or add a
+      `.plan-chip[data-tone="link"]` rule that mirrors the
+      `--link` modifier (cursor, transitions, hover/focus, touch
+      target).
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1028 follow-up, 2026-05-24.
+
+- [ ] `.plan-chip strong { font-weight: var(--font-weight-bold) }` is a
+      1-step contrast bump above the chip's own `--chip-font-weight`
+      (semibold) at the xs font size — easily lost. Consider dropping
+      the override and letting `<strong>` inherit the chip's weight, or
+      document the intent in the chip-primitive comment. Pre-existing
+      parity behavior carried forward from the retired `.chip strong`
+      selector; not a new violation, but worth tightening when the
+      primitive sees its next pass.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1028 follow-up, 2026-05-24.
 
 - [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
       asymmetry when it wraps. PR #1016 routes the Budget header through

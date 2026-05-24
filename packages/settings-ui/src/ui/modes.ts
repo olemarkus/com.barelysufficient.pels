@@ -220,7 +220,11 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
   const input = buildModeTargetInput(device, desired);
 
   const badge = document.createElement('span');
-  badge.className = 'chip priority-badge';
+  // `.priority-badge` is a fully-styled pill (radius-full + positive bg) and
+  // overrides every chip property; the legacy `chip` companion class added
+  // no styles. Dropped 2026-05-24 chip primitive consolidation so the
+  // priority pill stops aliasing as a chip in inspector / regression scans.
+  badge.className = 'priority-badge';
   badge.textContent = '…';
 
   const badgeWrap = document.createElement('div');

@@ -1365,11 +1365,9 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-1);
 }
 
-.plan-row__chip {
-  padding: 2px 8px;
-  font-size: var(--font-size-xs);
-  line-height: var(--font-line-height-compact);
-}
+/* `.plan-row__chip` retired 2026-05-24 (chip primitive consolidation) — the
+   plan-row variant was replaced by the device-card layout in the redesign
+   and had no consumers left. */
 
 .plan-state-indicator {
   display: inline-block;
@@ -1470,6 +1468,23 @@ md-primary-tab.tab[active]:hover {
   );
 }
 
+/* Canonical chip primitive. `.plan-chip` is the single source of truth for
+   chip shape, padding, radius, and typography across every settings-UI
+   surface — Overview status / freshness chips, Budget price-level chip,
+   Usage hero delta / day-status pills, Smart-task list status/kind/
+   confidence chips, deadline-plan hero chips, history-detail outcome /
+   cost / shortfall chips, device-list state chips, and the device-card
+   "managed-count" chip all walk this same primitive.
+
+   Tonal state lives in two equivalent APIs (both supported so existing
+   consumers don't need a mass migration to flip to the canonical attribute):
+   - BEM modifier:   `.plan-chip.plan-chip--good`
+   - data attribute: `.plan-chip[data-tone="good"]`
+
+   The data-attribute form matches `.plan-hero` / `.pels-hero` so a future
+   chip rebound from a hero context can carry the same `data-tone` value
+   without a class swap. New consumers should prefer the data-attribute
+   form; existing modifier sites continue to work. */
 .plan-chip {
   display: inline-flex;
   align-items: center;
@@ -1483,38 +1498,53 @@ md-primary-tab.tab[active]:hover {
   white-space: nowrap;
 }
 
+/* `data-tooltip` chips opt into the help cursor so the tooltip affordance
+   is discoverable on hover. Ported from the retired `.chip[data-tooltip]`
+   selector so the device-list state chips (Unavailable / Budget exempt /
+   Flow-backed) keep their help cursor after consolidating onto `.plan-chip`. */
+.plan-chip[data-tooltip] {
+  cursor: help;
+}
+
 .plan-chip--ok,
-.plan-chip--good {
+.plan-chip--good,
+.plan-chip[data-tone="ok"],
+.plan-chip[data-tone="good"] {
   background: var(--pels-status-good-container);
   border-color: var(--pels-status-good-border);
   color: var(--pels-status-on-good);
 }
 
-.plan-chip--warn {
+.plan-chip--warn,
+.plan-chip[data-tone="warn"] {
   background: var(--pels-status-warning-container);
   border-color: var(--pels-status-warning-border);
   color: var(--pels-status-on-warning);
 }
 
-.plan-chip--limited {
+.plan-chip--limited,
+.plan-chip[data-tone="limited"] {
   background: var(--pels-status-limited-container);
   border-color: var(--pels-status-limited-border);
   color: var(--pels-status-on-limited);
 }
 
-.plan-chip--alert {
+.plan-chip--alert,
+.plan-chip[data-tone="alert"] {
   background: var(--pels-status-critical-container);
   border-color: var(--pels-status-critical-border);
   color: var(--pels-status-on-critical);
 }
 
-.plan-chip--info {
+.plan-chip--info,
+.plan-chip[data-tone="info"] {
   background: var(--color-state-info-bg);
   border-color: var(--color-state-info-border);
   color: var(--color-state-info-text);
 }
 
-.plan-chip--muted {
+.plan-chip--muted,
+.plan-chip[data-tone="muted"] {
   background: var(--pels-surface-container-high);
   border-color: var(--pels-surface-outline);
   /* Use primary text rather than --pels-text-secondary. Secondary on a
@@ -1527,6 +1557,15 @@ md-primary-tab.tab[active]:hover {
 }
 
 .plan-chip--link {
+  /* `--link` is the only tappable chip modifier — every other tonal
+     variant is an informational pill. Enforce the M3 48 px touch-target
+     minimum so any current and future link-shaped chip ships with a
+     finger-safe tap surface, regardless of the chip's underlying
+     content size. The min-block-size pushes the chip taller than the
+     default ~22 px pill height; consumers shouldn't need to wrap their
+     own touch target. */
+  min-block-size: var(--pels-touch-target-min);
+  min-inline-size: var(--pels-touch-target-min);
   cursor: pointer;
   text-decoration: none;
   transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
@@ -1544,6 +1583,15 @@ md-primary-tab.tab[active]:hover {
 
 .plan-chip--link:active {
   transform: translateY(1px);
+}
+
+/* `strong` inside a chip carries the chip's text colour at bold weight with
+   a tighter letter-spacing — matches the inline-numeric callouts that the
+   pre-consolidation `.chip strong` selector targeted. */
+.plan-chip strong {
+  color: inherit;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: -0.01em;
 }
 
 .plan-hero__bar-group {
@@ -3430,9 +3478,12 @@ md-primary-tab.tab[active]:hover {
   white-space: nowrap;
 }
 
+/* Compact variant of the canonical `.plan-chip` primitive used by the
+   device-list state chips (Unavailable / Budget exempt / Flow-backed).
+   Only padding + line-height tighten — the chip primitive already lands
+   `--chip-font-size` (xs) / `--chip-font-weight` (semibold). */
 .device-row__state-chip {
   padding: 2px 8px;
-  font-size: var(--font-size-xs);
   line-height: var(--font-line-height-compact);
 }
 
@@ -3441,46 +3492,13 @@ md-primary-tab.tab[active]:hover {
   display: none;
 }
 
-.chip {
-  display: inline-flex;
-  gap: var(--spacing-2);
-  align-items: center;
-  padding: var(--spacing-2) var(--spacing-2);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-3);
-  border: 1px solid var(--panel-border);
-  font-size: var(--font-size-sm);
-  color: var(--text);
-  position: relative;
-  cursor: default;
-}
-
-.chip--ok {
-  background: var(--color-state-positive-bg);
-  border-color: var(--color-state-positive-border);
-}
-
-.chip--boost {
-  background: var(--color-state-warning-bg);
-  border-color: var(--color-state-warning-border);
-  color: var(--color-state-warning-text);
-}
-
-.chip--neutral {
-  background: var(--color-surface-4);
-  border-color: var(--color-border-strong);
-  color: var(--muted);
-}
-
-.chip--alert {
-  background: var(--color-state-warning-bg);
-  border-color: var(--color-state-warning-border);
-  color: var(--color-state-warning-text);
-}
-
-.chip[data-tooltip] {
-  cursor: help;
-}
+/* Legacy `.chip` primitive removed 2026-05-24 (chip primitive consolidation).
+   `.plan-chip` is now the single canonical chip across every settings-UI
+   surface; the `chip--neutral` / `chip--ok` / `chip--boost` / `chip--alert`
+   tonal variants map onto `plan-chip--muted` / `plan-chip--ok` /
+   `plan-chip--warn` / `plan-chip--alert` respectively. `.chip[data-tooltip]`
+   help cursor moved to `.plan-chip[data-tooltip]` above; `.chip strong` text
+   colour moved to `.plan-chip strong`. */
 
 .tippy-box {
   position: relative;
@@ -3505,12 +3523,6 @@ md-primary-tab.tab[active]:hover {
 .tippy-box[data-theme~='pels'] .tippy-content {
   padding: var(--spacing-2) var(--spacing-3);
   white-space: pre-line;
-}
-
-.chip strong {
-  color: var(--text);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: -0.01em;
 }
 
 .inline-actions {
@@ -3915,10 +3927,9 @@ md-primary-tab.tab[active]:hover {
   opacity: 0.7;
 }
 
-.price-row .chip.price-normal {
-  background: var(--color-surface-4);
-  color: var(--text);
-}
+/* `.price-row .chip.price-normal` retired 2026-05-24 (chip primitive
+   consolidation) — the legacy `.price-row` markup it targeted is no longer
+   rendered. */
 
 /* Price optimization inputs */
 #price-optimization-section {
