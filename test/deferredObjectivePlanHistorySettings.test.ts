@@ -285,6 +285,59 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(result.entries).toHaveLength(0);
   });
 
+  it('drops a revision snapshot whose persisted energyExpectedKWh is non-positive', () => {
+    // Defensive: the recorder only writes a finite positive mean (steady devices
+    // omit the field, restart-recovered finalizes pass `null` and the producer
+    // skips it). A non-positive or NaN value persisted in the snapshot would
+    // silently disable the mean-aware miss-attribution comparison and signal
+    // tampering or a downgraded build — drop the whole entry rather than load
+    // it with a half-trustworthy snapshot.
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 1.5 }],
+      energyNeededKWh: 1.5,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      energyExpectedKWh: 0, // illegal — a real mean is > 0.
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-bad-mean-zero', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(0);
+
+    const nanSnapshot = { ...snapshot, energyExpectedKWh: Number.NaN };
+    const nanResult = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-bad-mean-nan', originalPlan: nanSnapshot, finalPlan: null }],
+    });
+    expect(nanResult.entries).toHaveLength(0);
+
+    const negativeSnapshot = { ...snapshot, energyExpectedKWh: -1.5 };
+    const negativeResult = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-bad-mean-neg', originalPlan: negativeSnapshot, finalPlan: null }],
+    });
+    expect(negativeResult.entries).toHaveLength(0);
+  });
+
+  it('accepts a revision snapshot carrying a valid energyExpectedKWh', () => {
+    // Round-trip the optional field so persistence stays byte-stable across
+    // the v2.9 → v2.10 jump for entries the recorder writes after this PR.
+    const snapshot = {
+      hours: [{ startsAtMs: 0, plannedKWh: 2.5 }],
+      energyNeededKWh: 5.0,
+      planStatus: 'cannot_meet',
+      revisedAtMs: 0,
+      energyExpectedKWh: 3.0,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [{ ...v3Entry, id: 'attr-mean-ok', originalPlan: snapshot, finalPlan: null }],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.originalPlan?.energyExpectedKWh).toBeCloseTo(3.0);
+  });
+
   it('accepts metReason:"stalled" on met entries (optional field, byte-stable upgrade)', () => {
     const stalledEntry = {
       ...v3Entry,

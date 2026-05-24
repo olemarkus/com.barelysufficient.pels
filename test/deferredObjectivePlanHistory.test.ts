@@ -11,6 +11,9 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryV4,
 } from '../packages/contracts/src/deferredObjectivePlanHistory';
+import {
+  resolveDeferredPlanHistoryMissAttribution,
+} from '../packages/shared-domain/src/deferredPlanHistoryAttribution';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -2508,6 +2511,115 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         missCause: 'low_confidence',
         rateConfidence: 'low',
         acceptedSamples: 3,
+      });
+    });
+
+    it('persists the mean energy on the snapshot so the UI render path resolves the same missCause as the runtime log', () => {
+      // Regression for the runtime-reality P1 finding on the original miss-
+      // attribution PR: the runtime log used a mean-aware comparison (via the
+      // optional `energyExpectedKWh` hint threaded from the in-flight record)
+      // but the UI render path read the persisted entry through
+      // `formatRefinedMissCause` without the hint and fell back to the
+      // buffered `plannedKWh` comparison — labelling the same run two
+      // different causes. Persisting `energyExpectedKWh` onto the snapshot
+      // closes that divergence (per `feedback_layering_resolution_in_producer`
+      // and `feedback_ui_text_shared_with_logs`).
+      //
+      // Scenario: high-confidence plan with a buffered total of 5.0 kWh
+      // (mean 3.0 + k·SE 2.0), delivered 3.2 kWh — buffered comparison
+      // would call this `capacity_shortfall`; the mean-aware comparison
+      // should resolve `energy_underestimate`.
+      const events: Record<string, unknown>[] = [];
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder({
+        ...deps,
+        debugStructured: (payload) => { events.push(payload); },
+      });
+      const deadlineAtMs = 6 * HOUR_MS;
+      const plans = {
+        version: 1 as const,
+        plansByDeviceId: {
+          dev: {
+            deviceId: 'dev',
+            deviceName: 'Water Heater',
+            objectiveKind: 'temperature' as const,
+            targetTemperatureC: 65,
+            targetPercent: null,
+            deadlineAtMs,
+            startedAtMs: 0,
+            pending: false,
+            objectiveSignature: 'sig',
+            initialPlanningSpeedKw: 2.5,
+            kwhPerUnitProvenance: {
+              source: 'learned' as const,
+              kWhPerUnit: 1.5,
+              acceptedSamples: 12,
+              confidence: 'high' as const,
+              lastAcceptedAtMs: 0,
+            },
+            original: {
+              revision: 1,
+              revisedAtMs: 0,
+              computedFromPricesUpTo: null,
+              reason: 'flow_card' as const,
+              hours: [
+                { startsAtMs: 0, plannedKWh: 2.5 },
+                { startsAtMs: HOUR_MS, plannedKWh: 2.5 },
+              ],
+              energyNeededKWh: 5.0,
+              energyExpectedKWh: 3.0,
+              planStatus: 'cannot_meet' as const,
+            },
+            latest: {
+              revision: 1,
+              revisedAtMs: 0,
+              computedFromPricesUpTo: null,
+              reason: 'flow_card' as const,
+              hours: [
+                { startsAtMs: 0, plannedKWh: 2.5 },
+                { startsAtMs: HOUR_MS, plannedKWh: 2.5 },
+              ],
+              energyNeededKWh: 5.0,
+              energyExpectedKWh: 3.0,
+              planStatus: 'cannot_meet' as const,
+            },
+          },
+        },
+      };
+      // Cycle 1: observe the plan so the recorder caches `energyExpectedKWh`
+      // onto the in-progress record and feeds an hourly delivery contribution.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, status: 'cannot_meet' })],
+        0,
+        plans,
+      );
+      recorder.recordHourlyDelivery({
+        deviceId: 'dev',
+        deadlineAtMs,
+        hourStartMs: 0,
+        deliveredKWh: 3.2,
+        priceValue: 1.0,
+        tone: 'normal',
+      });
+      // Sweep at the deadline to finalize as `missed`.
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      // 1. Persisted snapshot carries the mean.
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('missed');
+      expect(entry.finalPlan?.energyExpectedKWh).toBeCloseTo(3.0);
+
+      // 2. UI render path (reads the persisted entry only — no live hint).
+      const uiAttribution = resolveDeferredPlanHistoryMissAttribution(entry);
+      expect(uiAttribution.cause).toBe('energy_underestimate');
+      expect(uiAttribution.deliveredAtOrAbovePlan).toBe(true);
+
+      // 3. Runtime structured log resolves the same cause.
+      const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
+      expect(finalized).toMatchObject({
+        outcome: 'missed',
+        missCause: 'energy_underestimate',
       });
     });
   });

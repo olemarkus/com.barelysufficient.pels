@@ -114,6 +114,21 @@ const pickPlanningSpeedKw = (
   return value;
 };
 
+// Mean-based plan total (no variance buffer) from the active plan's most
+// recent revision. Threaded into miss attribution at finalize so a cold-start
+// run whose buffered floor was inflated by `k·SE` isn't mislabelled
+// `capacity_shortfall` when delivery met the mean. `null` when absent /
+// non-positive (steady devices omit `energyExpectedKWh` once it equals the
+// buffered total — the buffered comparison is already correct in that case).
+export const pickEnergyExpectedKWhFromPlan = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): number | null => {
+  const revision = plan?.latest ?? plan?.original;
+  const value = revision?.energyExpectedKWh;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+};
+
 // Build the `deferred_objective_history_finalized` structured-debug payload for
 // a finalized entry. Carries the resolved miss attribution (cause + the raw
 // plan-time confidence / committed-floor / delivery inputs it rested on) so the
@@ -121,10 +136,22 @@ const pickPlanningSpeedKw = (
 // conservative-planning false alarms. Lives here (not on the recorder) so the
 // recorder file stays under the 500-LOC cap and the shared-domain attribution
 // import sits beside the other history-shaping helpers.
+//
+// `energyExpectedKWh` is the mean-based plan total threaded from the live
+// revision at finalization (see `InProgressRecord.energyExpectedKWhAtFinalize`).
+// Passing it shifts the delivered-vs-floor split to compare against the mean
+// rather than the buffered `plannedKWh`, which avoids labelling a cold-start
+// buffer-inflated run as `capacity_shortfall` when delivery met the mean. The
+// same finalize pass also writes the value onto the persisted snapshot
+// (`attachEnergyExpectedKWh`), so the UI render path resolves the same cause
+// without re-threading the live value. Optional — backfill and
+// restart-recovered finalizations pass `null` and the classifier falls back to
+// the buffered comparison (no-worse-than-before).
 export const buildFinalizedAttributionEvent = (
   entry: DeferredObjectivePlanHistoryEntry,
+  energyExpectedKWh: number | null = null,
 ): Record<string, unknown> => {
-  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+  const attribution = resolveDeferredPlanHistoryMissAttribution(entry, energyExpectedKWh);
   return {
     event: 'deferred_objective_history_finalized',
     deviceId: entry.deviceId,
@@ -139,6 +166,27 @@ export const buildFinalizedAttributionEvent = (
     dailyBudgetExhaustedBucketCount: attribution.dailyBudgetExhaustedBucketCount,
     deliveredAtOrAbovePlan: attribution.deliveredAtOrAbovePlan,
   };
+};
+
+// Attach the live mean-based plan total to the snapshot the finalized entry
+// will carry. The producer keeps `energyExpectedKWhAtFinalize` runtime-only on
+// `InProgressRecord` (rebuilt from live diagnostics across restarts, per the
+// same lossy-restart contract as `currentHourOpening`); at finalize we promote
+// it to the persisted snapshot so the UI render path of the entry resolves the
+// same `missCause` the runtime structured log emits. Returns the snapshot
+// unchanged when the mean is absent / non-positive (steady devices where the
+// buffered comparison is already correct, restart-recovered finalizes that
+// lost the in-flight value) — consumers fall back to the buffered `plannedKWh`
+// comparison in that case (legacy no-worse-than-before).
+export const attachEnergyExpectedKWh = (
+  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+  energyExpectedKWh: number | null,
+): DeferredObjectivePlanHistoryRevisionSnapshot | null => {
+  if (snapshot === null) return null;
+  if (typeof energyExpectedKWh !== 'number'
+    || !Number.isFinite(energyExpectedKWh)
+    || energyExpectedKWh <= 0) return snapshot;
+  return { ...snapshot, energyExpectedKWh };
 };
 
 export const captureRevisionSnapshot = (

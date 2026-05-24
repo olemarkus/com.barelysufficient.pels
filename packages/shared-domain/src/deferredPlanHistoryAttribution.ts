@@ -52,7 +52,7 @@ const DELIVERED_PLAN_FRACTION = 0.95;
 type AttributionSnapshot = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot,
   'hours' | 'planStatus' | 'rateConfidence' | 'acceptedSamples'
-  | 'planningSpeedKw' | 'dailyBudgetExhaustedBucketCount'
+  | 'planningSpeedKw' | 'dailyBudgetExhaustedBucketCount' | 'energyExpectedKWh'
 >;
 
 const sumPlannedKWh = (snapshot: AttributionSnapshot): number => {
@@ -112,32 +112,81 @@ const resolveDeliveredKWh = (
     : null
 );
 
+// Narrows an optional `energyExpectedKWh` hint to a positive finite number
+// (the only shape the comparison can act on); other shapes collapse to null
+// so the comparison falls back to the buffered `plannedKWh` sum. Accepts
+// `undefined` from the optional snapshot field as well as `null` from legacy
+// call sites that explicitly pass "no hint".
+const normalizeEnergyExpectedKWh = (value: number | null | undefined): number | null => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+};
+
+// Snapshot wins over the optional argument — once the producer has persisted
+// the mean onto the snapshot, that's the authoritative value for both runtime
+// and UI render paths. The hint argument remains useful for call sites that
+// resolve the attribution from the in-flight runtime value before the snapshot
+// has been assembled (e.g. tests, callers that bypass `pushEntry`).
+const pickResolvedMean = (
+  snapshot: AttributionSnapshot | null,
+  hint: number | null,
+): number | null => (
+  normalizeEnergyExpectedKWh(snapshot?.energyExpectedKWh)
+  ?? normalizeEnergyExpectedKWh(hint)
+);
+
 const resolveDeliveredAtOrAbovePlan = (
   deliveredKWh: number | null,
   plannedKWh: number | null,
+  // Mean-based attribution avoids labelling a cold-start buffer-inflated run as
+  // `capacity_shortfall` when delivered energy actually met the underlying mean
+  // estimate. When the caller doesn't have the mean (legacy UI render of a
+  // historical entry), fall back to the buffered `plannedKWh` — same behaviour
+  // as before this fix.
+  energyExpectedKWh: number | null,
 ): boolean | null => {
-  if (deliveredKWh === null || plannedKWh === null || plannedKWh <= 0) return null;
-  return deliveredKWh >= plannedKWh * DELIVERED_PLAN_FRACTION;
+  const comparisonBasis = energyExpectedKWh ?? plannedKWh;
+  if (deliveredKWh === null || comparisonBasis === null || comparisonBasis <= 0) return null;
+  return deliveredKWh >= comparisonBasis * DELIVERED_PLAN_FRACTION;
 };
 
 /**
  * Resolves the miss attribution for a finalized history entry. Pure and
- * browser-safe: reads only the persisted entry. Returns a fully-populated
- * structure on every call (fields null when their input wasn't recorded) so
- * the runtime structured log can forward it verbatim and the UI helper can
- * read `cause` without re-deriving.
+ * browser-safe: reads the persisted entry (including the snapshot's persisted
+ * `energyExpectedKWh` when present) plus an optional mean-energy hint the
+ * runtime emitter threads from the live revision at finalize time. Returns a
+ * fully-populated structure on every call (fields null when their input wasn't
+ * recorded) so the runtime structured log can forward it verbatim and the UI
+ * helper can read `cause` without re-deriving.
+ *
+ * `energyExpectedKWh` (the second argument) is the mean-based plan total
+ * (no variance buffer), threaded from the live
+ * `DeferredObjectiveActivePlanRevisionV1.energyExpectedKWh` at finalization.
+ * The snapshot's persisted `energyExpectedKWh` (written by the recorder during
+ * the same finalize pass) is the source of truth at read time so both runtime
+ * and UI now resolve identical `missCause` values; the hint is retained for
+ * call sites that have the live value but haven't yet flowed through
+ * persistence. When neither is present (legacy entries written before this
+ * field shipped, backfill entries) the comparison falls back to the buffered
+ * `plannedKWh` sum — same behaviour as before the fix, so UI-side attribution
+ * of historical entries is no-worse-than-before.
  */
 export const resolveDeferredPlanHistoryMissAttribution = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
     'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
   >,
+  energyExpectedKWh: number | null = null,
 ): DeferredPlanHistoryMissAttribution => {
   const snapshot = pickSnapshot(entry);
   const plannedTotal = snapshot === null ? null : sumPlannedKWh(snapshot);
   const plannedKWh = plannedTotal !== null && plannedTotal > 0 ? plannedTotal : null;
   const deliveredKWh = resolveDeliveredKWh(entry);
-  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAbovePlan(deliveredKWh, plannedKWh);
+  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAbovePlan(
+    deliveredKWh,
+    plannedKWh,
+    pickResolvedMean(snapshot, energyExpectedKWh),
+  );
   return {
     cause: resolveCause({ outcome: entry.outcome, snapshot, deliveredAtOrAbovePlan }),
     plannedKWh,

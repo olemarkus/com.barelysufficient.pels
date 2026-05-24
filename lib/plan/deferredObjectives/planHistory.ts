@@ -23,6 +23,7 @@ import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './ende
 import {
   appendHourlyContribution,
   appendRevisionLogIfNew,
+  attachEnergyExpectedKWh,
   buildFinalHourFlush,
   buildFinalizedAttributionEvent,
   captureRevisionSnapshot,
@@ -32,6 +33,7 @@ import {
   hourBucketMs,
   type HourPriceResolver,
   type HourProgressSnapshot,
+  pickEnergyExpectedKWhFromPlan,
   pickKwhPerUnit,
   recordProgressSample,
   seedProgressSamples,
@@ -157,6 +159,20 @@ type InProgressRecord = Omit<
   // `null` when no diagnostic ever resolved a profile. Same lossy-restart
   // contract as `currentHourOpening` — see above.
   lastKWhPerUnit: number | null;
+  // Mean-based plan total (no variance buffer) from the most recent
+  // observed revision (`revision.energyExpectedKWh`). Cached on the record so
+  // miss attribution at finalize time can compare delivered energy against the
+  // mean rather than the buffered `plannedKWh` sum — a cold-start run with a
+  // wide `k·SE` buffer would otherwise be misclassified as `capacity_shortfall`
+  // when it delivered the mean estimate. `null` when no revision has been
+  // observed or when the revision didn't carry `energyExpectedKWh` (steady
+  // device — buffer equals mean, so the buffered comparison is already
+  // correct). Runtime-only as an in-flight tracking field — the same
+  // lossy-restart contract as `currentHourOpening` applies — but `finalizeRecord`
+  // promotes it to the persisted snapshot's `energyExpectedKWh` so the UI render
+  // path resolves the same `missCause` the runtime structured log emits (see
+  // `attachEnergyExpectedKWh`).
+  energyExpectedKWhAtFinalize: number | null;
 };
 
 
@@ -298,6 +314,7 @@ const startRecord = (
     hourlyContributions: [],
     currentHourOpening: seedHourOpening(diag, nowMs),
     lastKWhPerUnit: pickKwhPerUnit(diag),
+    energyExpectedKWhAtFinalize: pickEnergyExpectedKWhFromPlan(plan),
   };
 };
 
@@ -335,19 +352,22 @@ const resolveRevisionCount = (
 const refreshPlanSnapshots = (
   record: InProgressRecord,
   plan: DeferredObjectiveActivePlanV1 | undefined,
-): Pick<InProgressRecord, 'originalPlan' | 'finalPlan' | 'revisionCount' | 'revisions'> => {
+) => {
   const finalRevision = pickRevisionForFinal(plan);
   // Revision count is monotonic. Track the highest index ever observed so a
   // transient `plan` regression (planner cleared `latest` after a settings
   // glitch, mid-run pickup) does not reset the count we hand to history.
   const nextRevisionCount = Math.max(record.revisionCount, resolveRevisionCount(plan));
+  // Mean-based plan total cached on the record for miss attribution at
+  // finalize. Sticky across observations that drop the field (steady devices
+  // where the recorder omits `energyExpectedKWh` once it equals the buffered
+  // total) so a cold-start run that later steadies still attributes against
+  // the original cold-start mean.
+  const energyExpectedKWhAtFinalize
+    = pickEnergyExpectedKWhFromPlan(plan) ?? record.energyExpectedKWhAtFinalize;
   if (!finalRevision) {
-    return {
-      originalPlan: record.originalPlan,
-      finalPlan: record.finalPlan,
-      revisionCount: nextRevisionCount,
-      revisions: record.revisions,
-    };
+    const { originalPlan, finalPlan, revisions } = record;
+    return { originalPlan, finalPlan, revisionCount: nextRevisionCount, revisions, energyExpectedKWhAtFinalize };
   }
   const finalSnapshot = captureRevisionSnapshot(finalRevision, plan);
   // `originalPlan` tracks the richest schedule the planner ever achieved for
@@ -376,6 +396,7 @@ const refreshPlanSnapshots = (
     finalPlan: finalSnapshot,
     revisionCount: nextRevisionCount,
     revisions,
+    energyExpectedKWhAtFinalize,
   };
 };
 
@@ -621,8 +642,8 @@ const finalizeRecord = (
     usedPolicyAvoid: record.usedPolicyAvoid,
     observedIntervals: record.observedIntervals.slice(),
     discoveredFrom: 'observation',
-    originalPlan: record.originalPlan,
-    finalPlan: record.finalPlan,
+    originalPlan: attachEnergyExpectedKWh(record.originalPlan, record.energyExpectedKWhAtFinalize),
+    finalPlan: attachEnergyExpectedKWh(record.finalPlan, record.energyExpectedKWhAtFinalize),
     // Persist `revisionCount` only when the recorder actually observed at least
     // one revision. Zero means "never plannable" — the UI treats that the same
     // as a missing field (no "replanned" copy) so suppressing it keeps existing
@@ -887,7 +908,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     for (const [key, record] of this.inProgress) {
       if (record.deviceId !== deviceId) continue;
       const flushed = this.flushOpenHourAtFinalize(record);
-      this.pushEntry(finalizeRecord(flushed, nowMs, reason));
+      this.pushEntry(finalizeRecord(flushed, nowMs, reason), flushed.energyExpectedKWhAtFinalize);
       this.inProgress.delete(key);
     }
   }
@@ -1060,7 +1081,7 @@ export class DeferredObjectivePlanHistoryRecorder {
     for (const [key, record] of this.inProgress) {
       if (record.deadlineAtMs <= nowMs) {
         const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'));
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'deadline_passed'), flushed.energyExpectedKWhAtFinalize);
         this.inProgress.delete(key);
         continue;
       }
@@ -1070,17 +1091,21 @@ export class DeferredObjectivePlanHistoryRecorder {
       // recovers.
       if (nowMs - lastObservedAtMs(record) >= ABANDON_GRACE_MS) {
         const flushed = this.flushOpenHourAtFinalize(record);
-        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'));
+        this.pushEntry(finalizeRecord(flushed, nowMs, 'abandoned'), flushed.energyExpectedKWhAtFinalize);
         this.inProgress.delete(key);
       }
     }
   }
 
-  private pushEntry(entry: DeferredObjectivePlanHistoryEntry): void {
+  // `energyExpectedKWh` is the mean-based plan total threaded from the in-progress
+  // record at finalize. Optional: backfill entries (synthesized from settings
+  // without a live plan) and call sites without an in-progress record pass
+  // `null`; the attribution falls back to the buffered `plannedKWh` comparison.
+  private pushEntry(entry: DeferredObjectivePlanHistoryEntry, energyExpectedKWh: number | null = null): void {
     this.entries.push(entry);
     this.trimEntries();
     this.dirty = true;
-    this.emitFinalizedAttribution(entry);
+    this.emitFinalizedAttribution(entry, energyExpectedKWh);
     const endedEvent = buildEndedEventFromEntry(entry);
     if (endedEvent !== null) {
       this.deps.endedBus?.publish(endedEvent);
@@ -1091,10 +1116,13 @@ export class DeferredObjectivePlanHistoryRecorder {
   // are skipped: they carry no observed plan/delivery, so the attribution would
   // be `unknown` with null inputs — noise. Emitting on every outcome (not just
   // `missed`) is deliberate: the met/missed ratio against the same confidence /
-  // floor inputs is what quantifies the false-alarm rate.
-  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
+  // floor inputs is what quantifies the false-alarm rate. `energyExpectedKWh`
+  // is the mean-based plan total threaded from the live revision so cold-start
+  // buffer-inflated runs aren't mislabelled `capacity_shortfall`; see
+  // `InProgressRecord.energyExpectedKWhAtFinalize`.
+  private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry, energyExpectedKWh: number | null): void {
     if (entry.discoveredFrom !== 'observation') return;
-    const event = buildFinalizedAttributionEvent(entry);
+    const event = buildFinalizedAttributionEvent(entry, energyExpectedKWh);
     if (this.deps.debugStructured) {
       this.deps.debugStructured(event);
     } else {

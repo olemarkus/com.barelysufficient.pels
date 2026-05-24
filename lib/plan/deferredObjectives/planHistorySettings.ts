@@ -109,8 +109,13 @@ const isRevisionSnapshot = (
 // legacy shape. `rateConfidence` is the learned-rate band the run was planned
 // against; `acceptedSamples` the count behind it (positive when written, but
 // the validator accepts zero so round-tripped fixtures aren't dropped);
-// `planningSpeedKw` the committed full-hour floor (kW, finite positive). Split
-// out of `isRevisionSnapshot` to keep that guard under the complexity cap.
+// `planningSpeedKw` the committed full-hour floor (kW, finite positive);
+// `energyExpectedKWh` the mean-based plan total threaded from the live revision
+// at finalize so the shared attribution helper can compare delivery against the
+// mean rather than the buffered `plannedKWh` sum (must be finite positive when
+// present — zero / negative / NaN means the persisted snapshot was tampered
+// with so drop it). Split out of `isRevisionSnapshot` to keep that guard under
+// the complexity cap.
 const hasValidMissAttributionFields = (v: Record<string, unknown>): boolean => {
   if (v.rateConfidence !== undefined
     && v.rateConfidence !== 'low'
@@ -120,6 +125,8 @@ const hasValidMissAttributionFields = (v: Record<string, unknown>): boolean => {
     && (!isFiniteNumber(v.acceptedSamples) || v.acceptedSamples < 0)) return false;
   if (v.planningSpeedKw !== undefined
     && (!isFiniteNumber(v.planningSpeedKw) || v.planningSpeedKw <= 0)) return false;
+  if (v.energyExpectedKWh !== undefined
+    && (!isFiniteNumber(v.energyExpectedKWh) || v.energyExpectedKWh <= 0)) return false;
   return true;
 };
 

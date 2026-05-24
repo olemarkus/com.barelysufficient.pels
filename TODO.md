@@ -800,7 +800,7 @@ block merge.*
 *v2.8.0 → origin/main release-review findings (2026-05-22). From the
 five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
 
-- [ ] Miss attribution compares delivered energy against the *buffered*
+- [x] Miss attribution compares delivered energy against the *buffered*
       `plannedKWh`, not the mean. When the SE buffer is large (cold-start)
       `plannedKWh` is inflated, so a run can be labelled
       `capacity_shortfall` when the real cause was the conservative buffer.
@@ -811,6 +811,31 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       mean) before this telemetry tunes feasibility.
       Files: `packages/shared-domain/src/deferredPlanHistoryAttribution.ts:115-121`.
       Source: `pels-runtime-reality`, v2.8.0→origin/main release-review pass.
+      DONE (2026-05-24, `fix/p2-miss-attribution-mean`): threaded mean from the
+      live revision through `InProgressRecord.energyExpectedKWhAtFinalize` →
+      `pushEntry` → `buildFinalizedAttributionEvent` →
+      `resolveDeferredPlanHistoryMissAttribution(entry, energyExpectedKWh?)`.
+      Falls back to buffered `plannedKWh` when the mean is absent (UI render,
+      backfill, restart-recovered finalize) so UI attribution is no-worse-than-
+      before. Met/missed verdict (`classifyOutcome` / `wasTargetReached`) is
+      untouched. Test: `does not label a wide-buffer high-confidence run
+      delivering the mean as capacity_shortfall` in
+      `test/deferredPlanHistoryAttribution.test.ts`.
+      AMENDMENT (2026-05-24, same PR): `pels-runtime-reality` flagged a P1 on
+      the original PR — the runtime log emitted `missCause` with the mean-aware
+      comparison but the UI render path (which has no live hint) fell back to
+      the buffered comparison, so the same finalized entry could resolve two
+      different causes. Persist `energyExpectedKWh?: number` on
+      `DeferredObjectivePlanHistoryRevisionSnapshot` (optional, finite > 0) and
+      promote `InProgressRecord.energyExpectedKWhAtFinalize` onto the snapshot
+      via `attachEnergyExpectedKWh` in `finalizeRecord`. Snapshot wins over the
+      optional argument inside `resolveDeferredPlanHistoryMissAttribution` so
+      runtime and UI now resolve identical causes; old entries (no persisted
+      field) still fall back to the buffered comparison. Validator extended in
+      `lib/plan/deferredObjectives/planHistorySettings.ts` to reject
+      non-positive / NaN tampered writes. Regression test: `persists the mean
+      energy on the snapshot so the UI render path resolves the same missCause
+      as the runtime log` in `test/deferredObjectivePlanHistory.test.ts`.
 
 - [ ] Muted meta lines on the warn/alert tonal hero sit ~3.6:1 (below
       WCAG AA 4.5:1) at the top gradient stop. Established device-card
