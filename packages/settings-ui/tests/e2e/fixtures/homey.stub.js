@@ -797,8 +797,12 @@
   ensureEvSupportState();
 
   const buildPowerPayload = () => {
-    const scenarioPower = runtimeOverrides.scenarioPatch?.power;
-    if (scenarioPower) return scenarioPower;
+    // Branch on `!== undefined` (not `?? baseline`) so a scenario can force a
+    // null power payload to exercise the "power feed missing" UI state.
+    const scenarioPatch = runtimeOverrides.scenarioPatch;
+    if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'power')) {
+      return scenarioPatch.power;
+    }
     return {
       tracker: settings.power_tracker_state ?? null,
       status: settings.pels_status ?? null,
@@ -818,9 +822,15 @@
     homeyTomorrow: settings.homey_prices_tomorrow ?? null,
   });
 
-  const buildPlanPayload = () => (
-    runtimeOverrides.scenarioPatch?.plan ?? settings.plan_snapshot
-  );
+  const buildPlanPayload = () => {
+    // Branch on `hasOwnProperty` so a scenario can force a null plan (used to
+    // exercise the "no plan yet" UI state); `?? baseline` would mask that.
+    const scenarioPatch = runtimeOverrides.scenarioPatch;
+    if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'plan')) {
+      return scenarioPatch.plan;
+    }
+    return settings.plan_snapshot;
+  };
 
   const resolveDailyBudgetPayload = () => {
     // Direct runtime override (set via `__stub.setDailyBudgetPayload`) wins so
@@ -1086,7 +1096,11 @@
     const allowedCumKWh = [];
     const price = [];
     let cum = 0;
-    const currentBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / HOUR_MS)));
+    // Pin to bucket 18 (~16.2 kWh cumulative actual) so `exceeded` is true
+    // regardless of wall-clock time — keeps the over-budget chip stable for
+    // screenshot audits run at any hour. See the matching helper-side
+    // comment in `packages/settings-ui/test/helpers/auditScenarios.ts`.
+    const currentBucketIndex = 18;
     for (let i = 0; i < 24; i += 1) {
       startUtc.push(new Date(dayStartMs + i * HOUR_MS).toISOString());
       startLocalLabels.push(String(i).padStart(2, '0'));
