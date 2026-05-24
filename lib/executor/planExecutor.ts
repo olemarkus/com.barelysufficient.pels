@@ -515,7 +515,6 @@ export class PlanExecutor {
         deviceId,
         deviceName,
         snapshotState,
-        logDebug: (...args: unknown[]) => logger.debug({ event: 'executor_plan_log_debug', msg: args.join(' ') }),
       })) {
         return false;
       }
@@ -627,10 +626,6 @@ export class PlanExecutor {
       const executablePlan = buildExecutablePlan(plan);
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
-      const logCapacityDebug = (...args: unknown[]) => logger.debug({
-        event: 'executor_plan_log_debug',
-        msg: args.join(' '),
-      });
       const hasShedDevices = hasExecutableShedDevices(plan, executablePlan);
       this.logUnderspecifiedSteppedShedDevices(plan, executablePlan, mode);
       let deviceWriteCount = 0;
@@ -645,7 +640,6 @@ export class PlanExecutor {
             snapshot,
             name: intent.name,
             operation: 'actuation',
-            logDebug: logCapacityDebug,
           })) {
             continue;
           }
