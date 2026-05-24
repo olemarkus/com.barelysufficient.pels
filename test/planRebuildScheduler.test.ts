@@ -1,4 +1,4 @@
-import { PlanRebuildScheduler, type RebuildIntent } from '../lib/app/planRebuildScheduler';
+import { PlanRebuildScheduler, type RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
 
 type TimerHandle = { id: number };
 

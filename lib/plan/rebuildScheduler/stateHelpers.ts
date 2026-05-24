@@ -1,4 +1,4 @@
-import type { PowerSampleRebuildState } from './appPowerRebuildScheduler';
+import type { PowerSampleRebuildState } from './powerDriven';
 
 export const resolvePendingPowerW = (
   snapshot: PowerSampleRebuildState,

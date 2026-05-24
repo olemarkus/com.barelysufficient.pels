@@ -71,8 +71,8 @@ import {
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
 } from './lib/app/appPowerCalibrationWiring';
-import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/app/appPowerRebuildShortfallSuppression';
-import { PlanRebuildScheduler, type RebuildIntent } from './lib/app/planRebuildScheduler';
+import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/plan/rebuildScheduler/shortfallSuppression';
+import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
