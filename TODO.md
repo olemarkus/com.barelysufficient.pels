@@ -2746,12 +2746,19 @@ should not be folded into the same PR.
       "objective_invalid_session" entry — audit whether the shared helpers still make sense or
       if the kinds should split fully. No action until the first divergence.
       Files: `packages/shared-domain/src/deadlineLabels.ts`.
-- [ ] Document recurring smart-task usage in `set_*_deadline` flow card hints. The action
+- [x] Document recurring smart-task usage in `set_*_deadline` flow card hints. The action
       auto-disables the objective after deadline passes (correct, prevents silent replans), but
-      the user-facing card hint doesn't explain that users need a daily trigger (e.g.
-      "when EV plugged in") to re-arm. One sentence in the JSON `hint` field.
+      the user-facing card hint didn't explain that users need a daily trigger (e.g.
+      "when EV plugged in") to re-arm. Appended one sentence to each card's `hint` field
+      (English-only — no other flow card carries Norwegian copy):
+      - `set_ev_charge_deadline`: "The smart task auto-disables once the deadline passes;
+        run this card from a recurring Flow (e.g. when the EV is plugged in) to re-arm it
+        for the next session."
+      - `set_temperature_deadline`: "The smart task auto-disables once the deadline passes;
+        run this card from a recurring Flow (e.g. on a daily schedule) to re-arm it for
+        the next run."
       Files: `.homeycompose/flow/actions/set_ev_charge_deadline.json`,
-      `.homeycompose/flow/actions/set_temperature_deadline.json`.
+      `.homeycompose/flow/actions/set_temperature_deadline.json`, regenerated `app.json`.
 - [ ] Add DST fall-back ambiguity regression test for deadline resolution.
       `lib/plan/deferredObjectives/deadline.ts:112-146` handles DST rigorously (probes timezone
       at ±36h, ±12h, 0h to find valid UTC candidates matching local HH:mm), but the fall-back
