@@ -538,7 +538,7 @@ release, not v2.7.1 merge-blockers.*
       Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
-- [ ] Harden the rescue-only replan-reason routing against partial /
+- [x] Harden the rescue-only replan-reason routing against partial /
       combined toggle scenarios. The PR-998 regression suite covers
       "no rescue → some rescue" and "both → none", plus the negative
       cases (target-change wins, neither changes). Two scenarios should
@@ -556,6 +556,12 @@ release, not v2.7.1 merge-blockers.*
       `flowCards/smartTaskRescueCard.ts`,
       `lib/plan/deferredObjectives/replanReason.ts`.
       Source: `pels-runtime-reality`, PR #998 follow-up, 2026-05-23.
+      Resolved: added `emits flow_permission_changed on a
+      single-permission toggle when the other rescue permission stays
+      granted` and `emits flow_permission_changed when a rescue toggle
+      and a planStatus drift land in the same cycle` to
+      `test/deferredObjectiveActivePlan.test.ts`'s
+      `rescue-permission-only replan routing` describe block.
 
 - [x] Smart-task extra-permissions row wraps mid-word at 320 px under
       worst-case payload. `.deadline-list-card__when-row dd` uses
