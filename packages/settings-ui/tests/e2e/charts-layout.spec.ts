@@ -252,6 +252,198 @@ test.describe('Settings UI chart layout', () => {
     ).toBe(true);
   });
 
+  // Regression: history-detail trajectory chart legend can wrap to 2 rows at
+  // 320 px (4 entries: Planned / Revised / Measured / Target). The static
+  // `grid.top: 60` reserve must keep the chart's plot area (svg + axes) from
+  // overlapping the legend region, even at the narrowest supported width.
+  // Asserts the chart container itself sits within the surrounding panel and
+  // that the legend's bounding box ends above the plot's first y-axis tick
+  // — i.e. legend wrap does not crowd the chart-top edge.
+  test('history-detail trajectory chart reserves grid.top for legend wrap at 320 px', async ({ page }) => {
+    type HistoryEntryFixture = {
+      id: string;
+      deviceId: string;
+      deviceName: string;
+      objectiveKind: 'temperature';
+      targetTemperatureC: number;
+      targetPercent: null;
+      deadlineAtMs: number;
+      startedAtMs: number;
+      finalizedAtMs: number;
+      startProgressC: number;
+      startProgressPercent: null;
+      finalProgressC: number;
+      finalProgressPercent: null;
+      initialEnergyNeededKWh: number;
+      outcome: 'met';
+      metAtMs: number;
+      usedDeadlineReserve: boolean;
+      usedPolicyAvoid: boolean;
+      observedIntervals: Array<{ fromMs: number; toMs: number }>;
+      discoveredFrom: 'observation';
+      originalPlan: {
+        hours: Array<{ startsAtMs: number; plannedKWh: number }>;
+        energyNeededKWh: number;
+        planStatus: 'on_track';
+        revisedAtMs: number;
+        kwhPerUnitMean: number;
+      };
+      finalPlan: {
+        hours: Array<{ startsAtMs: number; plannedKWh: number }>;
+        energyNeededKWh: number;
+        planStatus: 'on_track';
+        revisedAtMs: number;
+        kwhPerUnitMean: number;
+      };
+      revisionCount: number;
+      progressSamples: Array<{ atMs: number; valueC: number; valuePercent: null }>;
+    };
+    const stubHistory = (entriesByDeviceId: Record<string, HistoryEntryFixture[]>) => {
+      (window as typeof window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        apiHandlers: {
+          'GET /ui_deferred_objective_history': () => ({
+            version: 1,
+            entriesByDeviceId,
+          }),
+        },
+      };
+    };
+    const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
+    const HOUR = 3_600_000;
+    // Both `originalPlan` and `finalPlan` populated so the trajectory chart
+    // renders the 4-entry legend (Planned + Revised + Measured + Target),
+    // which is the wrap-prone configuration. `progressSamples` switches the
+    // producer into trajectory mode.
+    const buildPlan = (): HistoryEntryFixture['originalPlan'] => ({
+      hours: [
+        { startsAtMs: T0, plannedKWh: 1.0 },
+        { startsAtMs: T0 + HOUR, plannedKWh: 1.0 },
+        { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.0 },
+        { startsAtMs: T0 + 3 * HOUR, plannedKWh: 1.0 },
+      ],
+      energyNeededKWh: 4.0,
+      planStatus: 'on_track',
+      revisedAtMs: T0,
+      kwhPerUnitMean: 0.5,
+    });
+    // Final plan shifts hour energies so `staircasesDiffer` resolves true and
+    // the "Revised trajectory" legend entry actually renders. Without this the
+    // producer collapses originalPlan/finalPlan to a single staircase and the
+    // legend drops to 3 entries — exactly the configuration this test claims
+    // to regression-protect against. Pin all 4 labels via the assertion below.
+    const buildRevisedPlan = (): HistoryEntryFixture['finalPlan'] => ({
+      hours: [
+        { startsAtMs: T0, plannedKWh: 0.5 },
+        { startsAtMs: T0 + HOUR, plannedKWh: 1.5 },
+        { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.5 },
+        { startsAtMs: T0 + 3 * HOUR, plannedKWh: 0.5 },
+      ],
+      energyNeededKWh: 4.0,
+      planStatus: 'on_track',
+      revisedAtMs: T0 + 30 * 60 * 1000,
+      kwhPerUnitMean: 0.5,
+    });
+    const entry: HistoryEntryFixture = {
+      id: 'fixture-legend-wrap-regression',
+      deviceId: 'dev_connected300',
+      deviceName: 'Connected 300',
+      objectiveKind: 'temperature',
+      targetTemperatureC: 65,
+      targetPercent: null,
+      deadlineAtMs: T0 + 4 * HOUR,
+      startedAtMs: T0,
+      finalizedAtMs: T0 + 4 * HOUR,
+      startProgressC: 50,
+      startProgressPercent: null,
+      finalProgressC: 65,
+      finalProgressPercent: null,
+      initialEnergyNeededKWh: 4.0,
+      outcome: 'met',
+      metAtMs: T0 + 3 * HOUR,
+      usedDeadlineReserve: false,
+      usedPolicyAvoid: false,
+      observedIntervals: [{ fromMs: T0, toMs: T0 + 3 * HOUR }],
+      discoveredFrom: 'observation',
+      originalPlan: buildPlan(),
+      finalPlan: buildRevisedPlan(),
+      revisionCount: 2,
+      progressSamples: [
+        { atMs: T0, valueC: 50, valuePercent: null },
+        { atMs: T0 + HOUR, valueC: 55, valuePercent: null },
+        { atMs: T0 + 2 * HOUR, valueC: 60, valuePercent: null },
+        { atMs: T0 + 3 * HOUR, valueC: 65, valuePercent: null },
+      ],
+    };
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.addInitScript(stubHistory, { dev_connected300: [entry] });
+    await page.goto(
+      `/?page=deadline-plan&deviceId=dev_connected300&historyId=${encodeURIComponent(entry.id)}`,
+      { waitUntil: 'domcontentloaded' },
+    );
+    // Met outcome → chart collapsed by default. Click "View details" so the
+    // trajectory chart actually mounts.
+    await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
+    const chart = page.locator('.deadline-horizon-chart');
+    await expect(chart).toBeVisible();
+    await expect(chart.locator('svg')).toBeVisible();
+
+    // Probe: with `grid.top: 60` the plot area's top edge must sit at or
+    // below 60 px (matching the reserved headroom), and every legend label
+    // (`<text>` rendered above the plot area) must finish above the plot.
+    // We identify the plot area by the lowest y-coord of any chart line/bar
+    // path; the legend by `<text>` nodes whose content matches the known
+    // series labels. The `gap` of 1 px is the same fuzz the y-axis fit test
+    // uses for sub-pixel rendering.
+    const result = await chart.evaluate((container) => {
+      const rect = container.getBoundingClientRect();
+      const svg = container.querySelector('svg');
+      if (!svg) return { ok: false, reason: 'no svg' } as const;
+      const legendLabels = ['Planned trajectory', 'Revised trajectory', 'Measured Heating', 'Target'];
+      const texts = Array.from(svg.querySelectorAll('text'));
+      const legendTexts = texts.filter((node) => (
+        node instanceof SVGTextElement
+        && legendLabels.includes((node.textContent ?? '').trim())
+      ));
+      if (legendTexts.length === 0) return { ok: false, reason: 'no legend labels found' } as const;
+      // Pin all 4 expected labels — earlier this test silently passed with 3
+      // when finalPlan equalled originalPlan and the producer collapsed
+      // "Revised trajectory" away. Without all 4 labels the wrap-prone
+      // configuration isn't actually exercised.
+      const renderedLabels = new Set(legendTexts.map((node) => (node.textContent ?? '').trim()));
+      const missingLabels = legendLabels.filter((label) => !renderedLabels.has(label));
+      if (missingLabels.length > 0) {
+        return { ok: false, reason: `missing legend labels: ${missingLabels.join(', ')}` } as const;
+      }
+      const legendBottom = Math.max(
+        ...legendTexts.map((node) => node.getBoundingClientRect().bottom),
+      );
+      // Plot area's top edge ≈ the topmost y-axis tick label (formatted as
+      // a numeric temperature, e.g. "67.0 °C"). Filter to the trajectory's
+      // unit so we don't mistake the legend labels for axis ticks.
+      const axisTexts = texts.filter((node) => (
+        node instanceof SVGTextElement
+        && /°C$/.test((node.textContent ?? '').trim())
+      ));
+      if (axisTexts.length === 0) return { ok: false, reason: 'no °C axis labels' } as const;
+      const plotTop = Math.min(...axisTexts.map((node) => node.getBoundingClientRect().top));
+      // Container right edge must not exceed the viewport (sanity — chart
+      // does not horizontally overflow at 320 px either).
+      const containerOverflow = rect.right > window.innerWidth + 1;
+      return {
+        ok: legendBottom <= plotTop + 1 && !containerOverflow,
+        legendBottom: Number(legendBottom.toFixed(2)),
+        plotTop: Number(plotTop.toFixed(2)),
+        viewport: window.innerWidth,
+        containerRight: Number(rect.right.toFixed(2)),
+        containerOverflow,
+      } as const;
+    });
+    expect(
+      result.ok,
+      `Legend overlaps plot or chart overflows viewport: ${JSON.stringify(result)}`,
+    ).toBe(true);
+  });
+
   // Regression: TODO 573. The unreliable-data legend swatch in `#power-legend`
   // must read from the same `--pels-chart-*` tokens the heatmap cell uses, so
   // a user pattern-matching legend → cell sees a single rectangle, not two
