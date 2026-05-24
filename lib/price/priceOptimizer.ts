@@ -4,6 +4,9 @@ import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('price/optimizer');
 
 export type PriceOptimizationSettings = {
   enabled: boolean;
@@ -75,7 +78,7 @@ export class PriceOptimizer {
       );
       const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
       const previousMode = this.lastMode;
-      this.deps.structuredLog?.info({
+      (this.deps.structuredLog ?? moduleLogger).info({
         event: 'price_optimization_completed',
         previousMode,
         resultingMode,

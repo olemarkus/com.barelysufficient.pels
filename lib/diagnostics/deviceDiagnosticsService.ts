@@ -31,6 +31,9 @@ import {
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('diagnostics/device');
 
 export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
 export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
@@ -805,7 +808,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvationCause: evaluation.counting ? observation.countingCause : null,
       starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
     };
-    this.deps.structuredLog?.info({
+    (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_started',
       deviceId,
       deviceName: live.name,
@@ -836,7 +839,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     live.starvation.starvationCause = evaluation.counting ? observation.countingCause : null;
     live.starvation.starvationPauseReason = evaluation.counting ? null : evaluation.pauseReason;
     if (endTs < clearAt) return;
-    this.deps.structuredLog?.info({
+    (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_cleared',
       deviceId,
       deviceName: live.name,
@@ -859,7 +862,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   ): void {
     const live = this.getLiveDeviceState(deviceId);
     if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      this.deps.structuredLog?.info({
+      (this.deps.structuredLog ?? moduleLogger).info({
         event: 'device_starvation_resumed',
         deviceId,
         deviceName: live.name,
@@ -888,7 +891,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   ): void {
     const live = this.getLiveDeviceState(deviceId);
     if (isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      this.deps.structuredLog?.info({
+      (this.deps.structuredLog ?? moduleLogger).info({
         event: 'device_starvation_paused',
         deviceId,
         deviceName: live.name,
@@ -921,7 +924,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     ) {
       return;
     }
-    this.deps.structuredLog?.info({
+    (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_hard_reset',
       deviceId,
       deviceName: live.name,
