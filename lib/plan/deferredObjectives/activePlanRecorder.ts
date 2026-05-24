@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- active-plan recorder, diagnostics, and replay stay together. */
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanHourV1,
@@ -15,6 +16,7 @@ import {
   resolveHorizonPriceWatermark,
   resolveReplanReason,
 } from './replanReason';
+import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { buildActivePlanLifecycleFields } from './activePlanLifecycleFields';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -28,6 +30,8 @@ import {
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
+
+const logger = getLogger('plan/deferred-active');
 
 // Persisted plans store mixed objective kinds, so derive the nullable
 // persisted value from the discriminated diagnostic.
@@ -696,7 +700,10 @@ export class DeferredObjectiveActivePlanRecorder {
   }
 
   private emit(payload: Record<string, unknown>): void {
-    if (!this.deps.debugStructured) return;
-    this.deps.debugStructured(payload);
+    if (this.deps.debugStructured) {
+      this.deps.debugStructured(payload);
+    } else {
+      logger.debug(payload);
+    }
   }
 }

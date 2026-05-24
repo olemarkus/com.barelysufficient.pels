@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- diagnostics bridge keeps one payload-build pipeline per concern. */
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,
@@ -6,6 +7,7 @@ import {
 } from './profileEnergyResolution';
 import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
 import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
+import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
@@ -36,6 +38,8 @@ import {
   resolveConcurrentEligibleCount,
 } from './concurrentEligibleTasks';
 import type { DeferredObjectiveHorizonPlan } from './types';
+
+const logger = getLogger('plan/deferred-diag-bridge');
 
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
@@ -179,9 +183,13 @@ export const emitDeferredObjectiveDiagnostics = (params: {
   debugStructured?: StructuredDebugEmitter;
 }): void => {
   const { diagnostics, debugStructured } = params;
-  if (!debugStructured) return;
   for (const diagnostic of diagnostics) {
-    debugStructured(buildDeferredObjectiveDebugPayload(diagnostic));
+    const payload = buildDeferredObjectiveDebugPayload(diagnostic);
+    if (debugStructured) {
+      debugStructured(payload);
+    } else {
+      logger.debug(payload);
+    }
   }
 };
 
