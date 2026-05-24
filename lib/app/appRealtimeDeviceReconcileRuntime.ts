@@ -8,6 +8,9 @@ import {
 import { hasPlanExecutionDriftForDevice } from '../executor/planExecutionDrift';
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('app/realtime-reconcile-runtime');
 
 export function hasRealtimeDeviceReconcileDrift(params: {
   event: RealtimeDeviceReconcileEvent;
@@ -47,7 +50,7 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
   });
   if (hasDrift) return true;
 
-  debugStructured?.({
+  (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
     event: 'realtime_reconcile_skipped_no_drift',
     ...toRealtimeReconcileEventPayload(eventWithPlanExpectation),
   });

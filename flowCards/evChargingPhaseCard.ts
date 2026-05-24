@@ -8,6 +8,9 @@ import {
   readFlowDeviceArg,
   readFlowStringArg,
 } from './flowArgParsers';
+import { getLogger } from '../lib/logging/logger';
+
+const moduleLogger = getLogger('flowcards/ev-charging-phase');
 
 const CARD_ID = 'set_ev_charging_phase';
 const ELIGIBILITY_ERROR = 'Configure EV phase control for this charger in settings first.';
@@ -28,7 +31,7 @@ export function registerEvChargingPhaseCard(deps: FlowCardDeps): void {
       ...existing,
       [deviceId]: createEvTargetPowerConfig(preset),
     });
-    deps.structuredLog?.info({
+    (deps.structuredLog ?? moduleLogger).info({
       event: 'ev_charging_phase_set_from_flow',
       sourceCardId: CARD_ID,
       deviceId,
