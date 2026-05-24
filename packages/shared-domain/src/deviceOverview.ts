@@ -132,12 +132,12 @@ const resolvePlannedPowerState = (
 };
 
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
-  if (isEvChargerDevice(device)) return 'Shed (charging paused)';
-  if (device.shedAction === 'set_temperature') return 'Shed (lowered temperature)';
+  if (isEvChargerDevice(device)) return 'Charging paused';
+  if (device.shedAction === 'set_temperature') return 'Lowered';
   if (device.shedAction === 'set_step') {
-    return getTargetStepId(device) ? `Shed to ${getTargetStepId(device)}` : 'Shed (reduced step)';
+    return getTargetStepId(device) ? `Limited to ${getTargetStepId(device)}` : 'Limited';
   }
-  return 'Shed (powered off)';
+  return 'Turned off';
 };
 
 const resolveEvInactiveStateMsg = (evState: string): string => {
@@ -175,7 +175,7 @@ const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
   if (!isEvChargerDevice(device)) return null;
   const evState = normalizeDeviceState(device.evChargingState);
 
-  if (device.plannedState === 'shed') return 'Shed (charging paused)';
+  if (device.plannedState === 'shed') return 'Charging paused';
   if (device.plannedState === 'inactive') return resolveEvInactiveStateMsg(evState);
   if (device.plannedState === 'keep') return resolveEvKeepStateMsg(device, evState);
   return null;
@@ -184,7 +184,7 @@ const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
 const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
   const evStateMsg = resolveEvStateMsg(device);
   if (evStateMsg) return evStateMsg;
-  if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Restore requested';
+  if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Resume requested';
   if (isOffLikeState(device.currentState)) return 'Restoring';
   if (normalizeDeviceState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
   return 'Active';
