@@ -141,7 +141,7 @@ import type {
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
-import { AppHomeyEnergyHelpers } from './lib/app/appHomeyEnergyHelpers';
+import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
 import {
   AppSnapshotHelpers,
   type RefreshTargetDevicesSnapshotOptions,
@@ -361,10 +361,10 @@ class PelsApp extends Homey.App {
     ),
     recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
   });
-  private readonly homeyEnergyHelpers = new AppHomeyEnergyHelpers({
+  private readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     homey: this.homey,
     timers: this.timers,
-    getDeviceManager: () => this.deviceManager,
+    pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
     recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
     logDebug: (topic, ...args) => this.logDebug(topic, ...args),
     error: (...args) => this.error(...args),

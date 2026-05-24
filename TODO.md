@@ -1125,17 +1125,15 @@ No action.*
 *v2.8.0 release-review findings (2026-05-19). Four items from the
 five-agent fan-out pass on `v2.7.4..origin/main`.*
 
-- [ ] Stale-sample row in Smart task plan-inputs card needs a tone
-      affordance. `formatLastSampleValue` returns `Stale — <ts>` once
-      `ageMs ≥ 24 h`, but `resolveKwhPerUnitProvenanceRows` plugs it
-      under the same "Most recent sample" label as plain text — no warn
-      chip, no muted-color affordance. Users skimming the card miss the
-      signal that the underlying data is older than yesterday's reality.
-      Acceptance: style the stale branch via the existing `.muted` or
-      warn-tone span pattern used by sibling rows in
-      `KwhPerUnitProvenanceRow`.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+- [x] Stale-sample row in Smart task plan-inputs card needs a tone
+      affordance. Done in `fix/p2-stale-sample-tone`:
+      `KwhPerUnitProvenanceRow` now carries a `tone: 'warn' | null` slug
+      that `formatLastSampleValue` resolves once at the producer (the
+      stale branch returns `{ text, tone: 'warn' }`; fresh branches stay
+      `null`). The `PlanInputsCard` view dispatches the slug to a new
+      `.plan-inputs__row-value--warn` CSS modifier styled with
+      `--pels-status-on-warning` + `--font-weight-semibold`, mirroring
+      the existing `.deadline-list-card__when-row--warn` pattern.
       Source: `pels-ux-fit`, v2.8.0 release-review pass.
 
 - [ ] Flatten the deferred-objective diagnostic to expose `currentValue`
@@ -1167,13 +1165,19 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
       Source: `adversarial-review`, v2.8.0 release-review pass.
 
-- [ ] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
+- [x] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
       while the eyebrow says `'Smart tasks'`. Per
       `feedback_terminology_plan_vs_deadline`, surface this with the
       consistent "smart task" / "ready-by" vocabulary — e.g. "Add your
       first smart task" or "Schedule a ready-by time".
       Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
       Source: `pels-ux-fit`, v2.8.0 release-review pass.
+      Resolved: empty-state headline now reads
+      `'Add your first smart task'` (in
+      `packages/shared-domain/src/deadlinesListHero.ts`); pairs naturally
+      with the body stanza's "Add heating task" / "Add charging task"
+      action language and keeps the "smart task" anchor consistent with
+      the `Smart tasks` eyebrow.
 
 - [x] Refresh stale smart-task UX notes that still mention "move deadline
       later" as a missed-task recourse. `notes/ui-terminology.md` now defines
@@ -1223,7 +1227,7 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
 
-- [ ] Smart-task history-detail hero treats `unknown` outcomes as
+- [x] Smart-task history-detail hero treats `unknown` outcomes as
       `quietAbandoned` (no chart card) alongside `abandoned`/`replaced`.
       copilot reviewer on PR #887 (`deadlinePlanHistoryDetailHero.ts:242`)
       noted the chart policy note only calls out Abandoned + Replaced as the
@@ -1231,6 +1235,16 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       chart as evidence when a plan was recorded. Decide whether `unknown`
       should fall back to a collapsed-chart shape or stay quiet, and update
       `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
+      Resolved: `unknown` with a recorded plan (`originalPlan` or
+      `finalPlan` present) now renders the chart card collapsed (same shape
+      as Succeeded — "View details" toggle); `unknown` without a recorded
+      plan stays quiet (same shape as Abandoned). Discriminator is plan
+      presence, not outcome value. `abandoned`/`replaced` unchanged.
+      Files: `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
+      `notes/v2-7-2/postmortem-chart-policy.md`. Tests:
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` —
+      "Unknown shape with recorded plan" and "Unknown shape with no
+      recorded plan".
 
 - [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
