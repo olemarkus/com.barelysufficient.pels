@@ -31,9 +31,10 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   const overshootLine = formatPlanHistoryOvershootLine(entry);
   return (
     <a
-      class="plan-history-card plan-history-card--link"
+      class="pels-surface-card plan-history-card plan-history-card--link"
       aria-label={`Past smart task ${deadlineLine}`}
       href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
+      data-interactive
     >
       <header class="plan-history-card__header">
         <span class="plan-history-card__deadline">{deadlineLine}</span>

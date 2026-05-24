@@ -1561,14 +1561,15 @@ md-filled-button.is-busy {
   gap: var(--spacing-3);
 }
 
+/* `.plan-history-card` is a pure layout decorator on `.pels-surface-card`.
+   The canonical primitive provides padding, border, radius, surface tier
+   and the M3 elevation contract; this rule only overrides the default grid
+   layout to a top-down flex column (the card stacks header + device label +
+   progress lines in a tight rhythm) and tightens the inter-line gap. */
 .plan-history-card {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-1);
-  padding: var(--spacing-3);
-  background: var(--pels-surface-container-low);
-  border: 1px solid var(--pels-surface-outline);
-  border-radius: var(--radius-md);
 }
 
 .plan-history-card__header {
@@ -1610,6 +1611,11 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-1);
 }
 
+/* `.plan-history-card--link` adds the anchor-reset (no underline / inherit
+   colour) + a hover background tint so the past-plan link reads as
+   actionable on the smart-tasks history list. Focus ring + elevation lift
+   come from the canonical `.pels-surface-card[data-interactive]` hook the
+   host sets in markup. */
 .plan-history-card--link {
   text-decoration: none;
   color: inherit;
@@ -1620,11 +1626,6 @@ md-filled-button.is-busy {
 .plan-history-card--link:hover,
 .plan-history-card--link:focus-visible {
   background: var(--pels-surface-container);
-}
-
-.plan-history-card--link:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
 }
 
 .plan-history-detail {
@@ -2454,7 +2455,26 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-2);
 }
 
-.plan-card,
+/* `.pels-surface-card` is the canonical card primitive. Every card-shaped
+   surface across the settings UI (device cards, smart-task list cards, past-
+   plan history cards, device-detail diagnostics cards, budget redesign cards,
+   usage cards) walks this shell — padding, gap, radius, border, surface
+   tier, isolation, and the default `--md-elevation-level: 1` are all owned
+   here so per-page variants can NOT silently fork the visual contract.
+
+   Per-page decorators (`.plan-card`, `.deadline-list-card`, `.plan-history-
+   card`, `.usage-card`, `.budget-redesign-card`, `.budget-chart-card`,
+   `.budget-confidence-card`, `.deadline-horizon-card`, `.pels-device-card`,
+   etc.) only carry the layout / hover / role-specific decoration on top of
+   the canonical surface — they no longer redeclare the bg / border / radius
+   / padding their host inherits from `.pels-surface-card`.
+
+   Tonal state lives in either the data attribute (`data-tone="good|warn|
+   alert|info|muted"`, the canonical form shared with `.plan-hero` and
+   `.plan-chip`) or the legacy `.plan-card[data-state-kind="…"]` aliases
+   the device-row card still uses. Both resolve onto the same `--color-
+   state-*-bg/-border` cascade so new consumers can pick the data-tone
+   form without a forced mass migration. */
 .pels-surface-card {
   --md-elevation-level: 1;
   --md-ripple-hover-color: var(--pels-status-good);
@@ -2473,6 +2493,45 @@ md-filled-button.is-busy {
   transition: --md-elevation-level var(--transition-emphasized);
 }
 
+.pels-surface-card > md-elevation,
+.pels-surface-card > md-ripple {
+  border-radius: inherit;
+}
+
+.pels-surface-card > md-ripple {
+  z-index: 0;
+}
+
+/* Canonical tonal API — shared with `.plan-hero[data-tone=…]` and
+   `.plan-chip[data-tone=…]`. Uses the same `--color-state-*-bg/-border`
+   tokens the legacy `.plan-card[data-state-kind=…]` aliases below resolve
+   onto, so new consumers can pick the data-tone form without forcing a
+   mass migration. */
+.pels-surface-card[data-tone="good"] {
+  background: var(--color-state-positive-bg);
+  border-color: var(--color-state-positive-border);
+}
+
+.pels-surface-card[data-tone="warn"] {
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
+}
+
+.pels-surface-card[data-tone="alert"] {
+  background: var(--color-state-negative-bg);
+  border-color: var(--color-state-negative-border);
+}
+
+.pels-surface-card[data-tone="info"] {
+  background: var(--color-state-info-bg);
+  border-color: var(--color-state-info-border);
+}
+
+.pels-surface-card[data-tone="muted"] {
+  background: var(--color-surface-1);
+  border-color: var(--pels-surface-outline);
+}
+
 .plan-card {
   padding-left: calc(var(--spacing-4) + (var(--chip-border-width) * 2));
   /* Reserve a uniform vertical rhythm across the device-card stack regardless
@@ -2483,31 +2542,39 @@ md-filled-button.is-busy {
   min-height: calc(var(--spacing-8) * 4);
 }
 
+/* Hover / focus / active elevation lift opts in via `data-interactive` on
+   the canonical primitive (matches the M3 "clickable card" affordance).
+   `.plan-card` carries it implicitly through its consumer's `role="button"`
+   + `tabindex="0"` markup; new clickable cards (deadline list links, past-
+   plan history links) set `data-interactive` on the host so they inherit
+   the same hover / focus elevation contract from one source. */
+.pels-surface-card[data-interactive]:hover,
+.pels-surface-card[data-interactive]:focus-visible,
 .plan-card:hover,
 .plan-card:focus-visible {
   --md-elevation-level: 3;
 }
 
+.pels-surface-card[data-interactive]:focus-visible,
 .plan-card:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
+.pels-surface-card[data-interactive]:active,
 .plan-card:active {
   --md-elevation-level: 2;
 }
 
-.plan-card > md-elevation,
-.plan-card > md-ripple,
-.pels-surface-card > md-elevation {
-  border-radius: inherit;
-}
-
-.plan-card > md-ripple {
-  z-index: 0;
-}
-
-
+/* Legacy `.plan-card[data-state-kind="…"]` aliases for the canonical
+   tonal API above. Kept so the device-row cards (which already wire
+   `data-state-kind` from the plan presentation) inherit the same tonal
+   bg/border without a forced markup migration. The `unavailable` opacity
+   shading + the `unknown` opacity-only fade are plan-card-specific
+   device-state semantics, not a tone — kept separate.
+   Do NOT co-set `data-tone` and `data-state-kind` on the same host —
+   both attributes carry equal specificity, so source order decides
+   which paints the surface, which is fragile. Pick one axis. */
 .plan-card[data-state-kind="held"] {
   background: var(--color-state-warning-bg);
   border-color: var(--color-state-warning-border);
@@ -4487,12 +4554,12 @@ details[open] > summary .disclosure-chevron {
   gap: 12px;
 }
 
-.detail-diagnostics-card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 12px;
-}
+/* `.detail-diagnostics-card` is a pure decorator on `.pels-surface-card` —
+   the canonical primitive provides padding, border, radius, surface tier.
+   Previously this rule redeclared bg/border with a hardcoded `10px` radius
+   (a token violation) and a `12px` literal padding; rebinding onto the
+   canonical drops those forks. Sub-element typography (e.g.
+   `.detail-diagnostics-card h4`) stays in this block. */
 
 .detail-diagnostics-list {
   display: grid;
@@ -4631,35 +4698,14 @@ details[open] > summary .disclosure-chevron {
 }
 
 /* Usage summary cards */
-.usage-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--spacing-4);
-  margin-bottom: var(--spacing-6);
-}
-
-.summary-card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-6) var(--spacing-4);
-  text-align: center;
-}
-
-.summary-label {
-  display: block;
-  font-size: var(--font-size-xs);
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-
-.summary-value {
-  display: block;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-}
-
+/* `.summary-value--empty` is the only live class in this family — toggled
+   onto already-themed metric values inside `.usage-card` blocks when the
+   underlying stats series has no data. The companion `.usage-summary` /
+   `.summary-card` / `.summary-label` / `.summary-value` rules were carried
+   over from a retired v1 "summary cards" layout; none of them are emitted
+   in markup any more (verified `grep -rn 'summary-card\|summary-label\|
+   "summary-value"' packages/settings-ui/`). Dropped on the card
+   consolidation pass. */
 .summary-value--empty {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-normal);
@@ -6163,31 +6209,26 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-2);
 }
 
+/* `.deadline-list-card` is a layout + link decorator on `.pels-surface-card`.
+   The canonical primitive provides padding, border, radius, surface tier
+   and overflow / isolation; this rule overrides the default grid template
+   to a two-column [content | chevron] shape, tightens the inline gap, and
+   carries the link-anchor reset (`color: inherit`, `text-decoration: none`)
+   so the `<a>` host inherits text styling from the surface. Hover / focus
+   border-accent + outline ride the canonical `data-interactive` hook in
+   markup. */
 .deadline-list-card {
-  position: relative;
-  display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--spacing-2) var(--spacing-3);
   align-items: start;
-  padding: var(--spacing-3) var(--spacing-4);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
-  box-shadow: var(--shadow-md);
   color: var(--text);
   text-decoration: none;
-  overflow: hidden;
 }
 
 .deadline-list-card:hover,
 .deadline-list-card:focus-visible {
   border-color: var(--accent);
   background: var(--color-surface-3);
-}
-
-.deadline-list-card:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
 }
 
 .deadline-list-card__header {
@@ -7307,16 +7348,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     color: var(--color-state-negative-text);
   }
 
-  /* Smart-tasks list — match history-card to active-task card surface so the
-     two sections read as one consistent list. Both use the same neutral
-     white surface with hairline border; drop the active card's elevated
-     shadow that made it pop as "more important" than past entries. */
-  .deadline-list-card,
-  .plan-history-card {
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border-default);
-    box-shadow: none;
-  }
+  /* Smart-tasks list — `.deadline-list-card` and `.plan-history-card` no
+     longer redeclare their surface here. After the card-primitive rebind
+     they walk the canonical `.pels-surface-card` shell, which already
+     paints the neutral white surface + hairline border (same values this
+     desktop block used to set) and never carries a `box-shadow` (the
+     active-card "elevated" pop is now an opt-in `<md-elevation>` mount,
+     so dropping the per-page shadow override is a no-op). */
 }
 
 /* Tonal hero gradient restoration that previously lived here

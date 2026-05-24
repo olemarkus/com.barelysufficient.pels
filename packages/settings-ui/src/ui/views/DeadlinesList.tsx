@@ -114,7 +114,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
   });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
   return (
-    <a class="deadline-list-card clickable" href={card.href} data-device-id={card.deviceId}>
+    <a class="pels-surface-card deadline-list-card clickable" href={card.href} data-device-id={card.deviceId} data-interactive>
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">

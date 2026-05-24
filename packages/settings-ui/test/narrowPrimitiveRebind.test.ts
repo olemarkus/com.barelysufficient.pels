@@ -31,12 +31,16 @@ import { describe, expect, it } from 'vitest';
  *
  *   - Phase 6 — Elevation. `MdElevation` (Material Web `<md-elevation>`)
  *     is the single source of truth for surface elevation on card-like
- *     primitives (`.plan-card`, `.pels-surface-card`, `.deadline-list-card`,
- *     `.usage-card`). Per-surface raw `box-shadow` declarations must
- *     either use a shared `var(--shadow-*)` token (so elevation language
- *     stays unified) or be the narrow class of 1-3 px contrast outlines
- *     (focus rings, tick markers, inset borders) that decorate a single
- *     element rather than lift a surface.
+ *     primitives. After the batch 11 card-primitive consolidation, the
+ *     canonical card primitive is `.pels-surface-card`; every per-page
+ *     card class (`.plan-card`, `.deadline-list-card`, `.plan-history-
+ *     card`, `.detail-diagnostics-card`, `.usage-card`, etc.) chains it
+ *     on the host and inherits the `--md-elevation-level: 1` resting
+ *     contract from a single declaration site. Per-surface raw
+ *     `box-shadow` declarations must either use a shared `var(--shadow-*)`
+ *     token (so elevation language stays unified) or be the narrow class
+ *     of 1-3 px contrast outlines (focus rings, tick markers, inset
+ *     borders) that decorate a single element rather than lift a surface.
  *
  * These assertions are intentionally lightweight DOM / source-text checks
  * so the suite catches accidental regressions (someone forks a per-page
@@ -270,17 +274,21 @@ describe('ripple primitive: `<md-ripple>` is the single source of truth', () => 
         ).toHaveLength(0);
     });
 
-    it('shares the ripple-tint tokens on the canonical card shells', () => {
+    it('shares the ripple-tint tokens on the canonical card shell', () => {
         // The ripple's hover / pressed colour comes from `--md-ripple-*-color`
-        // declared on the card surface (`.plan-card`, `.pels-surface-card`).
-        // Declaring it on every per-page card class instead would mean each
-        // surface re-picks its ripple colour, drifting over time. Verify both
-        // canonical surfaces still carry the shared declaration.
+        // declared on the canonical card surface `.pels-surface-card`. After
+        // the batch 11 card-primitive consolidation, the joint
+        // `.plan-card, .pels-surface-card { … }` rule was split so the
+        // canonical primitive owns the visual contract on its own; every
+        // `.plan-card` consumer now chains `.pels-surface-card` on the host
+        // and inherits the same ripple-tint tokens through that cascade.
+        // Declaring the tint on every per-page card class instead would
+        // mean each surface re-picks its ripple colour, drifting over time.
         expect(STYLE_CSS).toMatch(
-            /\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-ripple-hover-color/,
+            /\.pels-surface-card\s*\{[^}]*--md-ripple-hover-color/,
         );
         expect(STYLE_CSS).toMatch(
-            /\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-ripple-pressed-color/,
+            /\.pels-surface-card\s*\{[^}]*--md-ripple-pressed-color/,
         );
     });
 });
@@ -348,15 +356,22 @@ describe('elevation primitive: `<md-elevation>` is the single source of truth', 
         ).toHaveLength(0);
     });
 
-    it('canonical card surfaces drive elevation via `--md-elevation-level` tokens', () => {
-        // `.plan-card` + `.pels-surface-card` share the elevation surface. The
-        // resting level is `1`; hover / focus lifts to `3`; active settles at
-        // `2`. Verify the cascade is still expressed as token mutations rather
-        // than raw `box-shadow` declarations — otherwise the MD elevation
-        // language drifts away from the surrounding surfaces.
-        expect(STYLE_CSS).toMatch(/\.plan-card[\s,][\s\S]*?\.pels-surface-card\s*\{[^}]*--md-elevation-level:\s*1/);
+    it('canonical card surface drives elevation via `--md-elevation-level` tokens', () => {
+        // `.pels-surface-card` is the canonical card primitive after the
+        // batch 11 card-primitive consolidation (chip / hero / button
+        // pattern: one shell, decorators on top). The resting elevation
+        // level is `1`; hover / focus lifts to `3`; active settles at
+        // `2`. The cascade flows through both `.plan-card:hover` (legacy
+        // device-row alias, still alive because the markup wires
+        // `role="button"` + `tabindex` rather than `data-interactive`)
+        // and `.pels-surface-card[data-interactive]:hover` (new opt-in
+        // for clickable link cards). Verify the cascade is still
+        // expressed as token mutations rather than raw `box-shadow`
+        // declarations — otherwise the MD elevation language drifts
+        // away from the surrounding surfaces.
+        expect(STYLE_CSS).toMatch(/\.pels-surface-card\s*\{[^}]*--md-elevation-level:\s*1/);
         expect(STYLE_CSS).toMatch(/\.plan-card:hover[\s\S]*?--md-elevation-level:\s*3/);
-        expect(STYLE_CSS).toMatch(/\.plan-card:active\s*\{[^}]*--md-elevation-level:\s*2/);
+        expect(STYLE_CSS).toMatch(/\.plan-card:active[\s\S]*?--md-elevation-level:\s*2/);
     });
 
     it('every `box-shadow` declaration uses a shared token, `none`, or a small contrast outline', () => {

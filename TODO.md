@@ -131,13 +131,14 @@ release, not v2.7.1 merge-blockers.*
       the no-legacy-`.chip` invariant + canonical-shell-on-every-surface
       contract. Dead-but-styled selectors (`.plan-row__chip`,
       `.price-row .chip.price-normal`) are gone.
-      What remains: the card-consumer rebind sweep (`.plan-card` /
-      `.deadline-list-card` / `.detail-card` / `.detail-diagnostics-card` /
-      `.pels-device-card` onto the canonical `.pels-surface-card`) is the
-      last per-page-variant primitive still pending — segmented controls,
-      ripples, and elevation all shipped in the 2026-05-24 batch 11 PR
-      (phases 4-6 below). Once the card sweep PR (MM) lands this entry
-      ships in full.
+      What remains: nothing — once the card sweep PR (MM) lands the
+      remaining card-consumer rebind (`.plan-card` / `.deadline-list-card`
+      / `.detail-diagnostics-card` / `.plan-history-card` onto the
+      canonical `.pels-surface-card`) ships in the same 2026-05-24 batch
+      11 train as segmented / ripple / elevation (phases 4-6 below). The
+      one carve-out is `.settings-form-card`, a cross-container shared
+      form panel with its own override cascade — routed to a follow-up
+      sub-PR (see the Card-phase bullet below).
       Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer
       rebound, no inline overrides beyond data-attribute state. Implementation may use the
       existing custom primitives or `@material/web` — that choice stays with the P2 entry
@@ -170,10 +171,66 @@ release, not v2.7.1 merge-blockers.*
           `.budget-page-header__action`, `.dry-run-banner__action`) stay --
           they're legit positioning / MD-Web-custom-property overrides on top
           of the MD Web button, not duplicate primitive shells.
-      - **Card** — `.pels-surface-card` already exists as the canonical primitive;
-        consolidation effort is rebinding the per-page `.plan-card` / `.deadline-list-card`
-        / `.detail-card` / `.detail-diagnostics-card` / `.pels-device-card` consumers.
-        Effort is breadth, not depth.
+      - **Card — primitive consolidated (2026-05-24 batch 11 PR).** The joint
+        `.plan-card, .pels-surface-card { … }` rule was split: the canonical
+        primitive `.pels-surface-card` now owns the surface contract
+        (padding / gap / border / radius / bg / overflow / isolation / M3
+        elevation) on its own, and `.plan-card` keeps only the device-row-
+        specific add-ons (chip-border padding offset, min-height rhythm,
+        `--dim` modifier, `data-state-kind` aliases that resolve onto the
+        same `--color-state-*-bg/-border` tokens). The canonical primitive
+        gained two new attribute APIs that mirror the chip / hero patterns:
+        `data-tone="good|warn|alert|info|muted"` for tonal surface and
+        `data-interactive` for the M3 hover-elevation + focus-outline
+        contract clickable cards opt into.
+        Per-page forked surface rules retired in the rebind: `.plan-history-
+        card` (was forking surface-tier + radius), `.deadline-list-card`
+        (was forking padding + radius + box-shadow), `.detail-diagnostics-
+        card` (was forking surface + bypassing the token system with a
+        hardcoded `10px` radius + `12px` padding). Each now walks the
+        canonical surface and keeps only its layout / hover / link-anchor
+        decorator on top.
+        Rebound markup sites (7 total):
+        - `.plan-card`: three JSX consumers (PlanDeviceCards binary +
+          temperature variants, PlanSteppedCard) and one imperative
+          (`devices.ts` device-group card, already chained) now all chain
+          `pels-surface-card` on the host.
+        - `.plan-history-card`: `DeadlinePlanHistory` past-plan card chains
+          `pels-surface-card` + `data-interactive` so the link variant
+          inherits the canonical hover-elevation + focus-outline.
+        - `.deadline-list-card`: `DeadlinesList` smart-task card same.
+        - `.detail-diagnostics-card`: two imperative hosts in
+          `deviceDetail/diagnostics.ts` (per-window summary + starvation
+          detail) chain `pels-surface-card`.
+        Kept as legitimate decorators on the canonical (no rebind needed —
+        already paired in markup): `.budget-redesign-card`, `.budget-chart-
+        card`, `.budget-confidence-card`, `.deadline-horizon-card`,
+        `.usage-card`, `.pels-device-card`. Kept separate (distinct
+        primitive shape, NOT a card-surface fork): `.settings-nav-card`
+        (MD-list-item internals), `.settings-form-card` (cross-container
+        shared form panel — its own audit, route below).
+        Dead-but-styled selectors gone: `.usage-summary`, `.summary-card`,
+        `.summary-label`, `.summary-value` (v1 layout, never emitted in
+        current markup); the live `.summary-value--empty` marker that
+        `power.ts` + `usageDayView.ts` still toggle survives.
+        Regression coverage at `packages/settings-ui/test/
+        cardPrimitiveRebind.test.ts` pins the canonical-shell-on-every-
+        surface contract + no-forked-base-rule invariant + dead-rule
+        cleanup + per-surface rebind shape so a future refactor can't
+        silently revert.
+        *Still open for follow-up sub-PRs:*
+        - **`.settings-form-card` cross-container audit.** The base rule
+          (line ~979 of `style.css`) and the `:where(#limits-panel,
+          #simulation-panel, #electricity-prices-panel, #price-aware-
+          devices-panel) .settings-form-card` override (line ~6806) declare
+          two different visual contracts for the same class, depending on
+          which panel the host renders inside. The settings-current-mode
+          section (`#settings-panel`) hits the base; everything else hits
+          the override. The override paints a near-canonical surface
+          (border + radius + surface-2 + shadow-sm). Decide whether to
+          collapse onto `.pels-surface-card` or accept the two-tier
+          contract as legit "form-panel sub-variant" — separate PR to
+          keep this batch focused on the visual surface primitive.
       - **Segmented control — landed (2026-05-24 batch 11 PR, phase 4).** `.segmented`
         + `.segmented__option` are the single canonical shell across every consumer
         (Plan/Adjust toggle, day-toggle, Progress/Hourly plan, 7d/14d,
@@ -355,6 +412,48 @@ release, not v2.7.1 merge-blockers.*
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
+
+- [ ] `.deadline-list-card:hover` still hardcodes `background:
+      var(--color-surface-3)` (style.css:~6224-6229) even though
+      `.pels-surface-card[data-interactive]:hover` now provides M3
+      elevation lift. Once the elevation-only hover visual is validated
+      against the existing baseline on real hardware, delete the
+      manual surface-tier swap so the M3 elevation contract is the
+      single source of truth.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
+
+- [ ] Docs screenshot drift after PR #1040 card consolidation. The
+      diagnostics card radius went 10px → 14px (token violation fix);
+      `.deadline-list-card` lost its rest-state `--shadow-md` in favour
+      of M3 elevation level 1. Doc screenshots
+      (`docs/screenshots/deadline-plan/{320,480}.png`,
+      `docs/public/screenshots/device-detail/diagnostics-open.png`)
+      will misrepresent the shipped UI until refreshed. Not a CI
+      blocker — Playwright snapshot baselines don't gate this — but
+      the docs site reads as stale. Regen on the next docs pass.
+      Files: `docs/screenshots/**/*.png`,
+      `docs/public/screenshots/**/*.png`.
+      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
+
+- [ ] UX-walk on real hardware: confirm cards read OK at rest under
+      the new M3 elevation level 1 (vs the previous `--shadow-md`
+      blur). The tint-overlay elevation model is weaker than a real
+      blur shadow on dark backgrounds, so cards may read flatter at
+      rest. The rest-vs-hover delta is intentional per the
+      `data-interactive` contract, but worth a live-walk before the
+      next release to confirm the at-rest treatment isn't too flat.
+      Files: visual review only, no code.
+      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
+
+- [ ] Comment hygiene on the `.pels-surface-card` primitive block.
+      `packages/settings-ui/public/style.css:2464-2479` and three other
+      comment blocks repeat the same "canonical / decorator" preamble.
+      Consolidate into one block above `.pels-surface-card` and
+      shorten the per-rule comments so future readers see the rule of
+      thumb in one place.
+      Files: `packages/settings-ui/public/style.css`.
+      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
 
 - [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
       asymmetry when it wraps. PR #1016 routes the Budget header through
