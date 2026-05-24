@@ -1,4 +1,5 @@
 import type { DeviceManager } from '../device/manager';
+import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import { resolveBinaryCommandPendingMs } from './planObservationPolicy';
@@ -219,7 +220,7 @@ async function dispatchBinaryCommand(params: {
 
 function emitBinaryCommandSuccess(params: {
   controlPlan: BinaryControlPlan;
-  deviceManager: DeviceManager;
+  deviceManager: DeviceObservation;
   flowBackedControl: boolean;
   deviceId: string;
   name: string;
@@ -254,7 +255,7 @@ function emitBinaryCommandSuccess(params: {
     deviceName: name,
     capabilityId: controlPlan.capabilityId,
     desired,
-    evSnapshot: formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId)),
+    evSnapshot: formatEvSnapshot(deviceManager.getSnapshotByDeviceId(deviceId)),
   });
 }
 

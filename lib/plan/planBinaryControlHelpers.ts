@@ -1,4 +1,4 @@
-import type { DeviceManager } from '../device/manager';
+import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
@@ -18,7 +18,7 @@ export type BinaryControlActuationMode = 'plan' | 'reconcile';
 
 export function shouldSkipBinaryControl(params: {
   controlPlan: BinaryControlPlan | null;
-  deviceManager: DeviceManager;
+  deviceManager: DeviceObservation;
   deviceId: string;
   desired: boolean;
   logContext: BinaryControlLogContext;
@@ -96,7 +96,7 @@ export function shouldSkipBinaryControl(params: {
 }
 
 export function shouldSkipAlreadyMatched(params: {
-  deviceManager: DeviceManager;
+  deviceManager: DeviceObservation;
   controlPlan: BinaryControlPlan;
   deviceId: string;
   desired: boolean;
@@ -104,7 +104,7 @@ export function shouldSkipAlreadyMatched(params: {
 }): boolean {
   const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
   if (controlPlan.isEv) return false;
-  const latestObservedSnapshot = deviceManager.getSnapshot().find((entry) => entry.id === deviceId) ?? snapshot;
+  const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
   if (typeof latestObservedSnapshot?.currentOn !== 'boolean') return false;
   return latestObservedSnapshot.currentOn === desired;
 }
