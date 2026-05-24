@@ -2391,10 +2391,32 @@ md-primary-tab.tab[active]:hover {
   margin-top: var(--spacing-3);
 }
 
-/* Native button used for delegated clicks. Scope to the deadline panel and
-   duplicate the class so these rules beat Homey's host button stylesheet
-   without `!important`, matching the segmented-control cascade strategy. */
-#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button {
+/* `.pels-button` — canonical native `<button>` primitive for PELS settings UI.
+ * Phase 2 of the primitive-unification work (batch 10): the deadline-plan
+ * cannot-finish recourse CTA and the history-detail review-device CTA both
+ * render a native `<button type="button">` (not `<md-text-button>`) so the
+ * delegated click handler in `deadlinePlanMount.ts` can see the event without
+ * crossing the MD Web shadow boundary. Before this rebind they each carried
+ * a per-page recourse-button class (scoped + doubled under
+ * `#deadline-plan-panel`); now they share one shell.
+ *
+ * Why Option A (MD Web wrappers for MD Web buttons, `.pels-button` only for
+ * native buttons): MD Web's `<md-text-button>` etc. already ship M3-correct
+ * focus rings, state-layer ripples, ARIA, and the 48 px touch-target floor —
+ * reinventing them in a custom primitive would lose accessibility for no
+ * stylistic gain. The native `.pels-button` only exists for the small set of
+ * actions that need a real `<button>` (event delegation, no shadow DOM).
+ *
+ * Shape (padding, border, background, radius, touch-target floor, focus
+ * ring, disabled state) lives on the bare `.pels-button` selector so the
+ * class carries its full visual contract on any surface. The doubled-class
+ * + panel-scoped block below repeats the same declarations to beat Homey's
+ * host `button { ... }` stylesheet (and any `.homey-app button` scoped rule)
+ * without `!important`, matching the segmented-control cascade strategy.
+ * Kept byte-equivalent so future shape edits stay in sync; new consumer
+ * panels can add their own scoped duplicate or move to a shared
+ * `.<panel-id> button.pels-button.pels-button` list. */
+.pels-button {
   appearance: none;
   -webkit-appearance: none;
   display: inline-flex;
@@ -2416,15 +2438,58 @@ md-primary-tab.tab[active]:hover {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:hover,
-#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:focus-visible {
+.pels-button:hover,
+.pels-button:focus-visible {
   background: var(--pels-surface-container-highest);
   border-color: var(--accent);
 }
 
-#deadline-plan-panel button.plan-hero__recourse-button.plan-hero__recourse-button:focus-visible {
+.pels-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.pels-button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+}
+
+#deadline-plan-panel button.pels-button.pels-button {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--pels-touch-target-min);
+  height: auto;
+  margin: 0;
+  padding: var(--spacing-2) var(--spacing-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--pels-surface-outline);
+  background: var(--pels-surface-container-high);
+  color: var(--pels-text-primary);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+#deadline-plan-panel button.pels-button.pels-button:hover,
+#deadline-plan-panel button.pels-button.pels-button:focus-visible {
+  background: var(--pels-surface-container-highest);
+  border-color: var(--accent);
+}
+
+#deadline-plan-panel button.pels-button.pels-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#deadline-plan-panel button.pels-button.pels-button:disabled {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
 }
 
 .plan-hero__energy-support {
@@ -3190,7 +3255,11 @@ md-primary-tab.tab[active]:hover {
     font-size: var(--font-size-xs);
   }
 
-  .plan-hero__recourse-button {
+  /* Canonical `.pels-button` shell — stretch to full-width inside the
+   * recourse row at narrow viewports so the CTA reads as a tappable bar
+   * instead of a left-aligned token. The `.plan-hero__recourse` parent
+   * keeps the row layout; the button just fills it. */
+  .pels-button {
     width: 100%;
   }
 
@@ -5223,11 +5292,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* Doubled-class + panel-scoped cascade so these rules beat both the host
  * `md-text-button` shadow defaults and Homey's button stylesheet without
- * `!important`. Mirrors the `.plan-hero__recourse-button` pattern documented
- * nearby (~line 2329), where the same doubled-class strategy replaces the
- * earlier `!important`-heavy block. The `align-self` and `box-shadow`
- * declarations stay on the single-class rule so they keep applying when this
- * class is used outside the deadline-plan panel scope. */
+ * `!important`. Mirrors the canonical `.pels-button` pattern documented
+ * nearby, where the same doubled-class strategy replaces an earlier
+ * `!important`-heavy block. The `align-self` and `box-shadow` declarations
+ * stay on the single-class rule so they keep applying when this class is
+ * used outside the deadline-plan panel scope. */
 .deadline-plan-back-button {
   align-self: flex-start;
   box-shadow: none;
