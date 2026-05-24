@@ -54,12 +54,30 @@ describe('resolveBandedProfileConfidence', () => {
 
   it('returns `medium` when pooled within-band RSD sits in the medium band', () => {
     // pooled m2 = 0.2 over residualDof 18 → variance≈0.0111 → RSD≈0.39 →
-    // > 0.35 but ≤ 0.75 → 'medium'. bandSampleTotal=20 still qualifies the n≥10 gate.
+    // > 0.20 but ≤ 0.75 → 'medium'. bandSampleTotal=20 still qualifies the n≥10 gate.
     expect(resolveBandedProfileConfidence({
       sampleCount: 20, mean: 0.27, m2: 1.0,
       bands: [
         band({ sampleCount: 10, mean: 0.25, m2: 0.1 }),
         band({ sampleCount: 10, mean: 0.29, m2: 0.1 }),
+      ],
+    })).toBe('medium');
+  });
+
+  it(`returns 'medium' for mildly-different bands with non-trivial within-band noise`, () => {
+    // EV-charger taper case (0.30 → 0.25 kWh/unit) with moderate within-band
+    // noise. pooled m2 = 0.14 over residualDof 18 → variance≈0.00778 →
+    // σ≈0.0882. weightedBandMean = (10×0.25 + 10×0.30) / 20 = 0.275 →
+    // RSD ≈ 0.321. Above the tightened 0.20 banded-high threshold but ≤ 0.75 →
+    // 'medium'. Regression pin: pre-tightening (threshold 0.35) this fixture
+    // returned 'high', over-promoting a profile whose bands are only mildly
+    // different. Outer `sampleCount`/`mean`/`m2` are aggregate stats used by
+    // the lifetime-mean fallback; they don't influence the banded RSD here.
+    expect(resolveBandedProfileConfidence({
+      sampleCount: 20, mean: 0.27, m2: 0.5,
+      bands: [
+        band({ sampleCount: 10, mean: 0.25, m2: 0.07 }),
+        band({ sampleCount: 10, mean: 0.30, m2: 0.07 }),
       ],
     })).toBe('medium');
   });
