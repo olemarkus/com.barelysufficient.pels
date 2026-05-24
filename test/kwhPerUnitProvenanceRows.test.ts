@@ -56,7 +56,16 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     })).toEqual([
       { label: 'Source', value: 'Learned from power readings', tone: null },
       { label: 'Readings used', value: '12 accepted power readings · medium confidence', tone: null },
-      { label: 'Latest reading used', value: 'Updated 5 min ago', tone: null },
+      // `freshnessOfMs` mirrors `lastAcceptedAtMs` so the React view can
+      // re-derive the relative-time string (and `tone`) on its 60s tick.
+      // Non-React consumers (runtime breadcrumbs) ignore the field and read
+      // `value`/`tone` directly.
+      {
+        label: 'Latest reading used',
+        value: 'Updated 5 min ago',
+        tone: null,
+        freshnessOfMs: ACCEPTED_AT_MS,
+      },
     ]);
   });
 

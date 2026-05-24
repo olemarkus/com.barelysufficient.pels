@@ -10,6 +10,7 @@ import {
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
+import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { HorizonHour } from './deadlinePlanData.ts';
 import {
   formatDeadlineFull,
@@ -85,7 +86,11 @@ export const resolveLiveHeroConfidenceChipText = (params: {
 //   `satisfied`   → `good`   (green rim — already at/past target)
 //   `invalid`     → `info`   (neutral — planner couldn't produce a valid plan
 //                             and the hero will show the pending/empty copy)
-export const resolveHeroTone = (
+//
+// Distinct from `usageHero.ts:resolveHeroTone` (pace-based, ok/warn/alert) —
+// kept under a separate symbol so a global rename or IDE auto-import can't
+// pick the wrong helper.
+export const resolveDeadlineHeroTone = (
   planStatus: DeferredObjectiveActivePlanStatusV1,
 ): DeadlinePlanHeroTone => {
   if (planStatus === 'cannot_meet') return 'alert';
@@ -355,7 +360,7 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const headline = resolveHeroHeadline(params);
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
-  const subline = `${params.device.name} • Target ${target} by ${deadline}`;
+  const subline = `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`;
   const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
   const baseMetaLine = formatMetaLine({
     energyNeededKWh: params.energyNeededKWh,

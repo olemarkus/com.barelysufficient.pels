@@ -297,6 +297,28 @@ export function formatShortfallReason(opts: {
   return suffix ? `Manual action needed — ${suffix}` : base;
 }
 
+// Generic plan card "still reporting load after pause" sentence. The Overview
+// device card uses this when a held device is still drawing power — e.g. an
+// EV charger that ignored the pause. Lives in shared-domain so logs and UI
+// produce the same wording (`feedback_ui_text_shared_with_logs`). The
+// `detail` slot accepts `unknown` because the upstream `DeviceReason.detail`
+// field is loosely typed at the snapshot boundary; non-string values are
+// dropped silently rather than rendered as `[object Object]`.
+export function resolvePlanGenericReasonText(params: {
+  measuredPowerKw: number | undefined;
+  detail: unknown;
+}): string {
+  const measured = typeof params.measuredPowerKw === 'number' && Number.isFinite(params.measuredPowerKw)
+    ? params.measuredPowerKw.toFixed(1)
+    : '–';
+  const detail = typeof params.detail === 'string' && params.detail.trim().length > 0
+    ? params.detail.trim()
+    : null;
+  return detail
+    ? `Still reporting ${measured} kW after pause — ${detail}`
+    : `Still reporting ${measured} kW after pause`;
+}
+
 function formatRestoreNeedUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>,
 ): string {

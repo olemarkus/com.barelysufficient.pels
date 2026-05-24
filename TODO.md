@@ -422,6 +422,62 @@ release, not v2.7.1 merge-blockers.*
       remaining gap is duration, not instrumentation. Source: data-gated
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
+*Session P2 deferrals from batch 21 reviews (2026-05-24).*
+
+- [ ] Postmortem copy for `unknown`-with-plan doesn't bridge to the "View
+      details" chart affordance. The fallback sentence "PELS could not
+      determine how this smart task finished." reads coherently when the
+      hero is one-sentence (the `unknown`-no-plan branch). With a plan
+      recorded (now showing the collapsed chart card after PR #1074), the
+      user sees the sentence + the toggle and may wonder "if you don't
+      know, what details?" The expand reveals the plan, which is honest
+      evidence — but the copy doesn't preview it. Consider a copy variant
+      for the `hasRecordedPlan` branch like "PELS made a plan for this
+      smart task but couldn't observe how it finished."
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts:776-778`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Comment about Abandoned + RevisionsCard interaction is stale. The
+      block at `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx:1219-1220`
+      claims "Abandoned entries default collapsed and the card follows
+      the same 'log when asked for' rhythm" — but Abandoned has
+      `quietAbandoned: true` so the toggle never renders,
+      `chartCollapsed` never flips, and `RevisionsCard` is never shown
+      for Abandoned. Pre-existing drift; PR #1074's `unknown`-with-plan
+      is the first case where the described rhythm actually holds.
+      Update the comment to match (e.g. "Unknown-with-plan entries
+      default collapsed; the card opens on demand").
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
+      could disambiguate `chartCollapsedByDefault` vs `quietAbandoned`.
+      The producer-flag summary reads `Unknown=true` but doesn't make
+      explicit that this is the `chartCollapsedByDefault` value;
+      `quietAbandoned` is what actually toggles per `hasRecordedPlan`.
+      The prose at lines 27-32 covers it, but the table-style summary
+      could be misread to suggest unknown ALWAYS gets a collapsed card.
+      Tighten the phrasing in a future docs sweep.
+      Files: `notes/v2-7-2/postmortem-chart-policy.md`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Rename `resolvePlanGenericReasonText` to a name that describes the
+      actual function (e.g. `resolveStillReportingAfterPauseText` or
+      `resolveReportedLoadAfterPauseText`). Shipped per task spec in
+      PR #1075 but the name doesn't describe what the function does —
+      it only computes the "Still reporting … after pause" sentence,
+      not a generic plan reason. Also: the
+      `(dev.reason as { detail?: unknown } | undefined)?.detail` cast at
+      the call site is preserved verbatim from the pre-extraction code;
+      it's now a published contract between settings-ui and the
+      shared-domain helper, so the weak typing is more visible than
+      before. A typed `DeviceReason` narrowing helper would be the
+      cleaner fix.
+      Files: `packages/shared-domain/src/planReasonFormatting.ts`,
+      `packages/shared-domain/src/planReasonSemantics.ts`,
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+      Source: PR #1075 self-review, 2026-05-24.
+
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
 - [x] `.deadline-list-card:hover` still hardcodes `background:
@@ -1155,14 +1211,20 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       `packages/contracts/src/`.
       Source: `pels-runtime-reality`, v2.8.0 release-review pass.
 
-- [ ] Plan-inputs freshness string ticks once per minute while the
-      Smart task detail page is open. Today `Updated N min ago` is
-      computed at render and frozen until the next plan refresh — a
-      user staring at the page for 30 minutes sees "Updated just now"
-      the entire time. Acceptable for non-critical context but mildly
-      misleading.
+- [x] Plan-inputs freshness string ticks once per minute while the
+      Smart task detail page is open. `PlanInputsCard` now owns a
+      component-local 60s `setInterval` (registered via `useEffect`,
+      cleaned up on unmount via the returned teardown) that re-renders
+      the freshness slot off `Date.now()`; producer keeps emitting a
+      pre-formatted seed string for non-React consumers + cold first
+      paint. Tick is gated on at least one provenance row carrying
+      `freshnessOfMs`, so bootstrap-only / no-provenance plans never
+      arm the timer.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanFormatters.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/test/deadlinePlanFreshnessTick.test.ts`.
       Source: `adversarial-review`, v2.8.0 release-review pass.
 
 - [x] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
@@ -1250,7 +1312,7 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
 
-- [ ] Extract a `resolvePlanGenericReasonText` helper alongside
+- [x] Extract a `resolvePlanGenericReasonText` helper alongside
       `resolveTemperatureReasonLine` so the `"Still reporting … after pause
       — …"` sentence currently duplicated across
       `planTemperatureCardText.ts` and `planSteppedCardText.ts` lives at
@@ -1264,6 +1326,19 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       Files: `packages/shared-domain/src/planSteppedCardText.ts`,
       `packages/shared-domain/src/planTemperatureCardText.ts`,
       `packages/shared-domain/src/planReasonFormatting.ts`.
+      Shipped: `resolvePlanGenericReasonText(params: { measuredPowerKw:
+      number | undefined; detail: unknown })` now lives in
+      `packages/shared-domain/src/planReasonFormatting.ts` (re-exported via
+      `planReasonSemantics.ts`). On audit the sentence only ever lived in
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`
+      (`resolveReportedLoadReason`), not in either card-text helper — the
+      TODO's "duplicated across temperature/stepped" description was stale.
+      The single delegating call site is `PlanDeviceCards.tsx`
+      `resolveReportedLoadReason`; covered by
+      `test/planReasonUserFacing.test.ts`
+      `describe('resolvePlanGenericReasonText')` including a
+      character-for-character `referenceFormat` comparison against the
+      pre-extraction inline formatter.
 
 - [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
       `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the
@@ -2578,34 +2653,39 @@ should not be folded into the same PR.
       is 0, would catch the dual-render regression.
       Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
 
-- [ ] Overview device-name trailing whitespace. Live-walk 2026-05-16:
+- [x] Overview device-name trailing whitespace. Live-walk 2026-05-16:
       `aria-label="Open device details for Termostat gang "` and several others
       ("Synne ", "vaskerom ", "kontor ", "bad tredje ", "hovedsoverom "). Likely
       user-entered in Homey itself, but a `String#trimEnd` on display would be
       polite and avoid screen-reader pauses.
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` (device
-      name rendering), `packages/shared-domain/src/...` (any per-device label
-      helper).
+      Helper: `packages/shared-domain/src/displayDeviceName.ts`
+      (`formatDisplayDeviceName`). Display-only — persisted state stays
+      verbatim. Callsites: `views/PlanDeviceCards.tsx` (generic + temperature
+      cards, DeadlineChip), `views/PlanSteppedCard.tsx`,
+      `views/PriceAwareDevicesView.tsx`, `views/DeadlinesList.tsx`,
+      `views/DeadlinesHistoryList.tsx`, `views/DeadlinePlanHistory.tsx`,
+      `views/DeadlinePlanHistoryDetail.tsx`, `ui/modes.ts`, `ui/devices.ts`,
+      `ui/deviceDetail/index.ts`, `ui/advanced.ts`, `ui/deadlinePlan.ts`,
+      `ui/deadlinePlanHero.ts`.
 
-- [ ] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
-      Two distinct exports share the same name with different signatures
-      (`PaceContext → 'ok'|'warn'|'alert'` vs `DeferredObjectiveActivePlanStatusV1 →
-      DeadlinePlanHeroTone`). Not a runtime issue today (Vitest/TS scope them per module) but
-      a future global rename or IDE auto-import could pick the wrong symbol. Rename one — e.g.
-      the deadline helper to `resolveDeadlineHeroTone` or the usage helper to
-      `resolveUsagePaceTone`.
-      Files: `packages/settings-ui/src/ui/usageHero.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
-- [ ] Split chip label for `at_risk` plans vs `cannot_meet` plans.
-      `deadlinePlan.ts:365` folds `at_risk` into `cannotMeet`, and `deadlineLabels.ts:212/290`
-      labels the resulting chip "Cannot finish" — but `at_risk` is a recoverable shortfall, not
-      an impossibility. The PR that added the hero-tone split now visually distinguishes the
-      two (amber rim vs red rim), but the chip text still reads the same. Consider either a
-      separate `atRiskChipLabel` ("At risk") or stop folding `at_risk` into `cannotMeet` at the
-      payload-build layer.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
+- [x] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
+      Done: renamed the deadline-plan helper to `resolveDeadlineHeroTone` and left
+      `usageHero.ts:resolveHeroTone` untouched — fewer callsite churn (2 callers updated:
+      `deadlinePlan.ts` production + the `resolveDeadlineHeroTone` describe block in
+      `packages/settings-ui/test/deadlinePlan.test.ts`). A doc comment in
+      `deadlinePlanHero.ts` now points back to the usage-side sibling so the distinction
+      stays auditable.
+- [x] Split chip label for `at_risk` plans vs `cannot_meet` plans.
+      Done at the chip-label layer (already shipped in `Align smart task confidence chips`
+      on 2026-05-19 — `atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk` = "At risk",
+      `cannotMeetChipLabel: 'Cannot finish'`; `resolveHeroStatusChip` routes them with
+      `warn` vs `alert` tones). This pass pins the split with a regression test in
+      `test/smartTaskListLabels.test.ts` (`at_risk vs cannot_meet chip labels`) so a future
+      collapse can't re-merge them. The `cannotMeet` boolean fold at
+      `deadlinePlan.ts:500` is intentionally left — the partial-schedule budget-bound
+      at_risk regression at `deadlinePlan.test.ts:1448` already pins the desired body-copy
+      reuse (budget cause sentence + Open Budget recourse on at_risk + budget), and
+      removing the fold would invert that intentional design.
 - [ ] Always show observed coverage on smart-task history cards. Today
       `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
       hiding the case where the planner thought a device was active but it drew no power.
