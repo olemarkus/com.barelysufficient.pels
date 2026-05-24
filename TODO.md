@@ -1155,14 +1155,20 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       `packages/contracts/src/`.
       Source: `pels-runtime-reality`, v2.8.0 release-review pass.
 
-- [ ] Plan-inputs freshness string ticks once per minute while the
-      Smart task detail page is open. Today `Updated N min ago` is
-      computed at render and frozen until the next plan refresh — a
-      user staring at the page for 30 minutes sees "Updated just now"
-      the entire time. Acceptable for non-critical context but mildly
-      misleading.
+- [x] Plan-inputs freshness string ticks once per minute while the
+      Smart task detail page is open. `PlanInputsCard` now owns a
+      component-local 60s `setInterval` (registered via `useEffect`,
+      cleaned up on unmount via the returned teardown) that re-renders
+      the freshness slot off `Date.now()`; producer keeps emitting a
+      pre-formatted seed string for non-React consumers + cold first
+      paint. Tick is gated on at least one provenance row carrying
+      `freshnessOfMs`, so bootstrap-only / no-provenance plans never
+      arm the timer.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanFormatters.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/test/deadlinePlanFreshnessTick.test.ts`.
       Source: `adversarial-review`, v2.8.0 release-review pass.
 
 - [x] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`

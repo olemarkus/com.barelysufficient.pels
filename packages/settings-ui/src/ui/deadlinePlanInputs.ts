@@ -11,21 +11,9 @@ import type {
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
+import { formatAcceptedAt } from './deadlinePlanFormatters.ts';
 import { resolveLowestActiveStepKw, type resolveProfile } from './deadlinePlanResolvers.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
-
-const formatAcceptedAt = (ms: number): string => {
-  const date = new Date(ms);
-  // Locale-aware short timestamp. Browser-side, so the user's runtime locale
-  // and timezone are applied automatically — no `timeZone` plumbing required.
-  return date.toLocaleString([], {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-};
 
 const formatPerUnitRateLabel = (
   kwhPerUnitMean: number | null | undefined,

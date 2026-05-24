@@ -1,9 +1,10 @@
 import { render } from 'preact';
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
+  formatLastSampleValue,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
@@ -12,6 +13,7 @@ import {
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { attachTabShownResize } from '../chartVisibilityResize.ts';
+import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
@@ -791,7 +793,78 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
   </section>
 );
 
-const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
+// Refresh cadence for the "Latest reading used" freshness string. One minute
+// matches the granularity of `formatLastSampleValue` ("Updated N min ago") so
+// the user sees the counter advance roughly as their wall clock crosses the
+// next minute boundary. Anything faster would just re-render with the same
+// string; anything slower would leave the user staring at "Updated just now"
+// for too long (the bug TODO ~line 1160 was opened against).
+const FRESHNESS_TICK_MS = 60 * 1000;
+
+// Subscribes the calling component to a `nowMs` value that updates every
+// `FRESHNESS_TICK_MS` ms while the component is mounted. The interval is
+// component-local (not a module-level singleton) so multiple mounts/unmounts
+// — including Preact strict-mode double-mounts during dev — do not leak
+// timers. Returns `null` when `enabled` is false so the calling row keeps
+// rendering the producer-supplied `value` verbatim.
+const useFreshnessTick = (enabled: boolean): number | null => {
+  // Lazy initializer so `Date.now()` is only called when needed, and only on
+  // the very first render. Cold mount with `enabled=true` paints from this
+  // seed; the interval below takes over from the second frame onward.
+  const [nowMs, setNowMs] = useState<number | null>(() => (enabled ? Date.now() : null));
+  useEffect(() => {
+    if (!enabled) {
+      // If the row stops needing freshness (provenance disappears mid-mount),
+      // drop the cached `nowMs` so a later re-enable seeds from a fresh
+      // `Date.now()` rather than the stale value from the prior session.
+      setNowMs((current) => (current === null ? current : null));
+      return undefined;
+    }
+    // On a false → true transition mid-mount, seed immediately so the row
+    // does not wait a full tick before painting against a fresh clock; on
+    // the cold mount, `useState`'s lazy initializer already supplied a
+    // current value, and skipping the eager `setNowMs` here avoids an extra
+    // render whenever wall-clock time advances by ≥1 ms between the
+    // initializer running and the effect committing.
+    setNowMs((current) => (current === null ? Date.now() : current));
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, FRESHNESS_TICK_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [enabled]);
+  return nowMs;
+};
+
+// Re-derives `{ value, tone }` for the "Latest reading used" row from its
+// raw timestamp whenever the row carries a `freshnessOfMs`. Falls back to
+// the producer-supplied pair while the tick has not seeded `nowMs` yet, or
+// for rows that have no freshness field (Source, Readings used). Keeping the
+// read in the view layer so the producer stays time-independent — the
+// producer's `nowMs` is just the seed value. The view re-derives `tone` (not
+// just `value`) so the warn affordance can flip on as soon as a sample
+// crosses the 24 h staleness threshold while the page is open.
+const renderProvenanceRowDisplay = (
+  row: KwhPerUnitProvenanceRow,
+  nowMs: number | null,
+): { value: string; tone: KwhPerUnitProvenanceRow['tone'] } => {
+  if (typeof row.freshnessOfMs !== 'number' || nowMs === null) {
+    return { value: row.value, tone: row.tone };
+  }
+  const fresh = formatLastSampleValue({
+    lastMs: row.freshnessOfMs,
+    nowMs,
+    formatAcceptedAt,
+  });
+  return { value: fresh.text, tone: fresh.tone };
+};
+
+// Exported for unit tests so the freshness tick can be exercised in isolation
+// without also mounting `HorizonChart` (whose ECharts `initEcharts` call hits
+// real ECharts subpaths the JSDOM-aliased shim doesn't fully cover). The
+// production render path still routes through `DeadlinePlanRoot` below.
+export const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
   const {
     perUnitRateLabel,
     perUnitRateNote,
@@ -800,6 +873,11 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
     extraPermissionsValue,
     provenanceRows,
   } = payload.planInputs;
+  // Only arm the 60s tick when at least one row actually needs freshness; on
+  // a bootstrap provenance row (Starting estimate only) or no provenance at
+  // all the timer never spins up.
+  const hasFreshnessRow = provenanceRows.some((row) => typeof row.freshnessOfMs === 'number');
+  const tickNowMs = useFreshnessTick(hasFreshnessRow);
   if (
     perUnitRateLabel === null
     && maxPowerLabel === null
@@ -840,18 +918,21 @@ const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
             <dd class="plan-inputs__row-value">{extraPermissionsValue}</dd>
           </div>
         )}
-        {provenanceRows.map((row) => (
-          <div key={row.label} class="plan-inputs__row">
-            <dt class="plan-inputs__row-label">{row.label}</dt>
-            <dd
-              class={row.tone === null
-                ? 'plan-inputs__row-value'
-                : `plan-inputs__row-value plan-inputs__row-value--${row.tone}`}
-            >
-              {row.value}
-            </dd>
-          </div>
-        ))}
+        {provenanceRows.map((row) => {
+          const display = renderProvenanceRowDisplay(row, tickNowMs);
+          return (
+            <div key={row.label} class="plan-inputs__row">
+              <dt class="plan-inputs__row-label">{row.label}</dt>
+              <dd
+                class={display.tone === null
+                  ? 'plan-inputs__row-value'
+                  : `plan-inputs__row-value plan-inputs__row-value--${display.tone}`}
+              >
+                {display.value}
+              </dd>
+            </div>
+          );
+        })}
       </dl>
     </section>
   );
