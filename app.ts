@@ -21,6 +21,7 @@ import { PriceCoordinator } from './lib/price/priceCoordinator';
 import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
+import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { buildPeriodicStatusLogFields } from './lib/app/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
@@ -1644,7 +1645,7 @@ class PelsApp extends Homey.App {
   ): Promise<void> {
     await this.snapshotHelpers.refreshTargetDevicesSnapshot(options);
   }
-  public getCombinedHourlyPrices = (): unknown => this.priceCoordinator.getCombinedHourlyPrices();
+  public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => this.priceCoordinator.getCombinedHourlyPrices();
   private getTimeZone = (): string => this.homey.clock.getTimezone();
   private getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);

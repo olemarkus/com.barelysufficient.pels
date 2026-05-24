@@ -19,6 +19,7 @@ import { incPerfCounters } from '../lib/utils/perfCounters';
 import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
+import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
@@ -107,7 +108,7 @@ export type FlowCardDeps = {
   }) => HeadroomForDeviceDecision | null;
   loadDailyBudgetSettings: () => void;
   updateDailyBudgetState: (options?: { forcePlanRebuild?: boolean }) => void;
-  getCombinedHourlyPrices: () => unknown;
+  getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTimeZone: () => string;
   getNow: () => Date;
   getStructuredLogger: (component: string) => PinoLogger | undefined;

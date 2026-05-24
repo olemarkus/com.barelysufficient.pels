@@ -1,4 +1,5 @@
 import { resolveCurrentPriceFromCombined } from '../price/priceLowestFlowEvaluator';
+import type { CombinedHourlyPrice } from '../price/priceTypes';
 import { getHourStartInTimeZone } from '../utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
 
@@ -11,7 +12,7 @@ type LowestPriceTriggerCard = {
 export type PriceLowestTriggerCheckerDeps = {
   getNow: () => Date;
   getTimeZone: () => string;
-  getCombinedHourlyPrices: () => unknown;
+  getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTriggerCard: (id: LowestPriceTriggerCardId) => LowestPriceTriggerCard;
   logDebug: (message: string) => void;
   error: (message: string, error: Error) => void;

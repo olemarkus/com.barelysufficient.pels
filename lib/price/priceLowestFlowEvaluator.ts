@@ -5,6 +5,7 @@ import {
   shiftDateKey,
   getZonedParts,
 } from '../utils/dateUtils';
+import type { CombinedHourlyPrice } from './priceTypes';
 const STEPS_PER_DAY = 24;
 const DEFAULT_EPSILON = 1e-6;
 type ParsedPriceEntry = {
@@ -443,7 +444,7 @@ const evaluateLowestBefore = (
 export function evaluateLowestPriceCard(params: {
   cardId: LowestPriceCardId;
   args: unknown;
-  combinedPrices: unknown;
+  combinedPrices: readonly CombinedHourlyPrice[];
   timeZone: string;
   now: Date;
   currentPriceOverride?: number;
@@ -460,7 +461,7 @@ export function evaluateLowestPriceCard(params: {
   return evaluateLowestBefore(params.args, context, params.currentPriceOverride, params.epsilon);
 }
 export function resolveCurrentPriceFromCombined(params: {
-  combinedPrices: unknown;
+  combinedPrices: readonly CombinedHourlyPrice[];
   timeZone: string;
   now: Date;
 }): { currentPrice: number | null; reason: 'ok' | 'missing_current_slot' } {

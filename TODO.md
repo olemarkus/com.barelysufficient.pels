@@ -1076,11 +1076,16 @@ No action.*
       wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
 
-- [ ] Type the combined-prices `ctx` accessor in `lib/app/appInit.ts`.
-      `readPriceStore` returns a typed `CombinedPricesV2 | null`, so the
-      v2.8.0 PR1 resolver no longer casts through `unknown`. Track a contract
-      type for any remaining `ctx.getCombinedHourlyPrices()` callers in
-      drivers/flowCards so they share the same type surface.
+- [x] Type the combined-prices `ctx` accessor in `lib/app/appInit.ts`.
+      Done in `refactor/p2-ctx-prices-type` — `CombinedHourlyPrice` from
+      `lib/price/priceTypes.ts` is the shared type surface. Callsites updated:
+      `app.ts` (the `getCombinedHourlyPrices` field hook), `lib/app/appContext.ts`
+      (`AppContext.getCombinedHourlyPrices`), `lib/app/appPriceLowestTrigger.ts`
+      (`PriceLowestTriggerCheckerDeps`), `flowCards/registerFlowCards.ts`
+      (`FlowCardDeps`), and `lib/price/priceCoordinator.ts` (explicit return
+      type). The public `evaluateLowestPriceCard` /
+      `resolveCurrentPriceFromCombined` parameters were also tightened from
+      `unknown` to `readonly CombinedHourlyPrice[]`. No runtime change.
       Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
 
 - [ ] Reduce `lib/plan/deferredObjectives/planHistory.ts` `max-lines`

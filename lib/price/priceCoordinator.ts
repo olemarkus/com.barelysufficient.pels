@@ -2,6 +2,7 @@ import Homey from 'homey';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
+import type { CombinedHourlyPrice } from './priceTypes';
 import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
@@ -206,7 +207,7 @@ export class PriceCoordinator {
     return this.priceService.storeFlowPriceData(kind, raw);
   }
 
-  getCombinedHourlyPrices() {
+  getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
   }
 
