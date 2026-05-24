@@ -1,4 +1,10 @@
-import type { DeviceManager } from '../device/manager';
+/* eslint-disable max-lines --
+ * Binary-control orchestration keeps shed/restore/EV-deferred branches
+ * in one file; the file grew past the 500-line floor after PR #1b
+ * absorbed the decision-then-dispatch helper that previously lived in
+ * `lib/plan/planBinaryControl.ts`.
+ */
+import type { DeviceObservation } from '../device/deviceObservation';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 import {
@@ -12,8 +18,11 @@ import {
   getBinaryControlPlan,
   getEvRestoreBlockReason,
   isFlowBackedBinaryControl,
-  setBinaryControl,
 } from '../plan/planBinaryControl';
+import {
+  type BinaryControlTransport,
+  decideAndDispatchBinaryControl,
+} from './binaryControlDispatch';
 import type { PlanEngineState } from '../plan/planState';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
@@ -27,24 +36,41 @@ const logger = getLogger('executor/binary');
 
 export type PlanExecutorBinaryContext = {
   state: PlanEngineState;
-  deviceManager: DeviceManager;
+  observation: DeviceObservation;
   capacityDryRun: boolean;
-  buildBinaryControlDeps: () => {
-    state: PlanEngineState;
-    deviceManager: DeviceManager;
-    triggerFlowBackedBinaryControlRequest?: (params: {
-      deviceId: string;
-      name: string;
-      capabilityId: 'onoff' | 'evcharger_charging';
-      desired: boolean;
-      logContext: 'capacity' | 'capacity_control_off';
-      actuationMode: PlanActuationMode;
-    }) => Promise<void>;
-  };
+  buildBinaryControlTransport: () => BinaryControlTransport;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+};
+
+const runBinaryControl = async (params: {
+  ctx: PlanExecutorBinaryContext;
+  deviceId: string;
+  name: string;
+  desired: boolean;
+  snapshot?: TargetDeviceSnapshot;
+  logContext: 'capacity' | 'capacity_control_off';
+  restoreSource?: 'shed_state' | 'current_plan';
+  reason?: string;
+  actuationMode?: PlanActuationMode;
+}): Promise<boolean> => {
+  const {
+    ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
+  } = params;
+  return decideAndDispatchBinaryControl({
+    state: ctx.state,
+    transport: ctx.buildBinaryControlTransport(),
+    deviceId,
+    name,
+    desired,
+    snapshot,
+    logContext,
+    restoreSource,
+    reason,
+    actuationMode,
+  });
 };
 
 export const applyBinaryRestore = async (
@@ -54,7 +80,7 @@ export const applyBinaryRestore = async (
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent || intent.kind !== 'restore' || intent.source !== 'controlled') return false;
-  const snapshot = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot) {
     canApplyRestoreSnapshot(ctx, {
       snapshot,
@@ -99,7 +125,7 @@ export const applyUncontrolledBinaryRestore = async (
   if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
   const lastShed = ctx.state.lastDeviceShedMs[intent.deviceId];
   if (!lastShed) return false;
-  const entry = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const entry = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
     canApplyRestoreSnapshot(ctx, {
       snapshot: entry,
@@ -152,7 +178,7 @@ export const applyBinarySheddingToDevice = async (
     trackPendingShed = true,
   } = params;
   if (ctx.capacityDryRun) return false;
-  const snapshotState = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
+  const snapshotState = ctx.observation.getSnapshotByDeviceId(deviceId);
   if (!skipPrecheck && shouldSkipShedding({
     state: ctx.state,
     deviceId,
@@ -189,7 +215,7 @@ export const applyDeferredEvCommand = async (
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent) return false;
-  const snapshot = ctx.deviceManager.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
+  const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
 
   if (intent.kind === 'ev_pause') {
@@ -304,8 +330,8 @@ const applyBinaryRestoreWithSnapshot = async (
   ctx.state.pendingRestores.add(deviceId);
   try {
     try {
-      const applied = await setBinaryControl({
-        ...ctx.buildBinaryControlDeps(),
+      const applied = await runBinaryControl({
+        ctx,
         deviceId,
         name,
         desired: true,
@@ -356,8 +382,8 @@ const applyCapacityControlOffRestoreWithSnapshot = async (
     snapshot,
   } = params;
   try {
-    const applied = await setBinaryControl({
-      ...ctx.buildBinaryControlDeps(),
+    const applied = await runBinaryControl({
+      ctx,
       deviceId,
       name,
       desired: true,
@@ -451,7 +477,7 @@ const turnOffDevice = async (
     reason,
     snapshot,
   } = params;
-  const snapshotEntry = snapshot ?? ctx.deviceManager.getSnapshotByDeviceId(deviceId);
+  const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
   if (snapshotEntry?.deviceClass === 'evcharger') {
     logger.debug({
@@ -483,8 +509,8 @@ const turnOffDevice = async (
   }
   const now = Date.now();
   try {
-    const applied = await setBinaryControl({
-      ...ctx.buildBinaryControlDeps(),
+    const applied = await runBinaryControl({
+      ctx,
       deviceId,
       name,
       desired: false,

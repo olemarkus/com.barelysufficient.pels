@@ -12,7 +12,11 @@ import {
   recordActivationAttemptStarted,
   recordActivationSetbackForDevice,
 } from '../plan/planExecutorSupport';
-import { setBinaryControl } from '../plan/planBinaryControl';
+import {
+  type BinaryControlTransport,
+  decideAndDispatchBinaryControl,
+} from './binaryControlDispatch';
+import type { DeviceObservation } from '../device/deviceObservation';
 import { resolveSteppedLoadCommandPendingMs } from '../plan/planObservationPolicy';
 import {
   isRequestedStepMaterialized,
@@ -22,7 +26,6 @@ import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } fro
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
 import type {
-  DeviceManager,
   SteppedLoadStepRequestResult,
   SteppedLoadStepRequestTransport,
 } from '../device/manager';
@@ -34,10 +37,8 @@ const logger = getLogger('executor/stepped-load');
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
-  buildBinaryControlDeps: () => {
-    state: PlanEngineState;
-    deviceManager: DeviceManager;
-  };
+  observation: DeviceObservation;
+  buildBinaryControlTransport: () => BinaryControlTransport;
   requestSteppedLoadStep: (params: {
     deviceId: string;
     profile: SteppedLoadProfile;
@@ -360,8 +361,9 @@ export const applySteppedLoadShedOff = async (
   if (!snapshot) return false;
   const name = action.name;
   try {
-    const applied = await setBinaryControl({
-      ...ctx.buildBinaryControlDeps(),
+    const applied = await decideAndDispatchBinaryControl({
+      state: ctx.state,
+      transport: ctx.buildBinaryControlTransport(),
       deviceId: action.id,
       name,
       desired: false,
@@ -687,8 +689,9 @@ const executeSteppedLoadRestoreBinary = async (
   } = params;
   ctx.state.pendingRestores.add(action.id);
   try {
-    const applied = await setBinaryControl({
-      ...ctx.buildBinaryControlDeps(),
+    const applied = await decideAndDispatchBinaryControl({
+      state: ctx.state,
+      transport: ctx.buildBinaryControlTransport(),
       deviceId: action.id,
       name,
       desired: true,
