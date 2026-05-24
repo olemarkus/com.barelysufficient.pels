@@ -1,7 +1,9 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { getTrustedStateOfCharge } from '../observer/observationTrust';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('plan/ev-boost');
 
 export function resolveEvBoostActive(params: {
   dev: PlanInputDevice;
@@ -28,12 +30,11 @@ export function emitEvBoostStateChange(params: {
   dev: PlanInputDevice;
   previousActive: boolean;
   active: boolean;
-  debugStructured?: StructuredDebugEmitter;
 }): void {
-  const { dev, previousActive, active, debugStructured } = params;
-  if (!debugStructured || previousActive === active) return;
+  const { dev, previousActive, active } = params;
+  if (previousActive === active) return;
   const boostBelowPercent = dev.evBoost?.boostBelowPercent;
-  debugStructured({
+  logger.debug({
     event: 'ev_boost_state_changed',
     deviceId: dev.id,
     deviceName: dev.name,
