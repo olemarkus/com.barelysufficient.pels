@@ -1924,12 +1924,15 @@ consolidation + a11y polish (8 P2)`.*
       messages.
       Files: `lib/logging/**`, `lib/plan/deferredObjectives/**`, EV learning sample-rejection
       sites, log/wording regression tests.
-- [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
+- [x] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
       swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
       the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
       measurement deferral before a fresh power sample.
-      Files: `test/swapLifecycle.test.ts`, `test/planRestoreBackoff.test.ts`,
-      `lib/plan/planRestore.ts`.
+      Files: `test/swapLifecycle.test.ts`
+      (`completed cleanup clears a stepped target only after its requested step is reached`),
+      `test/planRestoreBackoff.test.ts`
+      (`persists a stale-cleanup timestamp on an approved stepped swap that survives a state roundtrip`,
+      `defers a swap restore for orphan-measurement metadata until a fresh power sample arrives`).
 - [ ] Finish the planner/executor/device-manager state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceManager` should
       provide observed current state and own native / flow / capability transport; executor should

@@ -18,6 +18,7 @@ import { planRestoreForSteppedDevice } from '../lib/plan/restore/helpers';
 import { applyShedTemperatureHold } from '../lib/plan/planReasons';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { applyRestorePlan } from '../lib/plan/restore';
+import { buildSwapState, exportSwapState } from '../lib/plan/swap';
 import { resolveMeterSettlingRemainingSec } from '../lib/plan/restore/timing';
 import { getPerfSnapshot } from '../lib/utils/perfCounters';
 import { buildPlanDevice, steppedPlanDevice } from './utils/planTestUtils';
@@ -4139,5 +4140,162 @@ describe('stepped-load shed invariant', () => {
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
     expect(steppedDev?.plannedState).toBe('shed');
     expect(reasonText(steppedDev?.reason)).toBe('swap pending');
+  });
+
+  it('persists a stale-cleanup timestamp on an approved stepped swap that survives a state roundtrip', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          measuredPowerKw: 0,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 1,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const approvedEntry = result.stateUpdates.swapByDevice['dev-step'];
+    expect(approvedEntry).toMatchObject({
+      pendingTarget: true,
+      timestamp: now,
+      lastPlanMeasurementTs: 123,
+      requestedTargetStepId: 'low',
+    });
+
+    // Stale-cleanup timestamp must survive serialize/deserialize so the SWAP_TIMEOUT_MS check
+    // still ages correctly after a planner restart.
+    const reloadedState = createPlanEngineState();
+    reloadedState.swapByDevice = result.stateUpdates.swapByDevice;
+    const reloadedSwap = buildSwapState(reloadedState);
+    expect(reloadedSwap.pendingSwapTimestamps.get('dev-step')).toBe(now);
+    expect(exportSwapState(reloadedSwap).swapByDevice['dev-step']).toMatchObject({
+      pendingTarget: true,
+      timestamp: now,
+      lastPlanMeasurementTs: 123,
+      requestedTargetStepId: 'low',
+    });
+  });
+
+  it('defers a swap restore for orphan-measurement metadata until a fresh power sample arrives', () => {
+    const now = Date.UTC(2024, 0, 1, 10, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    // Orphan-measurement metadata: the previous swap completed (no pendingTarget) but the
+    // measurement watermark for the target persists so a re-swap waits for fresh power.
+    state.swapByDevice = {
+      'dev-step': { lastPlanMeasurementTs: 200 },
+    };
+
+    const orphanResult = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          measuredPowerKw: 0,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 1,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    // Swap admission must be deferred — no new pendingTarget, no source shed-out, watermark
+    // unchanged.
+    const orphanTarget = orphanResult.planDevices.find((d) => d.id === 'dev-step');
+    const orphanLower = orphanResult.planDevices.find((d) => d.id === 'lower-priority');
+    expect(orphanTarget?.plannedState).toBe('shed');
+    expect(reasonText(orphanTarget?.reason)).toContain('insufficient headroom');
+    expect(orphanLower?.plannedState).toBe('keep');
+    expect(orphanResult.restoredOneThisCycle).toBe(false);
+    expect(orphanResult.stateUpdates.swapByDevice).toEqual({
+      'dev-step': { lastPlanMeasurementTs: 200 },
+    });
+
+    // Once a fresh power sample arrives (measurementTs > watermark), the swap is admitted.
+    const freshResult = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'off',
+          plannedState: 'keep',
+          selectedStepId: 'off',
+          desiredStepId: undefined,
+          measuredPowerKw: 0,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 1,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 1.3, headroom: 1.3 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: 201 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const freshTarget = freshResult.planDevices.find((d) => d.id === 'dev-step');
+    const freshLower = freshResult.planDevices.find((d) => d.id === 'lower-priority');
+    expect(freshTarget?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
+    expect(freshLower?.plannedState).toBe('shed');
+    expect(freshLower?.reason).toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
+    expect(freshResult.stateUpdates.swapByDevice['dev-step']).toMatchObject({
+      pendingTarget: true,
+      lastPlanMeasurementTs: 201,
+    });
   });
 });
