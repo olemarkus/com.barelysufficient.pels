@@ -175,7 +175,7 @@ describe('PlanExecutor restore logging', () => {
         currentOn: true,
       },
     ];
-    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await expect(executor.applyPlanActions({
       meta: {
@@ -208,10 +208,9 @@ describe('PlanExecutor restore logging', () => {
       ],
     })).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
 
-    expect(deps.error).toHaveBeenCalledWith(
-      'Failed to apply action for Bad stepped load; continuing with remaining devices',
-      expect.any(TypeError),
-    );
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      msg: 'Failed to apply action for Bad stepped load; continuing with remaining devices',
+    }));
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
   });
 
@@ -355,7 +354,7 @@ describe('PlanExecutor restore logging', () => {
   });
 
   it('does not emit EV restore evaluation logs for controlled EVs already observed on', async () => {
-    const { executor, deps, deviceManager } = buildExecutor(undefined, [{
+    const { executor, deviceManager } = buildExecutor(undefined, [{
       id: 'dev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
@@ -387,13 +386,13 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
-    expect(deps.logDebug).not.toHaveBeenCalledWith(expect.stringContaining('evaluating EV restore'));
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
   });
 
   it('does not emit EV restore evaluation logs for uncontrolled EVs already observed on', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
-    const { executor, deps, deviceManager } = buildExecutor(state, [{
+    const { executor, deviceManager } = buildExecutor(state, [{
       id: 'dev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
@@ -425,7 +424,7 @@ describe('PlanExecutor restore logging', () => {
     });
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
-    expect(deps.logDebug).not.toHaveBeenCalledWith(expect.stringContaining('evaluating EV restore'));
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
   });
 
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
@@ -469,7 +468,7 @@ describe('PlanExecutor restore logging', () => {
   });
 
   it('requests flow-backed on/off control through the Homey trigger instead of writing the device capability', async () => {
-    const { executor, deps, deviceManager, flowBackedTurnOffTrigger, state } = buildExecutor(
+    const { executor, deviceManager, flowBackedTurnOffTrigger, state } = buildExecutor(
       createPlanEngineState(),
       [{
         id: 'dev-1',
@@ -515,7 +514,7 @@ describe('PlanExecutor restore logging', () => {
       logContext: 'capacity',
       actuationMode: 'plan',
     }));
-    expect((deps.structuredLog as any).info).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
       deviceId: 'dev-1',
     }));
@@ -533,7 +532,7 @@ describe('PlanExecutor restore logging', () => {
       pendingTarget: true,
       timestamp: Date.now() - 1_000,
     };
-    const { executor, deps, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
+    const { executor, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
       state,
       [{
         id: 'dev-1',
@@ -564,7 +563,7 @@ describe('PlanExecutor restore logging', () => {
       confirmedAtMs: Date.now(),
     });
 
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
       deviceId: 'dev-1',
       desired: true,
@@ -581,7 +580,7 @@ describe('PlanExecutor restore logging', () => {
 
   it('records flow-backed shed actuation only after confirmation', async () => {
     const state = createPlanEngineState();
-    const { executor, deps } = buildExecutor(
+    const { executor } = buildExecutor(
       state,
       [{
         id: 'dev-1',
@@ -622,7 +621,7 @@ describe('PlanExecutor restore logging', () => {
       confirmedAtMs: Date.now(),
     });
 
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
       deviceId: 'dev-1',
       desired: false,
@@ -748,7 +747,7 @@ describe('PlanExecutor restore logging', () => {
 
   it('logs restore from shed temperature as explicit capacity work', async () => {
     const state = createPlanEngineState();
-    const { executor, deps, deviceManager } = buildExecutor(state, [
+    const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -765,7 +764,7 @@ describe('PlanExecutor restore logging', () => {
     await executor.applyPlanActions(buildTargetPlan(16, 23));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       deviceName: 'Heater',
@@ -792,7 +791,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('does not resend the same target command until the retry deadline', async () => {
     const state = createPlanEngineState();
-    const { executor, deviceManager, deps, state: nextState } = buildExecutor(state, [
+    const { executor, deviceManager, state: nextState, deps } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -829,10 +828,8 @@ describe('PlanExecutor pending target commands', () => {
       desired: 23,
       retryCount: 1,
     });
-    expect(deps.log).toHaveBeenCalledWith(
-      'Target mismatch still present for Heater; observed 18°C via unknown, retrying target_temperature to 23°C',
-    );
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Target mismatch still present for Heater; observed 18°C via unknown, retrying target_temperature to 23°C' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
@@ -858,7 +855,7 @@ describe('PlanExecutor pending target commands', () => {
   it('backs off failed target writes and marks the device temporarily unavailable', async () => {
     const state = createPlanEngineState();
     const failure = new Error('Device offline');
-    const { executor, deps, deviceManager, state: nextState, debugStructured } = buildExecutor(state, [
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -882,17 +879,10 @@ describe('PlanExecutor pending target commands', () => {
       retryCount: 0,
       status: 'temporary_unavailable',
     });
-    expect(deps.log).toHaveBeenCalledWith(
-      'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry',
-    );
-    expect(deps.error).toHaveBeenCalledWith(
-      'Failed to set target_temperature for Heater via DeviceManager',
-      failure,
-    );
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)',
-    );
-    expect((deps.structuredLog as any).error).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater via DeviceManager' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_failed',
       reasonCode: 'device_manager_write_failed',
       deviceId: 'dev-1',
@@ -902,7 +892,7 @@ describe('PlanExecutor pending target commands', () => {
       skipContext: 'plan',
       actuationMode: 'plan',
     }));
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_skipped',
       reasonCode: 'temporarily_unavailable',
       deviceId: 'dev-1',
@@ -916,12 +906,12 @@ describe('PlanExecutor pending target commands', () => {
   it('logs restore skips when the target snapshot is missing', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
-    const { executor, debugStructured, deviceManager } = buildExecutor(state, []);
+    const { executor, deviceManager } = buildExecutor(state, []);
 
     await executor.applyPlanActions(buildPlan());
 
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'missing_snapshot',
       deviceId: 'dev-1',
@@ -984,7 +974,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('tags reconcile target updates in the user-visible log', async () => {
     const state = createPlanEngineState();
-    const { executor, deps, deviceManager } = buildExecutor(state, [
+    const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -999,7 +989,7 @@ describe('PlanExecutor pending target commands', () => {
     await executor.applyPlanActions(buildTargetPlan(), 'reconcile');
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
@@ -1038,7 +1028,7 @@ describe('PlanExecutor pending target commands', () => {
 
   it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
     const state = createPlanEngineState();
-    const { executor, deps, deviceManager } = buildExecutor(state, [
+    const { executor, deviceManager } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -1073,7 +1063,7 @@ describe('PlanExecutor pending target commands', () => {
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
@@ -1099,7 +1089,7 @@ describe('PlanExecutor pending target commands', () => {
       lastObservedSource: 'rebuild',
       lastObservedAtMs: Date.now() - 5_000,
     };
-    const { executor, deps, deviceManager, state: nextState } = buildExecutor(state, [
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
       {
         id: 'dev-1',
         name: 'Heater',
@@ -1115,7 +1105,7 @@ describe('PlanExecutor pending target commands', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
@@ -1159,7 +1149,7 @@ describe('PlanExecutor pending target commands', () => {
       snapshot[0].targets[0].value = 23;
       return true;
     });
-    const { executor, deps, deviceManager, state: nextState } = buildExecutor(
+    const { executor, deviceManager, state: nextState } = buildExecutor(
       state,
       snapshot,
       { syncLivePlanStateAfterTargetActuation },
@@ -1172,10 +1162,8 @@ describe('PlanExecutor pending target commands', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
     expect(syncLivePlanStateAfterTargetActuation).toHaveBeenCalledWith('realtime_capability');
     expect(nextState.pendingTargetCommands['dev-1']).toBeUndefined();
-    expect(deps.log).not.toHaveBeenCalledWith(
-      expect.stringContaining('Target mismatch still present for Heater'),
-    );
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('Target mismatch still present for Heater'))).toBe(true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_applied',
       deviceId: 'dev-1',
       capabilityId: 'target_temperature',
@@ -1185,9 +1173,7 @@ describe('PlanExecutor pending target commands', () => {
       attemptType: 'retry',
       reasonCode: 'retry_pending_confirmation',
     }));
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      'Capacity: confirmed target_temperature for Heater at 23°C immediately after actuation',
-    );
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: confirmed target_temperature for Heater at 23°C immediately after actuation' }));
   });
 
   it('keeps retry observation metadata aligned with the live snapshot instead of a stale plan currentTarget', async () => {
@@ -1276,7 +1262,7 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('triggers desired stepped-load change and records the issued command', async () => {
-    const { executor, deps, deviceManager, desiredSteppedTrigger, state } = buildExecutor(
+    const { executor, deviceManager, desiredSteppedTrigger, state, deps } = buildExecutor(
       undefined,
       steppedSnapshot(),
     );
@@ -1302,7 +1288,7 @@ describe('PlanExecutor stepped loads', () => {
       pendingWindowMs: expect.any(Number),
     });
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       desiredStepId: 'max',
@@ -1380,7 +1366,7 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('counts native stepped-load commands as command requests without concrete device writes', async () => {
-    const { executor, deps, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
       id: 'dev-1',
       name: 'Tank',
       controlCapabilityId: 'onoff',
@@ -1418,7 +1404,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'max_power_3000', '3');
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
-    expect(deps.structuredLog?.info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       commandTransport: 'native_capability',
       desiredStepId: 'max',
@@ -1533,7 +1519,7 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('does not wait for stepped-load flow execution before completing apply', async () => {
-    const { executor, desiredSteppedTrigger, deps, state } = buildExecutor(
+    const { executor, desiredSteppedTrigger, state, deps } = buildExecutor(
       undefined,
       steppedSnapshot(),
     );
@@ -1566,7 +1552,7 @@ describe('PlanExecutor stepped loads', () => {
   });
 
   it('does not re-trigger a stepped-load command while the same desired step is pending', async () => {
-    const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
     await executor.applyPlanActions(steppedPlan({
       lastDesiredStepId: 'max',
@@ -1584,7 +1570,7 @@ describe('PlanExecutor stepped loads', () => {
 
     try {
       const now = Date.now();
-      const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
       await executor.applyPlanActions(steppedPlan({
         lastDesiredStepId: 'max',
@@ -1608,7 +1594,7 @@ describe('PlanExecutor stepped loads', () => {
 
     try {
       const now = Date.now();
-      const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
       await executor.applyPlanActions(steppedPlan({
         lastDesiredStepId: 'max',
@@ -1645,7 +1631,7 @@ describe('PlanExecutor stepped loads', () => {
 
     try {
       const now = Date.now();
-      const { executor, deps, desiredSteppedTrigger } = buildExecutor();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
 
       await executor.applyPlanActions(steppedPlan({
         selectedStepId: undefined,
@@ -2092,7 +2078,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: false,
       },
     ];
-    const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot, {
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
       homey: {
         settings: { set: vi.fn() },
         flow: { getTriggerCard: vi.fn(() => null) },
@@ -2108,7 +2094,7 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: 'pre_restore_step_command_not_issued',
@@ -2129,7 +2115,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: false,
       },
     ];
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2143,7 +2129,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: 'pre_restore_step_pending_confirmation',
@@ -2165,7 +2151,7 @@ describe('PlanExecutor stepped loads', () => {
       },
     ];
     const now = Date.now();
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2180,7 +2166,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'retry_backoff',
       desiredStepId: 'low',
@@ -2204,7 +2190,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: true,
       },
     ];
-    const { executor, deviceManager, deps } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'off',
@@ -2214,7 +2200,7 @@ describe('PlanExecutor stepped loads', () => {
     }));
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_applied',
       deviceId: 'dev-1',
       deviceName: 'Tank',
@@ -2234,7 +2220,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: true,
       },
     ];
-    const { executor, desiredSteppedTrigger, deviceManager, deps, state } = buildExecutor(undefined, snapshot);
+    const { executor, desiredSteppedTrigger, deviceManager, state, deps } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
@@ -2249,7 +2235,7 @@ describe('PlanExecutor stepped loads', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       desiredStepId: 'low',
       plannedDesiredStepId: 'off',
@@ -2258,7 +2244,7 @@ describe('PlanExecutor stepped loads', () => {
       effectiveTransition: 'full_shed_to_off',
       binaryTarget: false,
     }));
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_binary_transition_applied',
       desiredBinaryState: false,
       effectiveTransition: 'full_shed_to_off',
@@ -2285,7 +2271,7 @@ describe('PlanExecutor stepped loads', () => {
         currentOn: true,
       },
     ];
-    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(state, snapshot);
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
@@ -2302,7 +2288,7 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
     expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       effectiveTransition: 'step_down_while_on',
       desiredStepId: 'low',
@@ -2582,7 +2568,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       actualStepSource: 'assumed',
     }));
 
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
       undefined,
       buildSnapshot({ currentOn: false }),
     );
@@ -2593,7 +2579,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: 'pre_restore_step_pending_confirmation',
@@ -2610,14 +2596,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger, deps } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       deviceId: 'dev-1',
       previousStepId: 'off',
@@ -2638,7 +2624,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'off',
       desiredStepId: 'low',
     });
-    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
       undefined,
       buildSnapshot({ currentOn: true }),
     );
@@ -2653,7 +2639,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.not.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       actuationSuffix: expect.anything(),
     }));
   });
@@ -2663,7 +2649,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'off',
     });
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'off',
@@ -2687,7 +2673,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'stepped_load_binary_transition_applied',
       desiredBinaryState: true,
     }));
@@ -2723,7 +2709,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not log current_state restore skip when a keep device is already on but needs a higher step', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'on',
@@ -2739,7 +2725,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'current_state',
       deviceId: 'dev-1',
@@ -2748,7 +2734,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('treats a matching in-flight stepped restore as pending instead of no keep violation', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
-    const { executor, desiredSteppedTrigger, debugStructured, deps } = buildExecutor(undefined, snapshot);
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'on',
@@ -2764,33 +2750,31 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     await executor.applyPlanActions(plan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_skipped',
       reasonCode: 'waiting_for_confirmation',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'waiting_for_confirmation',
       desiredStepId: 'max',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'no_keep_violation',
       deviceId: 'dev-1',
     }));
-    expect(deps.logDebug).not.toHaveBeenCalledWith(
-      expect.stringContaining('violates keep invariant: step='),
-    );
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('violates keep invariant: step='))).toBe(true);
   });
 
   it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
     const now = Date.now();
-    const { executor, desiredSteppedTrigger, debugStructured, deps } = buildExecutor(undefined, snapshot);
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'on',
@@ -2806,30 +2790,28 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     await executor.applyPlanActions(plan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_skipped',
       reasonCode: 'retry_backoff',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'retry_backoff',
       deviceId: 'dev-1',
       actuationMode: 'reconcile',
     }));
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'no_keep_violation',
       deviceId: 'dev-1',
     }));
-    expect(deps.logDebug).not.toHaveBeenCalledWith(
-      expect.stringContaining('violates keep invariant: step='),
-    );
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('violates keep invariant: step='))).toBe(true);
   });
 
   it('keeps snapshot gating before re-issuing a step restore for an off-step keep device', async () => {
-    const { executor, desiredSteppedTrigger, deviceManager, debugStructured } = buildExecutor(undefined, []);
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, []);
 
     const plan = steppedPlan({
       currentState: 'off',
@@ -2842,7 +2824,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'missing_snapshot',
       deviceId: 'dev-1',
@@ -2857,7 +2839,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'off',
     });
-    const { executor, deviceManager, desiredSteppedTrigger, deps } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'off',
@@ -2877,12 +2859,8 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // request is not proof that the load is safe to energize.
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
     // Both violations should be logged
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('violates keep invariant: onoff='),
-    );
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('violates keep invariant: step=off (off-step)'),
-    );
+    expect(logCapture.events.some((e) => typeof e.msg === 'string' && e.msg.includes('violates keep invariant: onoff='))).toBe(true);
+    expect(logCapture.events.some((e) => typeof e.msg === 'string' && e.msg.includes('violates keep invariant: step=off (off-step)'))).toBe(true);
   });
 
   it('re-issues the low-step command and defers binary restore when low is only assumed', async () => {
@@ -2892,7 +2870,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       assumedStepId: 'low',
       actualStepSource: 'assumed',
     });
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'off',
@@ -2910,7 +2888,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: 'pre_restore_step_pending_confirmation',
@@ -2925,7 +2903,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'low',
     });
-    const { executor, deviceManager, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
       currentState: 'off',
@@ -2941,7 +2919,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'pre_restore_step_required',
       skipDetailCode: 'pre_restore_step_pending_confirmation',
@@ -2979,7 +2957,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not pass planner restore holds into stepped executor logging', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
-    const { executor, deviceManager, debugStructured } = buildExecutor(undefined, snapshot);
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
       currentState: 'on',
@@ -2990,11 +2968,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
 
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_command_skipped',
       reasonCode: 'restore_not_admitted',
     }));
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       blockedByPlanReasonCode: expect.anything(),
     }));
   });
@@ -3034,14 +3012,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger, deps } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect((deps.structuredLog as any).info).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_command_requested',
       deviceId: 'dev-1',
       previousStepId: 'max',
@@ -3078,14 +3056,14 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger, debugStructured } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
       expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       reasonCode: 'step_up_blocked',
     }));
   });
@@ -3137,7 +3115,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });
@@ -3218,7 +3196,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
 
     await executor.applyPlanActions(plan, 'reconcile');
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
     expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -3268,7 +3246,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       expect.objectContaining({ deviceId: 'dev-1' }),
     );
     expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
@@ -3327,7 +3305,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     };
 
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
 
@@ -3338,7 +3316,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     debugStructured.mockClear();
     await executor.applyPlanActions(blockedPlan, 'reconcile');
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
     }));
   });
@@ -3406,7 +3384,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     await executor.applyPlanActions(plan, 'reconcile');
 
     // Restore must NOT be gated by the phantom shed-1.
-    expect(debugStructured).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
       event: 'restore_keep_invariant_shed_blocked',
       deviceId: 'dev-1',
     }));
@@ -3418,7 +3396,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
     // The dropped underspecified shed intent must be surfaced via structured log,
     // including the actuation mode so plan vs reconcile drops stay distinguishable.
-    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'stepped_load_shed_intent_dropped',
       reasonCode: 'underspecified_set_step',
       actuationMode: 'reconcile',

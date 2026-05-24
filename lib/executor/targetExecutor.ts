@@ -18,7 +18,9 @@ import type {
 import type { PlanEngineState } from '../plan/planState';
 import type { PlanActuationMode } from './executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const logger = getLogger('executor/target');
 
 type PlanActionHandleResult = {
   handled: boolean;
@@ -52,14 +54,6 @@ export type PlanExecutorTargetContext = {
     retryCount: number;
     skipContext: 'plan' | 'shedding' | 'overshoot';
   }) => Promise<void> | void;
-  structuredLog?: {
-    info: (obj: object) => void;
-    error: (obj: object) => void;
-  };
-  debugStructured?: StructuredDebugEmitter;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;
@@ -105,7 +99,7 @@ export const applyShedTemperaturePlan = async (
       actuationMode: 'plan',
     });
     if (!result.applied) return { handled: true, wrote: false };
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'target_command_applied',
       deviceId: action.deviceId,
       deviceName: action.name,
@@ -120,7 +114,11 @@ export const applyShedTemperaturePlan = async (
     ctx.recordShedActuation(action.deviceId, action.name, now);
     return { handled: true, wrote: true };
   } catch (error) {
-    ctx.error(`Failed to set shed temperature for ${action.name} via DeviceManager`, error);
+    logger.error({
+      event: 'executor_target_error',
+      msg: `Failed to set shed temperature for ${action.name} via DeviceManager`,
+      err: error,
+    });
     return { handled: true, wrote: false };
   }
 };
@@ -166,7 +164,7 @@ export const trySetShedTemperature = async (
       actuationMode: 'plan',
     });
     if (!result.applied) return { handled: result.reason === 'skipped', wrote: false };
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'target_command_applied',
       deviceId,
       deviceName: name,
@@ -180,7 +178,11 @@ export const trySetShedTemperature = async (
     ctx.recordShedActuation(deviceId, name, now);
     return { handled: true, wrote: true };
   } catch (error) {
-    ctx.error(`Failed to set shed temperature for ${name} via DeviceManager`, error);
+    logger.error({
+      event: 'executor_target_error',
+      msg: `Failed to set shed temperature for ${name} via DeviceManager`,
+      err: error,
+    });
     return { handled: false, wrote: false };
   }
 };
@@ -249,7 +251,7 @@ const applyTargetUpdatePlan = async (
       actuationMode: mode,
     });
     if (!result.applied) return false;
-    ctx.structuredLog?.info({
+    logger.info({
       event: 'target_command_applied',
       deviceId: action.deviceId,
       deviceName: action.name,
@@ -273,7 +275,11 @@ const applyTargetUpdatePlan = async (
     }
     return true;
   } catch (error) {
-    ctx.error(`Failed to set ${action.targetCap} for ${action.name} via DeviceManager`, error);
+    logger.error({
+      event: 'executor_target_error',
+      msg: `Failed to set ${action.targetCap} for ${action.name} via DeviceManager`,
+      err: error,
+    });
     return false;
   }
 };
@@ -300,7 +306,7 @@ const handleTargetCommandPreflight = (
     actuationMode,
   } = params;
   if (Object.is(latestObservedValue, desired)) {
-    ctx.debugStructured?.({
+    logger.debug({
       event: 'target_command_skipped',
       reasonCode: 'already_matched',
       deviceId,
@@ -311,7 +317,10 @@ const handleTargetCommandPreflight = (
       skipContext,
       actuationMode,
     });
-    ctx.logDebug(`Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`);
+    logger.debug({
+      event: 'executor_target_log_debug',
+      msg: `Capacity: skip ${targetCap} for ${name}, already ${desired}°C in current snapshot`,
+    });
     return { type: 'skip', result: { applied: false, reason: 'skipped' } };
   }
   const nowMs = Date.now();
@@ -331,7 +340,7 @@ const handleTargetCommandPreflight = (
     return { type: 'proceed', decisionType: decision.type };
   }
   const remainingSec = Math.max(1, Math.ceil(decision.remainingMs / 1000));
-  ctx.debugStructured?.({
+  logger.debug({
     event: 'target_command_skipped',
     reasonCode: resolveTargetCommandSkipReasonCode(decision.pending.status),
     deviceId,
@@ -344,15 +353,17 @@ const handleTargetCommandPreflight = (
     actuationMode,
   });
   if (decision.pending.status === 'temporary_unavailable') {
-    ctx.logDebug(
-      `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
-      + `for ${remainingSec}s before retry (${skipContext})`,
-    );
+    logger.debug({
+      event: 'executor_target_log_debug',
+      msg: `Capacity: skip ${targetCap} for ${name}, device temporarily unavailable `
+        + `for ${remainingSec}s before retry (${skipContext})`,
+    });
   } else {
-    ctx.logDebug(
-      `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
-      + `for ${desired}°C confirmation (${skipContext})`,
-    );
+    logger.debug({
+      event: 'executor_target_log_debug',
+      msg: `Capacity: skip ${targetCap} for ${name}, waiting ${remainingSec}s `
+        + `for ${desired}°C confirmation (${skipContext})`,
+    });
   }
   return { type: 'skip', result: { applied: false, reason: 'skipped' } };
 };
@@ -395,7 +406,7 @@ const executeTargetCommandDispatch = async (
       observedValue: latestObservedValue ?? observedValue,
     });
     const retryDelaySec = Math.max(1, Math.ceil((failedPending.nextRetryAtMs - nowMs) / 1000));
-    ctx.structuredLog?.error({
+    logger.error({
       event: 'target_command_failed',
       reasonCode: 'device_manager_write_failed',
       deviceId,
@@ -405,11 +416,16 @@ const executeTargetCommandDispatch = async (
       skipContext,
       actuationMode,
     });
-    ctx.log(
-      `Failed to set ${targetCap} for ${name}; treating device as temporarily unavailable `
-      + `for ${retryDelaySec}s before retry`,
-    );
-    ctx.error(`Failed to set ${targetCap} for ${name} via DeviceManager`, error);
+    logger.info({
+      event: 'executor_target_log',
+      msg: `Failed to set ${targetCap} for ${name}; treating device as temporarily unavailable `
+        + `for ${retryDelaySec}s before retry`,
+    });
+    logger.error({
+      event: 'executor_target_error',
+      msg: `Failed to set ${targetCap} for ${name} via DeviceManager`,
+      err: error,
+    });
     return { applied: false, reason: 'failed' };
   }
   const pending = recordPendingTargetCommandAttempt({
@@ -443,10 +459,11 @@ const executeTargetCommandDispatch = async (
       skipContext,
     });
   } else if (pendingStillExists) {
-    ctx.logDebug(
-      `Capacity: awaiting ${targetCap} confirmation for ${name} at ${desired}°C `
-      + `(next retry in ${retryDelaySec}s)`,
-    );
+    logger.debug({
+      event: 'executor_target_log_debug',
+      msg: `Capacity: awaiting ${targetCap} confirmation for ${name} at ${desired}°C `
+        + `(next retry in ${retryDelaySec}s)`,
+    });
   }
   return {
     applied: true,
@@ -473,7 +490,10 @@ const syncPendingTargetCommandAfterActuation = async (
     delete ctx.state.pendingTargetCommands[deviceId];
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-    ctx.logDebug(`Capacity: confirmed ${targetCap} for ${name} at ${desired}°C immediately after actuation`);
+    logger.debug({
+      event: 'executor_target_log_debug',
+      msg: `Capacity: confirmed ${targetCap} for ${name} at ${desired}°C immediately after actuation`,
+    });
   }
   return {
     latestObservedValueAfterActuation,
@@ -523,15 +543,11 @@ const logPendingTargetRetry = async (
     observedSource,
     skipContext,
   } = params;
-  ctx.log(
-    `Target mismatch still present for ${name}; observed `
+  logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
     + `${formatObservedTarget(observedValue)} `
-    + `via ${observedSource ?? 'unknown'}, retrying ${targetCap} to ${desired}°C`,
-  );
-  ctx.logDebug(
-    `Capacity: retried ${targetCap} for ${name} to ${desired}°C `
-    + `(retry ${retryCount}, next retry in ${retryDelaySec}s)`,
-  );
+    + `via ${observedSource ?? 'unknown'}, retrying ${targetCap} to ${desired}°C` });
+  logger.debug({ event: 'executor_target_log_debug', msg: `Capacity: retried ${targetCap} for ${name} to ${desired}°C `
+    + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
   try {
     await ctx.logTargetRetryComparison?.({
       deviceId,
@@ -544,7 +560,11 @@ const logPendingTargetRetry = async (
       skipContext,
     });
   } catch (error) {
-    ctx.error(`Failed to log target retry comparison for ${name}`, error);
+    logger.error({
+      event: 'executor_target_error',
+      msg: `Failed to log target retry comparison for ${name}`,
+      err: error,
+    });
   }
 };
 
