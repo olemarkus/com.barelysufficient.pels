@@ -14,14 +14,20 @@ import type {
   BudgetRedesignDayView,
 } from './budgetRedesignChart.ts';
 import {
+  BUDGET_HERO_CLOSE_TO_BUDGET,
+  BUDGET_HERO_ON_BUDGET,
+  BUDGET_HERO_USING_CHEAPER_HOURS,
+  BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES,
   DAILY_BUDGET_DISABLED_OFF,
   DAILY_BUDGET_DISABLED_WAITING,
   DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
+  composeBudgetHeroOverBy,
   composeBudgetRemainingLineWithEstimate,
   composeBudgetRemainingToday,
   composeBudgetUsedOver,
+  composeManagedBackgroundLine,
   resolveChartSubtitle as resolveSharedChartSubtitle,
   resolveTodayLine as resolveSharedTodayLine,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
@@ -140,11 +146,11 @@ export const resolveDeltaPill = (
   const tolerance = Math.max(0.1, budget * 0.01);
   const value = resolveComparisonValue(payload, view);
   const diff = value - budget;
-  if (status === 'over') return { label: `Over by ${formatComparisonKWh(diff)} kWh`, tone: 'alert' };
-  if (status === 'tight') return { label: 'Close to budget', tone: 'warn' };
+  if (status === 'over') return { label: composeBudgetHeroOverBy(diff), tone: 'alert' };
+  if (status === 'tight') return { label: BUDGET_HERO_CLOSE_TO_BUDGET, tone: 'warn' };
   if (status === 'within') {
     if (view === 'yesterday') return { label: `${formatComparisonKWh(Math.abs(diff))} kWh under`, tone: 'ok' };
-    if (Math.abs(diff) <= tolerance) return { label: 'On budget', tone: 'ok' };
+    if (Math.abs(diff) <= tolerance) return { label: BUDGET_HERO_ON_BUDGET, tone: 'ok' };
     return { label: `${formatComparisonKWh(Math.abs(diff))} kWh to spare`, tone: 'ok' };
   }
   return null;
@@ -186,7 +192,7 @@ const resolveTodaySplit = (payload: DailyBudgetDayPayload): SplitTotals => {
 
 export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
   const { managed, background } = resolveTodaySplit(payload);
-  return `Managed ${formatKWh(managed, 1)} · Background ${formatKWh(background, 1)}`;
+  return composeManagedBackgroundLine(managed, background);
 };
 
 export type DominantCause = 'managed' | 'background';
@@ -212,7 +218,9 @@ const resolvePriceTagline = (
 ): string | null => {
   if (!payload || view === 'yesterday') return null;
   if (payload.budget.enabled !== true || payload.budget.priceShapingEnabled !== true) return null;
-  return isPriceReliable(payload) ? 'Using cheaper hours' : 'Using cheaper hours (price data unavailable)';
+  return isPriceReliable(payload)
+    ? BUDGET_HERO_USING_CHEAPER_HOURS
+    : BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES;
 };
 
 export const resolveBudgetRemainingLine = (
