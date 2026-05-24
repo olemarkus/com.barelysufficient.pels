@@ -486,15 +486,17 @@ release, not v2.7.1 merge-blockers.*
 - [ ] Route test/doc anchors through the shared-domain copy constants.
       `test/deviceOverview.test.ts:147`, `test/planReasonUserFacing.test.ts:57`,
       `packages/settings-ui/test/budgetRedesign.test.ts:155-156`, and
-      `docs/plan-states.md:35,55` still hardcode the literal
-      `"Limited — staying under the hard cap"` / `"Yesterday finished …"`
-      strings. Importing the constants would let a future rename in
-      shared-domain trip the tests instead of silently diverging.
+      `docs/plan-states.md:35,55` hardcode `Limited by the hard cap` /
+      `Limited by today's daily budget` / `Yesterday finished …` strings
+      verbatim. Importing `PLAN_STATE_HELD_FALLBACK_STATUS` /
+      `PLAN_STATE_DAILY_BUDGET_STATUS` (and the dailyBudget hero constants)
+      would let a future rename trip the tests instead of silently diverging.
       Files: those above; constants in
       `packages/shared-domain/src/planStateLabels.ts` and
       `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23.
+      2026-05-23; reworded 2026-05-24 after the undersell walk-back
+      (961904f8) standardised the "Limited by …" wording across helpers.
 
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
@@ -913,20 +915,17 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
 
-- [ ] Overview device-card status copy is still partially duplicated. The
-      v2.9 Rule-4 cleanup pulled the `"Limited — staying under the hard cap"`
-      literal out of the two settings-ui call sites (`PlanSteppedCard.tsx`,
-      `PlanDeviceCards.tsx`) and onto `PLAN_STATE_HELD_FALLBACK_STATUS` in
-      `planStateLabels.ts`, but the three sibling shared-domain helpers
-      (`planSteppedCardText.ts:261`, `planTemperatureCardText.ts:95`,
-      `planReasonFormatting.ts:359`) still inline the same literal, and the
-      `"Still reporting … after pause — …"` sentence remains duplicated across
-      the temperature/stepped helpers. Per `feedback_ui_text_shared_with_logs`,
-      UI-visible strings must live in `packages/shared-domain/**` helpers so
-      runtime logging picks up the same wording. Surface for a follow-up:
-      route the three helpers above through `PLAN_STATE_HELD_FALLBACK_STATUS`,
-      and extract a `resolvePlanGenericReasonText` helper alongside
-      `resolveTemperatureReasonLine` so all call sites consume one source.
+- [ ] Extract a `resolvePlanGenericReasonText` helper alongside
+      `resolveTemperatureReasonLine` so the `"Still reporting … after pause
+      — …"` sentence currently duplicated across
+      `planTemperatureCardText.ts` and `planSteppedCardText.ts` lives at
+      one site. The parent "Overview device-card status copy is still
+      partially duplicated" item closed in 961904f8 (the three sibling
+      helpers — `planTemperatureCardText.ts`, `planSteppedCardText.ts`,
+      `planReasonFormatting.ts` — now consume
+      `PLAN_STATE_HELD_FALLBACK_STATUS` / `PLAN_STATE_DAILY_BUDGET_STATUS`
+      / `PLAN_STATE_HOURLY_BUDGET_STATUS` from `planStateLabels.ts`);
+      this is the still-open sentence-level residual.
       Files: `packages/shared-domain/src/planSteppedCardText.ts`,
       `packages/shared-domain/src/planTemperatureCardText.ts`,
       `packages/shared-domain/src/planReasonFormatting.ts`.
