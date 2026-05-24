@@ -2763,13 +2763,14 @@ should not be folded into the same PR.
         the next run."
       Files: `.homeycompose/flow/actions/set_ev_charge_deadline.json`,
       `.homeycompose/flow/actions/set_temperature_deadline.json`, regenerated `app.json`.
-- [ ] Add DST fall-back ambiguity regression test for deadline resolution.
+- [x] Add DST fall-back ambiguity regression test for deadline resolution.
       `lib/plan/deferredObjectives/deadline.ts:112-146` handles DST rigorously (probes timezone
       at ±36h, ±12h, 0h to find valid UTC candidates matching local HH:mm), but the fall-back
       ambiguous hour (e.g. 2:30 AM existing twice) currently selects earliest-future without an
-      explicit test. Add the regression.
-      Files: `lib/plan/deferredObjectives/deadline.ts`,
-      `test/deferredObjectiveDeadline*.test.ts` or similar.
+      explicit test. Add the regression. Pinned by
+      `test/deferredObjectiveDiagnostics.test.ts` →
+      `resolveDeferredObjectiveDeadline > selects the earliest valid UTC candidate for an
+      ambiguous fall-back hour` (Europe/Oslo, 2026-10-25 fall-back, deadline 02:30).
 - [ ] Revisit deadline-hero "Need X kWh" staleness if users find the original-vs-remaining
       framing confusing. The active-plan recorder no longer persists `energyNeededKWh` /
       `plannedKWh` decrements within an unchanged schedule (to avoid Homey settings churn on

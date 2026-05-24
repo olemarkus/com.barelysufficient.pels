@@ -383,6 +383,33 @@ describe('resolveDeferredObjectiveDeadline', () => {
       rollsToNextDay: false,
     });
   });
+
+  it('selects the earliest valid UTC candidate for an ambiguous fall-back hour', () => {
+    // Europe/Oslo fall-back: last Sunday of October 2026 = 2026-10-25. At local
+    // 03:00 CEST the wall clock jumps back to 02:00 CET, so local 02:30 occurs
+    // twice on that day:
+    //   - First  02:30 CEST (UTC+2) = 2026-10-25 00:30 UTC
+    //   - Second 02:30 CET  (UTC+1) = 2026-10-25 01:30 UTC
+    // We pick nowMs = 2026-10-24 23:00 UTC, which is Oslo-local 2026-10-25
+    // 01:00 CEST (still on the fall-back day, before either candidate). With
+    // both 02:30 candidates strictly in the future, the contract this test
+    // pins is: resolveDeferredObjectiveDeadline returns the EARLIEST valid
+    // UTC candidate (00:30Z), not the later one (01:30Z). If this assertion
+    // ever flips to the later candidate, the production fall-back policy has
+    // changed and the change should be intentional — not an accidental
+    // sort/filter regression in resolveAllLocalDateTimeMs.
+    const deadline = resolveDeferredObjectiveDeadline({
+      nowMs: Date.UTC(2026, 9, 24, 23, 0, 0),
+      timeZone: 'Europe/Oslo',
+      deadlineLocalTime: '02:30',
+    });
+
+    expect(deadline).toEqual({
+      deadlineAtMs: Date.UTC(2026, 9, 25, 0, 30, 0),
+      localDateKey: '2026-10-25',
+      rollsToNextDay: false,
+    });
+  });
 });
 
 describe('buildDeferredObjectivePolicyHorizon', () => {
