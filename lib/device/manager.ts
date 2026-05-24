@@ -45,6 +45,7 @@ import {
   setRawCapabilityValue,
 } from './managerHomeyApi';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
 import {
   didMeasurePowerBecomeSignificantlyPositive,
@@ -105,6 +106,8 @@ import {
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from './steppedLoadSyntheticCapabilities';
 import { isStateOfChargeCapabilityId } from './stateOfCharge';
 import { applyDeviceCompatibilityMetadata } from './compatibility';
+
+const moduleLogger = getLogger('device/manager');
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -376,7 +379,7 @@ export class DeviceManager extends EventEmitter {
             nextReportedStepId ?? 'unknown',
         );
         const cursor = this.nextObservationCursor(deviceId);
-        this.logger.structuredLog?.info({
+        (this.logger.structuredLog ?? moduleLogger).info({
             event: 'realtime_capability_drift',
             deviceId,
             capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
@@ -444,7 +447,7 @@ export class DeviceManager extends EventEmitter {
                 ),
         } satisfies ObservedDeviceStateEvent);
         if (reconcileChange && snapshot) {
-            this.logger.structuredLog?.info({
+            (this.logger.structuredLog ?? moduleLogger).info({
                 event: 'realtime_capability_drift',
                 deviceId,
                 capabilityId: reconcileChange.capabilityId,
@@ -519,7 +522,7 @@ export class DeviceManager extends EventEmitter {
             capabilityId,
             this.normalizeRealtimeCapabilityEventValue(capabilityId, value),
         );
-        this.logger.structuredLog?.info({
+        (this.logger.structuredLog ?? moduleLogger).info({
             event: 'realtime_capability_drift',
             deviceId,
             capabilityId,
@@ -919,7 +922,10 @@ export class DeviceManager extends EventEmitter {
             hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
                 hasPendingBinarySettleWindow(this.binarySettleState, nextDeviceId, capabilityId)
             ),
-            emitDeviceUpdateProcessed: (event) => this.debugStructured?.(event),
+            emitDeviceUpdateProcessed: (event) => {
+              const emit = this.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p));
+              emit(event);
+            },
             createObservationCursor: (nextDeviceId) => this.nextObservationCursor(nextDeviceId),
             emitPlanReconcile: (event) => this.emitPlanReconcileEvent(event),
             emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
@@ -1333,7 +1339,7 @@ export class DeviceManager extends EventEmitter {
         const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
         if (!existing || existing.capabilityId !== capabilityId) return;
         this.clearBinarySettleEvidence(deviceId);
-        this.logger.structuredLog?.error({
+        (this.logger.structuredLog ?? moduleLogger).error({
             event: 'binary_settle_evidence_cleared',
             reasonCode: 'invalid_control_payload',
             deviceId,
@@ -1480,7 +1486,7 @@ export class DeviceManager extends EventEmitter {
             || !homeyInstance.platformVersion
         ) {
             this.logger.log('Device API unavailable from SDK, running without realtime device updates');
-            this.logger.structuredLog?.info({
+            (this.logger.structuredLog ?? moduleLogger).info({
                 component: 'devices',
                 event: 'device_api_init_skipped',
                 reasonCode: 'sdk_api_missing',
@@ -1495,7 +1501,7 @@ export class DeviceManager extends EventEmitter {
         } catch (error) {
             const normalizedError = normalizeError(error);
             this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', normalizedError);
-            this.logger.structuredLog?.error({
+            (this.logger.structuredLog ?? moduleLogger).error({
                 event: 'device_api_http_client_init_failed',
                 reasonCode: 'http_client_init_failed',
                 realtimeListenerAttached: false,
@@ -1516,7 +1522,7 @@ export class DeviceManager extends EventEmitter {
             },
         });
         await this.liveFeed.start();
-        this.logger.structuredLog?.info({
+        (this.logger.structuredLog ?? moduleLogger).info({
             component: 'devices',
             event: 'device_api_initialized',
         });
@@ -1535,7 +1541,7 @@ export class DeviceManager extends EventEmitter {
                     : await this.fetchDevicesForSnapshot();
             } catch (error) {
                 const normalizedError = normalizeError(error);
-                this.logger.structuredLog?.error({
+                (this.logger.structuredLog ?? moduleLogger).error({
                     event: 'device_snapshot_refresh_failed',
                     reasonCode: 'refresh_failed',
                     targetedRefresh: isTargetedRefresh,
@@ -1565,7 +1571,7 @@ export class DeviceManager extends EventEmitter {
                 snapshot,
                 fetchSource,
             });
-            this.debugStructured?.({
+            (this.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
                 event: 'device_snapshot_refresh_processed',
                 devicesTotal: snapshot.length,
                 targetedRefresh: isTargetedRefresh,
@@ -1776,7 +1782,7 @@ export class DeviceManager extends EventEmitter {
         });
         void Promise.resolve(triggerPromise).catch((error: unknown) => {
             const normalizedError = normalizeError(error);
-            this.logger.structuredLog?.error({
+            (this.logger.structuredLog ?? moduleLogger).error({
                 event: 'stepped_load_command_failed',
                 reasonCode: 'flow_trigger_failed',
                 deviceId,
@@ -1807,7 +1813,7 @@ export class DeviceManager extends EventEmitter {
         writeCapabilityId: string;
         value: unknown;
     }): void {
-        this.debugStructured?.({
+        (this.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
             event: params.event,
             deviceId: params.deviceId,
             deviceName: params.deviceName ?? null,
