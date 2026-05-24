@@ -2,13 +2,23 @@ import {
   DeferredObjectivePlanHistoryRecorder,
   type PlanHistoryPersistDeps,
 } from '../lib/plan/deferredObjectives/planHistory';
-import { buildFinalHourFlush, detectHourRollover } from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
+import {
+  appendRevisionLogIfNew,
+  buildFinalHourFlush,
+  detectHourRollover,
+  MAX_REVISIONS_PER_ENTRY,
+} from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
 } from '../lib/plan/deferredObjectives';
 import type {
+  DeferredObjectiveActivePlanRevisionV1,
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
   DeferredObjectivePlanHistoryEntry,
+  DeferredObjectivePlanHistoryRevisionLogEntry,
+  DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanHistoryV4,
 } from '../packages/contracts/src/deferredObjectivePlanHistory';
 import {
@@ -2622,5 +2632,65 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         missCause: 'energy_underestimate',
       });
     });
+  });
+});
+
+describe('appendRevisionLogIfNew (revisions[] cap)', () => {
+  // Targeted at the MAX_REVISIONS_PER_ENTRY drop-oldest safety cap. The
+  // recorder-driven path is already covered by the v4 history-detail suite;
+  // this block intentionally drives the helper directly so the cap value and
+  // ordering semantics are asserted in isolation, the way
+  // `caps progressSamples at 48 entries, dropping the oldest` covers the
+  // sibling `PROGRESS_SAMPLES_PER_ENTRY_CAP`.
+  const makeRevision = (n: number): DeferredObjectiveActivePlanRevisionV1 => ({
+    revision: n,
+    revisedAtMs: n * HOUR_MS,
+    computedFromPricesUpTo: null,
+    reason: 'rate_refined',
+    hours: [{ startsAtMs: n * HOUR_MS, plannedKWh: 1 }],
+    energyNeededKWh: 1,
+    planStatus: 'on_track',
+  });
+
+  const pushN = (count: number): DeferredObjectivePlanHistoryRevisionLogEntry[] => {
+    let entries: readonly DeferredObjectivePlanHistoryRevisionLogEntry[] = [];
+    let previous: DeferredObjectivePlanHistoryRevisionSnapshot | null = null;
+    // Revisions 2..(count+1) — `appendRevisionLogIfNew` skips revision === 1
+    // (its metadata lives on `originalPlan`).
+    for (let i = 2; i <= count + 1; i += 1) {
+      const revision = makeRevision(i);
+      entries = appendRevisionLogIfNew(entries, previous, revision);
+      previous = {
+        hours: revision.hours.map((hour) => ({ ...hour })),
+        energyNeededKWh: revision.energyNeededKWh,
+        planStatus: revision.planStatus,
+        revisedAtMs: revision.revisedAtMs,
+      };
+    }
+    return [...entries];
+  };
+
+  it('keeps all entries when count stays under the cap', () => {
+    const entries = pushN(50);
+    expect(entries).toHaveLength(50);
+    // First push corresponds to revision 2 → revisedAtMs = 2 * HOUR_MS.
+    expect(entries[0]!.atMs).toBe(2 * HOUR_MS);
+    expect(entries[49]!.atMs).toBe(51 * HOUR_MS);
+  });
+
+  it('caps revisions at MAX_REVISIONS_PER_ENTRY with drop-oldest semantics', () => {
+    expect(MAX_REVISIONS_PER_ENTRY).toBe(64);
+    const entries = pushN(100);
+    // 100 pushes (revisions 2..101) clamped to the cap.
+    expect(entries).toHaveLength(MAX_REVISIONS_PER_ENTRY);
+    // Drop-oldest preserves the newest revisions: the surviving window must
+    // end at revision 101 (revisedAtMs = 101 * HOUR_MS) and start at the
+    // revision exactly `cap - 1` slots before it (101 - 63 = 38).
+    expect(entries[entries.length - 1]!.atMs).toBe(101 * HOUR_MS);
+    expect(entries[0]!.atMs).toBe(38 * HOUR_MS);
+    // Order preservation: strictly ascending revisedAtMs across the kept window.
+    for (let i = 1; i < entries.length; i += 1) {
+      expect(entries[i]!.atMs).toBeGreaterThan(entries[i - 1]!.atMs);
+    }
   });
 });
