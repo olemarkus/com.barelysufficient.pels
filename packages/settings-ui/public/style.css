@@ -1307,13 +1307,14 @@ md-filled-button.is-busy {
  * `powerWeekChartEcharts.ts` (height/min-height/-webkit-tap-highlight-color)
  * and cleared in `dispose`. Hoisting to CSS keeps the chart's physical
  * footprint in the stylesheet and lets the component own DOM lifecycle
- * only. The 240 px literal matches `DEFAULT_CHART_HEIGHT` in the
- * ECharts renderer and follows the same physical-chart convention as
- * `.deadline-horizon-chart` (chart heights aren't theme-relative, so no
- * design token is needed). */
+ * only. The height resolves through `--pels-chart-week-height` so the
+ * container box and the ECharts viewport (`resolveChartSize` in
+ * `powerWeekChartEcharts.ts`) share a single chart-scoped token; the
+ * resolved value is still 240 px (physical, not theme-relative — same
+ * convention as `.deadline-horizon-chart`). */
 .power-week-chart {
-  height: 240px;
-  min-height: 240px;
+  height: var(--pels-chart-week-height);
+  min-height: var(--pels-chart-week-height);
   -webkit-tap-highlight-color: transparent;
 }
 
