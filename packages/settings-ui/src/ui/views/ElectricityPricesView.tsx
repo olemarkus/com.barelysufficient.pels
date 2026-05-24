@@ -54,7 +54,7 @@ export type ElectricityPricesViewProps = {
 const Header = () => (
   <>
     <MdTextButton
-      class="btn ghost settings-back-button"
+      class="settings-back-button"
       data-settings-target="settings"
     >
       <ArrowBackIcon slot="icon" />
@@ -201,7 +201,7 @@ const NorwaySection = ({
       </MdFilledSelect>
     </div>
     <div class="form__actions">
-      <MdOutlinedButton type="button" class="btn ghost" onClick={onRefreshGridTariff}>
+      <MdOutlinedButton type="button" onClick={onRefreshGridTariff}>
         Refresh tariffs
       </MdOutlinedButton>
     </div>
@@ -323,7 +323,7 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
 
       {!isFlow && (
         <div class="form__actions">
-          <MdOutlinedButton type="button" class="btn ghost" onClick={props.onRefreshPrices}>
+          <MdOutlinedButton type="button" onClick={props.onRefreshPrices}>
             Refresh prices
           </MdOutlinedButton>
         </div>
@@ -388,7 +388,7 @@ const ThresholdForm = ({
 
 const PriceAwareDevicesLink = () => (
   <div class="form__actions">
-    <MdOutlinedButton class="btn ghost" data-settings-target="price-aware-devices">
+    <MdOutlinedButton data-settings-target="price-aware-devices">
       Manage price-aware devices →
     </MdOutlinedButton>
   </div>

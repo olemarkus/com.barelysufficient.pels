@@ -749,7 +749,7 @@ const BudgetAdjustView = ({
             <p class="pels-card-supporting">{reactionText}</p>
           </div>
         </div>
-        <MdOutlinedButton class="btn secondary budget-context-action" data-settings-target="limits">
+        <MdOutlinedButton class="budget-context-action" data-settings-target="limits">
           Open Limits &amp; safety
         </MdOutlinedButton>
         <div class="budget-settings-list budget-settings-list--compact">

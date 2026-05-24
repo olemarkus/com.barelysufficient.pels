@@ -110,7 +110,7 @@ const ValueAdjuster = ({
 const Header = () => (
   <>
     <MdTextButton
-      class="btn ghost settings-back-button"
+      class="settings-back-button"
       data-settings-target="settings"
     >
       <ArrowBackIcon slot="icon" />
@@ -217,7 +217,7 @@ const DevicesSection = ({
           No eligible devices. Mark a temperature device as managed in Settings &rsaquo; Devices, then return here.
         </p>
         <div class="form__actions">
-          <MdOutlinedButton type="button" class="btn ghost" data-settings-target="devices">
+          <MdOutlinedButton type="button" data-settings-target="devices">
             Open Settings &rsaquo; Devices
           </MdOutlinedButton>
         </div>

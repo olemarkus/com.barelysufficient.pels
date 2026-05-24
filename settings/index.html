@@ -29,7 +29,7 @@
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
       <span class="banner__text">Simulation mode is enabled. PELS will not switch devices automatically.</span>
-      <md-outlined-button type="button" class="btn secondary dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
+      <md-outlined-button type="button" class="dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-outlined-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
@@ -40,7 +40,7 @@
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
@@ -129,12 +129,12 @@
       <div id="device-card-list"></div>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
-        <md-outlined-button type="button" class="btn secondary" id="refresh-button">Fetch device list from Homey</md-outlined-button>
+        <md-outlined-button type="button" id="refresh-button">Fetch device list from Homey</md-outlined-button>
       </div>
     </section>
 
     <section class="card panel hidden" id="modes-panel" data-panel="modes">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
@@ -150,9 +150,9 @@
           <md-filled-select id="mode-select" name="mode"></md-filled-select>
           <div class="inline-actions">
             <md-filled-text-field id="mode-new" type="text" placeholder="New mode name" aria-label="New mode name"></md-filled-text-field>
-            <md-outlined-button type="button" class="btn secondary" id="add-mode-button">Add</md-outlined-button>
-            <md-outlined-button type="button" class="btn ghost" id="delete-mode-button">Delete</md-outlined-button>
-            <md-outlined-button type="button" class="btn ghost" id="rename-mode-button">Rename</md-outlined-button>
+            <md-outlined-button type="button" id="add-mode-button">Add</md-outlined-button>
+            <md-outlined-button type="button" id="delete-mode-button">Delete</md-outlined-button>
+            <md-outlined-button type="button" id="rename-mode-button">Rename</md-outlined-button>
           </div>
           <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
         </div>
@@ -354,7 +354,7 @@
     </section>
 
     <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-label="Smart task plan">
-      <md-text-button class="btn ghost settings-back-button deadline-plan-back-button" type="button" data-deadline-plan-close>
+      <md-text-button class="settings-back-button deadline-plan-back-button" type="button" data-deadline-plan-close>
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Smart tasks
       </md-text-button>
@@ -426,7 +426,7 @@
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
@@ -460,7 +460,7 @@
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
@@ -501,7 +501,7 @@
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
-      <md-text-button type="button" class="btn ghost settings-back-button" data-settings-target="settings">
+      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
         Settings
       </md-text-button>
@@ -587,7 +587,7 @@
               <small class="field__hint">Removes PELS settings for this device only.</small>
             </label>
             <div class="inline-actions">
-              <md-outlined-button type="button" class="btn ghost" id="advanced-device-clear">Clear device data</md-outlined-button>
+              <md-outlined-button type="button" id="advanced-device-clear">Clear device data</md-outlined-button>
             </div>
             <p class="muted">Clears modes, priorities, control flags, overshoot behavior, and price optimization for the selected device.</p>
           </div>
@@ -607,8 +607,8 @@
               <small class="field__hint">Loads the raw device from the Homey API.</small>
             </label>
             <div class="inline-actions">
-              <md-outlined-button type="button" class="btn ghost" id="advanced-api-device-refresh">Refresh list</md-outlined-button>
-              <md-outlined-button type="button" class="btn ghost" id="advanced-api-device-log">Log device</md-outlined-button>
+              <md-outlined-button type="button" id="advanced-api-device-refresh">Refresh list</md-outlined-button>
+              <md-outlined-button type="button" id="advanced-api-device-log">Log device</md-outlined-button>
             </div>
             <p class="muted">Writes the selected device payload to the app logs for inspection.</p>
           </div>
