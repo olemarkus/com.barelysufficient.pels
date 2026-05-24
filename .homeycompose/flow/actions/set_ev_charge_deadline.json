@@ -6,7 +6,7 @@
     "en": "Charge [[device]] to [[target_percent]] % by [[ready_by]]"
   },
   "hint": {
-    "en": "PELS plans charging from the device settings, prices, budget, and the hard cap."
+    "en": "PELS plans charging from the device settings, prices, budget, and the hard cap. The smart task auto-disables once the deadline passes; run this card from a recurring Flow (e.g. when the EV is plugged in) to re-arm it for the next session."
   },
   "args": [
     {
