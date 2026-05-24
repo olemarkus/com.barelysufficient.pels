@@ -5618,6 +5618,16 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
+/* Stale-sample affordance for `KwhPerUnitProvenanceRow` — mirrors the
+ * `.deadline-list-card__when-row--warn dd` token pair used by the sibling
+ * Smart-task list "Ready by" row when the chip tone is warn. Resolved
+ * producer-side via `formatLastSampleValue` so the view never re-derives
+ * staleness from the value text. */
+.plan-inputs__row-value--warn {
+  color: var(--pels-status-on-warning);
+  font-weight: var(--font-weight-semibold);
+}
+
 .plan-inputs__row-note {
   color: var(--pels-text-secondary);
   font-size: var(--font-size-xs);
