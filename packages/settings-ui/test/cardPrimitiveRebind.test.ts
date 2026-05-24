@@ -165,6 +165,26 @@ describe('card primitive: per-page forked surface rules are retired', () => {
     expect(body, 'deadline-list-card base must NOT redeclare box-shadow').not.toMatch(/box-shadow\s*:/);
   });
 
+  it('does not redeclare `background:` on `.deadline-list-card:hover, :focus-visible`', () => {
+    // The hover/focus state previously swapped `background: var(--color-
+    // surface-3)` on top of the M3 elevation lift the canonical
+    // `.pels-surface-card[data-interactive]:hover` already provides — that
+    // duplicated the elevation contract. The decorator now only carries the
+    // accent border swap; the elevation lift owns the surface tier change.
+    const ruleRegex =
+      /\.deadline-list-card:hover\s*,\s*\.deadline-list-card:focus-visible\s*\{([^}]*)\}/m;
+    const match = STYLE_CSS.match(ruleRegex);
+    expect(
+      match,
+      'expected a `.deadline-list-card:hover, :focus-visible` rule in style.css',
+    ).not.toBeNull();
+    const body = match?.[1] ?? '';
+    expect(
+      body,
+      'deadline-list-card hover/focus must NOT redeclare background (canonical elevation lift owns the surface tier change)',
+    ).not.toMatch(/background\s*:/);
+  });
+
   it('does not declare a `.detail-diagnostics-card` base rule (hardcoded radius + literal padding retired)', () => {
     // The legacy `.detail-diagnostics-card { background: var(--panel);
     // border: 1px solid var(--panel-border); border-radius: 10px; padding:

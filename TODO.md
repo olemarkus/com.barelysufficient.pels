@@ -424,7 +424,7 @@ release, not v2.7.1 merge-blockers.*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
-- [ ] `.deadline-list-card:hover` still hardcodes `background:
+- [x] `.deadline-list-card:hover` still hardcodes `background:
       var(--color-surface-3)` (style.css:~6224-6229) even though
       `.pels-surface-card[data-interactive]:hover` now provides M3
       elevation lift. Once the elevation-only hover visual is validated
@@ -433,6 +433,14 @@ release, not v2.7.1 merge-blockers.*
       single source of truth.
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
+      Done 2026-05-24 in CSS micro-fix bundle: dropped the
+      `background: var(--color-surface-3)` line from the
+      `.deadline-list-card:hover, :focus-visible` rule so only the
+      accent border swap remains; the canonical `.pels-surface-card
+      [data-interactive]:hover` `--md-elevation-level: 3` lift owns
+      the surface-tier change. Pinned by a new
+      `cardPrimitiveRebind.test.ts` regression that asserts the
+      hover/focus rule body carries no `background:` declaration.
 
 - [ ] Docs screenshot drift after PR #1040 card consolidation. The
       diagnostics card radius went 10px → 14px (token violation fix);
@@ -457,7 +465,7 @@ release, not v2.7.1 merge-blockers.*
       Files: visual review only, no code.
       Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
 
-- [ ] Comment hygiene on the `.pels-surface-card` primitive block.
+- [x] Comment hygiene on the `.pels-surface-card` primitive block.
       `packages/settings-ui/public/style.css:2464-2479` and three other
       comment blocks repeat the same "canonical / decorator" preamble.
       Consolidate into one block above `.pels-surface-card` and
@@ -465,8 +473,17 @@ release, not v2.7.1 merge-blockers.*
       thumb in one place.
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
+      Done 2026-05-24 in CSS micro-fix bundle: added one
+      "Canonical primitives — rule of thumb" preamble block above
+      `.pels-surface-card` documenting the canonical / decorator
+      contract, the doubled-class and panel-scope cascade idioms,
+      and the shared `data-tone` tonal API. Per-decorator comment
+      blocks on `.plan-history-card`, `.plan-history-card--link`,
+      `.detail-diagnostics-card`, and `.deadline-list-card`
+      shortened to a one-line pointer to the preamble plus any
+      decorator-specific contract notes.
 
-- [ ] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
+- [x] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
       asymmetry when it wraps. PR #1016 routes the Budget header through
       the shared `.plan-hero` primitive with a `.plan-hero__chips` row
       carrying the price-level chip and the Plan/Adjust toggle. The
@@ -480,6 +497,15 @@ release, not v2.7.1 merge-blockers.*
       intentionally on wrap. Cosmetic; bounded one-rule fix.
       Files: `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
+      Done 2026-05-23 in commit d229c480 (v2.9 retrospective P2
+      cleanups): dropped `margin-left: auto` from
+      `.budget-page-header__action` so the parent
+      `.plan-hero__headline-row`'s `justify-content: space-between`
+      (no-chip path) and the chip-rail's `flex: 1 1 auto` (chip path)
+      handle trailing alignment. Inline comment block above the rule
+      records the rationale. Closed from the CSS micro-fix bundle on
+      2026-05-24 after confirming the diff already landed; no further
+      CSS edit required.
 
 - [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
       promotion. PR #1018's `capped_idle` discriminator requires a
