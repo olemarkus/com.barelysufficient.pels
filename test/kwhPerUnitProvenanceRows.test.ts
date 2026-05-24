@@ -38,7 +38,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       provenance,
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
-    })).toEqual([{ label: 'Source', value: 'Starting estimate' }]);
+    })).toEqual([{ label: 'Source', value: 'Starting estimate', tone: null }]);
   });
 
   it('renders source/samples/last-sample rows for fully-populated learned provenance — no duplicate "Learned rate" row', () => {
@@ -54,9 +54,9 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS + 5 * ONE_MIN_MS,
       formatAcceptedAt,
     })).toEqual([
-      { label: 'Source', value: 'Learned from power readings' },
-      { label: 'Readings used', value: '12 accepted power readings · medium confidence' },
-      { label: 'Latest reading used', value: 'Updated 5 min ago' },
+      { label: 'Source', value: 'Learned from power readings', tone: null },
+      { label: 'Readings used', value: '12 accepted power readings · medium confidence', tone: null },
+      { label: 'Latest reading used', value: 'Updated 5 min ago', tone: null },
     ]);
   });
 
@@ -108,6 +108,50 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
     expect(rows.find((row) => row.label === 'Latest reading used')?.value).toBe(`Stale — ${STUB_ACCEPTED_AT}`);
   });
 
+  // Pin the producer's `tone` contract on the latest-sample row across the
+  // freshness boundary. The view layer reads this flat slug and maps it to a
+  // CSS modifier (`.plan-inputs__row-value--warn`); asserting the slug here
+  // — not the class name — keeps the test stable across a CSS rename and
+  // catches regressions where the consumer might re-derive staleness from
+  // the value text (forbidden by `feedback_layering_resolution_in_producer`).
+  it('emits a warn tone on the latest-sample row past the 24 h freshness window', () => {
+    const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
+      source: 'learned',
+      kWhPerUnit: 0.5,
+      acceptedSamples: 4,
+      confidence: 'medium',
+      lastAcceptedAtMs: ACCEPTED_AT_MS,
+    };
+    const rows = resolveKwhPerUnitProvenanceRows({
+      provenance,
+      nowMs: ACCEPTED_AT_MS + 48 * ONE_HOUR_MS,
+      formatAcceptedAt,
+    });
+    const latest = rows.find((row) => row.label === 'Latest reading used');
+    expect(latest?.tone).toBe('warn');
+    // Sibling rows stay neutral — only the stale branch carries a tone.
+    expect(rows.find((row) => row.label === 'Source')?.tone).toBeNull();
+    expect(rows.find((row) => row.label === 'Readings used')?.tone).toBeNull();
+  });
+
+  it('leaves the latest-sample tone null when the sample sits inside the freshness window', () => {
+    const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
+      source: 'learned',
+      kWhPerUnit: 0.5,
+      acceptedSamples: 4,
+      confidence: 'medium',
+      lastAcceptedAtMs: ACCEPTED_AT_MS,
+    };
+    const rows = resolveKwhPerUnitProvenanceRows({
+      provenance,
+      // Sit one minute short of the 24 h stale threshold — well inside fresh.
+      nowMs: ACCEPTED_AT_MS + 24 * ONE_HOUR_MS - ONE_MIN_MS,
+      formatAcceptedAt,
+    });
+    const latest = rows.find((row) => row.label === 'Latest reading used');
+    expect(latest?.tone).toBeNull();
+  });
+
   it('omits the samples row when acceptedSamples is zero', () => {
     const provenance: DeferredObjectiveKwhPerUnitProvenanceV1 = {
       source: 'learned',
@@ -121,7 +165,7 @@ describe('resolveKwhPerUnitProvenanceRows', () => {
       nowMs: ACCEPTED_AT_MS,
       formatAcceptedAt,
     })).toEqual([
-      { label: 'Source', value: 'Learned from power readings' },
+      { label: 'Source', value: 'Learned from power readings', tone: null },
     ]);
   });
 

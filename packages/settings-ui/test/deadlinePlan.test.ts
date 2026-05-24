@@ -2421,7 +2421,7 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.planInputs.provenanceRows).toEqual([
-      { label: 'Source', value: 'Starting estimate' },
+      { label: 'Source', value: 'Starting estimate', tone: null },
     ]);
   });
 

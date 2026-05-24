@@ -1125,17 +1125,15 @@ No action.*
 *v2.8.0 release-review findings (2026-05-19). Four items from the
 five-agent fan-out pass on `v2.7.4..origin/main`.*
 
-- [ ] Stale-sample row in Smart task plan-inputs card needs a tone
-      affordance. `formatLastSampleValue` returns `Stale — <ts>` once
-      `ageMs ≥ 24 h`, but `resolveKwhPerUnitProvenanceRows` plugs it
-      under the same "Most recent sample" label as plain text — no warn
-      chip, no muted-color affordance. Users skimming the card miss the
-      signal that the underlying data is older than yesterday's reality.
-      Acceptance: style the stale branch via the existing `.muted` or
-      warn-tone span pattern used by sibling rows in
-      `KwhPerUnitProvenanceRow`.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`.
+- [x] Stale-sample row in Smart task plan-inputs card needs a tone
+      affordance. Done in `fix/p2-stale-sample-tone`:
+      `KwhPerUnitProvenanceRow` now carries a `tone: 'warn' | null` slug
+      that `formatLastSampleValue` resolves once at the producer (the
+      stale branch returns `{ text, tone: 'warn' }`; fresh branches stay
+      `null`). The `PlanInputsCard` view dispatches the slug to a new
+      `.plan-inputs__row-value--warn` CSS modifier styled with
+      `--pels-status-on-warning` + `--font-weight-semibold`, mirroring
+      the existing `.deadline-list-card__when-row--warn` pattern.
       Source: `pels-ux-fit`, v2.8.0 release-review pass.
 
 - [ ] Flatten the deferred-objective diagnostic to expose `currentValue`

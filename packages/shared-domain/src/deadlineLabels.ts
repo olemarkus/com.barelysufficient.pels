@@ -885,7 +885,20 @@ export type SmartTaskStatusNotificationId =
 // A row in the plan-inputs card describing one provenance fact (source, value,
 // sample count, confidence, last accepted at). Pre-resolved at this layer so
 // the view never branches on `source` / null values.
-export type KwhPerUnitProvenanceRow = { label: string; value: string };
+//
+// `tone` is a producer-resolved affordance slug for the row's value cell. Null
+// for neutral rows; `'warn'` signals an at-risk fact (e.g. the latest learned
+// reading is older than 24 h). The view dispatches the slug to a CSS modifier
+// (`.plan-inputs__row-value--warn`) so the value cell picks up a status colour
+// instead of the row staying visually indistinguishable from healthy siblings.
+// Per `feedback_layering_resolution_in_producer.md`, the staleness boolean
+// stays in shared-domain — consumers never re-derive it from the value text.
+export type KwhPerUnitProvenanceRowTone = 'warn';
+export type KwhPerUnitProvenanceRow = {
+  label: string;
+  value: string;
+  tone: KwhPerUnitProvenanceRowTone | null;
+};
 
 // Confidence text is rendered next to the learned mean. Lowercase to fit the
 // neighbouring sentence ("12 readings · medium confidence"); the chip surface
@@ -914,24 +927,30 @@ const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 // (per `feedback_ui_text_shared_with_logs.md`). The caller supplies
 // `formatAcceptedAt` only for the stale branch — runtime callers pass a
 // timezone-aware Intl formatter; the UI passes a `toLocaleString` wrapper.
+//
+// Returns `{ text, tone }` where `tone` is `'warn'` when the latest accepted
+// sample is older than the 24 h freshness window and `null` otherwise. The
+// producer resolves the staleness signal once here so the UI consumer never
+// re-derives it from the rendered text (per
+// `feedback_layering_resolution_in_producer.md`).
 const formatLastSampleValue = (params: {
   lastMs: number;
   nowMs: number;
   formatAcceptedAt: (ms: number) => string;
-}): string => {
+}): { text: string; tone: KwhPerUnitProvenanceRowTone | null } => {
   const { lastMs, nowMs, formatAcceptedAt } = params;
   const ageMs = Math.max(0, nowMs - lastMs);
   if (ageMs >= SAMPLE_STALE_THRESHOLD_MS) {
-    return `Stale — ${formatAcceptedAt(lastMs)}`;
+    return { text: `Stale — ${formatAcceptedAt(lastMs)}`, tone: 'warn' };
   }
-  if (ageMs < ONE_MINUTE_MS) return 'Updated just now';
+  if (ageMs < ONE_MINUTE_MS) return { text: 'Updated just now', tone: null };
   if (ageMs < ONE_HOUR_MS) {
     const minutes = Math.max(1, Math.round(ageMs / ONE_MINUTE_MS));
-    return `Updated ${minutes} min ago`;
+    return { text: `Updated ${minutes} min ago`, tone: null };
   }
   const hours = Math.max(1, Math.round(ageMs / ONE_HOUR_MS));
   const unit = hours === 1 ? 'hour' : 'hours';
-  return `Updated ${hours} ${unit} ago`;
+  return { text: `Updated ${hours} ${unit} ago`, tone: null };
 };
 
 // ─── Energy estimate range (variance buffer) ─────────────────────────────────
@@ -1172,7 +1191,7 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
     // Bootstrap rows describe the cold-start state. The plan-inputs row note
     // already says "Estimated — refining as PELS observes charging", so a
     // single Source row is enough here — adding "0 readings" would be noisy.
-    return [{ label: 'Source', value: 'Starting estimate' }];
+    return [{ label: 'Source', value: 'Starting estimate', tone: null }];
   }
   // `Learned from power readings` source no longer carries a redundant `Learned rate` row
   // (the card's headline already shows the rate value). Surface only the
@@ -1180,18 +1199,26 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
   // recency of the latest reading used (recency is a separate signal from the
   // confidence chip — the chip is "how many / how tight," "Latest reading
   // used" is "how long since we saw fresh evidence").
-  const rows: KwhPerUnitProvenanceRow[] = [{ label: 'Source', value: 'Learned from power readings' }];
+  const rows: KwhPerUnitProvenanceRow[] = [
+    { label: 'Source', value: 'Learned from power readings', tone: null },
+  ];
   if (provenance.acceptedSamples > 0) {
-    rows.push({ label: 'Readings used', value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence) });
+    rows.push({
+      label: 'Readings used',
+      value: formatSamplesLine(provenance.acceptedSamples, provenance.confidence),
+      tone: null,
+    });
   }
   if (provenance.lastAcceptedAtMs !== null && Number.isFinite(provenance.lastAcceptedAtMs)) {
+    const lastSample = formatLastSampleValue({
+      lastMs: provenance.lastAcceptedAtMs,
+      nowMs,
+      formatAcceptedAt,
+    });
     rows.push({
       label: 'Latest reading used',
-      value: formatLastSampleValue({
-        lastMs: provenance.lastAcceptedAtMs,
-        nowMs,
-        formatAcceptedAt,
-      }),
+      value: lastSample.text,
+      tone: lastSample.tone,
     });
   }
   return rows;
