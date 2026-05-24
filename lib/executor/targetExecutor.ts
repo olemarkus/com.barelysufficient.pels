@@ -40,6 +40,7 @@ export type PlanExecutorTargetContext = {
   state: PlanEngineState;
   deviceManager: {
     getSnapshot: () => TargetDeviceSnapshot[];
+    getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
     setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   };
   operatingMode: string;
@@ -152,7 +153,7 @@ export const trySetShedTemperature = async (
   if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
   try {
-    const snapshot = ctx.deviceManager.getSnapshot().find((entry) => entry.id === deviceId);
+    const snapshot = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
     const observedValue = snapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
     const result = await dispatchTargetCommand(ctx, {
       deviceId,
@@ -208,7 +209,7 @@ export const dispatchTargetCommand = async (
     skipContext,
     actuationMode,
   } = params;
-  const latestObservedSnapshot = ctx.deviceManager.getSnapshot().find((entry) => entry.id === deviceId);
+  const latestObservedSnapshot = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
   const target = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap);
   const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
   const latestObservedValue = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
@@ -505,8 +506,7 @@ const getLatestObservedTargetValue = (
   ctx: PlanExecutorTargetContext,
   deviceId: string,
   targetCap: string,
-): unknown => ctx.deviceManager.getSnapshot()
-  .find((entry) => entry.id === deviceId)
+): unknown => ctx.deviceManager.getSnapshotByDeviceId(deviceId)
   ?.targets?.find((entry) => entry.id === targetCap)
   ?.value;
 
