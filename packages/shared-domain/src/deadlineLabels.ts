@@ -32,6 +32,16 @@ export type DeadlinePlanPendingReason =
   // pending until the energy profile is learned from power readings.
   | 'missing_capacity';
 
+// One-line user-facing copy for the cold-start `missing_capacity` pending
+// reason. Thermal smart tasks have no shipped bootstrap kWh/°C, so a new
+// heater (or any thermal device without `measure_power`) sits "Waiting"
+// indefinitely until the planner has enough power samples to learn the
+// energy profile. This copy tells the user what unblocks the plan. The
+// thermal `missing_capacity` resolver renders it as the metaLine; the
+// canonical joined form lives here so runtime log breadcrumbs can emit
+// the same string (per `feedback_ui_text_shared_with_logs.md`).
+export const PENDING_REASON_MISSING_CAPACITY_COPY = 'Learning energy use — needs power readings from this device.';
+
 // Hero/list "live" status variants. Sits next to the kind chip and identifies
 // the current operational state in plain language. `building_plan` /
 // `queued` / `paused_unplugged` are the three disambiguated `Waiting` cases;
@@ -621,6 +631,18 @@ const deviceDataMissingResolver = (kind: {
   recourse: overviewDeviceRecourse(ctx.deviceId),
 });
 
+// Split `PENDING_REASON_MISSING_CAPACITY_COPY` into the headline tag and the
+// metaLine sentence at the em-dash separator, then re-capitalise the body so
+// it reads as a complete sentence in the muted metaLine slot. Done once at
+// module load so the constant stays the canonical user-facing string and the
+// resolver doesn't drift if the wording is tweaked later. The asserted shape
+// is `<headline> — <body-fragment>` (em-dash + space on each side); the
+// constant lives at the top of this file with the same shape.
+const [MISSING_CAPACITY_HEADLINE, MISSING_CAPACITY_BODY_FRAGMENT]
+  = PENDING_REASON_MISSING_CAPACITY_COPY.split(' — ');
+const MISSING_CAPACITY_BODY = `${MISSING_CAPACITY_BODY_FRAGMENT[0].toUpperCase()}`
+  + `${MISSING_CAPACITY_BODY_FRAGMENT.slice(1)}`;
+
 const HEATER_DEVICE_DATA_MISSING = deviceDataMissingResolver({
   headline: 'Waiting for a reading from the device',
   body: 'PELS needs a current temperature, a useful capacity, or a recent observation '
@@ -676,12 +698,20 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       }),
       device_data_missing: HEATER_DEVICE_DATA_MISSING,
       invalid_session: HEATER_DEVICE_DATA_MISSING,
+      // Cold-start `missing_capacity` collapses to a single user-facing line —
+      // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
+      // ("Learning energy use — needs power readings from this device."). Earlier
+      // copy split the explanation across body + headlineReason, which buried the
+      // "give it power readings" lever in a paragraph. The pending-reason path
+      // here intentionally addresses only `objective_missing_capacity`
+      // (no-profile cold-start); the thermal `objective_missing_charge_rate`
+      // fall-through still routes to this resolver via `THERMAL_LEARNING_CAPACITY_REASON_CODES`
+      // in the recorder, which is the same "still learning" user state from
+      // their point of view.
       missing_capacity: (ctx) => ({
-        headline: 'Learning energy use',
-        body: 'PELS needs power readings from this heater while it heats so it can learn how '
-          + 'many kWh raise the temperature by one degree. The schedule will appear once that is '
-          + 'available.',
-        headlineReason: 'PELS is still learning this heater’s energy per degree from observed power.',
+        headline: MISSING_CAPACITY_HEADLINE,
+        body: MISSING_CAPACITY_BODY,
+        headlineReason: null,
         recourse: overviewDeviceRecourse(ctx.deviceId),
       }),
     },
