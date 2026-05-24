@@ -80,17 +80,18 @@ release, not v2.7.1 merge-blockers.*
       and `.homeycompose/app.json` keywords stay as-is (pre-onboarding marketing copy).
       Token id `name: "shortfall"` on the `deadline_ended` trigger is preserved as a stable
       contract identifier (visible label is `Gap to target`).
-- [ ] Make the browser Homey stub reliable enough for future screenshot UI audits.
-      Keep audit states at the Homey SDK boundary instead of injecting component props. Add missing
-      route handlers for diagnostics, deferred-objective history, refresh/reset actions, and daily
-      budget recompute. Add `deferredObjectiveActivePlans` to the shared unit mock bootstrap state,
-      and add typed audit scenario fixtures around `SettingsUiBootstrap`, `SettingsUiPlanSnapshot`,
-      `SettingsUiPowerPayload`, and `DailyBudgetUiPayload` so normal, pressure, over-budget,
-      missing-price, empty-history, and dense-device states can be rendered repeatedly.
+- [x] Make the browser Homey stub reliable enough for future screenshot UI audits.
+      Shipped: 16/16 declared API routes handled (was 10), `deferredObjectiveActivePlans`
+      seeded on both bootstrap surfaces, typed `BootstrapAuditScenario` builder with six
+      scenarios (normal, pressure, over-budget, missing-price, empty-history, dense-device)
+      at the Homey SDK boundary, `__stub.applyAuditScenario(name)` plus
+      `__PELS_HOMEY_STUB__ = { scenario: '...' }` boot-time entry point, parity test
+      enforces helper/browser stub names stay in sync. See `notes/browser-stub.md`.
       Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
       `packages/settings-ui/test/helpers/homeyApiMock.ts`,
-      `packages/contracts/src/settingsUiApi.ts`,
-      settings UI mock and browser smoke tests.
+      `packages/settings-ui/test/helpers/auditScenarios.ts`,
+      `packages/settings-ui/test/auditScenarios.test.ts`,
+      `notes/browser-stub.md`.
 - [x] Add loading skeletons across the five panels.
       Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
       identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
