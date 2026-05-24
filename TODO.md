@@ -459,7 +459,7 @@ release, not v2.7.1 merge-blockers.*
       Abandoned/Replaced stay quiet (`quietAbandoned: true` → no toggle,
       `RevisionsCard` never shows).
 
-- [ ] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
+- [x] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
       could disambiguate `chartCollapsedByDefault` vs `quietAbandoned`.
       The producer-flag summary reads `Unknown=true` but doesn't make
       explicit that this is the `chartCollapsedByDefault` value;
@@ -469,8 +469,11 @@ release, not v2.7.1 merge-blockers.*
       Tighten the phrasing in a future docs sweep.
       Files: `notes/v2-7-2/postmortem-chart-policy.md`.
       Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+      Resolved: producer-flag summary now annotates the values as
+      `chartCollapsedByDefault` only and points to the `quietAbandoned`
+      discriminator that flips per `hasRecordedPlan` for Unknown.
 
-- [ ] Rename `resolvePlanGenericReasonText` to a name that describes the
+- [x] Rename `resolvePlanGenericReasonText` to a name that describes the
       actual function (e.g. `resolveStillReportingAfterPauseText` or
       `resolveReportedLoadAfterPauseText`). Shipped per task spec in
       PR #1075 but the name doesn't describe what the function does —
@@ -486,6 +489,10 @@ release, not v2.7.1 merge-blockers.*
       `packages/shared-domain/src/planReasonSemantics.ts`,
       `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
       Source: PR #1075 self-review, 2026-05-24.
+      Resolved: renamed to `resolveReportedLoadAfterPauseText`; added
+      typed `readDeviceReasonDetail(reason: unknown): unknown` narrowing
+      helper alongside (re-exported via `planReasonSemantics.ts`) and the
+      call site in `PlanDeviceCards.tsx` now uses both — no `as` cast.
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 

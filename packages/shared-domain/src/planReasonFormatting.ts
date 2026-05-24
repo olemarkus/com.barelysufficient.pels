@@ -297,14 +297,28 @@ export function formatShortfallReason(opts: {
   return suffix ? `Manual action needed — ${suffix}` : base;
 }
 
-// Generic plan card "still reporting load after pause" sentence. The Overview
-// device card uses this when a held device is still drawing power — e.g. an
-// EV charger that ignored the pause. Lives in shared-domain so logs and UI
-// produce the same wording (`feedback_ui_text_shared_with_logs`). The
-// `detail` slot accepts `unknown` because the upstream `DeviceReason.detail`
-// field is loosely typed at the snapshot boundary; non-string values are
-// dropped silently rather than rendered as `[object Object]`.
-export function resolvePlanGenericReasonText(params: {
+// Reads the loosely-typed `detail` slot off a `DeviceReason`-shaped value
+// without an `as` cast. The snapshot boundary serialises some reason variants
+// with a `detail` field (`keep`, `hourlyBudget`, `dailyBudget`,
+// `sheddingActive`, `inactive`, `capacity`) and others without one; callers
+// often hold the value as `unknown` after crossing the IPC boundary. This
+// helper accepts `unknown`, returns `unknown`, and centralises the narrowing
+// so the published contract between settings-ui and the shared-domain
+// reason helpers stays typed at the boundary.
+export type DeviceReasonWithDetail = { readonly detail?: unknown };
+export function readDeviceReasonDetail(reason: unknown): unknown {
+  if (typeof reason !== 'object' || reason === null || !('detail' in reason)) return undefined;
+  return (reason as DeviceReasonWithDetail).detail;
+}
+
+// "Still reporting load after pause" sentence used by the Overview device
+// card when a held device is still drawing power — e.g. an EV charger that
+// ignored the pause. Lives in shared-domain so logs and UI produce the same
+// wording (`feedback_ui_text_shared_with_logs`). The `detail` slot accepts
+// `unknown` because the upstream `DeviceReason.detail` field is loosely typed
+// at the snapshot boundary; non-string values are dropped silently rather
+// than rendered as `[object Object]`.
+export function resolveReportedLoadAfterPauseText(params: {
   measuredPowerKw: number | undefined;
   detail: unknown;
 }): string {
