@@ -1,6 +1,6 @@
 const buildPowerDom = () => {
   document.body.innerHTML = `
-    <div id="power-list"></div>
+    <div id="power-list" class="power-week-chart"></div>
     <div id="power-empty"></div>
     <button id="power-week-prev"></button>
     <div id="power-week-label"></div>
@@ -224,19 +224,27 @@ describe('power page stats (buckets-only)', () => {
     const powerList = document.querySelector('#power-list') as HTMLElement;
     const powerEmpty = document.querySelector('#power-empty') as HTMLElement;
     expect(powerList.querySelector('svg')).not.toBeNull();
-    expect(powerList.style.height).toBe('240px');
+    // Container sizing now lives in `.power-week-chart` CSS — the renderer
+    // must not write `height` / `min-height` / `-webkit-tap-highlight-color`
+    // onto the container's inline style (echarts itself writes
+    // `position: relative` for its own layout, which is fine).
+    expect(powerList.style.height).toBe('');
+    expect(powerList.style.minHeight).toBe('');
+    expect(powerList.style.getPropertyValue('-webkit-tap-highlight-color')).toBe('');
+    expect(powerList.classList.contains('power-week-chart')).toBe(true);
 
     renderPowerUsage([{ hour: new Date('2025-01-06T00:00:00.000Z'), kWh: 0.8 }]);
 
     expect(powerList.querySelector('svg')).toBeNull();
     expect(powerList.style.height).toBe('');
     expect(powerList.style.minHeight).toBe('');
+    expect(powerList.style.getPropertyValue('-webkit-tap-highlight-color')).toBe('');
     expect(powerEmpty.hidden).toBe(false);
     expect(powerEmpty.textContent).toBe('No hourly usage for the selected week.');
     vi.restoreAllMocks();
   });
 
-  it('clears heatmap inline styles when echarts render fails', async () => {
+  it('does not leak inline styles onto the heatmap container when echarts render fails', async () => {
     vi.doMock('../src/ui/echartsRegistry.ts', () => ({
       initEcharts: vi.fn(() => {
         throw new Error('boom');
@@ -255,6 +263,9 @@ describe('power page stats (buckets-only)', () => {
     });
 
     expect(rendered).toBe(false);
+    // Container sizing lives in `.power-week-chart` CSS; the renderer must
+    // not write its own `height`/`min-height`/`-webkit-tap-highlight-color`
+    // onto the container, including on the failure path.
     expect(powerList.style.height).toBe('');
     expect(powerList.style.minHeight).toBe('');
     expect(powerList.style.getPropertyValue('-webkit-tap-highlight-color')).toBe('');
@@ -342,7 +353,10 @@ describe('power page stats (buckets-only)', () => {
     renderPowerUsage(entries);
     const powerList = document.querySelector('#power-list') as HTMLElement;
     expect(powerList.querySelector('svg')).not.toBeNull();
-    expect(powerList.style.height).toBe('240px');
+    // Container sizing lives in `.power-week-chart` CSS; the renderer must
+    // not write its own `height`/`min-height` onto the container.
+    expect(powerList.style.height).toBe('');
+    expect(powerList.style.minHeight).toBe('');
     vi.restoreAllMocks();
   });
 
