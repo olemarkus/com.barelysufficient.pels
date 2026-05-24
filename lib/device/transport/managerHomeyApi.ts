@@ -1,8 +1,8 @@
 import type Homey from 'homey';
 import http from 'http';
 import https from 'https';
-import type { Logger, RawHomeyDeviceLike } from '../utils/types';
-import { normalizeError } from '../utils/errorUtils';
+import type { Logger, RawHomeyDeviceLike } from '../../utils/types';
+import { normalizeError } from '../../utils/errorUtils';
 
 export const DEVICES_API_PATH = 'manager/devices/device';
 

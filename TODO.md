@@ -1896,15 +1896,15 @@ consolidation + a11y polish (8 P2)`.*
       for no-progress samples, duplicate samples, and SoC rises below the minimum-delta threshold.
       Files: EV learning store / sample acceptance code under
       `lib/plan/deferredObjectives/**` or `lib/core/**`, new EV learning tests under `test/`.
-- [ ] Hide duplicate responsive tab controls from the accessibility tree. Playwright snapshots
-      showed duplicate tab labels, indicating both the desktop and mobile navigation surfaces are
-      exposed simultaneously rather than the inactive one being hidden via `aria-hidden` or
-      removed from the DOM. Decide whether to render only the active surface or mark the inactive
-      one as inert, and assert in an a11y test that each destination appears exactly once in the
-      accessibility tree at 320px and 480px.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`, navigation shell code under
-      `packages/settings-ui/src/ui/**`, a11y / e2e tests.
+- [x] Hide duplicate responsive tab controls from the accessibility tree. Audit (2026-05-24)
+      found a single `md-tabs#shell-nav` surface in `packages/settings-ui/public/index.html` and
+      no dynamically rendered second nav; a CDP `Accessibility.getFullAXTree` snapshot in both
+      Chromium and Firefox at 320 px and 480 px reported exactly one `role=tab` node per
+      destination (Overview / Budget / Usage / Smart tasks / Settings) — the suspected duplicate
+      surface does not exist. Locked the invariant in with a regression test
+      (`layout-regressions.spec.ts` › "exposes each top-nav destination exactly once in the
+      a11y tree at 320px / 480px") so a future bottom-nav redesign that forgets to hide the
+      inactive surface fails CI.
 - [ ] Debounce or sequence plan rebuilds around budget/price-shaping toggle changes. Toggling daily
       budget or price-shaping briefly produced `objective_missing_price_horizon` plan reasons
       before recovering. The reason is correct in isolation, but the transient flash makes the
@@ -1924,12 +1924,15 @@ consolidation + a11y polish (8 P2)`.*
       messages.
       Files: `lib/logging/**`, `lib/plan/deferredObjectives/**`, EV learning sample-rejection
       sites, log/wording regression tests.
-- [ ] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
+- [x] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
       swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
       the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
       measurement deferral before a fresh power sample.
-      Files: `test/swapLifecycle.test.ts`, `test/planRestoreBackoff.test.ts`,
-      `lib/plan/planRestore.ts`.
+      Files: `test/swapLifecycle.test.ts`
+      (`completed cleanup clears a stepped target only after its requested step is reached`),
+      `test/planRestoreBackoff.test.ts`
+      (`persists a stale-cleanup timestamp on an approved stepped swap that survives a state roundtrip`,
+      `defers a swap restore for orphan-measurement metadata until a fresh power sample arrives`).
 - [ ] Finish the planner/executor/device-manager state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceManager` should
       provide observed current state and own native / flow / capability transport; executor should
@@ -2027,6 +2030,27 @@ consolidation + a11y polish (8 P2)`.*
       {ok: true}`) and a sync helper in observer consumes the failure to clear
       pending, so writes and deletes are both observer-owned. Source:
       `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
+- [ ] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
+      split left it at `lib/device/stateOfCharge.ts`; today's placement
+      satisfies the design's stated goal ("neither side has to import the
+      other") because both transport- and stay-put consumers reach it as a
+      sibling without crossing into transport/. Two viable destinations:
+      (a) the cheap path — **just move into `lib/device/transport/`**, since
+      every current consumer is transport-side (`transport/managerObservation.ts`,
+      `transport/managerRealtimeHandlers.ts`, `transport/managerParseDevice.ts`)
+      or part of `lib/device/manager.ts` / `managerRuntime.ts` (both fine as
+      cross-folder imports), converting today's `transport/managerObservation →
+      ../stateOfCharge → transport/flowReportedCapabilities` back-edge into a
+      clean intra-transport import; (b) the deeper path — extract pure SoC
+      math to `lib/utils/` or `packages/shared-domain/src/`, which also
+      requires relocating or duplicating the structural type deps
+      (`DeviceCapabilityMap` from `managerControl.ts`,
+      `FlowReportedCapabilitiesForDevice` / `FlowReportedCapabilityEntry`
+      from `transport/flowReportedCapabilities.ts`). PR #3 (DeviceTransport
+      extraction) is a natural place to decide. Source: PR #2 secondary
+      cleanup + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24.
+      Files: `lib/device/stateOfCharge.ts`, `lib/device/managerControl.ts`,
+      `lib/device/transport/flowReportedCapabilities.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and

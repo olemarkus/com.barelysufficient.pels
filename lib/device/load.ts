@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { getRawDevice } from './managerHomeyApi';
+import { getRawDevice } from './transport/managerHomeyApi';
 
 type RawHomeyManagerDevice = {
   settings?: { load?: number };

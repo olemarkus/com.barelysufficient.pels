@@ -40,7 +40,10 @@ import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
-import type { FlowReportedCapabilitiesForDevice, FlowReportedCapabilityId } from '../device/flowReportedCapabilities';
+import type {
+  FlowReportedCapabilitiesForDevice,
+  FlowReportedCapabilityId,
+} from '../device/transport/flowReportedCapabilities';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 

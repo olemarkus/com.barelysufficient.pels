@@ -6,7 +6,7 @@ import {
   resolveNativeSteppedLoadCommand,
   resolveNativeSteppedLoadReportedStepId,
 } from './nativeSteppedLoadWiring';
-import { getDeviceId } from './managerHelpers';
+import { getDeviceId } from './transport/managerHelpers';
 
 export type NativeSteppedLoadCommandAdapter = {
   kind: 'capability';

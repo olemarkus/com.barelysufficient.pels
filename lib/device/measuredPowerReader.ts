@@ -3,7 +3,7 @@ import type { LiveDevicePowerWatts } from './managerEnergy';
 import {
   getExactPowerCapabilityValue,
   type PowerCapabilityId,
-} from './managerParse';
+} from './transport/managerParse';
 
 export type DeviceMeasuredPowerObservation = {
   measurePowerW?: number;

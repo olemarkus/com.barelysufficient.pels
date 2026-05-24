@@ -8,7 +8,7 @@ import {
   setObservedNativeSteppedLoadStep,
 } from '../lib/device/managerNativeSteppedCommand';
 import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
-import { PELS_TARGET_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type {
   DevicePlan,
   DevicePlanDevice,

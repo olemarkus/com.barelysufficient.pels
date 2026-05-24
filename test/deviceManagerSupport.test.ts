@@ -15,7 +15,7 @@ import {
   getExactPowerCapabilityValue,
   getCurrentTemperature,
   resolveDeviceCapabilities,
-} from '../lib/device/managerParse';
+} from '../lib/device/transport/managerParse';
 import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
 import {
   reconcileRealtimeDeviceUpdate,
@@ -30,8 +30,8 @@ import {
   setRawCapabilityValue,
   setRestClient,
   writeErrorToStderr,
-} from '../lib/device/managerHomeyApi';
-import { fetchDevicesByIds } from '../lib/device/managerFetch';
+} from '../lib/device/transport/managerHomeyApi';
+import { fetchDevicesByIds } from '../lib/device/transport/managerFetch';
 
 const createLogger = () => ({
   log: vi.fn(),

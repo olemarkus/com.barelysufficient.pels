@@ -7,7 +7,7 @@ import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceCont
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';
-import type { FlowReportedCapabilityId } from '../lib/device/flowReportedCapabilities';
+import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
 import {
   CAPACITY_LIMIT_KW,
@@ -21,7 +21,7 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../lib/device/steppedLoadSyntheticCapabilities';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import {
   registerBudgetExemptionCards,

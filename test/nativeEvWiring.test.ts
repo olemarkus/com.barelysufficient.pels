@@ -1,6 +1,6 @@
 import Homey from 'homey';
 import { DeviceManager } from '../lib/device/manager';
-import { setRestClient, resetRestClient } from '../lib/device/managerHomeyApi';
+import { setRestClient, resetRestClient } from '../lib/device/transport/managerHomeyApi';
 import {
   applyNativeEvWiringOverlay,
   buildNativeEvObservationCapabilityObj,

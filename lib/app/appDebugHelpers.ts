@@ -11,7 +11,7 @@ import type {
   DeviceManager,
 } from '../device/manager';
 import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { DEVICES_API_PATH, getRawDevices } from '../device/managerHomeyApi';
+import { DEVICES_API_PATH, getRawDevices } from '../device/transport/managerHomeyApi';
 import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
 import type { HomeyDeviceLike } from '../utils/types';
 import { isHomeyDeviceLike } from '../utils/types';

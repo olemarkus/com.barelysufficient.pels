@@ -159,8 +159,12 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    class. Promote `todo-narrow-plan-device-dep` to error. (PR #1b)
 4. **Move read-side files** (`managerObservation.ts`, `managerParseDevice.ts`,
    `managerParseSnapshot.ts`, `managerFreshness.ts`, `managerRealtimeHandlers.ts`,
-   `managerFetch.ts`, read half of `managerHomeyApi.ts`) into transport.
-   DeviceManager becomes a facade. (PR #2)
+   `managerFetch.ts`, the full `managerHomeyApi.ts`, plus the parse-adjacent
+   helpers `managerParse.ts`, `managerParseIdentity.ts`,
+   `managerParsedControlState.ts`, `managerRealtimeSupport.ts`,
+   `flowReportedCapabilities.ts`, `managerManagedFilter.ts`,
+   `managerHelpers.ts`) into `lib/device/transport/`. `manager.ts` stays put
+   (becomes a facade in PR #3). (PR #2 — shipped)
 5. **Extract write side as `DeviceTransport`.** DeviceManager goes away.
    (PR #3)
 6. **Wire the injected `pendingPredicate`** and move pending/settle state into
@@ -172,18 +176,31 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
 
 These are not strictly part of the split but block it in subtle ways:
 
-- `lib/device/steppedLoadSyntheticCapabilities.ts` is imported by
+- ~~`lib/device/steppedLoadSyntheticCapabilities.ts` is imported by
   `lib/executor/steppedLoadExecutor.ts:29`. Synthetic capability IDs are a
   contract, not transport — move to `packages/contracts/src/` so the executor
-  doesn't strand when transport moves.
+  doesn't strand when transport moves.~~ Shipped in PR #2: file moved to
+  `packages/shared-domain/src/steppedLoadSyntheticCapabilities.ts` (not
+  `packages/contracts/src/`; the latter is pruned from the Homey runtime
+  build, which would have broken the value imports of
+  `PELS_TARGET_STEP_CAPABILITY_ID` etc.). `SteppedLoadStepRequestResult` /
+  `SteppedLoadStepRequestTransport` types moved with it.
 - `lib/device/stateOfCharge.ts` is consumed by both `managerRealtimeHandlers.ts`
-  and `managerObservation.ts`. Pure SoC math should extract to `lib/utils/`
-  (or `packages/shared-domain/` if the settings UI also wants it) so neither
-  side has to import the other.
+  and `managerObservation.ts` (now under `lib/device/transport/`) plus
+  `manager.ts` and `managerRuntime.ts` (which stay in `lib/device/`). The
+  spec called for moving the pure math to `lib/utils/` or
+  `packages/shared-domain/`. PR #2 left the file at `lib/device/stateOfCharge.ts`
+  for now — both transport- and non-transport-side consumers can import it
+  without one side reaching into the other's folder, which matches the
+  underlying goal. Extracting the structural `DeviceCapabilityMap` and
+  `FlowReportedCapabilities*` type deps to a neutral location is deferred
+  to a follow-up cleanup (no PR # assigned).
 - `lib/device/devicePowerCalibrationStore.ts` straddles the boundary. Decision:
   it stays in transport (calibration enrichment happens at parse time, before
   the snapshot reaches observer). Observer reads enriched snapshots; it never
-  imports calibration directly.
+  imports calibration directly. PR #2 verified the only consumer is `app.ts`
+  (wiring) and left the file at `lib/device/devicePowerCalibrationStore.ts`
+  for PR #3 to relocate alongside the rest of the actuation/wiring split.
 
 ## What this note breaks in existing notes
 

@@ -188,6 +188,52 @@ describe('swap lifecycle blocking and cleanup', () => {
       target: { lastPlanMeasurementTs: 123 },
     });
   });
+
+  it('completed cleanup clears a stepped target only after its requested step is reached', () => {
+    const swapState = emptySwapState();
+    swapState.pendingSwapTargets.add('target');
+    swapState.pendingSwapTimestamps.set('target', 1);
+    swapState.lastSwapPlanMeasurementTs.set('target', 123);
+    swapState.requestedTargetByDevice.set('target', { targetStepId: 'medium' });
+    swapState.swappedOutFor.set('lower', 'target');
+
+    // First pass: target is on but still at a lower step than requested — must stay pending.
+    const belowRequestedMap = new Map([
+      ['target', steppedPlanDevice({
+        id: 'target',
+        currentState: 'on',
+        currentOn: true,
+        selectedStepId: 'low',
+      })],
+      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
+    ]);
+    cleanupCompletedSwaps(swapState, belowRequestedMap);
+    expect(exportSwapState(swapState).swapByDevice).toMatchObject({
+      target: {
+        pendingTarget: true,
+        timestamp: 1,
+        lastPlanMeasurementTs: 123,
+        requestedTargetStepId: 'medium',
+      },
+      lower: { swappedOutFor: 'target' },
+    });
+
+    // Second pass: target now at or above the requested step — clear pending metadata and
+    // the linked direct swap, but preserve the measurement watermark for orphan deferral.
+    const atRequestedMap = new Map([
+      ['target', steppedPlanDevice({
+        id: 'target',
+        currentState: 'on',
+        currentOn: true,
+        selectedStepId: 'medium',
+      })],
+      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
+    ]);
+    cleanupCompletedSwaps(swapState, atRequestedMap);
+    expect(exportSwapState(swapState).swapByDevice).toEqual({
+      target: { lastPlanMeasurementTs: 123 },
+    });
+  });
 });
 
 describe('swap measurement gating', () => {
