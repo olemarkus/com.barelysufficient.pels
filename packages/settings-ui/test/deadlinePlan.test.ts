@@ -4630,8 +4630,22 @@ describe('shared-domain pending-hero copy', () => {
     expect(copy.recourse?.targetTab).toBe('overview');
   });
 
-  it('temperature missing_capacity points at the learning-energy-profile bottleneck', async () => {
-    const { deadlineLabels } = await import('../../shared-domain/src/deadlineLabels.ts');
+  it('exports the canonical one-line missing_capacity copy with an em-dash separator', async () => {
+    const { PENDING_REASON_MISSING_CAPACITY_COPY } = await import(
+      '../../shared-domain/src/deadlineLabels.ts'
+    );
+    expect(PENDING_REASON_MISSING_CAPACITY_COPY).toBe(
+      'Learning energy use — needs power readings from this device.',
+    );
+    // Em-dash is the proper Unicode character (U+2014), not two hyphens.
+    expect(PENDING_REASON_MISSING_CAPACITY_COPY).toContain('—');
+    expect(PENDING_REASON_MISSING_CAPACITY_COPY).not.toContain('--');
+  });
+
+  it('temperature missing_capacity collapses to a one-line learning-energy-use copy', async () => {
+    const { deadlineLabels, PENDING_REASON_MISSING_CAPACITY_COPY } = await import(
+      '../../shared-domain/src/deadlineLabels.ts'
+    );
     const copy = deadlineLabels('temperature').pendingHeroByReason.missing_capacity({
       priceSource: 'managed',
       lastFetchedShort: null,
@@ -4639,9 +4653,16 @@ describe('shared-domain pending-hero copy', () => {
       deviceName: 'Connected 300',
       deadlineTime: '07:00',
     });
-    expect(copy.headlineReason).toBe(
-      'PELS is still learning this heater’s energy per degree from observed power.',
-    );
+    // Headline + body parse together as the canonical one-line copy
+    // (`PENDING_REASON_MISSING_CAPACITY_COPY`) so the user reads the
+    // pending hero as a single coherent sentence.
+    expect(`${copy.headline} — ${copy.body.replace(/^./, (c) => c.toLowerCase())}`)
+      .toBe(PENDING_REASON_MISSING_CAPACITY_COPY);
+    expect(copy.body).toBe('Needs power readings from this device.');
+    // headlineReason suppressed — the one-line copy is self-contained, so
+    // the resolver declines to fabricate extra subline copy that would
+    // duplicate the body.
+    expect(copy.headlineReason).toBeNull();
     // Recourse lands on Overview where the user can verify the heater is
     // running — per `feedback_hard_cap_is_physical.md` we never suggest
     // raising the global capacity hard cap as a remedy.
