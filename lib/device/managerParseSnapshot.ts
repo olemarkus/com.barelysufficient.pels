@@ -1,5 +1,6 @@
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import {
   getCanSetControl,
   resolveEvChargingStateBinaryEvidence,
@@ -7,6 +8,8 @@ import {
   type DeviceCapabilityMap,
 } from './managerControl';
 import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
+
+const moduleLogger = getLogger('device/parse-snapshot');
 
 export function resolveParsedControlState(params: {
   debugStructured?: StructuredDebugEmitter;
@@ -176,7 +179,7 @@ function resolveSnapshotCurrentOn(params: {
     currentOn,
   } = params;
   if (controlCapabilityId === 'onoff' && typeof capabilityObj.onoff?.value !== 'boolean') {
-    debugStructured?.({
+    (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'device_snapshot_control_state_fallback',
       reasonCode: 'missing_boolean_onoff',
       source: 'snapshot_refresh',
@@ -194,7 +197,7 @@ function resolveSnapshotCurrentOn(params: {
     && evCharging === undefined
     && evChargingState === undefined
   ) {
-    debugStructured?.({
+    (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'device_snapshot_control_state_fallback',
       reasonCode: 'missing_ev_charging_state',
       source: 'snapshot_refresh',

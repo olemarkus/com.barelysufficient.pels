@@ -1,6 +1,9 @@
 import { shouldEmitOnChange } from '../logging/logDedupe';
 import type { Logger } from '../utils/types';
 import type { DeviceMeasuredPowerObservation } from './measuredPowerReader';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('device/measured-power');
 
 const MIN_METER_DELTA_HOURS = 1 / 3600; // Require at least 1 second between readings
 
@@ -186,7 +189,7 @@ export class DeviceMeasuredPowerResolver {
       return;
     }
 
-    this.deps.logger.structuredLog?.debug({
+    (this.deps.logger.structuredLog ?? moduleLogger).debug({
       event: 'device_measured_power_source_changed',
       deviceId,
       deviceName: deviceLabel,
