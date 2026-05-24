@@ -650,6 +650,49 @@ release, not v2.7.1 merge-blockers.*
       2026-05-23; reworded 2026-05-24 after the undersell walk-back
       (961904f8) standardised the "Limited by …" wording across helpers.
 
+- [ ] Finish the `Headroom` Rule-1 sweep in settings-ui. After PR #1049
+      purged `Headroom` from `dailyBudgetHeroStrings.ts`, two internal
+      settings-ui symbols still carry the banned term:
+      `BudgetHeroData.headroomLine` (field at
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:42`) and
+      `resolveHeadroomLine` (function at
+      `packages/settings-ui/src/ui/budgetRedesign.ts:265`). Neither
+      reaches the user or runtime logs — these are TypeScript identifier
+      names only — but the field name now contradicts the visible
+      vocabulary it carries (the produced string says "left in today's
+      budget" / "over budget already used", never "headroom"). Rename
+      to `budgetRemainingLine` / `resolveBudgetRemainingLine` (or
+      similar) and update the `BudgetHeroData` shape, the `BudgetOverview`
+      consumer, and any test snapshots that anchor on the field name.
+      Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/test/budgetRedesign.test.ts`.
+      Source: `pels-copy-and-terminology`, PR #1049 follow-up, 2026-05-24.
+
+- [ ] Lift the remaining inlined visible strings in
+      `packages/settings-ui/src/ui/budgetRedesign.ts` into
+      `packages/shared-domain/src/dailyBudgetHeroStrings.ts` per Rule 4.
+      PR #1049 covered the hero headline/disabled/today/chart-subtitle set
+      but several adjacent strings still live in settings-ui only and
+      cannot be reused by runtime log statements:
+      `Close to budget` / `On budget` / `Over by … kWh`
+      (lines 190-194), `Using cheaper hours` /
+      `Using cheaper hours (price data unavailable)` (line 262), the
+      five-line `resolveNoPlanLine` block (282-290), `resolveTomorrowLine`
+      strings (293-295), the `Managed … · Background …` split-line template
+      (236), `Hourly plan` / `Progress` chart titles (391), the
+      `High` / `Medium` / `Low` confidence-band labels (405-407), the
+      `Showing tomorrow's plan…` / `Showing today's plan…` comparison
+      labels (487, 494), and the `Adjust budget` button label at
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:229`. Lift
+      each into a shared-domain helper or constant that runtime logging
+      can reach for parity. Bundle in batches by section (hero subtitle,
+      chart subtitle, no-plan sentences, etc.) rather than one giant move.
+      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+      Source: `pels-copy-and-terminology`, PR #1049 follow-up, 2026-05-24.
+
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
       `lib/plan/deferredObjectives/planHistory.ts:141-148` notes that
