@@ -1,7 +1,9 @@
 import {
   buildDeferredObjectiveDiagnostics,
   buildDeferredObjectivePolicyHorizon,
+  ConcurrentEligibleTaskTracker,
   createEmptyDeferredObjectiveSettings,
+  ELIGIBILITY_ABANDON_GRACE_MS,
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
 } from '../lib/plan/deferredObjectives';
@@ -564,6 +566,182 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
         expect(bucket.reservedHeadroomKw).toBeCloseTo(9.5);
       }
     }
+  });
+});
+
+describe('ConcurrentEligibleTaskTracker', () => {
+  // Build a minimal device + settings entry that satisfies the eligibility
+  // predicate (priority 1, both rescue permissions `'always'`, enabled
+  // objective). Each helper creates one task; the per-test code stitches them
+  // into a settings map and device map.
+  const buildEligibleDevice = (id: string): PlanInputDevice => ({
+    id,
+    name: id,
+    targets: [],
+    currentOn: false,
+    deviceClass: 'evcharger',
+    controlCapabilityId: 'evcharger_charging',
+    evChargingState: 'plugged_in_paused',
+    priority: 1,
+    stateOfCharge: {
+      percent: 40,
+      status: 'fresh',
+      observedAtMs: NOW_MS,
+    },
+    steppedLoadProfile: {
+      model: 'stepped_load',
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1000 },
+      ],
+    },
+  });
+
+  const buildEligibleObjective = (deadlineAtMs: number) => ({
+    enabled: true,
+    kind: 'ev_soc' as const,
+    enforcement: 'soft' as const,
+    targetPercent: 60,
+    deadlineAtMs,
+    rescue: {
+      exemptFromBudget: 'always' as const,
+      limitLowerPriorityDevices: 'always' as const,
+    },
+  });
+
+  it('keeps the count steady across a one-cycle device-snapshot eviction within the grace window', () => {
+    // Regression for "Eligibility-count flicker hardening" TODO. A transient
+    // SDK miss drops a device from `deviceById` for one cycle; without the
+    // tracker the count flips N → N-1 → N and survivor diagnostics oscillate
+    // `on_track` ↔ `at_risk: feasible_above_floor`. With the tracker the
+    // count stays N for the entire grace window.
+    const tracker = new ConcurrentEligibleTaskTracker();
+    const deviceA = buildEligibleDevice('ev-A');
+    const deviceB = buildEligibleDevice('ev-B');
+    const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: {
+        'ev-A': buildEligibleObjective(deadlineAtMs),
+        'ev-B': buildEligibleObjective(deadlineAtMs),
+      },
+    });
+    const bothPresent = new Map([
+      [deviceA.id, deviceA],
+      [deviceB.id, deviceB],
+    ]);
+    const onlyAPresent = new Map([[deviceA.id, deviceA]]);
+
+    // Cycle 0: both observed → count = 2.
+    tracker.observe({ settings, deviceById: bothPresent, nowMs: NOW_MS });
+    expect(tracker.count({ nowMs: NOW_MS })).toBe(2);
+
+    // Cycle 1: B disappears (transient SDK miss). The count must stay 2
+    // while we wait out the grace window.
+    const oneCycleLaterMs = NOW_MS + 30 * 1000;
+    tracker.observe({ settings, deviceById: onlyAPresent, nowMs: oneCycleLaterMs });
+    expect(tracker.count({ nowMs: oneCycleLaterMs })).toBe(2);
+
+    // Cycle 2: B recovers before the grace window elapses.
+    const twoCyclesLaterMs = NOW_MS + 60 * 1000;
+    tracker.observe({ settings, deviceById: bothPresent, nowMs: twoCyclesLaterMs });
+    expect(tracker.count({ nowMs: twoCyclesLaterMs })).toBe(2);
+  });
+
+  it('drops a task from the count after it has been absent beyond the grace window', () => {
+    // Sibling to the flicker test: a device genuinely removed (config
+    // disabled, hardware unplugged for hours, etc.) must eventually leave
+    // the denominator so the surviving task gets its rightful undivided
+    // headroom. The grace window is one ABANDON_GRACE_MS interval, identical
+    // shape to `planHistory.ts`'s ABANDON_GRACE_MS so the two pieces of
+    // grace bookkeeping stay easy to reason about together.
+    const tracker = new ConcurrentEligibleTaskTracker();
+    const deviceA = buildEligibleDevice('ev-A');
+    const deviceB = buildEligibleDevice('ev-B');
+    const deadlineAtMs = NOW_MS + 4 * HOUR_MS;
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: {
+        'ev-A': buildEligibleObjective(deadlineAtMs),
+        'ev-B': buildEligibleObjective(deadlineAtMs),
+      },
+    });
+    const bothPresent = new Map([
+      [deviceA.id, deviceA],
+      [deviceB.id, deviceB],
+    ]);
+    const onlyAPresent = new Map([[deviceA.id, deviceA]]);
+
+    // Cycle 0: both observed.
+    tracker.observe({ settings, deviceById: bothPresent, nowMs: NOW_MS });
+    expect(tracker.count({ nowMs: NOW_MS })).toBe(2);
+
+    // Cycle 1: B disappears for a long time. After one full grace window,
+    // the next observe-with-B-absent must drop B from the count.
+    const pastGraceMs = NOW_MS + ELIGIBILITY_ABANDON_GRACE_MS;
+    tracker.observe({ settings, deviceById: onlyAPresent, nowMs: pastGraceMs });
+    expect(tracker.count({ nowMs: pastGraceMs })).toBe(1);
+  });
+
+  it('drops a task from the per-bucket count once its deadline has passed', () => {
+    // Regression for "over-counts in late-horizon buckets" TODO. Two
+    // priority-1 fully-reserved tasks share the horizon; A's deadline sits
+    // at bucket[10] while B's deadline sits at bucket[20]. In bucket[5]
+    // both are eligible (count = 2). By bucket[15] A has passed its
+    // deadline and B should not still be sharing headroom with it
+    // (count = 1).
+    const tracker = new ConcurrentEligibleTaskTracker();
+    const deviceA = buildEligibleDevice('ev-A');
+    const deviceB = buildEligibleDevice('ev-B');
+    const aDeadlineMs = NOW_MS + 10 * HOUR_MS;
+    const bDeadlineMs = NOW_MS + 20 * HOUR_MS;
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: {
+        'ev-A': buildEligibleObjective(aDeadlineMs),
+        'ev-B': buildEligibleObjective(bDeadlineMs),
+      },
+    });
+    const deviceById = new Map([
+      [deviceA.id, deviceA],
+      [deviceB.id, deviceB],
+    ]);
+
+    tracker.observe({ settings, deviceById, nowMs: NOW_MS });
+
+    const earlyBucketStartMs = NOW_MS + 5 * HOUR_MS;
+    const lateBucketStartMs = NOW_MS + 15 * HOUR_MS;
+    // Early bucket sits before either deadline → both tasks share.
+    expect(tracker.count({ nowMs: NOW_MS, bucketStartMs: earlyBucketStartMs })).toBe(2);
+    // Late bucket sits after A's deadline → only B remains in the
+    // denominator. Without the per-bucket filter this would return 2 and
+    // B's diagnostic would under-promote its committed floor on late
+    // buckets that A can no longer claim.
+    expect(tracker.count({ nowMs: NOW_MS, bucketStartMs: lateBucketStartMs })).toBe(1);
+  });
+
+  it('preserves the legacy whole-horizon count when bucketStartMs is omitted', () => {
+    // Callers that don't care about per-bucket precision (legacy paths,
+    // tests, the diagnostic-aggregate count) still get the simple
+    // "everyone within grace" count.
+    const tracker = new ConcurrentEligibleTaskTracker();
+    const deviceA = buildEligibleDevice('ev-A');
+    const deviceB = buildEligibleDevice('ev-B');
+    const aDeadlineMs = NOW_MS + 10 * HOUR_MS;
+    const bDeadlineMs = NOW_MS + 20 * HOUR_MS;
+    const settings = normalizeDeferredObjectiveSettings({
+      version: 1,
+      objectivesByDeviceId: {
+        'ev-A': buildEligibleObjective(aDeadlineMs),
+        'ev-B': buildEligibleObjective(bDeadlineMs),
+      },
+    });
+    const deviceById = new Map([
+      [deviceA.id, deviceA],
+      [deviceB.id, deviceB],
+    ]);
+    tracker.observe({ settings, deviceById, nowMs: NOW_MS });
+    expect(tracker.count({ nowMs: NOW_MS })).toBe(2);
   });
 });
 
