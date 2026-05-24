@@ -19,6 +19,7 @@ import {
   formatPlanHistoryAbandonedSecondary,
   formatPlanHistoryCostAndDelivered,
   formatPlanHistoryMissedReason,
+  formatPlanHistoryObservedCoverage,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
   formatPlanHistoryReachedAtLine,
@@ -163,10 +164,19 @@ export const buildHistoryDetailHero = (
   // can selectively keep them or null them. The producer suppresses the
   // ones that duplicate the new receipt / shortfall / cost-narrative
   // surface per `notes/smart-task-ui/README.md` v2.7.3 history-loveable
-  // pass. progressLine + coverageLine are retired on every outcome shape;
+  // pass. progressLine is retired on every outcome shape;
   // reachedAtLine + overshootLine survive on Missed.
+  //
+  // coverageLine was retired in v2.7.3 as "plumbing noise" when its semantics
+  // were time-based ("Brief gap (Xm)") and the line collapsed to null on the
+  // common ≥99 %-observed case. The helper's v2.9.x rewrite ("Observed N of M
+  // planned hours") flips the actionable case (N=0, M>0 — planner thought the
+  // device was active but it never drew power) from invisible to visible, so
+  // the line now carries real signal on every outcome shape and earns its
+  // place back on the hero.
   const reachedAtLine = formatPlanHistoryReachedAtLine(entry, timeZone);
   const overshootLine = formatPlanHistoryOvershootLine(entry);
+  const coverageLine = formatPlanHistoryObservedCoverage(entry);
   if (entry.outcome === 'met') {
     return {
       tone: 'good',
@@ -189,15 +199,16 @@ export const buildHistoryDetailHero = (
       shortfallChip: null,
       costNarrative,
       abandonedDetails: null,
-      // v2.7.3 — Succeeded retires progressLine / reachedAtLine / overshoot
-      // / coverageLine. The receipt timeline's "Started …", "Largest
-      // planned hour …", "Ready 06:42, 18 min before 07:00" rows already
-      // encode the same information; stacking them again was the density
-      // problem `pels-ux-fit` flagged.
+      // v2.7.3 — Succeeded retires progressLine / reachedAtLine / overshoot.
+      // The receipt timeline's "Started …", "Largest planned hour …", "Ready
+      // 06:42, 18 min before 07:00" rows already encode the same information;
+      // stacking them again was the density problem `pels-ux-fit` flagged.
+      // coverageLine returns in v2.9.x with its actionable "N of M planned
+      // hours" rewrite — see the helper resolution above.
       progressLine: null,
       reachedAtLine: null,
       overshootLine: null,
-      coverageLine: null,
+      coverageLine,
     };
   }
   if (entry.outcome === 'missed') {
@@ -238,12 +249,14 @@ export const buildHistoryDetailHero = (
       // v2.7.3 — Missed retires progressLine; the shortfall chip already
       // answers "by how much, in kWh". reachedAtLine + overshootLine
       // survive because they carry time / temperature signal the chip
-      // doesn't. coverageLine retired — it's plumbing noise that doesn't
-      // help the user act on the miss.
+      // doesn't. coverageLine returns in v2.9.x — the "N of M planned hours"
+      // rewrite makes the planned-but-unobserved case (e.g. EV plugged in but
+      // never drew power) actionable on the miss diagnosis, which the
+      // shortfall chip alone doesn't explain.
       progressLine: null,
       reachedAtLine,
       overshootLine,
-      coverageLine: null,
+      coverageLine,
     };
   }
   // Abandoned / replaced / unknown → quiet log shape (v2.7.3). The page
@@ -286,7 +299,12 @@ export const buildHistoryDetailHero = (
     abandonedDetails,
     // Quiet abandoned shape — the `<details>` body is the evidence surface;
     // legacy paragraphs would re-shout details the disclosure already
-    // contains.
+    // contains. coverageLine stays suppressed on every variant of this
+    // shape: `abandoned` / `replaced` are intentionally quiet, and the
+    // `unknown`-with-plan branch already renders the chart card whose
+    // green observed-scatter dots above each planned bucket visually
+    // encode the same N-of-M shape. Surfacing the text on top of the
+    // chart would double-shout the same signal.
     progressLine: null,
     reachedAtLine: null,
     overshootLine: null,
