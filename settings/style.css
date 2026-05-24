@@ -885,6 +885,20 @@ md-primary-tab.tab[active]:hover {
   width: 100%;
 }
 
+/*
+ * `.settings-current-mode__heading` promotes the field label to an <h3>
+ * so the Settings page keeps a screen-reader nav rung between the
+ * `h2 "Configure PELS"` hero and the nav cards below. Neutralise the
+ * browser defaults so it reads visually identical to the surrounding
+ * `.field__label` spans.
+ */
+.settings-current-mode__heading {
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: 0;
+}
+
 .settings-current-mode__hint {
   margin: 0;
 }
