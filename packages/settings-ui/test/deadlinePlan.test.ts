@@ -4328,7 +4328,14 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.recourse?.deviceId).toBe('heater');
   });
 
-  it('cannot-meet: delivered line gains the "won\'t reach by HH:MM" tail', () => {
+  it('cannot-meet: delivered line uses the magnitude-only `still …` stem (no verdict restatement)', () => {
+    // Per TODO ~1586 / 2026-05-16 live walk: the alarm verdict is already
+    // announced by the alert chip ("Cannot finish") and the meta line ("Not
+    // enough time for this target. …"), so the magnitude line drops the
+    // `· won't reach by HH:MM` tail it previously carried. The `still` stem
+    // (vs the on-track `now`) keeps the tonal pairing with the alert chip
+    // without re-asserting the failure a third time. Pairs with the at-risk
+    // regression above (which still uses `now …`) to lock the two branches.
     const now = new Date(2026, 0, 1, 14, 0, 0, 0);
     const deadline = atLocalHour(now, 2);
     const prices = buildStubPrices(now, 2, 100);
@@ -4352,8 +4359,9 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.costMetaLine).toBe('Cost ≈ 4.00 kr'); // 2 hours × 2 kWh × 1.00 kr
     expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 16\.0 kWh/);
     expect(payload.hero.deliveredSoFarLine).toMatch(/still 40\.0 °C of 65\.0 °C target/);
-    // Deadline at 16:00 local time (now=14:00 + 2h).
-    expect(payload.hero.deliveredSoFarLine).toMatch(/won.t reach by 16:00/);
+    // No "won't reach by" tail — the chip + meta line already say the verdict;
+    // repeating it on a third line read as alarm spam in the live walk.
+    expect(payload.hero.deliveredSoFarLine).not.toMatch(/won.t reach/i);
     // Cannot-meet keeps the headline suppressed — the Cannot-finish chip and
     // body postmortem already carry the signal; the headline must not duplicate
     // it. Pairs with the at-risk regression above to prove the split gate
@@ -4507,7 +4515,12 @@ describe('shared-domain hero-line formatters', () => {
     expect(out).not.toMatch(/45%\s*→\s*45%/);
   });
 
-  it('formatDeadlineDeliveredSoFarLine renders the won\'t-reach tail on cannot-meet', async () => {
+  it('formatDeadlineDeliveredSoFarLine renders the magnitude-only `still …` stem on cannot-meet', async () => {
+    // Per TODO ~1586 / 2026-05-16 live walk: the chip ("Cannot finish") + meta
+    // line ("Not enough time for this target …") already carry the verdict, so
+    // the magnitude line drops the `· won't reach by HH:MM` tail and stays
+    // information-only. The `still` stem (vs the on-track `now`) keeps the
+    // tonal pairing with the alert chip without re-asserting the failure.
     const { formatDeadlineDeliveredSoFarLine } = await import('../../shared-domain/src/deadlineLabels.ts');
     const out = formatDeadlineDeliveredSoFarLine({
       status: 'cannot_meet',
@@ -4519,7 +4532,8 @@ describe('shared-domain hero-line formatters', () => {
       targetUnit: '°C',
       deadlineTime: '16:00',
     });
-    expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target · won’t reach by 16:00');
+    expect(out).toBe('Delivered 1.8 of 4.2 kWh · still 35.0 °C of 65.0 °C target');
+    expect(out).not.toMatch(/won.t reach/i);
   });
 
   it('formatDeadlineDeliveredSoFarLine returns null when planned kWh is zero', async () => {

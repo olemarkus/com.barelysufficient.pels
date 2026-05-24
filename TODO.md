@@ -1582,11 +1582,18 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
 
-- [ ] Smart-task active detail repeats "Cannot finish" 3× (pill, headline, body).
+- [x] Smart-task active detail repeats "Cannot finish" 3× (pill, headline, body).
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`).
       Reads as alarm spam rather than information. Keep the pill + one explanatory
-      line; drop the duplicate copies.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      line; drop the duplicate copies. Resolution: the headline was already
+      suppressed on the alert branch (prior PR 1078 work). Dropped the third
+      restatement — the `· won't reach by HH:MM` tail on the delivered-so-far
+      line — in `formatDeadlineDeliveredSoFarLine`; the cannot-meet branch now
+      renders only the magnitude (`Delivered X of Y kWh · still {curr} of
+      {target}`) so the alert chip + meta-line shortfall sentence remain the
+      sole verdict surfaces. Files: `packages/shared-domain/src/deadlineLabels.ts`,
+      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 
 *Eight Overview-surface P2 polish items from the 2026-05-16 live-walk audit
 (TV-stue missing temp line, chip-primitive consolidation, Smart-task aria,
