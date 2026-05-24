@@ -6,6 +6,9 @@ import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('price/coordinator');
 
 // Fire shortly after local midnight so the local-day key has rolled over before
 // the rotation reads it. 30s leaves room for clock skew and timer drift.
@@ -231,7 +234,7 @@ export class PriceCoordinator {
     const err = error instanceof Error ? error : new Error(String(error));
     const label = priceSource === 'spot' ? 'spot prices' : 'grid tariff data';
     this.deps.error(`Failed to refresh ${label}`, err);
-    this.deps.structuredLog?.error({
+    (this.deps.structuredLog ?? moduleLogger).error({
       event: 'price_fetch_failed',
       priceSource,
       reasonCode: resolveErrorReasonCode(err),

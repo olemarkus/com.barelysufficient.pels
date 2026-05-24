@@ -1,6 +1,9 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('power/estimate');
 
 export type PowerEstimateState = {
   expectedPowerKwOverrides?: Record<string, { kw: number; ts: number }>;
@@ -279,7 +282,7 @@ function emitEstimateDecisionLog(params: {
   })) {
     return;
   }
-  logger.structuredLog?.debug({
+  (logger.structuredLog ?? moduleLogger).debug({
     event: 'power_estimate_source_changed',
     deviceId,
     deviceName: deviceLabel,

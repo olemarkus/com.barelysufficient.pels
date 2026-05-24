@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- daily budget service keeps day/state/forecast in one flow. */
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
@@ -50,7 +51,10 @@ import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
+
+const moduleLogger = getLogger('dailyBudget/service');
 
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
@@ -250,7 +254,7 @@ export class DailyBudgetService {
       this.setDaySnapshot(update.snapshot, nowMs, combinedPrices, includeAdjacentDays);
       const snap = update.snapshot;
       if (params.emitStructuredEvent !== false && this.shouldEmitBudgetRecomputed(snap)) {
-        this.deps.structuredLog?.info({
+        (this.deps.structuredLog ?? moduleLogger).info({
           event: 'budget_recomputed',
           newBudgetKWh: snap.budget.dailyBudgetKWh,
           actualKWh: snap.state.usedNowKWh,
@@ -369,7 +373,7 @@ export class DailyBudgetService {
 
   private emitStructuredDailyBudgetDebug(payload: Record<string, unknown>): void {
     if (!this.shouldIncludeConfidenceBootstrapDebug()) return;
-    this.deps.structuredLog?.info({
+    (this.deps.structuredLog ?? moduleLogger).info({
       ...payload,
       debugTopic: 'daily_budget',
     });
