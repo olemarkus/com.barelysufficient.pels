@@ -16,6 +16,8 @@ import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning
 import {
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
+  composeBudgetHeroOverBy,
+  composeManagedBackgroundLine,
 } from '../../shared-domain/src/dailyBudgetHeroStrings';
 
 const costDisplay = { unit: 'kr', divisor: 100 } as const;
@@ -218,6 +220,11 @@ describe('resolveDeltaPill', () => {
     const pill = resolveDeltaPill(payload, 'today', 'over');
     expect(pill?.tone).toBe('alert');
     expect(pill?.label).toMatch(/^Over by /);
+    // Confirm the pill label matches the shared-domain helper byte-for-byte so
+    // a runtime log quoting the pill stays in lockstep with the UI.
+    // computeProjectedUse: usedNow(25) + max(0, plannedTotal(62.4) - allowedNow(25)) = 62.4.
+    const projected = 25 + Math.max(0, 24 * 2.6 - 25);
+    expect(pill?.label).toBe(composeBudgetHeroOverBy(projected - 60));
   });
 
   it('returns warn pill labelled "Close to budget" for tight', () => {
@@ -597,5 +604,35 @@ describe('resolveAllocationWarning', () => {
 
   it('returns null for null payload', () => {
     expect(resolveAllocationWarning(null)).toBeNull();
+  });
+});
+
+describe('composeBudgetHeroOverBy', () => {
+  it('formats positive overage to one decimal kWh', () => {
+    expect(composeBudgetHeroOverBy(3.2)).toBe('Over by 3.2 kWh');
+  });
+
+  it('rounds to one decimal so the pill matches the displayed precision', () => {
+    expect(composeBudgetHeroOverBy(1.27)).toBe('Over by 1.3 kWh');
+  });
+
+  it('falls back to a placeholder when the value is not finite', () => {
+    expect(composeBudgetHeroOverBy(Number.NaN)).toBe('Over by -- kWh');
+    expect(composeBudgetHeroOverBy(Number.POSITIVE_INFINITY)).toBe('Over by -- kWh');
+  });
+});
+
+describe('composeManagedBackgroundLine', () => {
+  it('renders both totals to one decimal with the middle dot separator', () => {
+    expect(composeManagedBackgroundLine(12, 18)).toBe('Managed 12.0 kWh · Background 18.0 kWh');
+  });
+
+  it('rounds each side independently to one decimal', () => {
+    expect(composeManagedBackgroundLine(12.46, 18.74)).toBe('Managed 12.5 kWh · Background 18.7 kWh');
+  });
+
+  it('substitutes a placeholder for non-finite sides instead of NaN', () => {
+    expect(composeManagedBackgroundLine(Number.NaN, 4)).toBe('Managed -- kWh · Background 4.0 kWh');
+    expect(composeManagedBackgroundLine(4, Number.NaN)).toBe('Managed 4.0 kWh · Background -- kWh');
   });
 });

@@ -43,6 +43,38 @@ export const DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW: Record<DailyBudgetHeroDayView,
 export const DAILY_BUDGET_DISABLED_WAITING = 'Waiting for daily budget data';
 export const DAILY_BUDGET_DISABLED_OFF = 'Daily budget off';
 
+// Hero delta-pill labels for the today / tomorrow comparison row. The
+// `composeBudgetHeroOverBy` helper owns its own kWh formatting (one decimal)
+// so the runtime logger can quote the exact pill label without re-importing
+// the settings-ui-local `formatKWh`. Mirrors the `formatComparisonKWh` shape
+// used in `budgetRedesignResolvers.ts`.
+export const BUDGET_HERO_CLOSE_TO_BUDGET = 'Close to budget';
+export const BUDGET_HERO_ON_BUDGET = 'On budget';
+const formatBudgetHeroKWh = (value: number): string => (
+  Number.isFinite(value) ? value.toFixed(1) : '--'
+);
+export const composeBudgetHeroOverBy = (kwh: number): string => (
+  `Over by ${formatBudgetHeroKWh(kwh)} kWh`
+);
+
+// Price-shaping tagline shown beneath the hero comparison when the feature is
+// on. The "no prices" variant only differs in the parenthetical disclaimer.
+export const BUDGET_HERO_USING_CHEAPER_HOURS = 'Using cheaper hours';
+export const BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES = 'Using cheaper hours (price data unavailable)';
+
+// Today-view split-line that names managed vs background kWh totals. The
+// helper formats both numbers to one decimal (matching the prior settings-ui
+// `formatKWh(value, 1)` call) so a runtime logger that quotes the line gets
+// byte-identical output.
+export const composeManagedBackgroundLine = (
+  managedKWh: number,
+  backgroundKWh: number,
+): string => {
+  const managed = Number.isFinite(managedKWh) ? `${managedKWh.toFixed(1)} kWh` : '-- kWh';
+  const background = Number.isFinite(backgroundKWh) ? `${backgroundKWh.toFixed(1)} kWh` : '-- kWh';
+  return `Managed ${managed} · Background ${background}`;
+};
+
 // Today-view budget-status templates. Caller passes the formatted kWh
 // quantity (e.g. `"1.2 kWh"`); shared-domain owns the surrounding language.
 export const composeBudgetUsedOver = (remainingFormatted: string): string => (
