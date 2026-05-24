@@ -579,7 +579,7 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
       Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
 
-- [ ] Finish the Budget hero copy-locality pass alongside
+- [x] Finish the Budget hero copy-locality pass alongside
       `dailyBudgetHeroStrings.ts`. The v2.9 Rule-4 cleanup pulled the
       finish-of-day decision sentences and the `resolveHeadroomLine` template
       onto shared-domain, but the rest of the hero copy chain is still
@@ -593,9 +593,15 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23.
+      2026-05-23. Done 2026-05-24 (bundled with the Headroom-helper rename):
+      added `DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW`,
+      `DAILY_BUDGET_DISABLED_WAITING`, `DAILY_BUDGET_DISABLED_OFF`,
+      `resolveTodayLine(status, cause)`, and
+      `resolveChartSubtitle({ view, mode, status, priceReliable, priceShapingEnabled })`
+      as shared-domain exports; `budgetRedesign.ts` now imports those and
+      keeps only the local payload→discriminant glue.
 
-- [ ] Rename the new `dailyBudgetHeroStrings.ts` helper API to drop the
+- [x] Rename the new `dailyBudgetHeroStrings.ts` helper API to drop the
       `Headroom` jargon. `composeHeadroomOverBudgetUsed`,
       `composeHeadroomLeftToday`, and `composeHeadroomLineWithEstimate` are
       new shared-domain symbols introduced by the v2.9 Rule-4 cleanup; the
@@ -609,7 +615,12 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/shared-domain/src/dailyBudgetHeroStrings.ts`,
       `packages/settings-ui/src/ui/budgetRedesign.ts`.
       Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23.
+      2026-05-23. Done 2026-05-24: renamed to `composeBudgetUsedOver` /
+      `composeBudgetRemainingToday` /
+      `composeBudgetRemainingLineWithEstimate`; the estimate-suffix template
+      now spells `estimated` in full ("· estimated 6.50 kr today" instead of
+      "· est. 6.50 kr today"). All callsites in `budgetRedesign.ts` updated;
+      no other importers existed.
 
 - [ ] Route test/doc anchors through the shared-domain copy constants.
       `test/deviceOverview.test.ts:147`, `test/planReasonUserFacing.test.ts:57`,

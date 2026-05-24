@@ -1,14 +1,23 @@
 // Canonical wording for the Budget panel's hero "did we land?" / "what's left
-// today?" decision sentences. The Budget page is the user's canonical
-// "should I run loads now?" surface, so any runtime log that quotes the hero
-// must pull from the same source — Rule 4 (UI text shared with logs) and
-// `notes/ui-terminology.md`.
+// today?" decision sentences, plus the supporting headline labels and chart
+// subtitles. The Budget page is the user's canonical "should I run loads now?"
+// surface, so any runtime log that quotes the hero must pull from the same
+// source — Rule 4 (UI text shared with logs) and `notes/ui-terminology.md`.
 //
-// `composeHeadroomLine` takes pre-formatted kWh / cost text from the caller
-// (settings-ui owns `formatKWh` / `formatCost`) and returns the final hero
+// The compose-* helpers take pre-formatted kWh / cost text from the caller
+// (settings-ui owns `formatKWh` / `formatCost`) and return the final hero
 // subline. Keeping the formatters out of shared-domain avoids dragging
 // settings-ui-local utilities into a browser-safe package; the language and
 // punctuation stay here.
+
+// Status / view discriminants used by the resolvers below. Mirror the
+// settings-ui aliases (`BudgetStatus`, `BudgetRedesignDayView`,
+// `BudgetRedesignChartMode`, `DominantCause`) without importing them — the
+// settings-ui types can `=` these to keep both sides in lockstep.
+export type DailyBudgetHeroStatus = 'noPlan' | 'within' | 'tight' | 'over';
+export type DailyBudgetHeroDayView = 'today' | 'tomorrow' | 'yesterday';
+export type DailyBudgetHeroChartMode = 'progress' | 'hourlyPlan';
+export type DailyBudgetHeroDominantCause = 'managed' | 'background';
 
 // Finish-of-day decision sentences for the yesterday view (rendered as the
 // hero decision line and the chart subtitle).
@@ -21,18 +30,76 @@ export const YESTERDAY_FINISHED_WITHIN_BUDGET = 'Yesterday finished within budge
 export const CHART_FINISHED_OVER_DAILY_BUDGET = 'Finished over the daily budget.';
 export const CHART_FINISHED_WITHIN_BUDGET = 'Finished within budget.';
 
-// Today-view headroom-status templates. Caller passes the formatted kWh
+// Hero headline labels per day view. The today label is "Projected today"
+// because the figure is a projection, not a used-so-far reading.
+export const DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW: Record<DailyBudgetHeroDayView, string> = {
+  yesterday: "Yesterday's total",
+  today: 'Projected today',
+  tomorrow: 'Planned for tomorrow',
+};
+
+// Disabled / waiting comparison strings shown in place of the kWh comparison
+// line when the budget feature is off or the payload has not arrived yet.
+export const DAILY_BUDGET_DISABLED_WAITING = 'Waiting for daily budget data';
+export const DAILY_BUDGET_DISABLED_OFF = 'Daily budget off';
+
+// Today-view budget-status templates. Caller passes the formatted kWh
 // quantity (e.g. `"1.2 kWh"`); shared-domain owns the surrounding language.
-export const composeHeadroomOverBudgetUsed = (remainingFormatted: string): string => (
+export const composeBudgetUsedOver = (remainingFormatted: string): string => (
   `${remainingFormatted} over budget already used`
 );
-export const composeHeadroomLeftToday = (remainingFormatted: string): string => (
+export const composeBudgetRemainingToday = (remainingFormatted: string): string => (
   `${remainingFormatted} left in today's budget`
 );
 
-// Appends today's estimated-cost suffix to one of the headroom-status lines
-// above. Caller passes the formatted cost (e.g. `"6.50 kr"`).
-export const composeHeadroomLineWithEstimate = (
+// Appends today's estimated-cost suffix to one of the budget-status lines
+// above. Caller passes the formatted cost (e.g. `"6.50 kr"`). The word
+// "estimated" stays spelled out — Rule 3 (`notes/ui-terminology.md`) bans
+// abbreviations in visible labels, including the prior `est.` shorthand.
+export const composeBudgetRemainingLineWithEstimate = (
   statusLine: string,
   costFormatted: string,
-): string => `${statusLine} · est. ${costFormatted} today`;
+): string => `${statusLine} · estimated ${costFormatted} today`;
+
+// Today-tone decision line. Silent on `within`; otherwise names the dominant
+// cause so the user knows whether to look at background load or managed
+// devices.
+export const resolveTodayLine = (
+  status: DailyBudgetHeroStatus,
+  cause: DailyBudgetHeroDominantCause,
+): string | null => {
+  if (status === 'within') return null;
+  if (status === 'tight') {
+    return cause === 'background'
+      ? 'Close to budget — driven by background usage.'
+      : 'PELS is shaping flexible use to stay within budget.';
+  }
+  return cause === 'background'
+    ? 'Background usage is higher than expected today.'
+    : 'Managed devices used more than expected — check device priorities.';
+};
+
+// Chart subtitle for the progress / hourly-plan charts. Mirrors the
+// `resolveDecisionLine` taxonomy but with chart-specific phrasing that drops
+// the time anchor (the chart title already names the day).
+export const resolveChartSubtitle = (params: {
+  view: DailyBudgetHeroDayView;
+  mode: DailyBudgetHeroChartMode;
+  status: DailyBudgetHeroStatus;
+  priceReliable: boolean;
+  priceShapingEnabled: boolean;
+}): string => {
+  const { view, mode, status, priceReliable, priceShapingEnabled } = params;
+  if (mode === 'hourlyPlan') {
+    if (priceReliable && priceShapingEnabled) return 'Budget follows cheaper hours.';
+    if (priceShapingEnabled) return 'Cheaper-hour context needs price data.';
+    return 'Shows how the budget is distributed through the day.';
+  }
+  if (view === 'yesterday') {
+    return status === 'over' ? CHART_FINISHED_OVER_DAILY_BUDGET : CHART_FINISHED_WITHIN_BUDGET;
+  }
+  if (view === 'tomorrow') return 'Shows the planned cumulative budget.';
+  if (status === 'over') return 'Projected to finish over budget.';
+  if (status === 'tight') return 'Close to the daily budget.';
+  return 'On track to finish within budget.';
+};
