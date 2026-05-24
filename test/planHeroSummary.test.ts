@@ -9,6 +9,7 @@ import {
   formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
+  formatProjectedEnergySubline,
   type DecisionSentenceInput,
   type PlanHeroMetaInput,
 } from '../packages/shared-domain/src/planHeroSummary';
@@ -98,6 +99,18 @@ describe('formatEnergyUsedOfBudget', () => {
     expect(formatEnergyUsedOfBudget(4.2, 11)).toBe('4.2 of 11.0 kWh used');
     expect(formatEnergyUsedOfBudget(0, 4.5)).toBe('0.0 of 4.5 kWh used');
     expect(formatEnergyUsedOfBudget(1.25, 0.9)).toBe('1.3 of 0.9 kWh used');
+  });
+});
+
+describe('formatProjectedEnergySubline', () => {
+  it('returns null when no projection is available', () => {
+    expect(formatProjectedEnergySubline(null)).toBeNull();
+  });
+
+  it('renders "projected X.XX kWh" with two-decimal precision', () => {
+    expect(formatProjectedEnergySubline(2.347)).toBe('projected 2.35 kWh');
+    expect(formatProjectedEnergySubline(5)).toBe('projected 5.00 kWh');
+    expect(formatProjectedEnergySubline(0)).toBe('projected 0.00 kWh');
   });
 });
 

@@ -119,6 +119,19 @@ export const formatFreshnessChip = (
 export const formatEnergyUsedOfBudget = (usedKWh: number, budgetKWh: number): string =>
   `${usedKWh.toFixed(1)} of ${budgetKWh.toFixed(1)} kWh used`;
 
+/**
+ * Formats the "projected this hour" subline that sits beneath the energy-used
+ * headline on the Overview hero. Two-decimal precision matches the energy-bar
+ * projection-marker tooltip so the printed numbers line up. Returns `null`
+ * when no projection is available so the caller can omit the row entirely
+ * (see `feedback_ui_text_shared_with_logs.md` — the runtime logger uses the
+ * same helper so logs and UI never drift).
+ */
+export const formatProjectedEnergySubline = (projectedKWh: number | null): string | null => {
+  if (projectedKWh === null) return null;
+  return `projected ${projectedKWh.toFixed(2)} kWh`;
+};
+
 // ─── Hero meter marker labels ────────────────────────────────────────────────
 // Source of truth for every "what is this dot on the bar?" label the Overview
 // hero exposes — used both as `aria-label` (screen-reader) and as the visible
