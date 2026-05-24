@@ -25,6 +25,7 @@ import {
   SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
+import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_ENABLED,
@@ -51,11 +52,13 @@ export type HomeyApiMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
 
 export type MockHomeyUiState = {
   dailyBudget?: unknown;
+  deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
   deferredObjectiveHistory?: unknown;
   deviceDiagnostics?: unknown;
   homeyDevices?: unknown;
   plan?: unknown;
   power?: unknown;
+  prices?: unknown;
 };
 
 export type MockHomeyApiContext = {
@@ -215,17 +218,21 @@ const buildUiPower = async (homey: MockHomeyClient) => {
   };
 };
 
-const buildUiPrices = async (homey: MockHomeyClient) => ({
-  combinedPrices: await getHomeySetting(homey, 'combined_prices') || null,
-  electricityPrices: await getHomeySetting(homey, 'electricity_prices') || null,
-  priceArea: await getHomeySetting(homey, 'price_area') || null,
-  gridTariffData: await getHomeySetting(homey, 'nettleie_data') || null,
-  flowToday: await getHomeySetting(homey, 'flow_prices_today') || null,
-  flowTomorrow: await getHomeySetting(homey, 'flow_prices_tomorrow') || null,
-  homeyCurrency: await getHomeySetting(homey, 'homey_prices_currency') || null,
-  homeyToday: await getHomeySetting(homey, 'homey_prices_today') || null,
-  homeyTomorrow: await getHomeySetting(homey, 'homey_prices_tomorrow') || null,
-});
+const buildUiPrices = async (homey: MockHomeyClient) => {
+  const override = getUiOverride(homey, 'prices');
+  if (override !== undefined) return override;
+  return {
+    combinedPrices: await getHomeySetting(homey, 'combined_prices') || null,
+    electricityPrices: await getHomeySetting(homey, 'electricity_prices') || null,
+    priceArea: await getHomeySetting(homey, 'price_area') || null,
+    gridTariffData: await getHomeySetting(homey, 'nettleie_data') || null,
+    flowToday: await getHomeySetting(homey, 'flow_prices_today') || null,
+    flowTomorrow: await getHomeySetting(homey, 'flow_prices_tomorrow') || null,
+    homeyCurrency: await getHomeySetting(homey, 'homey_prices_currency') || null,
+    homeyToday: await getHomeySetting(homey, 'homey_prices_today') || null,
+    homeyTomorrow: await getHomeySetting(homey, 'homey_prices_tomorrow') || null,
+  };
+};
 
 const buildUiDiagnostics = async (homey: MockHomeyClient) => {
   const override = getUiOverride(homey, 'deviceDiagnostics');
@@ -238,6 +245,14 @@ const buildUiBootstrap = async (homey: MockHomeyClient) => ({
     SETTINGS_UI_BOOTSTRAP_KEYS.map(async (key) => [key, await getHomeySetting(homey, key)]),
   )),
   dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
+  // Seed the contract-required `deferredObjectiveActivePlans` field. Without
+  // this the bootstrap response is missing a field declared on
+  // `SettingsUiBootstrap`, which masks consumer regressions (the boot path in
+  // `boot.ts` reads `bootstrap.deferredObjectiveActivePlans ?? null` so it
+  // tolerates absence — but that means a UI feature relying on the field is
+  // silently invisible in unit tests).
+  deferredObjectiveActivePlans:
+    getUiOverride(homey, 'deferredObjectiveActivePlans') ?? null,
   plan: await buildUiPlan(homey),
   power: await buildUiPower(homey),
   prices: await buildUiPrices(homey),

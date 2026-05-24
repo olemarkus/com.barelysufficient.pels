@@ -17,6 +17,13 @@
     apiHandlers: Object.create(null),
     apiCallCounts: Object.create(null),
     dailyBudgetPayload: hasInitialDailyBudgetPayload ? initialOverrides.dailyBudgetPayload : undefined,
+    // Active audit scenario (one of `AUDIT_SCENARIO_NAMES` in
+    // `packages/settings-ui/test/helpers/auditScenarios.ts`). null means
+    // baseline; a scenario flips API responses at the SDK boundary so the same
+    // settings UI code renders an alternate state. See `notes/browser-stub.md`
+    // for the full scenario list and intent.
+    scenarioName: null,
+    scenarioPatch: null,
   };
   if (initialOverrides.apiHandlers && typeof initialOverrides.apiHandlers === 'object') {
     Object.assign(runtimeOverrides.apiHandlers, initialOverrides.apiHandlers);
@@ -789,11 +796,15 @@
 
   ensureEvSupportState();
 
-  const buildPowerPayload = () => ({
-    tracker: settings.power_tracker_state ?? null,
-    status: settings.pels_status ?? null,
-    heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
-  });
+  const buildPowerPayload = () => {
+    const scenarioPower = runtimeOverrides.scenarioPatch?.power;
+    if (scenarioPower) return scenarioPower;
+    return {
+      tracker: settings.power_tracker_state ?? null,
+      status: settings.pels_status ?? null,
+      heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
+    };
+  };
 
   const buildPricesPayload = () => ({
     combinedPrices: settings.combined_prices ?? null,
@@ -807,11 +818,42 @@
     homeyTomorrow: settings.homey_prices_tomorrow ?? null,
   });
 
-  const resolveDailyBudgetPayload = () => (
-    runtimeOverrides.dailyBudgetPayload === undefined
-      ? buildSampleDailyBudgetPayload()
-      : runtimeOverrides.dailyBudgetPayload
+  const buildPlanPayload = () => (
+    runtimeOverrides.scenarioPatch?.plan ?? settings.plan_snapshot
   );
+
+  const resolveDailyBudgetPayload = () => {
+    // Direct runtime override (set via `__stub.setDailyBudgetPayload`) wins so
+    // existing tests that pin a specific payload keep working.
+    if (runtimeOverrides.dailyBudgetPayload !== undefined) {
+      return runtimeOverrides.dailyBudgetPayload;
+    }
+    const scenarioBudget = runtimeOverrides.scenarioPatch?.dailyBudget;
+    if (scenarioBudget !== undefined) return scenarioBudget;
+    return buildSampleDailyBudgetPayload();
+  };
+
+  const resolveActivePlansPayload = () => {
+    const scenarioPlans = runtimeOverrides.scenarioPatch?.deferredObjectiveActivePlans;
+    if (scenarioPlans !== undefined) return scenarioPlans;
+    return buildSampleActivePlans();
+  };
+
+  const resolveDeferredObjectiveHistoryPayload = () => {
+    const scenarioHistory = runtimeOverrides.scenarioPatch?.deferredObjectiveHistory;
+    if (scenarioHistory !== undefined) return scenarioHistory;
+    return { version: 1, entriesByDeviceId: {} };
+  };
+
+  const resolveDeviceDiagnosticsPayload = () => {
+    const scenarioDiagnostics = runtimeOverrides.scenarioPatch?.deviceDiagnostics;
+    if (scenarioDiagnostics !== undefined) return scenarioDiagnostics;
+    return {
+      generatedAt: Date.now(),
+      windowDays: 21,
+      diagnosticsByDeviceId: {},
+    };
+  };
 
   // Build a candidate payload that visibly reflects the requested model
   // settings: scale plannedKWh proportionally to the new daily budget so the
@@ -950,9 +992,9 @@
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),
-      deferredObjectiveActivePlans: buildSampleActivePlans(),
+      deferredObjectiveActivePlans: resolveActivePlansPayload(),
       devices: settings.target_devices_snapshot,
-      plan: settings.plan_snapshot,
+      plan: buildPlanPayload(),
       power: buildPowerPayload(),
       prices: buildPricesPayload(),
     }),
@@ -960,12 +1002,24 @@
       devices: settings.target_devices_snapshot,
     }),
     'GET /ui_plan': () => ({
-      plan: settings.plan_snapshot,
+      plan: buildPlanPayload(),
     }),
     'GET /ui_power': () => buildPowerPayload(),
     'GET /ui_prices': () => buildPricesPayload(),
+    'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
+    'GET /ui_deferred_objective_history': () => resolveDeferredObjectiveHistoryPayload(),
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
+    'POST /ui_refresh_devices': () => ({
+      devices: settings.target_devices_snapshot,
+    }),
+    'POST /ui_refresh_prices': () => buildPricesPayload(),
+    'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),
+    'POST /ui_recompute_daily_budget': () => resolveDailyBudgetPayload(),
+    'POST /ui_reset_power_stats': () => ({
+      power: buildPowerPayload(),
+      dailyBudget: resolveDailyBudgetPayload(),
+    }),
     'POST /ui_preview_daily_budget_model': (body) => {
       const activePayload = resolveDailyBudgetPayload();
       const candidateSettings = {
@@ -997,6 +1051,300 @@
       return resolveDailyBudgetPayload();
     },
   };
+
+  // ----------------------------------------------------------------------
+  // Browser audit scenarios.
+  //
+  // Each scenario is a factory returning a "patch" object that the resolvers
+  // above consult at the Homey SDK boundary. Scenarios MUST mirror the names
+  // and intent of `AUDIT_SCENARIO_NAMES` /
+  // `packages/settings-ui/test/helpers/auditScenarios.ts`. The unit test
+  // `auditScenarios.test.ts` enforces parity — if you add a scenario here
+  // without adding it there (or vice-versa) the parity test fails.
+  //
+  // Why duplicate? The browser stub is plain JS served verbatim by the static
+  // server; importing TS at runtime would require a bundler step on the
+  // fixture path. The parity test is the lower-cost way to keep them aligned.
+  // ----------------------------------------------------------------------
+  const HOUR_MS = 3600 * 1000;
+
+  const buildScenarioOverBudgetDailyBudget = () => {
+    const nowMs = Date.now();
+    const dayStartMs = Date.UTC(
+      new Date(nowMs).getUTCFullYear(),
+      new Date(nowMs).getUTCMonth(),
+      new Date(nowMs).getUTCDate(),
+      0, 0, 0,
+    );
+    const perBucketKWh = 0.5;
+    const actualMultiplier = 1.8;
+    const dailyBudgetKWh = 12;
+    const startUtc = [];
+    const startLocalLabels = [];
+    const plannedKWh = [];
+    const actualKWh = [];
+    const allowedCumKWh = [];
+    const price = [];
+    let cum = 0;
+    const currentBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / HOUR_MS)));
+    for (let i = 0; i < 24; i += 1) {
+      startUtc.push(new Date(dayStartMs + i * HOUR_MS).toISOString());
+      startLocalLabels.push(String(i).padStart(2, '0'));
+      plannedKWh.push(perBucketKWh);
+      actualKWh.push(Number((perBucketKWh * actualMultiplier).toFixed(3)));
+      cum += perBucketKWh;
+      allowedCumKWh.push(Number(cum.toFixed(3)));
+      price.push(Number((80 + 35 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2)).toFixed(1)));
+    }
+    const usedNowKWh = actualKWh.slice(0, currentBucketIndex + 1).reduce((sum, v) => sum + v, 0);
+    const allowedNowKWh = allowedCumKWh[currentBucketIndex] ?? 0;
+    const remainingKWh = dailyBudgetKWh - usedNowKWh;
+    const dateKey = dateKeyUtc(dayStartMs);
+    return {
+      days: {
+        [dateKey]: {
+          dateKey,
+          timeZone: 'UTC',
+          nowUtc: new Date(nowMs).toISOString(),
+          dayStartUtc: new Date(dayStartMs).toISOString(),
+          currentBucketIndex,
+          budget: { enabled: true, dailyBudgetKWh, priceShapingEnabled: true },
+          state: {
+            usedNowKWh: Number(usedNowKWh.toFixed(3)),
+            allowedNowKWh: Number(allowedNowKWh.toFixed(3)),
+            remainingKWh: Number(remainingKWh.toFixed(3)),
+            deviationKWh: Number((usedNowKWh - allowedNowKWh).toFixed(3)),
+            exceeded: remainingKWh < 0,
+            frozen: false,
+            confidence: 0.72,
+            priceShapingActive: true,
+          },
+          buckets: {
+            startUtc,
+            startLocalLabels,
+            plannedWeight: Array.from({ length: 24 }, () => 1),
+            plannedKWh,
+            plannedControlledKWh: plannedKWh.map((v) => Number((v * 0.4).toFixed(3))),
+            plannedUncontrolledKWh: plannedKWh.map((v) => Number((v * 0.6).toFixed(3))),
+            actualKWh,
+            actualControlledKWh: actualKWh.map((v, i) => (i <= currentBucketIndex ? Number((v * 0.4).toFixed(3)) : null)),
+            actualUncontrolledKWh: actualKWh.map((v, i) => (i <= currentBucketIndex ? Number((v * 0.6).toFixed(3)) : null)),
+            allowedCumKWh,
+            price,
+          },
+        },
+      },
+      todayKey: dateKey,
+      tomorrowKey: null,
+      yesterdayKey: null,
+    };
+  };
+
+  const buildScenarioMissingPriceDailyBudget = () => {
+    const overBudget = buildScenarioOverBudgetDailyBudget();
+    const today = overBudget.days[overBudget.todayKey];
+    // Cleaner usage curve (not over-budget) but null prices.
+    const actualKWh = today.buckets.actualKWh.map((_, i) => (i <= today.currentBucketIndex ? Number((0.5 * 0.95).toFixed(3)) : 0));
+    return {
+      ...overBudget,
+      days: {
+        [today.dateKey]: {
+          ...today,
+          state: {
+            ...today.state,
+            usedNowKWh: Number(actualKWh.slice(0, today.currentBucketIndex + 1).reduce((s, v) => s + v, 0).toFixed(3)),
+            exceeded: false,
+            priceShapingActive: true,
+          },
+          buckets: {
+            ...today.buckets,
+            actualKWh,
+            actualControlledKWh: actualKWh.map((v, i) => (i <= today.currentBucketIndex ? Number((v * 0.4).toFixed(3)) : null)),
+            actualUncontrolledKWh: actualKWh.map((v, i) => (i <= today.currentBucketIndex ? Number((v * 0.6).toFixed(3)) : null)),
+            price: Array.from({ length: 24 }, () => null),
+          },
+        },
+      },
+    };
+  };
+
+  const buildScenarioPressurePlan = () => ({
+    meta: {
+      totalKw: 8.6,
+      softLimitKw: 8.0,
+      capacitySoftLimitKw: 8.0,
+      hardLimitKw: 8.0,
+      softLimitSource: 'capacity',
+      headroomKw: 0,
+      powerKnown: true,
+      hasLivePowerSample: true,
+      capacityShortfall: true,
+      shortfallBudgetThresholdKw: 8.0,
+      shortfallBudgetHeadroomKw: 0,
+      hardCapLimitKw: 8.0,
+      hardCapHeadroomKw: 0,
+      usedKWh: 3.8,
+      budgetKWh: 4.5,
+      hourBudgetKWh: 4.5,
+      minutesRemaining: 14,
+      controlledKw: 6.3,
+      uncontrolledKw: 2.3,
+      hourControlledKWh: 1.6,
+      hourUncontrolledKWh: 0.6,
+    },
+    devices: [
+      {
+        id: 'dev_waterheater',
+        name: 'Water Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        priority: 2,
+        controllable: true,
+        expectedPowerKw: 2.0,
+        measuredPowerKw: 2.1,
+        reason: { code: 'capacity', detail: 'capacity shortfall' },
+        shedAction: 'turn_off',
+      },
+      {
+        id: 'dev_evcharger',
+        name: 'Generic EV Charger',
+        currentState: 'on',
+        plannedState: 'shed',
+        priority: 6,
+        controllable: true,
+        expectedPowerKw: 7.2,
+        measuredPowerKw: 6.8,
+        reason: { code: 'capacity', detail: 'capacity shortfall' },
+        shedAction: 'turn_off',
+      },
+    ],
+  });
+
+  const buildScenarioPressurePower = () => ({
+    tracker: null,
+    status: {
+      capacityShortfall: true,
+      shortfallBudgetThresholdKw: 8.0,
+      shortfallBudgetHeadroomKw: 0,
+      hardCapHeadroomKw: 0,
+      headroomKw: 0,
+      powerKnown: true,
+      hasLivePowerSample: true,
+      powerFreshnessState: 'fresh',
+      lastPowerUpdate: Date.now() - 5 * 1000,
+    },
+    heartbeat: Date.now() - 4 * 1000,
+  });
+
+  const buildScenarioDenseDevicePlan = () => {
+    const devices = [];
+    for (let i = 0; i < 12; i += 1) {
+      devices.push({
+        id: `dev_room_${i + 1}`,
+        name: `Room ${i + 1} Thermostat`,
+        currentState: i % 3 === 0 ? 'off' : 'on',
+        plannedState: 'keep',
+        controlModel: 'temperature_target',
+        deviceClass: 'thermostat',
+        currentTarget: 21,
+        plannedTarget: 21,
+        currentTemperature: 19 + (i % 5),
+        priority: 1 + (i % 5),
+        controllable: true,
+        expectedPowerKw: 0.4,
+        measuredPowerKw: i % 3 === 0 ? 0 : 0.32,
+        reason: { code: 'keep', detail: null },
+        shedAction: 'set_temperature',
+        shedTemperature: 15,
+      });
+    }
+    return {
+      meta: {
+        totalKw: 4.7,
+        softLimitKw: 8.0,
+        capacitySoftLimitKw: 8.0,
+        hardLimitKw: 8.0,
+        softLimitSource: 'capacity',
+        headroomKw: 3.3,
+        powerKnown: true,
+        hasLivePowerSample: true,
+        usedKWh: 1.2,
+        budgetKWh: 4.5,
+        hourBudgetKWh: 4.5,
+        minutesRemaining: 33,
+        controlledKw: 2.5,
+        uncontrolledKw: 2.2,
+        hourControlledKWh: 0.6,
+        hourUncontrolledKWh: 0.6,
+      },
+      devices,
+    };
+  };
+
+  const BROWSER_AUDIT_SCENARIOS = {
+    normal: () => ({
+      description: 'Baseline state matching stub defaults.',
+    }),
+    pressure: () => ({
+      description: 'Capacity guard active; soft limit exceeded; shed planned.',
+      plan: buildScenarioPressurePlan(),
+      power: buildScenarioPressurePower(),
+    }),
+    'over-budget': () => ({
+      description: 'Daily budget exhausted; actual far above planned.',
+      settings: {
+        daily_budget_enabled: true,
+        daily_budget_kwh: 12,
+        daily_budget_price_shaping_enabled: true,
+      },
+      dailyBudget: buildScenarioOverBudgetDailyBudget(),
+    }),
+    'missing-price': () => ({
+      description: 'Price feed unavailable; combined/electricity/homey prices all null.',
+      settings: {
+        combined_prices: null,
+        electricity_prices: null,
+        homey_prices_today: null,
+        homey_prices_tomorrow: null,
+        flow_prices_today: null,
+        flow_prices_tomorrow: null,
+      },
+      dailyBudget: buildScenarioMissingPriceDailyBudget(),
+    }),
+    'empty-history': () => ({
+      description: 'No smart-task history yet; active plans empty.',
+      deferredObjectiveActivePlans: { version: 1, plansByDeviceId: {} },
+      deferredObjectiveHistory: { version: 1, entriesByDeviceId: {} },
+    }),
+    'dense-device': () => ({
+      description: 'Twelve controllable thermostats for scroll-density audits.',
+      plan: buildScenarioDenseDevicePlan(),
+    }),
+  };
+
+  const applyAuditScenario = (name) => {
+    if (name === null || name === undefined) {
+      runtimeOverrides.scenarioName = null;
+      runtimeOverrides.scenarioPatch = null;
+      return;
+    }
+    const factory = BROWSER_AUDIT_SCENARIOS[name];
+    if (!factory) {
+      throw new Error(`Unknown audit scenario "${name}". Known: ${Object.keys(BROWSER_AUDIT_SCENARIOS).join(', ')}.`);
+    }
+    const patch = factory();
+    runtimeOverrides.scenarioName = name;
+    runtimeOverrides.scenarioPatch = patch;
+    if (patch.settings && typeof patch.settings === 'object') {
+      Object.assign(settings, patch.settings);
+    }
+  };
+
+  // Apply scenario at boot if requested. Done before listeners are wired so
+  // the first bootstrap fetch sees the scenario shape.
+  if (typeof initialOverrides.scenario === 'string') {
+    applyAuditScenario(initialOverrides.scenario);
+  }
 
   const api = (method, uri, bodyOrCallback, cbMaybe) => {
     let callback = cbMaybe;
@@ -1079,6 +1427,13 @@
         settings[key] = value;
       },
       getSetting: (key) => settings[key],
+      // Audit scenario API. Names mirror `AUDIT_SCENARIO_NAMES` in
+      // `packages/settings-ui/test/helpers/auditScenarios.ts`. See
+      // `notes/browser-stub.md`.
+      listAuditScenarios: () => Object.keys(BROWSER_AUDIT_SCENARIOS),
+      applyAuditScenario: (name) => applyAuditScenario(name),
+      clearAuditScenario: () => applyAuditScenario(null),
+      getActiveAuditScenario: () => runtimeOverrides.scenarioName,
     },
   };
 
