@@ -1,6 +1,5 @@
 import Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
-import { DeviceManager } from '../device/manager';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
 import { PlanBuilder, PlanBuilderDeps } from './planBuilder';
@@ -36,7 +35,7 @@ import type {
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
-  deviceManager: DeviceManager;
+  deviceManager: PlanExecutorDeps['deviceManager'];
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;

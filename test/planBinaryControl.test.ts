@@ -3,12 +3,12 @@ import {
   formatEvSnapshot,
   getBinaryControlPlan,
   getEvRestoreBlockReason,
-  setBinaryControl,
   syncPendingBinaryCommands,
 } from '../lib/plan/planBinaryControl';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
+import { runBinaryControlCycle as setBinaryControl } from './utils/binaryControlTestHelpers';
 
 let logCapture: LoggerCapture;
 
