@@ -1552,15 +1552,14 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
       (markup consolidation for #1 and #3), `settings/style.css` (regen).
 
-- [ ] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
+- [x] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
       Live-walk 2026-05-16 (`/tmp/pels-live-walk/05-settings-advanced-480-1.png`):
       the page header reads "Device diagnostics" but the page contains Debug logging
       categories + Daily-budget tuning + Data management + Device cleanup + Device
-      log. Rename to "Diagnostics & maintenance" or similar so users can predict
-      what they'll find under the entry.
-      Files: `packages/settings-ui/src/ui/views/AdvancedSettings.tsx` (or markup
-      equivalent), `packages/shared-domain/src/...` (copy helper if heading sourced
-      from there).
+      log. Renamed to "Diagnostics & maintenance" so users can predict what
+      they'll find under the entry. Literal H2 lives in
+      `packages/settings-ui/public/index.html:518` (synced to
+      `settings/index.html` via `npm run build:settings`).
 
 - [ ] Settings → Electricity prices: two `<select>` controls render at different
       contrast on the same page. Live-walk 2026-05-16
