@@ -2,6 +2,11 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from './planReasonSemanticsCore.js';
+import {
+  PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_STATUS,
+} from './planStateLabels.js';
 
 type DetailReason = Extract<
   DeviceReason,
@@ -348,15 +353,15 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
     case PLAN_REASON_CODES.keep:
       return reason.detail ? normalizeDetailSentence(reason.detail) : '';
     case PLAN_REASON_CODES.hourlyBudget:
-      return appendUserDetail('Limited — this hour is near the hard cap', reason.detail);
+      return appendUserDetail(PLAN_STATE_HOURLY_BUDGET_STATUS, reason.detail);
     case PLAN_REASON_CODES.dailyBudget:
-      return appendUserDetail("Limited — staying within today's budget", reason.detail);
+      return appendUserDetail(PLAN_STATE_DAILY_BUDGET_STATUS, reason.detail);
     case PLAN_REASON_CODES.sheddingActive:
       return appendUserDetail('Currently limiting devices', reason.detail);
     case PLAN_REASON_CODES.inactive:
       return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
     case PLAN_REASON_CODES.capacity:
-      return appendUserDetail('Limited — staying under the hard cap', reason.detail);
+      return appendUserDetail(PLAN_STATE_HELD_FALLBACK_STATUS, reason.detail);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

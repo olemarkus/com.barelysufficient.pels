@@ -10,4 +10,4 @@ export const SMART_TASK_RESCUE_INVALID_WHEN
 
 export const SMART_TASK_RESCUE_MISSING_DEVICE = 'Device must be provided.';
 
-export const SMART_TASK_RESCUE_NO_TASK = 'That device has no smart task yet — add a smart task first.';
+export const SMART_TASK_RESCUE_NO_TASK = 'Add a smart task for this device first.';

@@ -49,7 +49,7 @@ The "Safe pace now" tick uses a single label regardless of whether the binding c
 ### Chips vs reason lines
 
 Chips must be one or two words: `Limited`, `Resuming`, `Running`.
-Reason lines (below chip or in tooltip) may be a short sentence: `staying within today's budget`.
+Reason lines (below chip or in tooltip) may be a short sentence: `by today's daily budget`.
 Do not put multi-word sentences in chips.
 
 ### Terms that stay internal (do not surface in normal UI)

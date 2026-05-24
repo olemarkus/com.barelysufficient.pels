@@ -1088,7 +1088,7 @@ describe('deadline plan page payload', () => {
     // Shortfall copy names the cause in plain language ("may not reach the
     // target temperature") rather than rendering a raw °C delta; the meta
     // line still carries the Needs/duration magnitude after the sentence.
-    expect(payload.hero.metaLine).toMatch(/may not reach the target temperature/i);
+    expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
     expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
     // The misleading "Short by about 41.9 °C" magnitude must not surface in
     // user copy (TODO 434 in TODO.md).
@@ -1186,10 +1186,10 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish' && chip.tone === 'alert')).toBe(true);
     // No daily-budget message — the cause cannot be budget for a cannot_meet
     // verdict, so the legacy heuristic must not fire.
-    expect(payload.hero.metaLine).not.toMatch(/daily energy budget is already used up/i);
-    expect(payload.hero.metaLine).not.toMatch(/lower the daily budget/i);
+    expect(payload.hero.metaLine).not.toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.metaLine).not.toMatch(/lower it so future days reserve power earlier/i);
     // The shortfall copy is the chosen explanation — pointing at the device.
-    expect(payload.hero.metaLine).toMatch(/may not reach the target/i);
+    expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
     // Recourse stays on the device-side `Adjust device` (Overview tab), not
     // the budget tab. Mirrors the post-v2.9 `time_capacity` route.
     expect(payload.hero.recourse?.targetTab).toBe('overview');
@@ -1269,9 +1269,9 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.chips.some((chip) => chip.text === 'At risk' && chip.tone === 'warn')).toBe(true);
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(false);
     // …but the budget cause and the Open Budget recourse still follow the plan.
-    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
-    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
-    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    expect(payload.hero.metaLine).toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.metaLine).toMatch(/lower it so future days reserve power earlier/i);
+    expect(payload.hero.metaLine).not.toMatch(/not enough time for this target/i);
     expect(payload.hero.recourse?.targetTab).toBe('budget');
     expect(payload.hero.recourse?.label).toBe('Open Budget');
     // Budget branch has no device-settings overlay to open — `deviceId` stays
@@ -1348,9 +1348,9 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
-    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
-    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    expect(payload.hero.metaLine).toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.metaLine).toMatch(/lower it so future days reserve power earlier/i);
+    expect(payload.hero.metaLine).not.toMatch(/not enough time for this target/i);
     expect(payload.hero.recourse?.targetTab).toBe('budget');
     expect(payload.hero.recourse?.label).toBe('Open Budget');
     expect(payload.hero.recourse?.deviceId).toBeUndefined();
@@ -1425,7 +1425,7 @@ describe('deadline plan page payload', () => {
 
     expect(payload.hero.recourse?.targetTab).toBe('overview');
     expect(payload.hero.recourse?.label).toBe('Adjust device');
-    expect(payload.hero.metaLine).not.toMatch(/daily energy budget is already used up/i);
+    expect(payload.hero.metaLine).not.toMatch(/today's daily budget is fully booked/i);
   });
 
   // Headline-qualifier decision (2026-05-23):
@@ -1517,9 +1517,9 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.headline).toBe('Heating from 14:00');
     // Body side: the budget-used-up sentence carries the cause; the
     // device-blaming `may not reach the target` shortfall copy must not fire.
-    expect(payload.hero.metaLine).toMatch(/daily energy budget is already used up/i);
-    expect(payload.hero.metaLine).toMatch(/lower the daily budget/i);
-    expect(payload.hero.metaLine).not.toMatch(/may not reach the target/i);
+    expect(payload.hero.metaLine).toMatch(/today's daily budget is fully booked/i);
+    expect(payload.hero.metaLine).toMatch(/lower it so future days reserve power earlier/i);
+    expect(payload.hero.metaLine).not.toMatch(/not enough time for this target/i);
     // Recourse side: Open Budget, not Adjust device — partial schedule does
     // not change the recourse routing on the budget cause.
     expect(payload.hero.recourse?.targetTab).toBe('budget');
@@ -2946,7 +2946,7 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(true);
-    expect(payload.hero.metaLine).toMatch(/may not reach the target temperature before the deadline/i);
+    expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
     expect(payload.hero.metaLine).not.toMatch(/can't determine why/i);
   });
 
@@ -3588,7 +3588,7 @@ describe('resolveConfidenceChipText', () => {
   });
 });
 
-describe('variance-buffer estimate range (end-to-end through buildObjectivePayload)', () => {
+describe('energy estimate range (expected…planned, end-to-end through buildObjectivePayload)', () => {
   const setup = (options: {
     energyExpectedKWh?: number;
     planStatus?: 'at_risk' | 'cannot_meet' | 'invalid' | 'on_track' | 'satisfied';
@@ -3664,82 +3664,18 @@ describe('variance-buffer estimate range (end-to-end through buildObjectivePaylo
     }));
   };
 
-  it('renders the expected…planned range and the why-note when a buffer is booked', () => {
+  it('renders the expected…planned range when a buffer is booked', () => {
     const payload = setup({ energyExpectedKWh: 8 }); // expected 8, planned (booked) 10
     expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
-    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
   });
 
-  it('collapses to a single figure with no why-note when expected equals planned (or is absent)', () => {
+  it('collapses to a single figure when expected equals planned (or is absent)', () => {
     const collapsed = setup({ energyExpectedKWh: 10 });
     expect(collapsed.hero.metaLine).toContain('10.0 kWh');
     expect(collapsed.hero.metaLine).not.toContain('–');
-    expect(collapsed.hero.varianceNote).toBeNull();
 
     const legacy = setup({}); // pre-buffer plan: no expected figure
     expect(legacy.hero.metaLine).toContain('10.0 kWh');
-    expect(legacy.hero.varianceNote).toBeNull();
-  });
-
-  it('suppresses the safety-margin sentence under a cannot-finish alert hero so it does not contradict the chip + body', () => {
-    // The calm "PELS books the high end of this range to leave a safety
-    // margin" reads as reassurance underneath a red "Cannot finish" chip and
-    // postmortem body — the two signals contradict each other. The chip +
-    // body own the row; the variance-margin sentence is gated out by the
-    // `alert` flag the hero passes through.
-    const payload = setup({ energyExpectedKWh: 8, planStatus: 'cannot_meet' });
-    expect(payload.hero.tone).toBe('alert');
-    expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
-    expect(payload.hero.varianceNote).toBeNull();
-  });
-
-  it('suppresses the safety-margin sentence when the cold-start `Estimating` chip is already shown', () => {
-    // Cold-start chip and variance-margin note both communicate "the range
-    // is wide / we're still learning". Stacking them produces `Charging now`
-    // / `Needs 8.0–10.0 kWh` / safety-margin note / `Estimating` — one
-    // uncertainty hedge too many on first impression. The chip wins; the
-    // sentence is suppressed for the cold-start branch only.
-    const payload = setup({
-      energyExpectedKWh: 8,
-      planStatus: 'at_risk',
-      coldStartProvenance: true,
-    });
-    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating' && chip.tone === 'muted')).toBe(true);
-    expect(payload.hero.varianceNote).toBeNull();
-  });
-
-  it('keeps the safety-margin sentence on a healthy on_track hero with a learned (non-cold-start) rate', () => {
-    // Regression for over-gating: an `on_track` hero past the cold-start
-    // threshold (provenance defaults to the test fixture's 8 accepted
-    // samples — "learned" per `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4`)
-    // must keep the sentence. The chip is suppressed (`on_track` is silent
-    // on confidence per `resolveLiveHeroConfidenceChipText`), so the
-    // sentence is the only place the user reads why the range exists.
-    const payload = setup({ energyExpectedKWh: 8, planStatus: 'on_track' });
-    expect(payload.hero.tone).toBe('good');
-    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating')).toBe(false);
-    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
-  });
-
-  it('keeps the safety-margin sentence on an on_track cold-start hero (no chip rendered there, no double-hedge)', () => {
-    // Cross-gate regression: `on_track` heroes never get the confidence chip
-    // (per `resolveLiveHeroConfidenceChipText` — the steady case carries no
-    // useful signal and a forever-`low` thermal rate would nag), so the
-    // cold-start `coldStartChipShown` gate must NOT fire here, even when
-    // the underlying provenance is cold-start. Without this regression, a
-    // chip-only gate would correctly suppress the sentence on at-risk
-    // cold-start (no double-hedge) but a producer-side bug that flipped the
-    // gate to "learning && bootstrap" rather than "chip shown" would
-    // accidentally suppress on on_track too. The sentence is the only thing
-    // explaining the range here, so it must stay.
-    const payload = setup({
-      energyExpectedKWh: 8,
-      planStatus: 'on_track',
-      coldStartProvenance: true,
-    });
-    expect(payload.hero.tone).toBe('good');
-    expect(payload.hero.chips.some((chip) => chip.text === 'Estimating')).toBe(false);
-    expect(payload.hero.varianceNote).toBe(deadlineLabels('temperature').varianceMarginNote);
   });
 });
 
@@ -4035,7 +3971,6 @@ describe('buildChartOption original-series suppression', () => {
         headlineReason: null,
         subline: '',
         metaLine: '',
-        varianceNote: null,
         costMetaLine: null,
         deliveredSoFarLine: null,
         recourse: null,

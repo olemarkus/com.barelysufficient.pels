@@ -2,6 +2,11 @@ import type { SteppedLoadProfile } from '../../contracts/src/types.js';
 import type { DeviceOverviewSnapshot } from './deviceOverview.js';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
 import type { DeviceReason } from './planReasonSemanticsCore.js';
+import {
+  PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_HOURLY_BUDGET_STATUS,
+} from './planStateLabels.js';
 
 const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`
@@ -256,9 +261,9 @@ const resolveOffStatusLine = (device: SteppedDevice): string | null => {
     const gap = resolveHeadroomGapKw(device.reason);
     return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
   }
-  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return "Limited — staying within today's budget";
-  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return "Limited — this hour is near the hard cap";
-  if (isLimitedReason(device.reason.code)) return 'Limited — staying under the hard cap';
+  if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
+  if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
+  if (isLimitedReason(device.reason.code)) return PLAN_STATE_HELD_FALLBACK_STATUS;
   return null;
 };
 

@@ -7,7 +7,6 @@ import {
   formatDeadlineCostMetaLine,
   formatDeadlineDeliveredSoFarLine,
   formatEnergyEstimateKWh,
-  resolveVarianceMarginNote,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -374,11 +373,6 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const metaLine = params.cannotMeet
     ? `${resolveCannotMeetMeta(params)} ${baseMetaLine}`
     : baseMetaLine;
-  // Cold-start chip and variance-margin note both communicate "the range is
-  // wide / we're still learning"; resolve the chip text first so the
-  // safety-margin sentence can suppress itself when the chip is shown
-  // (`Charging now` / `Needs 8.0–10.0 kWh` / `Estimating` reads cleaner
-  // without a fourth uncertainty line).
   const confidenceChipText = resolveLiveHeroConfidenceChipText({
     confidence: params.confidence,
     planStatus: params.planStatus,
@@ -399,18 +393,6 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     headlineReason: resolveQueuedHeadlineReason(params),
     subline,
     metaLine,
-    varianceNote: resolveVarianceMarginNote({
-      labels: params.labels,
-      energyPlannedKWh: params.energyNeededKWh,
-      energyExpectedKWh: params.energyExpectedKWh,
-      // Suppress under cannot-finish heroes (calm "books the high end" reads
-      // as contradiction under a red chip + postmortem) and when the
-      // cold-start `Estimating` / `Refining` chip is already carrying the
-      // "still learning, range is wide" signal — avoids stacking two
-      // uncertainty lines on the first-impression hero.
-      alert: params.tone === 'alert',
-      coldStartChipShown: confidenceChipText !== null,
-    }),
     costMetaLine: formatDeadlineCostMetaLine({
       plannedTotalCost: params.plannedTotalCost,
       deliveredCost: params.deliveredCostSoFar,

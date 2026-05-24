@@ -446,12 +446,6 @@ export type DeadlineLabels = {
   // expected to appear on revised hours (device_unavailable, measured_deviation)
   // are omitted; callers fall back to null for unknown keys.
   revisionReasonTooltipLine: Partial<Record<DeferredObjectiveActivePlanRevisionReason, string>>;
-  // One-line explanation shown on the detail surface when the booked energy
-  // carries a non-trivial buffer over the expected (mean) figure — explains the
-  // estimate range by stating PELS reserves the high end as a safety margin.
-  // Describes the margin itself (not an active-learning state) so it stays
-  // accurate regardless of how many samples back the rate.
-  varianceMarginNote: string;
 };
 
 // Shared across all objective kinds — revision reasons are recorder-level
@@ -704,20 +698,18 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     },
     // Drops the raw progress-unit delta ("Short by about 41.9 °C") that users
     // misread as a wild temperature anomaly. The underlying shortfall is energy
-    // / time against the plan, not a raw temperature gap; the copy now states
-    // that directly. The hero meta line follows up with the "Needs N kWh · Y
+    // / time against the plan, not a raw temperature gap; the chip + headline
+    // already say the verdict ("Cannot finish"); body states the cause and the
+    // user-side levers. The hero meta line follows with the "Needs N kWh · Y
     // hours left · …" line via `formatMetaLine`, which is the right surface for
-    // a magnitude. Recourse copy ("Try lowering the target or moving the
-    // deadline later") names the two levers that aren't the daily budget; the
-    // budget remedy is handled by the dedicated `cannotMeetDailyBudgetExhausted`
-    // branch above.
+    // magnitude. Recourse copy names the two levers that aren't the daily
+    // budget; the budget remedy is handled by the dedicated
+    // `cannotMeetDailyBudgetExhausted` branch above.
     cannotMeetShortfall: () => (
-      'PELS may not reach the target temperature before the deadline. '
-        + 'Try lowering the target or moving the deadline later.'
+      'Not enough time for this target. Lower the target or move the deadline.'
     ),
-    cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
-      + 'PELS can\'t reserve more for heating before the deadline. Lower the daily budget so future '
-      + 'days reserve available power earlier, or move the deadline to a later day.',
+    cannotMeetDailyBudgetExhausted: 'Today\'s daily budget is fully booked. '
+      + 'Lower it so future days reserve power earlier, or move the deadline.',
     cannotMeetRecourse: CANNOT_MEET_RECOURSE,
     resolveQueuedHeadlineReason,
     completedHero: {
@@ -731,7 +723,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     perUnitRateUnit: 'kWh/°C',
     planInputsRateBootstrapNote: null,
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
-    varianceMarginNote: 'PELS books the high end of this range to leave a safety margin.',
   },
   ev_soc: {
     kindChipLabel: 'EV',
@@ -791,12 +782,10 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     // read it as "the car lost 30 % of charge") in favour of plain-language
     // recourse. The meta line continues to carry the energy/duration magnitude.
     cannotMeetShortfall: () => (
-      'PELS may not have enough time or charging power to reach the target before the deadline. '
-        + 'Try lowering the target or moving the deadline later.'
+      'Not enough time or charging power for this target. Lower the target or move the deadline.'
     ),
-    cannotMeetDailyBudgetExhausted: 'The daily energy budget is already used up for the rest of the day, so '
-      + 'PELS can\'t reserve more for charging before the deadline. Lower the daily budget so future '
-      + 'days reserve available power earlier, or move the deadline to a later day.',
+    cannotMeetDailyBudgetExhausted: 'Today\'s daily budget is fully booked. '
+      + 'Lower it so future days reserve power earlier, or move the deadline.',
     cannotMeetRecourse: CANNOT_MEET_RECOURSE,
     resolveQueuedHeadlineReason,
     completedHero: {
@@ -810,7 +799,6 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     perUnitRateUnit: 'kWh/%',
     planInputsRateBootstrapNote: 'Estimated — refining as PELS observes charging.',
     revisionReasonTooltipLine: REVISION_REASON_TOOLTIP_LINE,
-    varianceMarginNote: 'PELS books the high end of this range to leave a safety margin.',
   },
 };
 
@@ -967,43 +955,6 @@ export const formatEnergyEstimateKWh = (params: {
   const highText = planned.toFixed(1);
   if (lowText === highText || planned <= expected) return `${highText} kWh`;
   return `${lowText}–${highText} kWh`; // en-dash
-};
-
-// Returns the kind-specific "why we book extra time" note when the booked
-// energy carries a non-trivial buffer over the expected figure; null otherwise
-// (steady device / cold-start collapse / legacy plan). Detail surface only.
-//
-// `alert` and `coldStartChipShown` suppress the calm "books the high end"
-// sentence on heroes where it would either contradict or stack with another
-// signal:
-//   - `alert` (cannot-finish heroes): the safety-margin sentence reads as calm
-//     reassurance underneath a red "Cannot finish" chip + body postmortem; the
-//     two signals contradict each other and the calmer line loses. The chip +
-//     body already own that row.
-//   - `coldStartChipShown` (cold-start `Estimating` / `Refining` chip is
-//     rendered): the chip is itself the "we're still learning, range is wide"
-//     signal. Adding the safety-margin sentence on top stacks two pieces of
-//     uncertainty messaging into the same hero (`Charging now` / `Needs
-//     8.0-10.0 kWh` / safety-margin note / `Estimating`) which read as one
-//     hedge too many on first impression. Producers compute the chip-shown
-//     flag at the same spot and pass it in.
-//
-// Healthy `on_track` / `at_risk` / `queued` heroes with a learned (not
-// cold-start) rate keep the note — the user is choosing between range bounds
-// and the sentence answers "why is it a range?" without competition.
-export const resolveVarianceMarginNote = (params: {
-  labels: DeadlineLabels;
-  energyPlannedKWh: number;
-  energyExpectedKWh?: number | null;
-  alert?: boolean;
-  coldStartChipShown?: boolean;
-}): string | null => {
-  if (params.alert === true) return null;
-  if (params.coldStartChipShown === true) return null;
-  if (typeof params.energyExpectedKWh !== 'number') return null;
-  // Guard sub-rounding jitter: only surface when the rounded figures differ.
-  if (params.energyPlannedKWh.toFixed(1) === params.energyExpectedKWh.toFixed(1)) return null;
-  return params.energyPlannedKWh > params.energyExpectedKWh ? params.labels.varianceMarginNote : null;
 };
 
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
