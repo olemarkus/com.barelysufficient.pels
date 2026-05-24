@@ -1492,7 +1492,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `dailyTotals` keys with the Homey timezone (or normalise the UI to
       reparse both sources into one canonical zone-local representation).
       Files: `lib/power/tracker.ts` (`formatDateUtc` -> zone-aware),
-      `packages/settings-ui/src/ui/power.ts` (or carry the dual-key
+      `packages/settings-ui/src/ui/powerStats.ts` (or carry the dual-key
       normalisation here if backend can't change without a migration).
 - [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
       data. `derivedHourlyAverages` in `packages/settings-ui/src/ui/power.ts`

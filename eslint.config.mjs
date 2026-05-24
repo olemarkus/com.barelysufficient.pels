@@ -477,14 +477,6 @@ export default tseslint.config(
     },
   },
   {
-    // The power screen still co-locates usage read-model shaping with chart/day/week rendering for
-    // one UI surface. Target: <=650 while the page remains a single cohesive screen module.
-    files: ['packages/settings-ui/src/ui/power.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 650, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // budgetRedesign hosts payload-to-prop derivation for hero, chart, adjust, confidence,
     // allocation-warning surfaces in one place, plus the price-level chip side-channel added
     // in v2.7.3 (Budget chip recovery after PR9 Overview demotion) and the shared-domain
