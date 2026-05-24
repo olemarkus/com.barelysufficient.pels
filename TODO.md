@@ -422,6 +422,62 @@ release, not v2.7.1 merge-blockers.*
       remaining gap is duration, not instrumentation. Source: data-gated
       follow-up extracted from the v2.9 train P0 closeout 2026-05-23.
 
+*Session P2 deferrals from batch 21 reviews (2026-05-24).*
+
+- [ ] Postmortem copy for `unknown`-with-plan doesn't bridge to the "View
+      details" chart affordance. The fallback sentence "PELS could not
+      determine how this smart task finished." reads coherently when the
+      hero is one-sentence (the `unknown`-no-plan branch). With a plan
+      recorded (now showing the collapsed chart card after PR #1074), the
+      user sees the sentence + the toggle and may wonder "if you don't
+      know, what details?" The expand reveals the plan, which is honest
+      evidence — but the copy doesn't preview it. Consider a copy variant
+      for the `hasRecordedPlan` branch like "PELS made a plan for this
+      smart task but couldn't observe how it finished."
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts:776-778`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Comment about Abandoned + RevisionsCard interaction is stale. The
+      block at `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx:1219-1220`
+      claims "Abandoned entries default collapsed and the card follows
+      the same 'log when asked for' rhythm" — but Abandoned has
+      `quietAbandoned: true` so the toggle never renders,
+      `chartCollapsed` never flips, and `RevisionsCard` is never shown
+      for Abandoned. Pre-existing drift; PR #1074's `unknown`-with-plan
+      is the first case where the described rhythm actually holds.
+      Update the comment to match (e.g. "Unknown-with-plan entries
+      default collapsed; the card opens on demand").
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
+      could disambiguate `chartCollapsedByDefault` vs `quietAbandoned`.
+      The producer-flag summary reads `Unknown=true` but doesn't make
+      explicit that this is the `chartCollapsedByDefault` value;
+      `quietAbandoned` is what actually toggles per `hasRecordedPlan`.
+      The prose at lines 27-32 covers it, but the table-style summary
+      could be misread to suggest unknown ALWAYS gets a collapsed card.
+      Tighten the phrasing in a future docs sweep.
+      Files: `notes/v2-7-2/postmortem-chart-policy.md`.
+      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
+
+- [ ] Rename `resolvePlanGenericReasonText` to a name that describes the
+      actual function (e.g. `resolveStillReportingAfterPauseText` or
+      `resolveReportedLoadAfterPauseText`). Shipped per task spec in
+      PR #1075 but the name doesn't describe what the function does —
+      it only computes the "Still reporting … after pause" sentence,
+      not a generic plan reason. Also: the
+      `(dev.reason as { detail?: unknown } | undefined)?.detail` cast at
+      the call site is preserved verbatim from the pre-extraction code;
+      it's now a published contract between settings-ui and the
+      shared-domain helper, so the weak typing is more visible than
+      before. A typed `DeviceReason` narrowing helper would be the
+      cleaner fix.
+      Files: `packages/shared-domain/src/planReasonFormatting.ts`,
+      `packages/shared-domain/src/planReasonSemantics.ts`,
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+      Source: PR #1075 self-review, 2026-05-24.
+
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
 - [x] `.deadline-list-card:hover` still hardcodes `background:
