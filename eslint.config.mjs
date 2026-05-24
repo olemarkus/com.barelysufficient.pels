@@ -543,10 +543,11 @@ export default tseslint.config(
     // further past the 500-line budget. Target: <=500 once a future PR splits the
     // chart-data resolver (`deferredPlanHistoryChartData.ts`) out from the
     // postmortem/list-shape helpers. Bumped in v2.9.x for the
-    // `met-by-device-cap` postmortem variant + resolver.
+    // `met-by-device-cap` postmortem variant + resolver, then again for the
+    // `unknown`-with-plan postmortem branch (PR #1074 follow-up).
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 610, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 615, skipBlankLines: true, skipComments: true }],
     },
   },
 );

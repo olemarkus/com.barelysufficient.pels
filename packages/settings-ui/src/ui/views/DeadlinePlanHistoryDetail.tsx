@@ -1220,8 +1220,10 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
         * §"Asymmetric treatment of failure"); the card stays hidden until the
         * user opts into the schedule view via the chart toggle. Missed
         * entries default chart-expanded so the card shows automatically.
-        * Abandoned entries default collapsed and the card follows the same
-        * "log when asked for" rhythm. */}
+        * Unknown-with-plan entries default collapsed; the RevisionsCard
+        * opens on demand via the same toggle. Abandoned and Replaced stay
+        * quiet (`quietAbandoned: true`) — no toggle renders, `chartCollapsed`
+        * never flips, so this card never shows for those outcomes. */}
       {revisionRows.length > 0 && !chartCollapsed && <RevisionsCard rows={revisionRows} />}
     </article>
   );
