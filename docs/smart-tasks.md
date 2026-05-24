@@ -112,7 +112,7 @@ That separation is often useful. For example, a room can normally sit at 18 °C 
 
 For many homes, this is the useful combination:
 
-1. Power limiting protects the capacity step.
+1. Power limiting protects the hard cap.
 2. Daily budget shifts whole-home usage toward cheaper hours.
 3. Smart tasks reserve attention for specific devices that must be ready.
 
