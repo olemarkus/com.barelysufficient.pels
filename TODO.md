@@ -980,15 +980,21 @@ were rolled back before they could land.*
       `settings/index.html`, `packages/settings-ui/public/style.css`.
       Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
 
-- [ ] Heatmap `disposePowerWeekChart` inline-style cleanup.
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts:76-81,96`:
-      two call sites mutate the container's inline `height`,
-      `min-height`, `-webkit-tap-highlight-color`. Wrap the container
-      in a `.power-week-chart` class with default sizing tokens
-      (`min-height: var(--pels-chart-min-height, 240px)`) and have
-      dispose remove the style attribute instead.
+- [x] Heatmap `disposePowerWeekChart` inline-style cleanup.
+      Done via `refactor/p2-heatmap-inline-style`: the `#power-list`
+      container now carries `.power-week-chart`, which owns
+      `height`/`min-height`/`-webkit-tap-highlight-color` (240 px
+      literal, matching the existing physical-chart convention shared
+      with `.deadline-horizon-chart`). `powerWeekChartEcharts.ts`'s
+      `ensurePlot`/`disposePowerWeekChart` no longer mutate the
+      container's inline style; `clearPlotInlineStyles` deleted.
+      Tests pin the new contract by asserting the renderer never writes
+      its three former inline-style properties (echarts itself still
+      writes `position: relative` for its own layout, which is fine).
       Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/public/style.css`.
+      `packages/settings-ui/public/style.css`,
+      `packages/settings-ui/public/index.html`,
+      `packages/settings-ui/test/power-ui.test.ts`.
       Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
 
 *Resolved review-finding (not a TODO; logged here so future audits don't
