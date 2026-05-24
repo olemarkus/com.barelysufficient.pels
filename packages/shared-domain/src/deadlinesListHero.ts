@@ -79,7 +79,7 @@ export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
 > = {
   loading: 'Loading your smart tasks…',
   error: 'Smart tasks unavailable',
-  empty: 'Schedule a ready-by deadline',
+  empty: 'Add your first smart task',
 };
 
 // Status ids that escalate the hero's tonal voice. `paused_unplugged` is
