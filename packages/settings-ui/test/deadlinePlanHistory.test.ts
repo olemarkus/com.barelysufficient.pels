@@ -87,33 +87,41 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.textContent).toContain('reconstructed from settings');
   });
 
-  it('renders an observation-gap note when intervals only partially cover the window', () => {
-    // Only 2h of observation in a 6h window — should surface a "not observed" note.
+  it('surfaces the planned-hour coverage line from the helper on the list card', () => {
+    // DOM smoke test only — the helper's branch math (partial coverage, N=0 actionable
+    // case, singularization, no-plan suppression) is pinned in
+    // `test/deferredPlanHistoryObservedCoverage.test.ts`. This test only confirms the
+    // helper's output reaches `.plan-history-card__coverage` in the rendered list card,
+    // using a representative N=0/M=5 missed run because that case is the rewrite's
+    // headline motivation (planner allocated active hours, device never drew power).
     const start = Date.UTC(2026, 4, 6, 0, 0, 0);
     const deadline = Date.UTC(2026, 4, 6, 6, 0, 0);
+    const HOUR_MS = 60 * 60 * 1000;
+    const finalPlan = {
+      hours: [
+        { startsAtMs: start, plannedKWh: 2 },
+        { startsAtMs: start + HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: start + 2 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: start + 3 * HOUR_MS, plannedKWh: 2 },
+        { startsAtMs: start + 4 * HOUR_MS, plannedKWh: 2 },
+      ],
+      energyNeededKWh: 10,
+      planStatus: 'on_track' as const,
+      revisedAtMs: start,
+    };
     const entry = buildEntry({
       startedAtMs: start,
       deadlineAtMs: deadline,
-      observedIntervals: [{ fromMs: start, toMs: start + 2 * 60 * 60 * 1000 }],
+      finalPlan,
+      originalPlan: finalPlan,
+      observedIntervals: [],
+      outcome: 'missed',
+      finalProgressC: 50,
+      metAtMs: null,
     });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
-    expect(mount.textContent).toMatch(/Not observed for 4h/);
-  });
-
-  it('floors sub-hour gaps so a 59m 31s gap renders as "59m", not "1h"', () => {
-    // Regression: previously used Math.round which made a <1h gap render as "1h" while the
-    // caller still classified it as a "Brief gap" — contradictory copy.
-    const start = Date.UTC(2026, 4, 6, 0, 0, 0);
-    const deadline = start + 60 * 60 * 1000; // 1h window
-    // Observe only the first 28s, then nothing — missing window ≈ 59m 31s.
-    const entry = buildEntry({
-      startedAtMs: start,
-      deadlineAtMs: deadline,
-      observedIntervals: [{ fromMs: start, toMs: start + 29_000 }],
-    });
-    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
-    expect(mount.textContent).toMatch(/Brief gap \(59m\)/);
-    expect(mount.textContent).not.toMatch(/1h/);
+    expect(mount.querySelector('.plan-history-card__coverage')?.textContent)
+      .toBe('Observed 0 of 5 planned hours');
   });
 
   it('does not crash when observedIntervals is missing from an entry payload', () => {

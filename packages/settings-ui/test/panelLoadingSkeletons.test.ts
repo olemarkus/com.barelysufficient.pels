@@ -60,7 +60,21 @@ describe('panel loading skeletons (public/index.html)', () => {
       expect(panel?.getAttribute('data-loading')).toBe('true');
     });
 
-    it('mounts a usage-loading-skeleton container as the first usage child so it paints before the hero/cards', () => {
+    it('carries a visually-hidden h2 panel landmark so SR heading nav matches the other panels', () => {
+      // PR #881's hero trim demoted "Energy history" from an `<h2>` to a
+      // `<p class="eyebrow">`, leaving the only remaining `<h2>` on the
+      // panel as the dynamic value display (`-- kWh today`). Other panels
+      // (Overview, Budget, Smart tasks, Settings) all carry a topical
+      // `<h2>` at the panel level; restoring one as a `.visually-hidden`
+      // child keeps the eyebrow as the lone visible label while putting a
+      // stable landmark back into the document outline.
+      const panel = document.querySelector('#usage-panel');
+      const landmark = panel?.querySelector(':scope > h2.visually-hidden');
+      expect(landmark).not.toBeNull();
+      expect(landmark?.textContent?.trim()).toBe('Usage');
+    });
+
+    it('mounts a usage-loading-skeleton container as a direct usage child so it paints before the hero/cards', () => {
       const panel = document.querySelector('#usage-panel');
       const skeleton = panel?.querySelector(':scope > .usage-loading-skeleton');
       expect(skeleton).not.toBeNull();

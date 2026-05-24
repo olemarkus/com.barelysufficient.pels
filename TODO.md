@@ -2466,7 +2466,7 @@ should not be folded into the same PR.
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `eslint.config.mjs` (drop the override line once back under 500).
 
-- [ ] Restore an `<h2>` page heading on the Usage panel.
+- [x] Restore an `<h2>` page heading on the Usage panel.
       PR #881 demoted "Energy history" from `<h2>` to `<p class="eyebrow">`
       as part of the hero double-capsule trim, leaving Usage without a
       heading at the panel level. Other panels (Overview, Budget, Smart
@@ -2476,11 +2476,13 @@ should not be folded into the same PR.
       Source: gemini-code-assist on PR #881 (medium) at
       `packages/settings-ui/public/index.html:178` and
       `settings/index.html:178`.
-      Acceptance: visually-hidden `<h2>` if the design wants the eyebrow
-      to remain the only visible label, OR promote the eyebrow back to a
-      visible `<h2>` styled like an eyebrow.
+      Resolution: added a visually-hidden `<h2>Usage</h2>` as the first
+      direct child of `#usage-panel` so the eyebrow ("Energy history")
+      stays the only visible label while the document outline regains a
+      stable topical landmark (anchor test in
+      `packages/settings-ui/test/panelLoadingSkeletons.test.ts`).
 
-- [ ] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
+- [x] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
       sync at PR-author time.
       PR #881's "Smart tasks eyebrow" change landed in `settings/index.html`
       (the built output) but not in `packages/settings-ui/public/index.html`
@@ -2490,8 +2492,13 @@ should not be folded into the same PR.
       diverged in the PR description).
       Source: gemini-code-assist on PR #881, `settings/index.html` (high).
       Files: both index.html files.
+      Resolution: re-ran `npm run build:settings`; the index.html pair is
+      byte-for-byte after rebuild. Discovered one stale `settings/style.css`
+      copy (the `.plan-inputs__row-value--warn` warn-tone block from commit
+      `99ad7631` had not been re-synced) and re-bundled it as part of the
+      same commit so source and shipped bundle are now in lock-step.
 
-- [ ] Move PR #882's hardcoded user copy into shared-domain helpers.
+- [x] Move PR #882's hardcoded user copy into shared-domain helpers.
       PR #882 introduced two inline strings the PR description acknowledged
       as exceptions (TV-stue temperature placeholder at
       `PlanDeviceCards.tsx:462`; projected-energy text at
@@ -2503,6 +2510,18 @@ should not be folded into the same PR.
       Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
       `packages/settings-ui/src/ui/views/PlanHero.tsx`,
       `packages/shared-domain/src/deviceOverview.ts` (or new helper).
+      Done: (1) the TV-stue "Temperature unavailable" placeholder was
+      already replaced in PR #893 (`refactor(plan): plannedTarget is
+      non-nullable on the temperature path`) — `resolveTemperatureLine`
+      in `packages/shared-domain/src/planTemperatureCardText.ts` now
+      emits `target N° · sensor unavailable` when the sensor reading is
+      missing, and the inline placeholder in `PlanDeviceCards.tsx` is
+      gone. (2) The projected-energy text moved to
+      `formatProjectedEnergySubline` in
+      `packages/shared-domain/src/planHeroSummary.ts`; `PlanHero.tsx`
+      now imports the helper instead of the inline template. Producer
+      owns the `toFixed(2)` formatting per
+      `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
 
@@ -2686,13 +2705,24 @@ should not be folded into the same PR.
       at_risk regression at `deadlinePlan.test.ts:1448` already pins the desired body-copy
       reuse (budget cause sentence + Open Budget recourse on at_risk + budget), and
       removing the fold would invert that intentional design.
-- [ ] Always show observed coverage on smart-task history cards. Today
-      `formatPlanHistoryObservedCoverage` returns nothing when no charging was observed,
-      hiding the case where the planner thought a device was active but it drew no power.
-      Flip to always show "Observed N of M planned hours" — N=0 is the actionable case.
+- [x] Always show observed coverage on smart-task history cards. v2.9.x —
+      `formatPlanHistoryObservedCoverage` was time-based ("Brief gap (Xm)" / "Not observed
+      for Yh") and silently collapsed to null whenever ≥99 % of the [start, deadline]
+      window carried a diagnostic stream, hiding the planner-vs-reality mismatch where the
+      planner allocated hours but the device drew no power. Rewrote the helper to count
+      planned hour buckets (M = `plannedKWh > 0` buckets in finalPlan / originalPlan) and
+      buckets touched by `observedIntervals` (N), emitting `"Observed N of M planned
+      hours"` whenever M > 0 so the N=0-of-M=5 case surfaces as visible signal. Backfill
+      branch and the no-plan/no-active-buckets null branch unchanged. Re-enabled
+      `coverageLine` on the history-detail hero for Succeeded / Missed / unknown-with-plan
+      shapes (still suppressed on quiet abandoned/replaced). Test:
+      `test/deferredPlanHistoryObservedCoverage.test.ts` (`formatPlanHistoryObservedCoverage`
+      → 9 cases, including the canonical "Observed 0 of 5 planned hours" actionable
+      assertion).
       Files: `packages/shared-domain/src/deferredPlanHistory.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
+      `packages/settings-ui/test/deadlinePlanHistory.test.ts`,
+      `test/deferredPlanHistoryObservedCoverage.test.ts`.
 - [ ] Cross-kind copy sharing in `deadlineLabels.ts` — revisit when first kind-specific
       divergence lands. Temperature and EV share byte-identical `cannotMeetShortfall` and
       `cannotMeetFallback` strings (only `cannotMeetDailyBudgetExhausted` differs by the noun).
