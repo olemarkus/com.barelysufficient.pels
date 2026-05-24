@@ -60,14 +60,16 @@ const resolvePalette = (container: HTMLElement): HeatmapPalette => (
   readChartPalette<HeatmapPalette>(container, HEATMAP_PALETTE_VARS)
 );
 
-// Fallback matches the `--radius-xs` token value in `tokens/base.json`. Reading
-// the token via `getComputedStyle` keeps the chart cell radius in lockstep with
-// the legend swatch (`.usage-legend__swatch--unreliable`) without two parallel
-// literals.
+// Fallback matches the `--pels-chart-cell-radius` token value in
+// `tokens/component.json` (currently aliased to `{radius.xs}` = 2 px).
+// Reading the token via `getComputedStyle` keeps the chart cell radius in
+// lockstep with the legend swatch (`.usage-legend__swatch--unreliable`)
+// without two parallel literals.
 const HEATMAP_CELL_RADIUS_FALLBACK = 2;
+const HEATMAP_CELL_RADIUS_VAR = '--pels-chart-cell-radius';
 
 const resolveCellRadius = (container: HTMLElement): number => {
-  const raw = getComputedStyle(container).getPropertyValue('--radius-xs').trim();
+  const raw = getComputedStyle(container).getPropertyValue(HEATMAP_CELL_RADIUS_VAR).trim();
   const parsed = Number.parseFloat(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : HEATMAP_CELL_RADIUS_FALLBACK;
 };

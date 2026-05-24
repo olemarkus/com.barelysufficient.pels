@@ -1395,16 +1395,19 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
       `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
-- [ ] Promote heatmap cell radius `2px` to a token. `settings/style.css`
-      `.usage-legend__swatch--unreliable` uses `border-radius: 2px`, and
-      `powerWeekChartEcharts.ts` carries the same constant as a chart
-      cell radius. No token analog exists today; promote to
-      `--pels-chart-cell-radius` so the legend/cell shape contract is
-      enforced at the token layer rather than two parallel literals.
+- [x] Promote heatmap cell radius `2px` to a token. Added
+      `--pels-chart-cell-radius` (aliased to `{radius.xs}` so the px value
+      stays 2 px) and pointed both callsites at it: the
+      `.usage-legend__swatch--unreliable` rule in `public/style.css`
+      (synced to `settings/style.css`) and the
+      `resolveCellRadius` reader in `powerWeekChartEcharts.ts`. The
+      legend-vs-cell shape contract is now enforced at a single
+      chart-scoped token rather than two parallel `--radius-xs` reads.
       Source: `pels-m3-critic` agent.
-      Files: `settings/tokens.css` (or `tokens/component.json`),
-      `settings/style.css`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`.
+      Files: `tokens/component.json`, `settings/tokens.css` (regenerated),
+      `packages/settings-ui/public/style.css`, `settings/style.css`,
+      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
+      `packages/settings-ui/test/chartCellRadiusToken.test.ts`.
 
 - [ ] Light-canvas tooltip contrast spot-check on Homey light. The
       `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to

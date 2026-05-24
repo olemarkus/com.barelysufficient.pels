@@ -210,6 +210,10 @@
       "heatmap-border": { "value": "{color.surface.1}" },
       "disabled-bar": { "value": "{color.surface.4}" },
       "unreliable-cell": { "value": "{color.surface.5}" },
+      "cell-radius": {
+        "value": "{radius.xs}",
+        "comment": "Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer."
+      },
       "current-border": { "value": "{color.state.info.border}" },
       "grid": { "value": "{color.border.strong}" },
       "muted": { "value": "{color.semantic.text.muted}" },
