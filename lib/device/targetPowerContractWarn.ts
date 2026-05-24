@@ -5,6 +5,9 @@ import {
   assessTargetPowerCapabilityOptions,
   TARGET_POWER_CAPABILITY_ID,
 } from './nativeSteppedLoadWiring';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('device/target-power-warn');
 
 const targetPowerContractLogState = new Map<string, { signature: string; emittedAt: number }>();
 const TARGET_POWER_CONTRACT_LOG_REPEAT_AFTER_MS = 60 * 60 * 1000;
@@ -38,7 +41,7 @@ export function warnIfTargetPowerCapabilityViolatesContract(params: {
     issue: assessment.issue,
     optionSnapshot,
   })) return;
-  logger.structuredLog?.warn({
+  (logger.structuredLog ?? moduleLogger).warn({
     event: 'target_power_contract_violation',
     deviceId: device.id,
     deviceName: device.name,
