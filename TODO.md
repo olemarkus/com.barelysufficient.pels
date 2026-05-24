@@ -380,7 +380,7 @@ release, not v2.7.1 merge-blockers.*
       `gemini-code-assist` medium on PR #1037
       (lib/plan/planBinaryControl.ts:~259), 2026-05-24.
 
-- [ ] **Guardrail `getLogger` against runtime-interpolated module names.** Today
+- [x] **Guardrail `getLogger` against runtime-interpolated module names.** Today
       `getLogger(module)` in `lib/logging/logger.ts` caches one proxy per
       distinct `module` string. Module-scope `const logger = getLogger('plan/x')`
       is safe and bounded; a future caller writing `getLogger(\`device-\${id}\`)`
@@ -388,7 +388,12 @@ release, not v2.7.1 merge-blockers.*
       seen) and emit fragmented bindings. Add either (a) a lint rule requiring
       the argument to be a string literal, or (b) a runtime warn-once if the
       cache exceeds N entries. Source: `pels-runtime-reality` P2 on the
-      `getLogger` foundation chip, 2026-05-24.
+      `getLogger` foundation chip, 2026-05-24. Shipped option (b):
+      `MAX_LOGGER_CACHE_SIZE = 64` (≈68% headroom over the 38 current static
+      callsites) with a module-scoped `cacheGrowthWarningEmitted` flag so a
+      single `logger_cache_growth_exceeded` warn fires the first time the
+      cache outgrows the cap (via `rootLogger.warn` tagged `module:
+      'logging/cache'`).
 
 - [ ] **Extend Slice 2 floor promotion beyond priority 1.** (Demoted from the v2.9 train P0
       closeout.) Slice 2 (PR #983) gates floor promotion on

@@ -63,6 +63,29 @@ const moduleLoggerCache = new Map<string, PinoLogger>();
 const childByRoot = new WeakMap<PinoLogger, Map<string, PinoLogger>>();
 
 /**
+ * Soft cap on distinct `module` strings seen by {@link getLogger}. Today every
+ * production caller passes a string literal, so the cache is bounded by the
+ * static set of callsites (≈38 as of 2026-05). The threshold is set well above
+ * that to leave headroom for new modules and incidental test churn — crossing
+ * it is a strong signal that something is interpolating runtime values (e.g.
+ * `getLogger(`device-${id}`)`) and will grow the cache unboundedly. We only
+ * warn once so the caller sees the issue without flooding the log; the cache
+ * itself is unbounded by design (a hard cap could break call paths that
+ * legitimately reach the threshold during tests).
+ */
+export const MAX_LOGGER_CACHE_SIZE = 64;
+let cacheGrowthWarningEmitted = false;
+
+/**
+ * Test-only: reset the warn-once flag so a single test process can exercise
+ * the threshold-crossing path more than once. Not part of the public runtime
+ * surface — production never re-arms.
+ */
+export const __resetLoggerCacheGuardForTest = (): void => {
+  cacheGrowthWarningEmitted = false;
+};
+
+/**
  * Resolves the live child logger for `module` against the current root.
  * Cached per `(root, module)` pair: pino's `.child()` is non-trivial to
  * re-invoke per log call, and caching also lets accessor writes (e.g.
@@ -124,5 +147,23 @@ export const getLogger = (module: string): PinoLogger => {
     },
   });
   moduleLoggerCache.set(module, proxy);
+
+  // Emit a single warning when the cache outgrows the soft cap. Allocation is
+  // gated behind the size check + the once-flag so the steady-state cost is a
+  // single comparison per new module string.
+  if (!cacheGrowthWarningEmitted && moduleLoggerCache.size > MAX_LOGGER_CACHE_SIZE) {
+    cacheGrowthWarningEmitted = true;
+    rootLogger.warn(
+      {
+        event: 'logger_cache_growth_exceeded',
+        cacheSize: moduleLoggerCache.size,
+        threshold: MAX_LOGGER_CACHE_SIZE,
+        latestModule: module,
+        module: 'logging/cache',
+      },
+      'getLogger module cache exceeded soft cap; a caller is likely interpolating runtime values into the module name',
+    );
+  }
+
   return proxy;
 };
