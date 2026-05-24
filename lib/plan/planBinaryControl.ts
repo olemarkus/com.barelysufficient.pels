@@ -95,7 +95,6 @@ export async function setBinaryControl(params: BinaryControlDeps & {
     logContext,
     actuationMode,
     debugStructured,
-    logDebug,
     name,
     snapshot,
     state,

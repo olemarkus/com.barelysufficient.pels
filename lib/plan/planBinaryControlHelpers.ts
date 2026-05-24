@@ -25,7 +25,6 @@ export function shouldSkipBinaryControl(params: {
   logContext: BinaryControlLogContext;
   actuationMode: BinaryControlActuationMode;
   debugStructured?: StructuredDebugEmitter;
-  logDebug: (...args: unknown[]) => void;
   name: string;
   snapshot?: TargetDeviceSnapshot;
   state: PlanEngineState;
@@ -38,7 +37,6 @@ export function shouldSkipBinaryControl(params: {
     logContext,
     actuationMode,
     debugStructured,
-    logDebug,
     name,
     snapshot,
     state,
@@ -56,7 +54,6 @@ export function shouldSkipBinaryControl(params: {
       hasTargets,
       capabilityId: snapshot?.controlCapabilityId ?? null,
     });
-    logMissingBinaryControlPlan(logDebug, snapshot, name);
     return true;
   }
   if (!controlPlan.canSet) {
@@ -70,10 +67,9 @@ export function shouldSkipBinaryControl(params: {
       logContext,
       actuationMode,
     });
-    logNonSetableBinaryControl(logDebug, controlPlan, snapshot, name);
     return true;
   }
-  if (shouldSkipAlreadyMatched({ deviceManager, controlPlan, deviceId, name, desired, snapshot, logDebug })) {
+  if (shouldSkipAlreadyMatched({ deviceManager, controlPlan, deviceId, desired, snapshot })) {
     debugStructured?.({
       event: 'binary_command_skipped',
       reasonCode: 'already_matched',
@@ -86,7 +82,7 @@ export function shouldSkipBinaryControl(params: {
     });
     return true;
   }
-  if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired, logDebug, name })) {
+  if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired })) {
     debugStructured?.({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
@@ -102,41 +98,18 @@ export function shouldSkipBinaryControl(params: {
   return false;
 }
 
-export function logMissingBinaryControlPlan(
-  logDebug: (...args: unknown[]) => void,
-  snapshot: TargetDeviceSnapshot | undefined,
-  name: string,
-): void {
-  if (snapshot?.deviceClass !== 'evcharger') return;
-  logDebug(`Capacity: cannot control EV ${name}, no binary control plan (${formatEvSnapshot(snapshot)})`);
-}
-
-export function logNonSetableBinaryControl(
-  logDebug: (...args: unknown[]) => void,
-  controlPlan: BinaryControlPlan,
-  snapshot: TargetDeviceSnapshot | undefined,
-  name: string,
-): void {
-  if (!controlPlan.isEv) return;
-  logDebug(`Capacity: cannot control EV ${name}, capability not setable (${formatEvSnapshot(snapshot)})`);
-}
-
 export function shouldSkipAlreadyMatched(params: {
   deviceManager: DeviceManager;
   controlPlan: BinaryControlPlan;
   deviceId: string;
-  name: string;
   desired: boolean;
   snapshot?: TargetDeviceSnapshot;
-  logDebug: (...args: unknown[]) => void;
 }): boolean {
-  const { deviceManager, controlPlan, deviceId, name, desired, snapshot, logDebug } = params;
+  const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
   if (controlPlan.isEv) return false;
   const latestObservedSnapshot = deviceManager.getSnapshot().find((entry) => entry.id === deviceId) ?? snapshot;
   if (typeof latestObservedSnapshot?.currentOn !== 'boolean') return false;
-  if (latestObservedSnapshot.currentOn !== desired) return false;
-  logDebug(`Capacity: skip binary command for ${name}, already ${desired ? 'on' : 'off'} in current snapshot`);
-  return true;
+  return latestObservedSnapshot.currentOn === desired;
 }
 
 export function hasPendingMatchingBinaryCommand(params: {
@@ -144,30 +117,16 @@ export function hasPendingMatchingBinaryCommand(params: {
   deviceId: string;
   controlPlan: BinaryControlPlan;
   desired: boolean;
-  logDebug: (...args: unknown[]) => void;
-  name: string;
 }): boolean {
-  const {
-    state,
-    deviceId,
-    controlPlan,
-    desired,
-    logDebug,
-    name,
-  } = params;
-  const pending = getPendingBinaryCommand(state, deviceId, logDebug);
+  const { state, deviceId, controlPlan, desired } = params;
+  const pending = getPendingBinaryCommand(state, deviceId);
   if (!pending) return false;
-  const isMatchingCommand = pending.capabilityId === controlPlan.capabilityId && pending.desired === desired;
-  if (!isMatchingCommand) return false;
-  const commandType = controlPlan.isEv ? 'EV command' : 'binary command';
-  logDebug(`Capacity: skip ${commandType} for ${name}, ${pending.capabilityId}=${pending.desired} already pending`);
-  return true;
+  return pending.capabilityId === controlPlan.capabilityId && pending.desired === desired;
 }
 
 export function getPendingBinaryCommand(
   state: PlanEngineState,
   deviceId: string,
-  logDebug: (...args: unknown[]) => void,
 ): PlanEngineState['pendingBinaryCommands'][string] | undefined {
   const pendingBinaryCommands = state.pendingBinaryCommands;
   const entry = pendingBinaryCommands[deviceId];
@@ -175,13 +134,6 @@ export function getPendingBinaryCommand(
   if (isPendingBinaryCommandActive({ pending: entry })) {
     return entry;
   }
-  const ageMs = Date.now() - entry.startedMs;
-  logDebug(buildPendingBinaryTimeoutLogMessage({
-    pending: entry,
-    name: deviceId,
-    ageMs,
-    tense: 'clearing',
-  }));
   delete pendingBinaryCommands[deviceId];
   return undefined;
 }

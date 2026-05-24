@@ -201,6 +201,33 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Add `pending_binary_command_cleared` structured event.** After chip
+      4.1c, `getPendingBinaryCommand` (lib/plan/planBinaryControlHelpers.ts)
+      silently deletes a stale pending entry it encounters on-demand. The
+      sister site `syncPendingBinaryCommands` still emits
+      `buildPendingBinaryTimeoutLogMessage` at lib/plan/planBinaryControl.ts:~419,
+      so timeouts remain observable in the per-cycle sync sweep. But
+      `getPendingBinaryCommand` runs on every shed/restore attempt and was
+      the *first* place a stuck pending would surface — losing this site
+      narrows the diagnostic window when a stale pending is cleared between
+      sync sweeps. Add a structured event
+      `pending_binary_command_cleared{reason:'stale_age', ageMs, timeoutMs, capabilityId}`
+      via the topic-gated emitter. Source: `pels-layering-guardian` +
+      `pels-runtime-reality` P2 on chip 4.1c, 2026-05-24.
+
+- [ ] **Carry EV snapshot fields on `binary_command_skipped` for evchargers.**
+      Chip 4.1c removed `logMissingBinaryControlPlan` /
+      `logNonSetableBinaryControl`, which previously printed `formatEvSnapshot()`
+      fields (`currentOn=`, `evState=`, `available=`, `canSet=`, `powerKw=`,
+      `expectedPowerKw=`) for EV chargers specifically. The replacement
+      `binary_command_skipped` event carries `reasonCode` + `capabilityId` +
+      `hasTargets`, but no EV-specific snapshot fields — exactly the data
+      needed to diagnose why EV shedding stalls (canSet flapping,
+      evState=disconnected, powerKw mismatch). Extend the event with an
+      `evSnapshot?: {…}` subobject when `snapshot.deviceClass === 'evcharger'`,
+      mirroring `formatEvSnapshot()`. Source: `pels-runtime-reality` P2 on
+      chip 4.1c, 2026-05-24.
+
 - [ ] **Guardrail `getLogger` against runtime-interpolated module names.** Today
       `getLogger(module)` in `lib/logging/logger.ts` caches one proxy per
       distinct `module` string. Module-scope `const logger = getLogger('plan/x')`
