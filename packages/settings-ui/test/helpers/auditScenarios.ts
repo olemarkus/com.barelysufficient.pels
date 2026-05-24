@@ -109,6 +109,15 @@ const startOfUtcDayMs = (ms: number): number => {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0);
 };
 
+type BuildDayOptions = {
+  /** Override the time-dependent `currentBucketIndex` so the scenario's
+   * `exceeded`/`usedNowKWh` state is stable regardless of when the test runs.
+   * Without this, an `over-budget` scenario in a 02:00 UTC CI run would show
+   * `exceeded: false` because the cumulative actual hasn't crossed the
+   * budget yet — defeating the scenario's intent. */
+  pinCurrentBucketIndex?: number;
+};
+
 const buildDay = (
   dayStartMs: number,
   nowMs: number,
@@ -116,6 +125,7 @@ const buildDay = (
   actualMultiplier: number,
   dailyBudgetKWh: number,
   pricesPerHour: Array<number | null>,
+  options: BuildDayOptions = {},
 ): DailyBudgetDayPayload => {
   const startUtc: string[] = [];
   const startLocalLabels: string[] = [];
@@ -128,7 +138,10 @@ const buildDay = (
   const actualUncontrolledKWh: Array<number | null> = [];
   const allowedCumKWh: number[] = [];
   let cum = 0;
-  const currentBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / HOUR_MS)));
+  const wallClockBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / HOUR_MS)));
+  const currentBucketIndex = typeof options.pinCurrentBucketIndex === 'number'
+    ? Math.max(0, Math.min(23, options.pinCurrentBucketIndex))
+    : wallClockBucketIndex;
   for (let i = 0; i < 24; i += 1) {
     const t = dayStartMs + i * HOUR_MS;
     startUtc.push(new Date(t).toISOString());
@@ -192,8 +205,17 @@ const buildSinglePayload = (
   actualMultiplier: number,
   dailyBudgetKWh: number,
   pricesPerHour: Array<number | null>,
+  options: BuildDayOptions = {},
 ): DailyBudgetUiPayload => {
-  const day = buildDay(dayStartMs, nowMs, perBucketKWh, actualMultiplier, dailyBudgetKWh, pricesPerHour);
+  const day = buildDay(
+    dayStartMs,
+    nowMs,
+    perBucketKWh,
+    actualMultiplier,
+    dailyBudgetKWh,
+    pricesPerHour,
+    options,
+  );
   return {
     days: { [day.dateKey]: day },
     todayKey: day.dateKey,
@@ -260,9 +282,13 @@ const buildPressurePlanSnapshot = (): SettingsUiPlanSnapshot => {
 const buildOverBudgetDailyBudget = (): DailyBudgetUiPayload => {
   const nowMs = Date.now();
   const dayStartMs = startOfUtcDayMs(nowMs);
-  // Plan 0.5 kWh/h × 24 = 12 kWh budget, but actual is 1.8× planned → exceeded.
+  // Plan 0.5 kWh/h × 24 = 12 kWh budget, actual 1.8× planned. Pin the
+  // current-bucket index to 18 so the cumulative actual (~16.2 kWh) is
+  // guaranteed above the 12 kWh budget regardless of when the audit runs —
+  // without pinning, a 02:00 UTC run reports `exceeded: false` and the
+  // chip wouldn't render, defeating the scenario's intent.
   const prices = Array.from({ length: 24 }, (_, i) => 80 + 35 * Math.sin((i / 24) * Math.PI * 2 - Math.PI / 2));
-  return buildSinglePayload(dayStartMs, nowMs, 0.5, 1.8, 12, prices);
+  return buildSinglePayload(dayStartMs, nowMs, 0.5, 1.8, 12, prices, { pinCurrentBucketIndex: 18 });
 };
 
 const buildMissingPriceDailyBudget = (): DailyBudgetUiPayload => {
