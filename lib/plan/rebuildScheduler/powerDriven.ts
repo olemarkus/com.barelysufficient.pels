@@ -1,16 +1,16 @@
-import type CapacityGuard from '../power/capacityGuard';
-import { addPerfDuration, incPerfCounter, incPerfCounters } from '../utils/perfCounters';
-import { PlanRebuildScheduler, type RebuildIntent } from './planRebuildScheduler';
+import type CapacityGuard from '../../power/capacityGuard';
+import { addPerfDuration, incPerfCounter, incPerfCounters } from '../../utils/perfCounters';
+import { PlanRebuildScheduler, type RebuildIntent } from './scheduler';
 import {
   clearShortfallSuppressionInvalidation,
   resetShortfallSuppressionInvalidationWhenRecovered,
   shouldSkipUnrecoverableShortfallRebuild,
-} from './appPowerRebuildShortfallSuppression';
+} from './shortfallSuppression';
 import {
   resolvePendingOrInFlight,
   resolvePendingPowerW,
   resolvePendingSoftLimitKw,
-} from './appPowerRebuildStateHelpers';
+} from './stateHelpers';
 import {
   isFutureMs,
   isTightNoopOutcome,
@@ -27,7 +27,7 @@ import {
   type HardCapBreach,
   type RebuildDecision,
   type RebuildOutcome,
-} from './appPowerRebuildPolicy';
+} from './policy';
 
 export type PowerSampleRebuildState = {
   lastMs: number;

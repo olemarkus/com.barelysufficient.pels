@@ -1,4 +1,4 @@
-import type CapacityGuard from '../power/capacityGuard';
+import type CapacityGuard from '../../power/capacityGuard';
 
 export type RebuildDecisionState = {
   lastMs: number;

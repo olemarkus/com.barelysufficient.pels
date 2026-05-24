@@ -4,7 +4,7 @@ export {
   type PowerSampleRebuildState,
   schedulePlanRebuildFromPowerSample,
   schedulePlanRebuildFromSignal,
-} from './appPowerRebuildScheduler';
+} from '../plan/rebuildScheduler/powerDriven';
 export {
   persistPowerTrackerStateForApp,
   type PowerTrackerPersistReason,
