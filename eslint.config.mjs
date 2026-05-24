@@ -446,11 +446,14 @@ export default tseslint.config(
     },
   },
   {
-    // PriceService still coordinates spot/grid refresh, storage, and combined-price publication
-    // across the Homey/runtime boundary. Target: <=560 while that orchestration remains local.
+    // PriceService coordinates spot/grid refresh, storage, and combined-price publication
+    // across the Homey/runtime boundary; the Norgespris usage helpers were extracted into
+    // `priceServiceNorgespris.ts`, leaving the orchestrator at 509 effective LOC. Target:
+    // <=500 once the price-info formatters (`formatFlowPriceInfo`, `formatNorwayPriceInfo`)
+    // move into a sibling module too.
     files: ['lib/price/priceService.ts'],
     rules: {
-      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
     },
   },
   {

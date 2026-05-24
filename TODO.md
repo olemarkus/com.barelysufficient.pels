@@ -2605,6 +2605,16 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
+- [ ] Drop the remaining `lib/price/priceService.ts` max-lines override.
+      After the Norgespris usage helpers (`getCurrentMonthUsageKwh`,
+      `getHourlyUsageEstimateKwh`) moved to `lib/price/priceServiceNorgespris.ts`,
+      the orchestrator class sits at 509 effective LOC — 9 over the 500-line
+      default. Extracting the two price-info formatters
+      (`formatFlowPriceInfo`, `formatNorwayPriceInfo`) to a sibling would
+      push it under the default and let the per-file `max-lines: 510`
+      override go away.
+      Files: `lib/price/priceService.ts`, `eslint.config.mjs`.
+
 - [ ] Clean up low-severity v2.9 review-note drift. The implementation is
       correct, but contributor notes point at stale files or examples:
       `notes/smart-task-flow-cards/README.md` still names deleted
