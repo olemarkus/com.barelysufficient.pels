@@ -767,7 +767,7 @@ block merge.*
       `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
       `packages/contracts/src/objectiveProfileTypes.ts`,
       `lib/objectives/profiles.ts`.
-- [ ] Log parity / doc drift. The structured-log field `energyConfidence`
+- [x] Log parity / doc drift. The structured-log field `energyConfidence`
       (`objective_profile_sample_recorded`) now silently shifts semantics
       (band-aware when bands exist), so old/new log dumps are no longer
       directly comparable for the same device after bands fit. Add a sibling
@@ -776,6 +776,14 @@ block merge.*
       `packages/shared-domain/src/deadlineLabels.ts:1126` describing
       `provenance.confidence` as the "legacy raw-CV stat" — update to reflect
       band-aware semantics.
+      Done (PR pending) — added `globalEnergyConfidence` sibling field on
+      `objective_profile_sample_recorded` (recomputes raw-CV via
+      `resolveProfileConfidence({sampleCount, mean, m2})` on the post-update
+      `kwhPerUnit` stat, before `applyBandedConfidence` overrides
+      `kwhPerUnit.confidence`). Rephrased the `provenance.confidence` comment in
+      `deadlineLabels.ts` and the matching contract comment in
+      `deferredObjectiveActivePlans.ts` to "band-aware when bands have fit,
+      falls back to raw-CV otherwise."
 
 *v2.8.0 → origin/main release-review findings (2026-05-22). From the
 five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*

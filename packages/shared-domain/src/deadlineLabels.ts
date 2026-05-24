@@ -1132,9 +1132,12 @@ export const resolveMissedHistoryRecourse = (params: {
 //   1. `provenance.displayConfidence` — band-aware aggregate the recorder
 //      writes today. Drives `Estimating` / `Refining` honestly because it
 //      reflects the bands actually integrated, not raw per-sample CV.
-//   2. `provenance.confidence` — legacy raw-CV stat. Kept on the provenance
-//      for log/diagnostic parity; covers plans persisted after provenance
-//      shipped but before `displayConfidence` shipped.
+//   2. `provenance.confidence` — band-aware once bands have fit (it mirrors
+//      the live `kwhPerUnit.confidence`, which Step 2 of the Cause-#1 fix
+//      re-resolves against the pooled within-band residual), falls back to
+//      raw-CV when no bands exist. Kept on the provenance for log/diagnostic
+//      parity; covers plans persisted after provenance shipped but before
+//      `displayConfidence` shipped.
 //   3. Live profile's `kwhPerUnit.confidence` — final fallback for plans
 //      persisted before provenance existed at all. Drainable population.
 //   4. `null` — no signal; the chip suppresses.

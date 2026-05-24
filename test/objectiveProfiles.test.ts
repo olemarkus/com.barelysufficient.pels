@@ -4,6 +4,7 @@ import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/objectives/profiles';
+import { resolveProfileConfidence } from '../lib/objectives/stats';
 import type { DeviceObjectiveProfile } from '../lib/objectives/types';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -116,6 +117,54 @@ describe('objective profiles', () => {
     const sortedBands = [...profile!.bands!].sort((a, b) => a.lowerInclusive - b.lowerInclusive);
     expect(sortedBands[0].mean).toBeLessThan(2);
     expect(sortedBands[sortedBands.length - 1].mean).toBeGreaterThan(2);
+  });
+
+  it('emits both energyConfidence and globalEnergyConfidence, and the raw-CV value is unchanged by band-fit', () => {
+    // Cause-#1 step-2 cutover: `energyConfidence` is band-aware once bands have
+    // fit, while `globalEnergyConfidence` always reports the raw-CV global stat
+    // so old/new log dumps stay comparable. Run a two-step multi-step heater
+    // with deliberately split kWh/°C (1 kWh/°C on the cheap step, 3 kWh/°C on
+    // the expensive step). Before bands fit the two fields agree; after bands
+    // fit `energyConfidence` may climb while `globalEnergyConfidence` stays
+    // pinned to the raw-CV verdict.
+    const debugStructured = vi.fn();
+    let profile: DeviceObjectiveProfile | undefined;
+    for (let index = 0; index < 20; index += 1) {
+      const isCheap = index < 10;
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        sample: {
+          observedAtMs: startMs + index * hourMs,
+          value: 30 + index,
+          unit: 'degree_c',
+          crediblePowerW: isCheap ? 1000 : 3000,
+          powerSource: 'measured',
+        },
+        debugStructured,
+      });
+    }
+    expect(profile?.bands?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // Every accepted sample carries both fields, never `undefined`.
+    const recordedPayloads = debugStructured.mock.calls
+      .map(([payload]) => payload as Record<string, unknown>)
+      .filter((payload) => payload.event === 'objective_profile_sample_recorded');
+    expect(recordedPayloads.length).toBeGreaterThanOrEqual(10);
+    for (const payload of recordedPayloads) {
+      expect(payload).toHaveProperty('energyConfidence');
+      expect(payload).toHaveProperty('globalEnergyConfidence');
+    }
+    // Path-independence: `globalEnergyConfidence` is recomputed from
+    // `{sampleCount, mean, m2}` on the live `kwhPerUnit` stat and must not be
+    // perturbed by whether bands have been fit on the same sample stream.
+    const lastPayload = recordedPayloads.at(-1);
+    const kwhPerUnit = profile?.kwhPerUnit;
+    expect(kwhPerUnit).toBeDefined();
+    const expected = resolveProfileConfidence({
+      sampleCount: kwhPerUnit!.sampleCount,
+      mean: kwhPerUnit!.mean,
+      m2: kwhPerUnit!.m2,
+    });
+    expect(lastPayload?.globalEnergyConfidence).toBe(expected);
   });
 
   it('does not update energy conversion when credible energy evidence is missing', () => {
