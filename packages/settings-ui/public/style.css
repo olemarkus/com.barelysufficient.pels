@@ -5586,7 +5586,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin: 0;
   min-width: 0;
   text-align: right;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   font-variant-numeric: tabular-nums;
 }
 
@@ -6371,7 +6371,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin: 0;
   color: var(--text);
   min-width: 0;
-  overflow-wrap: anywhere;
+  /* `break-word` (not `anywhere`) so the browser prefers word-boundary
+     wraps and only splits mid-word as a last resort. The extra-permissions
+     row's worst-case payload ("May go over daily budget if at risk · May
+     limit lower-priority devices if at risk") used to split hyphenated
+     compounds like "lower-pri | ority" at 320 px under `anywhere`; with
+     `break-word` it wraps at the spaces / separator dot instead. */
+  overflow-wrap: break-word;
   font-variant-numeric: tabular-nums;
 }
 

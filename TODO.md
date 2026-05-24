@@ -557,7 +557,7 @@ release, not v2.7.1 merge-blockers.*
       `lib/plan/deferredObjectives/replanReason.ts`.
       Source: `pels-runtime-reality`, PR #998 follow-up, 2026-05-23.
 
-- [ ] Smart-task extra-permissions row wraps mid-word at 320 px under
+- [x] Smart-task extra-permissions row wraps mid-word at 320 px under
       worst-case payload. `.deadline-list-card__when-row dd` uses
       `overflow-wrap: anywhere`, so the longest composed value (both
       permissions granted, `at_risk` mode) can split words like
@@ -567,8 +567,14 @@ release, not v2.7.1 merge-blockers.*
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
       Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
+      Fixed in `fix/p2-ux-micro-bundle`: swapped `overflow-wrap: anywhere`
+      → `overflow-wrap: break-word` on `.deadline-list-card__when-row dd`
+      (list page) and `.plan-inputs__row-value` (detail page, same
+      `extraPermissionsValue` payload) so the browser prefers word-boundary
+      breaks (spaces / `·` separator) and only splits mid-word as a last
+      resort. Detail-page parity added inline after `pels-ux-fit` P1 flag.
 
-- [ ] Smart-task detail pending branch renders `<PendingHero />` +
+- [x] Smart-task detail pending branch renders `<PendingHero />` +
       `<PriorRunsHistory />` as a `<>` fragment without an outer
       `pels-surface-card`, while sibling states (`loading`, `error`,
       `completed`, `history-missing`) all wrap their content in a card.
@@ -578,6 +584,13 @@ release, not v2.7.1 merge-blockers.*
       explicitly document why pending is the odd one out.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
       Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
+      Documented in `fix/p2-ux-micro-bundle` (no code change): the pending
+      branch mirrors the `ready` branch (`.pels-hero` + sibling cards as a
+      fragment). `.pels-hero` is itself a card-shaped surface (border,
+      radius, surface tier) and `PriorRunsHistory` rows own their own
+      `.pels-surface-card` stack — wrapping would double-card the hero and
+      nest history rows inside an extra container. Added an explanatory
+      comment above the fragment in `DeadlinePlanRoot`.
 
 - [x] Finish the Budget hero copy-locality pass alongside
       `dailyBudgetHeroStrings.ts`. The v2.9 Rule-4 cleanup pulled the
