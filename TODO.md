@@ -1904,12 +1904,22 @@ consolidation + a11y polish (8 P2)`.*
       lines 511, 538, 547, 563, 577); only the regression-test docstring was
       updated to match the new wording.
       Files: `flowCards/deadlineObjectiveCards.ts`, `test/deadlineObjectiveCards.test.ts`.
-- [ ] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
+- [x] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
       uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
       plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
       for no-progress samples, duplicate samples, and SoC rises below the minimum-delta threshold.
-      Files: EV learning store / sample acceptance code under
-      `lib/plan/deferredObjectives/**` or `lib/core/**`, new EV learning tests under `test/`.
+      Shipped `test/evKwhPerUnitLearning.test.ts` (2026-05-24) with six cases tied to the real
+      production constants (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT`, `OBJECTIVE_PROFILE_MIN_INTERVAL_MS`,
+      and a local mirror of the unexported `MIN_SOC_RISE_PERCENT` from
+      `lib/objectives/profiles.ts`):
+        - "uses BOOTSTRAP_EV_SOC_KWH_PER_PERCENT when no profile has been learned yet"
+        - "records a kWhPerUnit sample equal to delivered energy / SoC delta"
+        - "switches `resolveProfileEnergy` from bootstrap to learned after the first accepted
+          sample"
+        - "rejects a no-progress SoC sample with `rise_too_small` (zero delta, non-negative)"
+        - "rejects a duplicate-timestamp SoC sample with `non_monotonic_time`"
+        - "rejects an SoC rise below MIN_SOC_RISE_PERCENT with `rise_too_small`"
+      Files: `test/evKwhPerUnitLearning.test.ts`.
 - [x] Hide duplicate responsive tab controls from the accessibility tree. Audit (2026-05-24)
       found a single `md-tabs#shell-nav` surface in `packages/settings-ui/public/index.html` and
       no dynamically rendered second nav; a CDP `Accessibility.getFullAXTree` snapshot in both
