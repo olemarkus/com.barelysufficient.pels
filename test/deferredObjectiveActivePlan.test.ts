@@ -777,6 +777,52 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.initialEstimatedDurationText).toBe('6h');
   });
 
+  it('omits snapshot keys (not explicit undefined) when an objective_changed reset has no planning speed', () => {
+    // The recorder used to set explicit `undefined` on the snapshot fields so
+    // an `objective_changed` reset could drop them through `JSON.stringify`.
+    // The in-memory shape exposed explicit `undefined` keys that violate
+    // `exactOptionalPropertyTypes`-style contracts. The conditional-spread fix
+    // must leave the keys off the in-memory object entirely while still
+    // dropping the prior snapshot values from `...current` on the reset path.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      planningSpeedKw: 1.5,
+    })], HOUR_MS);
+    const seeded = recorder.getPlanForTests('dev');
+    expect(seeded?.initialPlanningSpeedKw).toBe(1.5);
+    expect(seeded?.initialEstimatedDurationText).toBe('3h');
+
+    // Target shift drives `objective_changed`; omit `planningSpeedKw` so the
+    // new revision has no usable speed and the reset path falls through to
+    // dropping the snapshot.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      targetTemperatureC: 80,
+      energyNeededKWh: 9,
+      planningSpeedKw: undefined,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 3),
+        makeBucket(3 * HOUR_MS, 3),
+        makeBucket(4 * HOUR_MS, 3),
+      ]),
+    })], 2 * HOUR_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('objective_changed');
+    expect(plan?.initialPlanningSpeedKw).toBeUndefined();
+    expect(plan?.initialEstimatedDurationText).toBeUndefined();
+    // The real assertion: the keys are absent from the in-memory object, not
+    // present-with-undefined. Round-tripping through `JSON.stringify` produces
+    // identical output either way; this guards against contract drift.
+    expect('initialPlanningSpeedKw' in (plan as object)).toBe(false);
+    expect('initialEstimatedDurationText' in (plan as object)).toBe(false);
+  });
+
   it('backfills the plan-level snapshot when a legacy persisted plan hits its first replan', () => {
     // Legacy persisted plans (recorded before this snapshot shipped) carry no
     // `initialPlanningSpeedKw` / `initialEstimatedDurationText`. The next

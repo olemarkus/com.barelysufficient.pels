@@ -1441,7 +1441,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `notes/ui-terminology.md`.
 
-- [ ] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
+- [x] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
       snapshot fields and relies on `JSON.stringify` dropping them. The
       comment is intentional, but the in-memory object exposes explicit
       `undefined` keys that violate `exactOptionalPropertyTypes`-style
@@ -1451,6 +1451,10 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       field is only set when defined.
       Source: `adversarial-review` skill.
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts:584-594`.
+      Resolved: destructure-and-rest drops the snapshot fields from
+      `...current`, then conditional spread re-adds them only when the
+      resolved snapshot has a defined value. Same `JSON.stringify` output;
+      no explicit `undefined` keys on the in-memory plan object.
 
 - [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
       The History detail page is supposed to answer "how much did it cost?" and "by how much
