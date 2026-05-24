@@ -2466,7 +2466,7 @@ should not be folded into the same PR.
       Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
       `eslint.config.mjs` (drop the override line once back under 500).
 
-- [ ] Restore an `<h2>` page heading on the Usage panel.
+- [x] Restore an `<h2>` page heading on the Usage panel.
       PR #881 demoted "Energy history" from `<h2>` to `<p class="eyebrow">`
       as part of the hero double-capsule trim, leaving Usage without a
       heading at the panel level. Other panels (Overview, Budget, Smart
@@ -2476,11 +2476,13 @@ should not be folded into the same PR.
       Source: gemini-code-assist on PR #881 (medium) at
       `packages/settings-ui/public/index.html:178` and
       `settings/index.html:178`.
-      Acceptance: visually-hidden `<h2>` if the design wants the eyebrow
-      to remain the only visible label, OR promote the eyebrow back to a
-      visible `<h2>` styled like an eyebrow.
+      Resolution: added a visually-hidden `<h2>Usage</h2>` as the first
+      direct child of `#usage-panel` so the eyebrow ("Energy history")
+      stays the only visible label while the document outline regains a
+      stable topical landmark (anchor test in
+      `packages/settings-ui/test/panelLoadingSkeletons.test.ts`).
 
-- [ ] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
+- [x] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
       sync at PR-author time.
       PR #881's "Smart tasks eyebrow" change landed in `settings/index.html`
       (the built output) but not in `packages/settings-ui/public/index.html`
@@ -2490,6 +2492,11 @@ should not be folded into the same PR.
       diverged in the PR description).
       Source: gemini-code-assist on PR #881, `settings/index.html` (high).
       Files: both index.html files.
+      Resolution: re-ran `npm run build:settings`; the index.html pair is
+      byte-for-byte after rebuild. Discovered one stale `settings/style.css`
+      copy (the `.plan-inputs__row-value--warn` warn-tone block from commit
+      `99ad7631` had not been re-synced) and re-bundled it as part of the
+      same commit so source and shipped bundle are now in lock-step.
 
 - [x] Move PR #882's hardcoded user copy into shared-domain helpers.
       PR #882 introduced two inline strings the PR description acknowledged
