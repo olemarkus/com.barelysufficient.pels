@@ -775,7 +775,7 @@ release, not v2.7.1 merge-blockers.*
       string changed; the produced subline still reads
       "… left in today's budget" / "… over budget already used".
 
-- [ ] Lift the remaining inlined visible strings in
+- [x] Lift the remaining inlined visible strings in
       `packages/settings-ui/src/ui/budgetRedesign.ts` into
       `packages/shared-domain/src/dailyBudgetHeroStrings.ts` per Rule 4.
       PR #1049 covered the hero headline/disabled/today/chart-subtitle set
@@ -783,10 +783,11 @@ release, not v2.7.1 merge-blockers.*
       cannot be reused by runtime log statements:
       ~~`Close to budget` / `On budget` / `Over by … kWh`
       (lines 190-194)~~, ~~`Using cheaper hours` /
-      `Using cheaper hours (price data unavailable)` (line 262)~~, the
-      five-line `resolveNoPlanLine` block (282-290), `resolveTomorrowLine`
-      strings (293-295), ~~the `Managed … · Background …` split-line template
-      (236)~~, ~~`Hourly plan` / `Progress` chart titles (391)~~, the
+      `Using cheaper hours (price data unavailable)` (line 262)~~, ~~the
+      five-line `resolveNoPlanLine` block (282-290)~~,
+      ~~`resolveTomorrowLine` strings (293-295)~~, ~~the
+      `Managed … · Background …` split-line template (236)~~,
+      ~~`Hourly plan` / `Progress` chart titles (391)~~, the
       ~~`High` / `Medium` / `Low` confidence-band labels (405-407)~~, the
       ~~`Showing tomorrow's plan…` / `Showing today's plan…` comparison
       labels (487, 494)~~, and the ~~`Adjust budget` button label at
@@ -826,10 +827,28 @@ release, not v2.7.1 merge-blockers.*
       `BUDGET_COMPARISON_SHOWING_TODAY`), and the `Adjust budget` button
       label (`BUDGET_ADJUST_BUDGET_BUTTON`). All visible wording preserved
       byte-for-byte.
-      *Remaining for follow-up batches:* `resolveNoPlanLine` block (five
-      sentences covering the budget-enabled vs disabled tomorrow / today
-      / yesterday cases) and the two `resolveTomorrowLine` strings
-      (price-shaping reliable vs fallback).
+      *Third / final wave done (2026-05-25):* `resolveNoPlanLine` block
+      and `resolveTomorrowLine` strings lifted —
+      `Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.`
+      (`BUDGET_NO_PLAN_TOMORROW_WAITING`),
+      `Yesterday history is not available yet.`
+      (`BUDGET_NO_PLAN_YESTERDAY_WAITING`),
+      `PELS is preparing the daily plan. Check again shortly.`
+      (`BUDGET_NO_PLAN_TODAY_PREPARING`),
+      `Enable daily budget to plan tomorrow.`
+      (`BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW`),
+      `Enable daily budget to build a daily plan.`
+      (`BUDGET_NO_PLAN_ENABLE_FOR_TODAY`),
+      `Most planned use is shifted toward cheaper hours.`
+      (`BUDGET_TOMORROW_PRICE_SHAPED`), and
+      `Tomorrow's budget plan is ready.`
+      (`BUDGET_TOMORROW_PLAN_READY`). The router functions themselves
+      also moved: `resolveNoPlanLine(view, budgetEnabled)` and
+      `resolveTomorrowLine(priceShapingActive)` now live in
+      `dailyBudgetHeroStrings.ts`; the consumer in
+      `budgetRedesignResolvers.ts` is a one-line call site (the tomorrow
+      wrapper only narrows the payload to the boolean discriminant the
+      producer expects). Multi-wave lift complete.
 
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at

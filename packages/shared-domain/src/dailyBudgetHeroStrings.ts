@@ -145,6 +145,46 @@ export const BUDGET_COMPARISON_SHOWING_TODAY = 'Showing today’s plan — tomor
 // wording can be referenced from runtime logs without duplicating the literal.
 export const BUDGET_ADJUST_BUDGET_BUTTON = 'Adjust budget';
 
+// No-plan decision lines shown in place of the today/tomorrow/yesterday hero
+// decision sentence when the day payload is missing or the planner has not
+// produced anything yet. Split per (budget-enabled × view) discriminant so the
+// resolver below stays a pure router. The `..._ENABLE_FOR_*` forms surface
+// when the daily-budget feature is off and the user needs to be nudged to
+// enable it.
+export const BUDGET_NO_PLAN_TOMORROW_WAITING
+  = "Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.";
+export const BUDGET_NO_PLAN_YESTERDAY_WAITING = 'Yesterday history is not available yet.';
+export const BUDGET_NO_PLAN_TODAY_PREPARING = 'PELS is preparing the daily plan. Check again shortly.';
+export const BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW = 'Enable daily budget to plan tomorrow.';
+export const BUDGET_NO_PLAN_ENABLE_FOR_TODAY = 'Enable daily budget to build a daily plan.';
+
+// Resolver for the no-plan decision line. The view × budgetEnabled matrix
+// produces five distinct sentences (see constants above); the consumer just
+// passes its discriminants and gets the finished string back so a runtime log
+// can quote the same wording without re-implementing the branch tree.
+export const resolveNoPlanLine = (
+  view: DailyBudgetHeroDayView,
+  budgetEnabled: boolean,
+): string => {
+  if (budgetEnabled && view === 'tomorrow') return BUDGET_NO_PLAN_TOMORROW_WAITING;
+  if (budgetEnabled && view === 'yesterday') return BUDGET_NO_PLAN_YESTERDAY_WAITING;
+  if (budgetEnabled) return BUDGET_NO_PLAN_TODAY_PREPARING;
+  if (view === 'tomorrow') return BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW;
+  return BUDGET_NO_PLAN_ENABLE_FOR_TODAY;
+};
+
+// Tomorrow-view decision line. Two variants depending on whether the planner
+// could shape spend toward cheaper hours: the shaped form names the price
+// signal, the fallback only announces readiness. The resolver below routes on
+// `priceShapingActive` (consumer combines `isPriceReliable(payload)` with
+// `payload.budget.priceShapingEnabled`) so the producer owns the wording and
+// any runtime log can reuse the helper without recomputing the predicate.
+export const BUDGET_TOMORROW_PRICE_SHAPED = 'Most planned use is shifted toward cheaper hours.';
+export const BUDGET_TOMORROW_PLAN_READY = "Tomorrow's budget plan is ready.";
+export const resolveTomorrowLine = (priceShapingActive: boolean): string => (
+  priceShapingActive ? BUDGET_TOMORROW_PRICE_SHAPED : BUDGET_TOMORROW_PLAN_READY
+);
+
 // Chart subtitle for the progress / hourly-plan charts. Mirrors the
 // `resolveDecisionLine` taxonomy but with chart-specific phrasing that drops
 // the time anchor (the chart title already names the day).
