@@ -116,14 +116,13 @@ export function buildInitialPlanDevices(params: {
       : { action: 'turn_off', temperature: null, stepId: null };
     const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
     const active = resolveTemperatureBoostActive({ dev, previousActive });
-    emitTemperatureBoostStateChange({ dev, previousActive, active, debugStructured: deps.debugStructured });
+    emitTemperatureBoostStateChange({ dev, previousActive, active });
     const previousEvBoostActive = state.evBoostActiveByDevice[dev.id] === true;
     const evBoostActive = resolveEvBoostActive({ dev, previousActive: previousEvBoostActive });
     emitEvBoostStateChange({
       dev,
       previousActive: previousEvBoostActive,
       active: evBoostActive,
-      debugStructured: deps.debugStructured,
     });
     setupMs += Date.now() - t0;
     const t1 = Date.now();
