@@ -7,6 +7,7 @@ import {
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
 } from '../../shared-domain/src/planSteppedCardText.ts';
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 
 const NOW_MS = 1_000_000;
@@ -494,7 +495,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Limited by the hard cap');
+      )).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
     });
 
     it('returns shed invariant status with count and max step', () => {

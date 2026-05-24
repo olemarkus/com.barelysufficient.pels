@@ -2,6 +2,7 @@ import {
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
 } from '../../shared-domain/src/planTemperatureCardText.ts';
+import { PLAN_STATE_DAILY_BUDGET_STATUS } from '../../shared-domain/src/planStateLabels.ts';
 
 describe('resolveTemperatureLine', () => {
   it('shows the planned target when the target is stable', () => {
@@ -69,6 +70,6 @@ describe('resolveTemperatureReasonLine', () => {
       currentTemperature: 20.2,
       plannedTarget: 21,
       reason: { code: 'daily_budget', detail: null },
-    })).toBe("Limited by today's daily budget");
+    })).toBe(PLAN_STATE_DAILY_BUDGET_STATUS);
   });
 });
