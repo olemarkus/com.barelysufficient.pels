@@ -219,6 +219,24 @@ export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
+// Error/loading banner copy for the deadline-plan SPA route. Lifted to
+// shared-domain so runtime log breadcrumbs and the UI render identical
+// wording (per `feedback_ui_text_shared_with_logs.md`); the "plan" noun is
+// reserved for the planner layer (`notes/ui-terminology.md § Plan vs deadline`)
+// so each surface here names the user-facing entity ("smart task") instead.
+//
+// `SMART_TASK_BANNER_LOAD_ERROR_PREFIX` is concatenated with a transport-level
+// cause sentence so the user sees both the framing and the underlying failure;
+// the trailing space + colon is part of the constant so callers don't drift on
+// punctuation.
+export const SMART_TASK_BANNER_LOAD_ERROR_PREFIX = 'Smart task data could not be loaded: ';
+export const SMART_TASK_BANNER_UNAVAILABLE_TITLE = 'Smart task unavailable';
+export const SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE = 'Smart task data is not available for this device.';
+export const SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE = 'Smart task record not found';
+export const SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY = 'This past smart task is no longer recorded. '
+  + 'Older entries roll off as new ones are saved. Return to Smart tasks to see what is still available.';
+export const SMART_TASK_LOADING_LABEL = 'Loading smart task…';
+
 export const SMART_TASK_USAGE_RETURN_DEFAULT_HREF = './?page=deadline-plan';
 export const SMART_TASK_USAGE_RETURN_LABEL = SMART_TASK_HISTORY_EYEBROW;
 export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';

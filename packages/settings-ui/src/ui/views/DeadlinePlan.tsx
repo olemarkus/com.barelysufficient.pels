@@ -5,7 +5,11 @@ import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../cont
 import {
   deadlineLabels,
   formatLastSampleValue,
+  SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
+  SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
+  SMART_TASK_BANNER_UNAVAILABLE_TITLE,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
+  SMART_TASK_LOADING_LABEL,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
@@ -1014,8 +1018,8 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   if (loadState.status === 'history-missing') {
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Smart task record not found</h1>
-        <p class="pels-card-supporting">This past smart task is no longer recorded. Older entries roll off as new ones are saved. Return to Smart tasks to see what is still available.</p>
+        <h1 class="plan-card__title">{SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE}</h1>
+        <p class="pels-card-supporting">{SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY}</p>
       </section>
     );
   }
@@ -1031,7 +1035,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
           <span class="pels-skeleton pels-skeleton--hero"></span>
           <span class="pels-skeleton pels-skeleton--card"></span>
         </div>
-        <span class="visually-hidden">Loading smart task…</span>
+        <span class="visually-hidden">{SMART_TASK_LOADING_LABEL}</span>
       </section>
     );
   }
@@ -1039,7 +1043,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     const onRetry = loadState.onRetry;
     return (
       <section class="pels-surface-card budget-redesign-card">
-        <h1 class="plan-card__title">Smart task unavailable</h1>
+        <h1 class="plan-card__title">{SMART_TASK_BANNER_UNAVAILABLE_TITLE}</h1>
         <p class="pels-card-supporting">{loadState.message}</p>
         {onRetry && (
           <MdTextButton class="plan-card__retry" onClick={onRetry}>

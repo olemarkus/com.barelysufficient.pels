@@ -946,7 +946,7 @@ describe('deadline plan page payload', () => {
   });
 
   it('renders the allocated plan even when the device profile is not yet learned', () => {
-    // Reproduces the user-reported "Smart task plan unavailable" after prices
+    // Reproduces the user-reported "Smart task unavailable" after prices
     // arrived: the recorder has written an allocation but
     // powerTracker.objectiveProfiles is empty (no learned kwhPerUnit). The UI
     // must compute energy from the stored allocation, not the absent profile.
