@@ -15,6 +15,7 @@ import type {
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -36,6 +37,8 @@ import {
   seedProgressSamples,
 } from './planHistoryV4Helpers';
 import { randomUUID } from 'node:crypto';
+
+const logger = getLogger('plan/deferred-history');
 // Cap the rolling buffer. One deferred objective produces at most one entry per deadline run
 // (per-day for HH:mm objectives), so 30 entries covers ~one month of history per device for a
 // single-device household and shorter spans for multi-device homes. Bounded JSON size keeps
@@ -1090,9 +1093,13 @@ export class DeferredObjectivePlanHistoryRecorder {
   // `missed`) is deliberate: the met/missed ratio against the same confidence /
   // floor inputs is what quantifies the false-alarm rate.
   private emitFinalizedAttribution(entry: DeferredObjectivePlanHistoryEntry): void {
-    if (!this.deps.debugStructured) return;
     if (entry.discoveredFrom !== 'observation') return;
-    this.deps.debugStructured(buildFinalizedAttributionEvent(entry));
+    const event = buildFinalizedAttributionEvent(entry);
+    if (this.deps.debugStructured) {
+      this.deps.debugStructured(event);
+    } else {
+      logger.debug(event);
+    }
   }
 
   private trimEntries(): void {

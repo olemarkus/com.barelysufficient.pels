@@ -114,6 +114,8 @@ export function resolveBandedProfileConfidence(params: {
   const pooledM2 = bands.reduce((sum, band) => sum + band.m2, 0);
   const pooledVariance = pooledM2 / residualDof;
   const relativeStdDev = Math.sqrt(Math.max(0, pooledVariance)) / referenceMean;
-  if (bandSampleTotal >= 10 && relativeStdDev <= 0.35) return 'high';
+  // Pooled within-band RSD is structurally smaller than per-sample CV; tighter
+  // threshold prevents over-promotion on mildly-different-band profiles.
+  if (bandSampleTotal >= 10 && relativeStdDev <= 0.20) return 'high';
   return relativeStdDev <= 0.75 ? 'medium' : 'low';
 }
