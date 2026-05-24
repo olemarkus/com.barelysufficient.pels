@@ -893,11 +893,22 @@ export type SmartTaskStatusNotificationId =
 // instead of the row staying visually indistinguishable from healthy siblings.
 // Per `feedback_layering_resolution_in_producer.md`, the staleness boolean
 // stays in shared-domain — consumers never re-derive it from the value text.
+//
+// `freshnessOfMs` is set only on the "Latest reading used" row so the view can
+// re-derive both `value` and `tone` on a 60s tick (without it the rendered
+// "Updated 5 min ago" would freeze on the original render's `nowMs` until the
+// next plan refresh — see TODO ~line 1160, v2.8.0 adversarial-review). The
+// producer still emits a pre-formatted `value`/`tone` pair so non-React
+// consumers (runtime breadcrumbs, the producer-side test) keep working
+// unchanged. The view recomputes via `formatLastSampleValue` when this field
+// is present — the tone can flip (`null` → `'warn'`) when a sample crosses
+// the 24 h staleness threshold while the page is open.
 export type KwhPerUnitProvenanceRowTone = 'warn';
 export type KwhPerUnitProvenanceRow = {
   label: string;
   value: string;
   tone: KwhPerUnitProvenanceRowTone | null;
+  freshnessOfMs?: number;
 };
 
 // Confidence text is rendered next to the learned mean. Lowercase to fit the
@@ -933,7 +944,16 @@ const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 // producer resolves the staleness signal once here so the UI consumer never
 // re-derives it from the rendered text (per
 // `feedback_layering_resolution_in_producer.md`).
-const formatLastSampleValue = (params: {
+//
+// Exported so the settings UI can re-derive `{ text, tone }` on its 60s
+// freshness tick (`PlanInputsCard` in `views/DeadlinePlan.tsx`) without
+// re-running the whole row builder. Producer-side
+// `resolveKwhPerUnitProvenanceRows` calls this once to seed `value`/`tone`;
+// the view recomputes via the same helper so the phrasing never drifts
+// between the initial render and the tick — and so the tone can flip from
+// `null` to `'warn'` when a sample crosses the 24 h staleness threshold
+// without a fresh producer pass.
+export const formatLastSampleValue = (params: {
   lastMs: number;
   nowMs: number;
   formatAcceptedAt: (ms: number) => string;
@@ -1219,6 +1239,10 @@ export const resolveKwhPerUnitProvenanceRows = (params: {
       label: 'Latest reading used',
       value: lastSample.text,
       tone: lastSample.tone,
+      // Carrying the raw timestamp lets the React view re-derive `value` and
+      // `tone` every 60s without freezing on the initial `nowMs` for the whole
+      // session. Non-React consumers ignore this field and read `value`/`tone`.
+      freshnessOfMs: provenance.lastAcceptedAtMs,
     });
   }
   return rows;
