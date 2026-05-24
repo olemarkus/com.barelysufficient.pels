@@ -36,7 +36,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
-import type { AppHomeyEnergyHelpers } from './appHomeyEnergyHelpers';
+import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from './appPowerHelpers';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
 import type { TimerRegistry } from './timerRegistry';
@@ -205,7 +205,7 @@ export type AppContext = {
   planEngine?: PlanEngine;
   planService?: PlanService;
   readonly snapshotHelpers: AppSnapshotHelpers;
-  readonly homeyEnergyHelpers: AppHomeyEnergyHelpers;
+  readonly homeyEnergyHelpers: HomeyEnergyPollSource;
   readonly deviceControlHelpers: AppDeviceControlHelpers;
   readonly timers: TimerRegistry;
 };
