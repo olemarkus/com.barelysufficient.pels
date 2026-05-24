@@ -110,6 +110,27 @@ but tight enough that a genuinely-climbing heater (rate-limited charging,
   status line below the temperature card body and a `Not responding`
   warning chip in the header.
 
+### Short-deadline smart-task interaction
+
+The `capped_idle` discriminator requires a full `CAPPED_IDLE_MIN_WINDOW_MS`
+(20 min) of continuous observation before it can fire — both halves of the
+device's duty cycle have to land inside the window, and `hasObservedFullWindow`
+explicitly blocks classification on a half-populated buffer (post-restart or
+post-eligibility-break). A smart-task run with a 1-hour or shorter deadline
+therefore gets at most one classification opportunity: the window opens
+roughly 20 min into the run and the deadline arrives at 60 min, so a device
+whose cycling pattern hasn't established by then (or one whose first 20 min
+contained only one half of the duty cycle) finalises via the existing
+two-state machine and may persist as a real miss even when the device is in
+fact capped. This is graceful degradation — the run never gets *worse* than
+the pre-PR-1018 classification, it just doesn't get the new
+`stalled_device_capped` promotion — but it's worth documenting so future
+debugging of "short-deadline run that should obviously have been a cap-stall"
+doesn't chase a non-bug. Shortening the window for short-deadline runs would
+trade this off against more false positives (a single transient burst can't
+promote to `capped_idle` today precisely because the two-halves requirement
+holds across the full 20 min).
+
 ## Out of scope (Phase 2 candidates)
 
 - Flow trigger cards (`device_unresponsive_started/_cleared`) — possible
