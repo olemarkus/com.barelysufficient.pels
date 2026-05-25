@@ -39,7 +39,9 @@ made the asymmetry the most important finding of the review:
   `Cannot finish`. Hero said `Short by about 29.6 °C`. Chart still
   drew planned green bars in the cheapest remaining hours.
 - **Past tasks (six visible)**:
-  - Sat 16 May 06:00 — Succeeded with `Backup hours` pill
+  - Sat 16 May 06:00 — Succeeded with `Backup hours` pill *(future
+    scope — the pill itself does not ship today; treat this row as the
+    proposed UI shape, not the current one)*
   - Fri 15 May 16:00 — Missed
   - Fri 15 May 06:00 — Missed
   - Thu 14 May 16:00 — Missed
