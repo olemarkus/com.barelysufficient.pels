@@ -3166,7 +3166,7 @@ should not be folded into the same PR.
       Files: `lib/plan/planDevices.ts` (`resolveTemperatureSeed`,
       `resolvePlannedTarget`), settings UI device detail / operating-mode views.
 
-- [ ] Add abandon-grace to the mode-target-missing skip path. Today a single transient
+- [x] Add abandon-grace to the mode-target-missing skip path. Today a single transient
       Homey SDK miss on `getPrimaryTargetCapability(dev.targets)?.value` drops the
       device from the plan for that cycle (and re-runs every plan cycle while the miss
       persists). Per `feedback_homey_sdk_unreliable`, capability reads can transiently
@@ -3174,14 +3174,31 @@ should not be folded into the same PR.
       cycles per device in `PlanEngineState` and only skip after a grace window
       (e.g. 3–5 cycles); within grace, reuse the last successfully resolved target.
       Files: `lib/plan/planDevices.ts`, `lib/plan/planEngineState.ts`.
+      Shipped: `MODE_TARGET_GRACE_CYCLES = 4` (in-memory `modeTargetMissingByDevice`
+      on `PlanEngineState`); within grace the cached prior capability value is
+      reused as a `grace_fallback` seed and no skip event is emitted. See
+      `lib/plan/planModeTargetGuard.ts`.
 
-- [ ] Throttle `missing_mode_target` / `missing_mode_target_and_current_target` events
+- [x] Throttle `missing_mode_target` / `missing_mode_target_and_current_target` events
       per device. The emitter is already gated by the `plan` debug topic (off by
       default), so production volume is bounded — but when users enable the topic,
       a stuck misconfigured device fires every plan cycle (10 s in `homey_energy`
       mode = ~8,640/day). Per-device emit-on-transition + N-minute heartbeat would
       keep the signal useful without flooding the log buffer (RSS headroom is ~30 MB
       per `project_homey_rss_limit`). Files: `lib/plan/planDevices.ts`.
+      Shipped: `MISSING_MODE_TARGET_EMIT_INTERVAL_MS = 15 * 60 * 1000` (per-device
+      emit on transition + 15-minute heartbeat). Same shape as
+      `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` in `lib/app/appSnapshotHelpers.ts`.
+      In-memory only per `feedback_homey_sdk_unreliable`. See
+      `lib/plan/planModeTargetGuard.ts`.
+
+- [ ] **P2 — Mode-target grace cache hygiene** (follow-ups from PR #1159 runtime-reality review):
+  - Bind `cachedTargetValue` to capability ID (`lib/plan/planModeTargetGuard.ts`) so a device re-pair during grace can't reuse the value against a different capability.
+  - Garbage-collect `modeTargetMissingByDevice` entries for removed devices (`lib/plan/planState.ts`) — mirror the prune pattern from `lib/plan/planHeadroomState.ts:49` / `lib/app/appSnapshotHelpers.ts:250`.
+  - Cap `missingCycles` at `MODE_TARGET_GRACE_CYCLES + 1` so it doesn't grow unbounded while a device stays in skip (cosmetic, for log/snapshot stability).
+  - Skip-path 15-min heartbeat lacks a dedicated test (existing test only covers fallback path). Add coverage.
+  - `payload.operatingMode` on heartbeat re-emit reflects mode at re-emit time, not first-emit time. Either document or capture-at-first.
+  - `seed.kind === 'grace_fallback'` adds a third branch consumers could read; tag for `pels-layering-guardian` review (resolution-in-producer smell).
 
 - [ ] Symmetric phantom-shed filter for the shed-side keep-invariant clamp.
       `lib/plan/planDevices.ts:isPhantomSetStepShed` mirrors the
