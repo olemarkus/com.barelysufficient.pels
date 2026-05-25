@@ -54,11 +54,13 @@ below.
 
 ## Active poisoning vector: single-point power over a variable-power interval
 
-`calculateEnergyKwh` bills the **entire baseline→rise interval at the baseline
-sample's single `crediblePowerW`** (`objectiveProfiles.ts:429` —
-`previousSample.crediblePowerW × intervalMs`). That is correct only when power
-was constant across the interval. It is **not** constant for stepped/variable
-devices.
+Historically, `calculateEnergyKwh` billed the **entire baseline→rise interval at
+the baseline sample's single `crediblePowerW`** (`previousSample.crediblePowerW ×
+intervalMs`). That was correct only when power was constant across the interval.
+It was **not** constant for stepped/variable devices. The per-sub-interval billing
+that replaced it now lives in `lib/objectives/energyAccumulator.ts:29-31`
+(`subIntervalEnergyKwh`), composed across the open window by
+`calculateWindowEnergyKwh` (`lib/objectives/energyAccumulator.ts:43-50`).
 
 Evidence (`/tmp/pels` 2026-05-22, the "Connected 300" device): per-interval
 implied power (`energyKwh / intervalHours`) lands on three discrete levels —
