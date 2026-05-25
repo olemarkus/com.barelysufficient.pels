@@ -150,6 +150,30 @@ describe('DeadlinePlanHistory', () => {
     expect(chip?.textContent).toBe('Abandoned');
   });
 
+  // v2.9.x batch 47 — past-list card variant of the muted Overshoot line.
+  // Producer (`formatPlanHistoryOvershootLine`) decides whether to render; the
+  // list card mirrors the threshold treatment from the history-detail hero so
+  // users scanning past tasks see the same outlier signal at both surfaces.
+  // The thresholds (> 5 °C thermal / > 10 % EV) and copy shape ("Overshoot N
+  // unit") are pinned in `test/deferredPlanHistoryPostmortem.test.ts`.
+  it('renders the muted overshoot line on the past-list card when a Succeeded run overshoots > 5 °C', () => {
+    const entry = buildEntry({
+      outcome: 'met',
+      startProgressC: 29.3,
+      finalProgressC: 77.7,
+      targetTemperatureC: 65,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const overshoot = mount.querySelector('.plan-history-card__overshoot');
+    expect(overshoot?.textContent).toBe('Overshoot 12.7 °C');
+  });
+
+  it('keeps the past-list card overshoot line quiet on within-threshold Succeeded runs', () => {
+    // Default buildEntry: finalProgressC = targetTemperatureC = 65 (no overshoot).
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-history-card__overshoot')).toBeNull();
+  });
+
   it('renders a replaced entry as abandoned', () => {
     const entry = buildEntry({ outcome: 'replaced', metAtMs: null });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));

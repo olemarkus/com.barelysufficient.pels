@@ -1661,6 +1661,18 @@ md-filled-button.is-busy {
   font-style: italic;
 }
 
+/* v2.9.x batch 47 — muted overshoot signal on Succeeded list cards whose
+ * final reading exceeded the target by > 5 °C / > 10 %. Informational, not
+ * alarming: same supporting tone as the coverage line below it so the user
+ * scans past the common no-overshoot case without friction and catches the
+ * outlier when it appears. Producer resolves `null` for non-met outcomes
+ * and within-threshold runs (see `formatPlanHistoryOvershootLine`); the
+ * view never reads `outcome` to decide whether to render. */
+.plan-history-card__overshoot {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;
@@ -1800,6 +1812,21 @@ md-filled-button.is-busy {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--pels-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.9.x batch 47 — muted overshoot signal on the history-detail hero for
+ * Succeeded entries whose final reading exceeded the target by > 5 °C / > 10 %
+ * (e.g. lived-state `29.3 → 77.7 °C · target 65 °C`). Informational, not
+ * alarming: same supporting tone as the cost narrative below it so the user
+ * scans past the common no-overshoot case without friction and catches the
+ * outlier when it appears. Producer resolves `null` for non-met outcomes and
+ * within-threshold runs (see `formatPlanHistoryOvershootLine`); the view never
+ * reads `outcome` to decide whether to render. */
+.plan-history-detail__overshoot {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
 }
 
