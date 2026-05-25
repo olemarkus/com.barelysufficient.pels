@@ -3515,24 +3515,13 @@ should not be folded into the same PR.
       (`feedback_ui_text_shared_with_logs` keeps runtime logging + UI reading the same strings).
       Files: `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/shared-domain/src/smartTaskListStatus.ts` (new), `packages/shared-domain/src/evCardState.ts` (new).
-- [ ] Move v2.7.2/PR4 chart strings into a shared-domain `historyDetailChartLabels(kind)` helper.
-      Surfaced by pels-copy-and-terminology on v2.7.2 PR 4 as P1 (deferred to a follow-up to
-      keep PR 4 focused). PR 4 introduced seven new user-visible chart strings inlined in
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`: `PLANNED_SERIES_NAME`
-      ('Planned trajectory'), `PLANNED_REVISED_SERIES_NAME` ('Revised trajectory'),
-      `TARGET_SERIES_NAME` ('Target'), `MET_MARK_NAME` ('Reached target'), card titles
-      ('Progress vs schedule' / 'Scheduled vs observed'), legacy fallback note
-      ('Schedule only — observations not recorded for this run.'), toggle copy ('View
-      schedule' / 'Hide schedule'), tooltip absence suffix (`${observedSeriesName} — not
-      recorded`), aria-label (`Progress trajectory for ${deviceName}`).
-      Move into a `historyDetailChartLabels(kind)` helper in
-      `packages/shared-domain/src/deferredPlanHistoryChartData.ts` (the natural home — same
-      file as the chart data producer). Per `feedback_ui_text_shared_with_logs`, runtime log
-      breadcrumbs need to read the same strings the user saw.
-      Why P2 (downgraded from P1 since strings render correctly today): architecture-level
-      consistency. Strings are correct as-is; this is logger-parity hygiene.
-      Files: `packages/shared-domain/src/deferredPlanHistoryChartData.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
+- [x] Move v2.7.2/PR4 chart strings into a shared-domain `historyDetailChartLabels(kind)` helper.
+      Shipped as `historyDetailChartLabels(mode: DeferredPlanHistoryChartMode)` in
+      `packages/shared-domain/src/deferredPlanHistoryChartData.ts` (re-exported via
+      `deferredPlanHistory.ts`). Returns a flat `HistoryDetailChartLabels` object with the
+      mode-aware `cardTitle` / `fallbackNote` resolved at the producer and the parametric
+      tooltip + aria-label helpers as functions. Strings are kind-agnostic today so the
+      helper takes `mode`, not `kind`.
 - [x] markPoint tone-aware for the "Reached target" dot on the history-detail chart.
       Pinned the markPoint to neutral tokens (`--pels-status-on-good` fill +
       `--pels-text-primary` stroke via the existing `palette.text` field) so the marker

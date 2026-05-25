@@ -970,9 +970,11 @@ export const formatPlanHistoryObservedCoverage = (
 // the formatters here inside the 500-LOC ESLint cap.
 export {
   resolveHistoryDetailChartData,
+  historyDetailChartLabels,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartMode,
   type DeferredPlanHistoryChartPoint,
+  type HistoryDetailChartLabels,
 } from './deferredPlanHistoryChartData.js';
 
 // ─── Per-hour bar strip (v2.7.3) ──────────────────────────────────────────────
