@@ -3,8 +3,8 @@ import {
   formatEvSnapshot,
   getBinaryControlPlan,
   getEvRestoreBlockReason,
-  syncPendingBinaryCommands,
 } from '../lib/plan/planBinaryControl';
+import { syncPendingBinaryCommands } from '../lib/observer/pendingBinaryCommands';
 import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';

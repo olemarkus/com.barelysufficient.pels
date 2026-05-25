@@ -1,7 +1,6 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
-import { resolveBinaryCommandPendingMs } from './planObservationPolicy';
 import { getLogger } from '../logging/logger';
 import {
   type BinaryControlActuationMode,
@@ -59,15 +58,12 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
 /**
  * Decide whether the device should actuate this cycle.
  *
- * Returns the populated `BinaryControlDecision` and records the matching
- * `pendingBinaryCommands` entry on the engine state when the decision is
- * to actuate. Returns `null` when the device should be skipped (already
- * matched, pending, or lacks a setable control plan); pending state is
- * not touched in the skip case.
- *
- * Callers must hand the returned decision to
- * `dispatchBinaryControlDecision` (executor); the dispatcher will clear
- * the pending entry on failure and emit success/failure logs.
+ * Returns the populated `BinaryControlDecision` or `null` when the
+ * device should be skipped (already matched, pending, or lacks a
+ * setable control plan). Plan does NOT touch pending state — recording
+ * happens in `dispatchBinaryControlDecision` (executor) against the
+ * observer-owned pending-binary-command store (PR #4 of the
+ * observer/transport split).
  */
 export function decideBinaryControl(params: BinaryControlDeps & {
   deviceId: string;
@@ -113,21 +109,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   }
 
   const flowBackedControl = isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
-  const pendingMs = resolveBinaryCommandPendingMs(snapshot?.communicationModel);
-
-  // Plan owns pending bookkeeping; record before handing the decision to
-  // the executor so the failure path can clear it back out.
-  state.pendingBinaryCommands[deviceId] = {
-    capabilityId: controlPlan.capabilityId,
-    desired,
-    startedMs: Date.now(),
-    pendingMs,
-    flowBackedControl,
-    logContext,
-    restoreSource,
-    actuationMode,
-    ...(reason ? { reason } : {}),
-  };
 
   return {
     deviceId,
@@ -161,4 +142,6 @@ function resolveCanSetBinaryControl(
   return snapshot.canSetControl !== false && !(capabilityId === 'onoff' && legacyCanSetOnOff === false);
 }
 
-export { syncPendingBinaryCommands } from './planBinaryControlSync';
+// `syncPendingBinaryCommands` moved to `lib/observer/pendingBinaryCommands.ts`
+// as part of PR #4 of the observer/transport split. Import from observer
+// directly; tests follow.

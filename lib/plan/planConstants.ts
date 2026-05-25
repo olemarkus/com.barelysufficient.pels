@@ -30,7 +30,11 @@ export const RESTORE_BATCH_MAX_DEVICES = 3;
 export const RESTORE_BATCH_HEADROOM_FRACTION = 0.5;
 // Swaps cannot rely on shed capacity becoming fully effective immediately; reserve some headroom.
 export const SWAP_RESTORE_RESERVE_KW = 0.3;
-export const BINARY_COMMAND_PENDING_MS = 15000;
+// `BINARY_COMMAND_PENDING_MS` moved to
+// `lib/observer/pendingBinaryCommandTypes.ts` in PR #4 of the
+// observer/transport split (see
+// `notes/state-management/observer-transport-split.md`); the constant is no
+// longer surfaced from plan because observer is the only consumer.
 export const TARGET_COMMAND_RETRY_DELAYS_MS = [
   30 * 1000,
   2 * 60 * 1000,

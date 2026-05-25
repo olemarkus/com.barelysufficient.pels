@@ -7,6 +7,16 @@ import {
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
 } from './lib/device/deviceTransport';
 import { PlanEngine } from './lib/plan/planEngine';
+import {
+  clearAllPendingBinarySettleWindows,
+  clearPendingBinarySettleWindow,
+  createBinarySettleState,
+  hasPendingBinarySettleWindow,
+  notePendingBinarySettleObservation,
+  startPendingBinarySettleWindow,
+  type BinarySettleState,
+} from './lib/observer/binarySettle';
+import type { DeviceTransportBinarySettleOps } from './lib/device/deviceTransport';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
@@ -308,6 +318,15 @@ class PelsApp extends Homey.App {
   private priceCoordinator!: PriceCoordinator;
   private priceFlowTagPublisher?: PriceFlowTagPublisher;
   private deviceManager!: DeviceTransport;
+  /**
+   * Observer-owned binarySettle state, constructed by wiring before
+   * `DeviceTransport` so the predicate the transport consults at the
+   * realtime parse pipeline points at the same store. Per PR #4 of the
+   * observer/transport split (notes/state-management/observer-transport-split.md),
+   * transport never statically imports observer; the state and the
+   * predicate both flow in via DeviceTransport's constructor options.
+   */
+  private observerBinarySettleState: BinarySettleState = createBinarySettleState();
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -920,6 +939,24 @@ class PelsApp extends Homey.App {
     this.structuredLogger = logger;
     return logger;
   }
+  /**
+   * Build the observer-owned binarySettle operation bag passed into
+   * `DeviceTransport`. Binds each observer function so transport can
+   * invoke them through the bag without statically referencing
+   * `lib/observer/binarySettle.ts` (cruiser rule
+   * `no-device-to-peer-except-power`). PR #4 of the observer/transport
+   * split — `notes/state-management/observer-transport-split.md`.
+   */
+  private buildObserverBinarySettleOps(): DeviceTransportBinarySettleOps {
+    return {
+      start: startPendingBinarySettleWindow,
+      note: notePendingBinarySettleObservation,
+      hasWindow: hasPendingBinarySettleWindow,
+      clear: clearPendingBinarySettleWindow,
+      clearAll: clearAllPendingBinarySettleWindows,
+    };
+  }
+
   private async initDeviceManager(): Promise<void> {
     const structuredLogger = this.structuredLogger ?? this.installStructuredLogger();
     const structuredLog = structuredLogger.child({ component: 'devices' });
@@ -951,6 +988,11 @@ class PelsApp extends Homey.App {
         getStore: () => this.powerCalibrationStore,
         debugStructured: this.getStructuredDebugEmitter('power_calibration', 'power_calibration'),
       }),
+      binarySettleState: this.observerBinarySettleState,
+      binarySettleOps: this.buildObserverBinarySettleOps(),
+      pendingPredicate: (deviceId, capabilityId) => (
+        hasPendingBinarySettleWindow(this.observerBinarySettleState, deviceId, capabilityId)
+      ),
     });
     await this.deviceManager.init();
     this.deviceManager.on(

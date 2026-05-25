@@ -120,6 +120,14 @@ app/snapshot boundary; native step telemetry remains reported truth because it c
 device's modeled step capability. Suppressed flow feedback may be considered later only as explicit
 restore-preparation evidence under the planner/executor freshness rules.
 
+The pending-binary-command admission rule (suppressing the snapshot echo of an in-flight binary
+write) lives in transport's parse pipeline. As of PR #4 of the observer/transport split
+(`notes/state-management/observer-transport-split.md`), transport consults that rule through an
+injected `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring (`lib/app/`); the
+predicate is backed by observer's binarySettle store (and, post-#5, by the pending-binary-command
+store too). Transport keeps the parse-pipeline location — the change is who owns the state the
+predicate reads.
+
 Legacy compatibility fields may still exist in older snapshots and plans while migration is in
 progress:
 

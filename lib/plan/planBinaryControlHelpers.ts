@@ -292,16 +292,7 @@ export function buildEvBinaryControlLogMessage(
   return `${prefix}: ${actionText} ${name}${suffix}`;
 }
 
-export function formatPendingBinaryObservedValue(
-  capabilityId: 'onoff' | 'evcharger_charging',
-  value: boolean | string | undefined,
-): string {
-  if (capabilityId === 'evcharger_charging') {
-    if (value === true) return 'charging';
-    if (value === false) return 'paused';
-    return String(value ?? 'unknown');
-  }
-  if (value === true) return 'on';
-  if (value === false) return 'off';
-  return String(value ?? 'unknown');
-}
+// `formatPendingBinaryObservedValue` moved to
+// `lib/observer/pendingBinaryCommandFormatting.ts` in PR #4 of the
+// observer/transport split. Only `syncPendingBinaryCommands` (also moved to
+// observer) consumed it, so plan no longer exports the helper.
