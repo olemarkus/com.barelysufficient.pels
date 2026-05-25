@@ -140,9 +140,11 @@ type SteppedLoadFlowTriggerCard = {
 /**
  * State container owned by observer (`lib/observer/binarySettle.ts`).
  * Re-exported here as a type so downstream callers (wiring, tests) get
- * the exact same shape via DeviceTransport's surface without having to
- * cross the cruiser carve-out themselves. The carve-out applies to the
- * value imports above; this is a type-only re-export.
+ * the exact same shape via DeviceTransport's surface. Type-only imports
+ * are not surfaced by dep-cruiser's default behaviour, so this re-export
+ * does not cross the `no-device-to-peer-except-power` cruiser rule —
+ * no carve-out is needed (the inert default ops bag below decoupled
+ * transport from any value import of observer in PR #4).
  */
 export type { BinarySettleState } from '../observer/binarySettle';
 import type { BinarySettleState } from '../observer/binarySettle';

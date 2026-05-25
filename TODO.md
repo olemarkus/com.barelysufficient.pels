@@ -2185,10 +2185,28 @@ consolidation + a11y polish (8 P2)`.*
       `PlanEngineState`. `dispatchBinaryControlDecision` returns
       `{ok: true} | {ok: false; reason: 'dispatch_failed'}` and writes/clears
       pending exclusively via the store; plan's `decideBinaryControl` no
-      longer touches pending state. The `pendingBinaryCommands` field stays
-      on `PlanEngineState` so the many plan-side read sites still consult
-      it as a `Record`; PR #5 of the split removes the field entirely once
-      read sites migrate to `store.peek(id)` / `store.get(id)` calls.
+      longer touches pending state. The `pendingBinaryCommands` field
+      stays on `PlanEngineState` as the canonical read API for the eight
+      plan-side consumers; the store is the sole mutator via the backing
+      `Record`. Migrating those reads to a `store.peek(id)` / `store.get(id)`
+      API is a possible future cleanup but is not scheduled — see the
+      open follow-up entry below.
+- [ ] (Optional follow-up to the observer/transport split.) Migrate the
+      plan- and executor-side reads that consult
+      `state.pendingBinaryCommands[id]` directly onto a
+      `pendingBinaryCommandStore.peek(id)` / `.get(id)` API, so the
+      `pendingBinaryCommands` field on `PlanEngineState` can be removed
+      and observer becomes the single source of truth in both directions
+      (read and write). Today the read API and the mutator agree on the
+      same backing `Record` so behaviour is correct; this is a clarity
+      cleanup, not a correctness fix. Read sites (plan): `planBuilder.ts:1069`,
+      `planDevices.ts:146` and `:148`, `shedding/candidates.ts:186`, `:188`,
+      `:363`, `:365`, `planStateHelpers.ts:16`,
+      `planBinaryControlHelpers.ts:152` / `:153` / `:158` (the last one
+      also drops the in-place eviction side-effect in `getPendingBinaryCommand`).
+      Type references (executor): `planExecutor.ts:297`,
+      `planExecutorPredicates.ts:17`. Source: post-merge cumulative
+      review on 2026-05-25.
 - [x] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
       split left it at `lib/device/stateOfCharge.ts`; PR #3 took the cheap
       path and moved it into `lib/device/transport/stateOfCharge.ts`. Every
