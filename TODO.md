@@ -395,7 +395,7 @@ release, not v2.7.1 merge-blockers.*
       cache outgrows the cap (via `rootLogger.warn` tagged `module:
       'logging/cache'`).
 
-- [ ] **Extend Slice 2 floor promotion beyond priority 1.** (Demoted from the v2.9 train P0
+- [ ] **P3** — Extend Slice 2 floor promotion beyond priority 1. (Demoted from the v2.9 train P0
       closeout.) Slice 2 (PR #983) gates floor promotion on
       `device.priority === 1 && both rescue permissions === 'always'`
       because the reserved-headroom forecast (`hardCap − uncontrolled`)
@@ -404,10 +404,12 @@ release, not v2.7.1 merge-blockers.*
       priority fully-reserved tasks, the producer needs a richer headroom
       forecast that subtracts higher-priority controlled load
       (`hardCap − uncontrolled − higherPriorityControlled`). Then the gate
-      can broaden to "highest priority present on this Homey." Defer until
-      prod evidence after Slice 2 deployment shows a long-tail
-      `cannot_meet` rate on non-top-priority tasks that warrants the
-      additional plumbing. Files:
+      can broaden to "highest priority present on this Homey."
+      Why P3 (deferred 2026-05-25): real new plumbing (richer headroom forecast across
+      `policyHorizon` + `rescueReplan` + `dailyBudgetBreakdown`) gated on prod evidence
+      after Slice 2 deployment showing a long-tail `cannot_meet` rate on non-top-priority
+      tasks. Pick up if that signal emerges; otherwise leave alone.
+      Files:
       `lib/plan/deferredObjectives/policyHorizon.ts`,
       `lib/plan/deferredObjectives/rescueReplan.ts`,
       `lib/dailyBudget/dailyBudgetBreakdown.ts` (forecast input).
@@ -3165,18 +3167,16 @@ should not be folded into the same PR.
       Files: `lib/plan/deferredObjectives/horizonPlanner.ts:resolveStatus`,
       possibly `activePlanSchedule.ts` for emit gating.
 
-- [ ] Surface mode-target misconfiguration to the user. When a managed temperature
-      device has no target set for the active operating mode, the planner falls back
-      to the device's current `target_temperature` capability value and logs
-      `missing_mode_target` (topic `plan`). When both are missing, the planner emits
-      `missing_mode_target_and_current_target` and either drops the device for the
-      cycle or — if a deferred (deadline) objective is active — uses the deadline
-      target as the rescue seed and keeps planning. The settings UI should warn the
-      user (e.g. in the device detail page or on the operating-mode page) so they
-      can configure the missing target instead of relying on whatever the thermostat
-      happens to be set to or on the deadline rescue path.
-      Files: `lib/plan/planDevices.ts` (`resolveTemperatureSeed`,
-      `resolvePlannedTarget`), settings UI device detail / operating-mode views.
+- [x] Surface mode-target misconfiguration to the user.
+      Effectively resolved at the data layer rather than via a UI warning:
+      `seedMissingModeTargets` in `lib/app/appDeviceSupport.ts:433` auto-fills missing
+      `(device, mode)` entries for managed+controllable temperature devices using the
+      device's current setpoint, wired into the snapshot refresh cycle next to
+      `disableUnsupportedDevices`. Covers app boot, mid-life new devices, and managed-flag
+      flips. Edge-triggered (`ba1ccd67`) so user clears are respected. The "user has to be
+      warned to configure" scenario no longer arises for normal users — the system
+      persists the thermostat's current value as the canonical mode target on first
+      encounter, and the planner reads from the persisted value thereafter. Closing.
 
 - [x] Add abandon-grace to the mode-target-missing skip path. Today a single transient
       Homey SDK miss on `getPrimaryTargetCapability(dev.targets)?.value` drops the
