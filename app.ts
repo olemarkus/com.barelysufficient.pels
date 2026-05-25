@@ -59,6 +59,7 @@ import {
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from './lib/plan/rebuildScheduler/signalDriven';
+import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
 import {
@@ -111,14 +112,10 @@ import {
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
-import { startPerfLogger } from './lib/diagnostics/perfLogging';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
-import { startResourceWarningListeners as startResourceWarnings } from './lib/diagnostics/resourceWarnings';
-import { installHeapSnapshotHandler } from './lib/diagnostics/heapSnapshotHandler';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './lib/app/appBootMigrations';
-import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './lib/app/appPriceLowestTrigger';
 import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
 import {
   createRootLogger,
@@ -349,11 +346,18 @@ class PelsApp extends Homey.App {
   private powerSampleRerunRequested = false;
   private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
-  private stopPriceLowestTriggerChecker?: () => void;
-  private stopPerfLogging?: () => void;
-  private stopResourceWarningListeners?: () => void;
-  private stopHeapSnapshotHandler?: () => void;
   private stopSettingsHandler?: () => void;
+  private readonly backgroundTasks = new BackgroundTasksController({
+    homey: this.homey,
+    log: (...args: unknown[]) => this.log(...args),
+    logDebug: (topic, ...args: unknown[]) => this.logDebug(topic, ...args),
+    error: (...args: unknown[]) => this.error(...args),
+    isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
+    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
+    getNow: () => this.getNow(),
+    getTimeZone: () => this.getTimeZone(),
+    getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
+  });
   private structuredLogger?: PinoLogger;
   private readonly timers = new TimerRegistry();
   private readonly snapshotHelpers = new AppSnapshotHelpers({
@@ -805,12 +809,10 @@ class PelsApp extends Homey.App {
     };
     const structuredLogger = this.installStructuredLogger();
     structuredLogger.child({ component: 'startup' }).info({ event: 'app_initialized' });
-    this.startResourceWarningListeners();
-    this.stopHeapSnapshotHandler = installHeapSnapshotHandler({
-      logger: structuredLogger.child({ component: 'heap' }),
-    });
+    this.backgroundTasks.startResourceWarningListeners();
+    this.backgroundTasks.installHeapSnapshotHandler(structuredLogger);
     await runStartupStep('updateDebugLoggingEnabled', () => this.updateDebugLoggingEnabled(), logStartupStepFailure);
-    this.startPerfLogging();
+    this.backgroundTasks.startPerfLogging();
     await runStartupStep('initPriceCoordinator', () => this.initPriceCoordinator(), logStartupStepFailure);
     await runStartupStep(
       'runStartupSettingsMigrations',
@@ -861,7 +863,7 @@ class PelsApp extends Homey.App {
     await runStartupStep('startAppServices', () => startAppServices(this.ctx), logStartupStepFailure);
     await runStartupStep(
       'startPriceLowestTriggerChecker',
-      () => this.startPriceLowestTriggerChecker(),
+      () => this.backgroundTasks.startPriceLowestTriggerChecker(),
       logStartupStepFailure,
     );
     await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning(), logStartupStepFailure);
@@ -1141,8 +1143,8 @@ class PelsApp extends Homey.App {
     this.homeyEnergyHelpers.stop();
   }
   private stopUninitServices(): void {
-    this.stopPriceLowestTriggerChecker?.(); this.stopPerfLogging?.();
-    this.stopResourceWarningListeners?.(); this.stopHeapSnapshotHandler?.(); this.stopSettingsHandler?.();
+    this.backgroundTasks.stopAll();
+    this.stopSettingsHandler?.();
   }
   private logDebug(topic: DebugLoggingTopic, ...args: unknown[]): void {
     if (this.debugLoggingTopics.has(topic)) this.log(...args);
@@ -1188,29 +1190,6 @@ class PelsApp extends Homey.App {
     // No-op retained for startup wiring compatibility. The settings UI is only
     // available while the app runtime is alive, so a persistent heartbeat setting
     // only creates write churn without adding useful liveness signal.
-  }
-  private startPriceLowestTriggerChecker(): void {
-    if (this.stopPriceLowestTriggerChecker) this.stopPriceLowestTriggerChecker();
-    this.stopPriceLowestTriggerChecker = startPriceLowestTriggers({
-      getNow: () => this.getNow(), getTimeZone: () => this.getTimeZone(),
-      getCombinedHourlyPrices: () => this.getCombinedHourlyPrices(),
-      getTriggerCard: (id) => this.homey.flow.getTriggerCard(id),
-      logDebug: (message) => this.logDebug('price', message), error: (message, error) => this.error(message, error),
-    });
-  }
-  private startPerfLogging(): void {
-    this.stopPerfLogging = startPerfLogger({
-      isEnabled: () => this.debugLoggingTopics.has('perf'), log: (...args: unknown[]) => this.logDebug('perf', ...args),
-      logStructured: this.getStructuredDebugEmitter('perf', 'perf'),
-      error: (...args: unknown[]) => this.error(...args),
-      logCpuSpike: (...args: unknown[]) => this.log(...args), intervalMs: 30 * 1000,
-    });
-  }
-  private startResourceWarningListeners(): void {
-    if (this.stopResourceWarningListeners) this.stopResourceWarningListeners();
-    this.stopResourceWarningListeners = startResourceWarnings({
-      homey: this.homey, log: (message) => this.log(message), error: this.error.bind(this),
-    });
   }
   private getDynamicSoftLimitOverride(): number | null {
     if (!this.defaultComputeDynamicSoftLimit || this.computeDynamicSoftLimit === this.defaultComputeDynamicSoftLimit) {
