@@ -532,4 +532,89 @@ describe('objective profiles', () => {
 
     expect(Object.keys(state.objectiveProfiles ?? {})).toEqual(['retained']);
   });
+
+  // `resolveLastFreshDataMs` takes `Math.max(...)` over several capability
+  // `lastUpdated` timestamps, so a no-op snapshot rebuild from an unrelated
+  // capability update can produce a sample whose `value` is unchanged and
+  // whose `observedAtMs` is either identical to (`intervalMs === 0`) or a few
+  // ms below (`intervalMs ∈ {-2, -4}`) the stored baseline. Those duplicates
+  // carry no learning signal — drop them silently so they don't burn the
+  // per-device 15-minute rejection-throttle window on real same-reason
+  // rejections or inflate the per-device `rejectedSamples` counter.
+  describe('non_monotonic_time suppression for unchanged-value duplicates', () => {
+    const seedSample = {
+      observedAtMs: startMs + hourMs,
+      value: 55,
+      unit: 'degree_c',
+      crediblePowerW: 2000,
+      powerSource: 'measured',
+    } as const;
+
+    it('suppresses non_monotonic_time rejection on exact (observedAtMs, value) duplicates', () => {
+      const debugStructured = vi.fn();
+      const seed = updateDeviceObjectiveProfile({
+        previous: undefined,
+        sample: seedSample,
+      });
+      debugStructured.mockClear();
+      const result = updateDeviceObjectiveProfile({
+        previous: seed,
+        sample: { ...seedSample },
+        deviceId: 'heater-1',
+        debugStructured,
+      });
+
+      expect(result).toBe(seed);
+      expect(result.rejectedSamples).toBe(seed.rejectedSamples);
+      expect(debugStructured).not.toHaveBeenCalled();
+    });
+
+    it('suppresses non_monotonic_time rejection when observedAtMs slips backwards but value is unchanged', () => {
+      const debugStructured = vi.fn();
+      const seed = updateDeviceObjectiveProfile({
+        previous: undefined,
+        sample: seedSample,
+      });
+      debugStructured.mockClear();
+      const result = updateDeviceObjectiveProfile({
+        previous: seed,
+        // `intervalMs === -4`: a capability aged out of the `Math.max` floor
+        // and the next-newest `lastUpdated` is a few ms older.
+        sample: { ...seedSample, observedAtMs: seedSample.observedAtMs - 4 },
+        deviceId: 'heater-1',
+        debugStructured,
+      });
+
+      expect(result).toBe(seed);
+      expect(result.rejectedSamples).toBe(seed.rejectedSamples);
+      expect(debugStructured).not.toHaveBeenCalled();
+    });
+
+    it('still emits non_monotonic_time rejection when observedAtMs slips backwards and value changed', () => {
+      const debugStructured = vi.fn();
+      const seed = updateDeviceObjectiveProfile({
+        previous: undefined,
+        sample: seedSample,
+      });
+      debugStructured.mockClear();
+      const result = updateDeviceObjectiveProfile({
+        previous: seed,
+        // Same `intervalMs === -4` but the value moved, so the suppression
+        // must not swallow the rejection.
+        sample: {
+          ...seedSample,
+          observedAtMs: seedSample.observedAtMs - 4,
+          value: seedSample.value + 0.3,
+        },
+        deviceId: 'heater-1',
+        debugStructured,
+      });
+
+      expect(result.rejectedSamples).toBe(seed.rejectedSamples + 1);
+      expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'objective_profile_sample_rejected',
+        reasonCode: 'objective_profile_non_monotonic_time',
+      }));
+    });
+  });
 });
