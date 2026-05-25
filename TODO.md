@@ -2442,18 +2442,36 @@ consolidation + a11y polish (8 P2)`.*
       values outside the token layer.
       Files: `packages/settings-ui/public/style.css`,
       `tokens/base.json`, `settings/tokens.css` (regen).
-- [ ] Investigate repeated stale managed-device refreshes that never become fresh.
-      `/tmp/pels/start.main.stdout.log` from 2026-05-13 repeatedly emitted
-      `stale_device_observation_refresh` with `staleDevices: 2`, `refreshedDevices: 2`, and
-      `freshAfterRefreshDevices: 0`. Determine whether those devices lack fresh telemetry,
-      targeted refresh is not replacing stale fields, or freshness metadata is preserved
-      incorrectly. Add a regression proving stale observations either become fresh when Homey
-      returns fresh data or are degraded with a clear reason when they cannot.
-      Why P2 (demoted from P1 in release-review pass): investigation work; no confirmed
-      user-visible regression. The companion P2 below ("Quiet repeated stale_device_observation_refresh
-      log entries") covers the log-noise half.
-      Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
-      snapshot-refresh tests.
+- [x] Investigate repeated stale managed-device refreshes that never become fresh.
+      Finding: case (a) — refresh is a no-op by design. `lastFreshDataMs` is
+      derived by `resolveLastFreshDataMs` (`lib/device/transport/managerParseSnapshot.ts`)
+      from the highest Homey per-capability `lastUpdated`. Many Homey drivers
+      (Z-Wave/Zigbee thermostats in particular) only advance `lastUpdated`
+      when a capability genuinely reports a new value; a targeted refresh
+      that re-fetches the snapshot does NOT bump `lastUpdated`, Homey serves
+      the cached value with the same timestamp. The 40-min
+      `STALE_DEVICE_OBSERVATION_MS` window is the backstop, and the
+      `device_became_stale`/`device_became_fresh` per-device transitions in
+      the same prod log confirm devices DO eventually re-emit fresh when
+      telemetry changes (all stale entries in `/tmp/pels/start.main.0a4464c3.stdout.log`
+      are `Termostat *`). Already documented in three places: comment in
+      `mergeFresherCapabilityObservations` (lines 202-209 of
+      `lib/device/transport/managerObservation.ts`), comment above
+      `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` in
+      `lib/app/appSnapshotHelpers.ts` (lines 19-26), and module doc in
+      `lib/observer/observationFreshness.ts` (lines 7-14). Refresh failures
+      would show up as `device_snapshot_refresh_failed` — none present in
+      prod logs. Regression added in `test/appSnapshotHelpers.test.ts`,
+      `refreshStaleDeviceObservations contract` describe block:
+       - `counts a device as fresh once refresh produces a newer
+         lastFreshDataMs and as still-stale when it does not` — pins the
+         structured `stale_device_observation_refresh` counter split
+         (`freshAfterRefreshDevices` vs `stillStaleAfterRefreshDevices`).
+       - `emits device_became_stale with the last observation timestamp
+         as the still-stale reason` — pins the per-device "could not
+         refresh" reason, surfaced via `device_became_stale` carrying
+         `deviceId`, `deviceName`, `ageMs`, `lastObservationAt`, `source`.
+      Files: `test/appSnapshotHelpers.test.ts`, `TODO.md`.
 - [x] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
       Shipped: `updateDeviceObjectiveProfile` (`lib/objectives/profiles.ts`) now
       silently returns the existing profile when the interval rejection reason is
