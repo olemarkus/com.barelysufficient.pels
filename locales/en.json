@@ -3,9 +3,6 @@
     "name": "PELS Insights"
   },
   "capability": {
-    "pels_insights": {
-      "title": "Operating mode"
-    },
     "pels_headroom": {
       "title": "Available power"
     },
