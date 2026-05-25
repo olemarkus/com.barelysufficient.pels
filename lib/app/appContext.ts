@@ -17,6 +17,7 @@ import type {
   DeferredObjectiveStatusBus,
 } from '../plan/deferredObjectives';
 import type { PlanEngine } from '../plan/planEngine';
+import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
 import type { PriceLevel } from '../price/priceLevels';
@@ -207,6 +208,12 @@ export type AppContext = {
   deviceManager?: DeviceTransport;
   planEngine?: PlanEngine;
   planService?: PlanService;
+  // Released after the first device snapshot refresh succeeds, or after the
+  // configured timeout — whichever comes first. Holds the first
+  // `rebuildPlanFromCache` so the planner does not run against an empty
+  // snapshot. Optional so tests that build a context without going through
+  // `app.ts` are unaffected.
+  snapshotWarmupGate?: SnapshotWarmupGate;
   readonly snapshotHelpers: AppSnapshotHelpers;
   readonly homeyEnergyHelpers: HomeyEnergyPollSource;
   readonly deviceControlHelpers: AppDeviceControlHelpers;

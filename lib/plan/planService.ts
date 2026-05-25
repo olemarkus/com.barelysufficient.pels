@@ -64,6 +64,7 @@ import type {
 } from './planHeadroomDevice';
 import type { PlanActuationMode } from '../executor/executorTypes';
 import type { PlanActuationResult } from '../executor/planExecutor';
+import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 
 const SLOW_PLAN_REBUILD_LOG_THRESHOLD_MS = 1500;
 
@@ -165,6 +166,13 @@ export type PlanServiceDeps = {
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
   };
+  // Hold the first plan rebuild until the first device snapshot resolves (or
+  // a bounded timeout expires). Without the gate, a price/settings/realtime
+  // trigger that arrives between `initDeviceManager` and the first snapshot
+  // refresh runs the planner against an empty snapshot and publishes a
+  // one-cycle `deferred_objective_unknown reasonCode:objective_missing_device`
+  // status, which fires a spurious `waiting → unachievable` flow trigger.
+  snapshotWarmupGate?: SnapshotWarmupGate;
 };
 
 export class PlanService {
@@ -391,6 +399,17 @@ export class PlanService {
   }
 
   async rebuildPlanFromCache(reason = 'unspecified'): Promise<PlanRebuildOutcome> {
+    // Hold the first rebuild until the warmup gate releases (snapshot ready
+    // or bound elapsed). Awaiting here — before enqueuing — means the gate
+    // does not block `enqueuePlanOperation` ordering and, once released,
+    // subsequent rebuilds skip straight to the queue with no overhead.
+    const gate = this.deps.snapshotWarmupGate;
+    if (gate && !gate.isReleased()) {
+      const waitStart = Date.now();
+      await gate.wait();
+      addPerfDuration('plan_rebuild_warmup_wait_ms', Date.now() - waitStart);
+      incPerfCounter('plan_rebuild_warmup_waited_total');
+    }
     const enqueuedAt = Date.now();
     this.queuedRebuilds += 1;
     const queueDepth = this.queuedRebuilds;
