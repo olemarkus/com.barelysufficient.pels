@@ -2426,31 +2426,22 @@ consolidation + a11y polish (8 P2)`.*
       log entries") covers the log-noise half.
       Files: `lib/app/appSnapshotHelpers.ts`, observer/device-state freshness helpers,
       snapshot-refresh tests.
-- [ ] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
-      `lib/device/managerParseSnapshot.ts:58-84` (`resolveLastFreshDataMs`) takes
-      `Math.max(...)` over multiple Homey capability `lastUpdated` timestamps. When the
-      device temperature value hasn't moved but another capability (target_temperature,
-      measure_power, evcharger_charging_state, etc.) emits a fresh `lastUpdated`, the
-      snapshot rebuilds with the *same* `value` and a flat-or-slightly-shifted floor —
-      occasionally `-2` to `-4 ms` when one capability ages out of the `Math.max` and an
-      older capability becomes the new winner. The monotonicity guard at
-      `lib/objectives/profiles.ts:346` then emits an `objective_profile_sample_rejected
-      reasonCode:objective_profile_non_monotonic_time` event with `valueDelta:0`. In this
-      audit window 14/27 sample rejections are this pattern. No correctness impact (the
-      duplicate would not have improved learning) but the log noise burns 15-minute
-      rejection-throttle windows on real same-reason rejections and inflates the per-device
-      "rejected" counter.
-      Why P2: observability/log-quality cleanup, no user-visible regression.
-      Acceptance: suppress the `objective_profile_non_monotonic_time` rejection event (and
-      `rejectedSamples` increment) whenever the rejected sample has `value` equal to
-      `previous.lastSample.value` — this covers both exact `(observedAtMs, value)` duplicates
-      (`intervalMs === 0`) and the `intervalMs ∈ {-2, -4}` cases where a different capability
-      ages out of the `Math.max` floor and `value` is unchanged. Regression: feed (a) two
-      identical `(observedAtMs, value)` samples and (b) a sample with `observedAtMs` 4 ms
-      less than previous and unchanged `value`; assert no rejection event fires in either case
-      and `rejectedSamples` is not incremented.
-      Files: `lib/objectives/profiles.ts`, `lib/objectives/samples.ts`,
-      sample-pipeline tests.
+- [x] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
+      Shipped: `updateDeviceObjectiveProfile` (`lib/objectives/profiles.ts`) now
+      silently returns the existing profile when the interval rejection reason is
+      `objective_profile_non_monotonic_time` and `sample.value === previous.lastSample.value`,
+      so neither the structured `objective_profile_sample_rejected` event nor the
+      `rejectedSamples` counter increments. Covers both exact `(observedAtMs, value)`
+      duplicates and `intervalMs ∈ {-2, -4}` cases where a capability ages out of the
+      `Math.max` floor. Other interval-rejection reasons (`interval_too_short`,
+      `interval_too_long`, `unit_changed`) and any non-monotonic sample whose value
+      moved still flow through the normal emit+counter path. Regression tests added in
+      `test/objectiveProfiles.test.ts` under the
+      `non_monotonic_time suppression for unchanged-value duplicates` describe block:
+      `suppresses non_monotonic_time rejection on exact (observedAtMs, value) duplicates`,
+      `suppresses non_monotonic_time rejection when observedAtMs slips backwards but value is unchanged`,
+      `still emits non_monotonic_time rejection when observedAtMs slips backwards and value changed`.
+      Files: `lib/objectives/profiles.ts`, `test/objectiveProfiles.test.ts`.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
