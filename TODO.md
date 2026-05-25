@@ -2605,11 +2605,12 @@ consolidation + a11y polish (8 P2)`.*
       `packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts`,
       `packages/settings-ui/src/ui/deviceDetail/evBoost.ts`,
       `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
-- [ ] Sync `docs/plan-states.md` device-card secondary-text language with `notes/ui-terminology.md`.
-      `docs/plan-states.md:26` still describes the held-state secondary text as "Limited by PELS"
+- [x] Sync `docs/plan-states.md` device-card secondary-text language with `notes/ui-terminology.md`.
+      `docs/plan-states.md:26` still described the held-state secondary text as "Limited by PELS"
       while `notes/ui-terminology.md:100` and the live UI (post PR 4.4) now use `Lowered by PELS`
-      / `Charging paused`. Update the doc paragraph so the public docs site matches the shipped UI.
-      Why P2: docs-only drift; live UI is already authoritative.
+      / `Charging paused`. Updated the doc paragraph so the public docs site matches the shipped UI
+      (`Limited by PELS` → `Lowered by PELS`; EV-charger `Charging paused` and `Turned off by PELS`
+      wording was already correct).
       Files: `docs/plan-states.md`.
 
 ## P2 M3 alignment pass (post desktop-light-mode-fix)
