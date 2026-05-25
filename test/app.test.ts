@@ -235,6 +235,61 @@ describe('MyApp initialization', () => {
     }
   });
 
+  it('keeps in-memory flow-reported capabilities when SDK returns an empty parse', () => {
+    const existing = {
+      'flow-device-1': {
+        onoff: { value: true, reportedAt: 100, source: 'flow' as const },
+      },
+      'flow-device-2': {
+        onoff: { value: false, reportedAt: 200, source: 'flow' as const },
+      },
+      'flow-device-3': {
+        measure_battery: { value: 80, reportedAt: 300, source: 'flow' as const },
+      },
+    };
+
+    const app = createApp();
+    (app as any).flowReportedCapabilities = { ...existing };
+
+    // Persisted setting is missing / empty — simulates a transient SDK miss.
+    mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, undefined);
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    (app as any).loadFlowReportedCapabilities();
+
+    expect((app as any).flowReportedCapabilities).toEqual(existing);
+    // Must not persist anything — we don't know the state is really empty.
+    const persistedWrites = setSpy.mock.calls.filter(([key]) => key === FLOW_REPORTED_DEVICE_CAPABILITIES);
+    expect(persistedWrites).toHaveLength(0);
+  });
+
+  it('overwrites in-memory flow-reported capabilities when SDK returns a real parse', () => {
+    const existing = {
+      'flow-device-1': {
+        onoff: { value: true, reportedAt: 100, source: 'flow' as const },
+      },
+      'flow-device-2': {
+        onoff: { value: false, reportedAt: 200, source: 'flow' as const },
+      },
+      'flow-device-3': {
+        measure_battery: { value: 80, reportedAt: 300, source: 'flow' as const },
+      },
+    };
+    const incoming = {
+      'flow-device-9': {
+        onoff: { value: true, reportedAt: 999, source: 'flow' as const },
+      },
+    };
+
+    const app = createApp();
+    (app as any).flowReportedCapabilities = { ...existing };
+
+    mockHomeyInstance.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, incoming);
+    (app as any).loadFlowReportedCapabilities();
+
+    expect((app as any).flowReportedCapabilities).toEqual(incoming);
+  });
+
   it('emits realtime UI invalidation when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     setMockDrivers({
