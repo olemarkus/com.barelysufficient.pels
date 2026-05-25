@@ -129,6 +129,19 @@ export function updateDeviceObjectiveProfile(params: {
     intervalMs,
   });
   if (intervalRejection) {
+    // `resolveLastFreshDataMs` in `device/transport/managerParseSnapshot.ts`
+    // takes `Math.max(...)` over multiple capability `lastUpdated` timestamps,
+    // so an unrelated capability emitting a fresh update can rebuild the
+    // snapshot with the *same* `value` and either an unchanged `observedAtMs`
+    // (exact duplicate) or one a few ms lower (a previous capability ageing
+    // out of the `Math.max` floor). Those duplicates carry no learning signal
+    // and would otherwise burn the per-device rejection-throttle window on
+    // real same-reason rejections, so silently drop them: no event, no
+    // `rejectedSamples` increment. Other intervalRejection reasons (and any
+    // non-monotonic sample whose value *did* change) still flow through the
+    // normal rejection path.
+    if (intervalRejection === 'objective_profile_non_monotonic_time'
+      && sample.value === previousSample.value) return previous;
     emitRejectedProfileSample({
       previous,
       deviceId,
