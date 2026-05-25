@@ -48,6 +48,7 @@ import {
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
+import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { toStableFingerprint } from '../utils/stableFingerprint';
@@ -426,30 +427,8 @@ export default class PriceService {
     const current = getCurrentHourPrice(prices);
     if (!current) return 'price unknown';
     return this.getPriceScheme() === 'norway'
-      ? this.formatNorwayPriceInfo(current)
-      : this.formatFlowPriceInfo(current);
-  }
-
-  private formatFlowPriceInfo(current: CombinedHourlyPrice): string {
-    return `${current.totalPrice.toFixed(4)} ${this.getPriceUnitLabel()} (as provided)`;
-  }
-
-  private formatNorwayPriceInfo(current: CombinedHourlyPrice): string {
-    const format = (value: number | undefined) => (value ?? 0).toFixed(1);
-    const hasNorgesprisAdjustment = typeof current.norgesprisAdjustment === 'number'
-      && Number.isFinite(current.norgesprisAdjustment);
-    const norgesprisMagnitude = Math.abs(current.norgesprisAdjustment ?? 0);
-    const norgesprisOperator = (current.norgesprisAdjustment ?? 0) < 0 ? '-' : '+';
-    const supportSegment = hasNorgesprisAdjustment
-      ? ` ${norgesprisOperator} norgespris adjustment ${norgesprisMagnitude.toFixed(1)}`
-      : ` - electricity support ${format(current.electricitySupport)}`;
-    return `${current.totalPrice.toFixed(1)} øre/kWh (spot price ${format(current.spotPriceExVat)} ex VAT`
-      + ` + grid tariff ${format(current.gridTariffExVat)}`
-      + ` + surcharge ${format(current.providerSurchargeExVat)}`
-      + ` + consumption tax ${format(current.consumptionTaxExVat)}`
-      + ` + Enova fee ${format(current.enovaFeeExVat)}`
-      + ` + VAT ${format(current.vatAmount)}`
-      + `${supportSegment})`;
+      ? formatNorwayPriceInfo(current)
+      : formatFlowPriceInfo(current, this.getPriceUnitLabel());
   }
 
   private getPriceArea(): string {
