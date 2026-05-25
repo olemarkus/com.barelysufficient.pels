@@ -42,6 +42,12 @@ import {
 import { addPerfDuration } from '../utils/perfCounters';
 import { getLogger } from '../logging/logger';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import {
+  clearMissingModeEmitState,
+  rememberModeTargetCapability,
+  resolveMissingModeTargetSeed,
+  type ResolvedModeTargetSeed,
+} from './planModeTargetGuard';
 
 const logger = getLogger('plan/devices');
 
@@ -103,6 +109,7 @@ export function buildInitialPlanDevices(params: {
       desiredForMode: context.desiredForMode,
       deferredTargetTempByDeviceId,
       supportsTemperature,
+      state,
       deps,
     });
     if (plannedTarget === SKIP_PLANNED_TARGET) {
@@ -172,14 +179,22 @@ function resolvePlannedTarget(params: {
   desiredForMode: Record<string, number>;
   deferredTargetTempByDeviceId: Record<string, number>;
   supportsTemperature: boolean;
+  state: PlanEngineState;
   deps: PlanDevicesDeps;
 }): ResolvedPlannedTarget {
-  const { dev, desiredForMode, deferredTargetTempByDeviceId, supportsTemperature, deps } = params;
+  const {
+    dev,
+    desiredForMode,
+    deferredTargetTempByDeviceId,
+    supportsTemperature,
+    state,
+    deps,
+  } = params;
   if (!supportsTemperature) return undefined;
   const target = getPrimaryTargetCapability(dev.targets);
   const deferredC = deferredTargetTempByDeviceId[dev.id];
   const hasDeferred = typeof deferredC === 'number';
-  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, deps);
+  const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, state, deps);
   if (seed.kind === 'skip') {
     // An active deadline objective is itself a strong signal that PELS should plan for the
     // device. When the mode target and current capability value are both missing, use the
@@ -187,6 +202,19 @@ function resolvePlannedTarget(params: {
     // applied to the deadline target; see comment below.
     if (!hasDeferred) return SKIP_PLANNED_TARGET;
     return normalizeTargetCapabilityValue({ target, value: deferredC });
+  }
+  if (seed.kind === 'grace_fallback') {
+    // During the abandon-grace window the capability read is transiently
+    // failing, so `currentTarget` is null. Emitting any `plannedTarget` (cached
+    // value or deferred floor) would mismatch `currentTarget` and queue a
+    // spurious `set_temperature` actuation each cycle (the executor's
+    // `Object.is(observedValue, desired)` skip can't trip when `observedValue`
+    // is undefined). Hold off on planning a target value until the SDK comes
+    // back — the device stays in the plan with measured power intact so the
+    // cascade math still accounts for it; we just don't actuate. When grace
+    // exhausts, the seed becomes `skip` and the existing path applies the
+    // deferred floor if any.
+    return undefined;
   }
   let plannedTarget = seed.value;
   // Price-opt only modulates a configured mode setpoint. When the seed is the current
@@ -203,34 +231,37 @@ function resolvePlannedTarget(params: {
   return normalizeTargetCapabilityValue({ target, value: plannedTarget });
 }
 
-type TemperatureSeed =
-  | { kind: 'mode'; value: number }
-  | { kind: 'fallback'; value: number }
-  | { kind: 'skip' };
-
 function resolveTemperatureSeed(
   dev: PlanInputDevice,
   desired: number | undefined,
   target: ReturnType<typeof getPrimaryTargetCapability>,
+  state: PlanEngineState,
   deps: PlanDevicesDeps,
-): TemperatureSeed {
-  if (Number.isFinite(desired)) return { kind: 'mode', value: Number(desired) };
+): ResolvedModeTargetSeed {
   const fallback = target?.value;
-  const payload = { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null };
+  // Always refresh the cached capability value when a fresh read is available
+  // (even if the mode target is also present) so a future double-miss can ride
+  // out the grace window.
   if (typeof fallback === 'number' && Number.isFinite(fallback)) {
-    if (deps.debugStructured) {
-      deps.debugStructured({ event: 'missing_mode_target', ...payload });
-    } else {
-      logger.debug({ event: 'missing_mode_target', ...payload });
-    }
-    return { kind: 'fallback', value: fallback };
+    rememberModeTargetCapability(state, dev.id, fallback);
   }
-  if (deps.debugStructured) {
-    deps.debugStructured({ event: 'missing_mode_target_and_current_target', ...payload });
-  } else {
-    logger.debug({ event: 'missing_mode_target_and_current_target', ...payload });
+  if (Number.isFinite(desired)) {
+    // Mode target is set — clear any missing-mode emit throttling so the next
+    // transition back into missing emits immediately. Cache (if any) is
+    // preserved separately above.
+    clearMissingModeEmitState(state, dev.id);
+    return { kind: 'mode', value: Number(desired) };
   }
-  return { kind: 'skip' };
+  // Mode target missing — delegate fallback / grace / skip + throttled emit
+  // to the shared mode-target guard (see `planModeTargetGuard.ts`).
+  return resolveMissingModeTargetSeed({
+    state,
+    deviceId: dev.id,
+    capabilityValue: fallback,
+    payload: { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null },
+    debugStructured: deps.debugStructured,
+    logger,
+  });
 }
 function applyPriceOptimizationDelta(
   target: number,

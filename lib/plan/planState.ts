@@ -136,6 +136,23 @@ export type PlanEngineState = {
     lowestNonZeroStepId: string;
   }>;
   restoreDecisionLogByKey: Record<string, string>;
+  /**
+   * Per-device transient state for the mode-target capability read in
+   * `resolveTemperatureSeed`. Used by the abandon-grace window so a single
+   * transient SDK miss on `getPrimaryTargetCapability(dev.targets)?.value`
+   * does not drop the device from the plan, and by the per-device emit
+   * throttle on `missing_mode_target` / `missing_mode_target_and_current_target`
+   * so a stuck misconfigured device does not flood the log buffer when the
+   * `plan` debug topic is enabled. In-memory only per
+   * `feedback_homey_sdk_unreliable` — on restart the first cycle re-emits as
+   * expected.
+   */
+  modeTargetMissingByDevice: Record<string, {
+    missingCycles: number;
+    cachedTargetValue?: number;
+    lastEmitAtMs?: number;
+    lastEmitEvent?: 'missing_mode_target' | 'missing_mode_target_and_current_target';
+  }>;
 };
 
 export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
@@ -178,5 +195,6 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     steppedRestoreRejectedByDevice: {},
     keepInvariantShedBlockedByDevice: {},
     restoreDecisionLogByKey: {},
+    modeTargetMissingByDevice: {},
   };
 }
