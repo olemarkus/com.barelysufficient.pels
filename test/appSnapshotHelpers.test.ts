@@ -439,6 +439,174 @@ describe('appSnapshotHelpers', () => {
     expect(secondSettled).toBe(true);
   });
 
+  describe('refreshStaleDeviceObservations contract', () => {
+    // Pins the by-design behavior investigated for TODO ~line 2445 / prod log
+    // (`/tmp/pels/start.main.0a4464c3.stdout.log`) — repeated
+    // `stale_device_observation_refresh` emits with `freshAfterRefreshDevices: 0`.
+    //
+    // Root cause = case (a): `lastFreshDataMs` is derived in `parseDevice`
+    // (`resolveLastFreshDataMs` in `lib/device/transport/managerParseSnapshot.ts`)
+    // from the highest Homey per-capability `lastUpdated`. Many Homey drivers
+    // (Z-Wave/Zigbee thermostats, in particular) only advance `lastUpdated`
+    // when a capability genuinely reports a new value. A targeted refresh that
+    // re-fetches the device snapshot does NOT bump `lastUpdated`; Homey serves
+    // the cached capability value with the same timestamp. The 40-minute
+    // `STALE_DEVICE_OBSERVATION_MS` window is the backstop. Devices become
+    // fresh again on the next genuine capability emit (confirmed by the
+    // `device_became_fresh` events in the same prod log). Therefore:
+    //  - Fresh after refresh ⇔ Homey returned a *newer* per-capability
+    //    `lastUpdated` than the prior snapshot recorded.
+    //  - Still-stale after refresh ⇔ Homey returned no newer `lastUpdated`
+    //    (the device's last observation timestamp IS the reason — emitted via
+    //    `device_became_stale` per-device on the transition).
+    const baseTimeMs = Date.UTC(2026, 2, 21, 10, 0, 0);
+
+    type StaleRefreshDevice = {
+      id: string;
+      name: string;
+      lastFreshDataMs: number;
+    };
+
+    function makeSnapshotDevice(id: string, lastFreshDataMs: number, name = `dev ${id}`): StaleRefreshDevice {
+      return { id, name, lastFreshDataMs };
+    }
+
+    function makeStaleSnapshotDevice(id: string, nowMs: number, name = `dev ${id}`): StaleRefreshDevice {
+      return makeSnapshotDevice(id, nowMs - STALE_DEVICE_OBSERVATION_MS - 60 * 1000, name);
+    }
+
+    function makeFreshSnapshotDevice(id: string, nowMs: number, name = `dev ${id}`): StaleRefreshDevice {
+      return makeSnapshotDevice(id, nowMs - 1_000, name);
+    }
+
+    function makeHelperForRefreshContract(options: {
+      snapshotRef: { current: StaleRefreshDevice[] };
+      infoSpy: ReturnType<typeof vi.fn>;
+      currentMs: { value: number };
+      refreshSnapshot?: ReturnType<typeof vi.fn>;
+    }) {
+      const refreshSnapshot = options.refreshSnapshot ?? vi.fn().mockResolvedValue(undefined);
+      return new AppSnapshotHelpers({
+        homey: mockHomeyInstance as any,
+        timers: new TimerRegistry(),
+        getDeviceManager: () => ({ refreshSnapshot } as any),
+        getPlanEngine: () => undefined,
+        getPlanService: () => ({
+          syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+          syncHeadroomCardState: vi.fn(),
+          getLatestPlanSnapshot: vi.fn(),
+        } as any),
+        getLatestTargetSnapshot: () => options.snapshotRef.current as any,
+        resolveManagedState: () => true,
+        isCapacityControlEnabled: () => true,
+        getStructuredLogger: (component) => (component === 'devices' ? ({
+          info: options.infoSpy,
+          debug: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        } as any) : undefined),
+        logDebug: vi.fn(),
+        error: vi.fn(),
+        getNow: () => new Date(options.currentMs.value),
+        logPeriodicStatus: vi.fn(),
+        disableUnsupportedDevices: vi.fn(),
+        seedMissingModeTargets: vi.fn(),
+        getFlowReportedDeviceIds: vi.fn(() => []),
+        emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+        emitSettingsUiDevicesUpdated: vi.fn(),
+        recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      });
+    }
+
+    function emitsOfEvent(infoSpy: ReturnType<typeof vi.fn>, event: string): Array<Record<string, unknown>> {
+      return infoSpy.mock.calls
+        .map((call) => call[0])
+        .filter((arg): arg is Record<string, unknown> => (arg as { event?: string })?.event === event);
+    }
+
+    it('counts a device as fresh once refresh produces a newer lastFreshDataMs and as still-stale when it does not', async () => {
+      const currentMs = { value: baseTimeMs };
+      // Two stale devices going in. The refresh mock simulates Homey behavior:
+      //  - dev-fresh: capability genuinely changed value, so the parsed
+      //    snapshot has a newer `lastFreshDataMs` (within the window).
+      //  - dev-still-stale: capability did not change value, so Homey returns
+      //    the same cached `lastUpdated` and the parsed snapshot keeps the
+      //    pre-refresh stale `lastFreshDataMs` (case (a), by design).
+      const snapshotRef = {
+        current: [
+          makeStaleSnapshotDevice('dev-fresh', currentMs.value, 'Therm A'),
+          makeStaleSnapshotDevice('dev-still-stale', currentMs.value, 'Therm B'),
+        ],
+      };
+      const infoSpy = vi.fn();
+      const refreshSnapshot = vi.fn().mockImplementation(async () => {
+        snapshotRef.current = [
+          makeFreshSnapshotDevice('dev-fresh', currentMs.value, 'Therm A'),
+          // dev-still-stale unchanged — Homey returned cached state.
+          makeStaleSnapshotDevice('dev-still-stale', currentMs.value, 'Therm B'),
+        ];
+      });
+      const helper = makeHelperForRefreshContract({ snapshotRef, infoSpy, currentMs, refreshSnapshot });
+
+      await helper.refreshStaleDeviceObservations();
+
+      // refreshSnapshot was actually invoked (targeted refresh path).
+      expect(refreshSnapshot).toHaveBeenCalledTimes(1);
+
+      // The structured counter splits the two devices correctly:
+      // fresh device transitions to fresh, still-stale device stays stale.
+      const refreshEmits = emitsOfEvent(infoSpy, 'stale_device_observation_refresh');
+      expect(refreshEmits).toHaveLength(1);
+      expect(refreshEmits[0]).toMatchObject({
+        event: 'stale_device_observation_refresh',
+        staleDevices: 2,
+        devicesTotal: 2,
+        refreshedDevices: 2,
+        freshAfterRefreshDevices: 1,
+        stillStaleAfterRefreshDevices: 1,
+        loggedStillStaleDevices: 1,
+      });
+    });
+
+    it('emits device_became_stale with the last observation timestamp as the still-stale reason', async () => {
+      // The "clear reason" a still-stale device exposes is its actual last
+      // observation timestamp — surfaced per-device via `device_became_stale`
+      // when the transition first happened. `isDeviceObservationStale` in
+      // `logDeviceFreshnessTransitions` calls `Date.now()` directly (not the
+      // injected `getNow`), so the simulated wall clock must move via
+      // `vi.setSystemTime`.
+      const transitionStartMs = baseTimeMs;
+      vi.setSystemTime(new Date(transitionStartMs));
+      const currentMs = { value: transitionStartMs };
+      const snapshotRef = {
+        current: [makeFreshSnapshotDevice('dev-still-stale', currentMs.value, 'Therm B')],
+      };
+      const infoSpy = vi.fn();
+      const helper = makeHelperForRefreshContract({ snapshotRef, infoSpy, currentMs });
+
+      // First cycle: device is fresh, no transition log yet (initial sample).
+      await helper.refreshStaleDeviceObservations();
+      // Advance into stale territory and re-run: device transitions
+      // fresh → stale and emits `device_became_stale` with its last
+      // observation timestamp as the explicit reason.
+      currentMs.value += STALE_DEVICE_OBSERVATION_MS + 60_000;
+      vi.setSystemTime(new Date(currentMs.value));
+      await helper.refreshStaleDeviceObservations();
+
+      const becameStale = emitsOfEvent(infoSpy, 'device_became_stale');
+      expect(becameStale).toHaveLength(1);
+      expect(becameStale[0]).toMatchObject({
+        event: 'device_became_stale',
+        deviceId: 'dev-still-stale',
+        deviceName: 'Therm B',
+        source: 'stale_observation_check',
+      });
+      expect(typeof becameStale[0]!.lastObservationAt).toBe('string');
+      expect(typeof becameStale[0]!.ageMs).toBe('number');
+      expect(becameStale[0]!.ageMs as number).toBeGreaterThanOrEqual(STALE_DEVICE_OBSERVATION_MS);
+    });
+  });
+
   describe('stale_device_observation_refresh log backoff', () => {
     const STALE_LOG_BACKOFF_MS = 15 * 60 * 1000;
     const REFRESH_INTERVAL_MS = 60 * 1000;
