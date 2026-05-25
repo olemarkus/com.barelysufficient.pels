@@ -2371,13 +2371,20 @@ consolidation + a11y polish (8 P2)`.*
       `flowCards/deadlineObjectiveCards.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
-- [ ] Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
+- [ ] **P3** — Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
       `lib/plan/planBuilder.ts:258` uses `min(capacitySoftLimit, dailySoftLimit)` uniformly,
       so the `hard` flag accepted by the flow card has no behavioral effect. Plumb a "hard
       objective active" signal from admission into the soft-limit selector and apply only to
       EV chargers admitted under `enforcement: 'hard'`; bypass the daily-tightened soft limit
       while still respecting the hard cap. Until this lands, the EV flow card should default to
       `soft` and hide the `hard` option from users.
+      Why P3 (deferred 2026-05-25): the user-visible need ("make this deadline at any cost
+      within the hard cap") may already be substantially covered by other smart-task params
+      shipped since this entry was written — rescue mode, speed mode, headroom-for-device
+      crediting, and the deadline-imminent rescue paths. Before plumbing a new admission
+      signal, audit whether a `hard`-tagged objective with `rescue` + `auto` speed already
+      bypasses or sufficiently relaxes daily-budget pressure in practice. If yes, just ship
+      the flow-card hide/default-to-soft change and close.
       Design: `notes/ev-ready-by/README.md`.
       Files: `lib/plan/planBuilder.ts`, `lib/plan/admission/deferredObjective.ts`,
       `flowCards/deadlineObjectiveCards.ts`, headroom and admission tests.
