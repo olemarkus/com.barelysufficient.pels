@@ -2225,11 +2225,20 @@ consolidation + a11y polish (8 P2)`.*
       regardless of filter-active status (which itself must reconcile with the
       fresh-install behaviour the gate intentionally protects). Marked done
       because the current state is correct as designed.
-- [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
+- [x] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
       applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
       third time inside `resolveParseDeviceIdentity`.
       Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
       `lib/device/managerParseIdentity.ts`.
+      Resolution: `DeviceManager.refreshSnapshot` (snapshot pipeline) and the
+      `parseDeviceListForTests` test entry are now the single application sites
+      for the parse path; the realtime pipeline keeps its own single application
+      inside `DeviceManager.handleRealtimeDeviceUpdate`. The wrapper
+      `DeviceManager.parseDeviceList` (was site #2) now trusts already-effective
+      input, and `resolveParseDeviceIdentity` (was site #3) no longer touches
+      driver overrides or compatibility metadata. Regression covered by
+      `test/deviceManager.test.ts` (`getDeviceDriverIdOverride` invoked once per
+      device for both `parseDeviceListForTests` and `refreshSnapshot`).
 - [x] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.

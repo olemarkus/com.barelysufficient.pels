@@ -1,11 +1,9 @@
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { DeviceManagerParseProviders } from './managerParseDevice';
 import {
   getDeviceId,
   resolveDeviceClassKey,
   resolveDeviceLabel,
 } from './managerHelpers';
-import { applyDeviceCompatibilityMetadata } from '../compatibility';
 
 export type ParsedDeviceIdentity = {
   deviceId: string;
@@ -14,24 +12,28 @@ export type ParsedDeviceIdentity = {
   deviceLabel: string;
 };
 
+/**
+ * Resolves identity fields (id, deviceClassKey, label) from an already-effective
+ * device. Callers must apply `applyDeviceCompatibilityMetadata` and
+ * `applyDeviceDriverOverride` upstream (see `DeviceManager.applyDeviceDriverOverride`)
+ * so the override is propagated through the snapshot pipeline once instead of
+ * being re-applied at every layer. The single application sites are:
+ *   - `DeviceManager.refreshSnapshot` (snapshot pipeline)
+ *   - `DeviceManager.handleRealtimeDeviceUpdate` (realtime pipeline)
+ *   - `DeviceManager.parseDeviceListForTests` (test entry point)
+ */
 export function resolveParseDeviceIdentity(params: {
   device: HomeyDeviceLike;
-  providers: DeviceManagerParseProviders;
 }): ParsedDeviceIdentity | null {
-  const { device, providers } = params;
+  const { device } = params;
   const deviceId = getDeviceId(device);
-  const compatibleDevice = applyDeviceCompatibilityMetadata(device);
-  const effectiveDevice = applyDeviceDriverOverride(
-    compatibleDevice,
-    providers.getDeviceDriverIdOverride?.(deviceId),
-  );
-  const deviceClassKey = resolveDeviceClassKey(effectiveDevice);
+  const deviceClassKey = resolveDeviceClassKey(device);
   return deviceClassKey
     ? {
       deviceId,
-      effectiveDevice,
+      effectiveDevice: device,
       deviceClassKey,
-      deviceLabel: resolveDeviceLabel(effectiveDevice, deviceId),
+      deviceLabel: resolveDeviceLabel(device, deviceId),
     }
     : null;
 }

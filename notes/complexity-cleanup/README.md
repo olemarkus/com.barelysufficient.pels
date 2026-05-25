@@ -73,7 +73,6 @@ the shared owner for SDK setup, snapshots, realtime updates, and command writes.
 
 Remaining work:
 
-- deduplicate `applyDeviceDriverOverride` along the snapshot pipeline
 - remove redundant downstream `managed !== false` filters after the parse-time invariant has soaked
 - only extract more `DeviceManager` code when a new subsystem boundary is clear
 

@@ -1460,7 +1460,8 @@ export class DeviceManager extends EventEmitter implements DeviceObservation {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
     }
     parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
-        return this.parseDeviceList(list, {}, 'unfiltered');
+        const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+        return this.parseDeviceList(effectiveList, {}, 'unfiltered');
     }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
     getDebugObservedSources(deviceId: string): DeviceDebugObservedSources | null {
@@ -1936,20 +1937,25 @@ export class DeviceManager extends EventEmitter implements DeviceObservation {
         this.removeAllListeners();
     }
 
+    // Snapshot pipeline contract: callers must pass an already-effective device
+    // list (compatibility metadata + driver-id override pre-applied via
+    // `this.applyDeviceDriverOverride`). `refreshSnapshot` and
+    // `parseDeviceListForTests` are the two entry points; both pre-apply the
+    // override exactly once so it propagates downstream without being re-run by
+    // this wrapper or by `resolveParseDeviceIdentity` inside `parseDevice`.
     private parseDeviceList(
-        list: HomeyDeviceLike[],
+        effectiveList: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
         purpose: ParseDevicePurpose = 'runtime',
     ): TargetDeviceSnapshot[] {
-        const effectiveDevices = list.map((device) => this.applyDeviceDriverOverride(device));
         this.latestTrackedDevicesById = new Map(
-            effectiveDevices
+            effectiveList
                 .map((device) => [getDeviceId(device), device] as const)
                 .filter(([deviceId]) => Boolean(deviceId) && this.shouldTrackRealtimeDevice(deviceId)),
         );
         this.syncTrackedNativeSteppedLoadAdapters();
         return parseDeviceList({
-            list,
+            list: effectiveList,
             livePowerWByDeviceId,
             previousSnapshotById: this.latestSnapshotById,
             deps: this.getParseDeviceDeps(),

@@ -358,6 +358,50 @@ describe('DeviceManager', () => {
 
             expect(parsed).toEqual([]);
         });
+
+        // Regression: the driver-id override used to be applied three times along
+        // the snapshot pipeline (refreshSnapshot, the private parseDeviceList
+        // wrapper, and resolveParseDeviceIdentity). Each lookup invoked
+        // getDeviceDriverIdOverride. After the dedup, the override resolves once
+        // per device per pipeline call so the provider callback is invoked exactly
+        // once per device end-to-end.
+        it('invokes getDeviceDriverIdOverride exactly once per device for parseDeviceListForTests', () => {
+            const getDeviceDriverIdOverride = vi.fn((deviceId: string) => (
+                deviceId === 'dev-a' ? 'homey:app:com.zaptec:go2' : undefined
+            ));
+            const parsingDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getDeviceDriverIdOverride,
+            });
+
+            parsingDeviceManager.parseDeviceListForTests([
+                {
+                    id: 'dev-a',
+                    name: 'Mock A',
+                    class: 'socket',
+                    driverId: 'homey:app:com.example:mock',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 50, id: 'measure_power' },
+                    },
+                },
+                {
+                    id: 'dev-b',
+                    name: 'Mock B',
+                    class: 'socket',
+                    driverId: 'homey:app:com.example:mock',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 80, id: 'measure_power' },
+                    },
+                },
+            ]);
+
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledTimes(2);
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-a');
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-b');
+        });
     });
 
     describe('runtime managed filter', () => {
@@ -1230,6 +1274,50 @@ describe('DeviceManager', () => {
             expect(snapshot[0].expectedPowerSource).toBe('default');
 
             vi.useRealTimers();
+        });
+
+        // Regression: previously the override resolved at three sites in the
+        // snapshot pipeline (refreshSnapshot, the wrapper parseDeviceList, and
+        // resolveParseDeviceIdentity). After the dedup, the provider callback is
+        // invoked once per device per refresh.
+        it('invokes getDeviceDriverIdOverride exactly once per device in refreshSnapshot', async () => {
+            const getDeviceDriverIdOverride = vi.fn((deviceId: string) => (
+                deviceId === 'dev-a' ? 'homey:app:com.zaptec:go2' : undefined
+            ));
+            const refreshDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                getDeviceDriverIdOverride,
+            });
+            await refreshDeviceManager.init();
+            mockApiGet.mockResolvedValue({
+                'dev-a': {
+                    id: 'dev-a',
+                    name: 'Mock A',
+                    class: 'socket',
+                    driverId: 'homey:app:com.example:mock',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 50, id: 'measure_power' },
+                    },
+                },
+                'dev-b': {
+                    id: 'dev-b',
+                    name: 'Mock B',
+                    class: 'socket',
+                    driverId: 'homey:app:com.example:mock',
+                    capabilities: ['onoff', 'measure_power'],
+                    capabilitiesObj: {
+                        onoff: { value: true, id: 'onoff' },
+                        measure_power: { value: 80, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await refreshDeviceManager.refreshSnapshot();
+
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledTimes(2);
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-a');
+            expect(getDeviceDriverIdOverride).toHaveBeenCalledWith('dev-b');
         });
     });
 
