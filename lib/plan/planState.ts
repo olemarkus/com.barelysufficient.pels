@@ -150,6 +150,13 @@ export type PlanEngineState = {
   modeTargetMissingByDevice: Record<string, {
     missingCycles: number;
     cachedTargetValue?: number;
+    /**
+     * Capability ID the `cachedTargetValue` was read from. Compared against
+     * the current primary target capability when the grace path considers
+     * reusing the cache so a device re-pair (or driver swap) during the
+     * grace window can't reuse a value against a different capability.
+     */
+    cachedTargetCapabilityId?: string;
     lastEmitAtMs?: number;
     lastEmitEvent?: 'missing_mode_target' | 'missing_mode_target_and_current_target';
   }>;

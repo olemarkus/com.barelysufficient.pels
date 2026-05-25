@@ -1,4 +1,5 @@
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
+import { cleanupMissingModeTargetDevices } from './planModeTargetGuard';
 import type { PlanEngineState } from './planState';
 import { incPerfCounter } from '../utils/perfCounters';
 import {
@@ -431,6 +432,14 @@ export const syncHeadroomCardState = (params: {
 
   if (cleanupMissingDevices) {
     stateChanged = cleanupMissingHeadroomDevices(state, devices);
+    // Sibling cleanup for transient mode-target-guard state: both share the
+    // same snapshot-refresh trigger, so prune in lockstep. See
+    // `planModeTargetGuard.ts:cleanupMissingModeTargetDevices`.
+    const modeTargetRemoved = cleanupMissingModeTargetDevices(
+      state,
+      new Set(devices.map((device) => device.id)),
+    );
+    stateChanged = stateChanged || modeTargetRemoved;
   }
 
   for (const device of devices) {

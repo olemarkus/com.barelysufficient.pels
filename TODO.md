@@ -3192,13 +3192,14 @@ should not be folded into the same PR.
       In-memory only per `feedback_homey_sdk_unreliable`. See
       `lib/plan/planModeTargetGuard.ts`.
 
-- [ ] **P2 — Mode-target grace cache hygiene** (follow-ups from PR #1159 runtime-reality review):
-  - Bind `cachedTargetValue` to capability ID (`lib/plan/planModeTargetGuard.ts`) so a device re-pair during grace can't reuse the value against a different capability.
-  - Garbage-collect `modeTargetMissingByDevice` entries for removed devices (`lib/plan/planState.ts`) — mirror the prune pattern from `lib/plan/planHeadroomState.ts:49` / `lib/app/appSnapshotHelpers.ts:250`.
-  - Cap `missingCycles` at `MODE_TARGET_GRACE_CYCLES + 1` so it doesn't grow unbounded while a device stays in skip (cosmetic, for log/snapshot stability).
-  - Skip-path 15-min heartbeat lacks a dedicated test (existing test only covers fallback path). Add coverage.
-  - `payload.operatingMode` on heartbeat re-emit reflects mode at re-emit time, not first-emit time. Either document or capture-at-first.
-  - `seed.kind === 'grace_fallback'` adds a third branch consumers could read; tag for `pels-layering-guardian` review (resolution-in-producer smell).
+- [x] **P2 — Mode-target grace cache hygiene** (follow-ups from PR #1159 runtime-reality review):
+  - [x] Bind `cachedTargetValue` to capability ID (`lib/plan/planModeTargetGuard.ts`) so a device re-pair during grace can't reuse the value against a different capability.
+  - [x] Garbage-collect `modeTargetMissingByDevice` entries for removed devices — added `cleanupMissingModeTargetDevices` in `lib/plan/planModeTargetGuard.ts`, wired into `syncHeadroomCardState`'s `cleanupMissingDevices` branch in `lib/plan/planHeadroomState.ts` (same snapshot-refresh trigger).
+  - [x] Cap `missingCycles` at `MODE_TARGET_GRACE_CYCLES + 1` so it doesn't grow unbounded while a device stays in skip (cosmetic, for log/snapshot stability).
+  - [x] Skip-path 15-min heartbeat coverage added (`test/planDevices.test.ts`).
+  - [x] `payload.operatingMode` on heartbeat re-emit: documented inline in `planModeTargetGuard.ts` that the field reflects mode at emit-time, not first-miss time; mode transitions during the missing window do not reset the throttle.
+
+- [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
 
 - [ ] Symmetric phantom-shed filter for the shed-side keep-invariant clamp.
       `lib/plan/planDevices.ts:isPhantomSetStepShed` mirrors the

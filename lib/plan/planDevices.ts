@@ -239,11 +239,13 @@ function resolveTemperatureSeed(
   deps: PlanDevicesDeps,
 ): ResolvedModeTargetSeed {
   const fallback = target?.value;
+  const targetCapabilityId = target?.id;
   // Always refresh the cached capability value when a fresh read is available
   // (even if the mode target is also present) so a future double-miss can ride
-  // out the grace window.
+  // out the grace window. Cache is keyed by capability ID so a re-pair during
+  // grace can't reuse a value against a different capability.
   if (typeof fallback === 'number' && Number.isFinite(fallback)) {
-    rememberModeTargetCapability(state, dev.id, fallback);
+    rememberModeTargetCapability(state, dev.id, fallback, targetCapabilityId);
   }
   if (Number.isFinite(desired)) {
     // Mode target is set — clear any missing-mode emit throttling so the next
@@ -258,6 +260,7 @@ function resolveTemperatureSeed(
     state,
     deviceId: dev.id,
     capabilityValue: fallback,
+    capabilityId: targetCapabilityId,
     payload: { deviceId: dev.id, deviceName: dev.name, operatingMode: deps.getOperatingMode?.() ?? null },
     debugStructured: deps.debugStructured,
     logger,

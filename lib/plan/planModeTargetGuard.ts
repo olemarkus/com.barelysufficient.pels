@@ -36,11 +36,16 @@ type MissingModeTargetEvent =
  * Refresh the cached capability value after a successful read. Keeps emit
  * throttle metadata so a `missing_mode_target` fallback event that was just
  * emitted does not immediately re-emit on the next still-missing-mode cycle.
+ *
+ * The capability ID is stored alongside the value so the grace path can
+ * invalidate the cache when the primary target capability changes (e.g. a
+ * re-pair swaps `target_temperature` for a different capability).
  */
 export function rememberModeTargetCapability(
   state: PlanEngineState,
   deviceId: string,
   cachedValue: number,
+  cachedCapabilityId: string | undefined,
 ): void {
   const existing = state.modeTargetMissingByDevice[deviceId];
   // eslint-disable-next-line no-param-reassign -- shared plan engine state update
@@ -48,7 +53,31 @@ export function rememberModeTargetCapability(
     ...(existing ?? {}),
     missingCycles: 0,
     cachedTargetValue: cachedValue,
+    cachedTargetCapabilityId: cachedCapabilityId,
   };
+}
+
+/**
+ * Drop per-device transient state for devices no longer present in the live
+ * snapshot. Mirrors `cleanupMissingHeadroomDevices` in `planHeadroomState.ts`
+ * and the proactive prune in `lib/app/appSnapshotHelpers.ts:pruneStaleRefreshLogBackoff`.
+ * Returns true when at least one entry was deleted.
+ */
+export function cleanupMissingModeTargetDevices(
+  state: PlanEngineState,
+  currentDeviceIds: ReadonlySet<string> | readonly string[],
+): boolean {
+  const activeIds = currentDeviceIds instanceof Set
+    ? currentDeviceIds
+    : new Set(currentDeviceIds);
+  let removed = false;
+  for (const deviceId of Object.keys(state.modeTargetMissingByDevice)) {
+    if (activeIds.has(deviceId)) continue;
+    // eslint-disable-next-line no-param-reassign -- shared plan engine state update
+    delete state.modeTargetMissingByDevice[deviceId];
+    removed = true;
+  }
+  return removed;
 }
 
 /**
@@ -71,6 +100,9 @@ export function clearMissingModeEmitState(
   state.modeTargetMissingByDevice[deviceId] = {
     missingCycles: 0,
     cachedTargetValue: existing.cachedTargetValue,
+    ...(existing.cachedTargetCapabilityId !== undefined
+      ? { cachedTargetCapabilityId: existing.cachedTargetCapabilityId }
+      : {}),
   };
 }
 
@@ -89,11 +121,18 @@ export function resolveMissingModeTargetSeed(params: {
   state: PlanEngineState;
   deviceId: string;
   capabilityValue: number | undefined;
+  /**
+   * Capability ID of the primary target this cycle. When present, must match
+   * `cachedTargetCapabilityId` for the grace path to reuse the cached value;
+   * a mismatch (e.g. device re-paired and the target capability changed)
+   * invalidates the cache and the call falls through to the skip path.
+   */
+  capabilityId: string | undefined;
   payload: Record<string, unknown>;
   debugStructured?: StructuredDebugEmitter;
   logger: PinoLogger;
 }): ResolvedModeTargetSeed {
-  const { state, deviceId, capabilityValue, payload, debugStructured, logger } = params;
+  const { state, deviceId, capabilityValue, capabilityId, payload, debugStructured, logger } = params;
   const capabilityValueFresh = typeof capabilityValue === 'number' && Number.isFinite(capabilityValue);
   const nowMs = Date.now();
   if (capabilityValueFresh) {
@@ -102,41 +141,93 @@ export function resolveMissingModeTargetSeed(params: {
     });
     return { kind: 'fallback', value: capabilityValue };
   }
-  const grace = applyMissingModeTargetGrace(state, deviceId);
+  const grace = applyMissingModeTargetGrace(state, deviceId, capabilityId);
   if (grace.kind === 'grace_fallback') return grace;
+  // NOTE: `payload.operatingMode` reflects the operating mode at *this* emit
+  // moment, not at the first miss. Mode transitions during the missing window
+  // do not reset the throttle — the same `missing_mode_target_and_current_target`
+  // event continues to throttle for 15 min. Readers correlating heartbeat
+  // re-emits with mode-switch traces should be aware that intermediate
+  // transitions are invisible at this surface.
   emitMissingModeTargetThrottled({
     state, deviceId, event: 'missing_mode_target_and_current_target', payload, nowMs, debugStructured, logger,
   });
   return { kind: 'skip' };
 }
 
+type CachedTargetEvaluation =
+  | { usable: true; value: number; capabilityId: string | undefined }
+  | { usable: false; invalidatedByCapabilityChange: boolean };
+
+/**
+ * Resolve whether the cached capability value can ride out a missing-mode
+ * cycle. Caller uses `invalidatedByCapabilityChange` (only meaningful when
+ * `usable === false`) to decide whether to drop the cache before persisting
+ * the next state.
+ */
+function evaluateCachedTarget(
+  tracking: PlanEngineState['modeTargetMissingByDevice'][string] | undefined,
+  currentCapabilityId: string | undefined,
+): CachedTargetEvaluation {
+  const cachedValue = tracking?.cachedTargetValue;
+  const cachedCapabilityId = tracking?.cachedTargetCapabilityId;
+  const cachedValueFresh = typeof cachedValue === 'number' && Number.isFinite(cachedValue);
+  if (!cachedValueFresh) {
+    return { usable: false, invalidatedByCapabilityChange: false };
+  }
+  const cachedCapabilityMatches = cachedCapabilityId === undefined
+    || currentCapabilityId === undefined
+    || cachedCapabilityId === currentCapabilityId;
+  if (!cachedCapabilityMatches) {
+    return { usable: false, invalidatedByCapabilityChange: true };
+  }
+  return { usable: true, value: cachedValue, capabilityId: cachedCapabilityId };
+}
+
 /**
  * Increment the per-device missed-cycle counter and decide whether the grace
- * window still applies. When grace is exhausted (or no cached value exists),
- * the caller falls through to its existing skip path.
+ * window still applies. When grace is exhausted, no cached value exists, or
+ * the cached capability ID does not match the current primary capability ID
+ * (e.g. a re-pair swapped capabilities during the grace window), the caller
+ * falls through to its existing skip path. Caps `missingCycles` at
+ * `MODE_TARGET_GRACE_CYCLES + 1` once the grace window is exhausted so the
+ * counter does not grow unbounded while a device stays in skip — purely
+ * cosmetic for log / snapshot stability.
  */
 function applyMissingModeTargetGrace(
   state: PlanEngineState,
   deviceId: string,
+  currentCapabilityId: string | undefined,
 ): GraceEvaluation {
   const tracking = state.modeTargetMissingByDevice[deviceId];
-  const cachedValue = tracking?.cachedTargetValue;
-  const nextMissingCycles = (tracking?.missingCycles ?? 0) + 1;
-  if (typeof cachedValue === 'number' && Number.isFinite(cachedValue)
-    && nextMissingCycles <= MODE_TARGET_GRACE_CYCLES) {
+  const cache = evaluateCachedTarget(tracking, currentCapabilityId);
+  const capCycles = MODE_TARGET_GRACE_CYCLES + 1;
+  const nextMissingCycles = Math.min((tracking?.missingCycles ?? 0) + 1, capCycles);
+  if (cache.usable && nextMissingCycles <= MODE_TARGET_GRACE_CYCLES) {
     // eslint-disable-next-line no-param-reassign -- shared plan engine state update
     state.modeTargetMissingByDevice[deviceId] = {
       ...(tracking ?? {}),
       missingCycles: nextMissingCycles,
-      cachedTargetValue: cachedValue,
+      cachedTargetValue: cache.value,
+      ...(cache.capabilityId !== undefined
+        ? { cachedTargetCapabilityId: cache.capabilityId }
+        : {}),
     };
-    return { kind: 'grace_fallback', value: cachedValue };
+    return { kind: 'grace_fallback', value: cache.value };
   }
-  // eslint-disable-next-line no-param-reassign -- shared plan engine state update
-  state.modeTargetMissingByDevice[deviceId] = {
+  // Capability mismatch (re-pair during grace) invalidates the cache: drop
+  // it so a future fresh read for the new capability rebuilds it from scratch
+  // and the grace counter behaves as if no cache had ever existed.
+  const nextEntry: PlanEngineState['modeTargetMissingByDevice'][string] = {
     ...(tracking ?? {}),
     missingCycles: nextMissingCycles,
   };
+  if (!cache.usable && cache.invalidatedByCapabilityChange) {
+    delete nextEntry.cachedTargetValue;
+    delete nextEntry.cachedTargetCapabilityId;
+  }
+  // eslint-disable-next-line no-param-reassign -- shared plan engine state update
+  state.modeTargetMissingByDevice[deviceId] = nextEntry;
   return { kind: 'skip' };
 }
 
