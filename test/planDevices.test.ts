@@ -1,6 +1,10 @@
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { buildInitialPlanDevices } from '../lib/plan/planDevices';
-import { MODE_TARGET_GRACE_CYCLES } from '../lib/plan/planModeTargetGuard';
+import {
+  MISSING_MODE_TARGET_EMIT_INTERVAL_MS,
+  MODE_TARGET_GRACE_CYCLES,
+  cleanupMissingModeTargetDevices,
+} from '../lib/plan/planModeTargetGuard';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { PlanDevicesDeps } from '../lib/plan/planDevices';
@@ -1630,6 +1634,181 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(debugStructured).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'missing_mode_target' }),
       );
+    });
+
+    it('emits a 15-minute heartbeat while the device stays in skip after grace exhausts', () => {
+      const state = createPlanEngineState();
+      const debugStructured = vi.fn();
+      const deps = { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' };
+      const baseMs = Date.now();
+      const dateNowSpy = vi.spyOn(Date, 'now');
+
+      try {
+        // Cycle 0: capability read succeeds → cache value, fallback emit.
+        dateNowSpy.mockReturnValue(baseMs);
+        buildInitialPlanDevices({
+          context: { ...buildContext([tempDeviceWithValue(50)]), desiredForMode: {} },
+          state,
+          shedSet: new Set(),
+          shedReasons: new Map(),
+          guardInShortfall: false,
+          deps,
+        });
+        expect(debugStructured).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'missing_mode_target' }),
+        );
+
+        // Cycles 1..(grace+1): capability read transiently misses. First
+        // `MODE_TARGET_GRACE_CYCLES` cycles ride out grace (no emit), then
+        // grace exhausts and the skip event fires once. Counter caps at
+        // `MODE_TARGET_GRACE_CYCLES + 1` so it doesn't grow unbounded.
+        debugStructured.mockClear();
+        for (let cycle = 1; cycle <= MODE_TARGET_GRACE_CYCLES + 1; cycle += 1) {
+          dateNowSpy.mockReturnValue(baseMs + cycle * 1000);
+          buildInitialPlanDevices({
+            context: { ...buildContext([tempDeviceWithValue(undefined)]), desiredForMode: {} },
+            state,
+            shedSet: new Set(),
+            shedReasons: new Map(),
+            guardInShortfall: false,
+            deps,
+          });
+        }
+        const skipEventsAfterExhaust = debugStructured.mock.calls.filter(([entry]) => (
+          (entry as { event?: string }).event === 'missing_mode_target_and_current_target'
+        ));
+        expect(skipEventsAfterExhaust).toHaveLength(1);
+        // Counter cap: should be frozen at `MODE_TARGET_GRACE_CYCLES + 1`.
+        expect(state.modeTargetMissingByDevice.tank?.missingCycles).toBe(
+          MODE_TARGET_GRACE_CYCLES + 1,
+        );
+
+        // Advance well past the throttle interval and run one more cycle.
+        // Still in skip → heartbeat re-emit fires once.
+        debugStructured.mockClear();
+        dateNowSpy.mockReturnValue(baseMs + MISSING_MODE_TARGET_EMIT_INTERVAL_MS + 60_000);
+        buildInitialPlanDevices({
+          context: { ...buildContext([tempDeviceWithValue(undefined)]), desiredForMode: {} },
+          state,
+          shedSet: new Set(),
+          shedReasons: new Map(),
+          guardInShortfall: false,
+          deps,
+        });
+        expect(debugStructured).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'missing_mode_target_and_current_target' }),
+        );
+        const heartbeatEvents = debugStructured.mock.calls.filter(([entry]) => (
+          (entry as { event?: string }).event === 'missing_mode_target_and_current_target'
+        ));
+        expect(heartbeatEvents).toHaveLength(1);
+        // Cap still holds across the heartbeat re-emit.
+        expect(state.modeTargetMissingByDevice.tank?.missingCycles).toBe(
+          MODE_TARGET_GRACE_CYCLES + 1,
+        );
+
+        // Run another cycle immediately. Still within throttle window → no
+        // new emit despite still being in skip.
+        debugStructured.mockClear();
+        dateNowSpy.mockReturnValue(baseMs + MISSING_MODE_TARGET_EMIT_INTERVAL_MS + 70_000);
+        buildInitialPlanDevices({
+          context: { ...buildContext([tempDeviceWithValue(undefined)]), desiredForMode: {} },
+          state,
+          shedSet: new Set(),
+          shedReasons: new Map(),
+          guardInShortfall: false,
+          deps,
+        });
+        expect(debugStructured).not.toHaveBeenCalled();
+      } finally {
+        dateNowSpy.mockRestore();
+      }
+    });
+
+    it('invalidates the grace cache when the primary target capability ID changes', () => {
+      const state = createPlanEngineState();
+      const debugStructured = vi.fn();
+      const deps = { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' };
+
+      // Cycle 0: primary target capability is `target_temperature` with value
+      // 50. The second target lets the device still satisfy
+      // `hasTemperatureBoostTarget` after the primary capability re-orders.
+      buildInitialPlanDevices({
+        context: {
+          ...buildContext([buildPlanInputDevice({
+            id: 'tank',
+            name: 'Water tank',
+            deviceType: 'temperature',
+            targets: [
+              { id: 'target_temperature', value: 50, unit: '°C', min: 30, max: 70 },
+              { id: 'aux_setpoint', unit: '°C', min: 30, max: 70 },
+            ],
+          })]),
+          desiredForMode: {},
+        },
+        state,
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps,
+      });
+      expect(state.modeTargetMissingByDevice.tank?.cachedTargetValue).toBe(50);
+      expect(state.modeTargetMissingByDevice.tank?.cachedTargetCapabilityId)
+        .toBe('target_temperature');
+
+      // Cycle 1: a re-pair reordered the targets so the primary capability is
+      // now `aux_setpoint` and its current value is missing. The cached value
+      // (read from `target_temperature`) must NOT be reused under grace —
+      // fall through to skip even though grace cycles haven't been exhausted.
+      debugStructured.mockClear();
+      const reorderedDevice = buildPlanInputDevice({
+        id: 'tank',
+        name: 'Water tank',
+        deviceType: 'temperature',
+        targets: [
+          { id: 'aux_setpoint', unit: '°C', min: 30, max: 70 },
+          { id: 'target_temperature', unit: '°C', min: 30, max: 70 },
+        ],
+      });
+      const result = buildInitialPlanDevices({
+        context: { ...buildContext([reorderedDevice]), desiredForMode: {} },
+        state,
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps,
+      });
+      expect(result).toHaveLength(0);
+      expect(debugStructured).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'missing_mode_target_and_current_target' }),
+      );
+      // Cache should have been invalidated on the capability mismatch.
+      expect(state.modeTargetMissingByDevice.tank?.cachedTargetValue).toBeUndefined();
+      expect(state.modeTargetMissingByDevice.tank?.cachedTargetCapabilityId).toBeUndefined();
+    });
+  });
+
+  describe('cleanupMissingModeTargetDevices', () => {
+    it('deletes tracking entries for devices no longer in the snapshot', () => {
+      const state = createPlanEngineState();
+      state.modeTargetMissingByDevice['tank'] = { missingCycles: 1, cachedTargetValue: 50 };
+      state.modeTargetMissingByDevice['ev'] = { missingCycles: 0 };
+
+      const removed = cleanupMissingModeTargetDevices(state, new Set(['ev']));
+
+      expect(removed).toBe(true);
+      expect(state.modeTargetMissingByDevice.tank).toBeUndefined();
+      expect(state.modeTargetMissingByDevice.ev).toBeDefined();
+    });
+
+    it('returns false and leaves state untouched when no entries are stale', () => {
+      const state = createPlanEngineState();
+      state.modeTargetMissingByDevice['tank'] = { missingCycles: 2 };
+
+      const removed = cleanupMissingModeTargetDevices(state, ['tank']);
+
+      expect(removed).toBe(false);
+      expect(state.modeTargetMissingByDevice.tank).toBeDefined();
     });
   });
 
