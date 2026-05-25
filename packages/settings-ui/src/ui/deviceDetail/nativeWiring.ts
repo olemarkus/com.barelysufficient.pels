@@ -11,7 +11,7 @@ import {
 } from '../dom.ts';
 import { requiresNativeWiringForActivation, supportsNativeWiringActivation } from '../deviceUtils.ts';
 import { state } from '../state.ts';
-import { readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 
 let nativeWiringActivationPendingDeviceId: string | null = null;
 // Tracks the device id we have already auto-expanded the Setup disclosure
@@ -116,8 +116,11 @@ export const initDeviceDetailNativeWiringHandler = (params: {
       context: 'device detail',
       logMessage: 'Failed to disable managed device',
       toastMessage: 'Failed to disable device management.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
+      // Use the live managed-map snapshot as the fallback so a transient
+      // null or non-object SDK read does not erase entries for other
+      // devices.
+      fallbackValue: state.managedMap,
+      readFresh: readRecordSettingStrict<boolean>,
       mutate: (currentMap) => ({
         ...currentMap,
         [deviceId]: false,
@@ -136,8 +139,11 @@ export const initDeviceDetailNativeWiringHandler = (params: {
       context: 'device detail',
       logMessage: 'Failed to update native wiring setting',
       toastMessage: 'Failed to update built-in device control.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
+      // Use the live native-wiring snapshot as the fallback so a transient
+      // null or non-object SDK read does not erase entries for other
+      // devices.
+      fallbackValue: state.nativeWiringMap,
+      readFresh: readRecordSettingStrict<boolean>,
       mutate: (currentMap) => ({
         ...currentMap,
         [deviceId]: nativeWiringEnabled,

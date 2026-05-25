@@ -4,7 +4,7 @@ import {
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
 import { state } from '../state.ts';
-import { readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 
 export function initDeviceDetailManagedControlHandlers(params: {
   getCurrentDetailDeviceId: () => string | null;
@@ -21,8 +21,11 @@ export function initDeviceDetailManagedControlHandlers(params: {
       context: 'device detail',
       logMessage: 'Failed to update controllable device',
       toastMessage: 'Failed to update controllable device.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
+      // Use the live controllable-map snapshot as the fallback so a
+      // transient null or non-object SDK read does not erase entries for
+      // other devices.
+      fallbackValue: state.controllableMap,
+      readFresh: readRecordSettingStrict<boolean>,
       mutate: (currentMap) => ({
         ...currentMap,
         [deviceId]: nextChecked,
@@ -45,8 +48,11 @@ export function initDeviceDetailManagedControlHandlers(params: {
       context: 'device detail',
       logMessage: 'Failed to update managed device',
       toastMessage: 'Failed to update managed device.',
-      fallbackValue: {},
-      readFresh: readRecordSetting<boolean>,
+      // Use the live managed-map snapshot as the fallback so a transient
+      // null or non-object SDK read does not erase entries for other
+      // devices.
+      fallbackValue: state.managedMap,
+      readFresh: readRecordSettingStrict<boolean>,
       mutate: (currentMap) => ({
         ...currentMap,
         [deviceId]: nextChecked,

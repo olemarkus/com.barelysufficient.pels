@@ -98,8 +98,18 @@ export async function persistTargetPowerConfig(params: {
       context: 'device detail',
       logMessage: 'Failed to save target power model',
       toastMessage: 'Failed to save target power model.',
-      fallbackValue: {},
-      readFresh: normalizeDeviceTargetPowerConfigs,
+      // Use the live target-power configs snapshot as the fallback so a
+      // transient null or non-object SDK read does not erase entries for
+      // other devices.
+      fallbackValue: state.deviceTargetPowerConfigs,
+      // Only normalize when the fresh SDK value is a real object.
+      // Anything else returns null so `writeFreshSetting` falls back to
+      // the snapshot instead of normalising garbage into `{}`.
+      readFresh: (value) => (
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? normalizeDeviceTargetPowerConfigs(value)
+          : null
+      ),
       mutate: (currentMap) => {
         const nextMap = { ...currentMap };
         if (params.config) nextMap[params.deviceId] = params.config;

@@ -13,7 +13,7 @@ import {
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
-import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { isSteppedLoadControlModel } from './steppedLoadDraft.ts';
 
 const runSerializedTemperatureBoostWrite = createSerializedAsyncRunner();
@@ -63,8 +63,18 @@ export const initTemperatureBoostHandlers = (deps: TemperatureBoostHandlerDeps) 
         context: 'device detail',
         logMessage: 'Failed to save temperature boost settings',
         toastMessage: 'Failed to save temperature boost settings.',
-        fallbackValue: {},
-        readFresh: (value) => normalizeTemperatureBoostSettings(readRecordSetting<unknown>(value)),
+        // Use the live temperature-boost snapshot as the fallback so a
+        // transient null or non-object SDK read does not erase entries for
+        // other devices.
+        fallbackValue: state.temperatureBoostSettings,
+        // Only normalize when the fresh SDK value is a real object.
+        // Anything else returns null so `writeFreshSetting` falls back to
+        // the snapshot instead of normalising garbage into `{}`.
+        readFresh: (value) => (
+          value && typeof value === 'object' && !Array.isArray(value)
+            ? normalizeTemperatureBoostSettings(value)
+            : null
+        ),
         mutate: (currentSettings) => {
           const nextSettings = { ...currentSettings };
           if (nextEnabled) {

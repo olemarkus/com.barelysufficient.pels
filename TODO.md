@@ -2592,7 +2592,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts`,
       `settings/style.css` (regen).
-- [ ] Extend the snapshot-fallback pattern used by `writeFreshSetting` callers in
+- [x] Extend the snapshot-fallback pattern used by `writeFreshSetting` callers in
       `deviceDetail/index.ts` and `deviceDetail/shedBehavior.ts` to the remaining
       settings-write call sites. `managedControl.ts`, `nativeWiring.ts`,
       `targetPowerConfig.ts`, `evBoost.ts`, and `temperatureBoost.ts` still pass
