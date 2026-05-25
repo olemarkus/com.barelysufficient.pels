@@ -6,6 +6,7 @@ import { getHighestKnownPowerKw } from '../lib/observer/observedPower';
 import { getOffDevices, getSteppedRestoreCandidates } from '../lib/plan/restore/devices';
 import { estimateRestorePower } from '../lib/plan/restore/accounting';
 import { createPlanEngineState } from '../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import { updateGuardState } from '../lib/plan/admission';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../lib/plan/planUsage';
 import { mockHomeyInstance } from './mocks/homey';
@@ -37,6 +38,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getSnapshot: vi.fn().mockReturnValue(snapshot),
     setCapability: vi.fn().mockResolvedValue(undefined),
   });
+  const state = createPlanEngineState();
   const deps: PlanExecutorDeps = {
     homey: {
       ...mockHomeyInstance,
@@ -54,9 +56,10 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {
-    executor: new PlanExecutor(deps, createPlanEngineState()),
+    executor: new PlanExecutor(deps, state),
     deviceManager,
   };
 };

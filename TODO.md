@@ -2156,7 +2156,7 @@ consolidation + a11y polish (8 P2)`.*
       ad-hoc DeviceManager mocks; the `~13 others` count from the original
       grep over-counted by including async `getSnapshot` mocks that belong to
       `App`/`PelsApp` flow-snapshot sources, not `DeviceObservation`.
-- [ ] Move pending-binary-command bookkeeping fully into observer as part of
+- [x] Move pending-binary-command bookkeeping fully into observer as part of
       the PR #4 step of the observer/transport split. Today PR #1b leaves
       `state.pendingBinaryCommands[deviceId]` writes inside plan
       (`decideBinaryControl` records) and deletes inside executor
@@ -2167,6 +2167,16 @@ consolidation + a11y polish (8 P2)`.*
       {ok: true}`) and a sync helper in observer consumes the failure to clear
       pending, so writes and deletes are both observer-owned. Source:
       `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
+      Shipped in PR #4: observer owns the canonical
+      `PendingBinaryCommandStore` (`lib/observer/pendingBinaryCommands.ts`)
+      bound to a backing `state.pendingBinaryCommands` `Record` on
+      `PlanEngineState`. `dispatchBinaryControlDecision` returns
+      `{ok: true} | {ok: false; reason: 'dispatch_failed'}` and writes/clears
+      pending exclusively via the store; plan's `decideBinaryControl` no
+      longer touches pending state. The `pendingBinaryCommands` field stays
+      on `PlanEngineState` so the many plan-side read sites still consult
+      it as a `Record`; PR #5 of the split removes the field entirely once
+      read sites migrate to `store.peek(id)` / `store.get(id)` calls.
 - [x] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
       split left it at `lib/device/stateOfCharge.ts`; PR #3 took the cheap
       path and moved it into `lib/device/transport/stateOfCharge.ts`. Every

@@ -5,6 +5,7 @@ import {
   decideAndDispatchBinaryControl,
   dispatchBinaryControlDecision,
 } from '../lib/executor/binaryControlDispatch';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 
@@ -23,8 +24,18 @@ const buildObservation = (snapshots: { id: string; currentOn?: boolean }[] = [])
     getSnapshot: vi.fn().mockReturnValue(snapshots),
   });
 
+const buildTransport = (
+  state: ReturnType<typeof createPlanEngineState>,
+  overrides: Partial<BinaryControlTransport>,
+): BinaryControlTransport => ({
+  observation: buildObservation(),
+  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+  setCapability: vi.fn(),
+  ...overrides,
+});
+
 describe('decideBinaryControl (plan-side decision producer)', () => {
-  it('returns a populated decision and records pending state when the device should actuate', () => {
+  it('returns a populated decision without recording pending state (observer owns the writes)', () => {
     const state = createPlanEngineState();
     const observation = buildObservation();
 
@@ -56,12 +67,8 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       reason: undefined,
       isEv: false,
     });
-    expect(state.pendingBinaryCommands.socket1).toMatchObject({
-      capabilityId: 'onoff',
-      desired: true,
-      flowBackedControl: false,
-      actuationMode: 'plan',
-    });
+    // Plan no longer touches pending state — dispatcher records it.
+    expect(state.pendingBinaryCommands.socket1).toBeUndefined();
   });
 
   it('returns null and leaves pending state untouched when the snapshot already matches', () => {
@@ -119,24 +126,12 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
 });
 
 describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
-  it('routes a native decision to setCapability and emits success', async () => {
+  it('records pending, routes a native decision to setCapability, and emits success', async () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands.socket1 = {
-      capabilityId: 'onoff',
-      desired: true,
-      startedMs: Date.now(),
-      pendingMs: 75_000,
-      flowBackedControl: false,
-      logContext: 'capacity',
-      actuationMode: 'plan',
-    };
     const setCapability = vi.fn().mockResolvedValue(undefined);
-    const transport: BinaryControlTransport = {
-      observation: buildObservation(),
-      setCapability,
-    };
+    const transport = buildTransport(state, { setCapability });
 
-    const ok = await dispatchBinaryControlDecision({
+    const result = await dispatchBinaryControlDecision({
       decision: {
         deviceId: 'socket1',
         name: 'Socket',
@@ -148,12 +143,21 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         isEv: false,
       },
       transport,
-      state,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+      },
     });
 
-    expect(ok).toBe(true);
+    expect(result).toEqual({ ok: true });
     expect(setCapability).toHaveBeenCalledWith('socket1', 'onoff', true);
-    expect(state.pendingBinaryCommands.socket1).toBeDefined(); // pending stays until telemetry confirms
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: true,
+      flowBackedControl: false,
+      actuationMode: 'plan',
+    });
     expect(logCapture.findEvent('binary_command_succeeded')).toMatchObject({
       deviceName: 'Socket',
       capabilityId: 'onoff',
@@ -163,24 +167,11 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
 
   it('routes a flow-backed decision through the trigger and skips setCapability', async () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands.socket1 = {
-      capabilityId: 'onoff',
-      desired: false,
-      startedMs: Date.now(),
-      pendingMs: 75_000,
-      flowBackedControl: true,
-      logContext: 'capacity',
-      actuationMode: 'plan',
-    };
     const setCapability = vi.fn().mockResolvedValue(undefined);
     const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
-    const transport: BinaryControlTransport = {
-      observation: buildObservation(),
-      setCapability,
-      triggerFlowBackedBinaryControlRequest,
-    };
+    const transport = buildTransport(state, { setCapability, triggerFlowBackedBinaryControlRequest });
 
-    const ok = await dispatchBinaryControlDecision({
+    const result = await dispatchBinaryControlDecision({
       decision: {
         deviceId: 'socket1',
         name: 'Socket',
@@ -192,10 +183,15 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         isEv: false,
       },
       transport,
-      state,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        flowBackedCapabilityIds: ['onoff'],
+      },
     });
 
-    expect(ok).toBe(true);
+    expect(result).toEqual({ ok: true });
     expect(setCapability).not.toHaveBeenCalled();
     expect(triggerFlowBackedBinaryControlRequest).toHaveBeenCalledWith({
       deviceId: 'socket1',
@@ -205,26 +201,19 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
       logContext: 'capacity',
       actuationMode: 'plan',
     });
+    expect(state.pendingBinaryCommands.socket1).toMatchObject({
+      capabilityId: 'onoff',
+      desired: false,
+      flowBackedControl: true,
+    });
   });
 
-  it('clears the pre-recorded pending entry when dispatch fails', async () => {
+  it('clears the recorded pending entry when dispatch fails', async () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands.socket1 = {
-      capabilityId: 'onoff',
-      desired: true,
-      startedMs: Date.now(),
-      pendingMs: 75_000,
-      flowBackedControl: false,
-      logContext: 'capacity',
-      actuationMode: 'plan',
-    };
     const setCapability = vi.fn().mockRejectedValue(new Error('device unavailable'));
-    const transport: BinaryControlTransport = {
-      observation: buildObservation(),
-      setCapability,
-    };
+    const transport = buildTransport(state, { setCapability });
 
-    const ok = await dispatchBinaryControlDecision({
+    const result = await dispatchBinaryControlDecision({
       decision: {
         deviceId: 'socket1',
         name: 'Socket',
@@ -236,10 +225,14 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         isEv: false,
       },
       transport,
-      state,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+      },
     });
 
-    expect(ok).toBe(false);
+    expect(result).toEqual({ ok: false, reason: 'dispatch_failed' });
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
     expect(logCapture.findEvent('binary_command_failed')).toMatchObject({
       reasonCode: 'device_manager_write_failed',
@@ -247,23 +240,11 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
     });
   });
 
-  it('throws-and-clears when the flow trigger is missing', async () => {
+  it('returns dispatch_failed when the flow trigger is missing', async () => {
     const state = createPlanEngineState();
-    state.pendingBinaryCommands.socket1 = {
-      capabilityId: 'onoff',
-      desired: true,
-      startedMs: Date.now(),
-      pendingMs: 75_000,
-      flowBackedControl: true,
-      logContext: 'capacity',
-      actuationMode: 'plan',
-    };
-    const transport: BinaryControlTransport = {
-      observation: buildObservation(),
-      setCapability: vi.fn(),
-    };
+    const transport = buildTransport(state, { setCapability: vi.fn(), triggerFlowBackedBinaryControlRequest: undefined });
 
-    const ok = await dispatchBinaryControlDecision({
+    const result = await dispatchBinaryControlDecision({
       decision: {
         deviceId: 'socket1',
         name: 'Socket',
@@ -275,10 +256,15 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         isEv: false,
       },
       transport,
-      state,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        flowBackedCapabilityIds: ['onoff'],
+      },
     });
 
-    expect(ok).toBe(false);
+    expect(result).toEqual({ ok: false, reason: 'dispatch_failed' });
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
     expect(logCapture.findEvent('flow_backed_binary_command_failed')).toMatchObject({
       reasonCode: 'flow_trigger_failed',
@@ -290,10 +276,7 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
   it('returns false without invoking dispatch when the decision is null', async () => {
     const state = createPlanEngineState();
     const setCapability = vi.fn();
-    const transport: BinaryControlTransport = {
-      observation: buildObservation(),
-      setCapability,
-    };
+    const transport = buildTransport(state, { setCapability });
 
     const ok = await decideAndDispatchBinaryControl({
       state,

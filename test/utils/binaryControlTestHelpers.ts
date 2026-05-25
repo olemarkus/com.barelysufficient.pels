@@ -11,6 +11,7 @@ import type {
 import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type { PlanEngineState } from '../../lib/plan/planState';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 /**
  * Test helper that wires the post-split decide + dispatch flow against
@@ -21,8 +22,12 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
  * Accepts the same `deviceManager` mock the production code consumed
  * before the split (a structural type with `setCapability` and a
  * `DeviceObservation` view) and an optional flow trigger. The cycle is
- * identical to the previous `setBinaryControl`: plan records pending +
- * returns a decision, then executor dispatches and logs success/failure.
+ * identical to the previous `setBinaryControl`: plan decides, executor
+ * records pending + dispatches and logs success/failure. The
+ * observer-owned `pendingBinaryCommandStore` is sourced from the
+ * provided `state.pendingBinaryCommands` field (PR #4 of the
+ * observer/transport split) so callers that pre-seed pending state
+ * still see it after dispatch.
  */
 export async function runBinaryControlCycle(params: {
   state: PlanEngineState;
@@ -58,12 +63,14 @@ export async function runBinaryControlCycle(params: {
   if (!decision) return false;
   const transport: BinaryControlTransport = {
     observation: deviceManager,
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     setCapability: (id, cap, value) => deviceManager.setCapability(id, cap, value),
     triggerFlowBackedBinaryControlRequest,
   };
-  return dispatchBinaryControlDecision({
+  const result = await dispatchBinaryControlDecision({
     decision,
     transport,
-    state,
+    snapshot,
   });
+  return result.ok;
 }

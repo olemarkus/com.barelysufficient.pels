@@ -13,7 +13,19 @@ import {
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import { isFlowBackedBinaryControl } from '../plan/planBinaryControlHelpers';
 import { getLogger } from '../logging/logger';
+
+/**
+ * Discriminated dispatch outcome. `decideAndDispatchBinaryControl`
+ * collapses this to a boolean for callers that don't distinguish
+ * "plan skipped" from "dispatch failed".
+ */
+export type DispatchBinaryControlResult =
+  | { ok: true }
+  | { ok: false; reason: 'dispatch_failed' };
 
 /**
  * Transport seam for binary-control dispatch. Executor talks to this
@@ -23,9 +35,17 @@ import { getLogger } from '../logging/logger';
  * of the observer/transport split established this shape; only the
  * implementer changed when `DeviceManager` was renamed to
  * `DeviceTransport` in PR #3.
+ *
+ * Carries the observer-owned `pendingBinaryCommandStore` so the
+ * dispatcher can record pending entries on every issued command and
+ * clear them when dispatch throws. Per PR #4 of the split, the plan
+ * layer no longer touches pending state directly; writes and deletes
+ * are both observer-owned (recorded around the dispatch site here,
+ * cleared from the caught failure here as well).
  */
 export type BinaryControlTransport = {
   observation: DeviceObservation;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
   setCapability: (deviceId: string, capabilityId: string, value: boolean) => Promise<unknown>;
   triggerFlowBackedBinaryControlRequest?: (params: {
     deviceId: string;
@@ -79,21 +99,37 @@ export async function decideAndDispatchBinaryControl(params: {
     actuationMode,
   });
   if (!decision) return false;
-  return dispatchBinaryControlDecision({ decision, transport, state });
+  const result = await dispatchBinaryControlDecision({ decision, transport, snapshot });
+  return result.ok;
 }
 
 /**
- * Dispatch a decision produced by the plan layer. On failure, clears the
- * pre-recorded `pendingBinaryCommands` entry so subsequent cycles can
- * retry; on success leaves the pending entry intact for
- * `syncPendingBinaryCommands` to clear once telemetry confirms.
+ * Dispatch a decision produced by the plan layer.
+ *
+ * Pending bookkeeping is observer-owned (PR #4 of the
+ * observer/transport split):
+ *
+ * - On entry, records the pending entry via `transport.pendingBinaryCommandStore.record`
+ *   so subsequent cycles see "command in flight". This replaces the
+ *   previous write inside `decideBinaryControl` (plan layer).
+ * - On success, leaves the entry intact for
+ *   `syncPendingBinaryCommands` to clear once telemetry confirms.
+ * - On caught failure, clears the entry via
+ *   `transport.pendingBinaryCommandStore.clear` so the next cycle can
+ *   retry without seeing a stale "already pending" guard.
+ *
+ * The return shape is discriminated so callers can distinguish
+ * skipped-by-plan (handled by `decideAndDispatchBinaryControl`'s null
+ * branch) from dispatch_failed.
  */
 export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
-  state: PlanEngineState;
-}): Promise<boolean> {
-  const { decision, transport, state } = params;
+  /** Snapshot the decision was made against; used to size the per-device pending window. */
+  snapshot?: TargetDeviceSnapshot;
+}): Promise<DispatchBinaryControlResult> {
+  const { decision, transport, snapshot } = params;
+  recordPendingForDispatch({ store: transport.pendingBinaryCommandStore, decision, snapshot });
   try {
     await dispatchBinaryCommand({
       decision,
@@ -103,18 +139,35 @@ export async function dispatchBinaryControlDecision(params: {
       decision,
       observation: transport.observation,
     });
-    return true;
+    return { ok: true };
   } catch (caughtError) {
-    // Mirror the pre-split behaviour: failed dispatch clears the pending
-    // entry the plan recorded before handing the decision over.
-    // eslint-disable-next-line functional/immutable-data -- shared executor state cleanup
-    delete state.pendingBinaryCommands[decision.deviceId];
+    transport.pendingBinaryCommandStore.clear(decision.deviceId);
     emitBinaryCommandFailure({
       decision,
       err: caughtError,
     });
-    return false;
+    return { ok: false, reason: 'dispatch_failed' };
   }
+}
+
+function recordPendingForDispatch(params: {
+  store: PendingBinaryCommandStore;
+  decision: BinaryControlDecision;
+  snapshot?: TargetDeviceSnapshot;
+}): void {
+  const { store, decision, snapshot } = params;
+  const flowBackedControl = isFlowBackedBinaryControl(snapshot, decision.capabilityId);
+  store.record(decision.deviceId, {
+    capabilityId: decision.capabilityId,
+    desired: decision.desired,
+    startedMs: Date.now(),
+    pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel),
+    flowBackedControl,
+    logContext: decision.logContext,
+    restoreSource: decision.restoreSource,
+    actuationMode: decision.actuationMode,
+    ...(decision.reason ? { reason: decision.reason } : {}),
+  });
 }
 
 async function dispatchBinaryCommand(params: {

@@ -23,7 +23,11 @@ import {
   prunePendingTargetCommandsForPlan,
   syncPendingTargetCommands,
 } from './planTargetControl';
-import { syncPendingBinaryCommands } from './planBinaryControl';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+  type PendingBinaryCommandStore,
+} from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type {
@@ -89,6 +93,13 @@ export type PlanEngineDeps = {
 
 export class PlanEngine {
   public readonly state: PlanEngineState;
+  /**
+   * Observer-owned facade over `state.pendingBinaryCommands`. The executor's
+   * binary-control dispatcher writes/deletes through this store; plan-side
+   * read sites still consult the backing `Record` directly. See
+   * `notes/state-management/observer-transport-split.md` (PR #4).
+   */
+  public readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
 
   private builder: PlanBuilder;
   private executor: PlanExecutor;
@@ -98,6 +109,7 @@ export class PlanEngine {
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
+    this.pendingBinaryCommandStore = createPendingBinaryCommandStore(this.state.pendingBinaryCommands);
     this.deviceDiagnostics = deps.deviceDiagnostics;
     this.logFn = deps.log;
     this.logDebugFn = deps.logDebug;
@@ -147,6 +159,7 @@ export class PlanEngine {
       logTargetRetryComparison: deps.logTargetRetryComparison,
       syncLivePlanStateAfterTargetActuation: deps.syncLivePlanStateAfterTargetActuation,
       deviceDiagnostics: deps.deviceDiagnostics,
+      pendingBinaryCommandStore: this.pendingBinaryCommandStore,
     };
 
     this.builder = new PlanBuilder(builderDeps, this.state);
@@ -207,7 +220,7 @@ export class PlanEngine {
     source: PendingTargetObservationSource,
   ): boolean {
     return syncPendingBinaryCommands({
-      state: this.state,
+      store: this.pendingBinaryCommandStore,
       liveDevices: devices,
       source,
       onConfirmed: ({ deviceId, liveDevice, pending, confirmedAtMs }) => {
@@ -236,15 +249,15 @@ export class PlanEngine {
   }
 
   public hasPendingBinaryCommands(): boolean {
-    return Object.keys(this.state.pendingBinaryCommands).length > 0;
+    return this.pendingBinaryCommandStore.hasAny();
   }
 
   public getPendingBinaryCommandForDevice(
     deviceId: string,
     communicationModel?: 'local' | 'cloud',
   ): { desired: boolean } | null {
-    const pending = this.state.pendingBinaryCommands[deviceId];
-    if (!isPendingBinaryCommandActive({ pending, communicationModel })) return null;
+    const pending = this.pendingBinaryCommandStore.peek(deviceId);
+    if (!pending || !isPendingBinaryCommandActive({ pending, communicationModel })) return null;
     return { desired: pending.desired };
   }
 
