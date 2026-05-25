@@ -291,6 +291,7 @@ class PelsApp extends Homey.App {
   private nativeEvWiringDevices: Record<string, boolean> = {};
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
+  private flowReportedCapabilitiesEmptyParseWarned = false;
   private flowBackedCardsAvailable?: boolean;
   private flowDeviceAutocompleteCache?: { devices: HomeyDeviceLike[]; fetchedAtMs: number };
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
@@ -427,6 +428,25 @@ class PelsApp extends Homey.App {
 
   private loadFlowReportedCapabilities(): void {
     const parsed = this.settingsRepository.loadFlowReportedCapabilities();
+    // Homey SDK reads can transiently return falsy/empty data even when the
+    // underlying setting is intact (see `feedback_homey_sdk_unreliable`). If
+    // the parse came back empty but we already hold non-empty in-memory state,
+    // treat this as a transient miss and keep the existing map rather than
+    // wiping it. The persisted setting is also left untouched, so the next
+    // successful read will reconcile from disk.
+    if (
+      Object.keys(parsed).length === 0
+      && Object.keys(this.flowReportedCapabilities).length > 0
+    ) {
+      if (!this.flowReportedCapabilitiesEmptyParseWarned) {
+        this.flowReportedCapabilitiesEmptyParseWarned = true;
+        this.getStructuredLogger('devices')?.warn({
+          event: 'flow_capabilities_load_empty_parse_keeping_existing',
+          inMemoryDeviceCount: Object.keys(this.flowReportedCapabilities).length,
+        });
+      }
+      return;
+    }
     const filtered = this.filterAvailableFlowReportedCapabilities(parsed);
     this.flowReportedCapabilities = filtered;
     if (JSON.stringify(parsed) === JSON.stringify(filtered)) {

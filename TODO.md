@@ -2971,7 +2971,7 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
-- [ ] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
+- [x] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
       Pre-existing condition (predates the `SettingsRepository` chip
       `PR #1147`): `app.ts:loadFlowReportedCapabilities` overwrites
       `this.flowReportedCapabilities` unconditionally with the parsed-
@@ -2982,6 +2982,17 @@ should not be folded into the same PR.
       previous on empty parse" gate (or a different signal for "user
       really cleared all entries" vs "SDK gave us nothing this tick").
       Files: `app.ts:loadFlowReportedCapabilities`.
+      Shipped: `loadFlowReportedCapabilities` now short-circuits when
+      the parsed map is empty AND the in-memory map already holds
+      entries — kept on disk too, so a later successful read reconciles.
+      A warn-once `flow_capabilities_load_empty_parse_keeping_existing`
+      structured log fires the first time the grace fires per process.
+      Fresh-install path (`parsed=={}`, in-memory=={}) and intentional
+      filter-to-empty path (`parsed={...}`, `filtered=={}`) are
+      unchanged. Regression tests:
+      `test/app.test.ts` "keeps in-memory flow-reported capabilities
+      when SDK returns an empty parse" and "overwrites in-memory
+      flow-reported capabilities when SDK returns a real parse".
 
 - [ ] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
       The first `setup/` chip (PR #1144,
