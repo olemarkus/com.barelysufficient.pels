@@ -2492,7 +2492,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `app.ts`, `lib/device/deviceTransport.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
-- [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
+- [x] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
       `lib/objectives/samples.ts:57-82` returns `kwhPerUnit:null` when neither
       `measuredPowerKw > 0` nor `reportedStep.planningPowerW > 0` is present at sample
       time. `lib/objectives/profiles.ts:436-438` then skips the band buffer update, so
@@ -2503,14 +2503,19 @@ consolidation + a11y polish (8 P2)`.*
       training is effectively disabled — no warning, no recourse surfaced to the user.
       Why P2: silent gap; user expectation is "the longer this runs the smarter it gets"
       and the reality is that some devices will not improve regardless of sample count.
-      Acceptance: either (a) when `crediblePowerW` is unresolved across N consecutive
-      accepted samples, emit a one-shot `objective_profile_no_power_source` diagnostic so
-      the user knows which devices need step power configured; or (b) fall back to a
-      device-class default `planningPowerW` for the reported step when the user has not
-      configured one, with a clear logging trace. Either path documents the requirement in
-      `notes/objective-profile-bands.md`.
-      Files: `lib/objectives/samples.ts`, `lib/objectives/profiles.ts`,
-      `notes/objective-profile-bands.md`, profile-sample tests.
+      Resolution: approach (a) implemented in `lib/objectives/noPowerSourceDiagnostic.ts`.
+      `buildAcceptedProfileSample` emits a one-shot `objective_profile_no_power_source`
+      structured event per device per process lifetime, after
+      `OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20` consecutive accepted samples
+      with unresolved `crediblePowerW`. The in-memory counter (no persisted state per
+      `feedback_homey_sdk_unreliable`) resets on any valid power reading; the
+      already-emitted flag persists so a flipping device doesn't spam. The diagnostic is
+      informational — band-fitter behavior unchanged. Requirement now documented in
+      `notes/objective-profile-bands.md` ("a credible power source must be available per
+      accepted sample" + diagnostic semantics).
+      Files: `lib/objectives/noPowerSourceDiagnostic.ts` (new),
+      `lib/objectives/profiles.ts`, `notes/objective-profile-bands.md`,
+      `test/objectiveProfiles.test.ts`.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
       When EV boost admits a higher charger step and a later SoC update turns boost off, the next

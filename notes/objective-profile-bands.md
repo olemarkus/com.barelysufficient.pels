@@ -19,6 +19,28 @@ Each `DeviceObjectiveProfile` keeps up to `OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE 
 
 The buffer is updated only when `kWhPerUnit` is known (`crediblePowerW` was present on the previous sample). Recovery-window samples are not added — the recovery path returns its `nextProfile` before `buildAcceptedProfileSample` runs.
 
+#### Requirement: a credible power source must be available per accepted sample
+
+`crediblePowerW` is resolved by `resolveCredibleDevicePower` in `lib/objectives/samples.ts`. It draws from one of two sources:
+
+1. `measuredPowerKw` — an inline meter on the device capability set.
+2. `steppedLoadProfile.steps[reportedStepId].planningPowerW` — the user-configured planning power for the device's currently reported step.
+
+If neither is available, `crediblePowerW` is omitted from the sample. The next accepted sample then enters `buildAcceptedProfileSample` with `windowEnergyKwh = undefined` (the open sub-interval has no left-edge power), so `kwhPerUnit` is `undefined`, `resolveBandedUpdate` returns `{}`, and the band buffer never grows. Adaptive learning silently stalls.
+
+For thermostats without an inline meter, configure a per-step `planningPowerW` on the device's stepped-load profile. Without one, energy training is effectively disabled regardless of accepted-sample count.
+
+#### `objective_profile_no_power_source` diagnostic
+
+After `OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20` consecutive accepted samples whose own `crediblePowerW` is absent or non-positive, `buildAcceptedProfileSample` emits a one-shot `objective_profile_no_power_source` structured event carrying `{deviceId, deviceName, profileKind, acceptedSamples, consecutiveSamplesWithoutPower, threshold}`. The diagnostic is informational; band-fitter behavior is unchanged.
+
+Semantics (`lib/objectives/noPowerSourceDiagnostic.ts`):
+
+- **Tracks the sample's own `crediblePowerW`, not the just-closed window's `kwhPerUnit`** — the sample's `crediblePowerW` becomes the *next* window's left-edge power, so a single valid sample after a silent run is the first one that lets training resume going forward. Tracking the closed window's `kwhPerUnit` would never reset because the closed window still bills at the silent baseline.
+- **One-shot per device per process** — the diagnostic fires at most once per device per app start. A device that flips from "silent" to "valid" and back doesn't re-emit during the same process lifetime. An app restart re-arms.
+- **Counter resets on any valid `crediblePowerW`** — an intermittent SDK gap does not lock the device into "perpetually silent"; if power readings start arriving the counter drops back to zero and the threshold has to be crossed again from scratch.
+- **No persisted state** — per `feedback_homey_sdk_unreliable`, the counter and emitted flag live in process memory only. A transient SDK outage that drops `measuredPowerKw` should not have to fight stale persisted state on restart.
+
 ### Adaptive band fitter
 
 `fitBandsFromSamples` runs on every accepted sample once the buffer has `OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2 = 16` rows:

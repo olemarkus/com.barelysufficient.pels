@@ -9,6 +9,7 @@ import { resolveRecoveryState, type RecoveryAction, type RecoveryDisarmReason } 
 import { applyBandedConfidence, resolveProfileConfidence, updateProfileStat } from './stats';
 import { appendSampleToBuffer, fitBandsFromSamples } from './bands';
 import { buildObjectiveProfileSample } from './samples';
+import { emitObjectiveProfileNoPowerSourceIfNeeded } from './noPowerSourceDiagnostic';
 import {
   CLEARED_ENERGY_ACCUMULATOR,
   calculateWindowEnergyKwh,
@@ -333,6 +334,10 @@ function buildAcceptedProfileSample(params: {
     bufferedSamples: nextProfile.samples?.length ?? 0,
     bandsCount: nextProfile.bands?.length ?? 0,
   });
+  emitObjectiveProfileNoPowerSourceIfNeeded({
+    deviceId, deviceName, sample, debugStructured,
+    profileKind: nextProfile.kind, acceptedSamples: nextProfile.acceptedSamples,
+  });
   return nextProfile;
 }
 
@@ -492,32 +497,19 @@ function resolveProfileEnergyRejectionReason(params: {
   return null;
 }
 
-function getProfileIntervalMs(
-  previousSample: DeviceObjectiveProfileSample,
-  sample: DeviceObjectiveProfileSample,
-): number {
-  return sample.observedAtMs - previousSample.observedAtMs;
+function getProfileIntervalMs(prev: DeviceObjectiveProfileSample, s: DeviceObjectiveProfileSample): number {
+  return s.observedAtMs - prev.observedAtMs;
 }
 
-function getProfileValueDelta(
-  previousSample: DeviceObjectiveProfileSample,
-  sample: DeviceObjectiveProfileSample,
-): number {
-  return sample.value - previousSample.value;
+function getProfileValueDelta(prev: DeviceObjectiveProfileSample, s: DeviceObjectiveProfileSample): number {
+  return s.value - prev.value;
 }
 
-function calculateUnitPerHour(params: {
-  intervalMs: number;
-  valueDelta: number;
-}): number {
+function calculateUnitPerHour(params: { intervalMs: number; valueDelta: number }): number {
   return params.valueDelta / (params.intervalMs / 3_600_000);
 }
 
-
-function calculateKwhPerUnit(params: {
-  energyKwh: number;
-  valueDelta: number;
-}): number {
+function calculateKwhPerUnit(params: { energyKwh: number; valueDelta: number }): number {
   return params.energyKwh / params.valueDelta;
 }
 
