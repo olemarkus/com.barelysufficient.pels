@@ -2199,11 +2199,32 @@ consolidation + a11y polish (8 P2)`.*
       into the unified scheduler or document it as an explicit compatibility layer.
       Files: `lib/app/planRebuildScheduler.ts`, `lib/app/appPowerRebuildScheduler.ts`,
       scheduler tests.
-- [ ] Remove redundant downstream `managed !== false` filters now that unmanaged devices are
+- [x] Remove redundant downstream `managed !== false` filters now that unmanaged devices are
       excluded from `latestTargetSnapshot` at parse time. Current sites:
       `lib/app/appSnapshotHelpers.ts:264`, `lib/app/appInit.ts:341`,
       `lib/plan/planEvBoost.ts:15`, `lib/plan/planTemperatureBoost.ts:22`, and
       `lib/plan/planDiagnostics.ts:130`.
+      **Investigation 2026-05-25 — premise wrong; filters are load-bearing.** The
+      parse-time exclusion in `lib/device/transport/managerManagedFilter.ts:24-39`
+      is gated by `isManagedFilterActive` (`lib/app/appDeviceSupport.ts:42-44`),
+      which only fires when at least one device has `managed === true`. On a
+      fresh install — or in any state where devices have been explicitly marked
+      `managed: false` without any `true` opt-in — the filter is **inactive**
+      and devices flow through `parseDeviceList` into `latestTargetSnapshot`
+      with `managed: false`. The downstream `managed !== false` filters
+      drop them at that point. The comment block at
+      `appDeviceSupport.ts:36-41` documents the intentional gate ("explicit
+      `false` must NOT activate the filter on its own — otherwise a fresh-
+      install user would flip from 'all devices visible' to 'only explicit-
+      true visible' the moment the first unsupported device is auto-disabled").
+      Verified by `test/plan.test.ts:1388-1403` (excludes unmanaged devices
+      from the plan snapshot) and `test/app.test.ts` (stepped_feedback events
+      under fresh-install setup) — both fail when the downstream filter is
+      removed. To reframe: either close this TODO, or land a precondition
+      that extends parse-time exclusion to also drop explicit-`false` devices
+      regardless of filter-active status (which itself must reconcile with the
+      fresh-install behaviour the gate intentionally protects). Marked done
+      because the current state is correct as designed.
 - [ ] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
       applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
       third time inside `resolveParseDeviceIdentity`.
