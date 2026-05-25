@@ -81,6 +81,7 @@
   --color-border-strong: #56627a;
   --color-overlay-backdrop: rgba(0, 0, 0, 0.6);
   --pels-touch-target-min: 48px;
+  --pels-motion-pulse-duration: 1.5s; /** Canonical loop duration for `.device-loading-notice`, `.plan-card__stepped-direction`, and `.plan-card__stepped-seg[data-pulse="true"]` opacity/transform pulses in style.css. Replaces three near-identical literals (1.4s / 1.5s / 1.6s) that produced perceptually indistinguishable cadence — single source of truth for any future tuning. Literal duration (not an alias) — pulse cadence is a perceptual constant, not theme-relative. */
   --pels-control-track-3x: 144px; /** Three touch-target slots wide. Encoded as the absolute px value because Style Dictionary cannot resolve a calc against another token at build time; keep in sync with pels.touch-target.min (currently 48 px) so this stays equal to 3 * pels.touch-target.min. */
   --pels-chart-week-height: 240px; /** Power-week heatmap container height shared by `.power-week-chart` in style.css (height/min-height) and `resolveChartHeight` in powerWeekChartEcharts.ts (ECharts viewport via `initEcharts`/`chart.resize`). Promoted from parallel `240px` / `240` literals so the container box and the SVG viewport cannot drift. Literal value (not an alias) — chart heights are physical-pixel, not theme-relative; cf. `.deadline-horizon-chart`. */
   --chip-padding-inline: 10px;
