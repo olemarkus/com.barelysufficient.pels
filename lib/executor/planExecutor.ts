@@ -49,6 +49,7 @@ import {
   shouldSkipUnavailable,
 } from '../plan/planExecutorSupport';
 import { getLogger } from '../logging/logger';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 
 const logger = getLogger('executor/plan');
 import {
@@ -118,6 +119,15 @@ export type PlanExecutorDeps = {
   }) => Promise<void> | void;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  /**
+   * Observer-owned pending-binary-command store. The executor's
+   * dispatch path (`binaryControlDispatch.ts`) writes/clears entries
+   * through this store as part of PR #4 of the observer/transport
+   * split. Plan-side read sites still consult the backing field on
+   * `PlanEngineState.pendingBinaryCommands` (mutated only via the
+   * store).
+   */
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
 };
 
 export type PlanActuationResult = {
@@ -198,6 +208,7 @@ export class PlanExecutor {
   private buildBinaryControlTransport() {
     return {
       observation: this.deviceManager,
+      pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
       setCapability: (deviceId: string, capabilityId: string, value: boolean) =>
         this.deviceManager.setCapability(deviceId, capabilityId, value),
       triggerFlowBackedBinaryControlRequest: (params: {
