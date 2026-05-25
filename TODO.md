@@ -2135,7 +2135,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/device/**`, `lib/observer/**`, `lib/executor/**`, `lib/plan/planBinaryControl*.ts`,
       `lib/app/appDeviceControlSteppedState.ts`, `.dependency-cruiser.cjs`,
       `notes/state-management/README.md`, `docs/architecture.md`.
-- [ ] Sweep remaining test files with ad-hoc `{ getSnapshot: vi.fn() }` mocks typed as
+- [x] Sweep remaining test files with ad-hoc `{ getSnapshot: vi.fn() }` mocks typed as
       `DeviceManager` and migrate them to `test/utils/deviceObservationMock.ts`'s
       `withGetSnapshotByDeviceId` helper. Tests pass today because their code paths
       don't exercise the migrated reads, but later PRs in the observer/transport
@@ -2144,7 +2144,18 @@ consolidation + a11y polish (8 P2)`.*
       `test/shed_restore.test.ts`, `test/deferredObjectiveAdmission.test.ts`, and
       ~13 others (run `grep -rln "as DeviceManager\|: DeviceManager" test/` for
       the full list). Source: `pels-layering-guardian` P2-2 on PR #1095,
-      2026-05-24.
+      2026-05-24. Migrated 2 files (13 mock construction sites total:
+      `test/appDebugHelpers.test.ts` `buildDeviceManager` factory +
+      `test/app.test.ts` 12 inline sites). Left 2 sites on the old pattern
+      because they don't define `getSnapshot` at all — the helper requires it
+      and these tests only exercise `getDevicesForDebug`
+      (`test/app.test.ts:2793` flow-backed-device autocomplete cache test,
+      `test/appDebugHelpers.test.ts:49` debug device fetch failure routing
+      test). The other TODO-listed files (`test/shed_restore.test.ts`,
+      `test/deferredObjectiveAdmission.test.ts`) turned out not to construct
+      ad-hoc DeviceManager mocks; the `~13 others` count from the original
+      grep over-counted by including async `getSnapshot` mocks that belong to
+      `App`/`PelsApp` flow-snapshot sources, not `DeviceObservation`.
 - [ ] Move pending-binary-command bookkeeping fully into observer as part of
       the PR #4 step of the observer/transport split. Today PR #1b leaves
       `state.pendingBinaryCommands[deviceId]` writes inside plan
