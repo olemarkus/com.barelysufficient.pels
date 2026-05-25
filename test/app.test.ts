@@ -30,6 +30,7 @@ vi.mock('../lib/device/liveFeed', () => {
   };
 });
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
+import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -2813,13 +2814,13 @@ describe('periodic snapshot refresh scheduling', () => {
         onoff: { value: false, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
       },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: vi.fn().mockReturnValue([]),
       getDevicesForDebug: vi.fn().mockResolvedValue([
         { id: 'dev-1', name: 'Relay 1', class: 'socket', capabilities: [] },
         { id: 'dev-2', name: 'Relay 2', class: 'socket', capabilities: [] },
       ]),
-    };
+    });
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
       trigger: (_tokens?: unknown, state?: { deviceId?: string }) => (
         state?.deviceId === 'dev-1'
@@ -2867,7 +2868,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-1',
@@ -2901,7 +2902,7 @@ describe('periodic snapshot refresh scheduling', () => {
           ],
         },
       ]),
-    };
+    });
     const trigger = vi.fn().mockResolvedValue(true);
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
       trigger,
@@ -2934,7 +2935,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-native-1',
@@ -2971,7 +2972,7 @@ describe('periodic snapshot refresh scheduling', () => {
           ],
         },
       ]),
-    };
+    });
     const trigger = vi.fn().mockResolvedValue(true);
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
       trigger,
@@ -3004,7 +3005,7 @@ describe('periodic snapshot refresh scheduling', () => {
         },
       },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: vi.fn().mockReturnValue([
         {
           id: 'zaptec-active-1',
@@ -3039,7 +3040,7 @@ describe('periodic snapshot refresh scheduling', () => {
           ],
         },
       ]),
-    };
+    });
     const trigger = vi.fn().mockResolvedValue(true);
     vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation(() => ({
       trigger,
@@ -3141,7 +3142,7 @@ describe('periodic snapshot refresh scheduling', () => {
       (app as any).evBoostSettings = {
         'ev-1': { enabled: true, boostBelowPercent: 40 },
       };
-      (app as any).deviceManager = {
+      (app as any).deviceManager = withGetSnapshotByDeviceId({
         getSnapshot: () => [
           {
             id: 'ev-1',
@@ -3158,7 +3159,7 @@ describe('periodic snapshot refresh scheduling', () => {
             },
           },
         ],
-      };
+      });
       (app as any).flowReportedCapabilities = {
         'ev-1': {
           measure_battery: {
@@ -3192,7 +3193,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [
         {
           id: 'ev-1',
@@ -3209,7 +3210,7 @@ describe('periodic snapshot refresh scheduling', () => {
           },
         },
       ],
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'ev-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3235,7 +3236,7 @@ describe('periodic snapshot refresh scheduling', () => {
   it('does not request plan rebuild when EV state of charge changes without EV boost config', async () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [
         {
           id: 'ev-1',
@@ -3250,7 +3251,7 @@ describe('periodic snapshot refresh scheduling', () => {
           },
         },
       ],
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'ev-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3279,7 +3280,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'battery-1': { enabled: true, boostBelowPercent: 40 },
     };
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => [
         {
           id: 'battery-1',
@@ -3294,7 +3295,7 @@ describe('periodic snapshot refresh scheduling', () => {
           },
         },
       ],
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'battery-1': {
         measure_battery: { value: 42, reportedAt: Date.parse('2026-03-20T09:00:00Z'), source: 'flow' },
@@ -3392,9 +3393,9 @@ describe('periodic snapshot refresh scheduling', () => {
         source: 'flow',
       },
     }];
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'ev-1': {
         measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
@@ -3442,9 +3443,9 @@ describe('periodic snapshot refresh scheduling', () => {
         source: 'native',
       },
     }];
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'ev-1': {
         measure_battery: { value: 32, reportedAt: previousReportedAt, source: 'flow' },
@@ -3484,9 +3485,9 @@ describe('periodic snapshot refresh scheduling', () => {
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'dev-1': {
         onoff: { value: true, reportedAt: initialReportedAt, source: 'flow' },
@@ -3533,9 +3534,9 @@ describe('periodic snapshot refresh scheduling', () => {
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
-    (app as any).deviceManager = {
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
       getSnapshot: () => snapshot,
-    };
+    });
     (app as any).flowReportedCapabilities = {
       'ev-1': {
         pels_evcharger_resumable: { value: true, reportedAt: initialReportedAt, source: 'flow' },
