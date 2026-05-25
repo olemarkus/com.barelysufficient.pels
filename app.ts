@@ -53,13 +53,14 @@ import {
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
 } from './lib/utils/settingsKeys';
-import { isNumberMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
+import { isNumberMap } from './lib/utils/appTypeGuards';
 import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from './lib/plan/rebuildScheduler/signalDriven';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
+import { SettingsRepository } from './setup/settingsRepository';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
@@ -70,7 +71,6 @@ import {
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
-  loadPowerCalibrationStore,
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
 } from './lib/device/devicePowerCalibrationStore';
@@ -156,7 +156,6 @@ import {
   getFlowReportedDeviceIds,
   getFlowRefreshRequestedDeviceIds,
   isFlowReportedObservationCapabilityId,
-  parseFlowReportedCapabilities,
   upsertFlowReportedCapability,
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
@@ -325,6 +324,7 @@ class PelsApp extends Homey.App {
   private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
+  private readonly settingsRepository = new SettingsRepository(this.homey);
   private readonly schedulerTelemetry = new SchedulerTelemetryObserver({
     getStructuredLogger: () => this.structuredLogger,
     isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
@@ -426,15 +426,13 @@ class PelsApp extends Homey.App {
   }
 
   private loadFlowReportedCapabilities(): void {
-    const parsed = parseFlowReportedCapabilities(
-      this.homey.settings.get(FLOW_REPORTED_DEVICE_CAPABILITIES) as unknown,
-    );
+    const parsed = this.settingsRepository.loadFlowReportedCapabilities();
     const filtered = this.filterAvailableFlowReportedCapabilities(parsed);
     this.flowReportedCapabilities = filtered;
     if (JSON.stringify(parsed) === JSON.stringify(filtered)) {
       return;
     }
-    this.homey.settings.set(FLOW_REPORTED_DEVICE_CAPABILITIES, filtered);
+    this.settingsRepository.saveFlowReportedCapabilities(filtered);
     this.getStructuredLogger('devices')?.info({
       event: 'flow_backed_state_cleared',
       reasonCode: 'cards_unavailable',
@@ -1252,12 +1250,12 @@ class PelsApp extends Homey.App {
     // in-memory dirty samples that haven't crossed the persist debounce
     // window yet, stalling calibration convergence. The startup load happens
     // exactly once in `onInit` via `loadPowerCalibrationStore`.
-    const stored = this.homey.settings.get('power_tracker_state') as unknown;
-    if (isPowerTrackerState(stored)) this.powerTracker = stored;
+    const stored = this.settingsRepository.loadPowerTrackerState();
+    if (stored) this.powerTracker = stored;
     if (options.skipDailyBudgetUpdate !== true) this.dailyBudgetService.updateState({ refreshObservedStats: false });
   }
   private loadPowerCalibrationStore(): void {
-    this.powerCalibrationStore = loadPowerCalibrationStore({ homey: this.homey });
+    this.powerCalibrationStore = this.settingsRepository.loadPowerCalibrationStore();
   }
   private persistPowerCalibrationIfDue(nowMs: number = Date.now()): void {
     persistPowerCalibrationIfDue({

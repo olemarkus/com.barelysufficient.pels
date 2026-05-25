@@ -2721,7 +2721,7 @@ consolidation + a11y polish (8 P2)`.*
       `notes/smart-task-ui/README.md`.
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`, live-hero unit tests.
-- [ ] Add an `Overshoot {N} {unit}` muted line on Succeeded history entries where the final
+- [x] Add an `Overshoot {N} {unit}` muted line on Succeeded history entries where the final
       progress materially exceeded the target. Live-Homey walk found a Succeeded run with
       `29.3 °C → 77.7 °C · target 65.0 °C` — overshot by 12.7 °C — surfaced as a normal success
       with no flag. Overshoots that large often indicate the deferred override stopped applying
@@ -2730,11 +2730,21 @@ consolidation + a11y polish (8 P2)`.*
       thermal, > 10 % for EV (mirror the bands the hysteresis design proposes).
       Why P2: passive support-cost reduction; users who notice the overshoot today have no
       surface that confirms it's interesting.
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts` (new
-      `formatPlanHistoryOvershootLine` helper),
+      Shipped via batch 47 — producer helper signature
+      `formatPlanHistoryOvershootLine(entry): string | null` returns null on non-`met`
+      outcomes and on within-threshold runs; thresholds `> 5 °C` (thermal) and `> 10 %` (EV);
+      wired into `deadlinePlanHistoryDetailHero.ts` Succeeded branch (rendered as
+      `.plan-history-detail__overshoot` in `DeadlinePlanHistoryDetail.tsx`) and the
+      `DeadlinePlanHistory.tsx` past-list card (rendered as `.plan-history-card__overshoot`).
+      Files: `packages/shared-domain/src/deferredPlanHistory.ts` (existing
+      `formatPlanHistoryOvershootLine` helper now consumed on Succeeded heroes),
+      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row variant),
-      overshoot-resolver tests.
+      `packages/settings-ui/public/style.css`,
+      `test/deferredPlanHistoryPostmortem.test.ts`,
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`,
+      `packages/settings-ui/test/deadlinePlanHistory.test.ts`.
 - [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
       Today the live chart paints planned bars + a dotted measured line; the eye treats them
       as separate. After a run, the history chart shows planned bars + (eventually, when the
@@ -2960,6 +2970,18 @@ should not be folded into the same PR.
       `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
+
+- [ ] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
+      Pre-existing condition (predates the `SettingsRepository` chip
+      `PR #1147`): `app.ts:loadFlowReportedCapabilities` overwrites
+      `this.flowReportedCapabilities` unconditionally with the parsed-
+      then-filtered result. A transient SDK miss parses to `{}` and
+      clears the in-memory map. Compare with the `loadPowerTracker`
+      pattern that guards with `if (stored) this.powerTracker = stored;`
+      — the flow-reported-capabilities path needs the same "keep
+      previous on empty parse" gate (or a different signal for "user
+      really cleared all entries" vs "SDK gave us nothing this tick").
+      Files: `app.ts:loadFlowReportedCapabilities`.
 
 - [ ] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
       The first `setup/` chip (PR #1144,

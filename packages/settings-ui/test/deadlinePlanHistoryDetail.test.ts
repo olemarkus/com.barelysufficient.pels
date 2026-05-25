@@ -396,7 +396,61 @@ describe('DeadlinePlanHistoryDetail', () => {
       metAtMs: DEADLINE_MS - 18 * 60 * 1000,
     }));
     expect(root.querySelector('.plan-history-detail__progress')).toBeNull();
+    // No overshoot line for an exactly-on-target run — the producer's threshold
+    // check (> 5 °C / > 10 %) keeps the line quiet on the common path. See the
+    // dedicated overshoot describe block below for the threshold-crossing case.
     expect(root.querySelector('.plan-history-detail__overshoot')).toBeNull();
+  });
+
+  // v2.9.x batch 47 — muted Overshoot line surfaces on Succeeded entries whose
+  // final reading exceeded the target by > 5 °C / > 10 % (lived-state Connected
+  // 300 regression: `29.3 → 77.7 °C · target 65 °C`, 12.7 °C overshoot — flagged
+  // in `TODO.md` ~L2724 as a passive support-cost surface). Producer-resolved
+  // by `formatPlanHistoryOvershootLine`; the view only renders the string.
+  describe('overshoot line on Succeeded entries (TODO ~L2724)', () => {
+    it('renders the muted overshoot line when a Succeeded thermal run overshoots > 5 °C', async () => {
+      const root = await mount(buildEntry({
+        outcome: 'met',
+        startProgressC: 29.3,
+        finalProgressC: 77.7,
+        targetTemperatureC: 65,
+        metAtMs: DEADLINE_MS - HOUR_MS,
+      }));
+      const overshoot = root.querySelector('.plan-history-detail__overshoot');
+      expect(overshoot).not.toBeNull();
+      // Canonical lived-state regression value — see `notes/smart-task-ui/README.md`.
+      expect(overshoot?.textContent).toBe('Overshoot 12.7 °C');
+    });
+
+    it('renders the muted overshoot line when a Succeeded EV run overshoots > 10 %', async () => {
+      const root = await mount(buildEntry({
+        outcome: 'met',
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 80,
+        startProgressC: null,
+        startProgressPercent: 30,
+        finalProgressC: null,
+        finalProgressPercent: 95,
+        metAtMs: DEADLINE_MS - HOUR_MS,
+      }));
+      const overshoot = root.querySelector('.plan-history-detail__overshoot');
+      expect(overshoot?.textContent).toBe('Overshoot 15 %');
+    });
+
+    it('keeps the overshoot line quiet on Missed entries even when readings exceed the target', async () => {
+      // A Missed outcome whose `finalProgressC` happens to exceed the target
+      // is a malformed-data shape, not a real overshoot — surfacing it would
+      // noise up the diagnosis surface. Producer returns null; the view never
+      // sees the element.
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 80,
+        targetTemperatureC: 65,
+        metAtMs: null,
+      }));
+      expect(root.querySelector('.plan-history-detail__overshoot')).toBeNull();
+    });
   });
 
   // v2.7.2 PR 3 — outcome-asymmetric hero shapes. Each shape carries a
