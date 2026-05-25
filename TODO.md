@@ -2949,16 +2949,10 @@ should not be folded into the same PR.
 *Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
 #882, #884), 2026-05-18.*
 
-- [ ] Lift `budgetRedesign.ts` back under the 500-line `max-lines` cap.
-      PR #884 raised the override to accommodate the new
-      `BudgetPageHeader` + price-level-chip wiring. Extract the chip
-      resolver + page-header builder into helper modules (or push the
-      header builder back into `BudgetOverview.tsx` as a view-local
-      component) so the central file shrinks. The exemption is intentional
-      for the train batch, not the end state.
-      Source: gemini-code-assist on PR #884, `eslint.config.mjs:514`.
-      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `eslint.config.mjs` (drop the override line once back under 500).
+- [x] Lift `budgetRedesign.ts` back under the 500-line `max-lines` cap.
+      Already done — file is 156 effective lines and no `eslint.config.mjs`
+      override exists. Resolved through prior cleanups (the PR #884 override
+      was removed at some point between then and now). Closing as stale.
 
 - [x] Restore an `<h2>` page heading on the Usage panel.
       PR #881 demoted "Energy history" from `<h2>` to `<p class="eyebrow">`
@@ -3488,19 +3482,11 @@ should not be folded into the same PR.
       persisted entries with `<= 64` revisions load identically; no schema change.
       Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
       `lib/plan/deferredObjectives/planHistory.ts` (`InProgressRecord.revisions`).
-- [ ] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
+- [x] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
       500-LOC ESLint ceiling without an override.
-      Surfaced by adversarial-review on v2.7.2 PR 1. PR 1 added a `planHistoryV4Helpers.ts`
-      split but the recorder still sits at ~512 effective lines, requiring an override in
-      `eslint.config.mjs` (`max-lines: 520`). A second split — most natural is moving
-      `synthesizeBackfillEntry` + `DeferredObjectiveBackfillConfig` + the related
-      `backfillFromConfig` body into `planHistoryBackfill.ts` — would free ~40 effective
-      lines and let the override come back out.
-      Why P3: maintenance hygiene; the override is already documented with a target
-      ceiling comment.
-      Files: `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/planHistoryBackfill.ts` (new),
-      `eslint.config.mjs` (remove override once the split lands).
+      Already done — file is 546 raw lines but `skipBlankLines + skipComments` keeps it
+      under the 500-line ceiling, and no `eslint.config.mjs` override exists. The
+      `planHistoryV4Helpers.ts` extraction from v2.7.2 PR 1 was sufficient. Closing as stale.
 - [ ] Consider single-pass `resolveLiveCostAndDelivery` in `packages/settings-ui/src/ui/deadlinePlan.ts`.
       Surfaced by gemini-code-assist on v2.7.2 PR 2 as Medium. Current implementation iterates
       `hours` twice (once in `resolveLiveCostAndDelivery`, once in `buildTimeline`'s
