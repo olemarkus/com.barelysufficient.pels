@@ -416,10 +416,15 @@ const discardBudgetAdjustOnLeave = (nextTabId: string) => {
   if (onBudget) discardBudgetAdjust();
 };
 
-export const showTab = (tabId: string) => {
+// Updates only the shell-nav indicator state (active class, aria-selected,
+// md-tabs `activeTabIndex`) without touching panel visibility or running
+// `runTabActivationSideEffects`. Used by `deadlinePlanRouter` so a deep-link
+// into the plan-detail surface keeps the "Smart tasks" breadcrumb lit on the
+// shell-nav even though the visible panel is `#deadline-plan-panel` (a sibling
+// of `#deadlines-panel`). Calling the full `showTab('deadlines')` here would
+// hide the deadline-plan panel.
+export const setActiveTabIndicator = (tabId: string): void => {
   const activeTopLevelTab = REDESIGN_SETTINGS_SECTIONS.has(tabId) ? 'settings' : tabId;
-  if (tabId !== 'usage') clearUsageReturnLink();
-  discardBudgetAdjustOnLeave(tabId);
   for (const tab of tabs) {
     const isActive = tab.dataset.tab === activeTopLevelTab;
     tab.classList.toggle('active', isActive);
@@ -433,6 +438,12 @@ export const showTab = (tabId: string) => {
       .findIndex((tab) => tab.dataset.tab === activeTopLevelTab);
     if (tabIndex >= 0) tabList.activeTabIndex = tabIndex;
   }
+};
+
+export const showTab = (tabId: string) => {
+  if (tabId !== 'usage') clearUsageReturnLink();
+  discardBudgetAdjustOnLeave(tabId);
+  setActiveTabIndicator(tabId);
   panels.forEach((panel) => {
     panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
   });

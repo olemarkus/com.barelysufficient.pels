@@ -10,10 +10,12 @@ const openDeadlinePlan = async (page: Page) => {
   const panel = page.locator('#deadline-plan-panel');
   await expect(panel.locator('.plan-hero__headline')).toBeVisible();
   await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
-  // The router toggles a `.hidden` class on `#shell-nav` whenever the plan
-  // panel is open, and the matching CSS rule (`#shell-nav.hidden { display:
-  // none; }`) now hides it natively. Only the page-level `.hero` and the
-  // global dry-run banner still need to be tucked away for the docs capture.
+  // The shell-nav lives inside the page-level `.hero`, so hiding `.hero` also
+  // removes the shell-nav tabs from the capture. The router now keeps
+  // `#shell-nav` visible (so the breadcrumb stays lit while the plan-detail
+  // view is open), but for the docs capture we still want a chrome-free
+  // screenshot of the plan-detail surface. The global dry-run banner is hidden
+  // for the same reason.
   await page.evaluate(() => {
     document.querySelector<HTMLElement>('.hero')?.style.setProperty('display', 'none');
     document.querySelector<HTMLElement>('#dry-run-banner')?.style.setProperty('display', 'none');

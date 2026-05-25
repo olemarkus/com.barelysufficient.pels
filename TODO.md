@@ -2305,13 +2305,15 @@ consolidation + a11y polish (8 P2)`.*
       and should not be demoted. Bump to default-weight body color.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/public/style.css`.
-- [ ] Highlight the correct tab when deep-linking into a smart-task plan from the Overview
-      device card. Today clicking a smart-task affordance from an Overview device card lands on
-      the plan-detail page but leaves the "Overview" tab marked as selected; the user lost the
-      visual breadcrumb that they're now under "Smart tasks". Wire the router so the tab
-      indicator follows the deep-link.
+- [x] Highlight the correct tab when deep-linking into a smart-task plan from the Overview
+      device card. *(Landed: `deadlinePlanRouter` now keeps the shell-nav visible while the
+      plan-detail panel is up and lights the Smart tasks tab via a new `setActiveTabIndicator`
+      helper extracted from `showTab`; the prior `setShellNavVisible(false)` hide is gone.
+      A new `pels:tab-shown` listener resets the deep-link URL + unmounts when the user clicks
+      any shell-nav tab while plan-detail is open, so reload stays coherent.)*
       Files: `packages/settings-ui/src/ui/deadlinePlanRouter.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      `packages/settings-ui/src/ui/realtime.ts`,
+      `packages/settings-ui/tests/e2e/deadline-plan.spec.ts`.
 - [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
       `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
