@@ -17,6 +17,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 ├── .dependency-cruiser.cjs   # Enforced architecture boundary rules
 ├── .homeycompose/            # Source configs for app.json, capabilities, flows
 ├── lib/                      # Core runtime logic
+├── setup/                    # App-wiring classes (factories, observers, registrars)
 ├── packages/                 # npm workspaces: contracts, shared-domain, settings-ui
 ├── flowCards/                # Homey Flow card registrations
 ├── drivers/                  # pels_insights virtual device driver
@@ -37,7 +38,7 @@ The codebase is strictly layered. `dependency-cruiser` enforces the rules at `np
 ```
 Entry Points          app.ts, drivers/**, packages/settings-ui/src/script.ts
       ↓
-App Wiring/Adapters   lib/app/**, flowCards/**
+App Wiring/Adapters   setup/**, lib/app/** (sunsetting), flowCards/**
       ↓
 Domain Modules        lib/core/**, lib/plan/**, lib/price/**, lib/dailyBudget/**
       ↓
@@ -49,9 +50,10 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 **Hard rules (enforced):**
 - No circular dependencies.
 - Runtime code must not import test code.
-- Runtime backend (`app.ts`, `lib/**`, `flowCards/**`, `drivers/**`) must not import settings UI code.
+- Runtime backend (`app.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`) must not import settings UI code.
 - Settings UI must only consume shared contracts and shared-domain — never import runtime backend directly.
 - Domain modules (`lib/core`, `lib/plan`, `lib/price`, `lib/dailyBudget`) must not import `lib/app/**`.
+- `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden by the `no-lib-to-setup` dep-cruiser rule.
 - `flowCards/**` must not import `packages/settings-ui/**` or `drivers/**`.
 - Accept code duplication if consolidation would violate an architectural boundary. Add a comment explaining the constraint.
 
@@ -69,10 +71,22 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 | `lib/core/` | Device state management, power tracking, capacity guard |
 | `lib/price/` | Spot price fetching (Norwegian Nordpool), Homey Energy API integration, price levels |
 | `lib/dailyBudget/` | Soft daily kWh budget constraints |
-| `lib/app/` | Wiring layer: initializes services, registers flow cards, handles settings API |
+| `lib/app/` | Legacy wiring layer — sunsetting. New wiring goes in `setup/`; `lib/app/appContext.ts` (type definition) stays as the only long-term inhabitant. |
 | `lib/utils/` | Pure helpers, type guards, math utilities, debug logging, settings keys |
 | `lib/diagnostics/` | Per-device diagnostics recording |
 | `lib/logging/` | Structured logging infrastructure: pino logger, AsyncLocalStorage context, Homey destination |
+
+### App wiring (`setup/`)
+
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. These have no reuse value outside this app, so they live at the entry layer rather than masquerading as library code.
+
+Conventions (reviewed at PR time):
+- **One purpose per file**, named for the concrete wiring it does. No grab-bag `setupHelpers.ts`.
+- **Each file exposes a class or a single `register*` / `init*` function** — no bags of utility functions.
+- **Files larger than ~150 LOC are considered fat-fingered** and should split.
+- `setup/**` may import `lib/**` and `packages/**`; **never the reverse** (enforced by the `no-lib-to-setup` rule in `.dependency-cruiser.cjs`).
+
+As remaining wiring migrates out of `lib/app/`, that directory sunsets; `lib/app/appContext.ts` (the shared `AppContext` type) stays.
 
 ### Packages (shared)
 

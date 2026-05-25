@@ -3013,7 +3013,7 @@ should not be folded into the same PR.
       when SDK returns an empty parse" and "overwrites in-memory
       flow-reported capabilities when SDK returns a real parse".
 
-- [ ] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
+- [x] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
       The first `setup/` chip (PR #1144,
       `setup/schedulerTelemetryObserver.ts`) introduces `setup/` at repo
       root as the honest home for app-wiring classes (factories,
@@ -3032,6 +3032,16 @@ should not be folded into the same PR.
       should sunset; `lib/app/appContext.ts` (type definition) probably
       stays.
       Files: `CLAUDE.md`, `docs/architecture.md`.
+      Shipped: `CLAUDE.md` has `setup/` in the Repository Layout tree,
+      `setup/**` added to the Architecture diagram + hard rules, a new
+      "App wiring (`setup/`)" subsection in Key Modules, and the
+      `lib/app/` row reworded as sunsetting. `docs/architecture.md`
+      mirrors this: `setup/**` in the layer diagram and the
+      "App wiring" row, a new `no-lib-to-setup` entry in the Hard rules
+      list, a dedicated "App wiring lives in `setup/`" section
+      explaining direction + conventions + sunset, and a new
+      "App-wiring code" row in the "Where new code goes" table. The
+      Homey-SDK adapter row now points at `setup/` for new wiring.
 
 - [ ] Drop the remaining `lib/price/priceService.ts` max-lines override.
       After the Norgespris usage helpers (`getCurrentMonthUsageKwh`,
