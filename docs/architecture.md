@@ -37,7 +37,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
 | **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules. This is where dependency injection happens. New wiring lives in `setup/`; `lib/app/` is sunsetting. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
-| **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/manager.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
+| **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/deviceTransport.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
 

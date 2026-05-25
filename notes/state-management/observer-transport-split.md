@@ -27,6 +27,18 @@ the cruiser rule promote to error.
 
 ## Target shape
 
+> **Shipped vs original target** — the sub-sections below describe the
+> design's original end state. Several bullets did not ship in the train
+> (PRs #1095, #1102, #1107, #1140, #1148, #1158) and stay deliberately
+> deferred: the transport's `write(intent)` / `subscribe(handler)`
+> abstract API never landed (executor still calls `setCapability` /
+> `requestSteppedLoadStep` directly on `DeviceTransport`); observer never
+> gained snapshot ownership (`latestSnapshot` / `latestSnapshotById` /
+> `getHomePowerW` are still on `DeviceTransport`); the realtime "subscribe
+> normalized events" surface was instead realised via the observer-owned
+> `ObservedStateEmitter` + the `observedStateDispatcher` callback bag
+> (PR #1158). For what actually shipped, see the **Sequencing** section.
+
 Two physical modules:
 
 ### `lib/device/transport/` (rename of DeviceManager's actuation half)
@@ -197,9 +209,11 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    pending writes/deletes through the observer-owned store; plan's
    `decideBinaryControl` no longer touches pending state; transport accepts a
    `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring
-   (`app.ts`) and backed by observer's binarySettle store. Observer does not
-   yet subscribe to transport events — that's deferred to PR #5 alongside the
-   three-way realtime split. Transport's default ops bag is inert (no-op
+   (`app.ts`) and backed by observer's binarySettle store. PR #5 inverted
+   the event-ownership relationship instead of having observer subscribe
+   to transport: observer now owns the emitter and transport dispatches
+   into it via the injected `observedStateDispatcher` callback bag (same
+   pattern as `pendingPredicate`). Transport's default ops bag is inert (no-op
    stubs + empty state); tests that exercise binary-settle behaviour pass
    real observer ops through the constructor options. No static observer
    import remains in `lib/device/`; the `no-device-to-peer-except-power`

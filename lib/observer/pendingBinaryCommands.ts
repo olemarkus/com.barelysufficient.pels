@@ -17,8 +17,11 @@
  * `state.pendingBinaryCommands[id]`, the store binds to a backing
  * `Record` provided by `PlanEngine`. Reads keep using the field; the
  * store's `record` / `clear` / `prune` methods are the only paths that
- * mutate it. A follow-up PR (#5 of the split) removes the field
- * entirely once read sites migrate.
+ * mutate it. Post-PR-#5 end state: `pendingBinaryCommands` is the
+ * canonical read API for plan- and executor-side consumers and the
+ * store is the only mutator. Migrating those reads to a
+ * `store.peek(id)` API is a future-cleanup option captured in
+ * `TODO.md`; it is not blocked or scheduled.
  */
 import {
   type PendingBinaryCommand,
