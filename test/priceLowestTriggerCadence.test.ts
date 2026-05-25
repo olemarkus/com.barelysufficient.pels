@@ -60,7 +60,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
-    (app as any).startPriceLowestTriggerChecker();
+    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -79,7 +79,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:30:00.000Z'));
     const app = setupApp();
 
-    (app as any).startPriceLowestTriggerChecker();
+    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -97,7 +97,7 @@ describe('Lowest price trigger cadence', () => {
     vi.setSystemTime(new Date('2026-03-03T10:05:00.000Z'));
     const app = setupApp();
 
-    (app as any).startPriceLowestTriggerChecker();
+    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2026-03-03T11:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
@@ -122,7 +122,7 @@ describe('Lowest price trigger cadence', () => {
       getCombinedHourlyPrices: () => buildDstDay('2024-10-27', 'Europe/Oslo'),
     };
 
-    (app as any).startPriceLowestTriggerChecker();
+    (app as any).backgroundTasks.startPriceLowestTriggerChecker();
 
     vi.setSystemTime(new Date('2024-10-27T01:00:00.000Z'));
     vi.advanceTimersByTime(30_000);
