@@ -2962,6 +2962,18 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
+- [ ] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
+      Pre-existing condition (predates the `SettingsRepository` chip
+      `PR #1147`): `app.ts:loadFlowReportedCapabilities` overwrites
+      `this.flowReportedCapabilities` unconditionally with the parsed-
+      then-filtered result. A transient SDK miss parses to `{}` and
+      clears the in-memory map. Compare with the `loadPowerTracker`
+      pattern that guards with `if (stored) this.powerTracker = stored;`
+      — the flow-reported-capabilities path needs the same "keep
+      previous on empty parse" gate (or a different signal for "user
+      really cleared all entries" vs "SDK gave us nothing this tick").
+      Files: `app.ts:loadFlowReportedCapabilities`.
+
 - [ ] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
       The first `setup/` chip (PR #1144,
       `setup/schedulerTelemetryObserver.ts`) introduces `setup/` at repo
