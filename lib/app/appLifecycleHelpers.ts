@@ -136,8 +136,29 @@ export async function startAppServices(ctx: AppContext): Promise<void> {
   appContext.homeyEnergyHelpers.start();
   priceCoordinator.startPriceRefresh();
   const bootstrapSnapshotAndPlan = async (): Promise<void> => {
-    dailyBudgetService.updateState({ refreshObservedStats: false });
-    await appContext.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+    let snapshotRefreshSucceeded = false;
+    try {
+      // updateState is synchronous and reads capacity settings, power tracker,
+      // and combined prices; wrap inside the try so a throw here still
+      // releases the gate and lets startup continue past the 5s bound.
+      dailyBudgetService.updateState({ refreshObservedStats: false });
+      await appContext.refreshTargetDevicesSnapshot({ fast: true, recordHomeyEnergySample: false });
+      snapshotRefreshSucceeded = true;
+    } finally {
+      // Release the warmup gate as soon as the snapshot attempt completes,
+      // success or failure. Releasing on failure prevents startup from
+      // hanging on the gate's bounded timeout when the snapshot fetch threw
+      // synchronously — the next periodic refresh will retry. Per
+      // `feedback_homey_sdk_unreliable` a failed snapshot does not touch
+      // persisted state; we only unblock the planner so it can proceed
+      // (with an empty snapshot, the next rebuild after a successful refresh
+      // will produce a valid horizon plan).
+      if (snapshotRefreshSucceeded) {
+        appContext.snapshotWarmupGate?.release('snapshot_ready');
+      } else {
+        appContext.snapshotWarmupGate?.release('timeout');
+      }
+    }
     incPerfCounters([
       'plan_rebuild_requested_total',
       'plan_rebuild_requested.startup_total',

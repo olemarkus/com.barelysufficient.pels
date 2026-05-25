@@ -2471,26 +2471,42 @@ consolidation + a11y polish (8 P2)`.*
       `still emits non_monotonic_time rejection when observedAtMs slips backwards and value changed`.
       Files: `lib/objectives/profiles.ts`, `test/objectiveProfiles.test.ts`.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
-- [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
+- [x] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
-      restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
-      awaiting `refreshSnapshot()`; `lib/device/deviceTransport.ts:1457-1460` emits
-      `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
-      plan rebuild fires before the snapshot resolves and
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
-      `unknown / objective_missing_device` for any objective whose device isn't in
-      `deviceById` yet. In this audit window the spurious event fired at 09:52:01.227Z and
-      was replaced by a valid horizon plan ~2.7s later. Persistence is safe (1h
-      abandon-grace in `activePlanRecorder.ts:24`) but the status snapshot is published via
-      `statusBus`, so a one-cycle `waiting → unachievable` flow trigger fires every
-      restart for any objective whose post-warmup status is `cannot_meet`.
-      Why P2: cosmetic/spurious-flow-trigger, recurs every restart. Not data-destructive.
-      Acceptance: hold the first plan rebuild and the first `statusBus` publish until the
-      first `refreshSnapshot()` completes (or until a configurable bound expires).
-      Regression: start the app with an unresolvable Homey Manager fetch and confirm no
-      `deferred_objective_unknown` is emitted until the snapshot bound elapses.
-      Files: `app.ts`, `lib/device/deviceTransport.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
+      restart.
+      Shipped: new `SnapshotWarmupGate` (`lib/plan/snapshotWarmupGate.ts`) instantiated in
+      `app.ts#initSnapshotWarmupGate` between `initPlanEngine` and `initPlanService` and
+      consumed by `PlanService.rebuildPlanFromCache` — any rebuild attempted before the
+      gate releases waits at the gate (held inside `rebuildPlanFromCache` before the
+      operation queue, so the wait does not interact with steady-state queue ordering).
+      The gate is released by `bootstrapSnapshotAndPlan` (`lib/app/appLifecycleHelpers.ts`)
+      with reason `snapshot_ready` once the first `refreshTargetDevicesSnapshot()`
+      resolves; if that throws or the snapshot fetch stalls past the
+      `SNAPSHOT_WARMUP_TIMEOUT_MS` bound (5_000ms in prod, 0 in tests) it auto-releases
+      with reason `timeout` so startup never deadlocks. `app.ts#onUninit` also releases
+      the gate before `planRebuildScheduler.cancelAll('app_uninit')` so partial-startup
+      shutdowns drain cleanly. Release emits a structured `snapshot_warmup_gate_released`
+      event at info (snapshot_ready) or warn (timeout) for log-audit attribution, and a
+      `plan_rebuild_warmup_waited_total` perf counter increments on each wait so we can
+      track how many rebuilds hit the gate in production. Per `feedback_homey_sdk_unreliable`
+      the gate never touches persisted state and the next periodic refresh retries.
+      Wait shape: `await snapshotWarmupGate.wait()` inside `PlanService.rebuildPlanFromCache`
+      (`lib/plan/planService.ts`). Bound: 5s in production, configurable via
+      `SNAPSHOT_WARMUP_TIMEOUT_MS` constant; 0 in tests. Regression coverage in
+      `test/snapshotWarmupGate.test.ts` describes:
+      `SnapshotWarmupGate` (auto-release on bound, snapshot_ready release, immediate
+      release with timeoutMs=0, idempotent release, timer-cancellation on early release),
+      `bootstrapSnapshotAndPlan warmup gate integration` (releases on success, releases
+      on `refreshTargetDevicesSnapshot` rejection so startup completes, post-warmup
+      rebuilds are not blocked), and `PlanService.rebuildPlanFromCache warmup gate`
+      (waits before the engine call when held; holds concurrent
+      price/settings/flow-triggered rebuilds during the warmup window). The bus-publish
+      half of the acceptance is met transitively: `statusBus.publish` is only reachable
+      from inside a plan rebuild via `emitDeferredObjectiveStatusTransitions`
+      (`lib/plan/planBuilder.ts:699`), so holding the rebuild also holds the publish.
+      Files: `app.ts`, `lib/plan/snapshotWarmupGate.ts`, `lib/plan/planService.ts`,
+      `lib/app/appContext.ts`, `lib/app/appInit.ts`, `lib/app/appLifecycleHelpers.ts`,
+      `test/snapshotWarmupGate.test.ts`.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
       `lib/objectives/samples.ts:57-82` returns `kwhPerUnit:null` when neither

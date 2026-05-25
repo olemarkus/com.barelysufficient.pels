@@ -9,6 +9,7 @@ import {
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
+import { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
 import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import type {
@@ -178,6 +179,13 @@ const FLOW_REBUILD_COOLDOWN_MS = 1000;
 const FLOW_REBUILD_COALESCE_MS = process.env.NODE_ENV === 'test' ? 0 : 1000;
 const FLOW_DEVICE_AUTOCOMPLETE_CACHE_MS = 15 * 1000;
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
+// Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
+// startup: if `refreshSnapshot()` does not resolve in this window the gate
+// releases with reason `timeout` and the planner proceeds (next snapshot will
+// arrive on the periodic refresh and rebuild correctly). Tests use a 0 bound
+// to skip the wait entirely. Per `feedback_homey_sdk_unreliable`, a slow SDK
+// fetch is treated as a transient gap, not a persisted-state corruption.
+const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
@@ -303,6 +311,14 @@ class PelsApp extends Homey.App {
   private deviceManager!: DeviceTransport;
   private planEngine!: PlanEngine;
   private planService!: PlanService;
+  // Created in `onInit` (after the structured logger is wired) and released
+  // by `bootstrapSnapshotAndPlan` once the first `refreshSnapshot()`
+  // resolves, or by its own bound when the snapshot fetch fails/stalls.
+  // Held by `PlanService.rebuildPlanFromCache` so any rebuild triggered
+  // between `initDeviceManager` and the first snapshot (price refresh,
+  // settings change, realtime device event, flow card) waits for either
+  // outcome instead of running the planner against an empty snapshot.
+  private snapshotWarmupGate?: SnapshotWarmupGate;
   private defaultComputeDynamicSoftLimit?: () => number;
   private lastKnownPowerKw: Record<string, number> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
@@ -762,6 +778,8 @@ class PelsApp extends Homey.App {
       set planEngine(value) { appRef.planEngine = value; },
       get planService() { return app.planService; },
       set planService(value) { appRef.planService = value; },
+      get snapshotWarmupGate() { return app.snapshotWarmupGate; },
+      set snapshotWarmupGate(value) { appRef.snapshotWarmupGate = value; },
       snapshotHelpers: app.snapshotHelpers,
       homeyEnergyHelpers: app.homeyEnergyHelpers,
       deviceControlHelpers: app.deviceControlHelpers,
@@ -987,6 +1005,15 @@ class PelsApp extends Homey.App {
     this.planEngine = createPlanEngine(this.ctx);
     this.hydratePlanEngineControlState();
     this.planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
+    // Create the warmup gate before `initPlanService` reads it via `ctx`.
+    // The gate holds the first `rebuildPlanFromCache` (any source) until the
+    // bootstrap's first `refreshSnapshot()` resolves, so the planner never
+    // runs against an empty snapshot. Without it, a price-refresh or
+    // settings-change-triggered rebuild between `initDeviceManager` and the
+    // first snapshot publishes `deferred_objective_unknown` for every
+    // objective whose device hasn't landed yet, which fires a spurious
+    // `waiting → unachievable` flow trigger on every restart.
+    this.initSnapshotWarmupGate();
   }
   private hydratePlanEngineControlState(): void {
     if (!this.planEngine) return;
@@ -995,6 +1022,28 @@ class PelsApp extends Homey.App {
   }
   private initDeviceDiagnosticsService(): void {
     this.deviceDiagnosticsService = createDeviceDiagnosticsService(this.ctx);
+  }
+  private initSnapshotWarmupGate(): void {
+    const warmupLogger = this.getStructuredLogger('startup');
+    this.snapshotWarmupGate = new SnapshotWarmupGate({
+      timeoutMs: SNAPSHOT_WARMUP_TIMEOUT_MS,
+      onRelease: (reason) => {
+        // Emit at warn for timeout (operationally interesting; means the
+        // first device snapshot did not land within the bound) and info for
+        // the normal snapshot-ready release. Both go through the structured
+        // logger so log audits can attribute spurious-event suppression.
+        const payload = {
+          event: 'snapshot_warmup_gate_released',
+          reason,
+          timeoutMs: SNAPSHOT_WARMUP_TIMEOUT_MS,
+        };
+        if (reason === 'timeout') {
+          warmupLogger?.warn(payload);
+        } else {
+          warmupLogger?.info(payload);
+        }
+      },
+    });
   }
   private initPlanService(): void {
     this.planService = createPlanService(this.ctx);
@@ -1117,6 +1166,11 @@ class PelsApp extends Homey.App {
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
+    // Release the warmup gate so any rebuild awaiting it during a partial
+    // startup unblocks (cancelAll below then drops the intent), instead of
+    // dangling on a promise the gate would otherwise resolve via its
+    // bounded timeout.
+    this.snapshotWarmupGate?.release('timeout');
     this.planRebuildScheduler.cancelAll('app_uninit');
     this.deviceDiagnosticsService?.destroy();
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
