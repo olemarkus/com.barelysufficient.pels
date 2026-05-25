@@ -423,29 +423,6 @@ export default tseslint.config(
     },
   },
   {
-    // The history recorder keeps the in-progress record, observation loop, finalize/abandon
-    // flows, backfill synthesis, and hourly-delivery aggregation co-located so the lifecycle
-    // for one run is navigable in a single file. The v2.7.2 schema v4 additions
-    // (`progressSamples`, `deliveredKWh` + `totalCost`, `revisions[]`) pushed it slightly past
-    // the default 500-line budget; the most reusable helpers
-    // (`captureRevisionSnapshot`, progress-ring + revision-log helpers) live in
-    // `planHistoryV4Helpers.ts`. The v2.7.3 stall-promotion bridge added
-    // `promoteRecordToStalled`, `computeMergedMetState`, and the per-diagnostic
-    // helper extracted from `observe()`. Target: <=500 once a later PR splits the
-    // in-progress record into its own module.
-    files: ['lib/plan/deferredObjectives/planHistory.ts'],
-    rules: {
-      // Bumped in v2.8.0 to host the internal hour-rollover detector that
-      // wires `recordHourlyDelivery` from the planner observe loop
-      // (`applyHourlyDeliveryRollover` + `flushOpenHourAtFinalize`).
-      // Bumped again in v2.9.x for the `capped_idle` promotion path
-      // (`stallClassificationToMetReason` + `isStallMetReason` helpers).
-      // Target: <=620 once the in-progress record + finalize paths split
-      // into their own module.
-      'max-lines': ['warn', { max: 740, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // PriceService coordinates spot/grid refresh, storage, and combined-price publication
     // across the Homey/runtime boundary; the Norgespris usage helpers were extracted into
     // `priceServiceNorgespris.ts`, leaving the orchestrator at 509 effective LOC. Target:
