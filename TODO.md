@@ -2319,13 +2319,17 @@ consolidation + a11y polish (8 P2)`.*
       `SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan` and `pendingChipTone` both call it,
       and the paired `resolvePausedUnpluggedChipTone()` → `'warn'` covers the EV paused
       state. List chip now reads `info` to make the state more discoverable.)*
-- [ ] Bring the pending-hero body copy up to action-text weight.
-      The "why it's blocked" explanation ("Waiting for a reading from the EV.", "Learning energy
-      use — heater needs power readings…") today renders inside `plan-hero__subline--muted` —
-      muted secondary color, low contrast. This is the most actionable text on the pending hero
-      and should not be demoted. Bump to default-weight body color.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/public/style.css`.
+- [x] Bring the pending-hero body copy up to action-text weight. *(landed via Option B: new
+      `plan-hero__subline--action` modifier in `packages/settings-ui/public/style.css` mapped to
+      `--pels-text-primary`. The pending hero's `metaLine` slot in `PendingHero`
+      (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx`) now binds to it, so the "why is
+      this still building?" copy — `device_data_missing` ("PELS needs a current state of
+      charge…"), `missing_capacity` ("Learning energy use — needs power readings from this
+      device."), `awaiting_horizon_plan` ("Will start when the next-day price drop publishes."),
+      `price_feature_disabled`, `invalid_session`, etc. — reads at primary on-surface contrast.
+      The ready hero keeps `--muted` for its recap meta/cost/delivered-so-far lines; existing
+      uses across BudgetOverview, the index.html helper text, and the ready-hero meta lines are
+      untouched.)*
 - [x] Highlight the correct tab when deep-linking into a smart-task plan from the Overview
       device card. *(Landed: `deadlinePlanRouter` now keeps the shell-nav visible while the
       plan-detail panel is up and lights the Smart tasks tab via a new `setActiveTabIndicator`
