@@ -1,10 +1,12 @@
 import {
-  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
+  resolveBuildingPlanChipTone,
+  resolvePausedUnpluggedChipTone,
   type DeadlineLabels,
   type DeadlineLiveState,
   type DeadlinePendingContext,
   type DeadlinePendingPriceSource,
   type DeadlinePlanPendingReason,
+  type SmartTaskChipTone,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
@@ -22,25 +24,19 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
   return 'building_plan';
 };
 
-// Pending-hero state chip tone, routed through the same
-// `SMART_TASK_LIST_STATUS_CHIP_VARIANT` map the list card reads so the
-// "Building plan…" / "Paused — unplugged" pill never shows a different
-// colour on the list and the detail surface (per TODO 2163 — the prior
-// `'info'`-vs-`'muted'` drift on `Building plan…` flagged in release
-// review). The pending hero only ever resolves to `building_plan` /
-// `paused_unplugged` via `resolvePendingLiveState`; the broader
-// `DeadlineLiveState` union (`active` / `queued` / `ok`) doesn't reach
-// this resolver in practice, so the fallback simply mirrors the
-// `building_plan` variant. The `as` casts narrow the variant union
-// (`string`) to the chip-tone subset since the variant map is typed
-// `Record<…, string>` for change resilience.
-export const pendingChipTone = (
-  liveState: DeadlineLiveState,
-): DeadlinePlanPendingPayload['hero']['chips'][number]['tone'] => {
-  if (liveState === 'paused_unplugged') {
-    return SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_unplugged as 'warn';
-  }
-  return SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan as 'muted';
+// Pending-hero state chip tone, routed through the shared pending-tone
+// resolvers the list card also reads (via `SMART_TASK_LIST_STATUS_CHIP_VARIANT`)
+// so the "Building plan…" / "Paused — unplugged" pill never shows a different
+// colour on the list and the detail surface. The pending hero only ever
+// resolves to `building_plan` / `paused_unplugged` via
+// `resolvePendingLiveState`; the broader `DeadlineLiveState` union (`active` /
+// `queued` / `ok`) doesn't reach this resolver in practice, so the fallback
+// simply mirrors the `building_plan` tone. Per
+// `feedback_layering_resolution_in_producer.md` this consumer just calls the
+// flat shared-domain helpers — it never branches on the underlying state.
+export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone => {
+  if (liveState === 'paused_unplugged') return resolvePausedUnpluggedChipTone();
+  return resolveBuildingPlanChipTone();
 };
 
 export const resolvePendingReason = (

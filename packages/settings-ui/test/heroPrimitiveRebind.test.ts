@@ -240,7 +240,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
   labels: deadlineLabels('temperature'),
   priceUnitLabel: 'kr/kWh',
   hero: {
-    chips: [{ text: 'Building plan…', tone: 'muted' }],
+    chips: [{ text: 'Building plan…', tone: 'info' }],
     tone: 'good',
     sectionLabel: 'Heating smart task',
     headline: 'On track — finishes by 06:30',
@@ -273,7 +273,7 @@ const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',
   labels: deadlineLabels('temperature'),
   hero: {
-    chips: [{ text: 'Building plan…', tone: 'muted' }],
+    chips: [{ text: 'Building plan…', tone: 'info' }],
     sectionLabel: 'Heating smart task',
     headline: 'Waiting for prices',
     headlineReason: null,

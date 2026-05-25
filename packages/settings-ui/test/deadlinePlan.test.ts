@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinePlan.ts';
+import { pendingChipTone } from '../src/ui/deadlinePlanPending.ts';
 import type { SettingsUiBootstrap, SettingsUiPricesPayload } from '../../contracts/src/settingsUiApi.ts';
 import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
@@ -7,7 +8,10 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
-import { deadlineLabels } from '../../shared-domain/src/deadlineLabels.ts';
+import {
+  deadlineLabels,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
+} from '../../shared-domain/src/deadlineLabels.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -4848,5 +4852,24 @@ describe('pending hero producer wiring', () => {
     if (renderInput?.status !== 'pending') return;
     expect(renderInput.pending.hero.headlineReason).toBe('Charger reports the car isn’t plugged in.');
     expect(renderInput.pending.hero.recourse).toBeNull();
+  });
+});
+
+describe('pendingChipTone parity with the Smart-tasks list', () => {
+  // The Smart-tasks list card (`DeadlinesList.tsx` via
+  // `SMART_TASK_LIST_STATUS_CHIP_VARIANT`) and the plan-detail pending hero
+  // (`DeadlinePlan.tsx` via `pendingChipTone`) must agree on the chip tone for
+  // every pending state. Both now route through the same shared-domain
+  // resolvers (`resolveBuildingPlanChipTone` / `resolvePausedUnpluggedChipTone`)
+  // so this assertion pins the consumer wiring — if either surface ever
+  // recomputes its own tone the test fails before drift reaches users.
+  it('emits the list-variant tone for Building plan…', () => {
+    expect(pendingChipTone('building_plan'))
+      .toBe(SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan);
+  });
+
+  it('emits the list-variant tone for Paused — unplugged', () => {
+    expect(pendingChipTone('paused_unplugged'))
+      .toBe(SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_unplugged);
   });
 });

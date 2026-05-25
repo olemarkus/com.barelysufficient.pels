@@ -2291,15 +2291,13 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/public/style.css`.
-- [ ] Reconcile chip tone between the Smart tasks list and the plan detail.
+- [x] Reconcile chip tone between the Smart tasks list and the plan detail.
       For the same `Building plan…` state the list card uses `muted` tone but the plan-detail
-      pending hero uses `info` tone. Pick one and apply uniformly.
-      Deferred from PR #880 fix-up: the unifier needs a shared status→chip-tone helper in
-      `shared-domain` consumed by both surfaces; lifting it cleanly is bigger than the
-      list-hero PR scope and risks touching plan-detail unrelated tone wiring. Pick this up
-      as its own small PR alongside the pending-hero-body-weight TODO below.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      pending hero uses `info` tone. Pick one and apply uniformly. *(landed: shared-domain
+      `resolveBuildingPlanChipTone()` → `'info'` in `packages/shared-domain/src/deadlineLabels.ts`;
+      `SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan` and `pendingChipTone` both call it,
+      and the paired `resolvePausedUnpluggedChipTone()` → `'warn'` covers the EV paused
+      state. List chip now reads `info` to make the state more discoverable.)*
 - [ ] Bring the pending-hero body copy up to action-text weight.
       The "why it's blocked" explanation ("Waiting for a reading from the EV.", "Learning energy
       use — heater needs power readings…") today renders inside `plan-hero__subline--muted` —
