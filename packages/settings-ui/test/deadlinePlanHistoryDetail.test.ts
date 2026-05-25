@@ -103,6 +103,33 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(root.querySelector('.plan-history-detail__device')).toBeNull();
   });
 
+  // Usage cross-link footer. The asymmetric task→Usage link helps a user
+  // investigating a missed run see the device's whole-day power profile;
+  // reverse direction (Usage→task) is intentionally not added. The Usage view
+  // today is household-scoped (no per-device filtering), so the copy says
+  // "household usage"; the click handler in `deadlinePlanMount.ts` arms a
+  // return link instead of relying on Usage to honour the `deviceId` / `date`
+  // URL params.
+  it('renders the Usage cross-link below the hero with the correct href and copy', async () => {
+    const root = await mount(buildEntry({ deviceId: 'dev_water_heater' }));
+    const hero = root.querySelector('.plan-history-detail__hero');
+    expect(hero).not.toBeNull();
+    const link = hero!.querySelector<HTMLAnchorElement>('.plan-history-detail__usage-link-anchor');
+    expect(link).not.toBeNull();
+    // Copy comes from the shared-domain helper so runtime logs and the UI
+    // share the same wording (no UI-only inline strings).
+    expect(link!.textContent).toBe('See household usage on 6 May →');
+    // Href encodes `page=usage`, the deviceId, and the deadline date ISO so a
+    // future Usage view that honours filter params can read them off the URL.
+    expect(link!.getAttribute('href')).toBe(
+      './?page=usage&deviceId=dev_water_heater&date=2026-05-06T06%3A00%3A00.000Z',
+    );
+    // The deviceId data-attribute is what the SPA click handler reads to arm
+    // the return-link state; the anchor stays a real `<a>` so middle-click /
+    // open-in-new-tab keep working when Usage gains filter routing.
+    expect(link!.dataset.deadlineUsageLink).toBe('dev_water_heater');
+  });
+
   it('renders the "no hourly schedule was saved" fallback when both plan snapshots are null', async () => {
     const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
     expect(root.textContent).toContain('No hourly schedule was saved for this run');
