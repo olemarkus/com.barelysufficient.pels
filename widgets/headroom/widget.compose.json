@@ -1,0 +1,12 @@
+{
+  "name": {
+    "en": "Available power"
+  },
+  "height": 100,
+  "api": {
+    "getHeadroom": {
+      "method": "GET",
+      "path": "/headroom"
+    }
+  }
+}
