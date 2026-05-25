@@ -166,7 +166,14 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    `managerHelpers.ts`) into `lib/device/transport/`. `manager.ts` stays put
    (becomes a facade in PR #3). (PR #2 — shipped)
 5. **Extract write side as `DeviceTransport`.** DeviceManager goes away.
-   (PR #3)
+   (PR #3 — shipped: `lib/device/manager.ts` renamed to
+   `lib/device/deviceTransport.ts`, class `DeviceManager` renamed to
+   `DeviceTransport`. The actual write-side extraction step the design
+   originally envisioned was simplified during the train — the class is
+   already the single transport seam after PR #2, so PR #3 only needed
+   to rename, kill the historical `DeviceManager` identifier, and fold
+   in the secondary cleanup of moving `stateOfCharge.ts` into
+   `lib/device/transport/`.)
 6. **Wire the injected `pendingPredicate`** and move pending/settle state into
    observer. Observer subscribes to transport events. (PR #4)
 7. **Three-way realtime split**: translation in transport, drift detection in
@@ -185,22 +192,22 @@ These are not strictly part of the split but block it in subtle ways:
   build, which would have broken the value imports of
   `PELS_TARGET_STEP_CAPABILITY_ID` etc.). `SteppedLoadStepRequestResult` /
   `SteppedLoadStepRequestTransport` types moved with it.
-- `lib/device/stateOfCharge.ts` is consumed by both `managerRealtimeHandlers.ts`
+- ~~`lib/device/stateOfCharge.ts` is consumed by both `managerRealtimeHandlers.ts`
   and `managerObservation.ts` (now under `lib/device/transport/`) plus
-  `manager.ts` and `managerRuntime.ts` (which stay in `lib/device/`). The
-  spec called for moving the pure math to `lib/utils/` or
-  `packages/shared-domain/`. PR #2 left the file at `lib/device/stateOfCharge.ts`
-  for now — both transport- and non-transport-side consumers can import it
-  without one side reaching into the other's folder, which matches the
-  underlying goal. Extracting the structural `DeviceCapabilityMap` and
-  `FlowReportedCapabilities*` type deps to a neutral location is deferred
-  to a follow-up cleanup (no PR # assigned).
+  `manager.ts` and `managerRuntime.ts` (which stay in `lib/device/`).~~
+  Shipped in PR #3: file moved to `lib/device/transport/stateOfCharge.ts`.
+  All current consumers are transport-side or in the renamed
+  `deviceTransport.ts` / `managerRuntime.ts`, so the move converts the
+  previous back-edge into a clean intra-transport import. Extracting the
+  structural `DeviceCapabilityMap` and `FlowReportedCapabilities*` type
+  deps to a neutral location is deferred to a follow-up cleanup (no PR #
+  assigned).
 - `lib/device/devicePowerCalibrationStore.ts` straddles the boundary. Decision:
-  it stays in transport (calibration enrichment happens at parse time, before
+  it stays in `lib/device/` (calibration enrichment happens at parse time, before
   the snapshot reaches observer). Observer reads enriched snapshots; it never
   imports calibration directly. PR #2 verified the only consumer is `app.ts`
-  (wiring) and left the file at `lib/device/devicePowerCalibrationStore.ts`
-  for PR #3 to relocate alongside the rest of the actuation/wiring split.
+  (wiring); PR #3 reconfirmed during the rename — still only `app.ts`
+  imports it, so it stays put.
 
 ## What this note breaks in existing notes
 

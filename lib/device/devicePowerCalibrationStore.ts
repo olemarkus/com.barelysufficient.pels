@@ -476,7 +476,7 @@ function isLowerPowerStep(
 const DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
 
 /**
- * Build a `DeviceManager.onSnapshotMutated` callback that forwards each
+ * Build a `DeviceTransport.onSnapshotMutated` callback that forwards each
  * eligible mutation to the calibration store. Emits a single per-sample
  * structured debug record (one device, one outcome) when an emitter is
  * supplied — never the bulk aggregate that the retired periodic sweep used
@@ -488,8 +488,8 @@ const DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS = 30_000;
  */
 export function createCalibrationSnapshotMutationHook(params: {
   /** Resolved on every invocation — the app replaces its store reference after
-   *  the initial DeviceManager construction, so the callback must not capture
-   *  it. */
+   *  the initial DeviceTransport construction, so the callback must not
+   *  capture it. */
   getStore: () => PowerCalibrationStore;
   debugStructured?: StructuredDebugEmitter;
   /** Override the per-(device, step) debounce. Defaults to 30 s. Set to 0 to

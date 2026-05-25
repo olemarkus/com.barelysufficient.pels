@@ -4,7 +4,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
  * Read-only view over the device snapshot store.
  *
  * Plan and executor read consumers depend on this interface rather than the
- * concrete `DeviceManager` class, so the actuation transport half can move
+ * concrete `DeviceTransport` class, so the actuation transport half can move
  * later without rippling through every read site. See
  * `notes/state-management/observer-transport-split.md` for the larger plan.
  */

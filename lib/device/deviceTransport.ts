@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- Device manager coordinates SDK setup, snapshots, realtime updates, and command writes. */
+/* eslint-disable max-lines -- Transport coordinates SDK setup, snapshots, realtime, and writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import type {
@@ -63,7 +63,7 @@ import {
   hasPendingBinarySettleWindow,
   notePendingBinarySettleObservation,
   startPendingBinarySettleWindow,
-  type DeviceManagerBinarySettleState,
+  type DeviceTransportBinarySettleState,
 } from './managerBinarySettle';
 import {
   createObservationState,
@@ -76,13 +76,13 @@ import {
   recordSnapshotRefreshObservations,
   resolveLatestLocalWriteMs,
   type DeviceDebugObservedSources,
-  type DeviceManagerObservationState,
+  type DeviceTransportObservationState,
 } from './transport/managerObservation';
 import {
   isDevicePowerCapable,
   parseDevice,
   parseDeviceList,
-  type DeviceManagerParseProviders,
+  type DeviceTransportParseProviders,
   type ParseDevicePurpose,
 } from './transport/managerParseDevice';
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
@@ -107,11 +107,11 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   type SteppedLoadStepRequestResult,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { isStateOfChargeCapabilityId } from './stateOfCharge';
+import { isStateOfChargeCapabilityId } from './transport/stateOfCharge';
 import { applyDeviceCompatibilityMetadata } from './compatibility';
 import type { DeviceObservation } from './deviceObservation';
 
-const moduleLogger = getLogger('device/manager');
+const moduleLogger = getLogger('device/transport');
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -123,7 +123,7 @@ const createEstimateDecisionLogState = (): Map<string, { signature: string; emit
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null, deviceCount: 0 });
 
-type DeviceManagerPowerState = PowerEstimateState & {
+type DeviceTransportPowerState = PowerEstimateState & {
     lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
 };
 
@@ -138,7 +138,7 @@ type SteppedLoadFlowTriggerCard = {
     trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;
 };
 
-type DeviceManagerOptions = {
+type DeviceTransportOptions = {
     debugStructured?: StructuredDebugEmitter;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
     /**
@@ -149,7 +149,7 @@ type DeviceManagerOptions = {
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
 };
 
-export class DeviceManager extends EventEmitter implements DeviceObservation {
+export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private sdkReady = false;
     private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;
@@ -163,14 +163,14 @@ export class DeviceManager extends EventEmitter implements DeviceObservation {
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
-    private binarySettleState: DeviceManagerBinarySettleState = createBinarySettleState();
-    private observationState: DeviceManagerObservationState = createObservationState();
+    private binarySettleState: DeviceTransportBinarySettleState = createBinarySettleState();
+    private observationState: DeviceTransportObservationState = createObservationState();
     private observationSeqByDeviceId: Map<string, number> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
     private lastSnapshotRefreshMetricsKey: string | null = null;
-    private providers: DeviceManagerParseProviders = {};
-    private getFlowTriggerCard: DeviceManagerOptions['getFlowTriggerCard'] | undefined;
-    private onSnapshotMutated: DeviceManagerOptions['onSnapshotMutated'] | undefined;
+    private providers: DeviceTransportParseProviders = {};
+    private getFlowTriggerCard: DeviceTransportOptions['getFlowTriggerCard'] | undefined;
+    private onSnapshotMutated: DeviceTransportOptions['onSnapshotMutated'] | undefined;
     private readonly handleRealtimeCapabilityUpdate = (
         deviceId: string,
         capabilityId: string,
@@ -1407,9 +1407,9 @@ export class DeviceManager extends EventEmitter implements DeviceObservation {
     constructor(
         homey: Homey.App,
         logger: Logger,
-        providers?: DeviceManagerParseProviders,
-        powerState?: DeviceManagerPowerState,
-        options?: DeviceManagerOptions,
+        providers?: DeviceTransportParseProviders,
+        powerState?: DeviceTransportPowerState,
+        options?: DeviceTransportOptions,
     ) {
         super();
         this.homey = homey;

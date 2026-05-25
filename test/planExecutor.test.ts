@@ -881,7 +881,7 @@ describe('PlanExecutor pending target commands', () => {
       status: 'temporary_unavailable',
     });
     expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry' }));
-    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater via DeviceManager' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater via DeviceTransport' }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)' }));
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'target_command_failed',

@@ -6,7 +6,7 @@ import {
   reconcileRealtimeDeviceUpdate,
   type RealtimeDeviceReconcileChange,
 } from '../managerRuntime';
-import { isStateOfChargeCapabilityId } from '../stateOfCharge';
+import { isStateOfChargeCapabilityId } from './stateOfCharge';
 
 export type PlanRealtimeUpdateEvent = {
   deviceId: string;

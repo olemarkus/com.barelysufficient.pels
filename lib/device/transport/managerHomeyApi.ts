@@ -123,7 +123,7 @@ export function writeErrorToStderr(message: string, error: unknown): void {
   }
 }
 
-export function logDeviceManagerRuntimeError(
+export function logDeviceTransportRuntimeError(
   logger: Pick<Logger, 'error'>,
   message: string,
   error: unknown,

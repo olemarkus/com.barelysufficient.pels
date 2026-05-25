@@ -18,7 +18,7 @@ import {
 } from './nativeEvWiring';
 import { toCapabilityTimestampMs, type DeviceCapabilityMap } from './managerControl';
 import { resolveDeviceCapabilities } from './transport/managerParse';
-import type { DeviceManagerParseProviders } from './transport/managerParseDevice';
+import type { DeviceTransportParseProviders } from './transport/managerParseDevice';
 import {
   buildNativeSteppedLoadControlAdapter,
   buildSyntheticTargetPowerCapabilityMap,
@@ -63,7 +63,7 @@ export function resolveFlowCapabilityOverlay(params: {
   deviceId: string;
   rawCapabilities: string[];
   rawCapabilityObj: DeviceCapabilityMap;
-  providers: DeviceManagerParseProviders;
+  providers: DeviceTransportParseProviders;
   logger: Logger;
 }): {
   capabilities: string[];
@@ -178,7 +178,7 @@ function applyOverlaysWithDiagnostics(params: {
   deviceId: string;
   rawCapabilities: string[];
   rawCapabilityObj: DeviceCapabilityMap;
-  providers: DeviceManagerParseProviders;
+  providers: DeviceTransportParseProviders;
   logger: Logger;
 }): ReturnType<typeof applyNativeEvWiringOverlay> {
   const overlay = applyNativeEvWiringOverlay({
@@ -248,7 +248,7 @@ function applySyntheticTargetPowerOverlay(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   evPresetOnly?: boolean;
-  providers: DeviceManagerParseProviders;
+  providers: DeviceTransportParseProviders;
 }): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
@@ -325,7 +325,7 @@ function resolveNativeSteppedLoadOverlay(params: {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
   profileOverride?: SteppedLoadProfile;
-  providers: DeviceManagerParseProviders;
+  providers: DeviceTransportParseProviders;
 }): {
   controlAdapter?: DeviceControlAdapterSnapshot;
   reportedStepId?: string;

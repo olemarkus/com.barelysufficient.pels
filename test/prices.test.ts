@@ -1946,7 +1946,7 @@ describe('Price optimization', () => {
       return { on: vi.fn(), setTimeout: vi.fn(), destroy: vi.fn() };
     });
 
-    // Set up mock driver for the device so DeviceManager can find it
+    // Set up mock driver for the device so DeviceTransport can find it
     const waterHeater2 = new MockDevice('water-heater-1', 'Water Heater', ['target_temperature', 'onoff']);
     waterHeater2.setCapabilityValue('target_temperature', 55);
     waterHeater2.setCapabilityValue('onoff', true);

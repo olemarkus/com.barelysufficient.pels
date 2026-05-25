@@ -18,7 +18,7 @@ import {
     isStateOfChargeCapabilityId,
     updateStateOfChargeFromRealtimeCapability,
     updateStateOfChargeSessionBoundary,
-} from '../stateOfCharge';
+} from './stateOfCharge';
 
 export type CapabilityObservationSource = 'device_update' | 'realtime_capability' | 'local_write';
 
@@ -52,13 +52,13 @@ export type DeviceDebugObservedSources = {
     localWrites: Record<string, DeviceDebugObservedSource>;
 };
 
-export type DeviceManagerObservationState = {
+export type DeviceTransportObservationState = {
     debugObservedSourcesByDeviceId: Map<string, DeviceDebugObservedSources>;
     capabilityObservations: Map<string, CapabilityObservation>;
     latestLocalWriteMsByDeviceId: Map<string, number>;
 };
 
-export function createObservationState(): DeviceManagerObservationState {
+export function createObservationState(): DeviceTransportObservationState {
     return {
         debugObservedSourcesByDeviceId: new Map(),
         capabilityObservations: new Map(),
@@ -67,7 +67,7 @@ export function createObservationState(): DeviceManagerObservationState {
 }
 
 export function getDebugObservedSources(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
 ): DeviceDebugObservedSources | null {
     const sources = state.debugObservedSourcesByDeviceId.get(deviceId);
@@ -91,7 +91,7 @@ export function getDebugObservedSources(
 }
 
 export function recordSnapshotRefreshObservations(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     snapshot: TargetDeviceSnapshot[];
     fetchSource: DeviceFetchSource;
 }): void {
@@ -119,7 +119,7 @@ export function recordSnapshotRefreshObservations(params: {
 }
 
 export function recordDeviceUpdateObservation(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     latestSnapshot: TargetDeviceSnapshot[];
     deviceId: string;
     result: HandleRealtimeDeviceUpdateResult;
@@ -141,7 +141,7 @@ export function recordDeviceUpdateObservation(params: {
 }
 
 export function recordLocalWriteObservation(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     latestSnapshot: TargetDeviceSnapshot[];
     deviceId: string;
     capabilityId: string;
@@ -178,7 +178,7 @@ export function recordLocalWriteObservation(params: {
 }
 
 export function mergeFresherCapabilityObservations(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     previousSnapshot: TargetDeviceSnapshot[];
     nextSnapshot: TargetDeviceSnapshot[];
     devices: HomeyDeviceLike[];
@@ -222,7 +222,7 @@ export function mergeFresherCapabilityObservations(params: {
 }
 
 export function recordSnapshotCapabilityObservations(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     latestSnapshot: TargetDeviceSnapshot[];
     deviceId: string;
     source: CapabilityObservationSource;
@@ -280,7 +280,7 @@ export function recordSnapshotCapabilityObservations(params: {
 }
 
 export function recordCapabilityObservation(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     latestSnapshot: TargetDeviceSnapshot[];
     deviceId: string;
     capabilityId: string;
@@ -318,7 +318,7 @@ export function recordCapabilityObservation(params: {
 }
 
 export function resolveLatestLocalWriteMs(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
 ): number | undefined {
     return state.latestLocalWriteMsByDeviceId.get(deviceId);
@@ -349,7 +349,7 @@ function createEmptyObservedSources(): DeviceDebugObservedSources {
 }
 
 function getOrCreateDebugObservedSources(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
 ): DeviceDebugObservedSources {
     let sources = state.debugObservedSourcesByDeviceId.get(deviceId);
@@ -369,7 +369,7 @@ function buildCurrentDebugSnapshot(
 }
 
 function mergeSnapshotObservationsForDevice(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     nextSnapshot: TargetDeviceSnapshot;
     previous: TargetDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
@@ -493,7 +493,7 @@ function dropRawEvBinaryObservationWhenStatePresent(
 }
 
 function mergeStateOfChargeObservationsForDevice(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     snapshot: TargetDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
     logger: { debug: (...args: unknown[]) => void };
@@ -537,7 +537,7 @@ function mergeStateOfChargeObservationsForDevice(params: {
 }
 
 function getMaxRetainedObservationTimeMs(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     snapshot: TargetDeviceSnapshot,
 ): number {
     const capabilityIds = [
@@ -560,7 +560,7 @@ function getMaxRetainedObservationTimeMs(
 }
 
 function mergeCapabilityObservation(params: {
-    state: DeviceManagerObservationState;
+    state: DeviceTransportObservationState;
     deviceId: string;
     deviceName: string;
     capabilityId: string;
@@ -796,7 +796,7 @@ function applyTargetCapabilityObservation(
 }
 
 function clearCapabilityObservationIfMatched(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
     capabilityId: string,
     snapshot: TargetDeviceSnapshot,
@@ -845,7 +845,7 @@ function matchesCurrentControlObservation(
 }
 
 function recordSnapshotControlObservation(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
     snapshot: TargetDeviceSnapshot,
     source: CapabilityObservationSource,
@@ -878,7 +878,7 @@ function recordSnapshotControlObservation(
 }
 
 function recordSnapshotTargetObservations(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     deviceId: string,
     snapshot: TargetDeviceSnapshot,
     source: CapabilityObservationSource,
@@ -904,7 +904,7 @@ function recordSnapshotTargetObservations(
 }
 
 function recordSnapshotScalarObservation(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     snapshot: TargetDeviceSnapshot,
     params: {
         deviceId: string;
@@ -942,7 +942,7 @@ function recordSnapshotScalarObservation(
 }
 
 function updateLocalWriteTimestamps(
-    state: DeviceManagerObservationState,
+    state: DeviceTransportObservationState,
     latestSnapshot: TargetDeviceSnapshot[],
     deviceId: string,
     observedAt: number,

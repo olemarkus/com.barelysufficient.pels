@@ -1,11 +1,11 @@
 import type { MockInstance } from 'vitest';
 
-import { DeviceManager } from '../lib/device/manager';
+import { DeviceTransport } from '../lib/device/deviceTransport';
 import { mockHomeyInstance } from './mocks/homey';
 import Homey from 'homey';
 
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
-    let deviceManager: DeviceManager;
+    let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
     let loggerMock: {
         log: vi.Mock;
@@ -39,7 +39,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
         lastKnownPowerKw = {};
         lastPositiveMeasuredPowerKw = {};
 
-        deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, {
+        deviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, {
             expectedPowerKwOverrides,
             lastKnownPowerKw,
             lastPositiveMeasuredPowerKw,
