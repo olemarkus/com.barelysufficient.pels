@@ -5226,11 +5226,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .budget-comparison__legend-swatch--background {
-  background: var(--day-view-color-background-usage);
+  background: var(--pels-chart-background);
 }
 
 .budget-comparison__legend-swatch--managed {
-  background: var(--day-view-color-managed-usage);
+  background: var(--pels-chart-managed);
 }
 
 .budget-comparison__legend-swatch--price {
@@ -5755,10 +5755,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 #budget-panel {
   --day-view-color-primary: var(--color-role-good);
   --day-view-color-planned: var(--color-role-good);
-  --day-view-color-background-usage: var(--color-role-info);
-  --day-view-color-managed-usage: var(--color-role-warn);
-  --day-view-color-actual-background-usage: color-mix(in srgb, var(--day-view-color-background-usage) 45%, transparent);
-  --day-view-color-actual-managed-usage: color-mix(in srgb, var(--day-view-color-managed-usage) 45%, transparent);
   --day-view-color-actual: var(--text);
   --day-view-color-budget: var(--info);
   --day-view-color-warn: var(--pels-status-warning);
@@ -5880,12 +5876,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .day-view-bar__segment--uncontrolled,
 .daily-budget-bar__segment--uncontrolled {
-  background: var(--day-view-color-background-usage, var(--color-base-info-default));
+  background: var(--pels-chart-background, var(--color-base-info-default));
 }
 
 .day-view-bar__segment--controlled,
 .daily-budget-bar__segment--controlled {
-  background: var(--day-view-color-managed-usage, var(--color-base-warning-default));
+  background: var(--pels-chart-managed, var(--color-base-warning-default));
 }
 
 .day-view-bar__segment--measured {
@@ -5993,11 +5989,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-legend__swatch--uncontrolled {
-  background: var(--day-view-color-background-usage, var(--color-base-info-default));
+  background: var(--pels-chart-background, var(--color-base-info-default));
 }
 
 .day-view-legend__swatch--controlled {
-  background: var(--day-view-color-managed-usage, var(--color-base-warning-default));
+  background: var(--pels-chart-managed, var(--color-base-warning-default));
 }
 
 .day-view-legend__swatch--measured {
