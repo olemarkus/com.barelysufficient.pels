@@ -1,6 +1,7 @@
 import { AppSnapshotHelpers } from '../lib/app/appSnapshotHelpers';
 import { disableUnsupportedDevices } from '../lib/app/appDeviceSupport';
 import { TimerRegistry } from '../lib/app/timerRegistry';
+import { STALE_DEVICE_OBSERVATION_MS } from '../lib/observer/observationFreshness';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
@@ -436,5 +437,135 @@ describe('appSnapshotHelpers', () => {
     await firstRefresh;
     await secondRefresh;
     expect(secondSettled).toBe(true);
+  });
+
+  describe('stale_device_observation_refresh log backoff', () => {
+    const STALE_LOG_BACKOFF_MS = 15 * 60 * 1000;
+    const REFRESH_INTERVAL_MS = 60 * 1000;
+    const baseTimeMs = Date.UTC(2026, 2, 21, 10, 0, 0);
+
+    type StaleDevice = {
+      id: string;
+      name: string;
+      lastFreshDataMs: number;
+    };
+
+    function makeStaleDevice(id: string, nowMs: number, name = `dev ${id}`): StaleDevice {
+      return {
+        id,
+        name,
+        lastFreshDataMs: nowMs - STALE_DEVICE_OBSERVATION_MS - 60 * 1000,
+      };
+    }
+
+    function makeHelperForStaleRefresh(options: {
+      snapshotRefByTime: { current: StaleDevice[] };
+      infoSpy: ReturnType<typeof vi.fn>;
+      currentMs: { value: number };
+    }) {
+      const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
+      return new AppSnapshotHelpers({
+        homey: mockHomeyInstance as any,
+        timers: new TimerRegistry(),
+        getDeviceManager: () => ({ refreshSnapshot } as any),
+        getPlanEngine: () => undefined,
+        getPlanService: () => ({
+          syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+          syncHeadroomCardState: vi.fn(),
+          getLatestPlanSnapshot: vi.fn(),
+        } as any),
+        getLatestTargetSnapshot: () => options.snapshotRefByTime.current as any,
+        resolveManagedState: () => true,
+        isCapacityControlEnabled: () => true,
+        getStructuredLogger: (component) => (component === 'devices' ? ({
+          info: options.infoSpy,
+          debug: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        } as any) : undefined),
+        logDebug: vi.fn(),
+        error: vi.fn(),
+        getNow: () => new Date(options.currentMs.value),
+        logPeriodicStatus: vi.fn(),
+        disableUnsupportedDevices: vi.fn(),
+        seedMissingModeTargets: vi.fn(),
+        getFlowReportedDeviceIds: vi.fn(() => []),
+        emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+        emitSettingsUiDevicesUpdated: vi.fn(),
+        recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      });
+    }
+
+    function staleRefreshEmits(infoSpy: ReturnType<typeof vi.fn>): unknown[] {
+      return infoSpy.mock.calls
+        .map((call) => call[0])
+        .filter((arg) => (arg as { event?: string })?.event === 'stale_device_observation_refresh');
+    }
+
+    it('bounds stale_device_observation_refresh emits to ~once per 15-minute window per device across 100 cycles', async () => {
+      const currentMs = { value: baseTimeMs };
+      const snapshotRefByTime = { current: [makeStaleDevice('dev-1', currentMs.value)] };
+      const infoSpy = vi.fn();
+      const helper = makeHelperForStaleRefresh({ snapshotRefByTime, infoSpy, currentMs });
+
+      const totalCycles = 100;
+      for (let cycle = 0; cycle < totalCycles; cycle += 1) {
+        // Keep the device persistently stale by walking its lastFreshDataMs
+        // forward in lockstep with the simulated clock — exactly the shape of
+        // a Homey driver that only republishes per-capability `lastUpdated`
+        // on value change.
+        snapshotRefByTime.current = [makeStaleDevice('dev-1', currentMs.value)];
+        await helper.refreshStaleDeviceObservations();
+        currentMs.value += REFRESH_INTERVAL_MS;
+      }
+
+      const emits = staleRefreshEmits(infoSpy);
+      // 100 minutes at one log per 15-minute window per device = ceil(100/15)
+      // = 7 emits. With the first cycle always emitting we expect at most 7.
+      expect(emits.length).toBeGreaterThanOrEqual(1);
+      expect(emits.length).toBeLessThanOrEqual(
+        Math.ceil((totalCycles * REFRESH_INTERVAL_MS) / STALE_LOG_BACKOFF_MS),
+      );
+      expect(emits[0]).toMatchObject({
+        event: 'stale_device_observation_refresh',
+        stillStaleAfterRefreshDevices: 1,
+      });
+    });
+
+    it('resets backoff after a successful refresh so the device can re-emit if it stalls again', async () => {
+      const currentMs = { value: baseTimeMs };
+      const snapshotRefByTime = { current: [makeStaleDevice('dev-1', currentMs.value)] };
+      const infoSpy = vi.fn();
+      const helper = makeHelperForStaleRefresh({ snapshotRefByTime, infoSpy, currentMs });
+
+      // First cycle: stale, first emit lands.
+      await helper.refreshStaleDeviceObservations();
+      expect(staleRefreshEmits(infoSpy).length).toBe(1);
+
+      // Second cycle still stale, well inside the backoff window: suppressed.
+      currentMs.value += REFRESH_INTERVAL_MS;
+      snapshotRefByTime.current = [makeStaleDevice('dev-1', currentMs.value)];
+      await helper.refreshStaleDeviceObservations();
+      expect(staleRefreshEmits(infoSpy).length).toBe(1);
+
+      // Third cycle: device recovers (fresh observation). No stale emit, and
+      // the backoff entry should be cleared.
+      currentMs.value += REFRESH_INTERVAL_MS;
+      snapshotRefByTime.current = [{
+        id: 'dev-1',
+        name: 'dev dev-1',
+        lastFreshDataMs: currentMs.value - 1_000,
+      } as any];
+      await helper.refreshStaleDeviceObservations();
+      expect(staleRefreshEmits(infoSpy).length).toBe(1);
+
+      // Fourth cycle: device stalls again, still inside the original
+      // 15-minute window. Because recovery cleared the backoff, a fresh emit
+      // must fire — proving reset-on-recovery works.
+      currentMs.value += REFRESH_INTERVAL_MS;
+      snapshotRefByTime.current = [makeStaleDevice('dev-1', currentMs.value)];
+      await helper.refreshStaleDeviceObservations();
+      expect(staleRefreshEmits(infoSpy).length).toBe(2);
+    });
   });
 });
