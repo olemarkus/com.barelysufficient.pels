@@ -6,6 +6,7 @@
 // is available so v3 entries still get a chart.
 import {
   resolveHistoryDetailChartData,
+  historyDetailChartLabels,
   type DeferredPlanHistoryChartPoint,
 } from '../packages/shared-domain/src/deferredPlanHistory';
 import type {
@@ -430,5 +431,56 @@ describe('resolveHistoryDetailChartData', () => {
       expect(data.windowStartMs).toBe(START_MS);
       expect(data.windowEndMs).toBe(DEADLINE_MS);
     });
+  });
+});
+
+// Covers the v2.7.2 PR 4 chart-string lift: per `feedback_ui_text_shared_with_logs`,
+// the user-visible series names / card titles / toggle copy live in
+// shared-domain so runtime log breadcrumbs can read the same strings the
+// chart legend renders. Assertions pin the exact shipped strings so a copy
+// tweak surfaces here rather than silently in the UI.
+describe('historyDetailChartLabels', () => {
+  it('exposes every expected key with mode-agnostic series + toggle copy', () => {
+    const labels = historyDetailChartLabels('trajectory');
+    expect(Object.keys(labels).sort()).toEqual([
+      'cardTitle',
+      'collapseToggleLabel',
+      'expandToggleLabel',
+      'fallbackNote',
+      'formatObservedNotRecorded',
+      'formatTrajectoryAriaLabel',
+      'metMarkName',
+      'plannedRevisedSeriesName',
+      'plannedSeriesName',
+      'targetSeriesName',
+    ]);
+    expect(labels.plannedSeriesName).toBe('Planned trajectory');
+    expect(labels.plannedRevisedSeriesName).toBe('Revised trajectory');
+    expect(labels.targetSeriesName).toBe('Target');
+    expect(labels.metMarkName).toBe('Reached target');
+    expect(labels.expandToggleLabel).toBe('View details');
+    expect(labels.collapseToggleLabel).toBe('Hide details');
+  });
+
+  it('returns the trajectory card title with no fallback note in trajectory mode', () => {
+    const labels = historyDetailChartLabels('trajectory');
+    expect(labels.cardTitle).toBe('Progress history');
+    expect(labels.fallbackNote).toBeNull();
+  });
+
+  it('returns the legacy card title + fallback note in legacy_kwh mode', () => {
+    const labels = historyDetailChartLabels('legacy_kwh');
+    expect(labels.cardTitle).toBe('Scheduled vs observed');
+    expect(labels.fallbackNote).toBe('Schedule only — observations not recorded for this run.');
+  });
+
+  it('composes the parametric tooltip + aria-label strings with the caller-supplied names', () => {
+    const labels = historyDetailChartLabels('trajectory');
+    expect(labels.formatObservedNotRecorded('Measured Heating')).toBe('Measured Heating — not recorded');
+    expect(labels.formatTrajectoryAriaLabel('Connected 300')).toBe('Progress trajectory for Connected 300');
+    // Caller-resolved fallback: the view passes `'this smart task'` when no
+    // device name is recorded — shared-domain just templates whatever string
+    // the caller hands in.
+    expect(labels.formatTrajectoryAriaLabel('this smart task')).toBe('Progress trajectory for this smart task');
   });
 });

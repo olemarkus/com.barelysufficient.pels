@@ -9,10 +9,12 @@ import {
   formatPlanHistoryDeadlineLine,
   resolveHistoryDetailChartData,
   resolveHistoryDetailHourlyStrip,
+  historyDetailChartLabels,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
   type DeferredPlanHistoryHourlyStripData,
   type HourlyStripBucket,
+  type HistoryDetailChartLabels,
   formatPlanHistoryRevisionEntry,
   type PlanHistoryRevisionLogRow,
   formatPlanHistoryUsageDayLinkLabel,
@@ -343,10 +345,18 @@ export const buildHistoryDetailChartOption = (
 // the staircase from `originalPlan.hours × kwhPerUnitMean`; this layer is a
 // renderer that never inspects the raw entry.
 
-const PLANNED_SERIES_NAME = 'Planned trajectory';
-const PLANNED_REVISED_SERIES_NAME = 'Revised trajectory';
-const TARGET_SERIES_NAME = 'Target';
-const MET_MARK_NAME = 'Reached target';
+// User-visible series names + mark label come from the shared-domain helper
+// (`historyDetailChartLabels`) so runtime log breadcrumbs and the chart legend
+// stay on identical strings per `feedback_ui_text_shared_with_logs`. Aliased
+// to local consts here so the option-builder body keeps reading naturally.
+// `'trajectory'` is passed because these particular fields are mode-agnostic;
+// the mode-aware fields (cardTitle / fallbackNote) are resolved at the call
+// site with the live chart mode.
+const TRAJECTORY_LABELS = historyDetailChartLabels('trajectory');
+const PLANNED_SERIES_NAME = TRAJECTORY_LABELS.plannedSeriesName;
+const PLANNED_REVISED_SERIES_NAME = TRAJECTORY_LABELS.plannedRevisedSeriesName;
+const TARGET_SERIES_NAME = TRAJECTORY_LABELS.targetSeriesName;
+const MET_MARK_NAME = TRAJECTORY_LABELS.metMarkName;
 
 const formatTrajectoryValue = (value: number, unit: '°C' | '%'): string => (
   unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)} %`
@@ -447,7 +457,7 @@ const buildTrajectoryTooltip = (
   // at this hour, surface that explicitly so the absence is honest (rather
   // than letting the tooltip silently omit the observed series).
   if (data.observed.length === 0 && data.plannedOriginal.length > 0) {
-    lines.push(`${encodeHtml(observedSeriesName)} — not recorded`);
+    lines.push(encodeHtml(TRAJECTORY_LABELS.formatObservedNotRecorded(observedSeriesName)));
   }
   return lines.join('<br>');
 };
@@ -884,18 +894,12 @@ const formatRevisionUpdatesLine = (revisionCount: number | undefined): string | 
   return `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}.`;
 };
 
-// Card-title copy. Trajectory mode reads as "Progress history" so it is not
-// confused with the live Smart-task price horizon. Legacy
-// mode keeps the existing "Scheduled vs observed" so the v3 fallback path
-// reads consistently across surfaces.
-const resolveChartCardTitle = (mode: DeferredPlanHistoryChartData['mode']): string => (
-  mode === 'trajectory' ? 'Progress history' : 'Scheduled vs observed'
-);
-
-// Subtext shown under the chart card title for the legacy fallback. The
-// trajectory chart's y-axis unit + line shapes carry the same information
-// implicitly, so the line is suppressed there.
-const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
+// Card-title + fallback-note copy is resolved by the shared-domain helper
+// `historyDetailChartLabels(mode)` so runtime log breadcrumbs render identical
+// strings (`feedback_ui_text_shared_with_logs`). Trajectory mode reads as
+// "Progress history" so it isn't confused with the live Smart-task price
+// horizon; legacy mode keeps the prior "Scheduled vs observed" + fallback
+// note so v3 entries land on the same wording they did before PR 4.
 
 // Sort revisions chronologically (oldest → newest). The recorder writes them
 // in-order today but we don't want the view to depend on persistence order,
@@ -1167,12 +1171,15 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   const ariaHeading = displayHeadingName !== ''
     ? `${displayHeadingName} — ${deadlineLine}`
     : deadlineLine;
-  const trajectoryAriaLabel = `Progress trajectory for ${displayHeadingName !== '' ? displayHeadingName : 'this smart task'}`;
+  const chartLabels: HistoryDetailChartLabels = historyDetailChartLabels(chartData.mode);
+  const trajectoryAriaLabel = chartLabels.formatTrajectoryAriaLabel(
+    displayHeadingName !== '' ? displayHeadingName : 'this smart task',
+  );
   const hasChartData = chartData.mode === 'trajectory'
     ? (chartData.plannedOriginal.length > 0 || chartData.observed.length > 0)
     : (entry.originalPlan !== null || entry.finalPlan !== null);
-  const chartCardTitle = resolveChartCardTitle(chartData.mode);
-  const chartFallbackNote = chartData.mode === 'legacy_kwh' ? LEGACY_FALLBACK_NOTE : null;
+  const chartCardTitle = chartLabels.cardTitle;
+  const chartFallbackNote = chartLabels.fallbackNote;
   return (
     <article class="plan-history-detail" aria-label={`${hero.eyebrow} ${ariaHeading}`}>
       <HistoryDetailHero
@@ -1205,7 +1212,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
                 aria-expanded={!chartCollapsed}
                 onClick={() => setChartCollapsed(!chartCollapsed)}
               >
-                {chartCollapsed ? 'View details' : 'Hide details'}
+                {chartCollapsed ? chartLabels.expandToggleLabel : chartLabels.collapseToggleLabel}
               </button>
             )}
           </div>

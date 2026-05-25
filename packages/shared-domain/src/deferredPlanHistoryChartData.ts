@@ -367,3 +367,84 @@ export const resolveHistoryDetailChartData = (
   }
   return trajectory;
 };
+
+// ─── History-detail chart labels (v2.7.2 PR 4 copy lift) ──────────────────────
+//
+// User-visible chart strings — series names, card titles, the legacy fallback
+// note, the chart-collapse toggle, and the chart aria-label — for the
+// smart-task history-detail surface. Lifted out of
+// `DeadlinePlanHistoryDetail.tsx` per `feedback_ui_text_shared_with_logs` so
+// runtime log breadcrumbs and the view read identical strings.
+//
+// Strings here are kind-agnostic today (the trajectory chart's series names
+// don't change between EV / thermal — only the y-axis unit does, and that's
+// already a producer-resolved field on `DeferredPlanHistoryChartData`). The
+// kind-aware observed-series name still lives on `deadlineLabels(kind)`
+// alongside the other kind-aware chart copy.
+
+export type HistoryDetailChartLabels = {
+  /** Trajectory chart legend / series name for the planned staircase. */
+  plannedSeriesName: string;
+  /** Trajectory chart legend / series name for the revised (post-replan) staircase. */
+  plannedRevisedSeriesName: string;
+  /** Trajectory chart legend / series name for the target reference line. */
+  targetSeriesName: string;
+  /** Trajectory chart mark-point label for the met marker. */
+  metMarkName: string;
+  /** Chart card title; varies by mode (trajectory vs legacy_kwh fallback). */
+  cardTitle: string;
+  /**
+   * Subtext shown under the chart card title in legacy fallback mode. `null`
+   * on trajectory mode — the y-axis unit + line shapes already carry the
+   * "what is this" signal there.
+   */
+  fallbackNote: string | null;
+  /** Label shown on the chart-collapse toggle button when the chart is collapsed. */
+  expandToggleLabel: string;
+  /** Label shown on the chart-collapse toggle button when the chart is expanded. */
+  collapseToggleLabel: string;
+  /**
+   * Tooltip line appended to the trajectory tooltip when the user hovers
+   * over a planned-line column with no observed sample at that hour. Called
+   * with the kind-aware observed-series name so the absence message reads
+   * naturally (e.g. `Measured Heating — not recorded`).
+   */
+  formatObservedNotRecorded: (observedSeriesName: string) => string;
+  /**
+   * Aria-label for the trajectory chart wrapper. `deviceName` falls back to
+   * `'this smart task'` at the call site when no device name is recorded;
+   * this helper trusts the caller to pre-resolve the trimmed display name
+   * (consistent with the rest of shared-domain — no Date / locale helpers).
+   */
+  formatTrajectoryAriaLabel: (deviceName: string) => string;
+};
+
+const PLANNED_SERIES_NAME = 'Planned trajectory';
+const PLANNED_REVISED_SERIES_NAME = 'Revised trajectory';
+const TARGET_SERIES_NAME = 'Target';
+const MET_MARK_NAME = 'Reached target';
+const TRAJECTORY_CARD_TITLE = 'Progress history';
+const LEGACY_CARD_TITLE = 'Scheduled vs observed';
+const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
+const EXPAND_TOGGLE_LABEL = 'View details';
+const COLLAPSE_TOGGLE_LABEL = 'Hide details';
+
+// Resolves the mode-aware chart-card title + the matching fallback note.
+// Trajectory mode reads as "Progress history" so it doesn't get confused with
+// the live Smart-task price horizon. Legacy mode keeps the prior "Scheduled
+// vs observed" copy so v3 entries land on the same wording they did before
+// PR 4. Picking once at the helper keeps the view's branching shallow.
+export const historyDetailChartLabels = (
+  mode: DeferredPlanHistoryChartMode,
+): HistoryDetailChartLabels => ({
+  plannedSeriesName: PLANNED_SERIES_NAME,
+  plannedRevisedSeriesName: PLANNED_REVISED_SERIES_NAME,
+  targetSeriesName: TARGET_SERIES_NAME,
+  metMarkName: MET_MARK_NAME,
+  cardTitle: mode === 'trajectory' ? TRAJECTORY_CARD_TITLE : LEGACY_CARD_TITLE,
+  fallbackNote: mode === 'trajectory' ? null : LEGACY_FALLBACK_NOTE,
+  expandToggleLabel: EXPAND_TOGGLE_LABEL,
+  collapseToggleLabel: COLLAPSE_TOGGLE_LABEL,
+  formatObservedNotRecorded: (observedSeriesName) => `${observedSeriesName} — not recorded`,
+  formatTrajectoryAriaLabel: (deviceName) => `Progress trajectory for ${deviceName}`,
+});
