@@ -55,11 +55,11 @@ import {
 } from './lib/utils/settingsKeys';
 import { isNumberMap, isPowerTrackerState } from './lib/utils/appTypeGuards';
 import {
-  cancelPendingPowerRebuild,
   executePendingPowerRebuild,
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from './lib/plan/rebuildScheduler/signalDriven';
+import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
@@ -189,7 +189,6 @@ const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
-const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 const getAppPlanRebuildNowMs = (): number => (
   process.env.NODE_ENV === 'test'
@@ -326,16 +325,25 @@ class PelsApp extends Homey.App {
   private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
   private lastNotifiedOperatingMode = 'Home';
   private powerSampleRebuildState: PowerSampleRebuildState = { lastMs: 0 };
-  private readonly planRebuildSchedulerDebugLastEmittedAtMsByKey = new Map<string, number>();
+  private readonly schedulerTelemetry = new SchedulerTelemetryObserver({
+    getStructuredLogger: () => this.structuredLogger,
+    isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
+    getNowMs: () => this.getPlanRebuildNowMs(),
+    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
+    setPowerSampleRebuildState: (state) => {
+      this.powerSampleRebuildState = state;
+    },
+    error: (...args: unknown[]) => this.error(...args),
+  });
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
     resolveDueAtMs: (intent, state) => this.resolvePlanRebuildDueAtMs(intent, state),
     executeIntent: (intent) => this.executePlanRebuildIntent(intent),
     shouldExecuteImmediately: (intent) => intent.kind !== 'flow',
-    onIntentDropped: (dropped, kept) => this.onPlanRebuildIntentDropped(dropped, kept),
-    onPendingIntentReplaced: (previous, next) => this.onPlanRebuildPendingIntentReplaced(previous, next),
-    onIntentCancelled: (intent, reason) => this.onPlanRebuildIntentCancelled(intent, reason),
-    onIntentError: (intent, error) => this.onPlanRebuildIntentError(intent, error),
+    onIntentDropped: this.schedulerTelemetry.onIntentDropped,
+    onPendingIntentReplaced: this.schedulerTelemetry.onPendingIntentReplaced,
+    onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
+    onIntentError: this.schedulerTelemetry.onIntentError,
   });
   private powerSampleLoop?: Promise<void>;
   private powerSampleRerunRequested = false;
@@ -1080,77 +1088,6 @@ class PelsApp extends Homey.App {
       });
     }
     return this.planService.rebuildPlanFromCache(intent.reason).then(() => undefined);
-  }
-  private onPlanRebuildIntentDropped(dropped: RebuildIntent, kept: RebuildIntent): void {
-    this.emitRateLimitedPlanRebuildSchedulerDebug(
-      `dropped:${dropped.kind}:${dropped.reason}:${kept.kind}:${kept.reason}`,
-      {
-        event: 'plan_rebuild_scheduler_intent_dropped',
-        droppedKind: dropped.kind,
-        droppedReason: dropped.reason,
-        keptKind: kept.kind,
-        keptReason: kept.reason,
-      },
-    );
-  }
-  private onPlanRebuildPendingIntentReplaced(previous: RebuildIntent, next: RebuildIntent): void {
-    if (previous.kind === 'flow' && next.kind === 'flow') {
-      incPerfCounter('plan_rebuild_requested.flow_coalesced_total');
-      if (previous.reason !== next.reason) {
-        incPerfCounter('plan_rebuild_requested.flow_pending_source_replaced_total');
-      }
-    }
-    this.emitRateLimitedPlanRebuildSchedulerDebug(
-      `replaced:${previous.kind}:${previous.reason}:${next.kind}:${next.reason}`,
-      {
-        event: 'plan_rebuild_scheduler_intent_replaced',
-        previousKind: previous.kind,
-        previousReason: previous.reason,
-        nextKind: next.kind,
-        nextReason: next.reason,
-      },
-    );
-  }
-  private onPlanRebuildIntentCancelled(intent: RebuildIntent, reason: string): void {
-    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      cancelPendingPowerRebuild({
-        getState: () => this.powerSampleRebuildState,
-        setState: (state) => {
-          this.powerSampleRebuildState = state;
-        },
-        reason,
-      });
-    }
-  }
-  private onPlanRebuildIntentError(intent: RebuildIntent, error: Error): void {
-    if (intent.kind === 'flow') {
-      this.error(`Flow rebuild scheduler failed for ${intent.reason}`, error);
-      return;
-    }
-    if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      this.error('PowerTracker: Failed to rebuild plan after power sample:', error);
-    }
-  }
-  private emitRateLimitedPlanRebuildSchedulerDebug(key: string, payload: Record<string, unknown>): void {
-    if (!this.structuredLogger || !this.debugLoggingTopics.has('plan')) return;
-    const nowMs = this.getPlanRebuildNowMs();
-    for (const [storedKey, lastEmittedAtMs] of this.planRebuildSchedulerDebugLastEmittedAtMsByKey) {
-      if (nowMs - lastEmittedAtMs >= PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS) {
-        this.planRebuildSchedulerDebugLastEmittedAtMsByKey.delete(storedKey);
-      }
-    }
-    const lastEmittedAtMs = this.planRebuildSchedulerDebugLastEmittedAtMsByKey.get(key);
-    if (
-      typeof lastEmittedAtMs === 'number'
-      && nowMs - lastEmittedAtMs < PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS
-    ) {
-      return;
-    }
-    this.planRebuildSchedulerDebugLastEmittedAtMsByKey.set(key, nowMs);
-    this.structuredLogger.child({ component: 'plan' }, { level: 'debug' }).debug({
-      ...payload,
-      debugTopic: 'plan',
-    });
   }
   private initCapacityGuardProviders(): void {
     if (!this.capacityGuard) return;

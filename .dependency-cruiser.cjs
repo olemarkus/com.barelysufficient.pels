@@ -5,14 +5,14 @@ module.exports = {
       name: 'no-circular',
       comment: 'Prevent circular dependencies.',
       severity: 'error',
-      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|packages/(settings-ui|contracts|shared-domain)/src/)' },
+      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain)/src/)' },
       to: { circular: true },
     },
     {
       name: 'no-runtime-to-tests',
       comment: 'Runtime code must stay isolated from tests.',
       severity: 'error',
-      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|packages/(settings-ui|contracts|shared-domain)/src/)' },
+      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain)/src/)' },
       to: { path: '^(test/|tests/|packages/settings-ui/(test|tests)/)' },
     },
     {
@@ -35,6 +35,16 @@ module.exports = {
       severity: 'error',
       from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor)/' },
       to: { path: '^lib/app/' },
+    },
+    {
+      name: 'no-lib-to-setup',
+      comment: 'setup/ hosts app-specific wiring classes (constructor of services, '
+        + 'observers, registrars). Domain code under lib/** and shared packages must '
+        + 'never depend on setup/ — the arrow always points from setup/ down into '
+        + 'the libraries it wires.',
+      severity: 'error',
+      from: { path: '^(lib/|packages/)' },
+      to: { path: '^setup/' },
     },
     {
       name: 'flowcards-no-settings-or-drivers',
