@@ -2308,7 +2308,7 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
-- [ ] Quiet repeated `stale_device_observation_refresh` log entries that never resolve.
+- [x] Quiet repeated `stale_device_observation_refresh` log entries that never resolve.
       The headroom-for-device fix (Unit 4) makes stale-but-stable devices contribute their
       configured load to headroom math, but the snapshot-refresh fallback in
       `appSnapshotHelpers.ts` still wakes every 60s, refreshes those devices, and emits the
@@ -2319,6 +2319,20 @@ consolidation + a11y polish (8 P2)`.*
       devices should also stop triggering the refresh loop after one attempt.
       Files: `lib/app/appSnapshotHelpers.ts`, `lib/observer/observationFreshness.ts`,
       snapshot-refresh tests.
+      *(landed: per-device `staleRefreshLogLastEmitMsById` map gates
+      `stale_device_observation_refresh` info emits to at most one per 15-minute window
+      per device — matching the planner's other 15-min repeat-event windows — so the
+      stream is bounded instead of growing with uptime. Recovery (device becomes fresh)
+      clears that device's backoff so a later stall re-emits. The `'unknown'`
+      never-observed case already short-circuits at `isDeviceObservationStaleByAge`,
+      which excludes `'unknown'` from the refresh-loop filter entirely, so the loop
+      never runs for those devices and no extra logic was needed — documented as a
+      comment in `refreshStaleDeviceObservations`. Counter accuracy preserved:
+      `stillStaleAfterRefreshDevices` still reflects the true count; only the log
+      emit is gated, and the new `loggedStillStaleDevices` field surfaces the gated
+      subset. In-memory only per `feedback_homey_sdk_unreliable`. Locked by two new
+      `appSnapshotHelpers.test.ts` cases for the 100-cycle bound and the
+      reset-on-recovery contract.)*
 - [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
       The headroom-for-device path now credits configured load for stale-on devices on the
       assumption that they are still in their last-seen state. A device that has been
