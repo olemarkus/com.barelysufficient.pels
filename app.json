@@ -1561,7 +1561,7 @@
       },
       "class": "sensor",
       "capabilities": [
-        "pels_insights",
+        "mode_indicator",
         "pels_shortfall",
         "pels_headroom",
         "pels_hourly_limit_kw",
@@ -1638,14 +1638,23 @@
   "capabilities": {
     "mode_indicator": {
       "title": {
-        "en": "PELS Status"
+        "en": "Mode"
       },
       "desc": {
-        "en": "Shows the current operating mode selected in settings or Flow."
+        "en": "The current PELS operating mode. Switch directly from the device tile or via Flow."
       },
-      "type": "string",
+      "type": "enum",
+      "uiComponent": "picker",
       "getable": true,
-      "setable": false,
+      "setable": true,
+      "values": [
+        {
+          "id": "Home",
+          "title": {
+            "en": "Home"
+          }
+        }
+      ],
       "icon": "/assets/capabilities/mode_indicator.svg"
     },
     "pels_controlled_power": {
