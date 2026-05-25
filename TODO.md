@@ -318,7 +318,56 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
 
+*v2.9.1 RC release-review findings (2026-05-25, prod log
+`/tmp/pels/start.main.0a4464c3.stdout.log`, user walked Marie Michelets Homey Pro).*
+
+- [ ] **Smart-task rescue lane leaves stepped device stuck at peak step after the deadline.**
+      Connected 300 (water heater, deviceId `632c4190-168c-407b-bd83-dae6ddd3366e`) was
+      shed toward off at 2026-05-23T12:50:52Z (`stepped_load_command_requested`,
+      `effectiveTransition: "full_shed_to_off"`, `plannedDesiredStepId: "off"`).
+      A `cannot_meet` deferred-objective with `rescueExemptMode: "always"` +
+      `rescueLimitMode: "always"` then activated (Sat 23 May 16:00 deadline,
+      `budgetExemptApplied: true`, `limitLowerPriorityApplied: true`) and stepped the
+      device back up: 12:52:38Z low → medium, 12:53:12Z medium → max. After the
+      deadline missed at 16:00Z, **no further `stepped_load_command_requested` events
+      have been issued for this device for 2.5+ days** (logs confirm: last command at
+      12:53:12Z 2026-05-23; current process still observes `reportedStepId: "max"`,
+      2.87 kW measured, `reasonCode: "capacity_control_off"`, `plannedState: "keep"` on
+      every overview tick). Net effect: rescue lane stepped up but the smart-task
+      lifecycle never stepped the device back down when the objective ended; combined
+      with the per-device `capacity_control_off` setting, the planner cannot revert it
+      either. Real-prod impact is severe — Past tasks history shows the same device
+      overshooting target 65 °C → 77.7 / 79.4 °C on multiple succeeded runs and missing
+      4 of last 4 Week-21 deadlines, all consistent with a device locked at peak step.
+      Acceptance: when a deferred-objective transitions out of `planned` (deadline
+      passed, succeeded, abandoned, finalized) AND the rescue lane previously engaged
+      boost, the planner must emit a step-down command to the device's non-rescue floor
+      step regardless of `capacity_control_off` (the user opted out of *capacity*
+      control, not out of smart-task lifecycle commands they explicitly enrolled in).
+      Files: `lib/plan/admission/deferredObjective.ts`,
+      `lib/plan/planEvBoost.ts`, `lib/plan/planTemperatureBoost.ts`,
+      `lib/plan/deferredObjectives/`, `lib/plan/steppedLoadCommands.ts` (or wherever
+      `stepped_load_command_requested` originates), associated regression test under
+      `test/plan/`. Source: v2.9.1 RC release-review prod log audit, 2026-05-25.
+
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **Hero subtitle "Easing devices off" is misleading when the shed cascade is exhausted.**
+      Live snapshot (2026-05-25, Marie Michelets Homey Pro): Power now 5.6 kW, hard cap
+      5.0 kW, hero says *"Over the hard cap right now. Easing devices off."* — but every
+      controllable managed device is already in `cooldown_shedding` / `Limited by the
+      hard cap`, and the 0.6 kW breach comes from Connected 300 at Max (2.87 kW) which
+      PELS cannot touch because the device has `capacity_control_off`. The copy
+      overpromises active mitigation that PELS has actually finished doing; the user is
+      left thinking "PELS is handling it" while in reality the breach is structural
+      until the opt-out device drops out on its own. Differentiate the hero subtext when
+      `remainingSheddableLoad` for managed devices is ≤ 0 AND the breach attribution is
+      a capacity-control-off device: e.g. *"Above hard cap. <DeviceName> isn't under
+      PELS control — PELS has eased everything it can."* Files:
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/shared-domain/src/planStateLabels.ts` (or wherever the subtitle is
+      composed), `notes/ui-terminology.md` (add the new subtitle variant). Source:
+      v2.9.1 RC release-review walk, 2026-05-25.
 
 - [ ] **Add `pending_binary_command_cleared` structured event.** After chip
       4.1c, `getPendingBinaryCommand` (lib/plan/planBinaryControlHelpers.ts)
