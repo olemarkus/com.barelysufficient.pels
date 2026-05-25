@@ -199,15 +199,25 @@ export const buildHistoryDetailHero = (
       shortfallChip: null,
       costNarrative,
       abandonedDetails: null,
-      // v2.7.3 — Succeeded retires progressLine / reachedAtLine / overshoot.
+      // v2.7.3 — Succeeded retires progressLine / reachedAtLine.
       // The receipt timeline's "Started …", "Largest planned hour …", "Ready
       // 06:42, 18 min before 07:00" rows already encode the same information;
       // stacking them again was the density problem `pels-ux-fit` flagged.
       // coverageLine returns in v2.9.x with its actionable "N of M planned
       // hours" rewrite — see the helper resolution above.
+      //
+      // v2.9.x batch 47 — `overshootLine` is the exception. The receipt
+      // timeline answers "what happened" but never names the final reading; a
+      // Succeeded run that overshot by > 5 °C / > 10 % (e.g. the lived-state
+      // `29.3 → 77.7 °C · target 65 °C` regression in `TODO.md` ~L2724) reads
+      // as a normal success without it. The producer resolves `null` for runs
+      // that stayed within the threshold, so the line stays quiet on the
+      // common path and only surfaces when the user needs to spot a tuning
+      // problem. Muted styling carries the "informational, not alarming"
+      // intent (per the TODO rationale: passive support-cost reduction).
       progressLine: null,
       reachedAtLine: null,
-      overshootLine: null,
+      overshootLine,
       coverageLine,
     };
   }
