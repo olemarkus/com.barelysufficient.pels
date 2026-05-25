@@ -15,12 +15,12 @@ export type ParsedDeviceIdentity = {
 /**
  * Resolves identity fields (id, deviceClassKey, label) from an already-effective
  * device. Callers must apply `applyDeviceCompatibilityMetadata` and
- * `applyDeviceDriverOverride` upstream (see `DeviceManager.applyDeviceDriverOverride`)
+ * `applyDeviceDriverOverride` upstream (see `DeviceTransport.applyDeviceDriverOverride`)
  * so the override is propagated through the snapshot pipeline once instead of
  * being re-applied at every layer. The single application sites are:
- *   - `DeviceManager.refreshSnapshot` (snapshot pipeline)
- *   - `DeviceManager.handleRealtimeDeviceUpdate` (realtime pipeline)
- *   - `DeviceManager.parseDeviceListForTests` (test entry point)
+ *   - `DeviceTransport.refreshSnapshot` (snapshot pipeline)
+ *   - `DeviceTransport.handleRealtimeDeviceUpdate` (realtime pipeline)
+ *   - `DeviceTransport.parseDeviceListForTests` (test entry point)
  */
 export function resolveParseDeviceIdentity(params: {
   device: HomeyDeviceLike;

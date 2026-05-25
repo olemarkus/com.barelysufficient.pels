@@ -117,7 +117,7 @@ export const applyShedTemperaturePlan = async (
   } catch (error) {
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set shed temperature for ${action.name} via DeviceManager`,
+      msg: `Failed to set shed temperature for ${action.name} via DeviceTransport`,
       err: error,
     });
     return { handled: true, wrote: false };
@@ -181,7 +181,7 @@ export const trySetShedTemperature = async (
   } catch (error) {
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set shed temperature for ${name} via DeviceManager`,
+      msg: `Failed to set shed temperature for ${name} via DeviceTransport`,
       err: error,
     });
     return { handled: false, wrote: false };
@@ -278,7 +278,7 @@ const applyTargetUpdatePlan = async (
   } catch (error) {
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set ${action.targetCap} for ${action.name} via DeviceManager`,
+      msg: `Failed to set ${action.targetCap} for ${action.name} via DeviceTransport`,
       err: error,
     });
     return false;
@@ -424,7 +424,7 @@ const executeTargetCommandDispatch = async (
     });
     logger.error({
       event: 'executor_target_error',
-      msg: `Failed to set ${targetCap} for ${name} via DeviceManager`,
+      msg: `Failed to set ${targetCap} for ${name} via DeviceTransport`,
       err: error,
     });
     return { applied: false, reason: 'failed' };

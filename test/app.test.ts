@@ -1305,7 +1305,7 @@ describe('MyApp initialization', () => {
     const onoffFlow = heater.makeCapabilityInstance('onoff', (value: unknown) => {
       if (value !== false) return;
       // Async fight-back: device resists being turned off, but the response
-      // arrives after the DeviceManager's setCapability returns so the
+      // arrives after the DeviceTransport's setCapability returns so the
       // device.update realtime event can overwrite the local snapshot.
       fightBackTimer = setTimeout(() => {
         heater.setActualCapabilityValue('onoff', true, {

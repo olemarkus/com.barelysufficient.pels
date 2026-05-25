@@ -1,4 +1,4 @@
-import { DeviceManager, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/device/manager';
+import { DeviceTransport, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/device/deviceTransport';
 import {
     createObservationState,
     mergeFresherCapabilityObservations,
@@ -61,8 +61,8 @@ const buildRealtimeDevices = () => ({
     },
 });
 
-describe('DeviceManager', () => {
-    let deviceManager: DeviceManager;
+describe('DeviceTransport', () => {
+    let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
     let loggerMock: {
         log: vi.Mock;
@@ -99,7 +99,7 @@ describe('DeviceManager', () => {
             },
         };
         debugStructuredMock = vi.fn();
-        deviceManager = new DeviceManager(
+        deviceManager = new DeviceTransport(
             homeyMock,
             loggerMock,
             undefined,
@@ -120,7 +120,7 @@ describe('DeviceManager', () => {
         it('skips initialization if api is missing', async () => {
             const savedApi = (homeyMock as any).api;
             (homeyMock as any).api = undefined;
-            deviceManager = new DeviceManager(homeyMock, loggerMock);
+            deviceManager = new DeviceTransport(homeyMock, loggerMock);
             await deviceManager.init();
             expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
             expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('skipping init'));
@@ -137,7 +137,7 @@ describe('DeviceManager', () => {
 
     describe('parseDeviceListForTests', () => {
         it('materializes the representative thermostat snapshot shape unchanged', () => {
-            const parsingDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const parsingDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 getPriority: (deviceId) => (deviceId === 'thermo-1' ? 7 : 0),
                 getControllable: (deviceId) => deviceId === 'thermo-1',
                 getManaged: (deviceId) => deviceId === 'thermo-1',
@@ -369,7 +369,7 @@ describe('DeviceManager', () => {
             const getDeviceDriverIdOverride = vi.fn((deviceId: string) => (
                 deviceId === 'dev-a' ? 'homey:app:com.zaptec:go2' : undefined
             ));
-            const parsingDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const parsingDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 getDeviceDriverIdOverride,
             });
 
@@ -417,7 +417,7 @@ describe('DeviceManager', () => {
         });
 
         it('drops unmanaged devices from the runtime snapshot when at least one device is explicitly managed', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
                 isManagedFilterActive: () => true,
             });
@@ -433,7 +433,7 @@ describe('DeviceManager', () => {
         });
 
         it('keeps unmanaged devices in the runtime snapshot when no device is explicitly managed (fresh-install)', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: () => false,
                 isManagedFilterActive: () => false,
             });
@@ -449,7 +449,7 @@ describe('DeviceManager', () => {
         });
 
         it('does not emit device_snapshot_control_state_dropped errors for unmanaged devices with malformed onoff', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
                 isManagedFilterActive: () => true,
             });
@@ -480,7 +480,7 @@ describe('DeviceManager', () => {
         });
 
         it('returns only unmanaged-eligible devices and tolerates malformed onoff without an error log', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
                 isManagedFilterActive: () => true,
             });
@@ -502,7 +502,7 @@ describe('DeviceManager', () => {
         });
 
         it('keeps unmanaged-eligible devices visible after a targeted refresh that fetches managed-only ids', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
                 isManagedFilterActive: () => true,
             });
@@ -530,7 +530,7 @@ describe('DeviceManager', () => {
             // (implicitly managed) would silently drop out of the runtime
             // snapshot the moment the first unsupported device gets demoted.
             const explicitDecisions: Record<string, boolean> = { dev1: false, dev2: false };
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => explicitDecisions[deviceId] === true,
                 isManagedFilterActive: () => isManagedFilterActive(explicitDecisions),
             });
@@ -550,7 +550,7 @@ describe('DeviceManager', () => {
 
         it('keeps managed devices with malformed onoff visible in the picker so the user can toggle them back off', async () => {
             const managedFlags: Record<string, boolean> = { dev1: true, badDev: true };
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => managedFlags[deviceId] === true,
                 isManagedFilterActive: () => Object.values(managedFlags).some((v) => v === true),
             });
@@ -566,7 +566,7 @@ describe('DeviceManager', () => {
         });
 
         it('does not duplicate a previously-valid managed device into the picker on transient malformed onoff', async () => {
-            const dm = new DeviceManager(homeyMock, loggerMock, {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
                 isManagedFilterActive: () => true,
             });
@@ -771,7 +771,7 @@ describe('DeviceManager', () => {
         });
 
         it('includes official EV chargers with charging-state control', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -804,7 +804,7 @@ describe('DeviceManager', () => {
         });
 
         it('derives EV charging state when the boolean capability is missing', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -831,7 +831,7 @@ describe('DeviceManager', () => {
         });
 
         it('uses EV charging state as settlement evidence before the raw charging boolean', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -872,7 +872,7 @@ describe('DeviceManager', () => {
         });
 
         it('uses raw EV boolean settlement evidence only when state is absent and fresh', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -936,7 +936,7 @@ describe('DeviceManager', () => {
         });
 
         it('excludes EV chargers without the official charging capability', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -959,7 +959,7 @@ describe('DeviceManager', () => {
         });
 
         it('excludes EV chargers without the official charging state capability', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -1159,7 +1159,7 @@ describe('DeviceManager', () => {
             const getPriority = vi.fn().mockReturnValue(1);
             const getControllable = vi.fn().mockReturnValue(false);
 
-            deviceManager = new DeviceManager(homeyMock, loggerMock, { getPriority, getControllable });
+            deviceManager = new DeviceTransport(homeyMock, loggerMock, { getPriority, getControllable });
             await deviceManager.init();
 
             mockApiGet.mockResolvedValue({
@@ -1284,7 +1284,7 @@ describe('DeviceManager', () => {
             const getDeviceDriverIdOverride = vi.fn((deviceId: string) => (
                 deviceId === 'dev-a' ? 'homey:app:com.zaptec:go2' : undefined
             ));
-            const refreshDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const refreshDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 getDeviceDriverIdOverride,
             });
             await refreshDeviceManager.init();
@@ -1364,7 +1364,7 @@ describe('DeviceManager', () => {
         });
 
         it('ignores device.update events for unmanaged devices', async () => {
-            const managedDeviceManager = new DeviceManager(
+            const managedDeviceManager = new DeviceTransport(
                 homeyMock,
                 loggerMock,
                 { getManaged: (deviceId) => deviceId === 'dev1' },
@@ -1418,7 +1418,7 @@ describe('DeviceManager', () => {
 
         it('handles device.update events when a device becomes managed', async () => {
             const managedState: Record<string, boolean> = { dev1: false };
-            const managedDeviceManager = new DeviceManager(
+            const managedDeviceManager = new DeviceTransport(
                 homeyMock,
                 loggerMock,
                 { getManaged: (deviceId) => managedState[deviceId] === true },
@@ -1466,7 +1466,7 @@ describe('DeviceManager', () => {
 
         it('keeps the snapshot index entry when an unmanaged device.update is ignored', async () => {
             const managedState: Record<string, boolean> = { dev1: true };
-            const managedDeviceManager = new DeviceManager(
+            const managedDeviceManager = new DeviceTransport(
                 homeyMock,
                 loggerMock,
                 { getManaged: (deviceId) => managedState[deviceId] === true },
@@ -1989,7 +1989,7 @@ describe('DeviceManager', () => {
         });
 
         it('preserves EV state-derived binary evidence when snapshot refresh has no state timestamp', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             const previousEvidence = {
@@ -2044,7 +2044,7 @@ describe('DeviceManager', () => {
         });
 
         it('preserves newer EV state-derived binary evidence when snapshot refresh has stale state timestamp', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             const newerEvidence = {
@@ -2100,7 +2100,7 @@ describe('DeviceManager', () => {
         });
 
         it('keeps fresh EV state-derived binary evidence when previous snapshot had raw EV evidence', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             const previousRawEvidence = {
@@ -2168,7 +2168,7 @@ describe('DeviceManager', () => {
         it('persists realtime EV state-derived binary evidence over older raw EV cache evidence', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 const previousRawEvidence = {
@@ -2236,7 +2236,7 @@ describe('DeviceManager', () => {
         it('clears cached EV binary evidence when realtime charging state is unknown', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 const previousEvidence = {
@@ -2963,7 +2963,7 @@ describe('DeviceManager', () => {
             it('does not settle or mutate pending EV resume from raw capability event while state is paused', async () => {
                 vi.useFakeTimers();
                 try {
-                    const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                     });
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
@@ -3010,7 +3010,7 @@ describe('DeviceManager', () => {
             it('shares cursor for EV charging-state drift during binary settle', async () => {
                 vi.useFakeTimers();
                 try {
-                    const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                    const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                     });
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
@@ -3836,7 +3836,7 @@ describe('DeviceManager', () => {
         it('treats ev state-only device.update events as fresh observations', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -3887,7 +3887,7 @@ describe('DeviceManager', () => {
         });
 
         it('keeps paused EV device.update payloads on even when evcharger_charging is false', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -3931,7 +3931,7 @@ describe('DeviceManager', () => {
         });
 
         it('recomputes currentOn and reconciles when evcharger_charging_state changes from an on-state to plugged_out', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -3972,7 +3972,7 @@ describe('DeviceManager', () => {
         });
 
         it('does not emit a binary reconcile when evcharger_charging_state stays within the same derived on-state', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -4007,7 +4007,7 @@ describe('DeviceManager', () => {
         it('keeps EV state of charge valid across in-session charging-state changes', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
@@ -4058,7 +4058,7 @@ describe('DeviceManager', () => {
         it('initializes realtime EV state of charge against the current connected session', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -4094,7 +4094,7 @@ describe('DeviceManager', () => {
         it('emits observed state for device.update EV state of charge changes without plan reconcile changes', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 vi.setSystemTime(new Date('2026-03-20T06:00:00.000Z'));
@@ -4193,7 +4193,7 @@ describe('DeviceManager', () => {
         });
 
         it('treats a fresher charging-state start as on even when the stored EV boolean is stale false', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
@@ -4229,7 +4229,7 @@ describe('DeviceManager', () => {
         it('preserves fresher ev charger state across a stale snapshot refresh', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4302,7 +4302,7 @@ describe('DeviceManager', () => {
         it('preserves the preferred EV state of charge capability across a stale snapshot refresh', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4397,7 +4397,7 @@ describe('DeviceManager', () => {
         it('preserves EV state of charge from device.update across a stale snapshot refresh', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4502,7 +4502,7 @@ describe('DeviceManager', () => {
         it('preserves non-measure-battery EV state of charge from device.update across a stale snapshot refresh', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4607,7 +4607,7 @@ describe('DeviceManager', () => {
         it('does not preserve EV state of charge when only derived status changes', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4696,7 +4696,7 @@ describe('DeviceManager', () => {
         it('clears older retained EV state of charge observations for other SoC capabilities', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4828,7 +4828,7 @@ describe('DeviceManager', () => {
         it('clears retained EV state of charge after a native snapshot catches up', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
 
@@ -4952,7 +4952,7 @@ describe('DeviceManager', () => {
                         source: 'flow' as const,
                     },
                 };
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                     getFlowReportedCapabilities: () => flowReportedCapabilities,
                 });
                 await evDeviceManager.init();
@@ -5104,7 +5104,7 @@ describe('DeviceManager', () => {
         it('keeps Zaptec device.update settle quiet when raw off arrives with a still-charging state', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                     getNativeEvWiringEnabled: () => true,
                 });
                 await evDeviceManager.init();
@@ -5183,7 +5183,7 @@ describe('DeviceManager', () => {
         it('keeps state-derived EV device.update evidence when raw charging boolean disagrees', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5253,7 +5253,7 @@ describe('DeviceManager', () => {
         it('does not synthesize EV device.update settlement evidence when state lacks a timestamp', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5308,7 +5308,7 @@ describe('DeviceManager', () => {
         it('settles an idempotent EV pause from unchanged paused state in device.update', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 });
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
@@ -5364,7 +5364,7 @@ describe('DeviceManager', () => {
         });
 
         it('normalizes Zaptec proprietary capability updates at the observation boundary', async () => {
-            const evDeviceManager = new DeviceManager(homeyMock, loggerMock, {
+            const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 getNativeEvWiringEnabled: () => true,
             });
             await evDeviceManager.init();
@@ -5420,7 +5420,7 @@ describe('DeviceManager', () => {
         });
 
         it('ignores generic device.update events for unmanaged devices', async () => {
-            const managedDeviceManager = new DeviceManager(
+            const managedDeviceManager = new DeviceTransport(
                 homeyMock,
                 loggerMock,
                 { getManaged: () => false },
@@ -5633,7 +5633,7 @@ describe('DeviceManager', () => {
                 vi.useFakeTimers();
                 try {
                     const debugStructured = vi.fn();
-                    deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                    deviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, { debugStructured });
                     mockApiGet.mockResolvedValue(buildTempDevice());
                     await deviceManager.refreshSnapshot();
 
@@ -5653,7 +5653,7 @@ describe('DeviceManager', () => {
 
             it('suppresses temperature chatter from capability receipt logs', async () => {
                 const debugStructured = vi.fn();
-                deviceManager = new DeviceManager(homeyMock, loggerMock, undefined, undefined, { debugStructured });
+                deviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, { debugStructured });
                 mockApiGet.mockResolvedValue(buildTempDevice());
                 await deviceManager.refreshSnapshot();
 
@@ -6518,7 +6518,7 @@ describe('DeviceManager', () => {
 
         it('ignores device.update events for a device that stops being managed', async () => {
             const managedState: Record<string, boolean> = { dev1: true };
-            const managedDeviceManager = new DeviceManager(
+            const managedDeviceManager = new DeviceTransport(
                 homeyMock,
                 loggerMock,
                 { getManaged: (deviceId) => managedState[deviceId] === true },

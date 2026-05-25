@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import type { DeviceManager } from '../lib/device/manager';
+import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import {
   getHomeyDevicesForDebugFromApp,
@@ -15,7 +15,7 @@ const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
   snapshot?: unknown[];
   observedSources?: unknown;
-} = {}): DeviceManager => {
+} = {}): DeviceTransport => {
   const {
     devices = [],
     snapshot = [],
@@ -25,7 +25,7 @@ const buildDeviceManager = (params: {
     getDevicesForDebug: vi.fn().mockResolvedValue(devices),
     getSnapshot: vi.fn().mockReturnValue(snapshot as TargetDeviceSnapshot[]),
     getDebugObservedSources: vi.fn().mockReturnValue(observedSources),
-  }) as unknown as DeviceManager;
+  }) as unknown as DeviceTransport;
 };
 
 const findLogPayload = (logger: Mock, message: string): unknown => {

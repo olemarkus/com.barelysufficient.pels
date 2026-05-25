@@ -14,7 +14,7 @@ import {
   getEnergyLiveReport,
   getRawDevice,
   getRawDevices,
-  logDeviceManagerRuntimeError,
+  logDeviceTransportRuntimeError,
 } from './managerHomeyApi';
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
@@ -51,7 +51,7 @@ export async function fetchDevicesWithFallback(params: {
       }
     }
   }
-  logDeviceManagerRuntimeError(logger, 'Device fetch failed after all retries', lastError);
+  logDeviceTransportRuntimeError(logger, 'Device fetch failed after all retries', lastError);
   throw lastError;
 }
 
@@ -127,7 +127,7 @@ export async function fetchLivePowerReport(params: {
     });
     return { byDeviceId, homePowerW, deviceCount };
   } catch (error) {
-    logDeviceManagerRuntimeError(logger, 'Energy live report fetch failed', error);
+    logDeviceTransportRuntimeError(logger, 'Energy live report fetch failed', error);
     return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
   }
 }

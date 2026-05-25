@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import type { DeviceManager } from '../device/manager';
+import type { DeviceTransport } from '../device/deviceTransport';
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';
@@ -62,7 +62,7 @@ export class AppSnapshotHelpers {
   constructor(private readonly deps: {
     homey: Homey.App['homey'];
     timers: TimerRegistry;
-    getDeviceManager: () => DeviceManager | undefined;
+    getDeviceManager: () => DeviceTransport | undefined;
     getPlanEngine: () => PlanEngine | undefined;
     getPlanService: () => PlanService | undefined;
     getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
@@ -164,7 +164,7 @@ export class AppSnapshotHelpers {
   }
 
   private async runSnapshotRefreshLoop(
-    deviceManager: DeviceManager,
+    deviceManager: DeviceTransport,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
     let shouldEmitFlowBackedRefresh = options.emitFlowBackedRefresh !== false;
@@ -333,7 +333,7 @@ export class AppSnapshotHelpers {
   }
 
   private async runSnapshotRefreshCycle(
-    deviceManager: DeviceManager,
+    deviceManager: DeviceTransport,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
     if (options.emitFlowBackedRefresh !== false) {
@@ -374,7 +374,7 @@ export class AppSnapshotHelpers {
   }
 
   private async recordImplicitHomeyEnergySample(
-    deviceManager: DeviceManager,
+    deviceManager: DeviceTransport,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
     if (

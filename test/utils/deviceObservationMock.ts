@@ -8,7 +8,7 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
  *
  * Use this whenever a test builds an ad-hoc deviceManager stub. Snapshot
  * mutations made through the same backing array are visible to both
- * accessors, matching the live DeviceManager contract.
+ * accessors, matching the live DeviceTransport contract.
  */
 export const withGetSnapshotByDeviceId = <T extends { getSnapshot: () => TargetDeviceSnapshot[] }>(
   mock: T,

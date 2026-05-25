@@ -10,9 +10,9 @@ import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/
  * Subset of the device transport surface that the executor needs: read
  * snapshots (`DeviceObservation`) plus the actuation primitives it dispatches.
  * Defined locally so the executor does not have to import the concrete
- * `DeviceManager` class — see PR #2 of the observer/transport split
+ * `DeviceTransport` class — see PRs #2 and #3 of the observer/transport split
  * (`notes/state-management/observer-transport-split.md`). The transport
- * exposes these methods in the same shape that `DeviceManager` does today.
+ * exposes these methods in the same shape that `DeviceTransport` does today.
  */
 export type PlanExecutorDeviceTransport = DeviceObservation & {
   setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;

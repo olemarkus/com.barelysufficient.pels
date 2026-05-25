@@ -56,7 +56,7 @@ describe('app init plan service wiring', () => {
     });
 
     expect(() => createPlanEngine(ctx)).toThrow(
-      'DeviceManager must be initialized before plan engine setup.',
+      'DeviceTransport must be initialized before plan engine setup.',
     );
   });
 

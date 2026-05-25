@@ -11,7 +11,7 @@ import {
   resolveEvChargingStateBinaryEvidence,
   resolveEvCurrentOn,
 } from './managerControl';
-import { EV_SOC_CAPABILITY_ID } from './stateOfCharge';
+import { EV_SOC_CAPABILITY_ID } from './transport/stateOfCharge';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('device/manager-runtime');

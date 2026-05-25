@@ -66,15 +66,20 @@ Remaining work:
 - keep splitting planner state from render-only explanation data
 - preserve existing swap, cooldown, and meter-settling safety checks while reducing repeated gates
 
-### Device-manager and snapshot cleanup
+### Device-transport and snapshot cleanup
 
-Parsing, observation, and binary-settle internals have been extracted, but `DeviceManager` remains
-the shared owner for SDK setup, snapshots, realtime updates, and command writes.
+Parsing, observation, and binary-settle internals have been extracted, and as of the observer/transport
+split (PRs #1095 / #1102 / #1107 / #1140), the orchestrating class is `DeviceTransport`
+(`lib/device/deviceTransport.ts`). The read-side parse pipeline lives under `lib/device/transport/`; plan
+and executor consume only the `DeviceObservation` read interface. See
+`notes/state-management/observer-transport-split.md` for the layering, remaining steps (PR #4 moves
+pending/settle to observer; PR #5 splits the realtime handler), and the deferred file-rename sweep that
+would align the surviving `manager*.ts` filenames + `device/manager-*` logger tags with the rename.
 
 Remaining work:
 
 - remove redundant downstream `managed !== false` filters after the parse-time invariant has soaked
-- only extract more `DeviceManager` code when a new subsystem boundary is clear
+- only extract more `DeviceTransport` code when a new subsystem boundary is clear
 
 ### Persisted settings state
 

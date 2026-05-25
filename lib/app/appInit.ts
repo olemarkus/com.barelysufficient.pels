@@ -35,7 +35,7 @@ export {
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
-    throw new Error('DeviceManager must be initialized before plan engine setup.');
+    throw new Error('DeviceTransport must be initialized before plan engine setup.');
   }
   return ctx.deviceManager;
 }

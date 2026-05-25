@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type CapacityGuard from '../power/capacityGuard';
-import type { DeviceManager } from '../device/manager';
+import type { DeviceTransport } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
@@ -204,7 +204,7 @@ export type AppContext = {
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   priceCoordinator?: PriceCoordinator;
   priceFlowTagPublisher?: PriceFlowTagPublisher;
-  deviceManager?: DeviceManager;
+  deviceManager?: DeviceTransport;
   planEngine?: PlanEngine;
   planService?: PlanService;
   readonly snapshotHelpers: AppSnapshotHelpers;
