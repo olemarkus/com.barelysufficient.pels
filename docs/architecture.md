@@ -17,7 +17,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 │   app.ts · drivers/** · packages/settings-ui/src/script.ts  │
 ├─────────────────────────────────────────────────────────────┤
 │ App wiring and adapters                                     │
-│   lib/app/** · flowCards/**                                 │
+│   setup/** · lib/app/** (sunsetting) · flowCards/**         │
 ├─────────────────────────────────────────────────────────────┤
 │ Domain modules                                              │
 │   lib/device/** · lib/power/** · lib/objectives/** · lib/plan/**             │
@@ -36,7 +36,7 @@ This page is the public contributor reference. Use it when you are deciding wher
 | Layer | Purpose | Examples |
 | --- | --- | --- |
 | **Entry points** | Boot the runtime or render the settings UI. Wire dependencies but contain no domain logic. | `app.ts` (Homey app entry), `drivers/pels_insights/` (virtual device), `script.ts` (settings UI bootstrap) |
-| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules. This is where dependency injection happens. | `lib/app/appPowerCalibrationWiring.ts`, `flowCards/registerFlowCards.ts` |
+| **App wiring** | Adapt the Homey SDK and Flow cards onto the domain modules. This is where dependency injection happens. New wiring lives in `setup/`; `lib/app/` is sunsetting. | `setup/schedulerTelemetryObserver.ts`, `setup/settingsRepository.ts`, `flowCards/registerFlowCards.ts` |
 | **Domain** | Pure planning, capacity, price, budget, and observation logic. No Homey SDK calls; no UI imports. | `lib/plan/planEngine.ts`, `lib/device/manager.ts`, `lib/power/tracker.ts`, `lib/objectives/profiles.ts`, `lib/observer/idleClassifier.ts` |
 | **Shared utilities** | Pure helpers usable from anywhere — including the browser-side settings UI. Must remain Homey-SDK-free. | `lib/utils/*`, `packages/shared-domain/src/deadlineLabels.ts` |
 | **Test code** | Specs and mocks. Runtime cannot import it. | `test/`, `packages/settings-ui/test/` |
@@ -46,15 +46,30 @@ This page is the public contributor reference. Use it when you are deciding wher
 The following rules are encoded in [`.dependency-cruiser.cjs`](https://github.com/olemarkus/com.barelysufficient.pels/blob/main/.dependency-cruiser.cjs):
 
 1. **No circular dependencies** anywhere in the runtime or shared packages.
-2. **Runtime code must not import test code.** "Runtime code" here means everything under `app.ts`, `lib/**`, `flowCards/**`, `drivers/**`, and `packages/{settings-ui,contracts,shared-domain}/src/**`.
+2. **Runtime code must not import test code.** "Runtime code" here means everything under `app.ts`, `lib/**`, `setup/**`, `flowCards/**`, `drivers/**`, and `packages/{settings-ui,contracts,shared-domain}/src/**`.
 3. **Backend must not import the settings UI.** Backend is `app.ts`, `lib/**`, `flowCards/**`, `drivers/**`. The boundary is one-way.
 4. **Settings UI must not import the backend.** The settings UI may only consume `packages/contracts/**` and `packages/shared-domain/**`. The same `shared-domain` helpers are used by both sides, so user-visible strings and runtime log strings stay in lockstep.
 5. **Shared packages must not import the runtime.** `packages/contracts/**` and `packages/shared-domain/**` cannot reach into `app.ts`, `lib/**`, `flowCards/**`, or `drivers/**`. This is what keeps the settings-UI bundle browser-safe.
 6. **Domain modules must not import `lib/app/**`.** Domain logic is independent of wiring.
-7. **`flowCards/**` and `drivers/**` must not import `packages/settings-ui/**`.**
-8. **Non-entry modules must not import `app.ts`.**
+7. **`lib/**` and `packages/**` must not import `setup/**`** (rule `no-lib-to-setup`). The arrow always points from `setup/` down into the libraries it wires; see the [App wiring lives in `setup/`](#app-wiring-lives-in-setup) section below.
+8. **`flowCards/**` and `drivers/**` must not import `packages/settings-ui/**`.**
+9. **Non-entry modules must not import `app.ts`.**
 
 If any of these break, CI fails before tests run. Local check: `npm run arch:check`.
+
+## App wiring lives in `setup/`
+
+`setup/` at the repo root is the honest home for app-wiring classes — factories, observers, registrars that construct and connect services. These have no reuse value outside this app, so they live at the entry layer rather than masquerading as library code in `lib/app/`.
+
+**Direction is enforced.** The [`no-lib-to-setup`](https://github.com/olemarkus/com.barelysufficient.pels/blob/main/.dependency-cruiser.cjs) rule blocks any import from `lib/**` or `packages/**` into `setup/**`. Wiring imports the libraries it wires; never the reverse.
+
+**Conventions (reviewed at PR time, not cruiser-enforced):**
+
+- **One purpose per file**, named for the concrete wiring it does (`schedulerTelemetryObserver.ts`, `settingsRepository.ts`). No grab-bag `setupHelpers.ts`.
+- **Each file exposes a class, or a single `register*` / `init*` function.** Not bags of utility functions.
+- **Files larger than ~150 LOC are considered fat-fingered** and should split into smaller wirings.
+
+**`lib/app/` is sunsetting.** As remaining wiring migrates to `setup/`, `lib/app/` shrinks. `lib/app/appContext.ts` (the shared `AppContext` type definition) is the expected long-term inhabitant; everything else moves out.
 
 ## Where new code goes
 
@@ -65,7 +80,8 @@ If any of these break, CI fails before tests run. Local check: `npm run arch:che
 | New UI on the settings page | `packages/settings-ui/src/ui/` — read state from contracts; emit changes through the API surface |
 | A user-facing string also written to logs | `packages/shared-domain/src/` — both the UI and the runtime logger must import it from there |
 | A type used on both sides | `packages/contracts/src/` |
-| A Homey-SDK adapter | `lib/app/` — keep the adapter thin and forward to a domain module |
+| App-wiring code (factory, observer, registrar that constructs/connects services) | `setup/` — one purpose per file, exposes a class or single `register*`/`init*` function. See [App wiring lives in `setup/`](#app-wiring-lives-in-setup). |
+| A Homey-SDK adapter | `setup/` for new wiring (preferred); `lib/app/` is sunsetting. Keep the adapter thin and forward to a domain module. |
 
 ## When duplication is the right call
 
@@ -89,7 +105,7 @@ device → power    (estimatePower utility)
 power ↔ objectives  (type-only cycle, established)
 ```
 
-The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-to-plan`, `no-observer-to-peer`, `no-price-to-peer`, …) exist as the gate for the ongoing `lib/app` dissolution: any helper currently in `lib/app/` that, if pushed into a peer, would create a forbidden edge identifies itself as cross-peer wiring residue. Wiring residue stays at the composition root (`app.ts`), not inside a peer.
+The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-to-plan`, `no-observer-to-peer`, `no-price-to-peer`, …) exist as the gate for the ongoing `lib/app` dissolution: any helper currently in `lib/app/` that, if pushed into a peer, would create a forbidden edge identifies itself as cross-peer wiring residue. Wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer.
 
 ## Transitional allowances
 
