@@ -2226,23 +2226,17 @@ consolidation + a11y polish (8 P2)`.*
       deferred — no consumer pressure yet. Source: PR #2 secondary cleanup
       + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24. Done in
       PR #3.
-- [ ] Add a compile-time shape-parity guard between observer-side and
-      transport-side dispatcher event types from PR #5 (#1158). The two
-      pairs — `ObservedStateChangedEvent` (`lib/observer/observedStateEvents.ts:43`)
-      vs `ObservedDeviceStateEvent` (transport-side), and
-      `PlanReconcileObservedEvent` (`lib/observer/observedStateEvents.ts:54`)
-      vs `PlanRealtimeUpdateEvent` (`lib/device/transport/managerRealtimeHandlers.ts:11-28`)
-      — are structurally mirrored by hand because the cruiser correctly
-      blocks both directions of import. A future field added to one side
-      and forgotten on the other would silently slip through TypeScript
-      bivariance at the dispatcher binding (`app.ts:1009`). A one-line
-      `satisfies` cross-cast in a test file (test code is outside the
-      cruiser rules), or a compile-time type-equality assertion, would
-      surface the drift at build time. The matching string-value pin for
-      the event constants already exists at
-      `test/observerObservedStateEvents.test.ts`; the type-parity guard
-      is the missing complement. Source: `pels-layering-guardian` P2-1 on
-      PR #1158, 2026-05-25.
+- [x] Add a compile-time shape-parity guard between observer-side and
+      transport-side dispatcher event types from PR #5 (#1158). Done:
+      bidirectional `extends` checks on
+      `Parameters<...['observedStateChanged']>[0]` and
+      `Parameters<...['planReconcile']>[0]` landed in
+      `test/observerObservedStateEvents.test.ts`. A future field added to
+      one dispatcher type without the other now fails compilation before
+      it ever runs as a test. Same PR also added `binarySettle` timeout
+      coverage (window finalisation, abandon-grace, drift-vs-match-vs-untracked
+      branches, observation-cancels-timer) per the adversarial-review
+      P2 finding from the cumulative review.
 - [ ] Sweep file renames + logger tags + structured-event identifiers that still
       carry the `manager`/`DeviceManager`/`device_manager` name post-rename
       (PR #3 of the observer/transport split, #1140). Three buckets, each
@@ -2373,13 +2367,20 @@ consolidation + a11y polish (8 P2)`.*
       `flowCards/deadlineObjectiveCards.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
-- [ ] Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
+- [ ] **P3** — Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
       `lib/plan/planBuilder.ts:258` uses `min(capacitySoftLimit, dailySoftLimit)` uniformly,
       so the `hard` flag accepted by the flow card has no behavioral effect. Plumb a "hard
       objective active" signal from admission into the soft-limit selector and apply only to
       EV chargers admitted under `enforcement: 'hard'`; bypass the daily-tightened soft limit
       while still respecting the hard cap. Until this lands, the EV flow card should default to
       `soft` and hide the `hard` option from users.
+      Why P3 (deferred 2026-05-25): the user-visible need ("make this deadline at any cost
+      within the hard cap") may already be substantially covered by other smart-task params
+      shipped since this entry was written — rescue mode, speed mode, headroom-for-device
+      crediting, and the deadline-imminent rescue paths. Before plumbing a new admission
+      signal, audit whether a `hard`-tagged objective with `rescue` + `auto` speed already
+      bypasses or sufficiently relaxes daily-budget pressure in practice. If yes, just ship
+      the flow-card hide/default-to-soft change and close.
       Design: `notes/ev-ready-by/README.md`.
       Files: `lib/plan/planBuilder.ts`, `lib/plan/admission/deferredObjective.ts`,
       `flowCards/deadlineObjectiveCards.ts`, headroom and admission tests.
