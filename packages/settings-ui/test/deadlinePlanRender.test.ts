@@ -129,6 +129,48 @@ describe('DeadlinePlan pending branch', () => {
     expect(metaLine?.classList.contains('plan-hero__subline--action')).toBe(true);
     expect(metaLine?.classList.contains('plan-hero__subline--muted')).toBe(false);
   });
+
+  // Liveness pulse on the pending hero's "Building plan…" chip. The pending
+  // hero can sit in this state for tens of seconds while waiting on price
+  // publishes / device samples; a static pill reads identically whether
+  // planning just started or has been stuck. The chip opts into the canonical
+  // `.plan-chip[data-pulse="true"]` animation (CSS in `public/style.css`)
+  // routed through `--pels-motion-pulse-duration`. Every other chip on the
+  // pending hero (kind, paused — unplugged) stays still.
+  it('marks the chip whose payload carries pulse=true with data-pulse on the pending hero', () => {
+    const mount = mountIntoBody();
+    const payload = buildPendingPayload();
+    payload.hero = {
+      ...payload.hero,
+      chips: [
+        { text: 'Temperature', tone: 'info' },
+        { text: 'Building plan…', tone: 'info', pulse: true },
+      ],
+    };
+    renderDeadlinePlan(mount, { status: 'pending', pending: payload });
+    const chips = Array.from(mount.querySelectorAll<HTMLElement>('.plan-chip'));
+    const building = chips.find((el) => (el.textContent ?? '').trim() === 'Building plan…');
+    const kind = chips.find((el) => (el.textContent ?? '').trim() === 'Temperature');
+    expect(building?.getAttribute('data-pulse')).toBe('true');
+    expect(kind?.getAttribute('data-pulse')).toBeNull();
+  });
+
+  it('omits data-pulse when no chip carries pulse (e.g. paused — unplugged)', () => {
+    const mount = mountIntoBody();
+    const payload = buildPendingPayload();
+    payload.hero = {
+      ...payload.hero,
+      chips: [
+        { text: 'EV charging', tone: 'info' },
+        { text: 'Paused — unplugged', tone: 'warn' },
+      ],
+    };
+    renderDeadlinePlan(mount, { status: 'pending', pending: payload });
+    const chips = Array.from(mount.querySelectorAll<HTMLElement>('.plan-chip'));
+    chips.forEach((chip) => {
+      expect(chip.getAttribute('data-pulse')).toBeNull();
+    });
+  });
 });
 
 // Builds a minimal ready payload with an at-risk hero whose device-side

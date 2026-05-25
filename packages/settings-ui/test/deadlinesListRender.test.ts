@@ -296,6 +296,54 @@ describe('DeadlinesList', () => {
     });
   });
 
+  // Liveness pulse on the "Building plan…" status chip. The planner can sit
+  // in this state for tens of seconds while waiting on price publishes /
+  // device samples, and a static pill reads identically whether planning just
+  // started or has been stuck. The chip opts into the canonical
+  // `.plan-chip[data-pulse="true"]` animation (CSS in `public/style.css`)
+  // routed through `--pels-motion-pulse-duration`. Every other list status
+  // is a settled state and must stay still.
+  describe('building-plan status chip pulse signal', () => {
+    const findChipByLabel = (mount: HTMLElement, label: string): HTMLElement | null => (
+      Array.from(mount.querySelectorAll<HTMLElement>('.plan-chip'))
+        .find((el) => (el.textContent ?? '').trim() === label) ?? null
+    );
+
+    it('marks the status chip with data-pulse="true" on building_plan cards', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, {
+        status: 'ready',
+        cards: [buildCard({ statusId: 'building_plan' })],
+      });
+      const chip = findChipByLabel(mount, 'Building plan…');
+      expect(chip).not.toBeNull();
+      expect(chip?.getAttribute('data-pulse')).toBe('true');
+    });
+
+    it('omits data-pulse on settled status cards (on_track / at_risk / cannot_meet / satisfied / queued / paused)', () => {
+      const settledStatuses = [
+        'on_track',
+        'at_risk',
+        'cannot_meet',
+        'satisfied',
+        'queued',
+        'paused_unplugged',
+      ] as const;
+      settledStatuses.forEach((statusId) => {
+        document.body.replaceChildren();
+        const mount = mountIntoBody();
+        renderDeadlinesList(mount, {
+          status: 'ready',
+          cards: [buildCard({ statusId })],
+        });
+        const chips = Array.from(mount.querySelectorAll<HTMLElement>('.plan-chip'));
+        chips.forEach((chip) => {
+          expect(chip.getAttribute('data-pulse')).toBeNull();
+        });
+      });
+    });
+  });
+
   it('scrolls the named card into view when the subline affordance is clicked', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
