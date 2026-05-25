@@ -3667,8 +3667,7 @@ md-filled-button.is-busy {
   line-height: var(--font-line-height-compact);
 }
 
-.panel.hidden,
-#shell-nav.hidden {
+.panel.hidden {
   display: none;
 }
 

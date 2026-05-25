@@ -225,4 +225,58 @@ test.describe('Deadline plan', () => {
     await expect(page.getByRole('heading', { name: 'Smart task unavailable' })).toBeVisible();
     await expect(page.getByText('Smart task data is not available for this device.')).toBeVisible();
   });
+
+  // Regression: clicking a smart-task chip on an Overview device card used to
+  // leave the "Overview" tab marked as selected even though the plan-detail
+  // panel had taken over. The router now keeps the shell-nav visible and
+  // lights up "Smart tasks" so the user keeps the breadcrumb. (TODO ~line 2308)
+  test.describe('Tab indicator follows the deep-link', () => {
+    const overviewTab = (page: Page): Locator => page.getByRole('tab', { name: 'Overview' });
+    const smartTasksTab = (page: Page): Locator => page.getByRole('tab', { name: 'Smart tasks' });
+
+    test('clicking the Overview smart-task chip lights the Smart tasks tab', async ({ page }) => {
+      await page.setViewportSize({ width: 480, height: 900 });
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('#overview-panel')).toBeVisible();
+      await expect(overviewTab(page)).toHaveAttribute('aria-selected', 'true');
+      await expect(smartTasksTab(page)).toHaveAttribute('aria-selected', 'false');
+
+      // The Overview surface renders one chip per device with an active smart
+      // task; the dev_connected300 temperature objective is enabled in the
+      // stub bootstrap so the chip is present without any extra patching.
+      const chip = page.locator('#overview-panel a.plan-chip--link[aria-label*="Smart task"]').first();
+      await expect(chip).toBeVisible();
+      await chip.click();
+
+      const panel = deadlinePanel(page);
+      await expect(panel).toBeVisible();
+      await expect(panel.locator('.plan-hero__headline')).toBeVisible();
+      // Breadcrumb follows the deep-link: Smart tasks lit, Overview cleared,
+      // shell-nav still visible (not hidden) so the user can pivot tabs.
+      await expect(page.locator('#shell-nav')).toBeVisible();
+      await expect(smartTasksTab(page)).toHaveAttribute('aria-selected', 'true');
+      await expect(overviewTab(page)).toHaveAttribute('aria-selected', 'false');
+    });
+
+    test('direct URL into plan-detail lands on the Smart tasks tab', async ({ page }) => {
+      await page.setViewportSize({ width: 480, height: 900 });
+      const panel = await openDeadlinePlan(page);
+      await expect(panel).toBeVisible();
+      await expect(page.locator('#shell-nav')).toBeVisible();
+      await expect(smartTasksTab(page)).toHaveAttribute('aria-selected', 'true');
+      await expect(overviewTab(page)).toHaveAttribute('aria-selected', 'false');
+    });
+
+    test('clicking a different shell-nav tab from plan-detail clears the deep-link URL', async ({ page }) => {
+      await page.setViewportSize({ width: 480, height: 900 });
+      await openDeadlinePlan(page);
+
+      await page.getByRole('tab', { name: 'Budget' }).click();
+      await expect(page.locator('#budget-panel')).toBeVisible();
+      await expect(deadlinePanel(page)).toBeHidden();
+      // URL should be reset so a reload doesn't re-open the closed plan.
+      await expect.poll(() => new URL(page.url()).searchParams.get('page')).toBeNull();
+      await expect(page.getByRole('tab', { name: 'Budget' })).toHaveAttribute('aria-selected', 'true');
+    });
+  });
 });

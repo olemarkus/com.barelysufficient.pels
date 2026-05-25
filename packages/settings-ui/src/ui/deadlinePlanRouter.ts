@@ -1,28 +1,26 @@
 import { isDeadlinePlanRoute } from './deadlineUrls.ts';
-import { showTab } from './realtime.ts';
+import { setActiveTabIndicator, showTab } from './realtime.ts';
 
-const SHELL_NAV_ID = 'shell-nav';
 const PANEL_ID = 'deadline-plan-panel';
-
-// Top-of-shell navigation is hidden while the deadline-plan view is open.
-// The view fills the screen with its own close affordance; keeping the
-// section tabs visible would invite the user to swap tabs without the SPA
-// having any panel to show, and would also make the close button confusing.
-const setShellNavVisible = (visible: boolean): void => {
-  const nav = document.getElementById(SHELL_NAV_ID);
-  if (!nav) return;
-  nav.classList.toggle('hidden', !visible);
-};
+// Shell-nav tab id for the Smart tasks section. The deadline-plan view is a
+// sibling panel of the Smart tasks list panel, so the shell-nav indicator
+// lights up the same tab while the deep-linked plan-detail is visible. Keeps
+// the breadcrumb honest — a user who arrived via an Overview device-card chip
+// can see they're now under "Smart tasks", not still on "Overview".
+const DEADLINE_PLAN_TAB_ID = 'deadlines';
 
 const showDeadlinePlanPanel = (): void => {
   document.querySelectorAll<HTMLElement>('[data-panel]').forEach((panel) => {
     panel.classList.toggle('hidden', panel.id !== PANEL_ID);
   });
-  setShellNavVisible(false);
+  // Light the Smart tasks shell-nav tab even though the visible panel is
+  // `#deadline-plan-panel` (not `#deadlines-panel`). Calling `showTab` here
+  // would hide the deadline-plan panel a moment later, so we use the
+  // indicator-only helper.
+  setActiveTabIndicator(DEADLINE_PLAN_TAB_ID);
 };
 
 const hideDeadlinePlanPanel = (fallbackTab: string): void => {
-  setShellNavVisible(true);
   showTab(fallbackTab);
 };
 
@@ -82,9 +80,13 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // closed plan.
     window.history.replaceState(null, '', './');
     deps.unmount();
-    hideDeadlinePlanPanel(fallbackTab);
+    // Clear `panelVisible` *before* `hideDeadlinePlanPanel` runs `showTab`,
+    // which dispatches `pels:tab-shown`. The router's own tab-shown listener
+    // (see below) reads `panelVisible` and would otherwise re-run unmount on
+    // its own — harmless but redundant. Same reasoning in `applyRouteFromUrl`.
     panelVisible = false;
     openedViaPushState = false;
+    hideDeadlinePlanPanel(fallbackTab);
     options?.onSettled?.();
   };
   deps.setCloseHandler(closeView);
@@ -101,8 +103,10 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     // deadline-plan view — otherwise the boot path's initial tab choice
     // would be overwritten.
     if (panelVisible) {
-      hideDeadlinePlanPanel(pendingFallbackTab ?? 'deadlines');
+      // Clear `panelVisible` before the inner `showTab` runs (see `closeView`
+      // comment) so the tab-shown listener doesn't re-enter unmount.
       panelVisible = false;
+      hideDeadlinePlanPanel(pendingFallbackTab ?? 'deadlines');
     }
     pendingFallbackTab = null;
     deps.unmount();
@@ -153,6 +157,26 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
 
   window.addEventListener('popstate', () => {
     applyRouteFromUrl();
+  });
+
+  // Listen for shell-nav tab activations. When the user clicks a tab while
+  // the plan-detail panel is visible (e.g. they followed a smart-task chip
+  // from Overview and now want to jump straight to Budget), `showTab` hides
+  // the deadline-plan panel and lights up the chosen tab — but the URL still
+  // carries `?page=deadline-plan&…`, so a reload would re-open the closed
+  // plan. Mirror `closeView`'s replaceState path: drop the deadline-plan URL,
+  // unmount the React tree, and reset the in-memory state. We don't re-apply
+  // `setActiveTabIndicator` here because `showTab` already lit the right tab.
+  document.addEventListener('pels:tab-shown', () => {
+    if (!panelVisible) return;
+    panelVisible = false;
+    pendingFallbackTab = null;
+    pendingOnSettled = null;
+    openedViaPushState = false;
+    if (isDeadlinePlanRoute(window.location.search)) {
+      window.history.replaceState(null, '', './');
+    }
+    deps.unmount();
   });
 
   applyRouteFromUrl();
