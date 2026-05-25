@@ -152,7 +152,7 @@ describe('Airtreatment device integration', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     vi.advanceTimersByTime(100);
     await flushPromises();
 
@@ -200,7 +200,7 @@ describe('Airtreatment device integration', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     vi.advanceTimersByTime(100);
     await flushPromises();
 
@@ -264,7 +264,7 @@ describe('Airtreatment device integration', () => {
     });
 
     const runCycle = async () => {
-      await (app as any).recordPowerSample(samplePowerW);
+      await (app as any).powerSamplePipeline.recordPowerSample(samplePowerW);
       vi.advanceTimersByTime(100);
       await flushPromises();
       return getLatestPlanSnapshotForTests() as {
@@ -371,7 +371,7 @@ describe('Airtreatment device integration', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     vi.advanceTimersByTime(100);
     await flushPromises();
 

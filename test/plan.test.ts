@@ -32,7 +32,7 @@ const setManagedAndControllableDevices = (params: {
 
 async function advanceTimeAndRecordPower(app: any, advanceMs: number, powerW: number): Promise<void> {
   vi.advanceTimersByTime(advanceMs);
-  await app.recordPowerSample(powerW);
+  await app.powerSamplePipeline.recordPowerSample(powerW);
 }
 
 // Factory for creating a Hoiax Connected 300 water heater mock
@@ -99,7 +99,7 @@ describe('Device plan snapshot', () => {
     mockHomeyInstance.api.clearRealtimeEvents();
 
     // Trigger a plan rebuild by recording power
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
     await flushPromises();
 
     // Check that plan_updated event was emitted
@@ -141,7 +141,7 @@ describe('Device plan snapshot', () => {
     }
 
     // Report 12 kW total; over the 9 kW soft limit
-    await (app as any).recordPowerSample(12000);
+    await (app as any).powerSamplePipeline.recordPowerSample(12000);
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
@@ -179,7 +179,7 @@ describe('Device plan snapshot', () => {
     }
 
     // Report 12 kW total; over the 9 kW soft limit
-    await (app as any).recordPowerSample(12000);
+    await (app as any).powerSamplePipeline.recordPowerSample(12000);
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests();
@@ -214,7 +214,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -244,16 +244,16 @@ describe('Device plan snapshot', () => {
     }
 
     // First cycle: overshoot enters
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     expect((app as any).planEngine.state.wasOvershoot).toBe(true);
     expect((app as any).planEngine.state.overshootLogged).toBe(true);
 
     // Second cycle: still in overshoot, state remains stable (no double-log)
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     expect((app as any).planEngine.state.wasOvershoot).toBe(true);
 
     // Third cycle: power drops — overshoot clears
-    await (app as any).recordPowerSample(0);
+    await (app as any).powerSamplePipeline.recordPowerSample(0);
     expect((app as any).planEngine.state.wasOvershoot).toBe(false);
     expect((app as any).planEngine.state.overshootLogged).toBe(false);
   });
@@ -342,7 +342,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastDeviceShedMs['dev-cooldown'] = Date.now();
     (app as any).planEngine.state.lastInstabilityMs = Date.now();
 
-    await (app as any).recordPowerSample(3000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000);
     structuredEvents.length = 0;
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -396,7 +396,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(5300);
+    await (app as any).powerSamplePipeline.recordPowerSample(5300);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
@@ -476,7 +476,7 @@ describe('Device plan snapshot', () => {
       { id: 'dev-4', name: 'Four', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.5, controllable: true },
     ]);
 
-    await (app as any).recordPowerSample(2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000);
     structuredEvents.length = 0;
 
     (app as any).deviceManager.setSnapshotForTests([
@@ -486,7 +486,7 @@ describe('Device plan snapshot', () => {
       { id: 'dev-4', name: 'Four', targets: [], currentOn: true, currentState: 'on', measuredPowerKw: 0.8, controllable: true },
     ]);
 
-    await (app as any).recordPowerSample(4500);
+    await (app as any).powerSamplePipeline.recordPowerSample(4500);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
@@ -534,7 +534,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(700);
+    await (app as any).powerSamplePipeline.recordPowerSample(700);
     structuredEvents.length = 0;
 
     (app as any).planEngine.state.pendingBinaryCommands['dev-off-pending'] = {
@@ -555,7 +555,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(1300);
+    await (app as any).powerSamplePipeline.recordPowerSample(1300);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
@@ -603,7 +603,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(2500);
+    await (app as any).powerSamplePipeline.recordPowerSample(2500);
     structuredEvents.length = 0;
 
     (app as any).planEngine.state.pendingBinaryCommands['dev-on-pending'] = {
@@ -625,7 +625,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(4500);
+    await (app as any).powerSamplePipeline.recordPowerSample(4500);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
@@ -674,7 +674,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(700);
+    await (app as any).powerSamplePipeline.recordPowerSample(700);
     structuredEvents.length = 0;
 
     (app as any).planEngine.state.pendingTargetCommands['dev-target-pending'] = {
@@ -699,7 +699,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(1200);
+    await (app as any).powerSamplePipeline.recordPowerSample(1200);
 
     const overshootEvent = structuredEvents.find((event) => event.event === 'overshoot_entered') as any;
     expect(overshootEvent).toBeTruthy();
@@ -732,7 +732,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -761,7 +761,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
 
-    await (app as any).recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
+    await (app as any).powerSamplePipeline.recordPowerSample(1000); // force overshoot (will try to shed but already at min temp)
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -795,7 +795,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
 
-    await (app as any).recordPowerSample(1800); // total 1.8 kW -> shed both
+    await (app as any).powerSamplePipeline.recordPowerSample(1800); // total 1.8 kW -> shed both
 
     const plan = getLatestPlanSnapshotForTests();
     const minPlan = plan.devices.find((d: any) => d.id === 'dev-min');
@@ -834,7 +834,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1200);
+    await (app as any).powerSamplePipeline.recordPowerSample(1200);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -865,7 +865,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1200);
+    await (app as any).powerSamplePipeline.recordPowerSample(1200);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
@@ -878,7 +878,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
-    await (app as any).recordPowerSample(500);
+    await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -909,7 +909,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
 
@@ -921,7 +921,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
-    await (app as any).recordPowerSample(500);
+    await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     expect(await dev1.getCapabilityValue('target_temperature')).toBe(16);
     const plan = getLatestPlanSnapshotForTests();
@@ -951,7 +951,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1200);
+    await (app as any).powerSamplePipeline.recordPowerSample(1200);
 
     // Force cooldown window and rebuild plan with available headroom.
     (app as any).planEngine.state.lastInstabilityMs = Date.now();
@@ -960,7 +960,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
 
-    await (app as any).recordPowerSample(500);
+    await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1149,7 +1149,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
-    await (app as any).recordPowerSample(1200);
+    await (app as any).powerSamplePipeline.recordPowerSample(1200);
 
     // Move past cooldown and provide ample headroom so device should restore.
     (app as any).planEngine.state.lastInstabilityMs = Date.now() - 180000; // cooldown expired
@@ -1161,7 +1161,7 @@ describe('Device plan snapshot', () => {
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
     await (app as any).capacityGuard?.setSheddingActive(false);
 
-    await (app as any).recordPowerSample(500);
+    await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1190,7 +1190,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 10);
     }
 
-    await (app as any).recordPowerSample(2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000);
     await flushPromises();
 
     const runSetExpected = mockHomeyInstance.flow._actionCardListeners.set_expected_power_usage;
@@ -1231,7 +1231,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastInstabilityMs = Date.now(); // force cooldown window
     (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
 
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1262,7 +1262,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
 
-    await (app as any).recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
+    await (app as any).powerSamplePipeline.recordPowerSample(600); // 0.6 kW total, overshoot of 0.1 kW
 
     expect((app as any).planEngine.state.lastInstabilityMs).toBeNull();
   });
@@ -1346,7 +1346,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1.3);
     }
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
     const highPlan = plan.devices.find((d: any) => d.id === 'dev-high');
@@ -1375,7 +1375,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
-    await (app as any).recordPowerSample(5000); // 5 kW total, over limit
+    await (app as any).powerSamplePipeline.recordPowerSample(5000); // 5 kW total, over limit
 
     const plan = getLatestPlanSnapshotForTests();
     const ctlPlan = plan.devices.find((d: any) => d.id === 'dev-ctl');
@@ -1415,7 +1415,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Ensure plan exists for Home.
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
     let plan = getLatestPlanSnapshotForTests();
     const homePlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(homePlan?.plannedTarget).toBe(19);
@@ -1456,7 +1456,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
     }
 
-    await (app as any).recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
+    await (app as any).powerSamplePipeline.recordPowerSample(1000); // 1kW total, 500W limit => -500W headroom
     let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
@@ -1479,7 +1479,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 0.7);
     }
 
-    await (app as any).recordPowerSample(500); // 500W with device off
+    await (app as any).powerSamplePipeline.recordPowerSample(500); // 500W with device off
     plan = getLatestPlanSnapshotForTests();
     // Device should stay shed because headroom (0.2kW) < device power (1kW) + margin (0.2kW)
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
@@ -1500,7 +1500,7 @@ describe('Device plan snapshot', () => {
     // Soft-limit changes alone no longer trigger an immediate rebuild.
     // Force the periodic max-interval rebuild path for this restore check.
     (app as any).powerSampleRebuildState.lastMs = (app as any).getPlanRebuildNowMs() - 200;
-    await (app as any).recordPowerSample(500);
+    await (app as any).powerSamplePipeline.recordPowerSample(500);
     plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('keep');
   });
@@ -1562,7 +1562,7 @@ describe('Device plan snapshot', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 2);
     }
-    await (app as any).recordPowerSample(2100);
+    await (app as any).powerSamplePipeline.recordPowerSample(2100);
     let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-1')?.plannedState).toBe('shed');
 
@@ -1636,7 +1636,7 @@ describe('Device plan snapshot', () => {
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
-    await (app as any).recordPowerSample(2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
     expect(shedSpy).toHaveBeenCalledWith('dev-1', 'Heater A', undefined);
     const plan = getLatestPlanSnapshotForTests();
@@ -1673,7 +1673,7 @@ describe('Device plan snapshot', () => {
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
-    await (app as any).recordPowerSample(5630); // 5.63 kW total
+    await (app as any).powerSamplePipeline.recordPowerSample(5630); // 5.63 kW total
 
     const plan = getLatestPlanSnapshotForTests();
     const shedIds = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
@@ -1716,7 +1716,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(2000, 1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, 1000);
 
     let plan = getLatestPlanSnapshotForTests();
     const initialShed = plan.devices.filter((d: any) => d.plannedState === 'shed').map((d: any) => d.id);
@@ -1787,7 +1787,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(2000, 1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, 1000);
 
     // Simulate the first shed taking effect.
     (app as any).deviceManager.setSnapshotForTests([
@@ -1813,7 +1813,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(2000, 2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, 2000);
 
     const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -1908,7 +1908,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
 
-    await (app as any).recordPowerSample(250);
+    await (app as any).powerSamplePipeline.recordPowerSample(250);
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(devPlan?.currentState).toBe('not_applicable');
@@ -1940,11 +1940,11 @@ describe('Device plan snapshot', () => {
     }
 
     // First overshoot triggers shedding.
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     // Let async plan actions flush before second sample.
     await flushPromises();
     // Second overshoot arrives before cooldown; should not call setCapabilityValue again.
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     await flushPromises();
 
     expect(putSpy).toHaveBeenCalledTimes(1);
@@ -2001,7 +2001,7 @@ describe('Device plan snapshot', () => {
       .spyOn((app as any).planEngine.executor, 'applySheddingToDevice')
       .mockResolvedValue(undefined);
 
-    await (app as any).recordPowerSample(6300);
+    await (app as any).powerSamplePipeline.recordPowerSample(6300);
 
     expect(shedSpy).toHaveBeenCalledWith('dev-on', 'On Device', undefined);
     expect(shedSpy).not.toHaveBeenCalledWith('dev-off', 'Off Device');
@@ -2048,7 +2048,7 @@ describe('Device plan snapshot', () => {
 
     // Use very high power to ensure it exceeds any threshold.
     // Threshold is clamped with a minimum remaining time of 0.01h, so max threshold is 500kW.
-    await (app as any).recordPowerSample(600000); // 600kW definitely exceeds threshold
+    await (app as any).powerSamplePipeline.recordPowerSample(600000); // 600kW definitely exceeds threshold
     // Shortfall is now detected by Plan calling checkShortfall() - no need for tick()
     expect(triggerSpy).toHaveBeenCalled();
 
@@ -2084,7 +2084,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 3.2);
     }
 
-    await (app as any).recordPowerSample(5600);
+    await (app as any).powerSamplePipeline.recordPowerSample(5600);
     expect(triggerSpy).not.toHaveBeenCalled();
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -2124,13 +2124,13 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(500000);
+    await (app as any).powerSamplePipeline.recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    await (app as any).recordPowerSample(550000);
+    await (app as any).powerSamplePipeline.recordPowerSample(550000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
-    await (app as any).recordPowerSample(520000);
+    await (app as any).powerSamplePipeline.recordPowerSample(520000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
 
     mockHomeyInstance.flow.getTriggerCard = originalGetTrigger;
@@ -2176,7 +2176,7 @@ describe('Device plan snapshot', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(500000);
+    await (app as any).powerSamplePipeline.recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
@@ -2185,7 +2185,7 @@ describe('Device plan snapshot', () => {
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
-    await (app as any).recordPowerSample(500000);
+    await (app as any).powerSamplePipeline.recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
@@ -2358,7 +2358,7 @@ describe('Device plan snapshot', () => {
     }
 
     // Report high power - should trigger shedding
-    await (app as any).recordPowerSample(5000);
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
     await flushPromises();
 
     // Verify the device was turned off
@@ -2457,7 +2457,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).recordPowerSample(3000); // 3 kW total
+    await (app as any).powerSamplePipeline.recordPowerSample(3000); // 3 kW total
 
     const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
@@ -2501,7 +2501,7 @@ describe('Device plan snapshot', () => {
 
     (app as any).planEngine.state.lastInstabilityMs = null;
 
-    await (app as any).recordPowerSample(2500);
+    await (app as any).powerSamplePipeline.recordPowerSample(2500);
 
     const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
@@ -2548,7 +2548,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastInstabilityMs = null;
     (app as any).planEngine.state.lastRestoreMs = null;
 
-    await (app as any).recordPowerSample(3000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000);
 
     const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
@@ -2602,7 +2602,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.lastDeviceShedMs = {};
 
-    await (app as any).recordPowerSample(3000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000);
 
     const plan = getLatestPlanSnapshotForTests();
     const highPriPlan = plan.devices.find((d: any) => d.id === 'dev-high');
@@ -2671,7 +2671,7 @@ describe('Device plan snapshot', () => {
 
     // Record power - only 0.8 kW headroom (not enough for swap target with 1.4 kW needed)
     // But enough for lower priority (0.7 kW needed)
-    await (app as any).recordPowerSample(1200); // 1.2 kW total
+    await (app as any).powerSamplePipeline.recordPowerSample(1200); // 1.2 kW total
 
     const plan = getLatestPlanSnapshotForTests();
     const swapTargetPlan = plan.devices.find((d: any) => d.id === 'dev-swap-target');
@@ -2719,7 +2719,7 @@ describe('Device plan snapshot', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
     (app as any).planEngine.state.swapByDevice['dev-pending-low'] = { pendingTarget: true };
 
-    await (app as any).recordPowerSample(300);
+    await (app as any).powerSamplePipeline.recordPowerSample(300);
 
     const plan = getLatestPlanSnapshotForTests();
     const pendingLowPlan = plan.devices.find((d: any) => d.id === 'dev-pending-low');
@@ -2777,7 +2777,7 @@ describe('Device plan snapshot', () => {
     };
 
     // Record power - only 1.5kW headroom (not enough for swap target 2.4kW, but enough for swapped 0.9kW)
-    await (app as any).recordPowerSample(1500);
+    await (app as any).powerSamplePipeline.recordPowerSample(1500);
 
     const plan = getLatestPlanSnapshotForTests();
     const swappedPlan = plan.devices.find((d: any) => d.id === 'dev-swapped');
@@ -2817,7 +2817,7 @@ describe('Device plan snapshot', () => {
     await app.onInit();
 
     // Trigger a power sample to generate a plan
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan).toBeTruthy();
@@ -2889,7 +2889,7 @@ describe('Device plan snapshot', () => {
     // - Power sample calls recordPowerSample() -> rebuildPlanFromCache() -> buildDevicePlanSnapshot()
     await Promise.all([
       (app as any).refreshTargetDevicesSnapshot(),
-      (app as any).recordPowerSample(3000),
+      (app as any).powerSamplePipeline.recordPowerSample(3000),
     ]);
 
     // Should only have ONE of each, not duplicates
@@ -2955,7 +2955,7 @@ describe('Device plan snapshot', () => {
 
     try {
       // First power sample - should plan the swap
-      await (app as any).recordPowerSample(3000);
+      await (app as any).powerSamplePipeline.recordPowerSample(3000);
       await flushPromises(); // Let async shedding attempt complete
 
       expect(structuredEvents.filter((e) => e['event'] === 'restore_swap_approved').length).toBe(1);
@@ -2965,7 +2965,7 @@ describe('Device plan snapshot', () => {
 
       // Second power sample - should NOT re-plan the same swap
       // The swap is already pending (dev-high in pendingSwapTargets)
-      await (app as any).recordPowerSample(3000);
+      await (app as any).powerSamplePipeline.recordPowerSample(3000);
       await flushPromises();
 
       // BUG: Without the fix, this would be 1 (re-planning the same swap)
@@ -3012,7 +3012,7 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).recordPowerSample(3000, 1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
 
     let plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
@@ -3068,13 +3068,13 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.sheddingActive = false;
     }
 
-    await (app as any).recordPowerSample(3000, 1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, 1000);
 
     // Clear swap state without a new measurement.
     (app as any).planEngine.state.swapByDevice = {};
 
     (app as any).planEngine.state.lastRestoreMs = Date.now() - 120000;
-    await (app as any).recordPowerSample(3000, 2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(3000, 2000);
 
     const plan = getLatestPlanSnapshotForTests();
     expect(plan.devices.find((d: any) => d.id === 'dev-low')?.plannedState).toBe('shed');
@@ -3165,7 +3165,7 @@ describe('Dry run mode', () => {
       },
     ]);
     // Guard no longer needs explicit sync
-    await (app as any).recordPowerSample(6000);
+    await (app as any).powerSamplePipeline.recordPowerSample(6000);
 
     // applyPlanActions should NOT be called in dry run mode
     expect(applyPlanSpy).not.toHaveBeenCalled();
@@ -3215,7 +3215,7 @@ describe('Dry run mode', () => {
     }
 
     // Record power sample that triggers overshoot and plan rebuild
-    await (app as any).recordPowerSample(4000); // Will cause overshoot with soft limit of 2
+    await (app as any).powerSamplePipeline.recordPowerSample(4000); // Will cause overshoot with soft limit of 2
 
     // Should log dry run message
     expect(logCalls.some((msg) => msg.includes('Dry run'))).toBe(true);
@@ -3596,7 +3596,7 @@ describe('Dry run mode', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1);
     }
 
-    await (app as any).recordPowerSample(4000);
+    await (app as any).powerSamplePipeline.recordPowerSample(4000);
 
     const plan = getLatestPlanSnapshotForTests();
     const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -3635,7 +3635,7 @@ describe('Dry run mode', () => {
     (app as any).planEngine.state.inShortfall = true;
 
     // Report low power - plenty of headroom mathematically, but we're in shortfall.
-    await (app as any).recordPowerSample(2000); // 2 kW, headroom = 6 kW
+    await (app as any).powerSamplePipeline.recordPowerSample(2000); // 2 kW, headroom = 6 kW
 
     const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -3690,7 +3690,7 @@ describe('Dry run mode', () => {
     (app as any).planEngine.state.lastRestoreMs = null;
 
     // Report 4.3 kW power - gives 2.2 kW headroom (6.5 - 4.3 = 2.2)
-    await (app as any).recordPowerSample(4300);
+    await (app as any).powerSamplePipeline.recordPowerSample(4300);
 
     const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -3744,7 +3744,7 @@ describe('Dry run mode', () => {
 
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
-    await (app as any).recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
+    await (app as any).powerSamplePipeline.recordPowerSample(1000); // 1.0 kW total -> headroomRaw 1.8 kW (meets floor)
 
     const plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -3793,7 +3793,7 @@ describe('Dry run mode', () => {
     if ((app as any).capacityGuard?.setSoftLimitProvider) {
       (app as any).capacityGuard.setSoftLimitProvider(() => 1.5);
     }
-    await (app as any).recordPowerSample(2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
     // Identify the shed device (could be dev-1 or dev-2 depending on ordering).
     const plan1 = getLatestPlanSnapshotForTests();
@@ -3836,7 +3836,7 @@ describe('Dry run mode', () => {
     // Ensure we don't skip shedding due to same-measurement throttling.
     (app as any).planEngine.state.lastShedPlanMeasurementTs = null;
 
-    await (app as any).recordPowerSample(2000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
     // Expectations:
     // dev-1 is already at shed temp (15C). It should NOT be shed again.
@@ -3890,7 +3890,7 @@ describe('Dry run mode', () => {
 
     const logSpy = vi.spyOn((app as any), 'log');
 
-    await (app as any).recordPowerSample(1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(1000);
 
     const plan = getLatestPlanSnapshotForTests();
     const sheds = plan.devices.filter((d: any) => d.plannedState === 'shed');
@@ -3945,7 +3945,7 @@ describe('Dry run mode', () => {
       if ((app as any).capacityGuard?.setSoftLimitProvider) {
         (app as any).capacityGuard.setSoftLimitProvider(() => 0.5);
       }
-      await (app as any).recordPowerSample(2000);
+      await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
       // Verify both are shed to 10C
       const plan1 = getLatestPlanSnapshotForTests();
@@ -3975,7 +3975,7 @@ describe('Dry run mode', () => {
       // Deactivate the guard so the next cycle doesn't trigger a fresh recovery transition.
       await (app as any).capacityGuard?.setSheddingActive(false);
 
-      await (app as any).recordPowerSample(2000);
+      await (app as any).powerSamplePipeline.recordPowerSample(2000);
 
       const plan2 = getLatestPlanSnapshotForTests();
 
@@ -4285,7 +4285,7 @@ describe('Dry run mode', () => {
 
     // Headroom = 0.7 - 0.2 = 0.5kW. Direct restore still requires swapping out the lower-priority
     // thermostat (spotter needs ~0.25kW but the combined reserve+floor of 0.50kW makes direct fail).
-    await (app as any).recordPowerSample(200);
+    await (app as any).powerSamplePipeline.recordPowerSample(200);
 
     const plan = getLatestPlanSnapshotForTests();
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
@@ -4357,7 +4357,7 @@ describe('Dry run mode', () => {
       },
     ]);
 
-    await (app as any).recordPowerSample(200);
+    await (app as any).powerSamplePipeline.recordPowerSample(200);
 
     const plan = getLatestPlanSnapshotForTests();
     const spotterPlan = plan.devices.find((d: any) => d.id === 'spotter');
