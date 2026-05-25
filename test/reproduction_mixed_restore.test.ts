@@ -93,7 +93,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // Need to shed 1+1=2kW.
 
         (app as any).computeDynamicSoftLimit = () => 0.5; // Very low limit
-        await (app as any).recordPowerSample(5000);
+        await (app as any).powerSamplePipeline.recordPowerSample(5000);
 
         let plan = getLatestPlanSnapshotForTests();
         const d1 = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -121,7 +121,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // Headroom = 10 - 5 = 5kW. Needs 2kW.
 
         // Record sample to trigger restore plan
-        await (app as any).recordPowerSample(5000);
+        await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
         const d1Codes = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -148,7 +148,7 @@ describe('Mixed Type Restoration Throttling', () => {
         // 3. Immediate next cycle (within 30s)
         // Should NOT restore the other one due to Cooldown
         currentTime += 5000; // +5s
-        await (app as any).recordPowerSample(5000);
+        await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
         const d1Cycles2 = plan.devices.find((d: any) => d.id === 'dev-1');
@@ -169,7 +169,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // 4. After Cooldown (60s)
         currentTime += 35000; // +35s (Total 40s from first restore)
-        await (app as any).recordPowerSample(5000);
+        await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
         // Still in restore cooldown globally, but the still-shed peer keeps its own capacity reason.
@@ -186,7 +186,7 @@ describe('Mixed Type Restoration Throttling', () => {
 
         // 5. After restore cooldown window
         currentTime += 90000; // +90s (Total 130s from first restore)
-        await (app as any).recordPowerSample(5000);
+        await (app as any).powerSamplePipeline.recordPowerSample(5000);
         plan = getLatestPlanSnapshotForTests();
 
         const d1Cycles4 = plan.devices.find((d: any) => d.id === 'dev-1');

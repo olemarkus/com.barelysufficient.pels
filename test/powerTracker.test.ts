@@ -45,8 +45,8 @@ describe('power tracker integration', () => {
     const now = Date.now();
     const start = now - (now % (60 * 60 * 1000)); // Align to hour boundary
     // 1 kW for 30 minutes => 0.5 kWh
-    await app['recordPowerSample'](1000, start);
-    await app['recordPowerSample'](1000, start + 30 * 60 * 1000);
+    await app['powerSamplePipeline'].recordPowerSample(1000, start);
+    await app['powerSamplePipeline'].recordPowerSample(1000, start + 30 * 60 * 1000);
 
     const bucketKey = getHourBucketKey(start);
     vi.advanceTimersByTime(60000);

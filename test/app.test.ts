@@ -899,7 +899,7 @@ describe('MyApp initialization', () => {
       lastPowerW: 2000,
     };
 
-    void (app as any).recordPowerSample(2000, now);
+    void (app as any).powerSamplePipeline.recordPowerSample(2000, now);
     await waitFor(() => {
       const planSnapshot = getLatestPlanSnapshotForTests();
       return Boolean(planSnapshot?.devices?.length);
@@ -945,7 +945,7 @@ describe('MyApp initialization', () => {
     mockHomeyInstance.api.clearRealtimeEvents();
 
     const now = new Date('2026-03-03T10:20:00.000Z').getTime();
-    await (app as any).recordPowerSample(2000, now);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, now);
 
     const powerEvents = mockHomeyInstance.api._realtimeEvents.filter((event) => event.event === 'power_updated');
     expect(powerEvents).toHaveLength(1);
@@ -981,7 +981,7 @@ describe('MyApp initialization', () => {
     (app as any).planEngine.state.lastRestoreMs = nowMs - 1_000;
     (app as any).planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
-    await (app as any).runPowerSample(5300, nowMs + 1);
+    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1010,7 +1010,7 @@ describe('MyApp initialization', () => {
     };
     (app as any).planEngine.state.wasOvershoot = true;
 
-    await (app as any).runPowerSample(5300, nowMs + 1);
+    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
 
     expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
     rebuildSpy.mockRestore();
@@ -1030,10 +1030,10 @@ describe('MyApp initialization', () => {
     const baseTs = new Date('2026-03-03T10:20:00.000Z').getTime();
 
     (app as any).powerTracker.lastTimestamp = baseTs;
-    await (app as any).recordPowerSample(2000, baseTs);
+    await (app as any).powerSamplePipeline.recordPowerSample(2000, baseTs);
     expect(clearSpy).not.toHaveBeenCalled();
 
-    await (app as any).recordPowerSample(2100, baseTs + 1000);
+    await (app as any).powerSamplePipeline.recordPowerSample(2100, baseTs + 1000);
     expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(clearSpy).toHaveBeenCalledWith(baseTs + 1000);
   });
@@ -1063,7 +1063,7 @@ describe('MyApp initialization', () => {
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const beforePerf = getPerfSnapshot();
-    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -1071,10 +1071,10 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).recordPowerSample(1000, 1);
+      const first = (app as any).powerSamplePipeline.recordPowerSample(1000, 1);
       await flushPromises();
-      const second = (app as any).recordPowerSample(2000, 2);
-      const third = (app as any).recordPowerSample(3000, 3);
+      const second = (app as any).powerSamplePipeline.recordPowerSample(2000, 2);
+      const third = (app as any).powerSamplePipeline.recordPowerSample(3000, 3);
 
       await flushPromises();
       expect(runSpy).toHaveBeenCalledTimes(1);
@@ -1106,7 +1106,7 @@ describe('MyApp initialization', () => {
     let active = 0;
     let maxActive = 0;
     let runIndex = 0;
-    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async () => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async () => {
       const pass = passes[runIndex];
       runIndex += 1;
       if (!pass) throw new Error(`Unexpected power sample pass ${runIndex}`);
@@ -1117,17 +1117,17 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).recordPowerSample(1000, 1);
+      const first = (app as any).powerSamplePipeline.recordPowerSample(1000, 1);
       await flushPromises();
-      const second = (app as any).recordPowerSample(2000, 2);
-      const third = (app as any).recordPowerSample(3000, 3);
+      const second = (app as any).powerSamplePipeline.recordPowerSample(2000, 2);
+      const third = (app as any).powerSamplePipeline.recordPowerSample(3000, 3);
 
       await flushPromises();
       passes[0].resolve();
       await flushPromises();
 
-      const fourth = (app as any).recordPowerSample(4000, 4);
-      const fifth = (app as any).recordPowerSample(5000, 5);
+      const fourth = (app as any).powerSamplePipeline.recordPowerSample(4000, 4);
+      const fifth = (app as any).powerSamplePipeline.recordPowerSample(5000, 5);
       await flushPromises();
 
       passes[1].resolve();
@@ -1146,7 +1146,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
-    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -1154,10 +1154,10 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      const first = (app as any).recordPowerSample(1200, 10);
+      const first = (app as any).powerSamplePipeline.recordPowerSample(1200, 10);
       await flushPromises();
-      const second = (app as any).recordPowerSample(2200, 20);
-      const third = (app as any).recordPowerSample(3200, 30);
+      const second = (app as any).powerSamplePipeline.recordPowerSample(2200, 20);
+      const third = (app as any).powerSamplePipeline.recordPowerSample(3200, 30);
 
       passes[0].resolve();
       await flushPromises();
@@ -1176,10 +1176,10 @@ describe('MyApp initialization', () => {
   it('keeps normal single-sample behavior unchanged when no rerun is needed', async () => {
     const app = createApp();
     const beforePerf = getPerfSnapshot();
-    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockResolvedValue(undefined);
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockResolvedValue(undefined);
 
     try {
-      await (app as any).recordPowerSample(1500, 50);
+      await (app as any).powerSamplePipeline.recordPowerSample(1500, 50);
 
       const afterPerf = getPerfSnapshot();
       expect(runSpy).toHaveBeenCalledTimes(1);
@@ -1201,10 +1201,10 @@ describe('MyApp initialization', () => {
       void Promise.resolve()
         .then(() => Promise.resolve())
         .then(() => {
-          trailingRequest = (app as any).recordPowerSample(2400, 24);
+          trailingRequest = (app as any).powerSamplePipeline.recordPowerSample(2400, 24);
         });
     };
-    const runSpy = vi.spyOn(app as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
       calls.push({ currentPowerW, nowMs });
       if (calls.length === 1) {
         scheduleTrailingRequest();
@@ -1212,7 +1212,7 @@ describe('MyApp initialization', () => {
     });
 
     try {
-      await (app as any).recordPowerSample(1400, 14);
+      await (app as any).powerSamplePipeline.recordPowerSample(1400, 14);
       await waitFor(() => trailingRequest !== undefined);
       await trailingRequest;
 
@@ -1403,7 +1403,7 @@ describe('MyApp initialization', () => {
         (app as any).capacityGuard.setSoftLimitProvider(() => 0.1);
       }
 
-      await (app as any).recordPowerSample(1000);
+      await (app as any).powerSamplePipeline.recordPowerSample(1000);
       await waitFor(() => setCapabilitySpy.mock.calls.filter(([path, body]) => (
         path === 'manager/devices/device/dev-1/capability/onoff'
         && body?.value === false
@@ -2117,7 +2117,7 @@ describe('MyApp initialization', () => {
       if ((app as any).capacityGuard?.setSoftLimitProvider) {
         (app as any).capacityGuard.setSoftLimitProvider(() => 2);
       }
-      await (app as any).recordPowerSample(3000, baseNow);
+      await (app as any).powerSamplePipeline.recordPowerSample(3000, baseNow);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') === 'shed'
       ));
@@ -2135,7 +2135,7 @@ describe('MyApp initialization', () => {
       }
       await heater.setCapabilityValue('measure_power', 0);
       await (app as any).refreshTargetDevicesSnapshot();
-      await (app as any).recordPowerSample(500, afterLongOvershoot);
+      await (app as any).powerSamplePipeline.recordPowerSample(500, afterLongOvershoot);
       await (app as any).planService.rebuildPlanFromCache();
 
       // The device should still be planned as 'shed' because the recovery
@@ -2147,7 +2147,7 @@ describe('MyApp initialization', () => {
       // --- Phase 4: after cooldown expires, the device is restored ---
       const afterCooldown = afterLongOvershoot + SHED_COOLDOWN_MS + 1000;
       nowSpy.mockReturnValue(afterCooldown);
-      await (app as any).recordPowerSample(500, afterCooldown);
+      await (app as any).powerSamplePipeline.recordPowerSample(500, afterCooldown);
       await waitFor(() => (
         getPlanDeviceState(getLatestPlanSnapshotForTests(), 'dev-1') !== 'shed'
       ), 3000);
@@ -2755,7 +2755,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = vi.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
     const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2100);
 
     try {
@@ -2775,7 +2775,7 @@ describe('periodic snapshot refresh scheduling', () => {
 
     const app = createApp();
     await initApp(app);
-    const recordSpy = vi.spyOn(app as any, 'recordPowerSample').mockResolvedValue(undefined);
+    const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
     const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2600);
 
     try {
