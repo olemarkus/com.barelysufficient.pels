@@ -1,3 +1,34 @@
+// Backtested daily-budget confidence scoring.
+//
+// SCOPE: informational only. No planner, executor, or shed/restore path branches
+// on `budget.confidence` or `confidenceDebug`. The full consumer surface is:
+//
+//   1. `lib/dailyBudget/dailyBudgetManager.ts` — writes `cr.confidence` onto
+//      `budget.confidence` and propagates `cr.debug` into the snapshot.
+//   2. `lib/dailyBudget/dailyBudgetManagerSnapshot.ts` — single debug log line
+//      (`confidence X.XX`) and snapshot field wiring.
+//   3. `lib/dailyBudget/dailyBudgetService.ts` — `applyOverallModelConfidence`
+//      copies today's confidence to adjacent-day snapshots so the UI card
+//      reads a stable value across day views.
+//   4. `lib/dailyBudget/dailyBudgetState.ts` — places `confidence` /
+//      `confidenceDebug` into the `state` block of `DailyBudgetDayPayload`.
+//   5. `packages/settings-ui/src/ui/budgetRedesignResolvers.ts` +
+//      `views/BudgetOverview.tsx` — Plan-confidence card (label, percent, and
+//      the four explainer rows: Usage days, Planned days, Usage regularity,
+//      Managed-device fit) — purely an explainer for end users.
+//
+// Because every consumer is informational, this file is a candidate for
+// aggressive simplification (e.g. dropping the bootstrap CI or collapsing
+// the continuous score to a 3-state band). Don't take that shortcut without
+// first reshaping `ConfidenceDebug` in `packages/contracts/src/dailyBudgetTypes.ts`
+// and the four debug-row labels the UI renders — those are public contract
+// surface, not private internals.
+//
+// Conversely, do NOT introduce a control branch on these scores without
+// updating this comment and adding a regression test that exercises the
+// branch — silently turning an info field into a load-bearing input is the
+// exact failure mode this scope note is here to prevent.
+
 import type { PowerTrackerState } from '../power/tracker';
 import {
   buildLocalDayBuckets,
