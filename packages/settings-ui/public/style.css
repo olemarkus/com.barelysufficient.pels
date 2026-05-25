@@ -468,7 +468,7 @@ md-text-button.md-text-button--destructive {
   color: var(--muted);
   font-size: var(--font-size-sm);
   text-align: center;
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
 }
 
 @keyframes pulse {
@@ -2981,7 +2981,7 @@ md-filled-button.is-busy {
 
 @media (prefers-reduced-motion: no-preference) {
   .plan-card__stepped-direction {
-    animation: plan-stepped-direction-pulse 1.6s ease-in-out infinite;
+    animation: plan-stepped-direction-pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
   }
 }
 
@@ -3014,7 +3014,7 @@ md-filled-button.is-busy {
 }
 
 .plan-card__stepped-seg[data-pulse="true"] {
-  animation: plan-stepped-pulse 1.4s ease-in-out infinite;
+  animation: plan-stepped-pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
 }
 
 @keyframes plan-stepped-pulse {

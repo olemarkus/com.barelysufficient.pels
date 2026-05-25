@@ -7,6 +7,12 @@
       "value": "{spacing.2}",
       "comment": "Minimum-floor (NOT a fallback) for the page-chrome top inset reserved under Homey's native mobile chrome (\"PELS / Done\" header). Default is 8 px (`--spacing-2`) for desktop / fine-pointer iframes; coarse-pointer (touch) override raises to 56 px to clear Homey mobile chrome. Use as `max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top))` — token is a **floor**, not a fallback."
     },
+    "motion": {
+      "pulse-duration": {
+        "value": "1.5s",
+        "comment": "Canonical loop duration for `.device-loading-notice`, `.plan-card__stepped-direction`, and `.plan-card__stepped-seg[data-pulse=\"true\"]` opacity/transform pulses in style.css. Replaces three near-identical literals (1.4s / 1.5s / 1.6s) that produced perceptually indistinguishable cadence — single source of truth for any future tuning. Literal duration (not an alias) — pulse cadence is a perceptual constant, not theme-relative."
+      }
+    },
     "on-surface": { "value": "{color.semantic.text.primary}" },
     "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
     "on-surface-muted": { "value": "{color.semantic.text.muted}" },

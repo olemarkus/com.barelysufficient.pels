@@ -2322,12 +2322,18 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (done);
       `packages/settings-ui/public/index.html` (Electricity prices panel hero — pending);
       `packages/settings-ui/src/ui/electricityPrices.ts` (pending).
-- [ ] Consolidate the three near-identical pulse keyframe animations.
-      `settings/style.css` defines three pulse keyframes at 1.4 s / 1.5 s / 1.6 s — imperceptibly
-      different and not driven from a shared token. Pick one duration, expose as a token, and
-      route all three call sites through it.
-      Files: `packages/settings-ui/public/style.css`, `tokens/base.json` (add motion token),
-      `settings/tokens.css` + `settings/style.css` (regen).
+- [x] Consolidate the three near-identical pulse keyframe animations.
+      `settings/style.css` defined three pulse animations at 1.4 s / 1.5 s / 1.6 s —
+      imperceptibly different and not driven from a shared token. Promoted the median
+      1.5 s cadence to `pels.motion.pulse-duration` in `tokens/component.json`, which
+      generates `--pels-motion-pulse-duration` in `settings/tokens.css`. All three
+      call sites (`.device-loading-notice`, `.plan-card__stepped-direction`,
+      `.plan-card__stepped-seg[data-pulse="true"]`) now reference
+      `var(--pels-motion-pulse-duration)`, keeping the `pulse`,
+      `plan-stepped-direction-pulse(-down)`, and `plan-stepped-pulse` keyframes intact
+      (their content encodes meaningfully different visual effects — transform
+      translateY vs. opacity-only with distinct 0.6 / 0.45 floors). Regression locked
+      by `packages/settings-ui/test/pulseDurationToken.test.ts`.
 - [ ] Audit `settings/style.css` for hardcoded px / rem values that should bind to tokens.
       Unit 9 catalogued: `gap: 12px`, `gap: 10px`, `padding: 12px`, `border-radius: 8px` in
       `.price-summary`, `margin: 4px`, `font-size: 0.62rem` — none of which map to existing
