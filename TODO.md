@@ -2747,15 +2747,24 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       shared chart-option helper if extracted.
-- [ ] Cross-link from smart-task history detail to Usage's same-day chart for the device.
+- [x] Cross-link from smart-task history detail to Usage's same-day chart for the device.
       A user investigating "why did this run miss?" benefits from seeing the device's
-      whole-day power profile around the deadline. Today neither view links to the other.
-      One-line link below the history hero: `See {device name} usage on {date} →`. Reverse
-      direction (Usage → Smart tasks) is intentionally not added; Usage users aren't asking
-      task-shaped questions.
-      Why P2: bridges two parallel surfaces that today co-exist without acknowledgement.
+      whole-day power profile around the deadline. Shipped in PR #867 (v2.7.2 train); the
+      one-line link below the history hero reads `See household usage on {date} →` and
+      encodes `?page=usage&deviceId={X}&date={ISO}` so a future Usage view that honours
+      deviceId/date filters can read them off the URL. Reverse direction (Usage → Smart
+      tasks) intentionally not added; Usage users aren't asking task-shaped questions.
+      Limitations: copy says "household usage" (not "{device name} usage") because the
+      Usage view today is household-scoped — no per-device chart filtering exists yet, so
+      naming the device in the link would mis-promise. The click handler in
+      `deadlinePlanMount.ts` arms an explicit return link back to the Smart-task detail
+      rather than relying on Usage to honour the filter params. View-level test
+      coverage added 2026-05-25 ("renders the Usage cross-link below the hero with the
+      correct href and copy") to lock the rendered href + copy + data-attribute.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder).
+      `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder),
+      `packages/shared-domain/src/deferredPlanHistory.ts` (label helper),
+      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` (view test).
 - [ ] Complete the `--day-view-color-*` → `--pels-chart-*` migration on Budget surfaces.
       The shimmed token pair (`--day-view-color-background-usage` /
       `--day-view-color-managed-usage`) is still bound to `--color-role-info` /
