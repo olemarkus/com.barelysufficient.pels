@@ -16,6 +16,14 @@ const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
 const STALE_OBSERVATION_FALLBACK_REFRESH_INTERVAL_MS = 60 * 1000;
 const POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
+// Per-device backoff for the `stale_device_observation_refresh` info log.
+// The refresh loop itself still runs every minute (drivers that only republish
+// per-capability `lastUpdated` on value change look "stale" indefinitely even
+// when healthy), but we only emit one structured log per device per window.
+// Matches the 15-minute window used by other repeat-event throttles in the
+// planner. In-memory only per `feedback_homey_sdk_unreliable`: on restart the
+// first cycle re-emits as expected.
+const STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS = 15 * 60 * 1000;
 
 export type RefreshTargetDevicesSnapshotOptions = {
   fast?: boolean;
@@ -42,6 +50,14 @@ export class AppSnapshotHelpers {
   private snapshotRefreshInFlight: Promise<void> | null = null;
   private postActuationRefreshTimer?: ReturnType<typeof setTimeout>;
   private deviceObservationStaleById = new Map<string, boolean>();
+  // Last `stale_device_observation_refresh` log emit per device. We suppress
+  // repeat emits within `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` so that a
+  // device whose driver only republishes `lastUpdated` on value change does
+  // not produce one log line per 60s cycle for the entire app uptime. Cleared
+  // per device when that device becomes fresh again, so a returning device
+  // re-emits the next time it stalls. Per-device map (not global) so 10 stale
+  // devices still produce 10 distinct log streams.
+  private staleRefreshLogLastEmitMsById = new Map<string, number>();
 
   constructor(private readonly deps: {
     homey: Homey.App['homey'];
@@ -168,7 +184,16 @@ export class AppSnapshotHelpers {
     const nowMs = this.deps.getNow().getTime();
     const snapshot = this.deps.getLatestTargetSnapshot().filter((device) => this.deps.resolveManagedState(device.id));
     this.logDeviceFreshnessTransitions(snapshot, 'stale_observation_check', nowMs);
+    // `isDeviceObservationStaleByAge` excludes `'unknown'` (never-observed)
+    // devices on purpose — re-fetching them cannot change `unknown` into
+    // `fresh`, so the refresh loop never runs for them and the log backoff
+    // below is moot. The `unknown` case is handled at the predicate boundary,
+    // not here.
     const staleDevices = snapshot.filter((device) => isDeviceObservationStaleByAge(device, nowMs));
+    // Always prune backoff entries for devices that are no longer stale (fresh
+    // again, removed, or never-observed) so a device that returns to fresh and
+    // later stalls again will emit a new log on its next still-stale cycle.
+    this.pruneStaleRefreshLogBackoff(snapshot, nowMs);
     if (staleDevices.length === 0) return;
 
     this.deps.logDebug(
@@ -184,13 +209,31 @@ export class AppSnapshotHelpers {
     const refreshedById = new Map(refreshedSnapshot.map((device) => [device.id, device]));
     let freshAfterRefreshDevices = 0;
     let stillStaleAfterRefreshDevices = 0;
+    const stillStaleDeviceIds: string[] = [];
     for (const deviceId of staleDeviceIds) {
       const refreshedDevice = refreshedById.get(deviceId);
       if (!refreshedDevice || isDeviceObservationStaleByAge(refreshedDevice, nowMs)) {
         stillStaleAfterRefreshDevices += 1;
+        stillStaleDeviceIds.push(deviceId);
       } else {
         freshAfterRefreshDevices += 1;
+        // Recovered: clear backoff so the next still-stale cycle re-emits.
+        this.staleRefreshLogLastEmitMsById.delete(deviceId);
       }
+    }
+
+    // Emit only when at least one still-stale device is outside its per-device
+    // backoff window. The tally itself is independent of the emit decision so
+    // the counter remains accurate even when the log line is suppressed.
+    const devicesDueForLog = stillStaleDeviceIds.filter((deviceId) => {
+      const lastEmitMs = this.staleRefreshLogLastEmitMsById.get(deviceId);
+      return lastEmitMs === undefined
+        || (nowMs - lastEmitMs) >= STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS;
+    });
+    if (devicesDueForLog.length === 0) return;
+
+    for (const deviceId of devicesDueForLog) {
+      this.staleRefreshLogLastEmitMsById.set(deviceId, nowMs);
     }
 
     this.deps.getStructuredLogger('devices')?.info({
@@ -200,7 +243,24 @@ export class AppSnapshotHelpers {
       refreshedDevices: staleDevices.length,
       freshAfterRefreshDevices,
       stillStaleAfterRefreshDevices,
+      loggedStillStaleDevices: devicesDueForLog.length,
     });
+  }
+
+  private pruneStaleRefreshLogBackoff(
+    managedSnapshot: TargetDeviceSnapshot[],
+    nowMs: number,
+  ): void {
+    const staleManagedIds = new Set(
+      managedSnapshot
+        .filter((device) => isDeviceObservationStaleByAge(device, nowMs))
+        .map((device) => device.id),
+    );
+    for (const deviceId of this.staleRefreshLogLastEmitMsById.keys()) {
+      if (!staleManagedIds.has(deviceId)) {
+        this.staleRefreshLogLastEmitMsById.delete(deviceId);
+      }
+    }
   }
 
   scheduleNextSnapshotRefresh(): void {
