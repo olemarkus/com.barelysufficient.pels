@@ -12,7 +12,7 @@ import {
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { state } from '../state.ts';
-import { createSerializedAsyncRunner, readRecordSetting, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 
 const runSerializedEvBoostWrite = createSerializedAsyncRunner();
 const DEFAULT_BOOST_BELOW_PERCENT = 40;
@@ -97,8 +97,18 @@ export const initEvBoostHandlers = (deps: EvBoostHandlerDeps) => {
         context: 'device detail',
         logMessage: 'Failed to save EV boost settings',
         toastMessage: 'Failed to save EV boost settings.',
-        fallbackValue: {},
-        readFresh: (value) => normalizeEvBoostSettings(readRecordSetting<unknown>(value)),
+        // Use the live EV-boost snapshot as the fallback so a transient
+        // null or non-object SDK read does not erase entries for other
+        // devices.
+        fallbackValue: state.evBoostSettings,
+        // Only normalize when the fresh SDK value is a real object.
+        // Anything else returns null so `writeFreshSetting` falls back to
+        // the snapshot instead of normalising garbage into `{}`.
+        readFresh: (value) => (
+          value && typeof value === 'object' && !Array.isArray(value)
+            ? normalizeEvBoostSettings(value)
+            : null
+        ),
         mutate: (currentSettings) => {
           const nextSettings = { ...currentSettings };
           if (nextEnabled) {
