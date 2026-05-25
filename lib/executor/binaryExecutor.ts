@@ -360,7 +360,11 @@ const applyBinaryRestoreWithSnapshot = async (
       }
       return true;
     } catch (error) {
-      logger.error({ event: 'executor_binary_error', msg: `Failed to turn on ${name} via DeviceManager`, err: error });
+      logger.error({
+        event: 'executor_binary_error',
+        msg: `Failed to turn on ${name} via DeviceTransport`,
+        err: error,
+      });
       return false;
     }
   } finally {
@@ -411,7 +415,7 @@ const applyCapacityControlOffRestoreWithSnapshot = async (
     }
     return true;
   } catch (error) {
-    logger.error({ event: 'executor_binary_error', msg: `Failed to restore ${name} via DeviceManager`, err: error });
+    logger.error({ event: 'executor_binary_error', msg: `Failed to restore ${name} via DeviceTransport`, err: error });
     return false;
   }
 };
@@ -538,7 +542,7 @@ const turnOffDevice = async (
     }
     return true;
   } catch (error) {
-    logger.error({ event: 'executor_binary_error', msg: `Failed to turn off ${name} via DeviceManager`, err: error });
+    logger.error({ event: 'executor_binary_error', msg: `Failed to turn off ${name} via DeviceTransport`, err: error });
     return false;
   }
 };

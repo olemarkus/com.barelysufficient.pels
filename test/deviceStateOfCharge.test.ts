@@ -1,4 +1,4 @@
-import { resolveStateOfChargeSnapshot } from '../lib/device/stateOfCharge';
+import { resolveStateOfChargeSnapshot } from '../lib/device/transport/stateOfCharge';
 
 describe('resolveStateOfChargeSnapshot', () => {
   it('prefers native SoC capabilities over flow-backed battery reports', () => {

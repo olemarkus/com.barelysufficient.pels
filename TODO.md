@@ -2059,15 +2059,15 @@ consolidation + a11y polish (8 P2)`.*
       `test/planRestoreBackoff.test.ts`
       (`persists a stale-cleanup timestamp on an approved stepped swap that survives a state roundtrip`,
       `defers a swap restore for orphan-measurement metadata until a fresh power sample arrives`).
-- [ ] Finish the planner/executor/device-manager state boundary split.
-      Planner output should carry desired state and planner reasons; `DeviceManager` should
+- [ ] Finish the planner/executor/device-transport state boundary split.
+      Planner output should carry desired state and planner reasons; `DeviceTransport` should
       provide observed current state and own native / flow / capability transport; executor should
       compare current with desired and handle sequencing, pending commands, retries, and
       materialization. `ExecutablePlan` now carries executor intent and `ExecutableObservedState`
       carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
       Remaining work is to move the last flow-backed binary transport details fully behind
-      `DeviceManager`.
-      Files: `lib/executor/**`, `lib/device/manager.ts`, binary transport tests.
+      `DeviceTransport`.
+      Files: `lib/executor/**`, `lib/device/deviceTransport.ts`, binary transport tests.
 - [ ] Define the binary operating precondition for temperature-lowered devices.
       `set_temperature` limiting currently lowers the target only. For devices that also expose
       binary control, decide whether an observed off state should be treated as drift and turned
@@ -2123,14 +2123,14 @@ consolidation + a11y polish (8 P2)`.*
       adds a new error rule binding executor away from `lib/device/**`. Settle suppression
       runs in transport's parse pipeline via a `pendingPredicate` callback injected by
       `lib/app/` and backed by observer.
-      Sequencing: (1a) `getSnapshotByDeviceId` helper + `DeviceObservation` read interface;
-      (1b) restructure plan to return binary control decisions, move dispatch to executor,
-      promote cruiser rules;
-      (2) move read-side files into transport, DeviceManager becomes a facade;
-      (3) extract `DeviceTransport`, DeviceManager goes away;
-      (4) move pending/settle into observer and wire the injected predicate;
-      (5) three-way realtime split — translation in transport, drift detection in executor,
-      reapply trigger in wiring.
+      Sequencing: (1a) `getSnapshotByDeviceId` helper + `DeviceObservation` read interface
+      — shipped in PR #1095; (1b) restructure plan to return binary control decisions, move
+      dispatch to executor, promote cruiser rules — shipped in PR #1102; (2) move read-side
+      files into transport, DeviceManager becomes a facade — shipped in PR #1107; (3) rename
+      DeviceManager → DeviceTransport (file `manager.ts` → `deviceTransport.ts`) and kill the
+      facade — shipped in PR #3 of the train; (4) move pending/settle into observer and wire
+      the injected predicate; (5) three-way realtime split — translation in transport, drift
+      detection in executor, reapply trigger in wiring.
       Design: `notes/state-management/observer-transport-split.md`.
       Files: `lib/device/**`, `lib/observer/**`, `lib/executor/**`, `lib/plan/planBinaryControl*.ts`,
       `lib/app/appDeviceControlSteppedState.ts`, `.dependency-cruiser.cjs`,
@@ -2167,27 +2167,55 @@ consolidation + a11y polish (8 P2)`.*
       {ok: true}`) and a sync helper in observer consumes the failure to clear
       pending, so writes and deletes are both observer-owned. Source:
       `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
-- [ ] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
-      split left it at `lib/device/stateOfCharge.ts`; today's placement
-      satisfies the design's stated goal ("neither side has to import the
-      other") because both transport- and stay-put consumers reach it as a
-      sibling without crossing into transport/. Two viable destinations:
-      (a) the cheap path — **just move into `lib/device/transport/`**, since
-      every current consumer is transport-side (`transport/managerObservation.ts`,
-      `transport/managerRealtimeHandlers.ts`, `transport/managerParseDevice.ts`)
-      or part of `lib/device/manager.ts` / `managerRuntime.ts` (both fine as
-      cross-folder imports), converting today's `transport/managerObservation →
-      ../stateOfCharge → transport/flowReportedCapabilities` back-edge into a
-      clean intra-transport import; (b) the deeper path — extract pure SoC
-      math to `lib/utils/` or `packages/shared-domain/src/`, which also
-      requires relocating or duplicating the structural type deps
-      (`DeviceCapabilityMap` from `managerControl.ts`,
-      `FlowReportedCapabilitiesForDevice` / `FlowReportedCapabilityEntry`
-      from `transport/flowReportedCapabilities.ts`). PR #3 (DeviceTransport
-      extraction) is a natural place to decide. Source: PR #2 secondary
-      cleanup + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24.
-      Files: `lib/device/stateOfCharge.ts`, `lib/device/managerControl.ts`,
-      `lib/device/transport/flowReportedCapabilities.ts`.
+- [x] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
+      split left it at `lib/device/stateOfCharge.ts`; PR #3 took the cheap
+      path and moved it into `lib/device/transport/stateOfCharge.ts`. Every
+      current consumer is transport-side
+      (`transport/managerObservation.ts`, `transport/managerRealtimeHandlers.ts`,
+      `transport/managerParseDevice.ts`, `transport/managerFreshness.ts`)
+      or part of `lib/device/deviceTransport.ts` (the renamed
+      `DeviceTransport` class) / `managerRuntime.ts` (both fine as
+      cross-folder imports). The move converts the previous
+      `transport/managerObservation → ../stateOfCharge →
+      transport/flowReportedCapabilities` back-edge into a clean
+      intra-transport import. The deeper path (extracting pure SoC math to
+      `lib/utils/` or `packages/shared-domain/src/` with the structural
+      `DeviceCapabilityMap` / `FlowReportedCapabilities*` type deps) was
+      deferred — no consumer pressure yet. Source: PR #2 secondary cleanup
+      + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24. Done in
+      PR #3.
+- [ ] Sweep file renames + logger tags + structured-event identifiers that still
+      carry the `manager`/`DeviceManager`/`device_manager` name post-rename
+      (PR #3 of the observer/transport split, #1140). Three buckets, each
+      operator-visible:
+      (a) **Filenames**: `lib/device/managerRuntime.ts`,
+          `lib/device/managerNativeEv.ts`, `lib/device/managerNativeSteppedCommand.ts`,
+          `lib/device/managerControl.ts`, `lib/device/managerBinarySettle.ts`,
+          `lib/device/managerMeasuredPower.ts`, `lib/device/managerEnergy.ts`,
+          `lib/device/managerFlowSupport.ts`, plus everything under
+          `lib/device/transport/manager*.ts`
+          (`managerObservation`, `managerParse*`, `managerFreshness`,
+          `managerRealtimeHandlers`, `managerRealtimeSupport`, `managerFetch`,
+          `managerHomeyApi`, `managerManagedFilter`, `managerHelpers`).
+          Rename to drop the `manager` prefix (or `transport` prefix as
+          appropriate) so the file tree matches the class rename.
+      (b) **Logger tags**: `getLogger('device/manager-runtime')` and
+          `getLogger('device/manager-fetch')` (and any others derived from the
+          filenames above). Aligns operator log queries with the `DeviceTransport`
+          identity. The matching `deviceTransport.ts` logger is already
+          `device/transport`.
+      (c) **Structured event identifiers**: `reasonCode: 'device_manager_write_failed'`
+          (`lib/executor/binaryControlDispatch.ts`, `lib/executor/targetExecutor.ts`)
+          and the `DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id'`
+          union (`lib/device/transport/managerFetch.ts`). These are external grep
+          targets for log dashboards / alerts — renaming is a breaking change for
+          any tooling that pins them. Decide explicitly: rename + bump (and
+          document migration), or keep verbatim with an in-code comment naming
+          the back-compat constraint.
+      Source: `pels-layering-guardian` P2 + `pels-runtime-reality` P2 on
+      PR #1140, 2026-05-25.
+      Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
+      `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
@@ -2446,7 +2474,7 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Plan engine fires before the first device snapshot lands, producing a one-cycle
       `deferred_objective_unknown reasonCode:objective_missing_device` event on every
       restart. `app.ts:758-771` calls `initDeviceManager` then `initPlanEngine` without
-      awaiting `refreshSnapshot()`; `lib/device/manager.ts:1457-1460` emits
+      awaiting `refreshSnapshot()`; `lib/device/deviceTransport.ts:1457-1460` emits
       `device_api_initialized` immediately after `liveFeed.start()`. The first scheduled
       plan rebuild fires before the snapshot resolves and
       `lib/plan/deferredObjectives/diagnosticsBridge.ts:216` correctly emits
@@ -2461,7 +2489,7 @@ consolidation + a11y polish (8 P2)`.*
       first `refreshSnapshot()` completes (or until a configurable bound expires).
       Regression: start the app with an unresolvable Homey Manager fetch and confirm no
       `deferred_objective_unknown` is emitted until the snapshot bound elapses.
-      Files: `app.ts`, `lib/device/manager.ts`,
+      Files: `app.ts`, `lib/device/deviceTransport.ts`,
       `lib/plan/deferredObjectives/diagnosticsBridge.ts`, app-startup integration test.
       Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.

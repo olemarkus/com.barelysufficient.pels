@@ -7,7 +7,7 @@ import {
   isStateOfChargeCapabilityId,
   updateStateOfChargeFromRealtimeCapability,
   updateStateOfChargeSessionBoundary,
-} from '../stateOfCharge';
+} from './stateOfCharge';
 import { formatBinaryState } from './managerRealtimeSupport';
 import type { RealtimeDeviceReconcileChange } from '../managerRuntime';
 

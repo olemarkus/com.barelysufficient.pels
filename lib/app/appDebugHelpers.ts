@@ -8,8 +8,8 @@ import type {
 import type {
   DeviceDebugObservedSource,
   DeviceDebugObservedSources,
-  DeviceManager,
-} from '../device/manager';
+  DeviceTransport,
+} from '../device/deviceTransport';
 import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { DEVICES_API_PATH, getRawDevices } from '../device/transport/managerHomeyApi';
 import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
@@ -495,7 +495,7 @@ const getRawManagerDeviceEntry = async (params: {
 };
 
 export async function getHomeyDevicesForDebug(params: {
-  deviceManager: DeviceManager;
+  deviceManager: DeviceTransport;
 }): Promise<HomeyDeviceLike[]> {
   const { deviceManager } = params;
   if (!deviceManager) return [];
@@ -503,7 +503,7 @@ export async function getHomeyDevicesForDebug(params: {
 }
 
 export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<HomeyDeviceLike[]> {
-  const runtimeApp = app as Homey.App & { deviceManager?: DeviceManager };
+  const runtimeApp = app as Homey.App & { deviceManager?: DeviceTransport };
   if (!runtimeApp.deviceManager) return [];
   return getHomeyDevicesForDebug({ deviceManager: runtimeApp.deviceManager }).catch((err) => {
     runtimeApp.error?.('Failed to get Homey devices for debug', normalizeError(err));
@@ -513,7 +513,7 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
 
 export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
-  deviceManager: DeviceManager;
+  deviceManager: DeviceTransport;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
@@ -617,7 +617,7 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   expectedTarget?: number;
   observedTarget?: unknown;
   observedSource?: string;
-  deviceManager: DeviceManager;
+  deviceManager: DeviceTransport;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
   log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
@@ -686,7 +686,7 @@ export async function logHomeyDeviceForDebugFromApp(params: {
 }): Promise<boolean> {
   const { app, deviceId } = params;
   const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceManager;
+    deviceManager?: DeviceTransport;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
     powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };
@@ -739,7 +739,7 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
     observedSource,
   } = params;
   const runtimeApp = app as Homey.App & {
-    deviceManager?: DeviceManager;
+    deviceManager?: DeviceTransport;
     planService?: { getLatestPlanSnapshot?: () => DevicePlan | null };
     powerCalibrationStore?: { getSnapshot?: () => PowerCalibrationSnapshot };
   };

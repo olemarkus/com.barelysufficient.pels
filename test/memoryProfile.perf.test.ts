@@ -74,7 +74,7 @@ describe('memory profile', () => {
     profileRequire('device/load', '../lib/device/load', baseline);
     profileRequire('power/capacityGuard', '../lib/power/capacityGuard', baseline);
     profileRequire('power/tracker', '../lib/power/tracker', baseline);
-    profileRequire('device/manager', '../lib/device/manager', baseline);
+    profileRequire('device/deviceTransport', '../lib/device/deviceTransport', baseline);
 
     // App-level
     profileRequire('app/appResourceWarningHelpers', '../lib/diagnostics/resourceWarnings', baseline);

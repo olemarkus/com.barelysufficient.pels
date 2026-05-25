@@ -1,4 +1,4 @@
-import type { DeviceManagerParseProviders, ParseDevicePurpose } from './managerParseDevice';
+import type { DeviceTransportParseProviders, ParseDevicePurpose } from './managerParseDevice';
 
 export type ManagedFilterDecision = {
   hasOracle: boolean;
@@ -7,7 +7,7 @@ export type ManagedFilterDecision = {
 };
 
 export function resolveManagedFilterDecision(params: {
-  providers: DeviceManagerParseProviders;
+  providers: DeviceTransportParseProviders;
   deviceId: string;
 }): ManagedFilterDecision {
   const { providers, deviceId } = params;

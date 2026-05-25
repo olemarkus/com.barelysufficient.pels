@@ -17,7 +17,7 @@ type PendingBinarySettleWindow = {
     timer: ReturnType<typeof setTimeout>;
 };
 
-export type DeviceManagerBinarySettleState = {
+export type DeviceTransportBinarySettleState = {
     pendingBinarySettleWindows: Map<string, PendingBinarySettleWindow>;
 };
 
@@ -34,14 +34,14 @@ type BinarySettleDeps = {
     emitPlanReconcile: (event: PlanRealtimeUpdateEvent) => void;
 };
 
-export function createBinarySettleState(): DeviceManagerBinarySettleState {
+export function createBinarySettleState(): DeviceTransportBinarySettleState {
     return {
         pendingBinarySettleWindows: new Map(),
     };
 }
 
 export function hasPendingBinarySettleWindow(
-    state: DeviceManagerBinarySettleState,
+    state: DeviceTransportBinarySettleState,
     deviceId: string,
     capabilityId: string,
 ): boolean {
@@ -49,7 +49,7 @@ export function hasPendingBinarySettleWindow(
 }
 
 export function clearPendingBinarySettleWindow(
-    state: DeviceManagerBinarySettleState,
+    state: DeviceTransportBinarySettleState,
     deviceId: string,
     capabilityId: string,
 ): void {
@@ -60,7 +60,7 @@ export function clearPendingBinarySettleWindow(
     state.pendingBinarySettleWindows.delete(key);
 }
 
-export function clearAllPendingBinarySettleWindows(state: DeviceManagerBinarySettleState): void {
+export function clearAllPendingBinarySettleWindows(state: DeviceTransportBinarySettleState): void {
     for (const pending of state.pendingBinarySettleWindows.values()) {
         clearTimeout(pending.timer);
     }
@@ -68,7 +68,7 @@ export function clearAllPendingBinarySettleWindows(state: DeviceManagerBinarySet
 }
 
 export function startPendingBinarySettleWindow(params: {
-    state: DeviceManagerBinarySettleState;
+    state: DeviceTransportBinarySettleState;
     deps: BinarySettleDeps;
     deviceId: string;
     capabilityId: string;
@@ -102,7 +102,7 @@ export function startPendingBinarySettleWindow(params: {
 }
 
 export function notePendingBinarySettleObservation(params: {
-    state: DeviceManagerBinarySettleState;
+    state: DeviceTransportBinarySettleState;
     deps: BinarySettleDeps;
     deviceId: string;
     capabilityId: string;
@@ -162,7 +162,7 @@ export function notePendingBinarySettleObservation(params: {
 }
 
 function finalizePendingBinarySettleWindow(
-    state: DeviceManagerBinarySettleState,
+    state: DeviceTransportBinarySettleState,
     key: string,
     deps: BinarySettleDeps,
 ): void {

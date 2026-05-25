@@ -2,10 +2,10 @@
 import Homey from 'homey';
 import CapacityGuard from './lib/power/capacityGuard';
 import {
-  DeviceManager,
+  DeviceTransport,
   PLAN_LIVE_STATE_OBSERVED_EVENT,
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-} from './lib/device/manager';
+} from './lib/device/deviceTransport';
 import { PlanEngine } from './lib/plan/planEngine';
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
@@ -165,7 +165,7 @@ import {
   EV_SOC_CAPABILITY_ID,
   isStateOfChargeCapabilityId,
   updateStateOfChargeObservationFreshness,
-} from './lib/device/stateOfCharge';
+} from './lib/device/transport/stateOfCharge';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
 const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
 // Let non-urgent power deltas settle before rebuilding the full plan again.
@@ -300,7 +300,7 @@ class PelsApp extends Homey.App {
   private deviceDiagnosticsService!: DeviceDiagnosticsService;
   private priceCoordinator!: PriceCoordinator;
   private priceFlowTagPublisher?: PriceFlowTagPublisher;
-  private deviceManager!: DeviceManager;
+  private deviceManager!: DeviceTransport;
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   private defaultComputeDynamicSoftLimit?: () => number;
@@ -879,7 +879,7 @@ class PelsApp extends Homey.App {
   private async initDeviceManager(): Promise<void> {
     const structuredLogger = this.structuredLogger ?? this.installStructuredLogger();
     const structuredLog = structuredLogger.child({ component: 'devices' });
-    this.deviceManager = new DeviceManager(this, {
+    this.deviceManager = new DeviceTransport(this, {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
       error: this.error.bind(this),

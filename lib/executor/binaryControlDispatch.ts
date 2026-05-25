@@ -18,10 +18,11 @@ import { getLogger } from '../logging/logger';
 /**
  * Transport seam for binary-control dispatch. Executor talks to this
  * (an interface implementing the two writeable seams) rather than
- * importing `DeviceManager` directly. Today the same concrete object
- * services both reads (`DeviceObservation`) and writes — once PR #2/PR
- * #3 split the class, this shape stays put and only the implementer
- * changes.
+ * importing `DeviceTransport` directly. Today the same concrete object
+ * services both reads (`DeviceObservation`) and writes — PRs #2 and #3
+ * of the observer/transport split established this shape; only the
+ * implementer changed when `DeviceManager` was renamed to
+ * `DeviceTransport` in PR #3.
  */
 export type BinaryControlTransport = {
   observation: DeviceObservation;
@@ -288,5 +289,5 @@ function buildBinaryControlFailureLogMessage(params: {
     : `${desired ? 'turn on' : 'turn off'}`;
   return flowBackedControl
     ? `Failed to request ${verb} ${name} via flow`
-    : `Failed to ${verb} ${name} via DeviceManager`;
+    : `Failed to ${verb} ${name} via DeviceTransport`;
 }

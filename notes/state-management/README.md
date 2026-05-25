@@ -89,12 +89,12 @@ Post-release executor boundary rollout:
 - `lib/plan` owns desired state, planner reasons, and admission decisions. A finalized plan should
   say what state PELS wants for each device; it should not encode whether the command is native,
   flow-backed, or otherwise transported.
-- `DeviceManager` owns observed current state and device-specific actuation transport. Native
+- `DeviceTransport` owns observed current state and device-specific actuation transport. Native
   stepped-load capabilities, stepped-load flow requests, synthetic capability reporting, and Homey
   write details belong behind that boundary. Flow-backed binary control is still transitional in
   plan/executor code until that boundary moves separately.
 - `lib/executor` owns desired-state execution: compare observed current state with desired state,
-  issue the needed request through `DeviceManager`, and handle pending, retry, wait, skip, and
+  issue the needed request through `DeviceTransport`, and handle pending, retry, wait, skip, and
   materialization behavior.
 - `ExecutablePlan` is the executor-facing intent set. It contains `ExecutableDeviceIntent`
   entries, not broad `DevicePlanDevice` wrappers and not current observed state.
@@ -102,7 +102,7 @@ Post-release executor boundary rollout:
   a stepped `set_step` intent should carry a concrete requested step or be represented as
   non-executable / blocked before it reaches drift or dispatch code.
 - `ExecutableObservedState` is the executor-facing observed-state set. It is built from
-  `DeviceManager` snapshots, not planner-carried current fields.
+  `DeviceTransport` snapshots, not planner-carried current fields.
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.

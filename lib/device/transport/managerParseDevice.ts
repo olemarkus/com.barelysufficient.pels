@@ -39,7 +39,7 @@ import {
     resolveLastFreshDataMs,
     resolveBinaryControlObservation,
 } from './managerParseSnapshot';
-import { resolveStateOfChargeSnapshot } from '../stateOfCharge';
+import { resolveStateOfChargeSnapshot } from './stateOfCharge';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
@@ -54,7 +54,7 @@ type ParsedDeviceSettings = Pick<
     'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
 >;
 
-export type DeviceManagerParseProviders = {
+export type DeviceTransportParseProviders = {
     getPriority?: (deviceId: string) => number;
     getControllable?: (deviceId: string) => boolean;
     getManaged?: (deviceId: string) => boolean;
@@ -68,10 +68,10 @@ export type DeviceManagerParseProviders = {
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
-export type DeviceManagerParseDeps = {
+export type DeviceTransportParseDeps = {
     logger: Logger;
     debugStructured?: StructuredDebugEmitter;
-    providers: DeviceManagerParseProviders;
+    providers: DeviceTransportParseProviders;
     powerState: Required<PowerEstimateState>;
     measuredPowerResolver: DeviceMeasuredPowerResolver;
     getCapabilityObj: (device: HomeyDeviceLike) => DeviceCapabilityMap;
@@ -89,7 +89,7 @@ export function parseDeviceList(params: {
     list: HomeyDeviceLike[];
     livePowerWByDeviceId?: LiveDevicePowerWatts;
     previousSnapshotById?: ReadonlyMap<string, TargetDeviceSnapshot>;
-    deps: DeviceManagerParseDeps;
+    deps: DeviceTransportParseDeps;
     purpose?: ParseDevicePurpose;
 }): TargetDeviceSnapshot[] {
     const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps, purpose = 'runtime' } = params;
@@ -111,7 +111,7 @@ export function parseDevice(params: {
     now: number;
     livePowerWByDeviceId?: LiveDevicePowerWatts;
     previousSnapshot?: TargetDeviceSnapshot;
-    deps: DeviceManagerParseDeps;
+    deps: DeviceTransportParseDeps;
     purpose?: ParseDevicePurpose;
 }): TargetDeviceSnapshot | null {
     const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps, purpose = 'runtime' } = params;
@@ -303,7 +303,7 @@ function buildParsedDeviceSnapshot(params: {
     device: HomeyDeviceLike;
     deviceId: string;
     deviceClassKey: string;
-    providers: DeviceManagerParseProviders;
+    providers: DeviceTransportParseProviders;
     targets: TargetDeviceSnapshot['targets'];
     targetCaps: readonly string[];
     controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
@@ -472,7 +472,7 @@ function resolveDevicePowerState(params: {
 
 function resolveParsedDeviceSettings(
     deviceId: string,
-    providers: DeviceManagerParseProviders,
+    providers: DeviceTransportParseProviders,
 ): ParsedDeviceSettings {
     return {
         communicationModel: providers.getCommunicationModel?.(deviceId) ?? 'local',

@@ -1165,7 +1165,7 @@ describe('plan binary control helpers', () => {
     })).resolves.toBe(false);
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_failed',
-      msg: 'Failed to turn on Socket via DeviceManager',
+      msg: 'Failed to turn on Socket via DeviceTransport',
     }));
   });
 
@@ -1246,7 +1246,7 @@ describe('plan binary control helpers', () => {
     expect(state.pendingBinaryCommands.ev1).toBeUndefined();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_failed',
-      msg: 'Failed to resume EV charging for EV via DeviceManager',
+      msg: 'Failed to resume EV charging for EV via DeviceTransport',
     }));
   });
 });

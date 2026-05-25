@@ -136,7 +136,7 @@ npm run ci:checks           # Full static analysis suite (all lints + typecheck 
 1. **Measurement** — Power samples come from one of two modes: with `power_source = homey_energy`, the app polls Homey Energy every 10 seconds; with `power_source = flow`, samples are driven by incoming Flow events and may arrive at irregular intervals.
 2. **Planning** — `PlanEngine` reads power, device states, and (optionally) prices → outputs a `DevicePlan` (shed / restore / keep per device).
 3. **Execution** — `PlanExecutor` applies targets (setTemperature, on/off, stepped dimming).
-4. **Reconciliation** — `DeviceManager` syncs Homey state back, detects external changes.
+4. **Reconciliation** — `DeviceTransport` (`lib/device/deviceTransport.ts`) syncs Homey state back, detects external changes.
 5. **Adjustment** — Next cycle adapts to actual measured results.
 
 Key timing:
