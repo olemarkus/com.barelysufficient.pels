@@ -79,11 +79,38 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   satisfied: 'Satisfied',
 };
 
+// Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
+// `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
+// `alert`). Typing the list-status variant map and the pending-hero tone
+// resolver against the same union keeps the two Smart-task surfaces
+// (list card / plan-detail pending hero) on a single tone vocabulary so a
+// future tone tweak can't drift into one surface only.
+export type SmartTaskChipTone = 'alert' | 'info' | 'muted' | 'ok' | 'warn';
+
+// Pending-state chip tone for the "Building plan…" pill, shared between the
+// Smart-tasks list card and the plan-detail pending hero. Picked `info`
+// (low-key blue, "something's happening") over `muted` so the state the user
+// most wants to spot on the list isn't styled as "ignore me". Per
+// `feedback_layering_resolution_in_producer.md`, this is a flat producer-side
+// resolver — consumers never branch on the state, they just call the helper.
+export const resolveBuildingPlanChipTone = (): SmartTaskChipTone => 'info';
+
+// Paused-state chip tone for "Paused — unplugged" — EV plugged-out / discharging
+// session. `warn` (amber) signals the user must act (plug back in) without
+// the alarm of `alert` (red, reserved for cannot-finish). Same producer-side
+// resolution pattern as `resolveBuildingPlanChipTone` so both pending states
+// share one tone vocabulary across the list and the pending hero.
+export const resolvePausedUnpluggedChipTone = (): SmartTaskChipTone => 'warn';
+
 // CSS modifier class suffix for each list status id (appended to `plan-chip--`).
-export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, string> = {
-  building_plan: 'muted',
+// `building_plan` / `paused_unplugged` delegate to the shared pending-tone
+// resolvers above so the list card and the plan-detail pending hero can never
+// disagree on tone — the pending hero's `pendingChipTone` reads the same
+// helpers.
+export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, SmartTaskChipTone> = {
+  building_plan: resolveBuildingPlanChipTone(),
   queued: 'muted',
-  paused_unplugged: 'warn',
+  paused_unplugged: resolvePausedUnpluggedChipTone(),
   on_track: 'ok',
   at_risk: 'warn',
   cannot_meet: 'alert',

@@ -4,8 +4,11 @@ import {
   formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
   formatSmartTaskListConfidenceChipLabel,
+  resolveBuildingPlanChipTone,
+  resolvePausedUnpluggedChipTone,
   resolveSmartTaskLearning,
   SMART_TASK_HISTORY_EYEBROW,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
@@ -146,6 +149,30 @@ describe('smart-task history copy constants', () => {
     expect(SMART_TASK_PAST_EMPTY_COPY).toBe(
       "No completed tasks yet — they'll appear here after a smart task finishes.",
     );
+  });
+});
+
+describe('pending-state chip tone (Building plan… / Paused — unplugged)', () => {
+  // The Smart-tasks list card (`DeadlinesList.tsx`) and the plan-detail
+  // pending hero (`DeadlinePlan.tsx` via `pendingChipTone` in
+  // `deadlinePlanPending.ts`) must render the pending pill in the same tone.
+  // Both call into `resolveBuildingPlanChipTone` / `resolvePausedUnpluggedChipTone`;
+  // the list does so transitively via `SMART_TASK_LIST_STATUS_CHIP_VARIANT`.
+  // The settings-ui sibling test exercises the consumer wiring; this test
+  // pins the producer contract.
+  it('returns the same tone for the list variant map and the shared helper', () => {
+    expect(SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan)
+      .toBe(resolveBuildingPlanChipTone());
+    expect(SMART_TASK_LIST_STATUS_CHIP_VARIANT.paused_unplugged)
+      .toBe(resolvePausedUnpluggedChipTone());
+  });
+
+  it('resolves Building plan… to the low-key informative tone, not the easy-to-miss muted tone', () => {
+    expect(resolveBuildingPlanChipTone()).toBe('info');
+  });
+
+  it('resolves Paused — unplugged to the call-to-action warn tone', () => {
+    expect(resolvePausedUnpluggedChipTone()).toBe('warn');
   });
 });
 

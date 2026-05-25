@@ -15,7 +15,7 @@ const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   // exercise the render branch.
   labels: {} as DeadlinePlanPendingPayload['labels'],
   hero: {
-    chips: [{ text: 'Building plan…', tone: 'muted' }],
+    chips: [{ text: 'Building plan…', tone: 'info' }],
     sectionLabel: 'Smart task',
     headline: 'Waiting for prices',
     headlineReason: null,
