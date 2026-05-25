@@ -202,11 +202,11 @@ const getPlannedBucketGeometry = async (page: Page, bucketIndex: number): Promis
 
     const styles = getComputedStyle(chartEl);
     const uncontrolledColor = normalizeColor(
-      styles.getPropertyValue('--day-view-color-background-usage').trim(),
+      styles.getPropertyValue('--pels-chart-background').trim(),
       '#3AA9FF',
     );
     const controlledColor = normalizeColor(
-      styles.getPropertyValue('--day-view-color-managed-usage').trim(),
+      styles.getPropertyValue('--pels-chart-managed').trim(),
       '#F2A13E',
     );
     const maxChartY = svg.getBoundingClientRect().height - 40;

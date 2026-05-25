@@ -2775,29 +2775,38 @@ consolidation + a11y polish (8 P2)`.*
       `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder),
       `packages/shared-domain/src/deferredPlanHistory.ts` (label helper),
       `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` (view test).
-- [ ] Complete the `--day-view-color-*` → `--pels-chart-*` migration on Budget surfaces.
-      The shimmed token pair (`--day-view-color-background-usage` /
-      `--day-view-color-managed-usage`) is still bound to `--color-role-info` /
-      `--color-role-warn` at `packages/settings-ui/public/style.css:4490-4493`, with four
-      remaining consumers (`style.css:4615, 4620, 4728, 4732`) reading the shim with
-      `--color-base-*-default` fallbacks. The Playwright e2e
-      `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts:205,209` also asserts
-      against the shim names. Two budget chart legend swatches at lines 4188 and 4192 are
-      currently on the shim and visually need to match the actual chart cells they label.
-      An ad-hoc patch sat as WIP on the main worktree (rebind only the two legend swatches
-      directly in the generated `settings/style.css`) — rejected because (a) editing the
-      generated bundle is reverted on next `npm run build:settings`, and (b) two-of-six
-      rebound is half a migration that risks legend/chart-cell divergence on the
-      unmigrated surfaces.
-      Minimum acceptable completion: rebind all 6 consumers in
-      `packages/settings-ui/public/style.css` from `--day-view-color-*` to
-      `--pels-chart-*` tokens, remove the shim definitions, update
-      `daily-budget-rollover.spec.ts` to read the new names, regen `settings/style.css`
-      via `npm run build:settings`, confirm the Budget legend and rendered chart cells
-      bind to the same hex at 320 / 480 px.
-      Why P2: pure visual-token cleanup; current rendering is coherent (legends and cells
-      both read the shim), so user-visible incorrectness does not apply yet. Required
-      before the chart-token P0's "shims removed after one release" promise can land.
+- [x] Complete the `--day-view-color-*` → `--pels-chart-*` migration on Budget surfaces.
+      Migration manifest (2026-05-25):
+        - `.budget-comparison__legend-swatch--background` (`style.css:5229`):
+          `--day-view-color-background-usage` → `--pels-chart-background`.
+        - `.budget-comparison__legend-swatch--managed` (`style.css:5233`):
+          `--day-view-color-managed-usage` → `--pels-chart-managed`.
+        - `.day-view-bar__segment--uncontrolled, .daily-budget-bar__segment--uncontrolled`
+          (`style.css:5883`): `--day-view-color-background-usage` → `--pels-chart-background`
+          (fallback `--color-base-info-default` preserved).
+        - `.day-view-bar__segment--controlled, .daily-budget-bar__segment--controlled`
+          (`style.css:5888`): `--day-view-color-managed-usage` → `--pels-chart-managed`
+          (fallback `--color-base-warning-default` preserved).
+        - `.day-view-legend__swatch--uncontrolled` (`style.css:5996`):
+          `--day-view-color-background-usage` → `--pels-chart-background`
+          (fallback `--color-base-info-default` preserved).
+        - `.day-view-legend__swatch--controlled` (`style.css:6000`):
+          `--day-view-color-managed-usage` → `--pels-chart-managed`
+          (fallback `--color-base-warning-default` preserved).
+        - Shim definitions deleted from `#budget-panel` block (former
+          `style.css:5758-5761`): `--day-view-color-background-usage`,
+          `--day-view-color-managed-usage`, and the unused dependent
+          `--day-view-color-actual-background-usage` /
+          `--day-view-color-actual-managed-usage` (zero consumers).
+        - `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts:205,209` now
+          probes `--pels-chart-background` / `--pels-chart-managed` (hex fallbacks
+          unchanged; canonical tokens resolve through the same
+          `--color-role-info` / `--color-role-warn` chain).
+        - Regenerated `settings/style.css` via `npm run build:settings`; source and
+          generated bundle confirmed byte-identical.
+      Visual: no change — canonical `--pels-chart-background` / `--pels-chart-managed`
+      resolve to the same `--color-role-info` / `--color-role-warn` values the shim was
+      bound to. Unblocks the chart-token P0 "shims removed after one release" promise.
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts`,
       `settings/style.css` (regen).
