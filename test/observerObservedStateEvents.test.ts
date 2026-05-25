@@ -4,12 +4,45 @@ import {
   ObservedStateEmitter,
   PLAN_RECONCILE_OBSERVED_EVENT,
   type ObservedStateChangedEvent,
+  type ObservedStateEmitterDispatcher,
   type PlanReconcileObservedEvent,
 } from '../lib/observer/observedStateEvents';
 import {
   PLAN_LIVE_STATE_OBSERVED_EVENT,
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
+  type TransportObservedStateDispatcher,
 } from '../lib/device/deviceTransport';
+
+// ---------- compile-time shape-parity guard ----------
+// Observer's `ObservedStateEmitterDispatcher` and transport's
+// `TransportObservedStateDispatcher` are structurally mirrored by hand
+// because the cruiser correctly blocks both directions of import between
+// `lib/device/` and `lib/observer/`. The wiring at `app.ts` passes the
+// observer dispatcher into transport's slot; TypeScript bivariance bridges
+// the two — which means a future field added to one side without the other
+// will silently typecheck at the binding site but route the wrong shape at
+// runtime. The asserted-true assignments below force a *strict* bidirectional
+// `extends` check; if shapes diverge, this file will fail compilation BEFORE
+// it ever runs as a test. Added per the TODO entry produced by the
+// post-merge cumulative review of the observer/transport split train.
+type _MutuallyAssignable<A, B> = [
+  A extends B ? true : false,
+  B extends A ? true : false,
+];
+
+const _observedStateChangedEventParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['observedStateChanged']>[0],
+  Parameters<TransportObservedStateDispatcher['observedStateChanged']>[0]
+> = [true, true];
+
+const _planReconcileEventParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['planReconcile']>[0],
+  Parameters<TransportObservedStateDispatcher['planReconcile']>[0]
+> = [true, true];
+
+// Reference the values so the compiler doesn't strip them as unused.
+void _observedStateChangedEventParity;
+void _planReconcileEventParity;
 
 describe('ObservedStateEmitter', () => {
   it('preserves the legacy event-name strings for operator/log compatibility', () => {
