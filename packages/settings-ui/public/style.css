@@ -2299,6 +2299,19 @@ md-filled-button.is-busy {
   color: var(--pels-text-primary);
 }
 
+/* Pending-hero "why is this still building?" body copy (e.g. "PELS needs a
+ * current state of charge…", "Learning energy use — needs power readings from
+ * this device."). Sits in the metaLine slot but, unlike the ready hero's
+ * recap meta lines, this is the most actionable string on the surface — it
+ * tells the user exactly which lever to pull. Bumped to `--pels-text-primary`
+ * so it reads at default body weight instead of being demoted to the muted
+ * secondary tone. Typography (size + line-height) inherits from the base
+ * `.plan-hero__subline` rule so the cadence with the device/target subline
+ * directly above it stays consistent. */
+.plan-hero__subline--action {
+  color: var(--pels-text-primary);
+}
+
 /* Smart-task detail hero density. The cannot-finish hero stacks a target/why
  * subline above a group of muted meta lines (`Needs … · kW · hours`, the
  * delivered-so-far line, and the cost line). At the section's 4 px grid gap
