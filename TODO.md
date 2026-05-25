@@ -2952,6 +2952,26 @@ should not be folded into the same PR.
 
 ## P3 Future and Exploratory Work
 
+- [ ] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
+      The first `setup/` chip (PR #1144,
+      `setup/schedulerTelemetryObserver.ts`) introduces `setup/` at repo
+      root as the honest home for app-wiring classes (factories,
+      observers, registrars). Dependency-cruiser enforces the one-way
+      direction (`no-lib-to-setup`), but the "Repository Layout" and
+      "Architecture" sections in `CLAUDE.md` still describe `lib/app/`
+      as the wiring layer. The `setup/` convention should be:
+      - One purpose per file, named for the concrete wiring it does
+        (no grab-bag `setupHelpers.ts`).
+      - Each file exposes a class or a single `register*` / `init*`
+        function — no bags of utility functions.
+      - Files greater than ~150 LOC are fat-fingered and should split.
+      - `setup/` may import `lib/**` and `packages/**`; never the
+        reverse.
+      As remaining wiring migrates out of `lib/app/`, that directory
+      should sunset; `lib/app/appContext.ts` (type definition) probably
+      stays.
+      Files: `CLAUDE.md`, `docs/architecture.md`.
+
 - [ ] Drop the remaining `lib/price/priceService.ts` max-lines override.
       After the Norgespris usage helpers (`getCurrentMonthUsageKwh`,
       `getHourlyUsageEstimateKwh`) moved to `lib/price/priceServiceNorgespris.ts`,

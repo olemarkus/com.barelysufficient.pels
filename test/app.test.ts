@@ -310,8 +310,8 @@ describe('MyApp initialization', () => {
 
     const previous = { kind: 'flow', reason: 'flow_card:first' };
     const next = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
-    (app as any).onPlanRebuildPendingIntentReplaced(previous, next);
+    (app as any).schedulerTelemetry.onPendingIntentReplaced(previous, next);
+    (app as any).schedulerTelemetry.onPendingIntentReplaced(previous, next);
 
     expect(child).toHaveBeenCalledWith({ component: 'plan' }, { level: 'debug' });
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
@@ -333,11 +333,11 @@ describe('MyApp initialization', () => {
     (app as any).structuredLogger = { child };
     (app as any).debugLoggingTopics = new Set(['plan']);
 
-    (app as any).onPlanRebuildPendingIntentReplaced(
+    (app as any).schedulerTelemetry.onPendingIntentReplaced(
       { kind: 'flow', reason: 'flow_card:first' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
-    (app as any).onPlanRebuildPendingIntentReplaced(
+    (app as any).schedulerTelemetry.onPendingIntentReplaced(
       { kind: 'flow', reason: 'flow_card:second' },
       { kind: 'hardCap', reason: 'shortfall' },
     );
@@ -363,8 +363,8 @@ describe('MyApp initialization', () => {
 
     const dropped = { kind: 'flow', reason: 'flow_card:first' };
     const kept = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).onPlanRebuildIntentDropped(dropped, kept);
-    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
+    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(1);
     expect(childLogger.debug).toHaveBeenCalledWith({
@@ -381,7 +381,7 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const childLogger = { debug: vi.fn() };
     const child = vi.fn().mockReturnValue(childLogger);
-    const map = (app as any).planRebuildSchedulerDebugLastEmittedAtMsByKey as Map<string, number>;
+    const map = (app as any).schedulerTelemetry.lastEmittedAtMsByKey as Map<string, number>;
 
     vi.spyOn(app as any, 'getPlanRebuildNowMs')
       .mockReturnValueOnce(0)
@@ -391,10 +391,10 @@ describe('MyApp initialization', () => {
 
     const dropped = { kind: 'flow', reason: 'flow_card:first' };
     const kept = { kind: 'hardCap', reason: 'shortfall' };
-    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
     expect(map.size).toBe(1);
 
-    (app as any).onPlanRebuildIntentDropped(dropped, kept);
+    (app as any).schedulerTelemetry.onIntentDropped(dropped, kept);
 
     expect(childLogger.debug).toHaveBeenCalledTimes(2);
     expect(map.size).toBe(1);
