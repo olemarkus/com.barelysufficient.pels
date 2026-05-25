@@ -2224,23 +2224,17 @@ consolidation + a11y polish (8 P2)`.*
       deferred — no consumer pressure yet. Source: PR #2 secondary cleanup
       + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24. Done in
       PR #3.
-- [ ] Add a compile-time shape-parity guard between observer-side and
-      transport-side dispatcher event types from PR #5 (#1158). The two
-      pairs — `ObservedStateChangedEvent` (`lib/observer/observedStateEvents.ts:43`)
-      vs `ObservedDeviceStateEvent` (transport-side), and
-      `PlanReconcileObservedEvent` (`lib/observer/observedStateEvents.ts:54`)
-      vs `PlanRealtimeUpdateEvent` (`lib/device/transport/managerRealtimeHandlers.ts:11-28`)
-      — are structurally mirrored by hand because the cruiser correctly
-      blocks both directions of import. A future field added to one side
-      and forgotten on the other would silently slip through TypeScript
-      bivariance at the dispatcher binding (`app.ts:1009`). A one-line
-      `satisfies` cross-cast in a test file (test code is outside the
-      cruiser rules), or a compile-time type-equality assertion, would
-      surface the drift at build time. The matching string-value pin for
-      the event constants already exists at
-      `test/observerObservedStateEvents.test.ts`; the type-parity guard
-      is the missing complement. Source: `pels-layering-guardian` P2-1 on
-      PR #1158, 2026-05-25.
+- [x] Add a compile-time shape-parity guard between observer-side and
+      transport-side dispatcher event types from PR #5 (#1158). Done:
+      bidirectional `extends` checks on
+      `Parameters<...['observedStateChanged']>[0]` and
+      `Parameters<...['planReconcile']>[0]` landed in
+      `test/observerObservedStateEvents.test.ts`. A future field added to
+      one dispatcher type without the other now fails compilation before
+      it ever runs as a test. Same PR also added `binarySettle` timeout
+      coverage (window finalisation, abandon-grace, drift-vs-match-vs-untracked
+      branches, observation-cancels-timer) per the adversarial-review
+      P2 finding from the cumulative review.
 - [ ] Sweep file renames + logger tags + structured-event identifiers that still
       carry the `manager`/`DeviceManager`/`device_manager` name post-rename
       (PR #3 of the observer/transport split, #1140). Three buckets, each
