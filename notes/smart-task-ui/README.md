@@ -73,37 +73,11 @@ copy.
 
 ## Personas
 
-Six personas worth designing for, ranked by who the surface serves
-today (best to worst):
-
-1. **Set-and-forget heat-tank owner** — monthly visitor. Sees green
-   chips, closes the app. Served well by today's design.
-2. **First-time user** — opens after firing a Flow card. Lands on the
-   `Building plan…` pending hero (the strongest copy in the feature
-   today, particularly `pendingHeroByReason` external-flow vs managed-
-   prices distinction). Served well.
-3. **Curious tinkerer** — opens while actively configuring. Hovers the
-   per-hour tooltips on the chart, expands the inputs card. The
-   `Estimating` chip + `Energy per unit 0.59 kWh/°C` row gives them
-   enough to debug. Served adequately.
-4. **Skeptical EV commuter** — daily, after charging. Wants `did it
-   pick the cheap hours?` + `how much did it cost?`. Today the chart
-   answers half (price bars are tone-coded) but no cost number, no
-   "picked N of M cheapest" framing.
-5. **Recovering-from-mistake user** — opens after a miss-streak run,
-   planning the next deadline. List shows the streak; detail shows
-   nothing actionable. No CTA to lower the daily budget or review the
-   device settings that affected the missed run.
-6. **Notification-driven panic visitor** — pushed via a "Smart task
-   missed" notification, possibly mid-shower with no hot water. Most
-   emotionally invested at point of contact. Today the surface they
-   land on tells them the date, the chip, the device, and (if revisions
-   were captured) two plan bars to compare. *Nothing about why.* The
-   reviewer-question framing "does this page earn its visit?" applies
-   most sharply here.
-
-The asymmetry in service quality is striking. Personas 5 and 6 are the
-*highest emotional intensity* visitors and the *least served*.
+The six personas this review originally enumerated have been promoted
+to a PELS-wide rubric — see [`notes/personas.md`](../personas.md). The
+asymmetric-treatment thesis below (personas 5 and 6 are the highest-
+emotional-intensity, least-served visitors) is the through-line that
+the rest of this review builds on.
 
 ## What the data already supports
 
