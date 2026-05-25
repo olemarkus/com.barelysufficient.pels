@@ -3043,7 +3043,7 @@ should not be folded into the same PR.
       "App-wiring code" row in the "Where new code goes" table. The
       Homey-SDK adapter row now points at `setup/` for new wiring.
 
-- [ ] Drop the remaining `lib/price/priceService.ts` max-lines override.
+- [x] Drop the remaining `lib/price/priceService.ts` max-lines override.
       After the Norgespris usage helpers (`getCurrentMonthUsageKwh`,
       `getHourlyUsageEstimateKwh`) moved to `lib/price/priceServiceNorgespris.ts`,
       the orchestrator class sits at 509 effective LOC — 9 over the 500-line
@@ -3052,6 +3052,13 @@ should not be folded into the same PR.
       push it under the default and let the per-file `max-lines: 510`
       override go away.
       Files: `lib/price/priceService.ts`, `eslint.config.mjs`.
+      **Done (2026-05-25):** `formatFlowPriceInfo` and `formatNorwayPriceInfo`
+      moved into `lib/price/priceInfoFormatters.ts` (24 LOC); the flow
+      formatter now takes the unit label as a parameter so the new module
+      stays a pure helper. `priceService.ts` dropped from 550 → 529 raw LOC
+      (well under the 500-line effective default after blank/comment lines
+      are skipped) and the per-file `max-lines: 510` override block in
+      `eslint.config.mjs` has been removed.
 
 - [x] Clean up low-severity v2.9 review-note drift. The implementation is
       correct, but contributor notes point at stale files or examples:

@@ -423,17 +423,6 @@ export default tseslint.config(
     },
   },
   {
-    // PriceService coordinates spot/grid refresh, storage, and combined-price publication
-    // across the Homey/runtime boundary; the Norgespris usage helpers were extracted into
-    // `priceServiceNorgespris.ts`, leaving the orchestrator at 509 effective LOC. Target:
-    // <=500 once the price-info formatters (`formatFlowPriceInfo`, `formatNorwayPriceInfo`)
-    // move into a sibling module too.
-    files: ['lib/price/priceService.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 510, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // deferredPlanHistory aggregates the smart-task history formatters (postmortem, missed
     // reason, observed coverage, overshoot line, chart-data resolver). v2.7.2 PR 6 added the
     // overshoot helper + Usage-link label + miss-streak resolver; v2.7.3 stall promotion
