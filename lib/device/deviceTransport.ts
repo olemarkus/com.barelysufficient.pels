@@ -216,6 +216,20 @@ export type DeviceTransportBinarySettleOps = {
     clearAll(state: BinarySettleState): void;
 };
 
+/**
+ * Structural mirror of observer's `ObservedStateEmitterDispatcher` from
+ * `lib/observer/observedStateEvents.ts`. Defined locally so transport does
+ * not have to reference observer's type directly — the cruiser still blocks
+ * any `lib/device/` → `lib/observer/` import (`no-device-to-peer-except-power`).
+ *
+ * See PR #5 of the observer/transport split
+ * (`notes/state-management/observer-transport-split.md`).
+ */
+export type TransportObservedStateDispatcher = {
+    observedStateChanged: (event: ObservedDeviceStateEvent) => void;
+    planReconcile: (event: PlanRealtimeUpdateEvent) => void;
+};
+
 type DeviceTransportOptions = {
     debugStructured?: StructuredDebugEmitter;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
@@ -251,6 +265,23 @@ type DeviceTransportOptions = {
      * See notes/state-management/observer-transport-split.md (PR #4).
      */
     pendingPredicate?: (deviceId: string, capabilityId: string) => boolean;
+    /**
+     * Observer-owned dispatcher consulted by transport after translation of
+     * each realtime event. Wiring (`lib/app/`) builds the dispatcher against
+     * `lib/observer/observedStateEvents.ts`'s `ObservedStateEmitter`. When
+     * supplied, observer is the single source of truth for the post-translation
+     * fan-out and transport does not emit through its own EventEmitter.
+     *
+     * When omitted (legacy direct-`DeviceTransport` tests), transport falls
+     * back to emitting `PLAN_LIVE_STATE_OBSERVED_EVENT` and
+     * `PLAN_RECONCILE_REALTIME_UPDATE_EVENT` through its own EventEmitter so
+     * existing `deviceManager.on(...)` test subscriptions keep working with
+     * the same event-name strings.
+     *
+     * See PR #5 of the observer/transport split
+     * (`notes/state-management/observer-transport-split.md`).
+     */
+    observedStateDispatcher?: TransportObservedStateDispatcher;
 };
 
 export class DeviceTransport extends EventEmitter implements DeviceObservation {
@@ -488,18 +519,18 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
             changes: [change],
         });
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+        this.dispatchObservedStateChanged({
             source: 'realtime_capability',
             deviceId,
             ...cursor,
             capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        } satisfies ObservedDeviceStateEvent);
-        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+        });
+        this.dispatchPlanReconcile({
             deviceId,
             ...cursor,
             name: deviceName,
             changes: [change],
-        } satisfies PlanRealtimeUpdateEvent);
+        });
     }
 
     private handleFreshnessOnlyCapabilityUpdate(
@@ -537,7 +568,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             this.onSnapshotMutated?.(snapshot, Date.now());
         }
         const cursor = this.nextObservationCursor(deviceId);
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+        this.dispatchObservedStateChanged({
             source: 'realtime_capability',
             deviceId,
             ...cursor,
@@ -548,7 +579,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                     snapshot?.measuredPowerKw,
                     MIN_SIGNIFICANT_POWER_W,
                 ),
-        } satisfies ObservedDeviceStateEvent);
+        });
         if (reconcileChange && snapshot) {
             (this.logger.structuredLog ?? moduleLogger).info({
                 event: 'realtime_capability_drift',
@@ -556,12 +587,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 capabilityId: reconcileChange.capabilityId,
                 changes: [reconcileChange],
             });
-            this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+            this.dispatchPlanReconcile({
                 deviceId,
                 ...cursor,
                 name: snapshot.name,
                 changes: [reconcileChange],
-            } satisfies PlanRealtimeUpdateEvent);
+            });
         }
     }
 
@@ -637,18 +668,18 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             observedCapabilityIds: [capabilityId],
         }, changes.length > 0);
         const cursor = this.nextObservationCursor(deviceId);
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+        this.dispatchObservedStateChanged({
             source: 'realtime_capability',
             deviceId,
             ...cursor,
             capabilityId,
-        } satisfies ObservedDeviceStateEvent);
-        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+        });
+        this.dispatchPlanReconcile({
             deviceId,
             ...cursor,
             name: snapshot.name,
             changes,
-        } satisfies PlanRealtimeUpdateEvent);
+        });
     }
 
     private isTrackedCapability(snapshot: TargetDeviceSnapshot, capabilityId: string): boolean {
@@ -802,10 +833,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const cursor = event.observationSeq === undefined || event.observedAtMs === undefined
             ? this.nextObservationCursor(event.deviceId)
             : {};
-        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, {
+        this.dispatchPlanReconcile({
             ...event,
             ...cursor,
-        } satisfies PlanRealtimeUpdateEvent);
+        });
     }
 
     /** Returns true if the change was handled by the binary settle window. */
@@ -891,12 +922,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             capabilityIds: observedCapabilityIds,
         });
         if (deferObservedEvent) return;
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, {
+        this.dispatchObservedStateChanged({
             source: 'realtime_capability',
             deviceId,
             ...(cursor ?? this.nextObservationCursor(deviceId)),
             capabilityId: eventCapabilityId,
-        } satisfies ObservedDeviceStateEvent);
+        });
     }
 
     private applyBinaryObservationToSnapshot(
@@ -1031,7 +1062,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             },
             createObservationCursor: (nextDeviceId) => this.nextObservationCursor(nextDeviceId),
             emitPlanReconcile: (event) => this.emitPlanReconcileEvent(event),
-            emitObservedState: (event: ObservedDeviceStateEvent) => this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event),
+            emitObservedState: (event: ObservedDeviceStateEvent) => this.dispatchObservedStateChanged(event),
         });
         const currentSnapshot = deviceId
             ? this.syncRealtimeDeviceUpdateSnapshot({
@@ -1509,6 +1540,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 
     private debugStructured: StructuredDebugEmitter | undefined;
     private pendingPredicate: DeviceTransportOptions['pendingPredicate'] | undefined;
+    private observedStateDispatcher: TransportObservedStateDispatcher | undefined;
 
     /* eslint-disable complexity --
      * Constructor wires every option in the bag; complexity is in the
@@ -1529,6 +1561,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.getFlowTriggerCard = options?.getFlowTriggerCard;
         this.onSnapshotMutated = options?.onSnapshotMutated;
         this.pendingPredicate = options?.pendingPredicate;
+        this.observedStateDispatcher = options?.observedStateDispatcher;
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
         this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
@@ -2125,6 +2158,41 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private consultPendingPredicate(deviceId: string, capabilityId: string): boolean {
         if (this.pendingPredicate) return this.pendingPredicate(deviceId, capabilityId) === true;
         return this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
+    }
+
+    /**
+     * Post-translation fan-out of an `observed-state-changed` event.
+     *
+     * When wiring has injected an `observedStateDispatcher` (production path),
+     * observer owns the emitter and transport routes the event through it.
+     * When the dispatcher is omitted (legacy direct-`DeviceTransport` tests),
+     * transport falls back to emitting through its own EventEmitter using
+     * the historical `PLAN_LIVE_STATE_OBSERVED_EVENT` name so existing test
+     * subscriptions keep working.
+     *
+     * Per PR #5 of the observer/transport split, transport never statically
+     * imports observer; the dispatcher is just a callback pair passed in at
+     * construction time (notes/state-management/observer-transport-split.md).
+     */
+    private dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void {
+        if (this.observedStateDispatcher) {
+            this.observedStateDispatcher.observedStateChanged(event);
+            return;
+        }
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event);
+    }
+
+    /**
+     * Post-translation fan-out of a `plan-reconcile-observed` event.
+     * See `dispatchObservedStateChanged` for the dispatcher-vs-fallback
+     * contract; same fallback shape for `PLAN_RECONCILE_REALTIME_UPDATE_EVENT`.
+     */
+    private dispatchPlanReconcile(event: PlanRealtimeUpdateEvent): void {
+        if (this.observedStateDispatcher) {
+            this.observedStateDispatcher.planReconcile(event);
+            return;
+        }
+        this.emit(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, event);
     }
 
     private getBinarySettleDeps() {

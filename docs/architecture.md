@@ -107,6 +107,17 @@ power ↔ objectives  (type-only cycle, established)
 
 The rules behind this DAG (`no-power-to-plan`, `no-power-to-device`, `no-device-to-plan`, `no-observer-to-peer`, `no-price-to-peer`, …) exist as the gate for the ongoing `lib/app` dissolution: any helper currently in `lib/app/` that, if pushed into a peer, would create a forbidden edge identifies itself as cross-peer wiring residue. Wiring residue stays at the composition root (`app.ts` or `setup/**`), not inside a peer.
 
+### Realtime event flow
+
+Realtime device events (capability updates, full device updates from Homey) cross three peer layers between SDK ingress and a planner reapply:
+
+1. **Translation** — `lib/device/` (`DeviceTransport` + `lib/device/transport/managerRealtimeHandlers.ts`) parses the raw Homey payload, runs the admit-or-suppress flow-vs-binary rule and pending-binary-command echo suppression, and produces normalized `observed-state-changed` / `plan-reconcile-observed` events.
+2. **Observer fan-out** — `lib/observer/observedStateEvents.ts` owns the typed-event emitter (`ObservedStateEmitter`). Transport routes each event through a dispatcher callback bag (`observedStateDispatcher`) injected at construction time by wiring, so `lib/device/` → `lib/observer/` stays free of static imports (the `no-device-to-peer-except-power` cruiser rule holds).
+3. **Drift verdict** — `lib/executor/planExecutionDrift.ts` compares the observed state against the executor-facing plan intent (`ExecutableDeviceIntent` vs `ExecutableObservedDeviceState`). Observer and transport never see plan intent.
+4. **Reapply trigger** — `lib/app/appRealtimeDeviceReconcileRuntime.ts` subscribes to the observer-owned emitter, consults the executor's drift predicate, and (when drift is real) enqueues a planner rebuild via `planRebuildScheduler.request(...)`.
+
+See `notes/state-management/observer-transport-split.md` for the layering rationale and the six-step split-train history.
+
 ## Transitional allowances
 
 A small number of modules still cross layers in ways the contract above forbids. These are listed in `TODO.md` and accepted as tightening work, not as new patterns to imitate:
