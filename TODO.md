@@ -2434,14 +2434,57 @@ consolidation + a11y polish (8 P2)`.*
       (their content encodes meaningfully different visual effects — transform
       translateY vs. opacity-only with distinct 0.6 / 0.45 floors). Regression locked
       by `packages/settings-ui/test/pulseDurationToken.test.ts`.
-- [ ] Audit `settings/style.css` for hardcoded px / rem values that should bind to tokens.
-      Unit 9 catalogued: `gap: 12px`, `gap: 10px`, `padding: 12px`, `border-radius: 8px` in
-      `.price-summary`, `margin: 4px`, `font-size: 0.62rem` — none of which map to existing
-      tokens. Either bind to existing tokens or introduce missing ones (a `--font-size-xs` or
-      a `--spacing-1.5` if those are real gaps). Goal: zero hardcoded geometry/typography
-      values outside the token layer.
-      Files: `packages/settings-ui/public/style.css`,
-      `tokens/base.json`, `settings/tokens.css` (regen).
+- [x] Audit `settings/style.css` for hardcoded px / rem values that should bind to tokens.
+      Shipped: every cleanly-bindable single-value literal in
+      `packages/settings-ui/public/style.css` now routes through the design
+      tokens. Bindings:
+      - `4px` → `--spacing-1` (`.card h2` / `.pels-hero h2` / `.device-detail-heading h2`
+        margin; `.price-indicator` margin-right; `.plan-row__meta` / `.price-enable-text` /
+        `.tabs` (480px breakpoint) / `.day-view-bars` / `.day-view-labels` gap; `.day-view-labels`
+        padding-top; `.device-row.price-optimization-row .device-row__name`
+        margin-bottom (360px breakpoint); `#shell-nav .tab` padding-inline (360px breakpoint));
+      - `8px` → `--spacing-2` (`.plan-card__step-labels` margin-inline; `.inline-actions`
+        gap + margin-top; `.detail-diagnostics-list` gap; `.detail-mode-row__header` gap;
+        `.power-day-header` padding bottom-axis; `.device-row__state-chip` and
+        `.price-now-badge` padding inline-axis);
+      - `12px` → `--spacing-3` (`.price-summary` padding + margin-bottom; `.form__actions` /
+        `.list__footer` / `.toggle-label` / `.price-row` / `.detail-diagnostics-grid` /
+        `.detail-stepped-header` / `.detail-stepped-row` gap; `.list__footer` /
+        `.hourly-nav` margin-bottom; `.detail-mode-row` gap row-axis; `.list__footer`
+        margin-top; `.price-last-fetched` margin-top; `.settings-collapse .collapse-content h4`
+        margin bottom-axis + `:first-child` margin-top);
+      - `16px` → `--spacing-4` (`.price-info` margin-bottom; `.price-notice` padding
+        block-axis; `.slide-panel__footer` / `.hourly-pattern__empty` padding;
+        `.settings-collapse .collapse-content h4` margin top-axis; `.detail-mode-row`
+        gap column-axis);
+      - `24px` → `--spacing-6` (`.detail-section` margin-bottom);
+      - `999px` → `--radius-full` (9 pill primitives: `.plan-card__load-track`,
+        `.plan-card__load-fill`, `.plan-card__load-tick`, `.plan-card__metric-track`,
+        `.plan-card__metric-fill`, `.plan-card__metric-tick`, `.day-view-marker /
+        .daily-budget-dot`, `.day-view-legend__swatch--actual`, `.value-adjuster`);
+      - `border-radius: 8px` → `--radius-md` in `.price-summary` (sibling-card
+        normalization — `.price-notice-info` / `.price-notice-warning` already on
+        `--radius-md`, 2 px corner-radius drift removed).
+      New token introduced: `--font-size-xxs: 10px` in `tokens/base.json`
+      (regenerated into `settings/tokens.css` via `npm run build:settings`),
+      bound by `.plan-card__metric-scale` (was the lone `font-size: 0.62rem`
+      literal; ≈9.92 px at the 16 px root).
+      Intermediate values (`gap: 2px` / `3px` / `6px` / `10px` and similar small
+      paddings) intentionally left as literals — the existing spacing scale
+      (`--spacing-1` = 4 → `--spacing-2` = 8 → `--spacing-3` = 12 …) skips
+      these increments and inventing `--spacing-0_5` / `--spacing-1_5` etc.
+      would create awkward fractional tokens that fight the numeric
+      convention. The `border-radius: 50%` (circular markers) and
+      `border-radius: 0` (deliberate reset) cases are intentional geometric
+      primitives, not px literals.
+      Regression locked by `packages/settings-ui/test/styleCssTokenAudit.test.ts`
+      (20 assertions: token declaration in `dist/tokens.css`, every catalogued
+      call-site binding, defensive guards against re-introducing the bare
+      literals, and a sweep that rejects any new bare
+      `(gap|padding): {4,8,12,16,24,32}px` or `font-size: <px|rem>` declaration).
+      Files: `packages/settings-ui/public/style.css`, `tokens/base.json`,
+      `settings/tokens.css` + `settings/style.css` (regen),
+      `packages/settings-ui/test/styleCssTokenAudit.test.ts`.
 - [x] Investigate repeated stale managed-device refreshes that never become fresh.
       Finding: case (a) — refresh is a no-op by design. `lastFreshDataMs` is
       derived by `resolveLastFreshDataMs` (`lib/device/transport/managerParseSnapshot.ts`)
