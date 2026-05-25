@@ -4,6 +4,10 @@ import {
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/objectives/profiles';
+import {
+  OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
+  resetNoPowerSourceDiagnosticForTests,
+} from '../lib/objectives/noPowerSourceDiagnostic';
 import { resolveProfileConfidence } from '../lib/objectives/stats';
 import type { DeviceObjectiveProfile } from '../lib/objectives/types';
 import type { PowerTrackerState } from '../lib/power/tracker';
@@ -223,6 +227,158 @@ describe('objective profiles', () => {
     const profile = state.objectiveProfiles?.['heater-1'];
     expect(profile?.kwhPerUnit?.mean).toBeCloseTo(1, 3);
     expect(profile?.lastSample.powerSource).toBe('reported_step_planning');
+  });
+
+  describe('no-power-source diagnostic', () => {
+    beforeEach(() => {
+      resetNoPowerSourceDiagnosticForTests();
+    });
+
+    const feedAcceptedSampleWithoutPower = (
+      previous: DeviceObjectiveProfile | undefined,
+      index: number,
+      deviceId: string,
+      debugStructured?: (payload: Record<string, unknown>) => void,
+    ): DeviceObjectiveProfile => updateDeviceObjectiveProfile({
+      previous,
+      deviceId,
+      deviceName: 'Termostat Synne',
+      sample: {
+        observedAtMs: startMs + index * hourMs,
+        value: 30 + index,
+        unit: 'degree_c',
+      },
+      debugStructured,
+    });
+
+    it('emits objective_profile_no_power_source once after the threshold of consecutive accepted samples without crediblePowerW', () => {
+      const debugStructured = vi.fn();
+      let profile: DeviceObjectiveProfile | undefined;
+      // Need threshold+1 calls: the first call builds the initial profile and
+      // does not go through buildAcceptedProfileSample, so only the subsequent
+      // calls count toward "consecutive accepted samples".
+      for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+      }
+
+      const diagnosticCalls = debugStructured.mock.calls
+        .map(([payload]) => payload as Record<string, unknown>)
+        .filter((payload) => payload.event === 'objective_profile_no_power_source');
+      expect(diagnosticCalls).toHaveLength(1);
+      expect(diagnosticCalls[0]).toMatchObject({
+        event: 'objective_profile_no_power_source',
+        deviceId: 'heater-1',
+        deviceName: 'Termostat Synne',
+        profileKind: 'temperature',
+        consecutiveSamplesWithoutPower: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
+        threshold: OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
+      });
+      expect(profile?.acceptedSamples).toBe(OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD);
+      // The band buffer never gets populated when kwhPerUnit stays unresolved.
+      expect(profile?.kwhPerUnit).toBeUndefined();
+      expect(profile?.bands).toBeUndefined();
+    });
+
+    it('does not re-emit objective_profile_no_power_source after additional silent samples', () => {
+      const debugStructured = vi.fn();
+      let profile: DeviceObjectiveProfile | undefined;
+      // Cross the threshold first.
+      for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+      }
+      const callsAfterFirstEmit = debugStructured.mock.calls
+        .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
+        .length;
+      expect(callsAfterFirstEmit).toBe(1);
+
+      // Five more silent samples should not produce a second diagnostic.
+      for (let extra = 0; extra < 5; extra += 1) {
+        const index = OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1 + extra;
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+      }
+
+      const diagnosticCalls = debugStructured.mock.calls
+        .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
+        .length;
+      expect(diagnosticCalls).toBe(1);
+    });
+
+    it('resets the counter when a valid crediblePowerW arrives but does not re-emit once already fired', () => {
+      const debugStructured = vi.fn();
+      let profile: DeviceObjectiveProfile | undefined;
+      for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+      }
+      expect(debugStructured.mock.calls
+        .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
+        .length).toBe(1);
+
+      // A sample with valid crediblePowerW resets the counter but the one-shot
+      // flag persists, so even another OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD
+      // silent samples cannot produce a second diagnostic. The diagnostic tracks
+      // the sample's *own* `crediblePowerW` (the next window's left-edge power),
+      // not the closed window's `kwhPerUnit`, so a single valid sample is enough
+      // to reset the counter — even though the just-closed window still bills at
+      // the silent baseline and therefore yields `kwhPerUnit = undefined`.
+      profile = updateDeviceObjectiveProfile({
+        previous: profile,
+        deviceId: 'heater-1',
+        deviceName: 'Termostat Synne',
+        sample: {
+          observedAtMs: startMs + (OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1) * hourMs,
+          value: 30 + OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1,
+          unit: 'degree_c',
+          crediblePowerW: 1000,
+          powerSource: 'measured',
+        },
+        debugStructured,
+      });
+
+      for (let extra = 0; extra < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; extra += 1) {
+        const index = OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 2 + extra;
+        profile = feedAcceptedSampleWithoutPower(profile, index, 'heater-1', debugStructured);
+      }
+      expect(debugStructured.mock.calls
+        .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
+        .length).toBe(1);
+    });
+
+    it('does not fire the diagnostic when crediblePowerW is always resolved', () => {
+      const debugStructured = vi.fn();
+      let profile: DeviceObjectiveProfile | undefined;
+      for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 5; index += 1) {
+        profile = updateDeviceObjectiveProfile({
+          previous: profile,
+          deviceId: 'heater-1',
+          sample: {
+            observedAtMs: startMs + index * hourMs,
+            value: 30 + index,
+            unit: 'degree_c',
+            crediblePowerW: 1000,
+            powerSource: 'measured',
+          },
+          debugStructured,
+        });
+      }
+      expect(debugStructured.mock.calls
+        .filter(([payload]) => (payload as Record<string, unknown>).event === 'objective_profile_no_power_source')
+        .length).toBe(0);
+    });
+
+    it('tracks counters per device independently', () => {
+      const debugStructured = vi.fn();
+      let profileA: DeviceObjectiveProfile | undefined;
+      let profileB: DeviceObjectiveProfile | undefined;
+      for (let index = 0; index < OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD + 1; index += 1) {
+        profileA = feedAcceptedSampleWithoutPower(profileA, index, 'heater-A', debugStructured);
+        profileB = feedAcceptedSampleWithoutPower(profileB, index, 'heater-B', debugStructured);
+      }
+      const diagnosticDeviceIds = debugStructured.mock.calls
+        .map(([payload]) => payload as Record<string, unknown>)
+        .filter((payload) => payload.event === 'objective_profile_no_power_source')
+        .map((payload) => payload.deviceId);
+      expect(diagnosticDeviceIds.sort()).toEqual(['heater-A', 'heater-B']);
+    });
   });
 
   it('ignores stale temperature observations', () => {
