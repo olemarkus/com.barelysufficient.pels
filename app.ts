@@ -1,11 +1,12 @@
 /* eslint-disable max-lines -- Homey app lifecycle remains centralized in the main app class. */
 import Homey from 'homey';
 import CapacityGuard from './lib/power/capacityGuard';
+import { DeviceTransport } from './lib/device/deviceTransport';
 import {
-  DeviceTransport,
-  PLAN_LIVE_STATE_OBSERVED_EVENT,
-  PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-} from './lib/device/deviceTransport';
+  ObservedStateEmitter,
+  type ObservedStateChangedEvent,
+  type PlanReconcileObservedEvent,
+} from './lib/observer/observedStateEvents';
 import { PlanEngine } from './lib/plan/planEngine';
 import {
   clearAllPendingBinarySettleWindows,
@@ -132,7 +133,6 @@ import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { normalizeError } from './lib/utils/errorUtils';
 import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
 import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
-import type { ObservedDeviceStateEvent } from './lib/device/transport/managerRealtimeHandlers';
 import {
   emitSettingsUiDevicesUpdatedForApp,
   emitSettingsUiPowerUpdatedForApp,
@@ -315,6 +315,17 @@ class PelsApp extends Homey.App {
    * predicate both flow in via DeviceTransport's constructor options.
    */
   private observerBinarySettleState: BinarySettleState = createBinarySettleState();
+  /**
+   * Observer-owned emitter for post-translation realtime events
+   * (`observed-state-changed`, `plan-reconcile-observed`). Wiring builds
+   * it during `initDeviceManager`, binds transport's dispatcher to it,
+   * and subscribes wiring's own reapply/SoC/perf listeners to it. Per
+   * PR #5 of the observer/transport split, transport never statically
+   * imports observer; the dispatcher flows in via DeviceTransport's
+   * constructor options
+   * (notes/state-management/observer-transport-split.md).
+   */
+  private observedStateEmitter: ObservedStateEmitter = new ObservedStateEmitter();
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -1000,43 +1011,43 @@ class PelsApp extends Homey.App {
       pendingPredicate: (deviceId, capabilityId) => (
         hasPendingBinarySettleWindow(this.observerBinarySettleState, deviceId, capabilityId)
       ),
+      observedStateDispatcher: this.observedStateEmitter.asDispatcher(),
     });
     await this.deviceManager.init();
-    this.deviceManager.on(
-      PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
-      (event: realtimeReconcile.RealtimeDeviceReconcileEvent) => {
-        this.scheduleRealtimeDeviceReconcile(event);
-      },
-    );
-    this.deviceManager.on(
-      PLAN_LIVE_STATE_OBSERVED_EVENT,
-      (event: ObservedDeviceStateEvent) => {
-        if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
-          incPerfCounters([
-            'plan_rebuild_requested_total',
-            'plan_rebuild_requested.flow_total',
-            'plan_rebuild_requested.flow.realtime_ev_soc_total',
-          ]);
-          this.planRebuildScheduler.request({
-            kind: 'flow',
-            reason: 'realtime_ev_soc',
-          });
-        }
-        if (
-          event.measurePowerBecameSignificantlyPositive === true
-          && this.isCapacityControlEnabled(event.deviceId)
-        ) {
-          this.powerSampleRebuildState = {
-            ...this.powerSampleRebuildState,
-            shortfallSuppressionInvalidated: true,
-          };
-        }
-        void this.planService?.syncLivePlanState(event.source);
-      },
-    );
+    // Wiring subscribes to the observer-owned emitter rather than the
+    // transport-side EventEmitter. Transport's dispatcher (above) routes
+    // every post-translation event through `observedStateEmitter`, which
+    // is the single source of truth for realtime fan-out post-PR #5. See
+    // notes/state-management/observer-transport-split.md.
+    this.observedStateEmitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
+      this.scheduleRealtimeDeviceReconcile(event);
+    });
+    this.observedStateEmitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
+      if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
+        incPerfCounters([
+          'plan_rebuild_requested_total',
+          'plan_rebuild_requested.flow_total',
+          'plan_rebuild_requested.flow.realtime_ev_soc_total',
+        ]);
+        this.planRebuildScheduler.request({
+          kind: 'flow',
+          reason: 'realtime_ev_soc',
+        });
+      }
+      if (
+        event.measurePowerBecameSignificantlyPositive === true
+        && this.isCapacityControlEnabled(event.deviceId)
+      ) {
+        this.powerSampleRebuildState = {
+          ...this.powerSampleRebuildState,
+          shortfallSuppressionInvalidated: true,
+        };
+      }
+      void this.planService?.syncLivePlanState(event.source);
+    });
   }
 
-  private shouldRebuildPlanForRealtimeEvSocObservation(event: ObservedDeviceStateEvent): boolean {
+  private shouldRebuildPlanForRealtimeEvSocObservation(event: ObservedStateChangedEvent): boolean {
     const capabilityIds = [
       ...(event.capabilityId ? [event.capabilityId] : []),
       ...(event.observedCapabilityIds ?? []),

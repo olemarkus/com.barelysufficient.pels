@@ -2112,7 +2112,7 @@ consolidation + a11y polish (8 P2)`.*
       needs durable storage, extract a small persistence helper/queue instead of adding more
       direct settings writes to the executor.
       Files: `lib/executor/planExecutor.ts`.
-- [ ] Split `DeviceManager` into `lib/device/transport/` (SDK seam + per-control-model wiring
+- [x] Split `DeviceManager` into `lib/device/transport/` (SDK seam + per-control-model wiring
       + parse pipeline, produces normalized snapshots and admit-or-suppressed events) and
       `lib/observer/` (state store, freshness, pending, settle, realtime fanout). Executor
       calls `transport.write(...)` directly; observer subscribes to transport events.
@@ -2128,9 +2128,21 @@ consolidation + a11y polish (8 P2)`.*
       dispatch to executor, promote cruiser rules — shipped in PR #1102; (2) move read-side
       files into transport, DeviceManager becomes a facade — shipped in PR #1107; (3) rename
       DeviceManager → DeviceTransport (file `manager.ts` → `deviceTransport.ts`) and kill the
-      facade — shipped in PR #3 of the train; (4) move pending/settle into observer and wire
-      the injected predicate; (5) three-way realtime split — translation in transport, drift
-      detection in executor, reapply trigger in wiring.
+      facade — shipped in PR #1140; (4) move pending/settle into observer and wire the
+      injected predicate — shipped in PR #1148; (5) three-way realtime split — observer
+      owns the typed-event emitter at `lib/observer/observedStateEvents.ts`, transport
+      routes the post-translation fan-out through an injected
+      `observedStateDispatcher` callback bag (same pattern as PR #4's `pendingPredicate`),
+      wiring (`lib/app/appRealtimeDeviceReconcileRuntime.ts`) subscribes to the
+      observer-owned emitter and consults the executor's drift predicate
+      (`lib/executor/planExecutionDrift.ts`, in place since PR #1b) before
+      scheduling a planner reapply. No drift conditions changed; only the
+      location of the post-translation event emitter moved. The transport-side
+      `shouldReconcilePlan` boolean remains in transport as a
+      snapshot-vs-snapshot change-significance filter — it is not
+      drift-against-plan-intent. Shipped in PR #5. Train complete; one
+      follow-up sweep deferred (filenames / logger tags / structured-event
+      identifiers from PR #3 — see the next bullet).
       Design: `notes/state-management/observer-transport-split.md`.
       Files: `lib/device/**`, `lib/observer/**`, `lib/executor/**`, `lib/plan/planBinaryControl*.ts`,
       `lib/app/appDeviceControlSteppedState.ts`, `.dependency-cruiser.cjs`,
@@ -2194,6 +2206,23 @@ consolidation + a11y polish (8 P2)`.*
       deferred — no consumer pressure yet. Source: PR #2 secondary cleanup
       + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24. Done in
       PR #3.
+- [ ] Add a compile-time shape-parity guard between observer-side and
+      transport-side dispatcher event types from PR #5 (#1158). The two
+      pairs — `ObservedStateChangedEvent` (`lib/observer/observedStateEvents.ts:43`)
+      vs `ObservedDeviceStateEvent` (transport-side), and
+      `PlanReconcileObservedEvent` (`lib/observer/observedStateEvents.ts:54`)
+      vs `PlanRealtimeUpdateEvent` (`lib/device/transport/managerRealtimeHandlers.ts:11-28`)
+      — are structurally mirrored by hand because the cruiser correctly
+      blocks both directions of import. A future field added to one side
+      and forgotten on the other would silently slip through TypeScript
+      bivariance at the dispatcher binding (`app.ts:1009`). A one-line
+      `satisfies` cross-cast in a test file (test code is outside the
+      cruiser rules), or a compile-time type-equality assertion, would
+      surface the drift at build time. The matching string-value pin for
+      the event constants already exists at
+      `test/observerObservedStateEvents.test.ts`; the type-parity guard
+      is the missing complement. Source: `pels-layering-guardian` P2-1 on
+      PR #1158, 2026-05-25.
 - [ ] Sweep file renames + logger tags + structured-event identifiers that still
       carry the `manager`/`DeviceManager`/`device_manager` name post-rename
       (PR #3 of the observer/transport split, #1140). Three buckets, each

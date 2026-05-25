@@ -124,11 +124,24 @@ and reapply triggering all in one file. Post-split:
 
 - **Translation** (raw Homey event → normalized capability changes) → transport.
 - **Drift detection** (observed change disagrees with plan intent) → executor.
-  Per `notes/state-management/README.md:109-110`, drift compares observed
-  against plan intent; observer does not know plan intent.
+  Per `notes/state-management/README.md`, drift compares observed against
+  plan intent; observer does not know plan intent.
 - **Reapply trigger** (decide to ask planner for a new pass) → wiring
   (`lib/app/`). Observer emits "observed state changed for these capabilities"
   + cursor; wiring orchestrates the reapply.
+
+Post-PR #5 reality check: the drift-against-plan-intent code already lived in
+`lib/executor/planExecutionDrift.ts` (since PR #1b of this train), and
+wiring's `appRealtimeDeviceReconcileRuntime.ts` already consulted it before
+scheduling a planner reapply. The remaining gap PR #5 closes is the
+event-emitter ownership: pre-PR transport emitted the post-translation typed
+events directly via its own EventEmitter; post-PR observer owns the emitter
+(`lib/observer/observedStateEvents.ts`, class `ObservedStateEmitter`) and
+transport routes the events through it via a dispatcher callback bag
+(`observedStateDispatcher`) injected at construction time. Same pattern as
+PR #4's `pendingPredicate`. The transport-side `shouldReconcilePlan` boolean
+stays inside transport — it is a snapshot-vs-snapshot change filter, not
+drift-against-plan-intent.
 
 ## Cruiser rule changes
 
@@ -192,7 +205,25 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    import remains in `lib/device/`; the `no-device-to-peer-except-power`
    cruiser rule stays a single error rule with no exceptions.)
 7. **Three-way realtime split**: translation in transport, drift detection in
-   executor, reapply trigger in wiring. (PR #5)
+   executor, reapply trigger in wiring. (PR #5 — shipped: observer owns the
+   typed-event emitter at `lib/observer/observedStateEvents.ts`
+   (`ObservedStateEmitter`, with event-name strings preserved verbatim from
+   their pre-PR transport-side declarations); transport accepts an
+   `observedStateDispatcher` callback bag supplied by wiring (`app.ts`) and
+   routes every post-translation fan-out through it via two new private
+   helpers (`dispatchObservedStateChanged`, `dispatchPlanReconcile`).
+   Transport's own EventEmitter still fires the legacy events when no
+   dispatcher is wired, so legacy direct-`DeviceTransport` tests continue
+   to subscribe with the same event-name strings without behaviour drift.
+   Drift detection against plan intent already lived in
+   `lib/executor/planExecutionDrift.ts` since PR #1b — wiring's
+   `appRealtimeDeviceReconcileRuntime.ts` consults that predicate before
+   scheduling a planner reapply. The reapply trigger
+   (`scheduleAppRealtimeDeviceReconcile` → `planRebuildScheduler.request`)
+   stays in wiring. No drift conditions changed; only the location of the
+   post-translation event emitter moved. The transport-side
+   `shouldReconcilePlan` boolean stays in transport as a snapshot-vs-snapshot
+   change-significance filter — it is not drift-against-plan-intent.)
 
 ## Secondary cleanups surfaced during review
 

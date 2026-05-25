@@ -106,8 +106,18 @@ Post-release executor boundary rollout:
 - Executor dispatch reconciles `ExecutableDeviceIntent` with `ExecutableObservedDeviceState`.
   Re-reading observer state after awaited work is valid; carrying old current fields forward in
   executable intent is not.
-- Realtime drift detection uses the same executor-facing intent/observed split. Pending binary
-  commands suppress drift only when their requested value matches the expected binary state.
+- Realtime drift detection runs in the executor (`lib/executor/planExecutionDrift.ts`) using the
+  executor-facing intent/observed split. Pending binary commands suppress drift only when their
+  requested value matches the expected binary state. The transport-side `shouldReconcilePlan`
+  boolean is a snapshot-vs-snapshot change filter ("did this realtime event mutate anything
+  worth notifying wiring about?") — not drift-against-plan-intent. Wiring still consults the
+  executor drift predicate before scheduling a planner reapply.
+- Realtime event flow (post-PR #5 of the observer/transport split): transport translates the
+  raw Homey event, observer's emitter fans out the typed `observed-state-changed` /
+  `plan-reconcile-observed` events (via a dispatcher callback injected into transport at
+  construction time so transport never imports observer), wiring (`lib/app/`) subscribes to
+  the observer-owned emitter and consults the executor's drift predicate before requesting
+  a planner rebuild. See `notes/state-management/observer-transport-split.md`.
 - Transitional stepped-load action adapters may still use planner-effective step fields as command
   baselines, such as a previous step id for request metadata. Materialization and binary restore
   readiness must still come from reported/admitted snapshot evidence.
@@ -124,9 +134,10 @@ The pending-binary-command admission rule (suppressing the snapshot echo of an i
 write) lives in transport's parse pipeline. As of PR #4 of the observer/transport split
 (`notes/state-management/observer-transport-split.md`), transport consults that rule through an
 injected `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring (`lib/app/`); the
-predicate is backed by observer's binarySettle store (and, post-#5, by the pending-binary-command
-store too). Transport keeps the parse-pipeline location — the change is who owns the state the
-predicate reads.
+predicate is backed by observer's binarySettle store. Transport keeps the parse-pipeline location
+— the change is who owns the state the predicate reads. PR #5 added an analogous
+`observedStateDispatcher` callback for the post-translation event fan-out (observer owns the
+emitter, transport never statically imports observer).
 
 Legacy compatibility fields may still exist in older snapshots and plans while migration is in
 progress:
