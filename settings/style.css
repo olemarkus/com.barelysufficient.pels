@@ -999,7 +999,7 @@ md-primary-tab.tab[active]:hover {
 
 .card h2,
 .pels-hero h2 {
-  margin: 4px 0 0;
+  margin: var(--spacing-1) 0 0;
   color: var(--pels-text-section-headline-color);
   font-size: var(--pels-text-section-headline-font-size);
   font-weight: var(--pels-text-section-headline-font-weight);
@@ -1054,7 +1054,7 @@ md-primary-tab.tab[active]:hover {
 
 .form__actions {
   display: flex;
-  gap: 12px;
+  gap: var(--spacing-3);
   flex-wrap: wrap;
 }
 
@@ -1321,7 +1321,7 @@ md-filled-button.is-busy {
 .plan-row__meta {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 4px;
+  gap: var(--spacing-1);
   color: var(--text);
   font-size: var(--font-size-sm);
 }
@@ -2812,7 +2812,7 @@ md-filled-button.is-busy {
   position: relative;
   height: 12px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
   background: color-mix(in srgb, var(--color-surface-5) 84%, transparent);
 }
@@ -2820,7 +2820,7 @@ md-filled-button.is-busy {
 .plan-card__load-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: linear-gradient(90deg, var(--accent), var(--accent-strong));
 }
 
@@ -2829,7 +2829,7 @@ md-filled-button.is-busy {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--color-base-white) 75%, var(--text));
   transform: translateX(-1px);
 }
@@ -2859,7 +2859,7 @@ md-filled-button.is-busy {
   position: relative;
   height: 10px;
   overflow: hidden;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
   background: color-mix(in srgb, var(--color-surface-5) 84%, transparent);
 }
@@ -2872,7 +2872,7 @@ md-filled-button.is-busy {
   position: absolute;
   top: 0;
   bottom: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--pels-status-good);
   transition:
     left var(--transition-default),
@@ -2897,7 +2897,7 @@ md-filled-button.is-busy {
   top: -2px;
   bottom: -2px;
   width: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   cursor: help;
   transform: translateX(-1px);
 }
@@ -2941,7 +2941,7 @@ md-filled-button.is-busy {
   gap: var(--spacing-2);
   margin-top: 3px;
   color: var(--muted);
-  font-size: 0.62rem;
+  font-size: var(--font-size-xxs);
   font-weight: var(--font-weight-semibold);
   line-height: var(--font-line-height-flat);
   font-variant-numeric: tabular-nums;
@@ -3280,7 +3280,7 @@ md-filled-button.is-busy {
 .plan-card__step-labels {
   position: relative;
   height: 1em;
-  margin-inline: 8px;
+  margin-inline: var(--spacing-2);
 }
 
 .plan-card__step-label {
@@ -3361,7 +3361,7 @@ md-filled-button.is-busy {
 
 @media (max-width: 480px) {
   .tabs {
-    gap: 4px;
+    gap: var(--spacing-1);
     --md-primary-tab-container-height: var(--pels-shell-nav-tab-height-compact);
     --md-primary-tab-label-text-size: var(--pels-shell-nav-tab-label-size-compact);
   }
@@ -3464,7 +3464,7 @@ md-filled-button.is-busy {
   }
 
   #shell-nav[data-shell-nav-compact] .tab {
-    padding-inline: 4px;
+    padding-inline: var(--spacing-1);
     padding-block: var(--spacing-1);
     font-size: var(--font-size-xs);
     letter-spacing: -0.01em;
@@ -3511,7 +3511,7 @@ md-filled-button.is-busy {
 
 .power-day-header {
   justify-content: flex-start;
-  padding: 14px 0 8px;
+  padding: 14px 0 var(--spacing-2);
   border-bottom: none;
 }
 
@@ -3704,7 +3704,7 @@ md-filled-button.is-busy {
    Only padding + line-height tighten — the chip primitive already lands
    `--chip-font-size` (xs) / `--chip-font-weight` (semibold). */
 .device-row__state-chip {
-  padding: 2px 8px;
+  padding: 2px var(--spacing-2);
   line-height: var(--font-line-height-compact);
 }
 
@@ -3747,9 +3747,9 @@ md-filled-button.is-busy {
 
 .inline-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-2);
   flex-wrap: wrap;
-  margin-top: 8px;
+  margin-top: var(--spacing-2);
 }
 
 .hourly-nav {
@@ -3757,7 +3757,7 @@ md-filled-button.is-busy {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-3);
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-3);
   flex-wrap: wrap;
 }
 
@@ -3773,8 +3773,8 @@ md-filled-button.is-busy {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-3);
   flex-wrap: wrap;
 }
 
@@ -3876,7 +3876,7 @@ md-filled-button.is-busy {
 .toggle-label {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-3);
   min-height: var(--pels-touch-target-min);
   cursor: pointer;
   font-weight: var(--font-weight-semibold);
@@ -3906,7 +3906,7 @@ md-filled-button.is-busy {
 .price-enable-text {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-1);
 }
 
 .price-enable-label {
@@ -3918,14 +3918,14 @@ md-filled-button.is-busy {
 }
 
 .price-info {
-  margin-bottom: 16px;
+  margin-bottom: var(--spacing-4);
 }
 
 .price-row {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-3);
 }
 
 .price-row .device-row__target {
@@ -3946,7 +3946,7 @@ md-filled-button.is-busy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px;
+  padding: 2px var(--spacing-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-state-info-border);
   background: var(--color-state-info-bg);
@@ -4017,13 +4017,17 @@ md-filled-button.is-busy {
   }
 }
 
-/* Price summary section */
+/* Price summary section.
+ * Radius and padding bound to the shared `.price-notice-info` / `.price-notice-warning`
+ * family tokens — the previous 8 px radius drifted 2 px below the sibling notices'
+ * `--radius-md` (10 px), so the rebind both removes the literal AND normalizes the
+ * card-family corner shape. */
 .price-summary {
-  padding: 12px;
-  margin-bottom: 12px;
+  padding: var(--spacing-3);
+  margin-bottom: var(--spacing-3);
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .price-summary-item {
@@ -4041,7 +4045,7 @@ md-filled-button.is-busy {
 }
 
 .price-indicator {
-  margin-right: 4px;
+  margin-right: var(--spacing-1);
 }
 
 .price-indicator.neutral {
@@ -4049,7 +4053,7 @@ md-filled-button.is-busy {
 }
 
 .price-notice {
-  padding: 16px 0;
+  padding: var(--spacing-4) 0;
   text-align: center;
   color: var(--muted);
   font-style: italic;
@@ -4143,7 +4147,7 @@ md-filled-button.is-busy {
   color: var(--muted);
   font-size: var(--font-size-xs);
   text-align: right;
-  margin-top: 12px;
+  margin-top: var(--spacing-3);
   opacity: 0.7;
 }
 
@@ -4271,7 +4275,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .settings-collapse .collapse-content h4 {
-  margin: 16px 0 12px;
+  margin: var(--spacing-4) 0 var(--spacing-3);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--muted);
@@ -4280,7 +4284,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .settings-collapse .collapse-content h4:first-child {
-  margin-top: 12px;
+  margin-top: var(--spacing-3);
 }
 
 @media (max-width: 360px) {
@@ -4295,7 +4299,7 @@ details[open] > summary .disclosure-chevron {
   
   .device-row.price-optimization-row .device-row__name {
     font-weight: var(--font-weight-semibold);
-    margin-bottom: 4px;
+    margin-bottom: var(--spacing-1);
   }
   
   .price-opt-input {
@@ -4365,7 +4369,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .device-detail-heading h2 {
-  margin: 4px 0 0;
+  margin: var(--spacing-1) 0 0;
   color: var(--pels-text-section-headline-color);
   font-size: var(--pels-text-section-headline-font-size);
   font-weight: var(--pels-text-section-headline-font-weight);
@@ -4374,13 +4378,13 @@ details[open] > summary .disclosure-chevron {
 }
 
 .slide-panel__footer {
-  padding: 16px;
+  padding: var(--spacing-4);
   border-top: 1px solid var(--panel-border);
   background: var(--panel);
 }
 
 .detail-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--spacing-6);
 }
 
 .detail-section:last-child {
@@ -4641,14 +4645,14 @@ details[open] > summary .disclosure-chevron {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 80px;
   align-items: center;
-  gap: 12px 16px;
+  gap: var(--spacing-3) var(--spacing-4);
   padding: var(--spacing-2) 0;
 }
 
 .detail-mode-row__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-2);
 }
 
 /* Non-interactive "Active" indicator on the currently-active mode row.
@@ -4678,7 +4682,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 .detail-diagnostics-status {
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-3);
   color: var(--muted);
   font-size: var(--font-size-sm);
 }
@@ -4686,7 +4690,7 @@ details[open] > summary .disclosure-chevron {
 .detail-diagnostics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: var(--spacing-3);
 }
 
 /* `.detail-diagnostics-card` — decorator on `.pels-surface-card` (see
@@ -4697,7 +4701,7 @@ details[open] > summary .disclosure-chevron {
 
 .detail-diagnostics-list {
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-2);
   margin: 0;
 }
 
@@ -4748,7 +4752,7 @@ details[open] > summary .disclosure-chevron {
 .detail-stepped-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) auto;
-  gap: 12px;
+  gap: var(--spacing-3);
   align-items: center;
   padding: 0 0 var(--spacing-2);
   border-bottom: 1px solid var(--panel-border);
@@ -4763,7 +4767,7 @@ details[open] > summary .disclosure-chevron {
 .detail-stepped-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) auto;
-  gap: 12px;
+  gap: var(--spacing-3);
   align-items: center;
   padding: var(--spacing-2) 0;
 }
@@ -5793,7 +5797,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   align-items: end;
-  gap: 4px;
+  gap: var(--spacing-1);
 }
 
 .usage-day-bars--echarts {
@@ -5902,7 +5906,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   left: 50%;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--day-view-color-actual, var(--color-base-gray-50));
   border: 2px solid var(--color-surface-1);
   transform: translate(-50%, 50%);
@@ -5996,7 +6000,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .day-view-legend__swatch--actual {
   width: 8px;
   height: 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--day-view-color-actual, var(--color-base-gray-50));
   border: 2px solid var(--color-surface-1);
 }
@@ -6008,12 +6012,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: 4px;
+  gap: var(--spacing-1);
   font-size: var(--font-size-xs);
   color: var(--muted);
   text-align: center;
   line-height: var(--font-line-height-tight);
-  padding-top: 4px;
+  padding-top: var(--spacing-1);
   overflow: hidden;
 }
 
@@ -6048,7 +6052,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-content: center;
   height: 100%;
   text-align: center;
-  padding: 16px;
+  padding: var(--spacing-4);
   color: var(--muted);
   font-size: var(--font-size-sm);
   font-style: italic;
@@ -6210,7 +6214,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-height: var(--pels-touch-target-min);
   background: var(--color-surface-1);
   border: 1px solid var(--panel-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px;
   gap: 0;
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
