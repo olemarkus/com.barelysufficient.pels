@@ -56,15 +56,14 @@ import {
 import type { DeviceFetchSource } from './transport/managerFetch';
 import { normalizeError } from '../utils/errorUtils';
 import { shouldEmitWindowed } from '../logging/logDedupe';
-import {
-  clearAllPendingBinarySettleWindows,
-  clearPendingBinarySettleWindow,
-  createBinarySettleState,
-  hasPendingBinarySettleWindow,
-  notePendingBinarySettleObservation,
-  startPendingBinarySettleWindow,
-  type DeviceTransportBinarySettleState,
-} from './managerBinarySettle';
+// Binary-settle operations live in observer (`lib/observer/binarySettle.ts`)
+// per PR #4 of the observer/transport split. Production wiring (`app.ts`)
+// supplies the ops bag and the binary-settle state via DI so the transport
+// call sites don't import observer's symbols at runtime. The defaults below
+// are inert (no-op stubs + empty state) — tests or legacy callers that need
+// real settle behaviour pass real observer ops through the constructor
+// options. `BinarySettleState` is type-only-imported further down (re-export
+// preserved for backward compatibility); no value edge into observer remains.
 import {
   createObservationState,
   getDebugObservedSources,
@@ -138,6 +137,85 @@ type SteppedLoadFlowTriggerCard = {
     trigger: (tokens?: object, state?: object) => Promise<unknown> | unknown;
 };
 
+/**
+ * State container owned by observer (`lib/observer/binarySettle.ts`).
+ * Re-exported here as a type so downstream callers (wiring, tests) get
+ * the exact same shape via DeviceTransport's surface without having to
+ * cross the cruiser carve-out themselves. The carve-out applies to the
+ * value imports above; this is a type-only re-export.
+ */
+export type { BinarySettleState } from '../observer/binarySettle';
+import type { BinarySettleState } from '../observer/binarySettle';
+
+type BinarySettleObservationCursor = {
+  observationSeq?: number;
+  observedAtMs?: number;
+};
+
+type BinarySettleOutcome = 'settled' | 'drift' | 'none';
+
+type BinarySettleReconcileEvent = {
+    deviceId: string;
+    observationSeq?: number;
+    observedAtMs?: number;
+    name?: string;
+    capabilityId?: string;
+    changes?: Array<{
+        capabilityId: string;
+        previousValue: string;
+        nextValue: string;
+    }>;
+};
+
+/**
+ * Structural mirror of observer's `BinarySettleDeps`. Defined locally
+ * so transport doesn't have to reference observer's type directly.
+ */
+export type BinarySettleDepsForTransport = {
+    logger: {
+        structuredLog?: {
+            info?: (payload: Record<string, unknown>) => void;
+        };
+    };
+    clearLocalCapabilityWrite: (params: { deviceId: string; capabilityId: string }) => void;
+    isLiveFeedHealthy: () => boolean;
+    shouldTrackRealtimeDevice: (deviceId: string) => boolean;
+    getSnapshotById: (deviceId: string) => TargetDeviceSnapshot | undefined;
+    emitPlanReconcile: (event: BinarySettleReconcileEvent) => void;
+};
+
+/**
+ * Observer-owned binarySettle operation bag. Wiring (`lib/app/`) builds
+ * this against `lib/observer/binarySettle.ts`'s functions and passes it
+ * to `DeviceTransport`. When omitted (legacy tests that construct
+ * `DeviceTransport` directly), the transport falls back to its own
+ * inert no-op stubs so behavior degrades gracefully. Transport supplies
+ * `deps` at call time because some of those callbacks (e.g.
+ * `emitPlanReconcile`) close over transport's own emitter.
+ */
+export type DeviceTransportBinarySettleOps = {
+    start(params: {
+        state: BinarySettleState;
+        deps: BinarySettleDepsForTransport;
+        deviceId: string;
+        capabilityId: string;
+        value: unknown;
+        deviceName?: string;
+    }): void;
+    note(params: {
+        state: BinarySettleState;
+        deps: BinarySettleDepsForTransport;
+        deviceId: string;
+        capabilityId: string;
+        value: boolean;
+        source: 'realtime_capability' | 'device_update';
+        ensureEventFields?: () => BinarySettleObservationCursor;
+    }): BinarySettleOutcome;
+    hasWindow(state: BinarySettleState, deviceId: string, capabilityId: string): boolean;
+    clear(state: BinarySettleState, deviceId: string, capabilityId: string): void;
+    clearAll(state: BinarySettleState): void;
+};
+
 type DeviceTransportOptions = {
     debugStructured?: StructuredDebugEmitter;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
@@ -147,6 +225,32 @@ type DeviceTransportOptions = {
      * changed). Consumers are responsible for their own eligibility checks.
      */
     onSnapshotMutated?: (snapshot: TargetDeviceSnapshot, nowMs: number) => void;
+    /**
+     * Observer-owned binarySettle state. When omitted (legacy tests),
+     * transport falls back to inert no-op behaviour. When supplied,
+     * observer owns the state and transport routes all reads/writes
+     * through the injected `binarySettleOps` callbacks.
+     */
+    binarySettleState?: BinarySettleState;
+    /**
+     * Observer-owned binarySettle operation bag. See
+     * `DeviceTransportBinarySettleOps` and PR #4 of the
+     * observer/transport split.
+     */
+    binarySettleOps?: DeviceTransportBinarySettleOps;
+    /**
+     * Predicate consulted by transport's realtime parse pipeline to decide
+     * whether an incoming binary capability change is the device's reply to
+     * an in-flight write. Backed by observer's binarySettle store (and,
+     * post-#5, by the pending-binary-command store too) — observer owns
+     * the state; transport never reaches into observer directly. When the
+     * predicate is omitted, the suppression site falls back to the
+     * injected `binarySettleOps.hasWindow` (if available) or returns
+     * `false` so legacy tests degrade gracefully.
+     *
+     * See notes/state-management/observer-transport-split.md (PR #4).
+     */
+    pendingPredicate?: (deviceId: string, capabilityId: string) => boolean;
 };
 
 export class DeviceTransport extends EventEmitter implements DeviceObservation {
@@ -163,7 +267,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
     private latestBinarySettleEvidenceByDeviceId: Map<string, BinaryControlObservation> = new Map();
-    private binarySettleState: DeviceTransportBinarySettleState = createBinarySettleState();
+    private binarySettleState: BinarySettleState;
+    private binarySettleOps: DeviceTransportBinarySettleOps;
     private observationState: DeviceTransportObservationState = createObservationState();
     private observationSeqByDeviceId: Map<string, number> = new Map();
     private recentRealtimeCapabilityEventLogByKey: Map<string, number> = new Map();
@@ -220,7 +325,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             // Skip echo suppression when a binary settle window is active so the
             // confirmation observation can close it immediately.
             const hasBinarySettleWindow = effectiveCapabilityId === snapshot.controlCapabilityId
-                && hasPendingBinarySettleWindow(this.binarySettleState, deviceId, effectiveCapabilityId);
+                && this.consultPendingPredicate(deviceId, effectiveCapabilityId);
             if (
                 !hasBinarySettleWindow
                 && this.hasMatchingRecentLocalWrite(deviceId, effectiveCapabilityId, normalizedValue)
@@ -715,7 +820,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const previousCurrentOn = snapshot.currentOn;
         // Check the settle window before the equality check so a confirmation
         // observation (value === currentOn) can still settle it.
-        const hasSettleWindow = hasPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
+        const hasSettleWindow = this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
         const isSettlementEvidence = isRawBinarySettlementEvidenceAllowed(snapshot, capabilityId);
         if (hasSettleWindow && isSettlementEvidence) {
             this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value, 'realtime_capability');
@@ -740,7 +845,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             return settleCursor;
         };
         const settleOutcome = isSettlementEvidence
-            ? notePendingBinarySettleObservation({
+            ? this.binarySettleOps.note({
                 state: this.binarySettleState,
                 deps: this.getBinarySettleDeps(),
                 deviceId,
@@ -852,7 +957,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             settleCursor ??= this.nextObservationCursor(deviceId);
             return settleCursor;
         };
-        const settleOutcome = notePendingBinarySettleObservation({
+        const settleOutcome = this.binarySettleOps.note({
             state: this.binarySettleState,
             deps: this.getBinarySettleDeps(),
             deviceId,
@@ -907,7 +1012,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 });
             },
             notePendingBinarySettleObservation: (nextDeviceId, capabilityId, value, source, ensureEventFields) => (
-                notePendingBinarySettleObservation({
+                this.binarySettleOps.note({
                     state: this.binarySettleState,
                     deps: this.getBinarySettleDeps(),
                     deviceId: nextDeviceId,
@@ -918,7 +1023,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 })
             ),
             hasPendingBinarySettleWindow: (nextDeviceId, capabilityId) => (
-                hasPendingBinarySettleWindow(this.binarySettleState, nextDeviceId, capabilityId)
+                this.consultPendingPredicate(nextDeviceId, capabilityId)
             ),
             emitDeviceUpdateProcessed: (event) => {
               const emit = this.debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p));
@@ -1403,7 +1508,13 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     private debugStructured: StructuredDebugEmitter | undefined;
+    private pendingPredicate: DeviceTransportOptions['pendingPredicate'] | undefined;
 
+    /* eslint-disable complexity --
+     * Constructor wires every option in the bag; complexity is in the
+     * fan-out, not the logic. PR #4 added two more ?? branches
+     * (binarySettleOps + binarySettleState) on top of the existing
+     * options bag; consolidating the bag is left to a follow-up. */
     constructor(
         homey: Homey.App,
         logger: Logger,
@@ -1417,6 +1528,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.debugStructured = options?.debugStructured;
         this.getFlowTriggerCard = options?.getFlowTriggerCard;
         this.onSnapshotMutated = options?.onSnapshotMutated;
+        this.pendingPredicate = options?.pendingPredicate;
+        this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
+        this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
         this.powerState = {
             expectedPowerKwOverrides: powerState?.expectedPowerKwOverrides ?? {},
@@ -1431,6 +1545,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             minSignificantPowerW: MIN_SIGNIFICANT_POWER_W,
         });
     }
+    /* eslint-enable complexity */
 
     getSnapshot(): TargetDeviceSnapshot[] { return this.latestSnapshot; }
     getSnapshotByDeviceId(deviceId: string): TargetDeviceSnapshot | undefined {
@@ -1675,7 +1790,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             capabilityId,
             value: normalizedValue,
         });
-        startPendingBinarySettleWindow({
+        this.binarySettleOps.start({
             state: this.binarySettleState,
             deps: this.getBinarySettleDeps(),
             deviceId,
@@ -1699,7 +1814,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 deviceId,
                 capabilityId,
             });
-            clearPendingBinarySettleWindow(this.binarySettleState, deviceId, capabilityId);
+            this.binarySettleOps.clear(this.binarySettleState, deviceId, capabilityId);
             throw error;
         }
         this.emitCapabilityWriteDebug({
@@ -1931,7 +2046,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     public destroy(): void {
         void this.liveFeed?.stop();
         this.liveFeed = null;
-        clearAllPendingBinarySettleWindows(this.binarySettleState);
+        this.binarySettleOps.clearAll(this.binarySettleState);
         this.latestBinarySettleEvidenceByDeviceId.clear();
         this.latestTrackedDevicesById.clear();
         this.removeAllListeners();
@@ -1994,10 +2109,35 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         };
     }
 
+    /**
+     * Single suppression-predicate entrypoint consulted by the realtime
+     * parse pipeline ("is there an in-flight write that should suppress
+     * this observation as an echo?"). Backed by observer's binarySettle
+     * store via the injected `pendingPredicate` callback; when no
+     * predicate is wired (legacy unit tests) we fall back to the local
+     * `binarySettleState` Map so existing behaviour is preserved.
+     *
+     * Per PR #4 of the observer/transport split, transport never
+     * statically imports observer; the predicate is just a function
+     * reference passed in at construction time
+     * (notes/state-management/observer-transport-split.md).
+     */
+    private consultPendingPredicate(deviceId: string, capabilityId: string): boolean {
+        if (this.pendingPredicate) return this.pendingPredicate(deviceId, capabilityId) === true;
+        return this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
+    }
+
     private getBinarySettleDeps() {
+        const recentLocalCapabilityWrites = this.recentLocalCapabilityWrites;
         return {
             logger: this.logger,
-            recentLocalCapabilityWrites: this.recentLocalCapabilityWrites,
+            clearLocalCapabilityWrite: (params: { deviceId: string; capabilityId: string }) => (
+                clearLocalCapabilityWrite({
+                    recentLocalCapabilityWrites,
+                    deviceId: params.deviceId,
+                    capabilityId: params.capabilityId,
+                })
+            ),
             isLiveFeedHealthy: () => this.liveFeed?.isHealthy() === true,
             shouldTrackRealtimeDevice: (deviceId: string) => this.shouldTrackRealtimeDevice(deviceId),
             getSnapshotById: (deviceId: string) => this.latestSnapshotById.get(deviceId),
@@ -2064,4 +2204,26 @@ function cloneBinaryControlObservation(
         ...evidence,
         observedCapabilityIds: [...evidence.observedCapabilityIds],
     };
+}
+
+/**
+ * Inert binarySettle ops bag for tests and legacy callers that construct
+ * `DeviceTransport` directly without supplying a real ops bag. Production
+ * wiring (`app.ts`) always provides a real bag built against
+ * `lib/observer/binarySettle.ts`; this default exists only so a no-arg
+ * constructor stays usable. Tests that exercise binary-settle behaviour
+ * pass real observer ops through the constructor options.
+ */
+function createInertBinarySettleOps(): DeviceTransportBinarySettleOps {
+    return {
+        start: () => {},
+        note: () => 'none',
+        hasWindow: () => false,
+        clear: () => {},
+        clearAll: () => {},
+    };
+}
+
+function createEmptyBinarySettleState(): BinarySettleState {
+    return { pendingBinarySettleWindows: new Map() };
 }

@@ -3,6 +3,7 @@ import { PlanExecutor, type PlanExecutorDeps } from '../lib/executor/planExecuto
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import {
   observeNativeSteppedLoadCommandAdapter,
   setObservedNativeSteppedLoadStep,
@@ -136,6 +137,7 @@ const buildExecutor = (
     log: vi.fn(),
     logDebug: vi.fn(),
     error: vi.fn(),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
     ...overrides,
   };
   return {

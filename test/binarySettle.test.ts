@@ -3,9 +3,9 @@ import {
   createBinarySettleState,
   notePendingBinarySettleObservation,
   startPendingBinarySettleWindow,
-} from '../lib/device/managerBinarySettle';
+} from '../lib/observer/binarySettle';
 
-describe('deviceManagerBinarySettle device identity hygiene', () => {
+describe('observer binarySettle device identity hygiene', () => {
   it('does not emit a duplicate lifecycle log when a binary settle window starts', () => {
     vi.useFakeTimers();
     const info = vi.fn();
@@ -16,7 +16,7 @@ describe('deviceManagerBinarySettle device identity hygiene', () => {
         state,
         deps: {
           logger: { structuredLog: { info } },
-          recentLocalCapabilityWrites: new Map(),
+          clearLocalCapabilityWrite: vi.fn(),
           isLiveFeedHealthy: () => true,
           shouldTrackRealtimeDevice: () => true,
           getSnapshotById: () => undefined,
@@ -45,7 +45,7 @@ describe('deviceManagerBinarySettle device identity hygiene', () => {
         state,
         deps: {
           logger: { structuredLog: { info } },
-          recentLocalCapabilityWrites: new Map(),
+          clearLocalCapabilityWrite: vi.fn(),
           isLiveFeedHealthy: () => true,
           shouldTrackRealtimeDevice: () => true,
           getSnapshotById: () => undefined,
@@ -61,7 +61,7 @@ describe('deviceManagerBinarySettle device identity hygiene', () => {
         state,
         deps: {
           logger: { structuredLog: { info } },
-          recentLocalCapabilityWrites: new Map(),
+          clearLocalCapabilityWrite: vi.fn(),
           isLiveFeedHealthy: () => true,
           shouldTrackRealtimeDevice: () => true,
           getSnapshotById: () => undefined,

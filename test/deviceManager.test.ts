@@ -1,8 +1,16 @@
-import { DeviceTransport, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/device/deviceTransport';
+import { DeviceTransport, type DeviceTransportBinarySettleOps, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../lib/device/deviceTransport';
 import {
     createObservationState,
     mergeFresherCapabilityObservations,
 } from '../lib/device/transport/managerObservation';
+import {
+    clearAllPendingBinarySettleWindows,
+    clearPendingBinarySettleWindow,
+    createBinarySettleState,
+    hasPendingBinarySettleWindow,
+    notePendingBinarySettleObservation,
+    startPendingBinarySettleWindow,
+} from '../lib/observer/binarySettle';
 import type { LiveFeedHealth } from '../lib/device/liveFeed';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
@@ -12,6 +20,20 @@ import {
 } from './mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../lib/device/transport/managerHomeyApi';
+
+// Real observer binarySettle ops + state — only the EV settle tests below
+// need these (transport's default is inert; production wiring DIs them).
+function withRealBinarySettle() {
+    const state = createBinarySettleState();
+    const ops: DeviceTransportBinarySettleOps = {
+        start: startPendingBinarySettleWindow,
+        note: notePendingBinarySettleObservation,
+        hasWindow: hasPendingBinarySettleWindow,
+        clear: clearPendingBinarySettleWindow,
+        clearAll: clearAllPendingBinarySettleWindows,
+    };
+    return { binarySettleState: state, binarySettleOps: ops };
+}
 
 // Mock the live feed so tests don't attempt a real socket.io connection.
 vi.mock('../lib/device/liveFeed', () => {
@@ -104,7 +126,7 @@ describe('DeviceTransport', () => {
             loggerMock,
             undefined,
             undefined,
-            { debugStructured: debugStructuredMock },
+            { debugStructured: debugStructuredMock, ...withRealBinarySettle() },
         );
     });
 
@@ -3010,8 +3032,7 @@ describe('DeviceTransport', () => {
             it('shares cursor for EV charging-state drift during binary settle', async () => {
                 vi.useFakeTimers();
                 try {
-                    const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
-                    });
+                    const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, withRealBinarySettle());
                     await evDeviceManager.init();
                     mockApiGet.mockResolvedValue({
                         ev1: {
@@ -5106,7 +5127,7 @@ describe('DeviceTransport', () => {
             try {
                 const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                     getNativeEvWiringEnabled: () => true,
-                });
+                }, undefined, withRealBinarySettle());
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
                     ev1: {
@@ -5308,8 +5329,7 @@ describe('DeviceTransport', () => {
         it('settles an idempotent EV pause from unchanged paused state in device.update', async () => {
             vi.useFakeTimers();
             try {
-                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
-                });
+                const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, withRealBinarySettle());
                 await evDeviceManager.init();
                 mockApiGet.mockResolvedValue({
                     ev1: {
@@ -5366,7 +5386,7 @@ describe('DeviceTransport', () => {
         it('normalizes Zaptec proprietary capability updates at the observation boundary', async () => {
             const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
                 getNativeEvWiringEnabled: () => true,
-            });
+            }, undefined, withRealBinarySettle());
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {

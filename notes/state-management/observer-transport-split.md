@@ -175,7 +175,22 @@ PR #1b after the read-side narrowing is proven; total train is 6 PRs.
    in the secondary cleanup of moving `stateOfCharge.ts` into
    `lib/device/transport/`.)
 6. **Wire the injected `pendingPredicate`** and move pending/settle state into
-   observer. Observer subscribes to transport events. (PR #4)
+   observer. Observer subscribes to transport events. (PR #4 — shipped:
+   `lib/device/managerBinarySettle.ts` moved to `lib/observer/binarySettle.ts`;
+   pending-binary-command sync/store moved into `lib/observer/pendingBinaryCommands.ts`
+   and `lib/observer/pendingBinaryCommandTypes.ts`; the dispatcher
+   `lib/executor/binaryControlDispatch.ts` now returns a discriminated
+   `{ok: true} | {ok: false; reason: 'dispatch_failed'}` result and owns
+   pending writes/deletes through the observer-owned store; plan's
+   `decideBinaryControl` no longer touches pending state; transport accepts a
+   `pendingPredicate(deviceId, capabilityId)` callback supplied by wiring
+   (`app.ts`) and backed by observer's binarySettle store. Observer does not
+   yet subscribe to transport events — that's deferred to PR #5 alongside the
+   three-way realtime split. Transport's default ops bag is inert (no-op
+   stubs + empty state); tests that exercise binary-settle behaviour pass
+   real observer ops through the constructor options. No static observer
+   import remains in `lib/device/`; the `no-device-to-peer-except-power`
+   cruiser rule stays a single error rule with no exceptions.)
 7. **Three-way realtime split**: translation in transport, drift detection in
    executor, reapply trigger in wiring. (PR #5)
 

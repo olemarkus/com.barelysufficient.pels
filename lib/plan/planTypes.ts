@@ -15,11 +15,11 @@ import type {
 } from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
-export type PendingTargetObservationSource =
-  | 'rebuild'
-  | 'snapshot_refresh'
-  | 'realtime_capability'
-  | 'device_update';
+// Canonical observation-source union lives in `lib/observer/`; plan
+// continues to surface this name for compatibility with the many target-
+// command callers that already import it from here.
+import type { PendingObservationSource } from '../observer/pendingBinaryCommandTypes';
+export type PendingTargetObservationSource = PendingObservationSource;
 
 export type PendingTargetCommandStatus =
   | 'waiting_confirmation'
