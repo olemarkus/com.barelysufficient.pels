@@ -125,7 +125,7 @@ export function parseDevice(params: {
         resolveLatestLocalWriteMs,
     } = deps;
 
-    const identity = resolveParseDeviceIdentity({ device, providers });
+    const identity = resolveParseDeviceIdentity({ device });
     if (!identity) return null;
     const {
         deviceId,
