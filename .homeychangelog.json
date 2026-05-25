@@ -379,5 +379,8 @@
   },
   "2.9.0": {
     "en": "Add the option to allow smart tasks to exempt from budget and to limit other devices. Also add option to switch phase mode for EV chargers."
+  },
+  "2.9.1": {
+    "en": "Large amount of stability fixes."
   }
 }
