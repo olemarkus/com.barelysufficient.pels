@@ -2230,9 +2230,28 @@ consolidation + a11y polish (8 P2)`.*
       third time inside `resolveParseDeviceIdentity`.
       Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
       `lib/device/managerParseIdentity.ts`.
-- [ ] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
+- [x] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
       purely informational, simplify it aggressively.
       Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
+      Audit result: every consumer is informational. The producer
+      (`computeBacktestedConfidence` / `resolveConfidence`) feeds five sites:
+      `DailyBudgetManager.update` (writes onto `budget.confidence`,
+      `confidenceDebug`), `dailyBudgetManagerSnapshot.logBudgetSummaryIfNeeded`
+      (single debug log line), `dailyBudgetService.applyOverallModelConfidence`
+      (copies today's confidence to adjacent-day snapshots), `buildDailyBudgetSnapshot`
+      (puts the values onto the `state` block of `DailyBudgetDayPayload`), and
+      `budgetRedesignResolvers.resolveConfidenceData` /
+      `views/BudgetOverview.BudgetConfidenceCard` (Plan-confidence card label,
+      percent, and the four explainer rows). `grep` on `lib/plan/`, `lib/executor/`,
+      `lib/device/`, `lib/power/`, `lib/observer/`, `lib/app/` confirms no planner /
+      shed / restore / budget-gate branch reads either value. Aggressive
+      simplification (e.g. collapsing to a 3-state band, dropping the bootstrap
+      CI) is mechanically possible but would also have to reshape `ConfidenceDebug`
+      in `packages/contracts/src/dailyBudgetTypes.ts` and the four debug-row
+      labels the UI renders, plus ~900 lines of tests, so this PR documents the
+      scope at the top of `lib/dailyBudget/dailyBudgetConfidence.ts` and closes
+      the audit. Future simplification is a follow-up if the explainer card
+      changes.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
