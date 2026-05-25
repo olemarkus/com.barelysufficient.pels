@@ -3033,7 +3033,7 @@ should not be folded into the same PR.
       override go away.
       Files: `lib/price/priceService.ts`, `eslint.config.mjs`.
 
-- [ ] Clean up low-severity v2.9 review-note drift. The implementation is
+- [x] Clean up low-severity v2.9 review-note drift. The implementation is
       correct, but contributor notes point at stale files or examples:
       `notes/smart-task-flow-cards/README.md` still names deleted
       `flowCards/deadlineEndedTokens.ts` in the implementation punch list
@@ -3049,6 +3049,15 @@ should not be folded into the same PR.
       `notes/deferred-load-objectives/feasibility-confidence.md`,
       `notes/smart-task-ui/README.md`, matching TODO citation if retained.
       Source: adversarial docs review, v2.9.0 closeout, 2026-05-23.
+      **Done (2026-05-25):** flow-cards punch list now points at
+      `flowCards/smartTaskTokens.ts` instead of deleted
+      `flowCards/deadlineEndedTokens.ts`; feasibility-confidence note
+      reframes the `objectiveProfiles.ts:429 — previousSample.crediblePowerW ×
+      intervalMs` reference as historical and points at the post-fix math in
+      `lib/objectives/energyAccumulator.ts:29-31` (`subIntervalEnergyKwh`) +
+      `lib/objectives/energyAccumulator.ts:43-50` (`calculateWindowEnergyKwh`);
+      smart-task-ui review walk annotates the `Backup hours` pill row as
+      future scope so contributors do not treat it as a shipped surface.
 
 - [ ] Persistence-hardening backlog: normalize `power_tracker_state` at the
       Settings UI/API boundary. `lib/app/settingsUiApi.ts` still casts raw
