@@ -232,7 +232,7 @@ Files that need to change:
   tokens.
 - `flowCards/deadlineObjectiveCards.ts` — update `buildTriggerTokens`
   for status_changed; remove dropdown-based runlistener filtering.
-- `flowCards/deadlineEndedTokens.ts` — emit `outcome_id` alongside
+- `flowCards/smartTaskTokens.ts` — emit `outcome_id` alongside
   `outcome`; add numeric tokens.
 - Active-plan recorder / planHistory — surface the new numeric fields the
   tokens depend on (`delivered_kwh`, `revisions_count`, numeric target /
