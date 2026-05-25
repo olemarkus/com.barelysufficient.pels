@@ -172,6 +172,7 @@ Key timing:
 | Open work and known issues | `TODO.md` |
 | **UI labels, status strings, tab names** | `notes/ui-terminology.md` |
 | **Overview hero design spec** | `notes/overview-hero-spec.md` |
+| **Personas / who each surface serves** | `notes/personas.md` |
 
 ---
 
