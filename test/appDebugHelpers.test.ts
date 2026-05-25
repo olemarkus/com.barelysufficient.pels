@@ -8,6 +8,8 @@ import {
   logHomeyDeviceForDebugFromApp,
 } from '../lib/app/appDebugHelpers';
 import { resetRestClient, setRestClient } from '../lib/device/transport/managerHomeyApi';
+import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -19,11 +21,11 @@ const buildDeviceManager = (params: {
     snapshot = [],
     observedSources = null,
   } = params;
-  return {
+  return withGetSnapshotByDeviceId({
     getDevicesForDebug: vi.fn().mockResolvedValue(devices),
-    getSnapshot: vi.fn().mockReturnValue(snapshot),
+    getSnapshot: vi.fn().mockReturnValue(snapshot as TargetDeviceSnapshot[]),
     getDebugObservedSources: vi.fn().mockReturnValue(observedSources),
-  } as unknown as DeviceManager;
+  }) as unknown as DeviceManager;
 };
 
 const findLogPayload = (logger: Mock, message: string): unknown => {
