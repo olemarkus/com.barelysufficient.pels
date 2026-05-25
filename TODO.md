@@ -1263,11 +1263,16 @@ No action.*
       in-progress record + finalize paths split into their own module.
       Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
 
-- [ ] Reduce `lib/app/appInit.ts` `max-lines` override (currently 520).
-      Bumped in v2.8.0 PR1 to host the per-hour price resolver. Target: <=500
-      once the resolver moves into a dedicated module alongside the other
-      deferred-objective wiring. (The shared-domain `resolvePostmortemTone`
-      helper extraction has already landed.)
+- [x] Reduce `lib/app/appInit.ts` `max-lines` override (was 520).
+      Done in `cdf2d164` (`refactor(app): split appInit into
+      deferredRecorders + calibrationViews`): the per-hour price resolver
+      (`resolveHourPriceFromContext`) moved into
+      `lib/app/appInit/deferredRecorders.ts` (244 LOC) alongside the
+      deferred-objective recorder factories; calibration view helpers
+      moved into `lib/app/appInit/calibrationViews.ts` (111 LOC).
+      `appInit.ts` is now 324 LOC and the per-file `max-lines: 520`
+      override was removed from `eslint.config.mjs`. (The shared-domain
+      `resolvePostmortemTone` helper extraction had already landed.)
 
 *v2.8.0 release-review findings (2026-05-19). Four items from the
 five-agent fan-out pass on `v2.7.4..origin/main`.*
