@@ -20,7 +20,6 @@ import type { DeviceTransportBinarySettleOps } from './lib/device/deviceTranspor
 import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import { PlanService } from './lib/plan/planService';
 import { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
-import { isPlanActivelyConverging } from './lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import type {
   DeviceControlProfiles,
@@ -68,8 +67,8 @@ import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
-import { schedulePlanRebuildFromSignal } from './lib/plan/rebuildScheduler/signalDriven';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
+import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
 import {
@@ -77,7 +76,6 @@ import {
   prunePowerTrackerHistoryForApp,
   updateDailyBudgetAndRecordCapForApp,
   type PowerTrackerPersistReason,
-  recordPowerSampleForApp,
 } from './lib/power/sampleIngest';
 import {
   PowerCalibrationStore,
@@ -85,10 +83,7 @@ import {
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
 } from './lib/device/devicePowerCalibrationStore';
-import { shouldSkipShortfallRebuildFromPlanSummary } from './lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from './lib/plan/planUsage';
-import { updateObjectiveProfilesFromSnapshot } from './lib/objectives/profiles';
 import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
@@ -174,10 +169,6 @@ import {
   updateStateOfChargeObservationFreshness,
 } from './lib/device/transport/stateOfCharge';
 import type { FlowBackedCapabilityReportOutcome } from './lib/app/appContext';
-const POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 2000;
-// Let non-urgent power deltas settle before rebuilding the full plan again.
-const POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 0 : 15000;
-const POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 100 : 30 * 1000;
 const FLOW_REBUILD_COOLDOWN_MS = 1000;
 // Leading window before the first flow rebuild runs, so a burst of settings cards in one
 // flow (e.g. set deadline -> allow rescue -> allow rescue) coalesces into a single re-solve
@@ -362,9 +353,23 @@ class PelsApp extends Homey.App {
     onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
     onIntentError: this.schedulerTelemetry.onIntentError,
   });
-  private powerSampleLoop?: Promise<void>;
-  private powerSampleRerunRequested = false;
-  private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
+  private readonly powerSamplePipeline = new PowerSamplePipeline({
+    getPowerTracker: () => this.powerTracker,
+    getCapacitySettings: () => this.capacitySettings,
+    getCapacityGuard: () => this.capacityGuard,
+    getPlanEngine: () => this.planEngine,
+    getPlanService: () => this.planService,
+    getDeviceManager: () => this.deviceManager,
+    planRebuildScheduler: this.planRebuildScheduler,
+    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
+    setPowerSampleRebuildState: (state) => {
+      this.powerSampleRebuildState = state;
+    },
+    getLatestTargetSnapshot: () => this.latestTargetSnapshot,
+    getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
+    savePowerTracker: (state) => this.savePowerTracker(state),
+    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
+  });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
   private readonly backgroundTasks = new BackgroundTasksController({
@@ -411,13 +416,13 @@ class PelsApp extends Homey.App {
       this.homey,
       (message, error) => this.error(message, error),
     ),
-    recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
+    recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
   });
   private readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     homey: this.homey,
     timers: this.timers,
     pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
-    recordPowerSample: async (powerW) => this.recordPowerSample(powerW),
+    recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
     logDebug: (topic, ...args) => this.logDebug(topic, ...args),
     error: (...args) => this.error(...args),
   });
@@ -703,7 +708,7 @@ class PelsApp extends Homey.App {
       updateOverheadToken: (value) => app.updateOverheadToken(value),
       registerFlowCards: () => app.registerFlowCards(),
       refreshTargetDevicesSnapshot: (options) => app.refreshTargetDevicesSnapshot(options),
-      recordPowerSample: (powerW, nowMs) => app.recordPowerSample(powerW, nowMs),
+      recordPowerSample: (powerW, nowMs) => app.powerSamplePipeline.recordPowerSample(powerW, nowMs),
       startHeartbeat: () => app.startHeartbeat(),
       handleOperatingModeChange: (rawMode) => app.handleOperatingModeChange(rawMode),
       getFlowSnapshot: () => app.getFlowSnapshot(),
@@ -1515,103 +1520,6 @@ class PelsApp extends Homey.App {
       dailyBudgetService: this.dailyBudgetService,
       options,
     });
-  }
-  private async runPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
-    const sampleStart = Date.now();
-    const previousSampleTs = this.powerTracker.lastTimestamp;
-    try {
-      const planState = this.planEngine?.state;
-      const planConvergenceActive = isPlanActivelyConverging(planState);
-      const latestPlanSummary = buildPlanCapacityStateSummary(
-        this.planService?.getLatestPlanSnapshot(),
-        {
-          summarySource: 'plan_snapshot',
-          summarySourceAtMs: this.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-        },
-      );
-      const skipWhileShortfallUnrecoverable = shouldSkipShortfallRebuildFromPlanSummary({
-        summary: latestPlanSummary,
-        state: this.powerSampleRebuildState,
-      });
-      await recordPowerSampleForApp({
-        currentPowerW,
-        nowMs,
-        capacitySettings: this.capacitySettings,
-        getLatestTargetSnapshot: () => this.latestTargetSnapshot,
-        powerTracker: this.powerTracker,
-        capacityGuard: this.capacityGuard,
-        splitControlledUsage: (params) => splitControlledUsageKw(params),
-        sumBudgetExemptUsage: (devices) => sumBudgetExemptLiveUsageKw(devices),
-        updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
-          ...params,
-          debugStructured: this.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
-        }),
-        schedulePlanRebuild: async () => {
-          await schedulePlanRebuildFromSignal({
-            scheduler: this.planRebuildScheduler,
-            getState: () => this.powerSampleRebuildState,
-            setState: (state) => {
-              this.powerSampleRebuildState = state;
-            },
-            getNowMs: () => this.getPlanRebuildNowMs(),
-            minIntervalMs: POWER_SAMPLE_REBUILD_MIN_INTERVAL_MS,
-            stableMinIntervalMs: POWER_SAMPLE_REBUILD_STABLE_INTERVAL_MS,
-            maxIntervalMs: POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS,
-            rebuildPlanFromCache: (reason?: string) => this.planService.rebuildPlanFromCache(reason),
-            currentPowerW,
-            capacitySettings: this.capacitySettings,
-            capacityGuard: this.capacityGuard,
-            planConvergenceActive,
-            skipWhileShortfallUnrecoverable,
-          });
-        },
-        saveState: (state) => this.savePowerTracker(state),
-      });
-      if (previousSampleTs === undefined || nowMs > previousSampleTs) {
-        this.planEngine.clearStartupRestoreStabilization(nowMs);
-      }
-    } finally {
-      addPerfDuration('power_sample_ms', Date.now() - sampleStart);
-      incPerfCounter('power_sample_total');
-    }
-  }
-  private async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
-    incPerfCounter('power_sample_requested_total');
-    const request = { currentPowerW, nowMs };
-
-    if (this.powerSampleLoop) {
-      if (this.powerSampleRerunRequested) {
-        incPerfCounter('power_sample_rerun_coalesced_total');
-      } else {
-        incPerfCounter('power_sample_rerun_requested_total');
-      }
-      this.powerSampleRerunRequested = true;
-      this.pendingPowerSampleRequest = request;
-      return this.powerSampleLoop;
-    }
-
-    const loopPromise = this.runCoalescedPowerSamples(request);
-    this.powerSampleLoop = loopPromise;
-    return loopPromise;
-  }
-  private async runCoalescedPowerSamples(initialRequest: { currentPowerW: number; nowMs: number }): Promise<void> {
-    let request = initialRequest;
-    try {
-      while (true) {
-        this.powerSampleRerunRequested = false;
-        this.pendingPowerSampleRequest = undefined;
-        await this.runPowerSample(request.currentPowerW, request.nowMs);
-        if (!this.powerSampleRerunRequested) return;
-        incPerfCounter('power_sample_rerun_executed_total');
-        request = this.pendingPowerSampleRequest ?? request;
-      }
-    } finally {
-      if (this.powerSampleLoop) {
-        this.powerSampleLoop = undefined;
-      }
-      this.powerSampleRerunRequested = false;
-      this.pendingPowerSampleRequest = undefined;
-    }
   }
   private registerFlowCards(): void {
     registerAppFlowCards(this.ctx);
