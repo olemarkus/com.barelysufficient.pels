@@ -966,7 +966,12 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
         <div class="plan-hero__subline plan-hero__subline--reason">{pending.hero.headlineReason}</div>
       )}
       <div class="plan-hero__subline">{pending.hero.subline}</div>
-      <div class="plan-hero__subline plan-hero__subline--muted">{pending.hero.metaLine}</div>
+      {/* `metaLine` on the pending hero carries the "why is this still
+       * building?" copy (e.g. "PELS needs a current state of charge…"). This
+       * is the most actionable string on the surface, so it renders at the
+       * primary on-surface tone via `--action` instead of the secondary
+       * `--muted` tone the ready hero uses for its meta/cost recap lines. */}
+      <div class="plan-hero__subline plan-hero__subline--action">{pending.hero.metaLine}</div>
       {pending.hero.recourse !== null && (
         <div class="plan-hero__recourse">
           <button

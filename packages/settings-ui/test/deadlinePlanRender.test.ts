@@ -107,6 +107,28 @@ describe('DeadlinePlan pending branch', () => {
     expect(history$).not.toBeNull();
     expect(history$?.textContent).toContain('Past tasks');
   });
+
+  it('renders the pending-hero metaLine on the un-muted action tone', () => {
+    // The metaLine on the pending hero carries the "why is this still
+    // building?" copy — the most actionable string on the surface. It must
+    // render via `plan-hero__subline--action` (primary text colour) instead
+    // of the secondary `--muted` tone the ready hero uses for its recap
+    // meta/cost lines. Regression for the P2 contrast issue called out in
+    // TODO ~2301: muted secondary on a dark surface demoted the most
+    // important call-to-action on the panel.
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, {
+      status: 'pending',
+      pending: buildPendingPayload(),
+    });
+    const sublines = Array.from(mount.querySelectorAll('.plan-hero__subline'));
+    const metaLine = sublines.find((node) =>
+      node.textContent?.includes('Will start when the next-day price drop publishes.'),
+    );
+    expect(metaLine).not.toBeUndefined();
+    expect(metaLine?.classList.contains('plan-hero__subline--action')).toBe(true);
+    expect(metaLine?.classList.contains('plan-hero__subline--muted')).toBe(false);
+  });
 });
 
 // Builds a minimal ready payload with an at-risk hero whose device-side
