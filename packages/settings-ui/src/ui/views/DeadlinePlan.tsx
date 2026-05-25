@@ -42,6 +42,16 @@ export type DeadlinePlanHeroTone = 'good' | 'warn' | 'alert' | 'info';
 type DeadlinePlanChip = {
   text: string;
   tone: DeadlinePlanChipTone;
+  // True only for the "Building plan…" pending-state chip so the CSS
+  // `.plan-chip[data-pulse="true"]` rule lights up a low-key opacity pulse.
+  // Resolved producer-side from the pending liveState so the view never
+  // branches on chip text or liveState — it just forwards the flat boolean
+  // onto the DOM `data-pulse` attribute. Optional / undefined for every
+  // other chip (kind, status, confidence, paused) so the attribute is
+  // suppressed and those chips stay still. See
+  // `packages/settings-ui/public/style.css` `.plan-chip[data-pulse="true"]`
+  // for the keyframes + reduced-motion fallback.
+  pulse?: boolean;
 };
 
 type DeadlinePlanHour = {
@@ -201,7 +211,13 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
   <section class="plan-hero pels-hero" data-tone={payload.hero.tone} aria-labelledby="deadline-plan-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
-        <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
+        <span
+          key={chip.text}
+          class={chipClass(chip.tone)}
+          data-pulse={chip.pulse ? 'true' : undefined}
+        >
+          {chip.text}
+        </span>
       ))}
     </div>
     <div class="plan-hero__section">
@@ -956,7 +972,13 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
   <section class="plan-hero pels-hero" data-tone="info" aria-labelledby="deadline-plan-pending-title">
     <div class="plan-hero__chips">
       {pending.hero.chips.map((chip) => (
-        <span key={chip.text} class={chipClass(chip.tone)}>{chip.text}</span>
+        <span
+          key={chip.text}
+          class={chipClass(chip.tone)}
+          data-pulse={chip.pulse ? 'true' : undefined}
+        >
+          {chip.text}
+        </span>
       ))}
     </div>
     <div class="plan-hero__section">

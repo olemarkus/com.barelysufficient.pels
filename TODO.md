@@ -2331,15 +2331,20 @@ consolidation + a11y polish (8 P2)`.*
       whatsoever.
       Files: `lib/observer/observedPower.ts`, `lib/plan/planHeadroomDevice.ts`, related
       activation/headroom tests.
-- [ ] Animate the "Building plan…" chip so users can tell planning is alive.
-      The chip is static text rendered identically whether the planner just started or has been
-      stuck for two minutes (live-observed: both seeded tasks stayed in this state past 100 s
-      with zero visual change). Add a low-key M3 pulse / progress indicator alongside the chip
-      so users have a liveness signal. Same chip primitive across active and detail surfaces;
-      reuse the existing tokens.
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/public/style.css`.
+- [x] Animate the "Building plan…" chip so users can tell planning is alive. *(landed via
+      Option B: new `data-pulse="true"` attribute on the canonical `.plan-chip` primitive,
+      bound to a low-key opacity loop (1 → 0.6 → 1) in `packages/settings-ui/public/style.css`
+      routed through the existing `--pels-motion-pulse-duration` token. Discriminator path:
+      list surface — `StatusChip` in `DeadlinesList.tsx` emits `data-pulse="true"` when
+      `statusId === 'building_plan'`; pending hero — `buildPendingHero` in
+      `deadlinePlanPending.ts` sets `pulse: true` on the liveStateChip when
+      `liveState === 'building_plan'` (the `DeadlinePlanChip` type gained an optional
+      `pulse?: boolean` field which both `DeadlineHero` and `PendingHero` forward onto
+      `data-pulse`). `prefers-reduced-motion: reduce` disables the animation; the
+      `prefers-reduced-motion: no-preference` gate keeps the pulse off for users who opted
+      out of motion. Locked by `buildingPlanChipPulse.test.ts` (CSS keyframe + reduced-motion
+      contract) and per-surface DOM assertions in `deadlinesListRender.test.ts` /
+      `deadlinePlanRender.test.ts`.)*
 - [x] Reconcile chip tone between the Smart tasks list and the plan detail.
       For the same `Building plan…` state the list card uses `muted` tone but the plan-detail
       pending hero uses `info` tone. Pick one and apply uniformly. *(landed: shared-domain

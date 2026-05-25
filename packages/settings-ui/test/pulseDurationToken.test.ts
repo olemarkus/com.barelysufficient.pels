@@ -21,15 +21,16 @@ import { describe, expect, it } from 'vitest';
  *   2. Every pulse-using `animation:` declaration in `public/style.css`
  *      consumes `var(--pels-motion-pulse-duration)` — one declaration per
  *      keyframe (`pulse`, `plan-stepped-direction-pulse`,
- *      `plan-stepped-pulse`).
+ *      `plan-stepped-pulse`, `plan-chip-building-pulse`).
  *   3. The previous bare-literal durations (1.4s / 1.5s / 1.6s) no longer
  *      appear on any pulse `animation:` line.
  *
  * The keyframe definitions themselves are intentionally NOT collapsed —
  * they encode meaningfully different visual effects (transform translateY
- * for the directional indicator vs. opacity-only for the loading notice
- * and stepped segment, plus distinct opacity floors of 0.6 vs. 0.45). The
- * TODO ask was about the duration literals, not the keyframe content.
+ * for the directional indicator vs. opacity-only for the loading notice,
+ * stepped segment, and Building plan… chip, plus distinct opacity floors of
+ * 0.6 vs. 0.45). The TODO ask was about the duration literals, not the
+ * keyframe content.
  * -------------------------------------------------------------------------- */
 
 const STYLE_CSS_PATH = path.join(__dirname, '..', 'public', 'style.css');
@@ -39,6 +40,7 @@ const EXPECTED_PULSE_KEYFRAMES: ReadonlyArray<string> = [
   'pulse',
   'plan-stepped-direction-pulse',
   'plan-stepped-pulse',
+  'plan-chip-building-pulse',
 ];
 
 describe('pulse duration token (--pels-motion-pulse-duration)', () => {

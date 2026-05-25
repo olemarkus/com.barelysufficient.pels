@@ -91,8 +91,16 @@ const formatTarget = (card: DeadlinesListCard): string => {
 const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {
   const label = SMART_TASK_LIST_STATUS_LABELS[statusId];
   const variant = SMART_TASK_LIST_STATUS_CHIP_VARIANT[statusId];
+  // Opacity pulse signals the planner is still working — the same chip can
+  // sit "Building plan…" for tens of seconds while prices/samples arrive, and
+  // a static pill reads identically whether planning just started or has
+  // been stuck. Only the building_plan state carries the pulse; every other
+  // list status is a settled state. Same `data-pulse` attribute the pending
+  // hero chip uses so the CSS rule (`packages/settings-ui/public/style.css`,
+  // `.plan-chip[data-pulse="true"]`) lights both surfaces uniformly.
+  const pulse = statusId === 'building_plan' ? 'true' : undefined;
   return (
-    <span class={`plan-chip plan-chip--${variant}`}>{label}</span>
+    <span class={`plan-chip plan-chip--${variant}`} data-pulse={pulse}>{label}</span>
   );
 };
 

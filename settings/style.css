@@ -1572,6 +1572,34 @@ md-filled-button.is-busy {
   letter-spacing: -0.01em;
 }
 
+/* Liveness pulse for the "Building plan…" chip — the planner can spin for
+   tens of seconds while waiting on price publishes / device samples, and a
+   static pill reads identically whether planning just started or has been
+   stuck. A low-key opacity loop tells the user the surface is alive without
+   stealing attention from actionable content elsewhere on the page.
+   Routed through the canonical `--pels-motion-pulse-duration` token shared
+   with the device-loading notice and stepped-direction indicators so the
+   cadence stays in lock-step with the other planner-liveness motions.
+   Gated behind `prefers-reduced-motion: no-preference` and explicitly
+   disabled under `reduce` so the chip stays still for users who opted out
+   of motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .plan-chip[data-pulse="true"] {
+    animation: plan-chip-building-pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
+  }
+}
+
+@keyframes plan-chip-building-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-chip[data-pulse="true"] {
+    animation: none;
+  }
+}
+
 .plan-hero__bar-group {
   display: grid;
   gap: var(--spacing-2);

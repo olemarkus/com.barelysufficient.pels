@@ -92,7 +92,15 @@ export const buildPendingHero = (params: {
   return {
     chips: [
       { text: params.labels.kindChipLabel, tone: 'info' },
-      { text: params.labels.liveStateChipLabel[liveState], tone: pendingChipTone(liveState) },
+      {
+        text: params.labels.liveStateChipLabel[liveState],
+        tone: pendingChipTone(liveState),
+        // Liveness pulse only for the actively-working "Building plan…" chip,
+        // never for the settled "Paused — unplugged" chip (where the user
+        // must act, not wait). Resolved here so the view never branches on
+        // liveState — it just forwards the flat boolean onto `data-pulse`.
+        pulse: liveState === 'building_plan',
+      },
     ],
     sectionLabel: params.labels.sectionLabel,
     headline: copy.headline,
