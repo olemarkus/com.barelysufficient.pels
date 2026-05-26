@@ -25,6 +25,7 @@ import {
 import {
   applySettingsPatch,
   callApi,
+  getSetting,
   primeApiCache,
   setSetting,
   waitForHomey,
@@ -44,8 +45,15 @@ import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
-  DEBUG_LOGGING_TOPICS as AVAILABLE_DEBUG_LOGGING_TOPICS,
+  DEBUG_LOGGING_SCENARIOS,
+  type DebugLoggingScenarioId,
+  type DebugLoggingTopic,
+  isDebugLoggingScenarioId,
+  normalizeDebugLoggingTopics,
+  scenarioIdsToTopics,
+  topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
+import { removeLegacyTopicsHint, renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import {
   initModeHandlers,
   loadModeAndPriorities,
@@ -160,33 +168,67 @@ const initDebugLoggingSwitches = () => {
   const mount = document.getElementById('debug-logging-checkboxes');
   if (!mount) return;
   mount.replaceChildren();
-  AVAILABLE_DEBUG_LOGGING_TOPICS.forEach(({ id, label, description }) => {
-    const { element, input } = createSwitchField({ id: `debug-topic-${id}`, label, hint: description });
-    input.dataset.debugTopic = id;
+  removeLegacyTopicsHint();
+  DEBUG_LOGGING_SCENARIOS.forEach(({ id, label, description }) => {
+    const { element, input } = createSwitchField({
+      id: `debug-scenario-${id}`,
+      label,
+      hint: description,
+    });
+    input.dataset.debugScenario = id;
     mount.appendChild(element);
   });
 };
 
+const readSelectedScenarioIds = (): DebugLoggingScenarioId[] => {
+  const inputs = Array.from(document.querySelectorAll<MdSwitchElement>('[data-debug-scenario]'));
+  const ids: DebugLoggingScenarioId[] = [];
+  inputs.forEach((input) => {
+    if (!input.selected) return;
+    const raw = input.dataset.debugScenario;
+    if (isDebugLoggingScenarioId(raw)) ids.push(raw);
+  });
+  return ids;
+};
+
+const readPersistedUnmatchedTopics = async (): Promise<DebugLoggingTopic[]> => {
+  const raw = await getSetting(DEBUG_LOGGING_TOPICS_SETTING);
+  const topics = normalizeDebugLoggingTopics(raw);
+  return topicsToScenarioIds(topics).unmatched;
+};
+
 const initAdvancedHandlers = () => {
-  const saveDebugTopics = async () => {
-    try {
-      const inputs = Array.from(document.querySelectorAll<MdSwitchElement>('[data-debug-topic]'));
-      const selected = inputs
-        .filter((input) => input.selected && typeof input.dataset.debugTopic === 'string')
-        .map((input) => input.dataset.debugTopic as string);
-      await setSetting(DEBUG_LOGGING_TOPICS_SETTING, selected);
-      await setSetting('debug_logging_enabled', selected.length > 0);
-      await showToast(
-        selected.length ? 'Debug logging updated.' : 'Debug logging disabled.',
-        'ok',
-      );
-    } catch (error) {
-      await logSettingsError('Failed to update debug logging setting', error, 'debugLoggingTopics');
-      await showToastError(error, 'Failed to update debug logging setting.');
-    }
+  let saveQueue: Promise<void> = Promise.resolve();
+  const saveDebugTopics = (): Promise<void> => {
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const scenarioIds = readSelectedScenarioIds();
+        const scenarioTopics = scenarioIdsToTopics(scenarioIds);
+        const carriedLegacyTopics = await readPersistedUnmatchedTopics();
+        const merged: DebugLoggingTopic[] = [...scenarioTopics];
+        carriedLegacyTopics.forEach((topic) => {
+          if (!merged.includes(topic)) merged.push(topic);
+        });
+        await setSetting(DEBUG_LOGGING_TOPICS_SETTING, merged);
+        await setSetting('debug_logging_enabled', merged.length > 0);
+        const mount = document.getElementById('debug-logging-checkboxes');
+        if (mount) {
+          const { unmatched } = topicsToScenarioIds(merged);
+          renderLegacyTopicsHint(mount, unmatched);
+        }
+        await showToast(
+          merged.length ? 'Debug logging updated.' : 'Debug logging disabled.',
+          'ok',
+        );
+      } catch (error) {
+        await logSettingsError('Failed to update debug logging setting', error, 'debugLoggingScenarios');
+        await showToastError(error, 'Failed to update debug logging setting.');
+      }
+    }).catch(() => {});
+    return saveQueue;
   };
 
-  document.querySelectorAll<MdSwitchElement>('[data-debug-topic]').forEach((input) => {
+  document.querySelectorAll<MdSwitchElement>('[data-debug-scenario]').forEach((input) => {
     input.addEventListener('change', () => {
       void saveDebugTopics();
     });

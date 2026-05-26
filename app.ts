@@ -47,7 +47,7 @@ import type {
   DailyBudgetUpdateStateOptions,
 } from './lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
-import { type DebugLoggingTopic } from './lib/utils/debugLogging';
+import { type DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
   AppDeviceControlHelpers,
   normalizeStoredDeviceControlProfiles,

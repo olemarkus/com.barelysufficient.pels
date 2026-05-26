@@ -23,9 +23,12 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
+  type DebugLoggingScenarioId,
+  isDebugLoggingScenarioId,
   normalizeDebugLoggingTopics,
-  type DebugLoggingTopic,
+  topicsToScenarioIds,
 } from '../../../shared-domain/src/utils/debugLogging.ts';
+import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
@@ -65,10 +68,6 @@ const getStaleDataHint = (): string => {
   }
   return 'Check your Flow that reports power usage.';
 };
-
-const isDebugLoggingTopic = (value: string): value is DebugLoggingTopic => (
-  ALL_DEBUG_LOGGING_TOPICS.includes(value as DebugLoggingTopic)
-);
 
 const updateDryRunBanner = (isDryRun: boolean) => {
   if (dryRunBanner) {
@@ -266,9 +265,13 @@ export const loadAdvancedSettings = async () => {
   if (enabledTopics.length === 0 && legacyEnabled === true) {
     enabledTopics = [...ALL_DEBUG_LOGGING_TOPICS];
   }
-  document.querySelectorAll<MdSwitchElement>('[data-debug-topic]').forEach((input) => {
+  const { matched, unmatched } = topicsToScenarioIds(enabledTopics);
+  const matchedSet = new Set<DebugLoggingScenarioId>(matched);
+  document.querySelectorAll<MdSwitchElement>('[data-debug-scenario]').forEach((input) => {
     const el = input;
-    const topic = el.dataset.debugTopic;
-    el.selected = typeof topic === 'string' && isDebugLoggingTopic(topic) && enabledTopics.includes(topic);
+    const scenarioId = el.dataset.debugScenario;
+    el.selected = isDebugLoggingScenarioId(scenarioId) && matchedSet.has(scenarioId);
   });
+  const mount = document.getElementById('debug-logging-checkboxes');
+  if (mount) renderLegacyTopicsHint(mount, unmatched);
 };

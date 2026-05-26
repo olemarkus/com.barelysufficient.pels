@@ -166,6 +166,13 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveMissedHistoryRecourse$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - APPROX_GLYPH$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - revisionReason$/,
+  // Consumed by `packages/settings-ui/src/ui/{boot,capacity}.ts` via cross-package
+  // relative import; ts-prune doesn't follow these edges. `isDebugLoggingScenarioId`
+  // is reported `(used in module)` because `normalizeDebugLoggingScenarioIds`
+  // references it in-file, so it does not need its own allowlist entry.
+  /^packages\/shared-domain\/src\/utils\/debugLogging\.ts:\d+ - scenarioIdsToTopics$/,
+  /^packages\/shared-domain\/src\/utils\/debugLogging\.ts:\d+ - topicsToScenarioIds$/,
+  /^packages\/shared-domain\/src\/utils\/debugLogging\.ts:\d+ - normalizeDebugLoggingScenarioIds$/,
   // `formatRefinedMissCause` is consumed only by `deferredPlanHistory.ts`'s
   // `formatPlanHistoryMissedReason` (a settings-UI-facing helper the runtime
   // tsconfig excludes), so ts-prune sees no runtime importer. Its sibling
