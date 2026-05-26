@@ -41,3 +41,26 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 - Preserve pending command state until confirmation or timeout.
 - If an equivalent command is already pending, suppress duplicate reapply unless retry policy explicitly allows it.
 - Logs must distinguish: observed transition / planned target / commanded/pending target.
+
+## Quiescence Is a Producer Concern
+
+Homey thermostat drivers only push capability updates on value change, so a
+healthy device steady at setpoint legitimately falls silent for hours. The
+observer producer (`lib/observer/observationFreshness.ts`) exposes a tri-state
+`fresh | stale | unknown`; consumers should not re-derive freshness from
+`lastFreshDataMs` age and must not collapse `stale` into "broken." In
+particular:
+
+- **Smart-task temperature planning** (`lib/plan/deferredObjectives/diagnosticProgress.ts`)
+  credits the last-seen temperature for any device that has produced at least
+  one trusted observation. It deliberately does not consult `observationStale`,
+  because that flag is age-derived today (`lib/app/appInit.ts` calls
+  `isDeviceObservationStale`), and consulting it would re-introduce the
+  miscategorisation. EV SoC stays strictly fresh because charger session
+  validity genuinely requires per-session telemetry.
+- **Profile learning** (`lib/objectives/samples.ts`) keeps the 30-minute
+  observation-age gate, because rate learning legitimately needs recent
+  value-changed samples.
+- **Snapshot refresh, idle classification, shed/restore lanes** stay on the
+  existing `observationStale` flag for their own reasons; this rule is scoped
+  to "consuming the current value for planning," not all observation trust.

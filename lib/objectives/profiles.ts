@@ -24,7 +24,6 @@ export type {
 
 export {
   OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS,
-  OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS,
   buildObjectiveProfileSample,
 } from './samples';
 
