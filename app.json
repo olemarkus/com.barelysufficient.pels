@@ -1647,6 +1647,20 @@
         }
       },
       "id": "plan_budget"
+    },
+    "smart_tasks": {
+      "name": {
+        "en": "Smart tasks"
+      },
+      "height": 220,
+      "api": {
+        "getSmartTasks": {
+          "method": "GET",
+          "path": "/smart_tasks"
+        }
+      },
+      "id": "smart_tasks",
+      "settings": []
     }
   },
   "capabilities": {

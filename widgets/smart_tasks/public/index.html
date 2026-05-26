@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smart tasks</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget-small">
+    <main id="widget-root" class="widget-root" aria-label="Smart tasks">
+      <ol class="rows" data-rows></ol>
+      <p class="empty" data-empty hidden></p>
+      <p class="overflow" data-overflow hidden></p>
+    </main>
+    <template id="row-template">
+      <li class="row">
+        <span class="row__name" data-row-name></span>
+        <span class="row__values"><span data-row-current>—</span> → <span data-row-target>—</span></span>
+        <span class="row__eta" data-row-eta>—</span>
+        <span class="chip" data-row-chip>—</span>
+      </li>
+    </template>
+    <script src="./index.js"></script>
+  </body>
+</html>
