@@ -32,7 +32,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
         link: '/use-cases/homey-water-heater-cheap-hours',
       },
       {
-        text: 'Home, Away and Night energy modes',
+        text: 'Home, Away, Night and Vacation energy modes',
         link: '/use-cases/homey-home-away-night-energy-modes',
       },
     ],
