@@ -21,7 +21,7 @@ Use this setup when you want to:
 - let higher-priority devices win when available power is limited
 - use Homey Flows to connect PELS to a charger app such as Zaptec, Easee, or another charger integration
 
-PELS is not a replacement for the charger app. The charger app still talks to the charger. PELS decides the desired charging current or available power based on price, total power, and priorities.
+PELS plays the brain role and lets your charger app keep doing what it does best: PELS decides the desired charging current or available power based on price, total power, and priorities; the charger app delivers it to the charger.
 
 ## How it works
 
@@ -86,11 +86,11 @@ You normally need:
 - a price source if you want cheap-hour charging
 - configured priorities in PELS
 
-PELS works best when Homey has reliable whole-home power data. Without that, PELS cannot know whether charging will push the home above the limit.
+With reliable whole-home power data in Homey, PELS keeps EV charging inside your limit hour after hour — no manual breaker resets, no surprise capacity steps on the next bill.
 
 ## Charger apps and Flows
 
-PELS does not need to support every charger API directly. The normal pattern is to use the charger app that already works with your charger, then connect PELS to it with Homey Flows.
+PELS works with any Homey charger app that exposes a current or available-power action — keep the charger app you already use and connect it to PELS with a Homey Flow.
 
 For example:
 

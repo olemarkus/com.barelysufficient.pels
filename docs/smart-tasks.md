@@ -7,7 +7,7 @@ description: Use PELS Smart tasks to charge, heat, or prepare a managed device b
 
 Smart tasks tell PELS that one device should reach a target by a ready-by time.
 
-Instead of simply allowing the device to run whenever there is available power, PELS plans the useful hours before the ready-by time. It prefers cheaper hours when prices are available, while still using the device priority, daily budget, power-limit control, and hard cap settings from the rest of your setup.
+PELS picks the best hours before the ready-by time — the cheapest hours when prices are available — and lines them up against the device priority, daily budget, power-limit control, and hard cap settings already configured. The task lands on time, on the right hours, without anyone watching prices.
 
 ## What Smart Tasks Are For
 
@@ -61,12 +61,12 @@ For EV charging, a common setup is to keep the charger managed by PELS but turn 
 
 ## Budget and Task Interaction
 
-Smart tasks do not replace the rest of PELS.
+Smart tasks compose with the rest of PELS — every layer keeps working underneath the task:
 
-- The **hard cap** is still the hourly boundary PELS protects.
-- **Daily budget** can make PELS more conservative if the day is already using too much energy.
-- **Priority** still decides which devices get room first when not everything can run.
-- **Price-based temperature shift** can still adjust normal temperature targets, but a heating task target is the readiness target for that task.
+- The **hard cap** stays the hourly boundary PELS protects.
+- **Daily budget** holds the task to a sensible pace when the day is already running hot.
+- **Priority** decides which devices get room first when something has to wait.
+- **Price-based temperature shift** keeps adjusting normal targets; a heating task target becomes the readiness target for that task.
 
 ## Letting a Task Push Harder
 

@@ -82,4 +82,4 @@ PELS resumes carefully:
 4. Recent limiting and recent failed restart attempts delay another resume.
 5. A lower-priority device may stay limited until a higher-priority device has successfully resumed.
 
-That behavior is deliberate. It avoids rapid cycling and gives the power meter time to reflect what actually happened.
+That deliberate cadence is what keeps the home stable: no rapid cycling, no chasing a stale meter reading, every resume grounded in what the meter actually reports.

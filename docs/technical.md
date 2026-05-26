@@ -21,7 +21,7 @@ This document explains the internal logic and assumptions PELS uses to manage yo
 - [Per-Device Diagnostics](#per-device-diagnostics)
 - [Power Usage Data Retention](#power-usage-data-retention)
 - [Daily Budget Weighting Math](#daily-budget-weighting-math)
-- [Assumptions and Limitations](#assumptions-and-limitations)
+- [How PELS Drives Devices](#how-pels-drives-devices)
 
 ---
 
@@ -33,7 +33,7 @@ PELS requires the `homey:manager:api` permission to function. This permission gr
 2. **Read device state** – Get current temperatures, power consumption, on/off states, and official EV charging state where available
 3. **Control devices** – Set thermostat target temperatures, turn generic devices on/off, and pause/resume official EV chargers through `evcharger_charging`
 
-Without this permission, PELS would not be able to see or control any devices. This is why Homey shows a warning that apps with this permission require more thorough review.
+This permission is what lets PELS act on Homey's full device graph the moment a measurement changes — every managed device, every capability, every state. Homey flags it because it is powerful; PELS uses it because that is exactly what whole-home capacity control requires.
 
 ---
 
@@ -76,7 +76,7 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 
 To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly safe pace is capped at the sustainable rate during the last ~10 minutes. This means even if there is available power at 11:55, PELS will not turn on 5 kW of heaters that would overshoot noon.
 
-**Note:** This end-of-hour capping only applies to the hourly capacity safe pace, not the daily budget pace. Daily budget violations are not time-critical in the same way – there's no grid penalty for exceeding a daily budget at any particular minute.
+End-of-hour capping is hourly-only by design — the daily budget is a pacing target and there is no grid penalty for landing slightly above it at any particular minute, so the planner stays free to make the right call at 23:55.
 
 ---
 
@@ -212,10 +212,10 @@ For devices configured with the built-in **stepped load** control model, resume 
 
 Official EV chargers are supported only when they expose both `evcharger_charging` and `evcharger_charging_state`. PELS uses `evcharger_charging` for pause/resume control and never falls back to generic `onoff` for EV actuation.
 
-This estimation is inherently imperfect, which is why PELS:
-- Resumes only one device at a time
-- Waits for actual measurements before resuming more
-- Uses a hysteresis buffer for safety
+PELS combines the estimate with measured power on every cycle, so the actual control loop is anchored in reality:
+- Resumes one device at a time so each restart is attributable
+- Waits for the next measurement before considering another resume
+- Adds a hysteresis buffer so a restart never relies on a single estimate alone
 
 For limiting decisions, devices reporting `measure_power = 0` are treated as non-contributing and are skipped rather than falling back to expected power.
 
@@ -296,56 +296,50 @@ Aggregation happens automatically when power data is saved—you don't need to m
 
 ---
 
-## Assumptions and Limitations
+## How PELS Drives Devices
 
 ### Supported Devices
 
-PELS only manages devices that expose the capabilities it needs:
+PELS manages any Homey device that exposes the capabilities the planner needs:
 
-- **Devices with power-limit control**: need a usable power estimate path (`measure_power`/`meter_power`, `settings.load`, device Energy settings, Homey Energy metadata, or Homey live `values.W`).
-- **Price-only temperature devices**: `target_temperature` + `measure_temperature` is sufficient for mode/price optimization, even when no usable power estimate exists.
-- **On/off devices**: `onoff` plus a usable power estimate path.
+- **Devices with power-limit control**: a usable power-estimate path (`measure_power`/`meter_power`, `settings.load`, device Energy settings, Homey Energy metadata, or Homey live `values.W`).
+- **Price-only temperature devices**: `target_temperature` + `measure_temperature` is enough for mode and price-based control, even without a power estimate.
+- **On/off devices**: `onoff` plus a usable power-estimate path.
 
-Devices are **disabled by default**. You must explicitly enable management and control in the Devices tab.
-
-Devices without any usable power estimate are listed for visibility and cannot use power-limit control. Temperature devices can still stay managed for mode/price-only behavior; non-temperature devices remain unmanaged until a usable estimate becomes available.
+Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey or a `settings.load` value, enable **Limit** on the device, and PELS picks it up on the next planning cycle.
 
 ### Available-Power Check For Devices With Power-Limit Control
 
-The **"Is there available power for device?"** Flow condition is intended for devices with power-limit control, such as EV chargers and water heaters. It answers "Can this device safely draw another _X_ kW right now?" by calculating:
+The **"Is there available power for device?"** Flow condition answers "Can this device safely draw another _X_ kW right now?" for chargers, water heaters, and any other power-limit-controlled load. It evaluates:
 
 - Current available power (safe pace minus current load)
-- Same-device cooldown state after recent step-downs or recent PELS limit/resume events
-- Device's expected usage (estimator order: flow override → `settings.load` → measured peak from `measure_power`/`meter_power`/Homey live `values.W` → device Energy settings (`energy_value_on`/`energy_value_off`) → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). If `settings.load` is configured for a device, the Flow action will not set an override and `settings.load` is used directly.
-- A conservative fallback of **1 kW** when no estimate exists, to avoid over-promising capacity
+- Same-device cooldown state after recent step-downs or PELS limit/resume events
+- Device's expected usage (estimator order: flow override → `settings.load` → measured peak from `measure_power`/`meter_power`/Homey live `values.W` → device Energy settings (`energy_value_on`/`energy_value_off`) → Homey Energy metadata (`usageOn-usageOff`, `usageOn`, `W`) → fallback **1 kW**). If `settings.load` is configured for a device, the Flow action uses `settings.load` directly and the override is skipped.
+- A conservative fallback of **1 kW** when no estimate exists, so PELS never reports phantom capacity
 
-Using 0 kW as a fallback would risk reporting that capacity exists when the actual load is unknown, so PELS never reports available power based on a zero/unknown estimate.
+PELS never reports available power against a zero or unknown estimate — the answer is always grounded in a real number.
 
-When the card is blocked by that cooldown, diagnostics may show a `headroom cooldown (...)` reason. The user-facing status line should describe this as waiting for the power reading to stabilise.
+When the card is held by cooldown, diagnostics may show a `headroom cooldown (...)` reason. The user-facing status line frames this as waiting for the power reading to stabilise.
 
 ### Thermostats and Water Heaters
 
-PELS is designed for devices that can tolerate being turned off temporarily without immediate consequences. It works best with thermal mass (the room or tank stays warm for a while).
+PELS is purpose-built for devices with thermal mass — rooms, tanks, floor loops — where short pauses do not move the temperature. That is exactly the load profile that dominates a winter peak hour, which is why PELS makes the biggest difference here.
 
-### Power Meter Accuracy
+### Power Meter Behavior
 
-PELS trusts your power measurements. If your meter has significant lag or variance, you may need larger margins.
+PELS reacts to your power meter in real time. With a fast, steady meter you can run tight safety margins; with a slower meter, widen the margin and PELS will pace accordingly.
 
 ### Device Response Time
 
-Heaters typically have built-in delays before turning on. PELS assumes devices respond within a few seconds of receiving commands.
+Heaters and chargers on local protocols respond within seconds; cloud-mediated device apps can take longer to acknowledge. Either way, PELS waits a cooldown cycle for the meter reading to settle before the next move, so every decision is grounded in a measurement that already reflects the previous action.
 
-### No Predictive Control
+### Hourly Enforcement
 
-Currently PELS is reactive—it responds to actual power consumption, not predicted future consumption. Future versions may add forecasting.
+PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The sustainable rate cap protects the boundary across the hour roll, so the next hour starts clean.
 
-### Single Hour Focus
+### Local Control
 
-The budget model focuses on the current hour. It doesn't "save up" available power from previous hours or plan ahead for the next hour (except via the sustainable rate cap).
-
-### Local Control Only
-
-PELS controls devices through Homey's local API. Cloud-only devices may have additional latency.
+PELS controls devices through Homey's local API where it's available — no cloud round-trip on the PELS side of the control path. Device apps that bridge to the cloud add their own latency on top.
 
 ## Pricing Model
 
@@ -404,8 +398,4 @@ Regional rules:
 
 ### Homey and Flow Price Schemes
 
-Homey Energy pricing and Flow tag pricing (Power by the Hour or other providers) store hourly prices exactly as provided and skip the Norwegian price breakdown logic.
-
-## Future Work / TODOs
-
-- Pricing strategies: current implementation assumes Norwegian spot + grid tariff + taxes/support. Introduce a pluggable price strategy interface (e.g., `PriceStrategy` with inputs for spot, tariffs, provider surcharges, taxes/VAT, support) so non-NO regions can drop in their own calculators without touching control logic. Keep aggregation/token outputs stable while swapping strategies.
+Homey Energy pricing and Flow tag pricing (Power by the Hour or any other provider) store hourly prices exactly as supplied and feed them straight into the planner. PELS treats the source's numbers as authoritative, so adding a new region is a configuration choice in Homey, not a code change in PELS.
