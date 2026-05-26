@@ -39,7 +39,7 @@ Typical devices:
 - ventilation
 - EV charger with current control
 
-Power limiting does not try to find the cheapest hours by itself. It mainly answers: "Can this device run right now without pushing the home over the hard cap?"
+Power limiting is focused: it answers "Can this device run right now without pushing the home over the hard cap?" Layer daily budget, price-based temperature shift, or Smart tasks on top when you want cheap-hour behavior as well.
 
 ## Daily Budget
 
@@ -78,7 +78,7 @@ Use them when:
 - A water heater or room should be ready before a known time.
 - You want the selected device, not just any household load, to use the best hours.
 
-Smart tasks still work with the rest of PELS. The hard cap still matters, priority still matters, and budget can still reduce how aggressively the task runs unless the feature explicitly says otherwise.
+Smart tasks compose with the rest of PELS: the hard cap, priorities, and daily budget all keep working underneath the task, so a deadline lands without breaking the rest of the home.
 
 Mode targets, boost settings, and Smart task targets can be different on purpose. See [Different Targets Can Be Useful](/smart-tasks#different-targets-can-be-useful).
 

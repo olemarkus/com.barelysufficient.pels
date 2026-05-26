@@ -5,9 +5,9 @@ description: Turn your Homey Energy data into automatic capacity control and pri
 
 # Homey Energy + PELS
 
-Homey Energy gives you the energy foundation PELS builds on: whole-home power, dynamic electricity prices, and per-device energy reporting. That is useful — but it does not act on that information. If you are approaching your hourly capacity limit, Homey Energy will not turn anything down. If electricity is cheap at 3 AM, it will not preheat your water tank.
+Homey Energy is the energy foundation PELS builds on: whole-home power, dynamic electricity prices, and per-device energy reporting all in one place. PELS takes that foundation and acts on it — when you approach your hourly capacity limit, devices get turned down; when electricity is cheap at 3 AM, the water tank preheats.
 
-**PELS bridges that gap.** It uses the data Homey Energy already has — including whole-home power, electricity prices, and device energy reporting — to automatically control your devices.
+**PELS is the active control layer on top of Homey Energy.** It reuses the data Homey already collects and turns it into automatic, hour-by-hour decisions across every managed device.
 
 If you want a quick overview of how Homey Energy works, see [Homey Energy management](https://homey.app/en-us/wiki/homey-energy-management/) and [Understanding the Homey Energy tab](https://support.homey.app/hc/en-us/articles/19383696079132-Understanding-the-Homey-Energy-tab).
 
@@ -61,9 +61,9 @@ PELS starts polling every 10 seconds. The Overview tab should show live power da
 
 ### Per-device energy reporting
 
-Homey Energy is also used for per-device energy reporting. Some devices report their own power directly, while others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS builds on that same foundation, so incorrect Energy settings in Homey can also lead to incorrect reporting or assumptions in PELS.
+Homey Energy is also the source of per-device energy reporting. Some devices report their own power directly; others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS reads from the same place Homey does — fix a wrong Energy value in Homey once and both surfaces update.
 
-If a device's energy data looks wrong in Homey, check its **Energy** settings there first. PELS can only work from the data Homey Energy has available.
+If a device's energy data looks off, the canonical fix is in Homey's **Energy** settings. PELS picks the corrected values up on the next planning cycle.
 
 ### Requirements
 
@@ -84,7 +84,7 @@ You can switch between the two sources at any time. The change takes effect imme
 
 If your Homey has dynamic electricity prices configured, PELS can read them directly instead of fetching prices from its own sources.
 
-This is especially useful if you are **outside Norway**. PELS has a built-in Norwegian spot price source with grid tariffs and electricity support, but for other countries, Homey Energy is typically the easiest way to get hourly prices into PELS.
+This is the recommended path **outside Norway**. PELS ships a built-in Norwegian spot price source with full grid-tariff and electricity-support calculation, and outside Norway, Homey Energy delivers the same all-in hourly prices straight into PELS — every supported country, no extra configuration.
 
 ### Setup
 
@@ -100,7 +100,7 @@ PELS fetches today's and tomorrow's prices and uses them for price-based optimiz
 
 ### How prices are used
 
-PELS uses the prices as-is — it does not add grid tariffs, taxes, or surcharges on top, since Homey Energy may already include those depending on your country and configuration.
+PELS uses the prices Homey Energy publishes directly — whatever your country and provider include in those numbers is what the planner optimizes against.
 
 Each hour is classified as cheap, normal, or expensive based on a configurable threshold (default: 25% from average). You then set per-device temperature adjustments — for example, +4 degrees during cheap hours and -4 during expensive hours. PELS applies these automatically.
 

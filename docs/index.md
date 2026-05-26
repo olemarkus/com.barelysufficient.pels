@@ -12,7 +12,7 @@ editLink: false
     <p class="landing-kicker">For Homey Pro</p>
     <h1 class="landing-title">Intelligent, automatic power management for Homey Pro.</h1>
     <p class="landing-app-type">Homey app for Homey Pro</p>
-    <p class="landing-lead">PELS watches your total power usage and automatically turns down heaters, water tanks, ventilation, or EV charging before you hit your hourly limit. When there is room again, it turns them back on in the right order. It can also plan Smart tasks and move flexible load to cheaper hours.</p>
+    <p class="landing-lead">PELS watches your total power usage and turns down heaters, water tanks, ventilation, and EV charging before you hit your hourly limit. The moment there is room again, it brings them back in priority order. It plans Smart tasks around deadlines and shifts flexible load into the cheapest hours of the day — automatically, every hour, without you watching the meter.</p>
     <div class="landing-actions">
       <a class="VPButton brand" href="https://homey.app/a/com.barelysufficient.pels">Get the app on the Homey App Store</a>
       <a class="VPButton alt" href="#is-pels-a-fit">See if PELS fits your home</a>
@@ -31,11 +31,11 @@ editLink: false
   <section class="landing-section" id="is-pels-a-fit">
     <p class="landing-section-kicker">Is it for you?</p>
     <h2 class="landing-section-title">PELS is worth it if any of this sounds familiar</h2>
-    <p class="landing-section-text">You don't need a complicated setup to get value from PELS. If you have a few power-hungry devices and care about your electricity bill, that is usually enough. Norwegian users can also read the <a href="stromstyring-norge.html">Norwegian overview for strømstyring, kapasitetsledd, and elbillading</a>.</p>
+    <p class="landing-section-text">You don't need a complicated setup to get value from PELS. A few power-hungry devices and an interest in your electricity bill are all it takes. Norwegian users can also read the <a href="stromstyring-norge.html">Norwegian overview for strømstyring, kapasitetsledd, and elbillading</a>.</p>
     <div class="landing-grid landing-grid-three">
       <article class="landing-card">
         <h3>You have devices that use a lot of power</h3>
-        <p>Heaters, floor heating, water heaters, ventilation, or EV charging are the most common ones. PELS works best when some of these can be turned down for a while without causing problems. For chargers, start with <a href="use-cases/homey-ev-charging-power-limit.html">Homey EV charging without crossing your power limit</a>.</p>
+        <p>Heaters, floor heating, water heaters, ventilation, and EV charging are the obvious wins. PELS turns them down when capacity gets tight and brings them back when there is room — comfort stays steady, the bill drops. For chargers, start with <a href="use-cases/homey-ev-charging-power-limit.html">Homey EV charging without crossing your power limit</a>.</p>
       </article>
       <article class="landing-card">
         <h3>You want to stay within your hourly limit</h3>

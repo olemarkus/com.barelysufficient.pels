@@ -5,9 +5,9 @@ description: How PELS paces whole-day energy use without turning daily misses in
 
 # Daily Energy Budget
 
-The Daily Energy Budget is a target for total kWh in one day. You set, for example, "I want the house to use no more than 50 kWh today." PELS spreads that target across the hours of the day and gently slows things down if you are getting ahead of plan.
+The Daily Energy Budget is your daily kWh target. You set, for example, "I want the house to use no more than 50 kWh today." PELS spreads that target across the hours of the day and paces the home so it lands on plan — leaning on cheaper hours, easing off when usage gets ahead.
 
-It is a **soft target**, not a hard limit. If the house ends up over budget, nothing dramatic happens — PELS keeps running, devices keep heating, and you do not get an emergency notification. The only thing that ever triggers an urgent alert is your **hourly hard cap** (your grid tariff step or breaker limit). The daily budget is for shaping the day, not protecting the grid connection.
+The daily budget is a **soft pacing target**, separate from the hourly hard cap. PELS keeps running across it, devices keep heating, and the only thing that ever raises an urgent alarm is the **hourly hard cap** (your grid tariff step or breaker limit). Daily budget shapes the day; the hard cap protects the grid connection.
 
 PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
