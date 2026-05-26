@@ -52,8 +52,9 @@ const seedFromEntry = (
  * the active-plan hero and the plan-history audit trail stay consistent with intent:
  *
  * - Replace (different deadline OR same deadline + different target/enforcement): finalize the
- *   prior history run as `'replaced'`, seed a fresh pending active plan.
- * - Clear: finalize the prior history run as `'abandoned'`, drop the active plan.
+ *   prior history run as `'replaced'` (only when the prior deadline is still in the future —
+ *   see the deadline-passed gate below), seed a fresh pending active plan.
+ * - Clear: finalize the prior history run as `'abandoned'` (same gate), drop the active plan.
  * - New: just seed the active plan; nothing to finalize.
  *
  * Same-deadline target changes are deliberately treated as two separate runs: the prior
@@ -65,6 +66,16 @@ const seedFromEntry = (
  * (deadline elapsed) does *not* go through here — that runs through
  * `deadlineJustPassed` / `finalizeStaleRecords` which classifies the run as
  * `'deadline_passed'`, not `'replaced'`/`'abandoned'`.
+ *
+ * Deadline-passed gate: when the prior entry's deadline has already elapsed at `nowMs`, the
+ * user-change path swaps `finalizeForUserChange` for `finalizeElapsedDeadline`, which pushes
+ * a `'deadline_passed'` history entry synchronously (resolving to `'met'` / `'missed'` based
+ * on observed progress) instead of the muted `'replaced'` / `'abandoned'` shape. The
+ * synchronous path matters in `power_source = flow` mode where the next plan cycle can be
+ * arbitrarily delayed — a restart in that window would otherwise drop the just-completed
+ * run from history entirely. Without this gate, a user creating the next task at the old
+ * deadline (e.g. a "When deadline reached" Flow rolling into "Set deadline") would
+ * misclassify a run that actually reached its deadline.
  */
 export const applyDeferredObjectiveChange = (
   params: DeferredObjectiveChangeInput & {
@@ -84,14 +95,23 @@ export const applyDeferredObjectiveChange = (
 
   const prevActive = isActive(prevEntry);
   const nextActive = isActive(nextEntry);
+  const prevDeadlineFuture = prevActive && prevEntry !== undefined && prevEntry.deadlineAtMs > nowMs;
 
   if (prevActive && !nextActive) {
-    planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'abandoned');
+    if (prevDeadlineFuture) {
+      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'abandoned');
+    } else {
+      planHistoryRecorder.finalizeElapsedDeadline(deviceId, nowMs);
+    }
     activePlanRecorder.clearForDevice(deviceId);
     return;
   }
   if (prevActive && nextActive && !objectivesMatch(prevEntry, nextEntry)) {
-    planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'replaced');
+    if (prevDeadlineFuture) {
+      planHistoryRecorder.finalizeForUserChange(deviceId, nowMs, 'replaced');
+    } else {
+      planHistoryRecorder.finalizeElapsedDeadline(deviceId, nowMs);
+    }
     activePlanRecorder.clearForDevice(deviceId);
     activePlanRecorder.markPending(seedFromEntry(deviceId, deviceName, nextEntry), nowMs);
     return;

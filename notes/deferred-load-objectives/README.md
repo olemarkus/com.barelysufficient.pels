@@ -281,8 +281,16 @@ as an in-page route off `index.html`.):
   (`lib/plan/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
   finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
   window. The runtime auto-disable path (`statusTransitions.deadlineJustPassed`) stays on
-  the `deadline_passed` classification — only user-initiated changes produce `replaced` or
-  the prompt `abandoned`.
+  the `deadline_passed` classification — only user-initiated changes whose prior deadline is
+  still in the future produce `replaced` or the prompt `abandoned`. When the prior
+  deadline has already elapsed at the moment of the user change, `applyDeferredObjectiveChange`
+  calls `planHistoryRecorder.finalizeElapsedDeadline` instead, which pushes a
+  `deadline_passed` entry synchronously (resolves to `met`/`missed` from observed progress).
+  Synchronous finalization matters in `power_source = flow` mode where the next plan cycle
+  can be arbitrarily delayed; the at-deadline `finalizeStaleRecords` sweep would otherwise
+  drop the just-completed entry on restart. A "When deadline reached" → "Set deadline" Flow
+  chain therefore classifies the just-completed task as met/missed instead of muted-Abandoned.
+  The active-plan hero still swaps immediately in that case.
 - Same-deadline target changes finalize the prior history entry as `replaced`, clear the old
   active plan, and start a fresh pending active plan. History and the current-plan hero now
   both treat a target/deadline edit as abandoning the committed schedule and starting a new

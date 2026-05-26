@@ -294,6 +294,33 @@ export class DeferredObjectivePlanHistoryRecorder {
   }
 
   /**
+   * Finalize any in-progress run for this device whose deadline has already elapsed,
+   * synchronously, with reason `'deadline_passed'`. Counterpart to `finalizeForUserChange`
+   * for the at-or-after-deadline branch of `applyDeferredObjectiveChange`: when the user
+   * creates the next task at the moment the prior deadline lands (e.g. a "When deadline
+   * reached" → "Set deadline" Flow chain), the prior run should land as
+   * `'deadline_passed'` (→ met/missed) immediately rather than wait for the next plan
+   * cycle's `finalizeStaleRecords` sweep — that wait would silently drop the entry if
+   * PELS restarts in the interval, and in `power_source = flow` mode the next sweep can
+   * be hours away.
+   *
+   * Records whose deadline is still in the future are left untouched (caller is expected
+   * to gate on that, but the guard is here too as a safety net).
+   */
+  finalizeElapsedDeadline(deviceId: string, nowMs: number): void {
+    for (const [key, record] of this.inProgress) {
+      if (record.deviceId !== deviceId) continue;
+      if (record.deadlineAtMs > nowMs) continue;
+      const flushed = this.flushOpenHourAtFinalize(record);
+      this.pushEntry(
+        finalizeRecord(flushed, nowMs, 'deadline_passed'),
+        flushed.energyExpectedKWhAtFinalize,
+      );
+      this.inProgress.delete(key);
+    }
+  }
+
+  /**
    * Sum a per-hour delivery contribution onto the in-progress run that
    * matches `(deviceId, deadlineAtMs)`. The matching record's running
    * `deliveredKWh` and `totalCost = Σ priceValue × deliveredKWh` totals are

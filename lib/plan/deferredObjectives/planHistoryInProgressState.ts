@@ -132,7 +132,8 @@ export type InProgressRecord = Omit<
   // Effective kWh-per-unit factor from the most recent diagnostic. Cached
   // on the record so `finalizeRecord` can flush the still-open hour's
   // contribution without re-reading a diagnostic (the finalization paths
-  // — `finalizeStaleRecords`, `finalizeForUserChange` — do not carry one).
+  // — `finalizeStaleRecords`, `finalizeForUserChange`, `finalizeElapsedDeadline`
+  // — do not carry one).
   // `null` when no diagnostic ever resolved a profile. Same lossy-restart
   // contract as `currentHourOpening` — see above.
   lastKWhPerUnit: number | null;
