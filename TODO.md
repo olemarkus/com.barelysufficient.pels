@@ -3633,3 +3633,18 @@ should not be folded into the same PR.
         thrown strings were moved to `packages/shared-domain/src/smartTaskRescueStrings.ts`.)
       - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
         unchanged mode).
+
+- [ ] Mode-indicator picker follow-ups (from `feat/mode-indicator-picker`):
+      - **Docs:** `docs/insights-device.md` — the "Operating mode" row should note
+        the user can now switch modes directly from the device tile, not only via
+        settings or Flow.
+      - **Flow card duplication.** Adding `mode_indicator` as a setable enum
+        capability gives Homey auto-generated cards (`mode_indicator changed to`,
+        `set mode_indicator`) that overlap with the bespoke `operating_mode_changed`
+        trigger and `set_capacity_mode` action. Decide whether to deprecate the
+        bespoke cards (breaking change for existing user Flows; needs release
+        notes) or keep both indefinitely.
+      - **Regression test for settings→refresh wiring.** `refreshModeOptions()` is
+        triggered by `capacity_priorities` / `mode_device_targets` /
+        `operating_mode` settings events. The pure builder is tested, the wiring
+        is not. Add a focused test once a lightweight `Homey.Device` mock exists.

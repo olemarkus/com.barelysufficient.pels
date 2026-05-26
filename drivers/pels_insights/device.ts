@@ -1,5 +1,7 @@
 import Homey from 'homey';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
+import { getAllModes } from '../../lib/utils/capacityHelpers';
+import { buildModeEnumValues } from './modeEnum';
 
 type StatusData = {
   headroomKw?: number;
@@ -40,6 +42,7 @@ const STATUS_CAPABILITY_MAP: CapabilityEntry[] = [
 ];
 
 const REQUIRED_CAPABILITIES = [
+  'mode_indicator',
   'pels_shortfall',
   'pels_headroom',
   'pels_hourly_limit_kw',
@@ -60,12 +63,21 @@ const RETIRED_CAPABILITIES = [
   'pels_daily_budget_pressure',
   'pels_daily_budget_used_kwh',
   'pels_daily_budget_allowed_kwh_now',
+  'pels_insights',
 ];
 
 const RETIRED_PLAN_IMAGE_IDS = [
   'plan_budget',
   'plan_budget_tomorrow',
 ];
+
+const MODE_SOURCE_SETTING_KEYS: ReadonlySet<string> = new Set([
+  OPERATING_MODE_SETTING,
+  'capacity_priorities',
+  'mode_device_targets',
+]);
+
+const DEFAULT_MODE = 'Home';
 
 const shouldSetCapability = (value: unknown, type: CapabilityEntry['type']) => {
   if (type === 'string') return typeof value === 'string' && value.length > 0;
@@ -115,16 +127,19 @@ class PelsInsightsDevice extends Homey.Device {
       await this.removeDeprecatedCapability(capability);
     }
 
-    const initialMode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
-    await this.updateMode(initialMode);
+    await this.refreshModeOptions();
     await this.updateShortfall(this.homey.settings.get('capacity_in_shortfall') as boolean || false);
     await this.updateFromStatus();
     await this.removeRetiredPlanImagesFromDevice();
 
+    this.registerCapabilityListener('mode_indicator', async (value: unknown) => {
+      if (typeof value !== 'string' || !value.trim()) return;
+      this.homey.settings.set(OPERATING_MODE_SETTING, value);
+    });
+
     this.homey.settings.on('set', async (key: string) => {
-      if (key === OPERATING_MODE_SETTING) {
-        const mode = (this.homey.settings.get(OPERATING_MODE_SETTING) as string) || 'home';
-        await this.updateMode(mode);
+      if (MODE_SOURCE_SETTING_KEYS.has(key)) {
+        await this.refreshModeOptions();
       }
 
       if (key === 'capacity_in_shortfall') {
@@ -137,12 +152,35 @@ class PelsInsightsDevice extends Homey.Device {
     });
   }
 
+  private getActiveMode(): string {
+    const raw: unknown = this.homey.settings.get(OPERATING_MODE_SETTING);
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : DEFAULT_MODE;
+  }
+
+  private getConfiguredModes(): Set<string> {
+    const activeMode = this.getActiveMode();
+    const priorities = (this.homey.settings.get('capacity_priorities') as Record<string, Record<string, number>>) || {};
+    const targets = (this.homey.settings.get('mode_device_targets') as Record<string, Record<string, number>>) || {};
+    return getAllModes(activeMode, priorities, targets);
+  }
+
+  async refreshModeOptions(): Promise<void> {
+    const activeMode = this.getActiveMode();
+    const values = buildModeEnumValues(activeMode, this.getConfiguredModes());
+    try {
+      await this.setCapabilityOptions('mode_indicator', { values });
+    } catch (error) {
+      this.error('Failed to refresh mode_indicator values', error);
+    }
+    await this.updateMode(activeMode);
+  }
+
   async updateMode(mode: string): Promise<void> {
     if (typeof mode !== 'string' || !mode.trim()) return;
     try {
-      await this.setCapabilityValue('pels_insights', mode);
+      await this.setCapabilityValue('mode_indicator', mode);
     } catch (error) {
-      this.error('Failed to update pels insights', error);
+      this.error('Failed to update mode_indicator', error);
     }
   }
 
