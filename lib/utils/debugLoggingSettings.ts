@@ -1,5 +1,9 @@
 import type Homey from 'homey';
-import { ALL_DEBUG_LOGGING_TOPICS, type DebugLoggingTopic, normalizeDebugLoggingTopics } from '../utils/debugLogging';
+import {
+  ALL_DEBUG_LOGGING_TOPICS,
+  type DebugLoggingTopic,
+  normalizeDebugLoggingTopics,
+} from '../../packages/shared-domain/src/utils/debugLogging';
 import { DEBUG_LOGGING_TOPICS } from '../utils/settingsKeys';
 
 export function buildDebugLoggingTopics(params: {

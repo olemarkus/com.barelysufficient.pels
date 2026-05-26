@@ -25,7 +25,7 @@ import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
-import type { DebugLoggingTopic } from '../utils/debugLogging';
+import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
