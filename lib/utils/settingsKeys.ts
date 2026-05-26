@@ -42,3 +42,12 @@ export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
+// Per-device learned offset added to the deadline temperature when the
+// planner writes its commanded setpoint during a planned bucket. Compensates
+// for the device's local-control deadband so a 21 °C user target reliably
+// reaches 21 °C in the room (commanded ≈ 21 °C + learnedDeadband). Updated
+// from `planHistoryInProgressState.finalizeRecord` via EMA when a run
+// finishes met/stalled. Shape: `Record<deviceId, number>`, clamped to
+// [0, LEARNED_THERMOSTAT_DEADBAND_MAX_C]. Loss of this setting is
+// self-healing — devices fall back to 0 over-command and the EMA relearns.
+export const LEARNED_THERMOSTAT_DEADBAND_C = 'learned_thermostat_deadband_c';

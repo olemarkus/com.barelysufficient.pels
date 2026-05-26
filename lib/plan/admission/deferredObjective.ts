@@ -1,5 +1,6 @@
 import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveDiagnostic } from '../deferredObjectives/diagnosticsBridge';
+import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostatDeadbandStore';
 
 export type DeferredAdmissionDecision =
   | { kind: 'inactive'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' }
@@ -142,8 +143,17 @@ export const applyDeferredAdmissionToInput = (
 // planned hour. EV objectives and non-planned diagnostics are skipped. Consumed by
 // `resolvePlannedTarget` to lift the mode setpoint above the configured operating-mode target so
 // the device's own thermostat can actually reach the deadline.
+//
+// `getLearnedDeadbandC` is the producer-resolved per-device over-command (°C) that PELS adds to
+// the raw user target so the device's local-control deadband doesn't leave the room short of
+// target (e.g. a 21 °C target + 0.2 °C learned deadband ⇒ commanded 21.2 °C, room satisfies at
+// 21.0 °C). The reader defaults to 0 °C when absent (fresh install, no learned value yet, or
+// test harnesses that don't wire the store). The producer side
+// (`updateLearnedThermostatDeadbandFromEntry`) EMA-updates from clean met/stalled runs, so the
+// store self-heals — see `feedback_layering_resolution_in_producer`.
 export const buildDeferredTargetOverrides = (
   diagnostics: readonly DeferredObjectiveDiagnostic[],
+  getLearnedDeadbandC?: (deviceId: string) => number,
 ): Record<string, number> => {
   const overrides: Record<string, number> = {};
   for (const diag of diagnostics) {
@@ -154,7 +164,18 @@ export const buildDeferredTargetOverrides = (
     // Defensive: persisted settings can yield NaN/Infinity on corrupt reads; the type-level
     // `number` invariant does not survive Homey settings drift. See feedback_homey_sdk_unreliable.
     if (!Number.isFinite(diag.targetTemperatureC)) continue;
-    overrides[diag.deviceId] = diag.targetTemperatureC;
+    const rawDeadbandC = getLearnedDeadbandC?.(diag.deviceId) ?? 0;
+    // Defensive against a reader that returns out-of-bounds values (non-finite, negative, or
+    // above the over-command cap). The store helper clamps on read so the expected range is
+    // [0, LEARNED_THERMOSTAT_DEADBAND_MAX_C]; anything outside is treated as 0 rather than
+    // applied, so a wiring bug or pathological store state cannot cause a runaway overshoot
+    // beyond the design cap.
+    const safeDeadbandC = Number.isFinite(rawDeadbandC)
+      && rawDeadbandC > 0
+      && rawDeadbandC <= LEARNED_THERMOSTAT_DEADBAND_MAX_C
+      ? rawDeadbandC
+      : 0;
+    overrides[diag.deviceId] = diag.targetTemperatureC + safeDeadbandC;
   }
   return overrides;
 };

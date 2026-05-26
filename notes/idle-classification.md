@@ -59,6 +59,9 @@ devices.
 - Otherwise, with the device currently measured-idle:
   - `idleDurationMs ≥ IDLE_HOLD_MIN_DURATION_MS` (5 min)
     - and `gap ≤ NEAR_TARGET_TEMPERATURE_DELTA_C` (5 °C) → **near_target_idle**
+  - `idleDurationMs ≥ IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS` (1 min)
+    - and `gap ≤ NEAR_TARGET_TIGHT_GAP_C` (1 °C) → **near_target_idle**
+    - (tight-gap fast path — see *Why a tight-gap fast path* below)
   - `idleDurationMs ≥ IDLE_UNRESPONSIVE_MIN_DURATION_MS` (15 min)
     - and `gap > NEAR_TARGET_TEMPERATURE_DELTA_C` (5 °C) → **unresponsive**
 - otherwise → **active**
@@ -90,6 +93,31 @@ up reading the "device unresponsive" misdiagnosis. The 1.0 °C spread bound
 is wider than the sub-degree drift the Connected 300 shows at its plateau
 but tight enough that a genuinely-climbing heater (rate-limited charging,
 > 1 °C across 20 min) doesn't get labelled "capped".
+
+### Why a tight-gap fast path (1 °C / 1 min)
+
+The standard 5 °C / 5 min path was tuned for slow-cycling water heaters
+(Connected 300 type loads). Floor / Tuya-style thermostats cycle much
+faster: typical duty 1–3 min on / 1–3 min off. A device that has reached
+its setpoint and is satisfying via short on/off cycles never accumulates
+a 5 min contiguous idle window, so the standard path never fires — the
+run finalises as `missed/energy_underestimate` even though the device
+is doing exactly the right thing.
+
+The tight-gap path adds a second qualification that fires earlier when
+the temperature gap is small enough that "satisfied" is the only
+reasonable interpretation: 1 °C is well inside any reasonable thermostat
+hysteresis band, so even 1 min of idle there is strong evidence the
+local control loop has hit its setpoint deadband. Entry uses the tight
+1 °C gap; once classified, the standard exit hysteresis
+(`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C` = 5.5 °C) keeps the device in the
+hold band so brief gap drift past 1 °C does not bounce the
+classification on the next tick.
+
+The standard 5 °C / 5 min path stays as-is for devices that satisfy
+further from setpoint or with slower duty cycles — the tight-gap path
+is strictly additive (anything qualifying under the standard path still
+does).
 
 ## Plumbing
 

@@ -75,6 +75,7 @@ export type PlanEngineDeps = {
   observeDeferredObjectivePlanHistory?: PlanBuilderDeps['observeDeferredObjectivePlanHistory'];
   observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
   getStallClassification?: PlanBuilderDeps['getStallClassification'];
+  getLearnedThermostatDeadbandC?: PlanBuilderDeps['getLearnedThermostatDeadbandC'];
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
   getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
@@ -139,6 +140,7 @@ export class PlanEngine {
       observeDeferredObjectivePlanHistory: deps.observeDeferredObjectivePlanHistory,
       observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
       getStallClassification: deps.getStallClassification,
+      getLearnedThermostatDeadbandC: deps.getLearnedThermostatDeadbandC,
       getDeferredObjectiveStatusBus: deps.getDeferredObjectiveStatusBus,
       getDeferredObjectiveHoursRemainingBus: deps.getDeferredObjectiveHoursRemainingBus,
       getDeferredObjectiveHoursRemainingTracker: deps.getDeferredObjectiveHoursRemainingTracker,

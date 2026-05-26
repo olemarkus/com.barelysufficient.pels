@@ -109,6 +109,14 @@ export type PlanBuilderDeps = {
   getStallClassification?: (
     deviceId: string,
   ) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
+  // Reader for the per-device learned thermostat deadband (°C). Added to the
+  // raw user target by `buildDeferredTargetOverrides` so the planner commands
+  // the device a little above the user's deadline target — compensating for
+  // the device's local-control deadband. Defaults to 0 per device when the
+  // reader is absent or the device has no learned value yet (fresh install /
+  // setting purge). Self-healing: a lost store just relearns from the next
+  // met/stalled run. See `lib/utils/learnedThermostatDeadbandStore.ts`.
+  getLearnedThermostatDeadbandC?: (deviceId: string) => number;
   observeDeferredObjectiveActivePlans?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
@@ -246,7 +254,10 @@ export class PlanBuilder {
       return {
         admittedDevices: admission.devices,
         forceShedSet: admission.forceShedSet,
-        deferredTargetTempByDeviceId: buildDeferredTargetOverrides(deferredEvaluations),
+        deferredTargetTempByDeviceId: buildDeferredTargetOverrides(
+          deferredEvaluations,
+          this.deps.getLearnedThermostatDeadbandC,
+        ),
         deferredEvCommandIntentByDeviceId: buildDeferredEvCommandIntents(deferredAdmission),
       };
     });
