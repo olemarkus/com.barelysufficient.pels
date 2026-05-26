@@ -20,9 +20,9 @@ Use this setup when you want to:
 - keep the home below a capacity tariff step or hard cap
 - let higher-priority devices win when available power is limited
 
-PELS is useful when the load can move in time. A water heater, floor heating loop or panel heater usually has some thermal buffer. A device that must run immediately is less suitable for price shifting.
+PELS shines on loads that can move in time — water heaters, floor heating loops, and panel heaters all carry enough thermal buffer to shift cleanly into the cheapest hours of the night.
 
-> **Safety:** Only control water heaters, floor heating or other fixed electrical loads with equipment that is rated for the load and installed correctly. Fixed electrical work should be handled by qualified professionals. Keep temperature, hygiene and safety requirements in mind; PELS should schedule the load, not replace safe hot-water control.
+> **Safety:** Use equipment rated for the load and have any fixed electrical work done by qualified professionals. PELS schedules the load on top of the same safe hot-water and heating controls you already use.
 
 ## Price shifting still needs a hard cap
 
@@ -47,7 +47,7 @@ A simple default priority order could be:
 4. EV charging
 5. ventilation boost or other flexible comfort loads
 
-This is only a starting point. The right order depends on the home. If the car must be ready early, EV charging may need higher priority. If hot water is critical in the morning, the water heater may need a Smart task with a ready-by time.
+Tune the order to fit your home. Push EV charging up the list when the car has to be ready early; pair the water heater with a Smart task when hot water has to be ready by a specific time.
 
 ## Water heater example
 
@@ -77,9 +77,7 @@ Start here:
 
 ## Ventilation example
 
-Ventilation is usually not the first load to control, but boost modes or higher fan levels can be flexible in some homes.
-
-If ventilation is exposed to Homey in a controllable way, PELS can treat it like another prioritized load. Keep safety and indoor-air requirements in mind. Do not reduce ventilation in a way that creates moisture or air-quality problems.
+Ventilation boost modes and higher fan levels are excellent secondary targets. Anywhere ventilation is controllable from Homey, PELS treats it as another prioritized load — boosting in cheap hours, easing off during a peak — while you keep your existing indoor-air baseline.
 
 ## What you need
 
@@ -92,7 +90,7 @@ You normally need:
 - configured priorities in PELS
 - sensible comfort limits for heating and hot water
 
-PELS works best when the home has both reliable whole-home power data and devices that can actually be controlled from Homey.
+Reliable whole-home power data plus controllable devices in Homey is everything PELS needs to start moving load and saving money.
 
 ## Which PELS feature should you use?
 

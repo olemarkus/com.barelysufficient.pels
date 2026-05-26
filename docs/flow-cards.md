@@ -21,7 +21,7 @@ Use the **Report power usage** action whenever your power meter updates.
 - This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed.
 - You do not need this Flow when **Settings > Limits & safety > Power source** is set to **Homey Energy**.
 
-Without whole-home power data, the planner cannot behave correctly.
+Whole-home power data is what unlocks every other planner feature — the meter Flow is the one card to wire first.
 
 ## Triggers
 

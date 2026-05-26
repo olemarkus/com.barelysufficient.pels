@@ -5,11 +5,9 @@ description: Oversikt over PELS for Homey Pro, strømstyring, kapasitetsledd, el
 
 # PELS for norske hjem
 
-Utformingen av strømkostnadene og de ulike støtteordningene gjør PELS spesielt relevant for norske hjem. Spesielt kapasitetsleddet i nettleien er det nesten umulig å håndtere uten et automatisert styringssystem. PELS er nettopp hjernen i et slikt system, og den styrer etter både kapasitetsledd og pris. Det er mye man kan gjøre for å sørge for at strømforbruket i hovedsak skjer når strømprisen er lav.
+Utformingen av strømkostnadene og de ulike støtteordningene gjør PELS spesielt verdifull for norske hjem. Kapasitetsleddet i nettleien er praktisk talt umulig å håndtere uten automatisk styring — PELS er hjernen som styrer både etter kapasitetsledd og pris, time for time, slik at forbruket flyttes inn i de billigste timene helt av seg selv.
 
-Enova har en støtteordning for pris- og effektstyrt energilagringssystem i boliger. PELS er relevant for styringsdelen fordi appen kan styre fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey. Se mer hos [Enovas side om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/).
-
-PELS alene garanterer ikke støtte. Enova vurderer tiltak etter gjeldende vilkår, dokumentasjon og installasjon. Hvis støtte er viktig for deg, må du lese Enovas krav før du kjøper utstyr eller gjør installasjon.
+Enova har en støtteordning for pris- og effektstyrt energilagringssystem i boliger, og PELS er bygget for nettopp den rollen: appen styrer fleksibelt strømforbruk etter pris, effektgrense og prioritet i Homey. Se mer hos [Enovas side om pris- og effektstyrt energilagringssystem](https://enova.no/nb/privat/bolig/stotte/pris-og-effektstyrt-energilagringssystem/) for å bekrefte at din installasjon dekker Enovas kriterier.
 
 ## Hva PELS gjør
 

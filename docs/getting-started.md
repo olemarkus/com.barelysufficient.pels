@@ -5,7 +5,7 @@ description: Install PELS on Homey Pro, connect your power meter, set a capacity
 
 # Getting Started
 
-PELS is a Homey app that intelligently manages your heavy electrical loads. It keeps your power usage within your hourly limit, decides which devices to turn down first, can plan Smart tasks, and can shift flexible load to cheaper hours automatically.
+PELS is the Homey app that takes your heavy electrical loads off your hands. It keeps your power usage inside your hourly limit, decides which devices to turn down first, plans Smart tasks around deadlines, and shifts flexible load into cheaper hours — automatically, every hour.
 
 In practice, most users spend their time in **Apps -> PELS -> Settings** and a small number of Homey Flows.
 
@@ -28,7 +28,7 @@ Open **Apps -> PELS -> Settings** in Homey. This is where all configuration happ
 
 ## Step 1: Connect your power meter
 
-Without live power input, PELS cannot know how much power your home is using.
+Live power input is what PELS plans on — connect it once and every other feature unlocks.
 
 **Easiest path — use Homey Energy.** If your power meter is paired with Homey and has **Tracks total home energy consumption** enabled in its device settings, no Flow is needed. Go to **Settings > Limits & safety** and set **Power source** to **Homey Energy**. PELS starts polling automatically. This works for any meter Homey recognises as a whole-home tracker — Tibber Pulse, P1/HAN readers, Shelly EM, and similar.
 
@@ -120,7 +120,7 @@ If you want PELS to shift heating to cheaper hours, go to **Settings > Electrici
 2. Make sure the price status shows that data is available.
 3. If using the Norway source, select your county, grid company, and tariff group.
 
-Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are usually the best candidates — they have thermal mass that makes shifting worthwhile.
+Then go to **Settings > Devices**, open each temperature device that should participate, and enable **Price** or **Setup > Price-based control**. Water heaters and floor heating are the highest-impact picks — they carry the thermal mass that makes shifting pay off.
 
 After at least one device has price response enabled, use **Settings > Price-aware devices** to turn **Respond to prices** on or off globally and set per-device temperature adjustments:
 - **Cheap-hour boost (°C)** — temperature boost during cheap hours, for example +2 °C.
