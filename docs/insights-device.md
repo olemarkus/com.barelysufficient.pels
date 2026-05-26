@@ -20,7 +20,7 @@ The Insights device exposes these readings. The labels below match the capabilit
 
 | Reading | Meaning |
 | --- | --- |
-| **Operating mode** | Current PELS mode selected in settings or by Flow |
+| **Operating mode** | Current PELS mode — tap the tile to switch directly, or change it in settings / via Flow |
 | **Manual action needed** | Whether PELS projects an hourly hard-cap breach and cannot limit any more load |
 | **Available power** | Extra power PELS can fit before the current safe pace |
 | **Current safe pace** | Current effective pace used for power limiting |

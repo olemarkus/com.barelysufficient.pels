@@ -18,6 +18,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Configuration', link: '/configuration' },
       { text: 'Flow Cards', link: '/flow-cards' },
       { text: 'PELS Insights', link: '/insights-device' },
+      { text: 'Dashboard Widgets', link: '/widgets' },
       { text: 'Using Homey Energy', link: '/homey-energy' },
       { text: 'Tips and Best Practices', link: '/tips-and-best-practices' },
     ],

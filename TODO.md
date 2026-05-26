@@ -43,6 +43,88 @@ patch releases, not release blockers; each item carries its own source/date.
       `ws@8.20.1`; closes GHSA-58qx-3vcg-4xpx with `socket.io-client@4.8.3`
       intact and no override needed.
 
+*v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
+release-review pass, 2026-05-26 — the original entry committed as
+`6dea64be` on the v2.9.1 release branch never propagated to main).*
+
+- [ ] **Smart-task rescue lane leaves stepped device stuck at peak step after the deadline.**
+      Connected 300 (water heater, deviceId `632c4190-168c-407b-bd83-dae6ddd3366e`) was
+      shed toward off at 2026-05-23T12:50:52Z (`stepped_load_command_requested`,
+      `effectiveTransition: "full_shed_to_off"`, `plannedDesiredStepId: "off"`).
+      A `cannot_meet` deferred-objective with `rescueExemptMode: "always"` +
+      `rescueLimitMode: "always"` then activated (Sat 23 May 16:00 deadline,
+      `budgetExemptApplied: true`, `limitLowerPriorityApplied: true`) and stepped the
+      device back up: 12:52:38Z low → medium, 12:53:12Z medium → max. After the
+      deadline missed at 16:00Z, **no further `stepped_load_command_requested` events
+      have been issued for this device for 2.5+ days** (logs confirm: last command at
+      12:53:12Z 2026-05-23; current process still observes `reportedStepId: "max"`,
+      2.87 kW measured, `reasonCode: "capacity_control_off"`, `plannedState: "keep"` on
+      every overview tick). Net effect: rescue lane stepped up but the smart-task
+      lifecycle never stepped the device back down when the objective ended; combined
+      with the per-device `capacity_control_off` setting, the planner cannot revert it
+      either. Real-prod impact is severe — Past tasks history shows the same device
+      overshooting target 65 °C → 77.7 / 79.4 °C on multiple succeeded runs and missing
+      4 of last 4 Week-21 deadlines, all consistent with a device locked at peak step.
+      Acceptance: when a deferred-objective transitions out of `planned` (deadline
+      passed, succeeded, abandoned, finalized) AND the rescue lane previously engaged
+      boost, the planner must emit a step-down command to the device's non-rescue floor
+      step regardless of `capacity_control_off` (the user opted out of *capacity*
+      control, not out of smart-task lifecycle commands they explicitly enrolled in).
+      Files: `lib/plan/admission/deferredObjective.ts`,
+      `lib/plan/planEvBoost.ts`, `lib/plan/planTemperatureBoost.ts`,
+      `lib/plan/deferredObjectives/`, `lib/plan/steppedLoadCommands.ts` (or wherever
+      `stepped_load_command_requested` originates), associated regression test under
+      `test/plan/`. Source: v2.9.1 RC release-review prod log audit, 2026-05-25.
+
+*v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
+
+- [ ] Insights mode picker — `await this.homey.settings.set(...)` on tile-tap;
+      surface `device.error()` on rejection; revert the capability value on
+      failure. Today the listener is fire-and-forget so a rejected settings
+      write leaves the tile showing the tapped mode but the runtime on the
+      previous one. Files: `drivers/pels_insights/device.ts:135-138`.
+      Source: release-review pels-ux-fit + pels-runtime-reality, 2026-05-26.
+
+- [ ] Insights mode picker — throttle / coalesce `refreshModeOptions` so a
+      bulk priority edit doesn't issue one `setCapabilityOptions` per
+      setting write. A 10-device priority reorder currently fires 10
+      sequential SDK roundtrips. Coalesce on the `settings.on('set', ...)`
+      callback with a `setImmediate` (or microtask) flush; only re-run when
+      the effective mode-options set differs. Files:
+      `drivers/pels_insights/device.ts:140-152`. Source: release-review
+      pels-runtime-reality, 2026-05-26.
+
+- [ ] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
+      to `var(--homey-font-size-small, 14px)` (or
+      `calc(var(--homey-font-size-small, 14px) - 2px)` if a distinctly
+      smaller secondary is required). Only raw `px` in the new widget CSS;
+      breaks the widget's host-token scaling. Source: release-review
+      pels-m3-critic, 2026-05-26.
+
+- [ ] Rename capability `mode_indicator` title from "Mode" to "PELS mode"
+      for device-tile scan consistency with the rest of the PELS capability
+      family. Today the tile reads as a generic "Mode" with no PELS anchor.
+      Files: `.homeycompose/capabilities/mode_indicator.json`; regenerate
+      `app.json` via `homey app validate`; verify any Insights-graph
+      headers that previously rendered "PELS Status" still parse on
+      existing user dashboards. Source: release-review
+      pels-copy-and-terminology, 2026-05-26.
+
+- [ ] Hoist widget user-facing copy into `packages/shared-domain/src/` per
+      `feedback_ui_text_shared_with_logs`. Today `Ready by`, the empty-state
+      strings, the `+N in Smart tasks` overflow, the price-level labels
+      (`cheap` / `expensive`), and the `N paused` line are all inlined in
+      `widgets/headroom/src/public/render.ts` and
+      `widgets/smart_tasks/src/public/render.ts`. Move to a shared helper
+      so runtime logging and the widget share strings — every other PELS
+      surface already follows the convention. Files:
+      `widgets/headroom/src/public/render.ts`,
+      `widgets/smart_tasks/src/public/render.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`. Source:
+      release-review pels-copy-and-terminology, 2026-05-26.
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
@@ -362,6 +444,105 @@ release, not v2.7.1 merge-blockers.*
       ordering and the deferred-objective bridge into restore, not the
       finalize-time learning. Source: kontor smart-task forensics
       conversation, 2026-05-26.
+
+*v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
+release-review pass, 2026-05-26 — the original entry committed as
+`6dea64be` on the v2.9.1 release branch never propagated to main).*
+
+- [ ] **Hero subtitle "Easing devices off" is misleading when the shed cascade is exhausted.**
+      Live snapshot (2026-05-25, Marie Michelets Homey Pro): Power now 5.6 kW, hard cap
+      5.0 kW, hero says *"Over the hard cap right now. Easing devices off."* — but every
+      controllable managed device is already in `cooldown_shedding` / `Limited by the
+      hard cap`, and the 0.6 kW breach comes from Connected 300 at Max (2.87 kW) which
+      PELS cannot touch because the device has `capacity_control_off`. The copy
+      overpromises active mitigation that PELS has actually finished doing; the user is
+      left thinking "PELS is handling it" while in reality the breach is structural
+      until the opt-out device drops out on its own. Differentiate the hero subtext when
+      `remainingSheddableLoad` for managed devices is ≤ 0 AND the breach attribution is
+      a capacity-control-off device: e.g. *"Above hard cap. <DeviceName> isn't under
+      PELS control — PELS has eased everything it can."* Files:
+      `packages/shared-domain/src/planHeroSummary.ts:~257` (subtitle composition),
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `packages/shared-domain/src/planStateLabels.ts`,
+      `notes/ui-terminology.md` (add the new subtitle variant). Source:
+      v2.9.1 RC release-review walk, 2026-05-25.
+
+*v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
+
+- [ ] **Headroom widget — collapse top row to single-column when the price
+      chip is hidden, or always render the chip with a `normal` tone.** The
+      hidden chip on `normal`/`unknown` leaves an empty right-third on the
+      most common state; the headline slides left and the supporting line
+      looks orphaned. Files: `widgets/headroom/public/index.css:~13`,
+      `widgets/headroom/src/public/render.ts:39`. Source: release-review
+      pels-ux-fit, 2026-05-26.
+
+- [ ] **Headroom widget — switch `"N paused"` to canonical `"N limited"`
+      vocabulary per `notes/ui-terminology.md`.** The widget uses
+      "paused" while the rest of the PELS UI labels PELS-acted-on devices
+      as "Limited". Files: `widgets/headroom/src/public/render.ts:~70`.
+      Source: release-review pels-ux-fit + pels-copy-and-terminology,
+      2026-05-26.
+
+- [ ] **Headroom widget — reconcile widget compose name `"Available power"`
+      with the rendered headline (current draw).** A user who taps the
+      widget expecting "how much room" sees power-used-now instead. Either
+      rename the widget compose entry or invert the headline to lead with
+      available kW (e.g. `5 kW free · 7 of 12 used`). Source: release-review
+      pels-ux-fit, 2026-05-26.
+
+- [ ] **Smart-tasks widget — on `cannot_meet` rows, replace
+      `Ready by HH:MM` with `Due HH:MM` so the time half doesn't contradict
+      the chip.** "Ready by 07:30" plus a `Cannot finish` chip on the same
+      row reads as internally contradictory. Files:
+      `widgets/smart_tasks/src/public/render.ts:~47`. Source:
+      release-review pels-ux-fit, 2026-05-26.
+
+- [ ] **Smart-tasks widget — add a one-sentence pointer in the empty
+      state** (e.g. "Add one from a Flow → PELS action."). A first-time
+      widget user who hasn't created a Smart task yet sees only
+      "No active smart tasks" with no breadcrumb to action. Files:
+      `widgets/smart_tasks/src/smartTasksWidgetPayload.ts:19` (where
+      `EMPTY_SUBTITLE_DEFAULT` lives). Source: release-review pels-ux-fit,
+      2026-05-26.
+
+- [ ] **Learned-deadband store — soft cap or GC entries for devices not
+      seen in N days.** The persisted map has no per-device cap and no GC
+      of stale device IDs. A user who churns through device IDs (re-pair,
+      driver swap, test devices) accumulates dead keys forever. Bounded in
+      practice by Homey device counts (low tens), but `planHistory.ts`
+      `HISTORY_ENTRY_CAP = 30` sets a precedent. Files:
+      `lib/utils/learnedThermostatDeadbandStore.ts`. Source: release-review
+      pels-runtime-reality, 2026-05-26.
+
+- [ ] **Debug-logging hint copy — rename `"Keeping custom legacy topics: …"`
+      to `"Also keeping these advanced topics: …"`.** Today the hint uses
+      internal jargon ("legacy topics") and surfaces raw topic IDs to a
+      user on the Debug logging page. Files:
+      `packages/settings-ui/src/ui/debugLoggingHint.ts:14-15`. Source:
+      release-review pels-copy-and-terminology + pels-ux-fit, 2026-05-26.
+
+- [ ] **Widget preview PNGs — replace mechanically-generated SVG-via-script
+      exports with Figma-template exports before App Store publish.** The
+      hand-rolled SVG mockups at
+      `widgets/{headroom,smart_tasks}/scripts/preview-{light,dark}.html`
+      are mechanically compliant stop-gaps per the original widget commit
+      notes (7dbb7cef); App Store guidelines recommend Figma-template
+      exports. Track palette parity with `--homey-color-*` when the
+      replacement lands. Files:
+      `widgets/{headroom,smart_tasks}/scripts/build-previews.mjs` and
+      the SVG sources. Source: release-review pels-m3-critic + commit
+      7dbb7cef notes, 2026-05-26.
+
+- [ ] **Smart Tasks outcomes table — surface "abandoned is usually not a
+      failure" inline on the row, not two paragraphs below.** The
+      `docs/smart-tasks.md` Outcomes table defines `abandoned` matter-of-
+      factly; the reassurance ("usually not a planning failure") sits two
+      paragraphs later. A panicked user reading the table cell will skim
+      past the reassurance. Files: `docs/smart-tasks.md:137-152`. Source:
+      release-review pels-ux-fit, 2026-05-26.
 
 - [ ] **Extract a shared widget runtime — trigger event reached.** The
       smart_tasks widget (added 2026-05-26) is now the 3rd verbatim copy of
@@ -3681,9 +3862,6 @@ should not be folded into the same PR.
         unchanged mode).
 
 - [ ] Mode-indicator picker follow-ups (from `feat/mode-indicator-picker`):
-      - **Docs:** `docs/insights-device.md` — the "Operating mode" row should note
-        the user can now switch modes directly from the device tile, not only via
-        settings or Flow.
       - **Flow card duplication.** Adding `mode_indicator` as a setable enum
         capability gives Homey auto-generated cards (`mode_indicator changed to`,
         `set mode_indicator`) that overlap with the bespoke `operating_mode_changed`
