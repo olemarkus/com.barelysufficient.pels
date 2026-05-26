@@ -2711,6 +2711,96 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
     });
   });
+
+  describe('onMetStalledEntry callback', () => {
+    // The deadband-learning hook only fires for clean met/stalled temperature
+    // entries — that's the only shape that carries a meaningful observation
+    // of the device's local control deadband.
+    const buildDepsWithCallback = () => {
+      const calls: DeferredObjectivePlanHistoryEntry[] = [];
+      const { deps, saved } = buildPersistDeps();
+      return {
+        deps: {
+          ...deps,
+          onMetStalledEntry: (entry: DeferredObjectivePlanHistoryEntry) => {
+            calls.push(entry);
+          },
+        },
+        saved,
+        calls,
+      };
+    };
+
+    it('fires for a met/stalled temperature entry', () => {
+      const { deps, calls } = buildDepsWithCallback();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const stallNearTarget = () => 'near_target_idle' as const;
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
+        0,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        3 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      recorder.observe([], deadlineAtMs);
+
+      expect(calls).toHaveLength(1);
+      const entry = calls[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      expect(entry.objectiveKind).toBe('temperature');
+    });
+
+    it('does not fire for a missed entry', () => {
+      const { deps, calls } = buildDepsWithCallback();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([], deadlineAtMs);
+      expect(calls).toHaveLength(0);
+    });
+
+    it('does not fire for met-by-target-reached (no stalled metReason)', () => {
+      const { deps, calls } = buildDepsWithCallback();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe(
+        [makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs,
+          currentTemperatureC: 66,
+          status: 'satisfied',
+          horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+        })],
+        3 * HOUR_MS,
+      );
+      recorder.observe([], deadlineAtMs);
+      expect(calls).toHaveLength(0);
+    });
+
+    it('does not fire for met/stalled_device_capped (separate metReason)', () => {
+      // stalled_device_capped is the device's own internal cap, not its
+      // deadband — we deliberately exclude it from deadband learning.
+      const { deps, calls } = buildDepsWithCallback();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const cappedIdle = () => 'capped_idle' as const;
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })], 0);
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })],
+        3 * HOUR_MS,
+        null,
+        cappedIdle,
+      );
+      recorder.observe([], deadlineAtMs);
+      expect(calls).toHaveLength(0);
+    });
+  });
 });
 
 describe('appendRevisionLogIfNew (revisions[] cap)', () => {

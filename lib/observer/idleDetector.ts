@@ -54,6 +54,18 @@ export const IDLE_UNRESPONSIVE_MIN_DURATION_MS = 15 * 60 * 1000;
 export const NEAR_TARGET_TEMPERATURE_DELTA_C = 5;
 export const NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C = 5.5;
 
+// Tight-gap variant: when the device sits within 1 °C of its setpoint and has
+// been idle for at least 1 min, that is already strong evidence the device's
+// local control loop has satisfied — the standard 5 min hold becomes
+// unnecessarily slow for fast-cycling thermostats (typical floor / Tuya
+// thermostat duty cycle is 1–3 min on / 1–3 min off, so no individual idle
+// window ever reaches 5 min even when the room is at-target). Entry uses the
+// tight 1 °C gap; once classified, the standard `NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C`
+// hysteresis keeps the device in the hold band so brief gap drift past 1 °C
+// does not bounce the classification.
+export const NEAR_TARGET_TIGHT_GAP_C = 1;
+export const IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS = 60 * 1000;
+
 // Window over which power cycling and temperature stability are evaluated
 // for `capped_idle`. 20 min comfortably exceeds the typical Connected 300
 // thermostat duty cycle (a few minutes on / several minutes off) so both
@@ -192,7 +204,18 @@ const classifyByGapAndDuration = (
     : gap <= NEAR_TARGET_TEMPERATURE_DELTA_C;
 
   if (inHoldWindow) {
-    return durationMs >= IDLE_HOLD_MIN_DURATION_MS ? 'near_target_idle' : 'active';
+    // Standard path: sustained idle anywhere inside the hold band.
+    if (durationMs >= IDLE_HOLD_MIN_DURATION_MS) return 'near_target_idle';
+    // Tight-gap path: shorter idle suffices when the device is very close
+    // to setpoint. Entry threshold = 1 °C; once classified, the standard
+    // exit hysteresis (`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C`) keeps the
+    // device in the hold band so brief gap drift does not bounce the
+    // classification on the next tick.
+    const tightGapApplies = previous === 'near_target_idle' || gap <= NEAR_TARGET_TIGHT_GAP_C;
+    if (tightGapApplies && durationMs >= IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS) {
+      return 'near_target_idle';
+    }
+    return 'active';
   }
   return durationMs >= IDLE_UNRESPONSIVE_MIN_DURATION_MS ? 'unresponsive' : 'active';
 };

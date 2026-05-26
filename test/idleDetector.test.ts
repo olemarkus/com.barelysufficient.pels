@@ -1,9 +1,11 @@
 import {
   CAPPED_IDLE_MIN_WINDOW_MS,
   IDLE_HOLD_MIN_DURATION_MS,
+  IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS,
   IDLE_UNRESPONSIVE_MIN_DURATION_MS,
   NEAR_TARGET_TEMPERATURE_DELTA_C,
   NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C,
+  NEAR_TARGET_TIGHT_GAP_C,
   classifyIdleState,
   pruneIdleDetectorState,
   type IdleDetectorInput,
@@ -148,6 +150,106 @@ describe('classifyIdleState — near_target_idle', () => {
       state,
     );
     expect(drifting.classification).toBe('near_target_idle');
+  });
+});
+
+describe('classifyIdleState — tight-gap near_target_idle (1 °C / 1 min)', () => {
+  // The kontor scenario: thermostat satisfies within ~0.1 °C of setpoint and
+  // cycles 1–3 min on / off. The standard 5 °C / 5 min path never fires
+  // because no individual idle window reaches 5 min; the tight-gap path
+  // promotes after a single 1 min idle window so the smart-task recorder can
+  // finalise met/stalled rather than missed/energy_underestimate.
+  const tightInput = (overrides: Partial<IdleDetectorInput> = {}): IdleDetectorInput => baseInput({
+    currentTemperature: 20.9,
+    targetTemperature: 21,
+    ...overrides,
+  });
+
+  it('does not flip below the tight idle duration', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState(tightInput({ now: t0 }), state);
+    const tooShort = classifyIdleState(
+      tightInput({ now: t0 + IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS - 1 }),
+      state,
+    );
+    expect(tooShort.classification).toBe('active');
+  });
+
+  it('flips to near_target_idle after 1 min idle within 1 °C of setpoint', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState(tightInput({ now: t0 }), state);
+    const promoted = classifyIdleState(
+      tightInput({ now: t0 + IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS }),
+      state,
+    );
+    expect(promoted.classification).toBe('near_target_idle');
+    expect(promoted.idleDurationMs).toBe(IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS);
+    expect(promoted.temperatureGapC).toBeCloseTo(0.1);
+  });
+
+  it('keeps the kontor case (0.1 °C off, 60 s idle) classified', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState(tightInput({ now: t0 }), state);
+    const promoted = classifyIdleState(
+      tightInput({ now: t0 + 60_000 }),
+      state,
+    );
+    expect(promoted.classification).toBe('near_target_idle');
+  });
+
+  it('does not promote at the tight duration when gap exceeds 1 °C', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    // Gap = 2 °C — outside tight band but inside standard 5 °C band.
+    classifyIdleState(tightInput({ now: t0, currentTemperature: 19 }), state);
+    const notYet = classifyIdleState(
+      tightInput({
+        now: t0 + IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS,
+        currentTemperature: 19,
+      }),
+      state,
+    );
+    expect(notYet.classification).toBe('active');
+    // …and still waits the full standard hold duration to fire.
+    const fullHold = classifyIdleState(
+      tightInput({
+        now: t0 + IDLE_HOLD_MIN_DURATION_MS,
+        currentTemperature: 19,
+      }),
+      state,
+    );
+    expect(fullHold.classification).toBe('near_target_idle');
+  });
+
+  it('stays in near_target_idle when gap drifts past 1 °C after entry (uses exit hysteresis)', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState(tightInput({ now: t0 }), state);
+    const entered = classifyIdleState(
+      tightInput({ now: t0 + IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS }),
+      state,
+    );
+    expect(entered.classification).toBe('near_target_idle');
+    // Drift to a 1.4 °C gap — outside the tight 1 °C entry but well inside
+    // the standard 5.5 °C exit hysteresis. Should hold via the previous-
+    // near_target_idle stay-in branch in the tight-gap path.
+    const drifted = classifyIdleState(
+      tightInput({
+        now: t0 + IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS + 30_000,
+        currentTemperature: 19.6,
+      }),
+      state,
+    );
+    expect(drifted.classification).toBe('near_target_idle');
+  });
+
+  it('keeps the constants in the expected envelope', () => {
+    expect(NEAR_TARGET_TIGHT_GAP_C).toBeGreaterThan(0);
+    expect(NEAR_TARGET_TIGHT_GAP_C).toBeLessThan(NEAR_TARGET_TEMPERATURE_DELTA_C);
+    expect(IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS).toBeLessThan(IDLE_HOLD_MIN_DURATION_MS);
   });
 });
 

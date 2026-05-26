@@ -320,6 +320,57 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Release remaining planned-bucket hours back to the budget when a smart
+      task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
+      1 min, added alongside learned thermostat deadband) lets a temperature
+      smart task finalise met/stalled mid-plan rather than at the deadline.
+      The currently-planned remaining hours stay reserved in
+      `plansByDeviceId` even though the device has nothing to do with them.
+      Releasing those reserved hours back to the daily-budget shaper would
+      hand cheap-hour headroom to lower-priority devices. Hook:
+      `DeferredObjectiveActivePlanRecorder` already observes plan
+      transitions; emit a `plan_released_early` revision when the planHistory
+      recorder fires `onMetStalledEntry`, and have the daily-budget producer
+      drop the reserved kWh for those buckets. Test gate: a second device's
+      `at_risk` verdict flips to `on_track` after the first device satisfies
+      early. Source: kontor smart-task forensics conversation, 2026-05-26.
+
+- [ ] **Weather-conditioned learned thermostat deadband.** The current EMA
+      (0.7 old / 0.3 new) collapses every met/stalled observation onto a
+      single per-device value. Real deadband behaviour is mildly
+      weather-dependent — a sensor reading lags more on a cold-start session
+      than a mid-day mild session. If the rate-confidence stays low after
+      several met/stalled samples, the planner could split learning by
+      outdoor-temperature bucket (or recent-trajectory slope) the same way
+      `lib/dailyBudget/dailyBudgetLearning.ts` keys per-day buckets. Not
+      worth implementing until the simple single-value EMA shows measurable
+      bias in production. Source: kontor smart-task forensics conversation,
+      2026-05-26.
+
+- [ ] **UI surface for `learned_thermostat_deadband_c`.** The per-device
+      learned deadband is invisible today — it lives only in the persisted
+      settings map and feeds the commanded setpoint silently. Two product
+      improvements once the EMA proves useful: (1) display the learned value
+      on the temperature device detail page as a small diagnostic ("PELS
+      adds +0.2 °C to your target so the device satisfies at-target"), (2)
+      offer a `Reset learned deadband` button for devices the user
+      reconfigures or replaces. Defer until a user reports confusion or
+      until we want to expose the value in the smart-task postmortem. Source:
+      kontor smart-task forensics conversation, 2026-05-26.
+
+- [ ] **Stall-aware shed/restore ordering across devices.** When the
+      household overshoots, shed/restore today uses pure `sortByPriorityAsc`.
+      A device with an active soft smart task and remaining energy needed
+      before its deadline should yield more reluctantly to shed and recover
+      faster on restore than an equal-priority device with no commitment.
+      Hook in the cycle-layer restore loop (`lib/plan/restore/devices.ts`
+      `getOnDevices`/`getOffDevices`) by adding a deadline-urgency secondary
+      sort key derived from the deferred-objective diagnostic. Out of scope
+      for the deadband/stall PR because it touches the cycle-layer restore
+      ordering and the deferred-objective bridge into restore, not the
+      finalize-time learning. Source: kontor smart-task forensics
+      conversation, 2026-05-26.
+
 - [ ] **Extract a shared widget runtime — trigger event reached.** The
       smart_tasks widget (added 2026-05-26) is now the 3rd verbatim copy of
       ~150 LOC of widget runtime: `WidgetWindow`/`WidgetHomey`/`WidgetController`

@@ -14,7 +14,11 @@ import {
   applyDeferredObjectiveChange,
   normalizeDeferredObjectiveSettings,
 } from '../plan/deferredObjectives';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS, LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
+import {
+  getLearnedThermostatDeadbandC,
+  normaliseLearnedThermostatDeadbandMap,
+} from '../utils/learnedThermostatDeadbandStore';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
@@ -156,6 +160,25 @@ export function createPlanEngine(ctx: AppContext) {
     getStallClassification: (deviceId) => (
       ctx.planService?.getStallClassification(deviceId)
     ),
+    // Read-through into the persisted per-device learned deadband map. The
+    // setting is updated on every met/stalled finalize by
+    // `updateLearnedThermostatDeadbandFromEntry` in `deferredRecorders.ts`,
+    // so a fresh read each call picks up the latest EMA without caching.
+    // Settings.get can transiently throw (`feedback_homey_sdk_unreliable`);
+    // we treat a throw as "no learned value" so the override falls back to
+    // the raw user target rather than poisoning a plan cycle.
+    getLearnedThermostatDeadbandC: (deviceId: string): number => {
+      let raw: unknown;
+      try {
+        raw = ctx.homey.settings.get(LEARNED_THERMOSTAT_DEADBAND_C) as unknown;
+      } catch {
+        return 0;
+      }
+      return getLearnedThermostatDeadbandC(
+        normaliseLearnedThermostatDeadbandMap(raw),
+        deviceId,
+      );
+    },
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
     getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
