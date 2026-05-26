@@ -38,6 +38,10 @@ var SMART_TASK_LIST_STATUS_LABELS = {
   cannot_meet: "Cannot finish",
   satisfied: "Satisfied"
 };
+var SMART_TASK_WIDGET_STATUS_LABELS = {
+  ...SMART_TASK_LIST_STATUS_LABELS,
+  paused_unplugged: "Unplugged"
+};
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
@@ -381,7 +385,7 @@ var buildRow = (params) => {
     currentValue: resolveCurrentValue(device, plan.objectiveKind),
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
-    statusLabel: SMART_TASK_LIST_STATUS_LABELS[statusId],
+    statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId]
   };
 };
@@ -399,7 +403,7 @@ var buildCandidate = (params) => {
     device: devicesById.get(deviceId),
     targetValue,
     statusId,
-    finishMs: etaMs ?? plan.deadlineAtMs,
+    finishMs: plan.deadlineAtMs,
     timeZone
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
