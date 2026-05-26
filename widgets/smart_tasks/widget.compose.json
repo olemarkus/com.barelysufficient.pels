@@ -1,0 +1,12 @@
+{
+  "name": {
+    "en": "Smart tasks"
+  },
+  "height": 220,
+  "api": {
+    "getSmartTasks": {
+      "method": "GET",
+      "path": "/smart_tasks"
+    }
+  }
+}
