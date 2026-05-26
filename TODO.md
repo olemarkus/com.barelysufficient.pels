@@ -3872,3 +3872,25 @@ should not be folded into the same PR.
         triggered by `capacity_priorities` / `mode_device_targets` /
         `operating_mode` settings events. The pure builder is tested, the wiring
         is not. Add a focused test once a lightweight `Homey.Device` mock exists.
+
+- [ ] Idle-classifier eligibility follow-ups (from the `shedAction → plannedState`
+      fix):
+      - **Type-narrow `IdleClassifierDeviceInput.plannedState`.** Currently typed
+        as `string` to match the producer (`DevicePlanDevice.plannedState: string`
+        in `lib/plan/planTypes.ts`). In practice the field is `'shed' | 'keep' |
+        'inactive'`. Promote the union to a shared alias (e.g. in
+        `packages/contracts/src/types.ts`) and have both producer and consumer
+        reference it, so a future typo like `'SHED'` or a new state value can't
+        silently re-disable the eligibility gate. Same applies to the test helper
+        in `test/idleClassifier.test.ts`.
+      - **Decide whether `plannedState === 'inactive'` should also gate
+        eligibility.** `inactive` is used in `lib/plan/planOffStateReason.ts` for
+        devices PELS is no longer managing (capacity control off, manual mode,
+        etc.). Today the classifier still ticks on them. Classifying an inactive
+        device as `near_target_idle` is probably misleading — the smart-task
+        history finalizer is the main consumer and an inactive device shouldn't
+        have an active deferred objective anyway, but the diagnostic noise is
+        worth eliminating. Low risk; add an `'inactive'` clause to the gate and a
+        test alongside.
+      - Files: `lib/observer/idleClassifier.ts`, `lib/observer/idleDetector.ts`,
+        `packages/contracts/src/types.ts`, `test/idleClassifier.test.ts`.

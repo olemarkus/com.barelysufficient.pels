@@ -5,8 +5,11 @@
  *
  * The classifier is consumed downstream of plan emission as a UI / diagnostic
  * tap — it does not feed back into planner decisions. Plan-state inputs
- * (shedAction, currentState) are only consulted to gate eligibility so the
- * classifier never reports on a device PELS itself is suppressing.
+ * (plannedState, currentState) are only consulted to gate eligibility so the
+ * classifier never reports on a device PELS itself is suppressing. We read
+ * `plannedState === 'shed'` (this cycle's decision) rather than `shedAction`
+ * (the shed *behaviour*, which is always populated for any controllable
+ * temperature/stepped device whether or not it's currently being shed).
  */
 import {
   classifyIdleState,
@@ -30,7 +33,7 @@ export type IdleClassifierDeviceInput = {
   measuredPowerKw?: number;
   currentTemperature?: number;
   currentTarget: number | null;
-  shedAction?: 'turn_off' | 'set_step' | 'set_temperature';
+  plannedState: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
 };
 
@@ -58,7 +61,7 @@ const toDetectorInput = (
   targetTemperature: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
   observedOn: device.currentState === 'on',
   observationStale: device.observationStale,
-  pelsCommandedShed: device.shedAction !== undefined,
+  pelsCommandedShed: device.plannedState === 'shed',
   hasTemperatureSetpoint: isFiniteNumber(device.currentTarget),
   isEvCharger: device.controlCapabilityId === 'evcharger_charging',
 });
