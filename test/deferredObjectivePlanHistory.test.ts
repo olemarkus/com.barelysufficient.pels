@@ -802,6 +802,84 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     });
   });
 
+  describe('finalizeElapsedDeadline', () => {
+    it('synchronously finalizes the in-progress run as `deadline_passed` when the deadline has elapsed', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.finalizeElapsedDeadline('dev', deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      // Outcome resolves via the same `'deadline_passed'` reason the stale-records sweep uses,
+      // so it lands as `missed` here (progress < target, no satisfied marker).
+      expect(entry.outcome).toBe('missed');
+      expect(entry.deadlineAtMs).toBe(deadlineAtMs);
+      expect(entry.finalizedAtMs).toBe(deadlineAtMs);
+    });
+
+    it('resolves to `met` when the device had already reached the target', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC: 65,
+        status: 'satisfied',
+        horizonPlan: makeHorizon({ status: 'satisfied', statusDetail: 'energy_already_met' }),
+      })], 2 * HOUR_MS);
+      recorder.finalizeElapsedDeadline('dev', deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+    });
+
+    it('leaves in-progress records with future deadlines untouched (safety guard)', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const futureDeadline = 6 * HOUR_MS;
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: futureDeadline, currentTemperatureC: 50 })], 0);
+      recorder.finalizeElapsedDeadline('dev', HOUR_MS);
+
+      expect(recorder.flushIfDirty()).toBe(false);
+      expect(saved()).toBeNull();
+    });
+
+    it('is a no-op when there is no in-progress run for the device', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+
+      recorder.finalizeElapsedDeadline('dev', 6 * HOUR_MS);
+      expect(recorder.flushIfDirty()).toBe(false);
+      expect(saved()).toBeNull();
+    });
+
+    it('does not touch in-progress runs for other devices', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+
+      recorder.observe([
+        makeDiag({ deviceId: 'dev-a', deadlineAtMs, currentTemperatureC: 50 }),
+        makeDiag({ deviceId: 'dev-b', deadlineAtMs, currentTemperatureC: 40 }),
+      ], 0);
+      recorder.finalizeElapsedDeadline('dev-a', deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entries = saved()!.entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]!.deviceId).toBe('dev-a');
+      expect(entries[0]!.outcome).toBe('missed');
+    });
+  });
+
   describe('v3 plan snapshots', () => {
     const buildActivePlans = (
       params: { deviceId: string; deadlineAtMs: number; originalKwh?: number; latestKwh?: number },
