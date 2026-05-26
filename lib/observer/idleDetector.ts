@@ -32,9 +32,14 @@
  * (`passesCommonEligibility` for the basic temperature-device shape;
  * `measuredIsIdle` for the existing two states; `shouldUseCappedIdle` for
  * the cycling case). Callers populate `pelsCommandedShed` from the plan
- * snapshot's `shedAction` so the detector never reports on a device PELS
- * itself is suppressing — the gate is the detector's responsibility, not
- * the caller's.
+ * snapshot's `plannedState` (`'shed'` means this cycle's decision is to
+ * shed this device) so the detector never reports on a device PELS itself
+ * is suppressing — the gate is the detector's responsibility, not the
+ * caller's. `shedAction` on the plan device is the *shed behaviour* (how
+ * the device would be shed if needed) and is populated for every
+ * controllable temperature/stepped device regardless of whether it is
+ * currently being shed; reading it instead would silently disable the
+ * classifier for the entire device fleet.
  *
  * Only temperature-bearing devices are eligible: without a setpoint reading
  * we have no way to distinguish "satisfied hold" from "broken" / "capped".

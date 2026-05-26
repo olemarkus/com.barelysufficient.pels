@@ -29,7 +29,7 @@ const heaterAt = (
   measuredPowerKw: 0,
   currentTemperature: 61.5,
   currentTarget: 65,
-  shedAction: undefined,
+  plannedState: 'keep',
   controlCapabilityId: 'onoff',
   ...overrides,
 });
@@ -90,10 +90,30 @@ describe('createIdleClassifier', () => {
   it('does not classify a PELS-shed device', () => {
     const classifier = createIdleClassifier();
     const t0 = 1_000_000;
-    const shed = heaterAt({ shedAction: 'turn_off' });
+    const shed = heaterAt({ plannedState: 'shed' });
     classifier.classifyAll([shed], t0);
     classifier.classifyAll([shed], t0 + IDLE_HOLD_MIN_DURATION_MS);
     expect(classifier.getClassification('heater-1')).toBeUndefined();
+  });
+
+  // Regression: production builds `DevicePlanDevice.shedAction` on every
+  // controllable temperature/stepped device (the *shed behaviour*, not the
+  // *current command*). An earlier mapping treated any defined `shedAction`
+  // as "currently shedding" and the eligibility gate silently rejected
+  // every device — zero classifier events emitted on prod for days. The
+  // gate must read from `plannedState`, which reflects the actual decision
+  // for this cycle.
+  it('classifies a keep-planned heater near setpoint even though shed behaviour is configured', () => {
+    const logger = createMockLogger();
+    const classifier = createIdleClassifier({ structuredLog: logger as never });
+    const t0 = 1_000_000;
+    const keepingHeater = heaterAt({ plannedState: 'keep' });
+    classifier.classifyAll([keepingHeater], t0);
+    classifier.classifyAll([keepingHeater], t0 + IDLE_HOLD_MIN_DURATION_MS);
+    expect(classifier.getClassification('heater-1')).toBe('near_target_idle');
+    expect(
+      logger.events.some((event) => event.event === 'device_near_target_idle_started'),
+    ).toBe(true);
   });
 
   it('emits a capped_idle started event when the device cycles at its own cap', () => {
