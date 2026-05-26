@@ -320,6 +320,18 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Extract a shared widget runtime when a 3rd widget lands.** The new
+      `widgets/headroom/src/public/widgetApp.ts` is ~120 LOC of boilerplate
+      duplicated verbatim from `widgets/plan_budget/src/public/widgetApp.ts`
+      (the `WidgetWindow`/`WidgetHomey`/`WidgetController` types, the
+      `loadAndRender` race-guarded controller with refresh-loop + visibility
+      handling, the `installWidget` boot path). At 2 widgets the copy is
+      tolerable; the 3rd will make a bug fix in one silently miss the others.
+      When that 3rd widget lands, extract to `widgets/_shared/widgetRuntime.ts`
+      and teach `scripts/build-widgets.mjs` to bundle it into each widget's
+      `public/index.js`. Source: adversarial-review on the headroom widget PR,
+      2026-05-25.
+
 - [ ] **Add `pending_binary_command_cleared` structured event.** After chip
       4.1c, `getPendingBinaryCommand` (lib/plan/planBinaryControlHelpers.ts)
       silently deletes a stale pending entry it encounters on-demand. The

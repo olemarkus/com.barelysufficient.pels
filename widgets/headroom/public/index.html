@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Available power</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget-small">
+    <main id="widget-root" class="widget-root" role="img" aria-label="Available power">
+        <div class="row row--top">
+          <div class="power">
+            <span class="power__current" data-current>—</span>
+            <span class="power__sep">/</span>
+            <span class="power__budget" data-budget>— kW</span>
+          </div>
+          <span class="chip chip--unknown" data-price>—</span>
+        </div>
+        <div class="bar">
+          <div class="bar__fill" data-bar></div>
+        </div>
+        <div class="row row--bottom">
+          <span class="meta" data-meta>—</span>
+        </div>
+    </main>
+    <script src="./index.js"></script>
+  </body>
+</html>

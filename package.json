@@ -13,6 +13,7 @@
     "build": "tsc && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "build:widgets": "node scripts/build-widgets.mjs",
+    "build:widgets:previews": "node widgets/headroom/scripts/build-previews.mjs",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:build:channels": "node scripts/build-docs-channels.mjs",

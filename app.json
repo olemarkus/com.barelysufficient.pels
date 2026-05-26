@@ -1597,6 +1597,20 @@
     }
   ],
   "widgets": {
+    "headroom": {
+      "name": {
+        "en": "Available power"
+      },
+      "height": 100,
+      "api": {
+        "getHeadroom": {
+          "method": "GET",
+          "path": "/headroom"
+        }
+      },
+      "id": "headroom",
+      "settings": []
+    },
     "plan_budget": {
       "name": {
         "en": "Budget and Price"
