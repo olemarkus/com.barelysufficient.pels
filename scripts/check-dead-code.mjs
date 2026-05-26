@@ -130,6 +130,10 @@ const allowedUnusedExportPatterns = [
   // importing `composeSmartTaskStatusNotificationText`; the rest of the file's exports
   // are consumed by `packages/settings-ui/**` which the runtime tsconfig excludes.
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_LABELS$/,
+  // Consumed by `widgets/smart_tasks/` via the esbuild widget bundle, which
+  // ts-prune (running against the runtime tsconfig that excludes `widgets/`)
+  // doesn't see.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_STATUS_LABELS$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByTone$/,

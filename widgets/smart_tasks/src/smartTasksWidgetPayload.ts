@@ -5,7 +5,7 @@ import type {
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import {
   resolveSmartTaskListStatus,
-  SMART_TASK_LIST_STATUS_LABELS,
+  SMART_TASK_WIDGET_STATUS_LABELS,
   type SmartTaskListStatusId,
 } from '../../../packages/shared-domain/src/deadlineLabels';
 import type {
@@ -152,7 +152,7 @@ const buildRow = (params: {
     currentValue: resolveCurrentValue(device, plan.objectiveKind),
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
-    statusLabel: SMART_TASK_LIST_STATUS_LABELS[statusId],
+    statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
   };
 };
@@ -170,6 +170,11 @@ const buildCandidate = (params: {
   if (statusId === 'satisfied') return null;
   const targetValue = resolveTargetValue(plan);
   if (targetValue === null) return null;
+  // Sort still uses the planner's ETA (last scheduled hour + 1h) as the first
+  // tie-break — closer-to-finishing first. The displayed time, however, is
+  // always the user's deadline so the row's meaning matches the settings UI
+  // "Ready by" label (DeadlinesList.tsx) and never silently flips between
+  // "planner projects" and "deadline" depending on whether hours are scheduled.
   const etaMs = resolvePlannerEtaMs(plan);
   const row = buildRow({
     deviceId,
@@ -177,7 +182,7 @@ const buildCandidate = (params: {
     device: devicesById.get(deviceId),
     targetValue,
     statusId,
-    finishMs: etaMs ?? plan.deadlineAtMs,
+    finishMs: plan.deadlineAtMs,
     timeZone,
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };

@@ -2,7 +2,9 @@ import type { SmartTasksWidgetReadyPayload } from '../smartTasksWidgetTypes';
 
 export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
   state: 'ready',
-  overflowCount: 0,
+  // Non-zero so the preview also demonstrates the "+N in Smart tasks"
+  // overflow line below the rows.
+  overflowCount: 1,
   rows: [
     {
       deviceId: 'preview-dryer',
@@ -27,15 +29,18 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       tone: 'warn',
     },
     {
-      deviceId: 'preview-ev',
-      deviceName: 'EV charger',
-      kind: 'ev_soc',
-      unitSymbol: '%',
-      currentValue: 60,
-      targetValue: 80,
-      finishLabel: '02:45',
-      statusLabel: 'On track',
-      tone: 'ok',
+      // Demonstrates the "Target X" rendering when the device snapshot hasn't
+      // reported a current reading yet — the status chip carries the "why"
+      // (Building plan…) and the row no longer reads as "— → 22 °C".
+      deviceId: 'preview-bedroom',
+      deviceName: 'Bedroom heat',
+      kind: 'temperature',
+      unitSymbol: '°C',
+      currentValue: null,
+      targetValue: 22,
+      finishLabel: '07:00',
+      statusLabel: 'Building plan…',
+      tone: 'muted',
     },
   ],
 };
