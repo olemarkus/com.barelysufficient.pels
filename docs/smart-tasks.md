@@ -132,7 +132,43 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
-Use **Smart task status changed** for live notifications as a task is being tracked. Use **Smart task ended** when you want an alert after the task run concludes — it fires once with an **Outcome** tag of `succeeded`, `missed`, or `abandoned`. Filter on the tag for the case you care about, for example `Outcome = missed` for a "task did not reach its target" notification.
+Use **Smart task status changed** for live notifications as a task is being tracked. Use **Smart task ended** when you want an alert after the task run concludes.
+
+### Outcomes
+
+The **Smart task ended** trigger fires once when a task run concludes, with an **Outcome** tag:
+
+| Outcome | What it means |
+| --- | --- |
+| **succeeded** | The task reached its target by the ready-by time. |
+| **missed** | PELS ran the planned hours but did not reach the target by the ready-by time. |
+| **abandoned** | The task was finalized before it could complete — either because **Clear smart task** ran (manually or from another Flow), or because the device stopped reporting for about an hour while the deadline was still in the future. |
+
+Filter on the tag when only some outcomes should notify, for example `Outcome = missed` for a "did not reach target" alert. An **abandoned** outcome is usually not a planning failure — it means the situation changed before the task could complete.
+
+Two things that look like an abandonment but aren't:
+
+- A *briefly* unplugged EV shows the **Paused — unplugged** status and resumes when plugged back in. Only an unplug that lasts past the abandon grace window finalizes the task as **abandoned**.
+- A new smart task that replaces an in-progress one produces an internal `replaced` outcome. The **Smart task ended** trigger is intentionally suppressed in that case so the new task isn't shadowed by an ended-trigger for the old one.
+
+## If a Task Missed
+
+When the **History** view shows a missed entry, PELS surfaces one of two recourse buttons. The split tells you what to investigate.
+
+| Recourse button | What happened | What to do |
+| --- | --- | --- |
+| **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your physical breaker or grid tariff step, not a tuning knob. |
+| **Review device** | The task ran its planned hours but the device couldn't deliver enough, capacity pressure shortened the available hours, or a replan (e.g. new prices arriving, schedule revised) reduced the planned window. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **When limiting** behavior, and the Flow wiring that reports state back to PELS. |
+
+If the same device misses repeatedly, treat it as a tuning loop:
+
+1. Read the cause sentence on the history-detail card.
+2. Apply the recommended recourse.
+3. Compare the next run.
+
+If the task needs more room only on the run before the deadline, **Set what a smart task may do** can grant *go over today's budget* or *limit lower-priority devices* permission for the scheduled hours — see [Letting a Task Push Harder](#letting-a-task-push-harder).
+
+For **abandoned** runs, the usual answer is that there is nothing to fix. Only investigate if the abandonment was unexpected — for example, a Flow you didn't expect ran **Clear smart task**, or an EV unplug event fired when the car was still connected.
 
 ## Practical Examples
 
