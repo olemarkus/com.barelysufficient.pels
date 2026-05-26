@@ -37,19 +37,11 @@ patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
 
-- [ ] Refresh the `ws` / `socket.io-client` dependency advisory now that
-      upstream has a non-breaking 6.x path. Current lock:
-      `socket.io-client@4.8.3` -> `engine.io-client@6.6.4` ->
-      `ws@~8.18.3`, leaving GHSA-58qx-3vcg-4xpx open. npm registry check on
-      2026-05-21 shows `engine.io-client@6.6.5` (which depends on
-      `ws@~8.20.1`) is inside `socket.io-client`'s `~6.6.1` transitive
-      range. Acceptance: prefer a non-breaking lockfile refresh
-      (`npm update engine.io-client` or equivalent) that keeps
-      `socket.io-client@4.8.3`; rerun `npm audit`; do not use
-      `npm audit fix --force` or downgrade `socket.io-client`.
-      Files: `package-lock.json`, `package.json` only if an override becomes
-      necessary.
-      Source: v2.8.0 release-review leftovers, 2026-05-21.
+- [x] Refresh the `ws` / `socket.io-client` dependency advisory now that
+      upstream has a non-breaking 6.x path. Resolved 2026-05-26 via
+      `npm update engine.io-client` → `engine.io-client@6.6.5`,
+      `ws@8.20.1`; closes GHSA-58qx-3vcg-4xpx with `socket.io-client@4.8.3`
+      intact and no override needed.
 
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch

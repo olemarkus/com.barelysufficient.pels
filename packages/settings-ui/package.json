@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@material/web": "^2.3.0",
+    "@material/web": "^2.4.1",
     "preact": "^10.29.2"
   },
   "scripts": {
