@@ -372,15 +372,16 @@ describe('settings script', () => {
     expect((document.querySelector('#settings-simulation-mode') as HTMLElement & { selected: boolean }).selected).toBe(false);
   });
 
-  it('renders all debug logging topics including overview', async () => {
+  it('renders one switch per debug logging scenario and no longer renders topic switches', async () => {
     await loadSettingsScript();
 
-    const { DEBUG_LOGGING_TOPICS } = await import('../../shared-domain/src/utils/debugLogging.ts');
-    const renderedTopics = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-topic]'))
-      .map((input) => input.dataset.debugTopic);
+    const { DEBUG_LOGGING_SCENARIOS } = await import('../../shared-domain/src/utils/debugLogging.ts');
+    const renderedScenarios = Array.from(document.querySelectorAll<HTMLInputElement>('[data-debug-scenario]'))
+      .map((input) => input.dataset.debugScenario);
 
-    expect(renderedTopics).toEqual(DEBUG_LOGGING_TOPICS.map((topic) => topic.id));
-    expect(document.getElementById('debug-topic-overview')).toBeTruthy();
+    expect(renderedScenarios).toEqual(DEBUG_LOGGING_SCENARIOS.map((scenario) => scenario.id));
+    expect(document.getElementById('debug-scenario-deadline_objectives')).toBeTruthy();
+    expect(document.querySelectorAll('[data-debug-topic]').length).toBe(0);
   });
 
   it('shows only the minimum temperature setting for temperature-target shed mode', async () => {

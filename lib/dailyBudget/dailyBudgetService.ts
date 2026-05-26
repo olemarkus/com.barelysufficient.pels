@@ -48,7 +48,7 @@ import type {
 import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { normalizeDebugLoggingTopics } from '../utils/debugLogging';
+import { normalizeDebugLoggingTopics } from '../../packages/shared-domain/src/utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';

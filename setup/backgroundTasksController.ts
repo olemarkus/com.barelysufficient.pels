@@ -4,7 +4,7 @@ import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
 import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from '../lib/app/appPriceLowestTrigger';
-import type { DebugLoggingTopic } from '../lib/utils/debugLogging';
+import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 

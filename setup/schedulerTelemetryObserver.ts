@@ -5,7 +5,7 @@ import {
 } from '../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
 import { incPerfCounter } from '../lib/utils/perfCounters';
-import type { DebugLoggingTopic } from '../lib/utils/debugLogging';
+import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 
 const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
 

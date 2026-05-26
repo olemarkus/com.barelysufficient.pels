@@ -9,7 +9,7 @@ import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetType
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
-import type { DebugLoggingTopic } from '../../lib/utils/debugLogging';
+import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
