@@ -4,7 +4,9 @@
   // widgets/smart_tasks/src/public/previewPayloads.ts
   var PREVIEW_SMART_TASKS_PAYLOAD = {
     state: "ready",
-    overflowCount: 0,
+    // Non-zero so the preview also demonstrates the "+N in Smart tasks"
+    // overflow line below the rows.
+    overflowCount: 1,
     rows: [
       {
         deviceId: "preview-dryer",
@@ -29,15 +31,18 @@
         tone: "warn"
       },
       {
-        deviceId: "preview-ev",
-        deviceName: "EV charger",
-        kind: "ev_soc",
-        unitSymbol: "%",
-        currentValue: 60,
-        targetValue: 80,
-        finishLabel: "02:45",
-        statusLabel: "On track",
-        tone: "ok"
+        // Demonstrates the "Target X" rendering when the device snapshot hasn't
+        // reported a current reading yet — the status chip carries the "why"
+        // (Building plan…) and the row no longer reads as "— → 22 °C".
+        deviceId: "preview-bedroom",
+        deviceName: "Bedroom heat",
+        kind: "temperature",
+        unitSymbol: "\xB0C",
+        currentValue: null,
+        targetValue: 22,
+        finishLabel: "07:00",
+        statusLabel: "Building plan\u2026",
+        tone: "muted"
       }
     ]
   };
@@ -52,6 +57,10 @@
     at_risk: "At risk",
     cannot_meet: "Cannot finish",
     satisfied: "Satisfied"
+  };
+  var SMART_TASK_WIDGET_STATUS_LABELS = {
+    ...SMART_TASK_LIST_STATUS_LABELS,
+    paused_unplugged: "Unplugged"
   };
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
@@ -300,10 +309,16 @@
 
   // widgets/smart_tasks/src/public/render.ts
   var formatValue = (value, unitSymbol) => {
-    if (value === null || !Number.isFinite(value)) return "\u2014";
     const rounded = Math.round(value * 10) / 10;
     const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
     return `${text} ${unitSymbol}`;
+  };
+  var formatValuesLine = (currentValue, targetValue, unitSymbol) => {
+    const target = formatValue(targetValue, unitSymbol);
+    if (currentValue === null || !Number.isFinite(currentValue)) {
+      return `Target ${target}`;
+    }
+    return `${formatValue(currentValue, unitSymbol)} \u2192 ${target}`;
   };
   var renderRow = (template, row) => {
     const fragment = template.content.cloneNode(true);
@@ -311,14 +326,16 @@
     if (!(li instanceof HTMLElement)) throw new Error("row template missing .row");
     li.dataset.tone = row.tone;
     const nameEl = li.querySelector("[data-row-name]");
-    const currentEl = li.querySelector("[data-row-current]");
-    const targetEl = li.querySelector("[data-row-target]");
+    const valuesEl = li.querySelector("[data-row-values]");
     const etaEl = li.querySelector("[data-row-eta]");
     const chipEl = li.querySelector("[data-row-chip]");
     if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
-    if (currentEl instanceof HTMLElement) currentEl.textContent = formatValue(row.currentValue, row.unitSymbol);
-    if (targetEl instanceof HTMLElement) targetEl.textContent = formatValue(row.targetValue, row.unitSymbol);
-    if (etaEl instanceof HTMLElement) etaEl.textContent = row.finishLabel ?? "\u2014";
+    if (valuesEl instanceof HTMLElement) {
+      valuesEl.textContent = formatValuesLine(row.currentValue, row.targetValue, row.unitSymbol);
+    }
+    if (etaEl instanceof HTMLElement) {
+      etaEl.textContent = row.finishLabel !== null ? `Ready by ${row.finishLabel}` : "";
+    }
     if (chipEl instanceof HTMLElement) {
       chipEl.textContent = row.statusLabel;
       chipEl.dataset.tone = row.tone;
@@ -345,7 +362,7 @@
     }
     if (payload.overflowCount > 0) {
       overflowEl.hidden = false;
-      overflowEl.textContent = `+${payload.overflowCount} more`;
+      overflowEl.textContent = `+${payload.overflowCount} in Smart tasks`;
     } else {
       overflowEl.hidden = true;
     }

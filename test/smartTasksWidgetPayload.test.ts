@@ -126,6 +126,28 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.rows.map((r) => r.deviceName)).toEqual(['Early ETA', 'Late ETA']);
   });
 
+  test('uses the deadline (not the planner ETA) as the displayed finish time', () => {
+    // Planner schedules a single hour at NOW, so etaMs = NOW + 1h, but the
+    // deadline is much later. The displayed finishLabel must reflect the
+    // deadline, not the projection — sort still uses ETA as the tie-break.
+    const deadline = new Date('2026-05-26T18:30:00.000Z').getTime();
+    const plan = buildPlan({
+      deviceId: 'dev',
+      deadlineAtMs: deadline,
+      latest: {
+        ...buildPlan({}).latest!,
+        hours: [{ startsAtMs: NOW, plannedKWh: 1 }],
+      },
+    });
+    const payload = buildSmartTasksWidgetPayload({
+      ...buildInput({ dev: plan }),
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].finishLabel).toBe('18:30');
+  });
+
   test('joins live current value from device snapshot', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput(
       { dev: buildPlan({ deviceId: 'dev', targetTemperatureC: 55 }) },
@@ -203,7 +225,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
     expect(payload.rows.map((r) => r.deviceName)).toEqual(['EV', 'Heating']);
-    expect(payload.rows[0].statusLabel).toBe('Paused — unplugged');
+    expect(payload.rows[0].statusLabel).toBe('Unplugged');
     expect(payload.rows[0].tone).toBe('muted');
   });
 

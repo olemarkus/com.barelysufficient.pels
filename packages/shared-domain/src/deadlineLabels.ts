@@ -79,6 +79,19 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   satisfied: 'Satisfied',
 };
 
+// Shorter status labels used by the Smart tasks dashboard widget. The widget
+// row at 320–480 px has roughly half the horizontal space the settings UI
+// list card uses, so the `Paused — unplugged` em-dash variant truncates or
+// pushes the row out of layout. The widget reuses the settings UI label for
+// every other state — only `paused_unplugged` needs the compressed form.
+// Keeping the override here (and not in the widget) preserves the
+// "UI text shared with logs" rule: both the list label and the widget label
+// resolve from shared-domain helpers, not from hardcoded widget strings.
+export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
+  ...SMART_TASK_LIST_STATUS_LABELS,
+  paused_unplugged: 'Unplugged',
+};
+
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone
