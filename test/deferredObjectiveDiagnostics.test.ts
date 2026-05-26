@@ -1171,11 +1171,98 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.dailyBudgetExhaustedBucketCount).toBe(0);
   });
 
-  it('does not plan a temperature objective from stale progress', () => {
+  it('plans a temperature objective from a quiescent thermostat whose last observation has aged out', () => {
+    // Many Homey thermostat drivers only push capability updates on value
+    // change, so a perfectly working device steady at setpoint can sit
+    // aged-out for hours. `appInit.ts` flips `observationStale` to true on
+    // those devices via the same 40-minute heuristic — so the production
+    // device snapshot carries both an aged `lastFreshDataMs` AND
+    // `observationStale: true`. Smart-task planning must still credit the
+    // last-seen temperature in that case. See
+    // `lib/observer/observationFreshness.ts` for the doctrine and
+    // `lib/plan/deferredObjectives/diagnosticProgress.ts` for why this gate
+    // deliberately does not consult `observationStale`.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
-      devices: [buildTemperatureDevice({ observationStale: true })],
+      devices: [buildTemperatureDevice({
+        lastFreshDataMs: NOW_MS - 2 * 60 * 60 * 1000,
+        observationStale: true,
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic?.objectiveKind).toBe('temperature');
+    expect(diagnostic?.reasonCode).not.toBe('objective_progress_stale');
+    expect(diagnostic?.currentTemperatureC).toBe(55);
+    expect(diagnostic?.energyNeededKWh).not.toBeNull();
+  });
+
+  it('does not plan a temperature objective for a device that has never reported a value', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice({
+        currentTemperature: undefined,
+        lastFreshDataMs: undefined,
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'temperature',
+      status: 'unknown',
+      reasonCode: 'objective_missing_temperature',
+      currentTemperatureC: null,
+      energyNeededKWh: null,
+    });
+  });
+
+  it('does not plan a temperature objective when lastFreshDataMs is non-positive', () => {
+    // Mirrors `getLatestDeviceObservationMs` in
+    // `lib/observer/observationFreshness.ts`: an epoch <= 0 is treated as
+    // uninitialized, not a valid observation timestamp.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice({
+        currentTemperature: 55,
+        lastFreshDataMs: 0,
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'temperature',
+      status: 'unknown',
+      reasonCode: 'objective_progress_stale',
+      currentTemperatureC: 55,
+      energyNeededKWh: null,
+    });
+  });
+
+  it('does not plan a temperature objective when currentTemperature is present but lastFreshDataMs is missing', () => {
+    // Asymmetric cold-start guard: a partial snapshot hydration (or older
+    // persisted state) might land a `currentTemperature` without a paired
+    // timestamp. The "ever observed" gate requires both, so the resolver
+    // falls back to `objective_progress_stale` rather than admitting a
+    // value with no observation lineage.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice({
+        currentTemperature: 55,
+        lastFreshDataMs: undefined,
+      })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),

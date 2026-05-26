@@ -702,8 +702,13 @@ requiredAverageKw = energyNeededKwh / availableHours;
 
 If `energyNeededKwh <= 0`, the objective is met (status `satisfied` via `energy_already_met`).
 
-Missing, stale, invalid, or impossible inputs produce `unknown` or `cannot_meet`, never
-optimistic planning.
+Missing, invalid, or impossible inputs produce `unknown` or `cannot_meet`, never
+optimistic planning. For EV SoC, stale progress also collapses to `unknown` because
+charger session validity requires per-session telemetry. For temperature, stale
+(aged-out) progress is **not** stale-by-trust — Homey thermostat drivers only push
+capability updates on value change, so a healthy device steady at setpoint
+legitimately goes silent for hours; the last-seen temperature is credited as long
+as the device has ever produced a trusted observation.
 
 #### Future input modes (not the v1 path)
 
@@ -778,7 +783,11 @@ projectedCompletionAtMs =
 The shipped status values on the diagnostic
 (`lib/plan/deferredObjectives/diagnosticsBridge.ts`):
 
-- `unknown` — required inputs are missing, stale, invalid, or impossible to evaluate.
+- `unknown` — required inputs are missing, invalid, or impossible to evaluate.
+  Per-kind: EV SoC additionally treats stale or session-invalid progress as
+  `unknown`; temperature credits aged-out readings as long as the device has
+  ever produced a trusted observation (see §"Acceptance Criteria" and
+  `lib/plan/deferredObjectives/diagnosticProgress.ts`).
 - `on_track` — the plan fits entirely before the deadline minus a 1-hour reserve (the
   planner's safety buffer); every earlier hour has enough headroom to land the required
   energy.
@@ -1203,7 +1212,16 @@ Core objective v1:
 - ✅ A native or semi-native adapter can set target temperature for a thermal storage objective.
 - ✅ Progress, energy, temperature, targets, deadlines, and freshness appear on snapshot/plan
   diagnostics.
-- ✅ Missing or stale inputs produce `unknown`, not optimistic planning.
+- ✅ Missing inputs produce `unknown`, not optimistic planning. For temperature
+  objectives, "missing" means the device has never produced a trusted observation
+  (no finite `currentTemperature` / `lastFreshDataMs`). Aged-out temperature
+  readings are credited because Homey thermostat drivers only push capability
+  updates on value change — a healthy device steady at setpoint legitimately
+  goes silent for hours. EV SoC objectives stay strictly fresh because charger
+  session validity genuinely requires per-session telemetry; stale or invalid
+  EV progress is not used for planning. See
+  `lib/observer/observationFreshness.ts` for the freshness doctrine and
+  `lib/plan/deferredObjectives/diagnosticProgress.ts` for the per-kind gate.
 - ✅ Public flow cards (`set_*_deadline`, `clear_deadline`, plus status/plan/ended triggers and
   conditions) are the v1 user-facing surface for soft temperature smart tasks; the
   short-lived device-detail Settings UI card has been retired.
@@ -1272,7 +1290,9 @@ Objective evaluator tests:
 
 - percent plus capacity computes `energyNeededKwh`
 - missing capacity for percent objective returns `unknown`
-- stale progress returns `unknown`
+- stale EV progress returns `unknown` (session validity)
+- aged-out temperature progress is still planned (thermostats fall silent at setpoint)
+- never-observed temperature device returns `objective_missing_temperature`
 - direct remaining energy computes `energyNeededKwh`
 - current/target energy computes `energyNeededKwh`
 - target already met returns `likely_to_meet` and `activeMode: none`
