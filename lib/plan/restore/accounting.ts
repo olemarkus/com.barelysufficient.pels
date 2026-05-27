@@ -7,16 +7,17 @@ import {
   PENDING_RESTORE_WINDOW_MS,
 } from '../planConstants';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import {
-  getRestoreDrawKw,
-  type ExpectedPowerSource,
-} from '../../observer/observedPower';
+import { getRestoreDrawKw } from '../../observer/observedPower';
 import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
 } from '../planSteppedRestorePending';
+import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
-export type RestorePowerSource = ExpectedPowerSource;
+// Re-exported for plan-layer consumers (planReasons, restore/index, tests)
+// that read `RestorePowerSource` from this module. The canonical declaration
+// lives in `packages/contracts/src/types.ts`.
+export type { RestorePowerSource };
 
 export function buildInsufficientHeadroomUpdate(params: {
   neededKw: number;

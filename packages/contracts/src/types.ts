@@ -15,6 +15,22 @@ export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
 
 export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'profile_default';
 
+/**
+ * Provenance label for the kW used as a device's restore reservation. The
+ * canonical home for this union — observer, producer, and plan-layer types
+ * all import it from here so a new label can be added in one place. See
+ * `lib/observer/observedPower.getRestoreDrawKw`,
+ * `lib/device/deviceResidualKw.resolveResidualKwRestore`, and
+ * `PlanInputDevice.residualKw.restore.source` for the call sites.
+ */
+export type RestorePowerSource =
+  | 'measured'
+  | 'expected'
+  | 'planning'
+  | 'configured'
+  | 'stepped'
+  | 'fallback';
+
 export type SteppedLoadStep = {
   id: string;
   planningPowerW: number;

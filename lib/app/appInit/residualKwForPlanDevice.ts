@@ -18,11 +18,13 @@
  * `lib/observer/**` (enforced by the `no-device-residual-kw-to-plan`
  * dep-cruiser rule).
  */
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type {
+  RestorePowerSource,
+  TargetDeviceSnapshot,
+} from '../../../packages/contracts/src/types';
 import {
   resolveResidualKwRestore,
   resolveResidualKwShed,
-  type ResidualKwRestorePowerSource,
   type ResidualKwRestoreSteppedDevice,
   type ResidualKwShedBehavior,
   type ResidualKwShedSteppedDevice,
@@ -48,7 +50,7 @@ export function buildResidualKwForPlanDevice(params: {
   device: TargetDeviceSnapshot;
   hasBinaryControl: boolean;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
-}): { shed: number; restore: { kw: number; source: ResidualKwRestorePowerSource } } {
+}): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
   const { device, hasBinaryControl, shedBehavior } = params;
   const observationStale = isDeviceObservationStale(device);
   const currentDrawKw = getCurrentDrawKw({
