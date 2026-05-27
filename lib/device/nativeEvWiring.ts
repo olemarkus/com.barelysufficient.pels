@@ -92,7 +92,6 @@ export function applyNativeEvWiringOverlay(params: {
   device: HomeyDeviceLike;
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
-  nativeWiringEnabled: boolean;
 }): {
   capabilities: string[];
   capabilityObj: DeviceCapabilityMap;
@@ -104,7 +103,6 @@ export function applyNativeEvWiringOverlay(params: {
     device,
     capabilities,
     capabilityObj,
-    nativeWiringEnabled,
   } = params;
   const nativeWiringSupported = isZaptecGoNativeWiringCandidate(device);
   const nativeEvCapabilitiesPresent = hasOfficialEvChargerCapabilities(capabilities);
@@ -121,17 +119,6 @@ export function applyNativeEvWiringOverlay(params: {
       controlAdapter: {
         kind: 'capability_adapter',
         activationRequired: false,
-        activationEnabled: false,
-      },
-    };
-  }
-  if (!nativeWiringEnabled) {
-    return {
-      capabilities,
-      capabilityObj,
-      controlAdapter: {
-        kind: 'capability_adapter',
-        activationRequired: true,
         activationEnabled: false,
       },
     };
@@ -172,7 +159,7 @@ export function applyNativeEvWiringOverlay(params: {
     capabilityObj: nextCapabilityObj,
     controlAdapter: {
       kind: 'capability_adapter',
-      activationRequired: true,
+      activationRequired: false,
       activationEnabled: true,
     },
     controlWriteCapabilityId,
