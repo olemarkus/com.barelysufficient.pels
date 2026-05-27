@@ -57,11 +57,15 @@ const formatClockTime = (ms: number, timeZone: string): string | null => {
   if (!Number.isFinite(ms)) return null;
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
-  return formatTimeInTimeZone(date, {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }, timeZone);
+  try {
+    return formatTimeInTimeZone(date, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }, timeZone);
+  } catch {
+    return null;
+  }
 };
 
 const diffHourCounts = (

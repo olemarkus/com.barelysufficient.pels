@@ -543,7 +543,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     // circuits its `<details>` block on the empty case.
     revisionLog: buildActivePlanRevisionLog({
       latest,
-      history: activePlan!.history,
+      history: activePlan?.history,
       timeZone: resolveBrowserTimeZone(),
       kind: objective.kind,
     }),
