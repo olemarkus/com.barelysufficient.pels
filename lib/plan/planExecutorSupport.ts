@@ -2,9 +2,11 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
   formatEvSnapshot,
-  getBinaryControlPlan,
-  getEvRestoreBlockReason,
 } from './planBinaryControl';
+import {
+  isCanSetControl,
+  isCommandableNow,
+} from '../device/deviceActionProjection';
 import {
   type ActivationAttemptSource,
   closeActivationAttemptForShed,
@@ -28,24 +30,28 @@ const isShedThrottled = (params: {
   return elapsedMs < throttleMs ? elapsedMs : null;
 };
 
+/**
+ * Restore-time admission gate: true when the device is commandable AND its
+ * binary control capability is writeable this cycle. Reads producer-resolved
+ * bits (`commandableNow`, `canSetControlResolved`) when present (planner
+ * call sites) and falls back to fresh resolution from raw snapshot fields
+ * (`evChargingState`, `available`, `controlCapabilityId`, `capabilities`,
+ * `canSetControl`, legacy `canSetOnOff`) for the executor call sites that
+ * still pass `TargetDeviceSnapshot`.
+ *
+ * Chunk 6 of the planner-detype refactor: producer now resolves both bits
+ * so this gate no longer round-trips through `getBinaryControlPlan` +
+ * `getEvRestoreBlockReason`.
+ */
 export const canTurnOnDevice = (snapshot?: TargetDeviceSnapshot): boolean => {
   if (!snapshot) return false;
-  // NOTE (chunk 2 of the planner-detype refactor): this gate intentionally
-  // stays on `getBinaryControlPlan` + `getEvRestoreBlockReason` rather than
-  // routing through `isCommandableNow`. The blocking gap is the `canSet`
-  // check (`controlPlan.canSet` below — backed by `canSetControl !== false`
-  // and the legacy `canSetOnOff` fallback inside `getBinaryControlPlan`),
-  // which the producer-resolved `commandableNow` bit does not yet replicate.
-  // Migrating here without first lifting `canSet` into the producer would
-  // drop the "device's control capability cannot be set right now" guard
-  // for non-EV devices. Chunk 6 lifts `canSet` into the producer and routes
-  // this gate through `commandableNow`.
-  if (snapshot.available === false) return false;
-  const controlPlan = getBinaryControlPlan(snapshot);
-  if (!controlPlan?.canSet) return false;
-  if (controlPlan.isEv && getEvRestoreBlockReason(snapshot) !== null) {
-    return false;
-  }
+  if (!isCommandableNow(snapshot)) return false;
+  if (!isCanSetControl({
+    controlCapabilityId: snapshot.controlCapabilityId,
+    capabilities: snapshot.capabilities,
+    canSetControl: snapshot.canSetControl,
+    canSetOnOff: (snapshot as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
+  })) return false;
   return true;
 };
 

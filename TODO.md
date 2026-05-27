@@ -560,14 +560,16 @@ release, not v2.7.1 merge-blockers.*
       of PR #1190 flagged chunk 3's new file as misplaced; root cause is
       the un-finished sunsetting, not chunk 3.
 
-- [ ] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
-      `lib/plan/planExecutorSupport.ts:31` stays on `getBinaryControlPlan` +
-      `getEvRestoreBlockReason` because the producer-resolved `commandableNow`
-      bit does not replicate the `canSet` check (`canSetControl !== false`
-      with the legacy `canSetOnOff` fallback in `getBinaryControlPlan`).
-      Chunk 6: extend `lib/device/deviceActionProjection.ts` to resolve
-      `canSet` into the producer bit (or surface it as a sibling resolved
-      flag), then migrate `canTurnOnDevice` to consume `commandableNow`.
+- [x] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
+      `lib/device/deviceActionProjection.ts` now exports `resolveCanSetControl`
+      / `isCanSetControl` as a sibling producer bit to `commandableNow`
+      (`canSetControl !== false` plus the legacy `canSetOnOff` fallback),
+      `toPlanDevice` populates `PlanInputDevice.canSetControlResolved`, and
+      `planExecutorSupport.canTurnOnDevice` now reads
+      `isCommandableNow(snapshot) && isCanSetControl(snapshot)` instead of
+      round-tripping through `getBinaryControlPlan` + `getEvRestoreBlockReason`.
+      `getBinaryControlPlan`'s own `canSet` is rewritten on top of the new
+      producer so the legacy view stays bit-exact.
       Source: pels-layering-guardian review of PR #1189, 2026-05-27.
 
 - [x] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**

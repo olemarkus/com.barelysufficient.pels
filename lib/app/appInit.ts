@@ -1,5 +1,6 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
 import {
+  resolveCanSetControl,
   resolveCommandableNow,
   type CommandableNowGraceEntry,
 } from '../device/deviceActionProjection';
@@ -357,6 +358,12 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     });
   }
   const hasBinaryControl = resolveHasBinaryControl(device);
+  const canSetControlResolved = resolveCanSetControl({
+    controlCapabilityId: device.controlCapabilityId,
+    capabilities: device.capabilities,
+    canSetControl: device.canSetControl,
+    canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
+  });
   const shedBehavior = ctx.getShedBehavior(device.id);
   const controllable = ctx.isCapacityControlEnabled(device.id);
   const residualKw = buildResidualKwForPlanDevice({
@@ -377,6 +384,7 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow: commandable.commandableNow,
     commandableNowReason: commandable.reason,
+    canSetControlResolved,
     residualKw,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDrawAtSelectedStep !== undefined

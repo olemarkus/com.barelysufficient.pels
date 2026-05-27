@@ -118,20 +118,13 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   /^lib\/objectives\/noPowerSourceDiagnostic\.ts:\d+ - resetNoPowerSourceDiagnosticForTests$/,
-  // Chunk 2 of the planner-detype refactor adds these producer-side
+  // Chunk 2 of the planner-detype refactor added these producer-side
   // helpers ahead of their full consumer set: `resolveBoostActive` (chunk
-  // 5 aggregator), `getCommandableNowReason` (chunk 6 UI routing), and
-  // `isCommandableNow` (the dual-read consumer helper that chunk 6
-  // routes executors through once they consume `PlanInputDevice`).
-  // chunk 2's only in-tree consumer of the producer seam is
-  // `planOffStateReason.isEvPhysicallyUnplugged`; the executor gate stays
-  // on its original `getEvRestoreBlockReason` branch for behaviour
-  // preservation (broader EV detection via the capabilities array). All
-  // three symbols are covered by
-  // `test/deviceActionProjectionCommandableNow.test.ts`.
+  // 5 aggregator) and `getCommandableNowReason` (chunk 6 UI routing).
+  // `isCommandableNow` graduated to a live consumer in chunk 6 via
+  // `planExecutorSupport.canTurnOnDevice`.
   /^lib\/device\/deviceActionProjection\.ts:\d+ - resolveBoostActive$/,
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
-  /^lib\/device\/deviceActionProjection\.ts:\d+ - isCommandableNow$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
