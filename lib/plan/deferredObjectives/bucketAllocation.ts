@@ -154,7 +154,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
       epsilonKWh,
       remainingKWh,
       plannedByBucketId,
-      committedRemainingByHour,
+      committedHours,
     });
     plannedUsefulEnergyKWh += expansion.plannedUsefulEnergyKWh;
     remainingKWh = expansion.remainingKWh;
@@ -190,7 +190,7 @@ const expandCommittedAllocation = (params: {
   epsilonKWh: number;
   remainingKWh: number;
   plannedByBucketId: Map<string, number>;
-  committedRemainingByHour: Map<number, number>;
+  committedHours: readonly DeferredObjectiveCommittedHour[];
 }): {
   plannedUsefulEnergyKWh: number;
   remainingKWh: number;
@@ -198,12 +198,23 @@ const expandCommittedAllocation = (params: {
   usesPolicyAvoid: boolean;
 } => {
   const {
-    buckets, step, epsilonKWh, plannedByBucketId, committedRemainingByHour,
+    buckets, step, epsilonKWh, plannedByBucketId, committedHours,
   } = params;
   let remainingKWh = params.remainingKWh;
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
   let usesPolicyAvoid = false;
+  // Build the skip set from the *raw* `committedHours` array, not from
+  // `committedRemainingByHour`. `buildCommittedHourMap` filters out hours
+  // with sub-epsilon or non-finite `plannedKWh`, but those hours are still
+  // part of the commitment — they were just intentionally capped at zero.
+  // Expansion must respect that cap, otherwise it could allocate fresh
+  // energy into a slot the commitment explicitly held at zero.
+  const committedHourSet = new Set<number>();
+  for (const hour of committedHours) {
+    if (!Number.isFinite(hour.startsAtMs)) continue;
+    committedHourSet.add(Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS);
+  }
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
     if (plannedByBucketId.has(bucket.id)) continue;
@@ -211,7 +222,7 @@ const expandCommittedAllocation = (params: {
     // commitment is the binding ceiling for that hour. Expansion adds *new*
     // hours; resizing within an existing hour is the normal-revision path's
     // job, not this one.
-    if (committedRemainingByHour.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
+    if (committedHourSet.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
     const plannedKWh = Math.min(remainingKWh, resolveBucketStepCapacityKWh(bucket, step));
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
