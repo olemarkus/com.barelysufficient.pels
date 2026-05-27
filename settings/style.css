@@ -4973,6 +4973,18 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
+.budget-card-header > h2,
+.budget-card-header > h3,
+.budget-card-header > .section-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.budget-card-header > button,
+.budget-card-header > .budget-toggle-mount {
+  flex-shrink: 0;
+}
+
 .budget-card-header h3,
 .budget-card-header .section-title {
   margin-top: 0;
