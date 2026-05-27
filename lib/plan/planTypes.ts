@@ -225,6 +225,19 @@ export type PlanInputDevice = {
    * temperature-boost or EV-boost policy is active this cycle.
    */
   boostActive?: boolean;
+  /**
+   * Producer-resolved residual-kW projection (chunk 3 of the planner-detype
+   * refactor). `shed` is the observable kW the configured shed behavior would
+   * remove if applied right now (post-kind-switch). Consumers in
+   * `lib/plan/planRemainingSheddableLoad.ts` read this directly after the
+   * flat plan-cycle gates instead of branching on the device's discriminated-
+   * union kind. Optional for the duration of the dual-read transition; chunk
+   * 6 makes it required. Future chunks layer `restore` (chunk 4) and
+   * potentially `keep` (chunk 5) on this same field.
+   */
+  residualKw?: {
+    shed: number;
+  };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
   currentState?: string;

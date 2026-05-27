@@ -394,6 +394,38 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Before chunk 6 — expand cascade-parity test in
+      `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test
+      covers a happy-path 3-device mix (simple-on, stepped-max with binary,
+      stepped-low with binary). It does not cascade-test the four
+      edge cases the producer-resolved and legacy-fallback paths must agree
+      on: (1) stepped, `hasBinaryControl: false`, already at lowest active
+      step; (2) stepped with `selectedStepId` absent and
+      `hasKnownEffectiveStep === false` (measured-power fallback);
+      (3) stepped with `selectedStepId` absent and
+      `hasKnownEffectiveStep === true` (one of reportedStepId / actualStepId
+      / assumedStepId set); (4) temperature device with
+      `currentValue == normalized shedTemperature`. Unit tests in
+      `test/deviceResidualKwShed.test.ts` cover each branch in isolation,
+      but the load-bearing invariant is `sumRemainingSheddableLoadKw`
+      watt-equality. Harden the cascade test before chunk 6 removes the
+      legacy fallback. Source: pels-runtime-reality review of PR #1190,
+      2026-05-27.
+
+- [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
+      `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
+      `appContext.ts` as the long-term inhabitant, but new wiring continues
+      to land under `lib/app/appInit/` (chunk 3 added
+      `residualKwForPlanDevice.ts` next to the pre-existing
+      `calibrationViews.ts` + `deferredRecorders.ts`). The blocker for the
+      proper migration is `no-lib-to-setup` (dep-cruiser): `lib/app/appInit.ts`
+      cannot import from `setup/**`. Real fix: either move `appInit.ts`
+      itself to `setup/` (then its wiring siblings follow), or relax the
+      dep-cruiser rule with a narrow `pathNot` exception for `lib/app/**`
+      while the migration completes. Source: pels-layering-guardian review
+      of PR #1190 flagged chunk 3's new file as misplaced; root cause is
+      the un-finished sunsetting, not chunk 3.
+
 - [ ] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
       `lib/plan/planExecutorSupport.ts:31` stays on `getBinaryControlPlan` +
       `getEvRestoreBlockReason` because the producer-resolved `commandableNow`
