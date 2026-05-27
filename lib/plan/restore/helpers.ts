@@ -35,6 +35,7 @@ import {
 import { computeRestoreBufferKw } from './accounting';
 import { RESTORE_ADMISSION_FLOOR_KW } from '../planConstants';
 import { clearRestoreDebugEvent, emitRestoreDebugEventOnChange } from '../planDebugDedupe';
+import { isBoostActive } from '../../device/deviceActionProjection';
 import {
   countShedDevices,
   hasOtherDevicesBlockingSteppedRestore,
@@ -678,8 +679,7 @@ function canUseSwapForSteppedRestore(params: {
  * before so newly-paired devices are not penalized during warm-up.
  */
 function isBoostEffectiveForEscalation(dev: DevicePlanDevice): boolean {
-  const boostActive = dev.temperatureBoostActive === true || dev.evBoostActive === true;
-  if (!boostActive) return false;
+  if (!isBoostActive(dev)) return false;
   if (dev.hasRecentObservedDrawAtSelectedStep === false) return false;
   return true;
 }

@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getLogger } from '../logging/logger';
+import { resolveBoostActive } from '../device/deviceActionProjection';
 
 // `resolveEvBoostActive` moved to `lib/device/deviceActionProjection.ts`
 // as chunk 1 of the planner-detype refactor. Re-exported here so every
@@ -36,7 +37,13 @@ export function buildBoostPlanDeviceFields(params: {
   evBoostActive: boolean;
 }): Pick<
   DevicePlanDevice,
-  'currentTemperature' | 'temperatureBoost' | 'temperatureBoostActive' | 'evBoost' | 'evBoostActive' | 'stateOfCharge'
+  | 'currentTemperature'
+  | 'temperatureBoost'
+  | 'temperatureBoostActive'
+  | 'evBoost'
+  | 'evBoostActive'
+  | 'boostActive'
+  | 'stateOfCharge'
 > {
   const { dev, temperatureBoostActive, evBoostActive } = params;
   return {
@@ -45,6 +52,7 @@ export function buildBoostPlanDeviceFields(params: {
     temperatureBoostActive,
     evBoost: dev.evBoost,
     evBoostActive,
+    boostActive: resolveBoostActive({ temperatureBoostActive, evBoostActive }),
     stateOfCharge: dev.stateOfCharge,
   };
 }

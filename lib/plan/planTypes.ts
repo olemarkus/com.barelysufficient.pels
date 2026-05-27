@@ -100,6 +100,13 @@ export type DevicePlanDevice = {
   temperatureBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
+  /**
+   * Producer-resolved aggregate boost flag: `true` when either
+   * `temperatureBoostActive` or `evBoostActive` fires this cycle. Resolved
+   * once in `buildBoostPlanDeviceFields` so restore-side consumers read a
+   * single bit instead of recomputing the OR per call.
+   */
+  boostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;

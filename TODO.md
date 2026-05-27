@@ -583,14 +583,15 @@ release, not v2.7.1 merge-blockers.*
       — both should consolidate to one shared-domain helper.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
 
-- [ ] **Chunk 5/6 — populate and consume `boostActive`.**
-      `lib/plan/planTypes.ts` declares `boostActive?: boolean` and
-      `lib/device/deviceActionProjection.ts` exports `resolveBoostActive`,
-      but `toPlanDevice` does not populate the field and no consumer reads
-      it. Producer/consumer wiring deferred until chunk 5 (opaque shedIntent)
-      or chunk 6 (cleanup). When wiring lands, prune the three dead-code
-      allowlist entries (`resolveBoostActive`, `getCommandableNowReason`,
-      `isCommandableNow`) in `scripts/check-dead-code.mjs`.
+- [x] **Chunk 5/6 — populate and consume `boostActive`.**
+      `buildBoostPlanDeviceFields` now resolves `boostActive` via
+      `resolveBoostActive({ temperatureBoostActive, evBoostActive })` and
+      writes it onto `DevicePlanDevice`. `restore/helpers.ts`
+      `isBoostEffectiveForEscalation` reads `dev.boostActive === true`
+      instead of recomputing the OR. `resolveBoostActive` and
+      `isCommandableNow` allowlist entries dropped in
+      `scripts/check-dead-code.mjs`; `getCommandableNowReason` stays
+      parked until the chunk-6 UI off-state-reason routing lands.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
 
