@@ -1,10 +1,8 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
 import {
   resolveCommandableNow,
-  resolveShedIntent,
   type CommandableNowGraceEntry,
 } from '../device/deviceActionProjection';
-import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
@@ -360,24 +358,18 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
   }
   const hasBinaryControl = resolveHasBinaryControl(device);
   const shedBehavior = ctx.getShedBehavior(device.id);
+  const controllable = ctx.isCapacityControlEnabled(device.id);
   const residualKw = buildResidualKwForPlanDevice({
     device,
     hasBinaryControl,
     shedBehavior,
-  });
-  const shedIntent = resolveShedIntent({
-    shedBehavior,
-    hasBinaryControl,
-    controlModel: device.controlModel,
-    steppedLoadProfile: device.steppedLoadProfile,
-    primaryTarget: getPrimaryTargetCapability(device.targets),
   });
   return {
     ...device,
     hasBinaryControl,
     observationStale: isDeviceObservationStale(device),
     managed: ctx.resolveManagedState(device.id),
-    controllable: ctx.isCapacityControlEnabled(device.id),
+    controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),
@@ -386,7 +378,6 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     commandableNow: commandable.commandableNow,
     commandableNowReason: commandable.reason,
     residualKw,
-    shedIntent,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }

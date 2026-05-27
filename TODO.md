@@ -422,7 +422,7 @@ release, not v2.7.1 merge-blockers.*
       value. Source: pels-layering-guardian review of PR #1199,
       2026-05-27.
 
-- [ ] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
+- [x] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
       `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`
       directly when revising a `DevicePlanDevice` after the initial plan
       materialisation. It bypasses the chunk-6 adapter, leaving a second
@@ -430,8 +430,12 @@ release, not v2.7.1 merge-blockers.*
       to cover post-plan revisions (or routing this call through it)
       closes the last gap in the single-materialisation-site contract.
       Source: pels-layering-guardian review of PR #1196, 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — the revision
+      site now calls `materializeShedSnapshotFields` with a `set_step`
+      intent and overrides `shedStepId` to the specific step (the adapter
+      is intentionally agnostic to step-id selection).
 
-- [ ] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
+- [x] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
       `lib/device/deviceActionProjection.ts:resolveShedIntent` (chunk 5)
       emits `{ kind: 'set_temperature', temperature }` whenever
       `shedBehavior.action === 'set_temperature'` and a primary target
@@ -444,9 +448,13 @@ release, not v2.7.1 merge-blockers.*
       `turn_off`. Chunk 6: accept `controllable` as a producer input (or
       add a `{ kind: 'no_op' }` variant) so the consumer never overrides.
       Source: pels-layering-guardian review of chunk 5 (PR #1193),
-      2026-05-27.
+      2026-05-27. Resolved in PR A of the post-detype cleanup batch —
+      `ShedIntentResolveInput` now takes `controllable`, and
+      `planDevices.resolveShedAction` re-resolves the intent with the
+      post-admission controllable so the deferred-objective rescue lane is
+      honoured.
 
-- [ ] **Chunk 6 — collapse `resolveShedActionFromIntent` re-dispatch into
+- [x] **Chunk 6 — collapse `resolveShedActionFromIntent` re-dispatch into
       a materialisation adapter.** The chunk-5 consumer dispatches the
       `set_step` intent back into the legacy `resolveSteppedShedAction`,
       which re-derives the same conditions the producer already evaluated.
@@ -456,6 +464,11 @@ release, not v2.7.1 merge-blockers.*
       shedStepId }` materialisation into a dedicated adapter — likely
       `lib/plan/planActionMaterialization.ts`. Source: pels-layering-guardian
       + pels-runtime-reality reviews of chunk 5 (PR #1193), 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — the dual-read
+      fallback (`deriveFallbackShedIntent`) is retired; `shedIntent` is
+      required on `PlanInputDevice`; the consumer re-resolves the intent
+      with the post-admission controllable and feeds the materialiser,
+      which now only applies the `shouldShed` gate.
 
 - [ ] **Chunk 6 — consolidate restore-power source-label union into a shared
       type.** `RestorePowerSource` is duplicated structurally in three
@@ -470,7 +483,7 @@ release, not v2.7.1 merge-blockers.*
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1191, 2026-05-27.
 
-- [ ] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
+- [x] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
       strictness delta.** `lib/device/deviceResidualKw.ts` (`resolveResidualKwRestore`)
       uses `isFiniteNumber(planningPowerKw)` where the legacy
       `lib/plan/restore/accounting.ts:resolveSteppedRestorePower` uses
@@ -480,6 +493,8 @@ release, not v2.7.1 merge-blockers.*
       claims "byte-for-byte" preservation. Chunk 6: tighten the legacy guard
       to `isFiniteNumber` so both paths agree, or remove the "byte-for-byte"
       claim. Source: pels-layering-guardian review of PR #1191, 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — tightened the
+      legacy guard to `isFiniteNumber`, byte-for-byte parity restored.
 
 - [x] **Before chunk 6 — expand restore-accounting cascade-parity test
       coverage.** `test/restoreAccountingParity.test.ts` exercises path-1
@@ -493,12 +508,12 @@ release, not v2.7.1 merge-blockers.*
       removes the legacy fallback. Source: pels-runtime-reality + pels-layering-guardian
       reviews of PR #1191, 2026-05-27.
 
-- [ ] **Chunk 6 — rename `pickStepCalibrationFields` →
+- [x] **Chunk 6 — rename `pickStepCalibrationFields` →
       `pickPropagatedPlanFields`.** `lib/plan/planDevices.ts:467` now
       propagates `residualKw` in addition to step-calibration fields; the
       helper's original name is misleading. Either rename, or split the
       spread inline. Source: pels-layering-guardian review of PR #1191,
-      2026-05-27.
+      2026-05-27. Resolved in PR A of the post-detype cleanup batch.
 
 - [x] **Before chunk 6 — expand cascade-parity test in
       `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test

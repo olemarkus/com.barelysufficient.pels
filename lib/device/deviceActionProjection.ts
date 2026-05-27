@@ -401,7 +401,12 @@ function isWithinGrace(
 //
 // Chunk 6 retires the dual-read fallback in `resolveShedAction` and the
 // `ShedAction` enum on `DevicePlanDevice` is materialised exclusively from
-// `shedIntent` via a snapshot-adapter helper.
+// `shedIntent` via a snapshot-adapter helper. The `controllable` plan-cycle
+// gate is also folded into the producer (PR A of the post-detype cleanup):
+// the producer collapses cap-off devices to their binary fallback intent
+// (`turn_off` for non-stepped, `set_step` for stepped-no-binary, `turn_off`
+// for stepped-with-binary) so the materialisation adapter only has to apply
+// the per-cycle `shouldShed` gate.
 // ---------------------------------------------------------------------------
 
 export type ShedActionIntent =
@@ -417,6 +422,7 @@ export type ShedIntentBehaviorInput = {
 
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
+  controllable: boolean;
   hasBinaryControl?: boolean;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
@@ -429,13 +435,14 @@ const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
 );
 
 export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
-  const { shedBehavior, hasBinaryControl, primaryTarget } = input;
-  // set_temperature requires a primary target capability so the executor has a write surface
-  // and a normalised setpoint. Devices configured for set_temperature but without a primary
-  // target fall back to turn_off (cap-off thermostats today land here; chunk 6 cleanup
-  // exposes whether that's the right behaviour).
+  const { shedBehavior, controllable, hasBinaryControl, primaryTarget } = input;
+  // set_temperature requires both a primary target capability (so the executor has a write
+  // surface and a normalised setpoint) AND `controllable === true` for this cycle. Cap-off
+  // devices configured for set_temperature collapse to the binary fallback below; the planner
+  // and executor never see a set_temperature intent for a non-controllable device.
   if (
-    shedBehavior.action === 'set_temperature'
+    controllable
+    && shedBehavior.action === 'set_temperature'
     && shedBehavior.temperature !== null
     && primaryTarget
   ) {
@@ -444,11 +451,14 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
       temperature: normalizeTargetCapabilityValue({ target: primaryTarget, value: shedBehavior.temperature }),
     };
   }
-  // Stepped devices without a binary handle can only shed via the step capability — the
-  // existing `resolveSteppedShedAction` falls back to 'set_step' in that case regardless of
-  // the configured behaviour action.
+  // Stepped devices without a binary handle can only shed via the step capability — both the
+  // legacy `resolveSteppedShedAction` and the post-fold materialisation fall back to
+  // 'set_step' in that case regardless of the configured behaviour action or controllability.
   if (isSteppedLoadDeviceShape(input)) {
-    if (shedBehavior.action === 'set_step' || hasBinaryControl === false) {
+    if (controllable && shedBehavior.action === 'set_step') {
+      return { kind: 'set_step' };
+    }
+    if (hasBinaryControl === false) {
       return { kind: 'set_step' };
     }
   }

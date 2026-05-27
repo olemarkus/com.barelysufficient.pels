@@ -1,6 +1,7 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../../utils/deviceControlProfiles';
+import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
@@ -68,7 +69,7 @@ function resolveSteppedRestorePower(
 ): { kw: number; source: RestorePowerSource } | null {
   if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
 
-  if (dev.currentState !== 'off' && typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) {
+  if (dev.currentState !== 'off' && isFiniteNumber(dev.planningPowerKw) && dev.planningPowerKw > 0) {
     return { kw: dev.planningPowerKw, source: 'planning' };
   }
 
