@@ -4192,18 +4192,23 @@ should not be folded into the same PR.
         `Recent plan changes · last change: Prices arrived at 15:42 (+1h)`.
         Producer change (`buildActivePlanRevisionLog`) returns a summary
         tuple alongside the row array; view binds it to the `<summary>`.
-      - **"Schedule revised" is a *what* without a *why*.** The recorder
-        already has `dailyBudgetExhaustedBucketCount`, hour-diff signs, and
-        planStatus transitions — enough to disambiguate into
-        `Schedule revised — daily budget shifted`, `Schedule revised —
-        cheaper hour opened`, `Schedule revised — risk changed`.
-        Resolver lives in `packages/shared-domain/src/deadlineLabels.ts`.
-      - **`Plan refreshed` fallback hides the very thing the panel is
-        supposed to expose.** When the recorder emits an unrecognised
-        reason ID, the fallback renders silently. Treat unknown reason IDs
-        as a logging-level event (sentry/breadcrumb) and suppress the row,
-        suppress the diff chip, or render a one-shot debug hint.
-        Files: `packages/shared-domain/src/deadlineLabels.ts`.
+      - **Wire `RevisionReasonDisambiguation` through any future runtime
+        log breadcrumb path for `schedule_revised` events** (P2, from
+        pels-runtime-reality review of batch 2 / PR #1203). Today no
+        runtime breadcrumb logs the reason at all, but if one lands and
+        uses the bare `revisionReason()` 2-arg wrapper, support flow
+        becomes "log says `Schedule revised`, screenshot says
+        `Schedule revised — daily budget shifted`" for the same revision.
+        Pass the disambiguation bag through so log/UI parity holds.
+      - **`warnedFallbackRevisions` Set keying / eviction** (P3, from
+        pels-runtime-reality + pels-layering-guardian reviews of batch 2 /
+        PR #1203). Current key is `r${revision}@${timeLabel}` — fine for
+        the current devtools-only use, but if the warning ever escalates
+        to telemetry, (a) prefix with `${objectiveId}` so two panels with
+        the same revision index in the same session don't dedup each
+        other, and (b) cap the Set size or rotate on session boundary so
+        long-lived settings UIs can't grow it unbounded. Files:
+        `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
       - **Hour-diff chip lacks aria-label / antecedent.** Add `title=` /
         `aria-label` like "1 hour added" / "1 hour dropped". Files:
         `packages/shared-domain/src/activePlanRevisionLog.ts`,
@@ -4228,4 +4233,7 @@ should not be folded into the same PR.
         on PR #1197, 2026-05-27. Vocabulary subsection and recorder size
         comment shipped in the follow-up batch 1 train (notes/ui-terminology.md
         § Revision-log row vocabulary; activePlanRecorder.ts comment fix).
+        Schedule-revised disambiguation + Plan refreshed fallback handling
+        (incl. isFallback flag, hour-diff chip suppression, one-shot
+        console.warn) shipped in batch 2 (PR #1203).
 
