@@ -60,7 +60,7 @@ type PlanDeviceEntry = {
   id: string;
   plannedState?: string;
   reason?: string;
-  deferredEvCommandIntent?: 'ev_resume' | 'ev_pause';
+  deferredReleaseIntent?: 'ev_resume' | 'ev_pause';
 };
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -311,7 +311,7 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.deferredEvCommandIntent).toBe('ev_resume');
+    expect(evPlan.deferredReleaseIntent).toBe('ev_resume');
     expect(evPlan.plannedState).not.toBe('inactive');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
 
@@ -360,7 +360,7 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.deferredEvCommandIntent).toBe('ev_resume');
+    expect(evPlan.deferredReleaseIntent).toBe('ev_resume');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
@@ -383,7 +383,7 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.deferredEvCommandIntent).toBe('ev_pause');
+    expect(evPlan.deferredReleaseIntent).toBe('ev_pause');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
@@ -413,7 +413,7 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.deferredEvCommandIntent).toBe('ev_pause');
+    expect(evPlan.deferredReleaseIntent).toBe('ev_pause');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
 
     const snapshot = await refreshSnapshot(app);
@@ -459,7 +459,7 @@ describe('EV charger integration', () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.deferredEvCommandIntent).toBeUndefined();
+    expect(evPlan.deferredReleaseIntent).toBeUndefined();
   });
 
   it('skips planned EV deadline resume when power is stale-fail-closed', async () => {
@@ -478,7 +478,7 @@ describe('EV charger integration', () => {
     await flushPromises();
 
     const plan = getLatestPlanSnapshotForTests() as { devices: PlanDeviceEntry[] };
-    expect(getPlanEntry(plan, charger.idValue).deferredEvCommandIntent).toBeUndefined();
+    expect(getPlanEntry(plan, charger.idValue).deferredReleaseIntent).toBeUndefined();
     expect(charger.getCommandSequence()).toEqual([]);
 
     appState.powerTracker.lastTimestamp = currentTimeMs;

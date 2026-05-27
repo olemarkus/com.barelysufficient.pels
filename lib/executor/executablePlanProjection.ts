@@ -8,12 +8,12 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,
-  ExecutableEvIntent,
   ExecutableObservedDeviceState,
   ExecutableObservedState,
   ExecutableObservedSteppedLoadState,
   ExecutableObservedTargetState,
   ExecutablePlan,
+  ExecutableReleaseIntent,
 } from './executablePlan';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
@@ -34,7 +34,7 @@ export function buildExecutableDeviceIntent(planDevice: PlanDevice, planMeta?: P
     controllable: planDevice.controllable !== false,
     target: buildExecutableTargetIntent(planDevice),
     binary: buildExecutableBinaryIntent(planDevice),
-    ev: buildExecutableEvIntent(planDevice, planMeta),
+    release: buildExecutableReleaseIntent(planDevice, planMeta),
     steppedLoad: buildExecutableSteppedLoadIntent(planDevice),
   };
 }
@@ -49,7 +49,7 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
       controllable: planDevice.controllable !== false,
       target: null,
       binary: null,
-      ev: null,
+      release: null,
       steppedLoad: null,
       projectionError: error,
     };
@@ -227,9 +227,20 @@ const isSwapTargetPendingReason = (dev: PlanDevice): boolean => (
   dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null
 );
 
-const buildExecutableEvIntent = (dev: PlanDevice, planMeta?: PlanMeta): ExecutableEvIntent | null => {
-  const kind = dev.deferredEvCommandIntent;
+const buildExecutableReleaseIntent = (
+  dev: PlanDevice,
+  planMeta?: PlanMeta,
+): ExecutableReleaseIntent | null => {
+  const kind = dev.deferredReleaseIntent;
   if (!kind) return null;
+  if (kind === 'shed_release') {
+    // shed_release fires the device's configured shedBehavior; the executor resolves the
+    // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
+    // EV chargers should always route through 'ev_pause' (never 'shed_release'), so reject
+    // here as a defensive guard against a misrouted producer.
+    if (dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging') return null;
+    return { kind, deviceId: dev.id, name: dev.name };
+  }
   if (dev.deviceClass !== 'evcharger' && dev.controlCapabilityId !== 'evcharger_charging') return null;
   if (kind === 'ev_pause') return { kind, deviceId: dev.id, name: dev.name };
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;

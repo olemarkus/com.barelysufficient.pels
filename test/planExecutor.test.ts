@@ -1493,7 +1493,7 @@ describe('PlanExecutor stepped loads', () => {
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
-      deferredEvCommandIntent: 'ev_resume',
+      deferredReleaseIntent: 'ev_resume',
       ...overrides,
     }],
   });
@@ -1509,7 +1509,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(executor.hasStablePlanActuation(evDeadlinePlan({
       evChargingState: 'plugged_in_charging',
-      deferredEvCommandIntent: 'ev_pause',
+      deferredReleaseIntent: 'ev_pause',
     }))).toBe(true);
   });
 

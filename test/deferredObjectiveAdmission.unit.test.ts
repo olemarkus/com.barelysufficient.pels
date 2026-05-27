@@ -93,7 +93,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       budgetExempt: false,
       engageBoost: false,
       requestedMinimumStepId: 'low',
-      evCommandIntent: 'ev_resume',
+      releaseIntent: 'ev_resume',
     });
   });
 
@@ -124,7 +124,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, evCommandIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
   });
 
   it('returns idle when the current bucket is missing entirely', () => {
@@ -155,7 +155,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, evCommandIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, releaseIntent: 'ev_pause' });
   });
 
   it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
@@ -170,7 +170,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
-  it('keeps inactive without a pause intent for a satisfied temperature objective on a cap-off device', () => {
+  it('emits a one-shot shed_release for a satisfied non-EV objective on a cap-off device', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       objectiveKind: 'temperature',
@@ -179,7 +179,25 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'heater1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('heater1')).toEqual({ kind: 'inactive', budgetExempt: false });
+    expect(decisions.get('heater1')).toEqual({
+      kind: 'inactive',
+      budgetExempt: false,
+      releaseIntent: 'shed_release',
+    });
+  });
+
+  it('keeps inactive without a release intent for a satisfied non-EV objective on a cap-on device', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater2',
+      objectiveKind: 'temperature',
+      status: 'satisfied',
+      horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
+    });
+    // Cap-on devices stay on the planner's normal lane; emitting a release intent there would
+    // race the planner's own decisions.
+    const device = buildEvDevice({ id: 'heater2', controllable: true });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('heater2')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
   it('returns inactive for unknown / invalid statuses', () => {

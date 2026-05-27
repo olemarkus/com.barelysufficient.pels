@@ -28,9 +28,9 @@ export type PlanExecutorDeviceTransport = DeviceObservation & {
 };
 import type {
   ExecutableBinaryIntent,
-  ExecutableEvIntent,
   ExecutableObservedDeviceState,
   ExecutablePlan,
+  ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
   ExecutableTargetIntent,
   ExecutableTargetUpdate,
@@ -71,6 +71,7 @@ import {
   applyUncontrolledBinaryRestore,
   type PlanExecutorBinaryContext,
 } from './binaryExecutor';
+import { applyShedReleaseIntent } from './shedReleaseActuation';
 import {
   buildExecutableObservedDeviceState,
   buildExecutableObservedState,
@@ -423,11 +424,27 @@ export class PlanExecutor {
   }
 
   private async applyDeferredEvIntent(
-    intent: ExecutableEvIntent | null,
+    intent: ExecutableReleaseIntent | null,
     observed: ExecutableObservedDeviceState | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
     return applyDeferredEvCommand(this.buildBinaryExecutorContext(), intent, observed, mode);
+  }
+
+  private async applyShedReleaseIntent(params: {
+    intent: ExecutableReleaseIntent;
+    observed: ExecutableObservedDeviceState | undefined;
+    snapshot: TargetDeviceSnapshot | undefined;
+    mode: PlanActuationMode;
+  }): Promise<boolean> {
+    return applyShedReleaseIntent({
+      ...params,
+      deps: {
+        getShedBehavior: this.boundGetShedBehavior,
+        buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
+        buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
+      },
+    });
   }
 
   private async applyTargetIntent(
@@ -676,13 +693,25 @@ export class PlanExecutor {
             continue;
           }
           if (intent.controllable === false) {
-            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
-            // Cap-off + deferred `ev_pause` is the satisfied terminal release path; skip
-            // uncontrolled-restore so we don't immediately re-enable the charger we just paused.
-            if (intent.ev?.kind === 'ev_pause') {
-              if (await this.applyDeferredEvIntent(intent.ev, observed, mode)) deviceWriteCount += 1;
+            // Cap-off + deferred release is the lifecycle-end path: the deferred objective
+            // was the only reason PELS was driving this device, and it just transitioned out
+            // of plannable status. Fire the device's configured release posture and skip the
+            // uncontrolled-restore so we don't immediately re-enable what we just released.
+            if (intent.release?.kind === 'ev_pause') {
+              if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
+              if (await this.applyDeferredEvIntent(intent.release, observed, mode)) deviceWriteCount += 1;
               continue;
             }
+            if (intent.release?.kind === 'shed_release') {
+              if (await this.applyShedReleaseIntent({
+                intent: intent.release,
+                observed,
+                snapshot,
+                mode,
+              })) deviceWriteCount += 1;
+              continue;
+            }
+            if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
             if (await this.applyUncontrolledRestore(intent.binary, observed)) deviceWriteCount += 1;
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
@@ -733,7 +762,7 @@ export class PlanExecutor {
             if (await this.applyBinaryShedIntent(intent.binary)) deviceWriteCount += 1;
             continue;
           }
-          if (await this.applyDeferredEvIntent(intent.ev, observed, mode)) {
+          if (await this.applyDeferredEvIntent(intent.release, observed, mode)) {
             deviceWriteCount += 1;
             continue;
           }

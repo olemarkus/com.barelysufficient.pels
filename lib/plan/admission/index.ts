@@ -23,9 +23,10 @@ export type { ActivationAttemptSource } from './activationBackoff';
 export {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
-  buildDeferredEvCommandIntents,
+  buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
 } from './deferredObjective';
+export type { DeferredReleaseIntent } from './deferredObjective';
 
 export {
   buildRestoreAdmissionLogFields,

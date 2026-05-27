@@ -46,9 +46,10 @@ import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './plan
 import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
-  buildDeferredEvCommandIntents,
+  buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
 } from './admission';
+import type { DeferredReleaseIntent } from './admission';
 import {
   buildDeferredObjectiveDiagnostics,
   ConcurrentEligibleTaskTracker,
@@ -241,7 +242,7 @@ export class PlanBuilder {
       admittedDevices,
       forceShedSet,
       deferredTargetTempByDeviceId,
-      deferredEvCommandIntentByDeviceId,
+      deferredReleaseIntentByDeviceId,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
       this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
       this.deps.observeDeferredObjectivePlanHistory?.(
@@ -258,7 +259,7 @@ export class PlanBuilder {
           deferredEvaluations,
           this.deps.getLearnedThermostatDeadbandC,
         ),
-        deferredEvCommandIntentByDeviceId: buildDeferredEvCommandIntents(deferredAdmission),
+        deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(deferredAdmission),
       };
     });
 
@@ -278,7 +279,7 @@ export class PlanBuilder {
     planDevices = holdResult.planDevices;
 
     planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
-    planDevices = attachDeferredEvCommandIntents(planDevices, deferredEvCommandIntentByDeviceId, context);
+    planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
@@ -1124,17 +1125,20 @@ function shouldExposePendingTargetCommand(
   );
 }
 
-function attachDeferredEvCommandIntents(
+function attachDeferredReleaseIntents(
   planDevices: DevicePlanDevice[],
-  intentByDeviceId: Record<string, 'ev_resume' | 'ev_pause'>,
+  intentByDeviceId: Record<string, DeferredReleaseIntent>,
   context: PlanContext,
 ): DevicePlanDevice[] {
   if (Object.keys(intentByDeviceId).length === 0) return planDevices;
   return planDevices.map((device) => {
-    const deferredEvCommandIntent = intentByDeviceId[device.id];
-    if (!deferredEvCommandIntent) return device;
-    if (deferredEvCommandIntent === 'ev_resume' && context.powerFreshnessState !== 'fresh') return device;
-    return { ...device, deferredEvCommandIntent };
+    const deferredReleaseIntent = intentByDeviceId[device.id];
+    if (!deferredReleaseIntent) return device;
+    // ev_resume is the only intent that drives a positive (turn-on) command, so it requires
+    // a fresh power sample to avoid racing the capacity guard on stale data. ev_pause and
+    // shed_release are negative commands and remain safe to issue under stale-power.
+    if (deferredReleaseIntent === 'ev_resume' && context.powerFreshnessState !== 'fresh') return device;
+    return { ...device, deferredReleaseIntent };
   });
 }
 
