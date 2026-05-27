@@ -215,6 +215,33 @@ instead of re-sorting by fresh price or daily-budget optimizer output. A committ
 still revise status/source metadata, but optimizer churn alone must not move selected hours
 or fire `deadline_plan_changed`.
 
+The per-hour `plannedKWh` on each committed hour is a **floor** — the minimum kWh the
+recorder will guarantee for that hour against future optimizer churn — not a ceiling on
+how much the allocator may schedule into the hour on later cycles. The per-hour ceiling
+the allocator actually applies stacks three caps via `Math.min`:
+
+- **Step capacity** — `step.usefulPowerKw × durationHours`, where `step` is the resolved
+  floor step (promoted up the active-step ladder for fully-reserved tasks with sufficient
+  horizon-wide reserved headroom; per-bucket promotion is a follow-up). Bounded by the
+  device's calibrated useful-power profile.
+- **Daily-budget pacing slice** — `bucket.usefulEnergyCapKWh`, derived from
+  `perBucketBudgetKWh − backgroundKWh` (Infinity for `exemptFromBudget` tasks).
+- **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
+  `reservedHeadroomKw = (hardCapKw − backgroundKWh/duration) × sharePerTask` is the
+  per-bucket physical headroom forecast from `policyHorizon.ts`. When the forecast is
+  unavailable (`undefined`), this term is skipped; a forecast of zero correctly caps the
+  hour at zero kWh.
+
+`allocateCommittedEnergyToBuckets` fills each committed hour up to that stacked ceiling,
+so slow drift in `energyNeededKWh` is absorbed into the existing committed hours
+instead of spilling sliver allocations into new hours via phase-2 expansion.
+`mergeHoursPreservingCommitment` (`activePlanSchedule.ts`) preserves the floor by taking
+`Math.max(committed.plannedKWh, live.plannedKWh)` on overlap, so a transient shrink in
+`live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds new
+uncommitted future hours only when even the committed hours filled to the stacked
+ceiling cannot absorb the demand (e.g. a hot-water draw drops the tank ~38 °C and the
+remaining horizon at the floor step cannot cover the new kWh requirement).
+
 The recorder treats the per-cycle horizon plan as advisory and only writes a new revision on
 these triggers:
 
@@ -227,9 +254,12 @@ these triggers:
    commitments and then observes a different signature mid-flight. User-initiated changes
    now finalize the prior history run, clear the active record, and seed a new pending plan.
 4. **`prices_revised` / `schedule_revised`** — Legacy fallback for pre-commitment active
-   records. For committed plans, changed optimizer-selected hours are ignored; only metadata
-   changes such as status or budget-exhaustion drift can write a `schedule_revised` revision,
-   and the revision keeps `commitment.hours`.
+   records. For committed plans, optimizer-selected hours that disagree with the commitment
+   are ignored (committed schedule cannot shrink); phase-2 expansion may grow the commitment
+   when step capacity is exhausted; otherwise only metadata changes such as status or
+   budget-exhaustion drift can write a `schedule_revised` revision. Drift inside a committed
+   hour's step capacity does not write a revision at all — `sameHourSchedule` excludes
+   `plannedKWh` so the within-hour growth path is silent end-to-end.
 5. **`rate_refined`** — A learned kWh-per-unit value replaces a conservative bootstrap fallback,
    or otherwise changes the energy basis enough to produce a different stable allocation.
 6. **`device_unavailable`** — The diagnostic stops appearing for an extended period

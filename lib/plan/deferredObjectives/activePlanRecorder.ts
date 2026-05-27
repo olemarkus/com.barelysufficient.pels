@@ -596,11 +596,10 @@ export class DeferredObjectiveActivePlanRecorder {
     const objectiveChanged = sigDiff.changed;
     // When the objective signature changes, the previous commitment is
     // discarded and the live `hours` become the new commitment. Otherwise
-    // we merge live into commitment so phase-2 expansion can extend the
-    // commitment (new hours added) while existing committed hours are
-    // preserved (the contract for those hours stands — energy may already
-    // have been delivered, an empty live allocation must not erase them).
-    // See `mergeHoursPreservingCommitment` for the merge rules.
+    // we merge live into commitment so per-cycle growth (within-hour drift
+    // or phase-2 expansion) extends the commitment while the existing
+    // committed kWh is preserved as a floor against transient shrinkage —
+    // see `mergeHoursPreservingCommitment` for the merge rules.
     const effectiveHours = objectiveChanged
       ? hours
       : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours);

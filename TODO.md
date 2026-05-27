@@ -394,6 +394,45 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Per-bucket floor-step selection (replace `resolveFloorStep` horizon-wide
+      minimum).** `lib/plan/deferredObjectives/horizonPlanner.ts:267`
+      `resolveFloorStep` picks ONE step for the whole horizon using
+      `min(reservedHeadroomKw)` across all buckets. Hours with tight forecast
+      headroom hold the entire horizon to the conservative step, even though
+      other hours could safely run higher. PR #1214 added the per-hour
+      `reservedHeadroomKw × duration` cap so tight hours can no longer
+      over-promise under the conservative selection — but the generous hours
+      are still stuck at the horizon-min step's ceiling. Follow-up: make the
+      floor step per-bucket so each bucket commits at the highest active step
+      whose `usefulPowerKw ≤ its own reservedHeadroomKw`. Touching points:
+      `allocateEnergyToBuckets` / `allocateCommittedEnergyToBuckets` /
+      `resolveBucketStepCapacityKWh` / `expandCommittedAllocation` /
+      `buildPlannedBuckets` all take a `step` param that becomes a function or
+      per-bucket map; `requestedMinimumStepId` in the diagnostic (currently
+      one value driving the executor's step-climb target) becomes per-bucket
+      or current-bucket-only; climbed-band + budget-bound probes need to
+      handle the per-bucket step signature. Source: user discussion on
+      PR #1214, 2026-05-28.
+
+- [ ] **Non-divisible per-task headroom share for single-step devices.**
+      `lib/plan/deferredObjectives/policyHorizon.ts:313`
+      `resolveReservedHeadroomKw` divides `(hardCapKw − backgroundKWh/duration)`
+      equally across concurrent fully-reserved tasks. Works correctly for
+      stepped thermostats / water heaters where the device can throttle to
+      sub-kW resolution, but single-step devices (EV chargers) draw either 0
+      or `activeSteps[0].usefulPowerKw`. With PR #1214's per-hour headroom
+      cap now active, a 7.4 kW EV sharing the hour with a thermostat gets a
+      ~2.5 kW share → commitment under-promises (planner says 2.5 kWh; EV
+      actually runs 7.4 kW for ~24 min or full hour subject to capacity
+      guard). Conservative under-promising is correct for `hard cap is
+      physical`, but the optimum is to give single-step devices their full
+      step capacity as their share and other tasks the remainder.
+      Touching points: `policyHorizon.resolveReservedHeadroomKw` (introduce a
+      non-divisible share variant aware of `activeSteps[]` granularity),
+      `concurrentEligibleTasks.ts` (per-bucket eligibility already exists,
+      may need per-device step granularity). Source: pels-runtime-reality
+      review of PR #1214, 2026-05-28.
+
 - [ ] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
       `packages/settings-ui/src/ui/deviceDetail/evBoost.ts:78-79` carries two
       EV-state-gated strings — `'Car not connected. Boost will not activate.'`
