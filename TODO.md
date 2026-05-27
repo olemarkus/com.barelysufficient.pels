@@ -4124,3 +4124,58 @@ should not be folded into the same PR.
       - Files: `lib/observer/idleClassifier.ts`, `lib/observer/idleDetector.ts`,
         `packages/contracts/src/types.ts`, `test/idleClassifier.test.ts`.
 
+- [ ] Smart-task revision-history panel — follow-ups from PR #1197 subagent
+      review (UX / copy / vocabulary):
+      - **Promote latest-revision reason to the collapsed summary line.**
+        Page mission is "why those hours?"; the current `Recent plan changes
+        · N revisions` summary tells the user a count, not a reason.
+        Suggested shape: when the head row carries a newsworthy reason,
+        promote that single most-recent reason inline — e.g.
+        `Recent plan changes · last change: Prices arrived at 15:42 (+1h)`.
+        Producer change (`buildActivePlanRevisionLog`) returns a summary
+        tuple alongside the row array; view binds it to the `<summary>`.
+      - **"Schedule revised" is a *what* without a *why*.** The recorder
+        already has `dailyBudgetExhaustedBucketCount`, hour-diff signs, and
+        planStatus transitions — enough to disambiguate into
+        `Schedule revised — daily budget shifted`, `Schedule revised —
+        cheaper hour opened`, `Schedule revised — risk changed`.
+        Resolver lives in `packages/shared-domain/src/deadlineLabels.ts`.
+      - **`Plan refreshed` fallback hides the very thing the panel is
+        supposed to expose.** When the recorder emits an unrecognised
+        reason ID, the fallback renders silently. Treat unknown reason IDs
+        as a logging-level event (sentry/breadcrumb) and suppress the row,
+        suppress the diff chip, or render a one-shot debug hint.
+        Files: `packages/shared-domain/src/deadlineLabels.ts`.
+      - **Hour-diff chip lacks aria-label / antecedent.** Add `title=` /
+        `aria-label` like "1 hour added" / "1 hour dropped". Files:
+        `packages/shared-domain/src/activePlanRevisionLog.ts`,
+        `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      - **2-revision threshold suppresses the first interesting
+        transition.** `flow_card → prices_arrived` is exactly when a
+        curious first-time user opens the app. Threshold on reason rather
+        than count: show the panel as soon as there is at least one
+        revision whose reason ≠ `flow_card`. Files: `packages/settings-ui/
+        src/ui/views/DeadlinePlan.tsx` (`revisionLog.length < 2` gate).
+      - **320 px row wrap.** Long reasons wrap and push the diff chip to
+        the bottom-right of the wrapped row, reading like the diff belongs
+        to the next row. Consider `display: grid;
+        grid-template-columns: 5ch 1fr auto;` on `.plan-revision-row` so
+        time / reason / diff stay column-locked. Same change applies to the
+        post-finalization revisions log (shared CSS).
+      - **Card chrome density.** At 320 px the panel adds a full card shell
+        even when collapsed (~80–96 px). Consider folding inside
+        `PlanInputsCard` ("What PELS has learned") — natural home for
+        "...and what changed since the plan was first written".
+      - **`notes/ui-terminology.md` vocabulary entry.** Add a
+        `### Revision-log row vocabulary` subsection that pins the canonical
+        short labels (`Schedule revised`, `Prices arrived`, etc.) so the
+        next reviewer can grade copy without reverse-engineering it from
+        `deadlineLabels.ts`.
+      - **Documentation-only: `MAX_HISTORY_REVISIONS` per-device size.**
+        The recorder comment says "~10 KB per device" but a 48-bucket
+        horizon × 20 revisions × ~50 B per bucket lands closer to ~60 KB
+        per device worst case. Still well within the 30 MB headroom.
+        Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`.
+      - Source: pels-m3-critic / pels-ux-fit / pels-runtime-reality reviews
+        on PR #1197, 2026-05-27.
+

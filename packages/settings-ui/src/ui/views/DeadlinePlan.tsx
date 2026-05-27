@@ -24,6 +24,7 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/sr
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
+import { ExpandMoreIcon } from './icons.tsx';
 
 // Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (~1340-1374). `alert` was previously
@@ -1155,8 +1156,9 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
     <section class="pels-surface-card budget-redesign-card">
       <details class="plan-revision-panel">
         <summary class="plan-revision-panel__summary">
-          <span class="plan-card__title">Revision history</span>
+          <span class="plan-card__title">Recent plan changes</span>
           <small class="section-hint">{`${payload.revisionLog.length} revisions`}</small>
+          <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <ol class="plan-revision-log">
           {payload.revisionLog.map((row) => (

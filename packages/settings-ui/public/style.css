@@ -1853,11 +1853,11 @@ md-filled-button.is-busy {
 .plan-revision-panel__summary {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--spacing-1) var(--spacing-2);
-  /* 48 px touch target per M3 — padding + the title line-height combine to
-   * land at the spec minimum on the 320–480 px mobile WebView. */
-  min-height: 48px;
+  /* M3 touch-target floor — binds to the canonical token so any future
+   * adjustment lands consistently with the other disclosure summaries. */
+  min-height: var(--pels-touch-target-min);
   padding: var(--spacing-1) 0;
   cursor: pointer;
   list-style: none;
