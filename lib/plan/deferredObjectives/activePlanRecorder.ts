@@ -325,8 +325,13 @@ const shouldWriteReplanRevision = (params: {
 // without re-fetching anything. Each replan prepends the previous `latest`
 // onto the array and slices to this cap (FIFO prune). 20 covers any
 // realistic smart-task lifecycle — schedule-changing replans are typically
-// single-digit per task — while keeping per-device persistence under ~10 KB
-// even on a chatty device.
+// single-digit per task.
+//
+// Worst-case size per device: ~48-bucket horizon × 20 revisions × ~50 B JSON
+// per bucket ≈ 48 KB of buckets, plus per-revision metadata (~1 KB total)
+// pushes the upper bound to ~60 KB. Even with ten chatty devices that's 600 KB
+// against the 30 MB Homey RSS headroom (`project_homey_rss_limit`); the cap
+// is comfortable, not tight.
 const MAX_HISTORY_REVISIONS = 20;
 
 // `objectiveChanged` discards the previous commitment entirely and seeds a
