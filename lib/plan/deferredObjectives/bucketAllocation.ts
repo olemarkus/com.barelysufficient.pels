@@ -13,6 +13,7 @@ type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
 | 'usefulEnergyCapacityKWh'
 > & {
   usefulEnergyCapKWh: number;
+  reservedHeadroomKw: number | undefined;
 };
 
 type BucketSegment = {
@@ -26,6 +27,15 @@ type BucketSegment = {
   reserve: boolean;
   current: boolean;
   usefulEnergyCapKWh: number;
+  // Per-bucket physical headroom forecast (hard-cap minus uncontrolled
+  // background, divided across concurrent eligible tasks). Caps the
+  // per-hour kWh the allocator can commit so a hour with low forecast
+  // headroom can't over-promise even when step capacity has more to give.
+  // `undefined` when the producer (`policyHorizon.ts`) could not compute a
+  // forecast — typically `hardCapKw === null` or `backgroundKWh === null`;
+  // in that case the per-hour cap falls back to step capacity ∧
+  // daily-budget only.
+  reservedHeadroomKw: number | undefined;
 };
 
 export type BucketAllocationResult = {
@@ -104,6 +114,24 @@ export const allocateEnergyToBuckets = (params: {
   };
 };
 
+// Two-phase committed allocator. The committed hour SET identifies which
+// hours phase-1 may fill (vs phase-2's spill into uncommitted future hours).
+// The committed hour KWH VALUE is a contract FLOOR preserved by
+// `mergeHoursPreservingCommitment` (`Math.max` on overlap) — it is NOT a
+// per-hour ceiling here. The per-hour ceiling is the bucket's step capacity
+// (`step.usefulPowerKw × durationHours`).
+//
+// Treating committed kWh as a floor rather than a ceiling is what gives the
+// allocator hysteresis against slow energy-need drift: a primary bucket
+// committed at 0.71 kWh on rev 1 can absorb growth up to its step capacity
+// (e.g. 1.25 kWh at floor step `low`, 2.75 kWh at promoted `max`) on later
+// cycles WITHOUT spilling slivers into new hours. The recorder's
+// `sameHourSchedule` diff gate suppresses revision writes when the hour-set
+// is unchanged, so this drift absorption is also quiet end-to-end.
+//
+// Phase-2 expansion still adds new future uncommitted hours when even all
+// committed hours filled to step capacity cannot absorb the demand — the
+// genuine "primary's hour cannot deliver enough; we need more hours" case.
 export const allocateCommittedEnergyToBuckets = (params: {
   buckets: NormalizedBucket[];
   step: DeferredObjectiveStep;
@@ -118,7 +146,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
     epsilonKWh,
     committedHours,
   } = params;
-  const committedRemainingByHour = buildCommittedHourMap(committedHours, epsilonKWh);
+  const committedHourSet = buildCommittedHourSet(committedHours);
   const plannedByBucketId = new Map<string, number>();
   let remainingKWh = Math.max(0, energyNeededKWh);
   let plannedUsefulEnergyKWh = 0;
@@ -129,32 +157,32 @@ export const allocateCommittedEnergyToBuckets = (params: {
   for (const bucket of bucketsByTime) {
     if (remainingKWh <= epsilonKWh) break;
     const hourStartMs = Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS;
-    const committedRemainingKWh = committedRemainingByHour.get(hourStartMs) ?? 0;
-    if (committedRemainingKWh <= epsilonKWh) continue;
+    if (!committedHourSet.has(hourStartMs)) continue;
     const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, step);
-    const plannedKWh = Math.min(remainingKWh, committedRemainingKWh, usefulEnergyCapacityKWh);
+    const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
-    committedRemainingByHour.set(hourStartMs, committedRemainingKWh - plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
     usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
     usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
-  // Phase-2 expansion fires whenever the within-commitment fill leaves
-  // residual energy unmet. An empty original commitment used to be a hard
-  // "stale `cannot_meet` plan must not silently recover" stop, but that gate
-  // also blocked the satisfied-then-drifted case: a task created with the
-  // tank already above target gets `committedHours: []`, then if hot-water
-  // draw crashes the tank mid-task the planner had no way to recover even
-  // though the remaining horizon could absorb the new need. The
-  // `!bucket.current` filter inside `expandCommittedAllocation` is the
-  // structural replacement — expansion only adds *future* uncommitted
-  // buckets, leaving the settled per-bucket budget cap on the current
-  // bucket alone. Brief within-bucket cannot_meet flips (from a 60-300 s
-  // shed) deflate naturally as the executor's step-climb catches up; the
-  // committed kWh is an integral over the hour, not a rate.
+  // Phase-2 expansion fires only when the committed hours, filled up to their
+  // step capacity, still cannot cover the demand. Two scenarios reach here:
+  //
+  //   (i)  Empty commitment (satisfied-then-drifted task — created with the
+  //        tank already above target, then a hot-water draw made the need
+  //        positive). Phase-1 has nothing to fill; expansion books backup
+  //        hours against the uncommitted horizon. The `!bucket.current`
+  //        filter inside `expandCommittedAllocation` preserves the
+  //        current-bucket settled budget; brief shed-induced cannot_meet
+  //        flips self-resolve via the executor's step-climb without
+  //        triggering a permanent expansion.
+  //   (ii) Non-empty commitment that genuinely cannot absorb the new need
+  //        even at step capacity (e.g. shower crash dropped tank ~38 °C,
+  //        need now exceeds committed step capacity × committed hours).
+  //        Expansion adds the missing hours; commitment grows on persist.
   if (remainingKWh > epsilonKWh) {
     const expansion = expandCommittedAllocation({
       buckets,
@@ -198,12 +226,14 @@ export const allocateCommittedEnergyToBuckets = (params: {
 //       require revisiting both this skip and the per-bucket cap maths.
 //
 // Operationally: spill the residual into uncommitted future buckets using
-// the fresh-allocator sort. This handles both the "primary bucket failed
-// to deliver" case (commitment non-empty, drift made energyNeeded grow)
-// and the "satisfied-then-drifted" case (commitment empty because target
-// was already met at task creation, then real-world load — e.g. a
-// hot-water draw — created a new need). Mutates `plannedByBucketId` in
-// place; returns updated running totals.
+// the fresh-allocator sort. Resizing WITHIN a committed hour up to step
+// capacity is phase-1's job (committed kWh is a floor, not a ceiling — see
+// `allocateCommittedEnergyToBuckets` header). Expansion only handles the
+// genuine "all committed hours at step capacity still cannot cover the
+// need" case, plus the "satisfied-then-drifted" case where commitment is
+// empty (target was already met at task creation, then real-world load —
+// e.g. a hot-water draw — created a new need). Mutates `plannedByBucketId`
+// in place; returns updated running totals.
 const expandCommittedAllocation = (params: {
   buckets: NormalizedBucket[];
   step: DeferredObjectiveStep;
@@ -224,17 +254,7 @@ const expandCommittedAllocation = (params: {
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
   let usesPolicyAvoid = false;
-  // Build the skip set from the *raw* `committedHours` array, not from
-  // `committedRemainingByHour`. `buildCommittedHourMap` filters out hours
-  // with sub-epsilon or non-finite `plannedKWh`, but those hours are still
-  // part of the commitment — they were just intentionally capped at zero.
-  // Expansion must respect that cap, otherwise it could allocate fresh
-  // energy into a slot the commitment explicitly held at zero.
-  const committedHourSet = new Set<number>();
-  for (const hour of committedHours) {
-    if (!Number.isFinite(hour.startsAtMs)) continue;
-    committedHourSet.add(Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS);
-  }
+  const committedHourSet = buildCommittedHourSet(committedHours);
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
     if (plannedByBucketId.has(bucket.id)) continue;
@@ -242,10 +262,9 @@ const expandCommittedAllocation = (params: {
     // within-hour delivery is the executor's job (invariants (a) and (b)
     // above). Expansion adds future hours only.
     if (bucket.current) continue;
-    // Skip any bucket whose hour was part of the original commitment — the
-    // commitment is the binding ceiling for that hour. Expansion adds *new*
-    // hours; resizing within an existing hour is the normal-revision path's
-    // job, not this one.
+    // Skip any bucket whose hour was part of the original commitment —
+    // phase-1 already filled those up to step capacity. Expansion adds
+    // *new* hours, never duplicating allocation against a committed slot.
     if (committedHourSet.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
     const plannedKWh = Math.min(remainingKWh, resolveBucketStepCapacityKWh(bucket, step));
     if (plannedKWh <= epsilonKWh) continue;
@@ -258,6 +277,23 @@ const expandCommittedAllocation = (params: {
   return {
     plannedUsefulEnergyKWh, remainingKWh, usesDeadlineReserve, usesPolicyAvoid,
   };
+};
+
+// Shared between phase-1 and phase-2: the hour-aligned set of timestamps
+// that name the commitment's hours. Built from the RAW `committedHours`
+// array so a commitment entry with `plannedKWh: 0` (synthetic test case,
+// not reachable via `buildHoursFromHorizonPlan`) still counts as committed
+// — phase-2 must not double-allocate against a slot phase-1 already
+// considered, regardless of the floor's kWh value.
+const buildCommittedHourSet = (
+  committedHours: readonly DeferredObjectiveCommittedHour[],
+): Set<number> => {
+  const set = new Set<number>();
+  for (const hour of committedHours) {
+    if (!Number.isFinite(hour.startsAtMs)) continue;
+    set.add(Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS);
+  }
+  return set;
 };
 
 const appendNormalizedBucketSegments = (params: {
@@ -344,6 +380,10 @@ const buildBucketSegment = (params: {
     segmentDurationMs: endMs - startMs,
     originalDurationMs,
   });
+  // `reservedHeadroomKw` is a per-source-bucket rate forecast (kW), not an
+  // integral — segment splits inherit the same rate. The per-hour ceiling
+  // applies it as `rate × segmentDurationHours` so the primary/reserve
+  // split still respects the hour-aligned forecast.
   return {
     id: segmentId,
     sourceBucketId: bucket.id,
@@ -355,7 +395,20 @@ const buildBucketSegment = (params: {
     reserve,
     current: startMs <= nowMs && endMs > nowMs,
     usefulEnergyCapKWh,
+    reservedHeadroomKw: normalizeReservedHeadroomKw(bucket.reservedHeadroomKw),
   };
+};
+
+// Treat non-finite or negative inputs as "no forecast available" so the
+// per-hour cap falls back to step capacity ∧ daily-budget only. A zero
+// reading is meaningful — it forces the per-hour cap to zero, which is
+// what we want when the producer has decided this hour cannot deliver.
+const normalizeReservedHeadroomKw = (
+  reservedHeadroomKw: number | undefined,
+): number | undefined => {
+  if (reservedHeadroomKw === undefined) return undefined;
+  if (!Number.isFinite(reservedHeadroomKw) || reservedHeadroomKw < 0) return undefined;
+  return reservedHeadroomKw;
 };
 
 const isValidBucket = (bucket: DeferredObjectiveHorizonBucket): boolean => (
@@ -434,20 +487,6 @@ const compareBucketsByTime = (
   || left.endMs - right.endMs
 );
 
-const buildCommittedHourMap = (
-  committedHours: readonly DeferredObjectiveCommittedHour[],
-  epsilonKWh: number,
-): Map<number, number> => {
-  const byHour = new Map<number, number>();
-  for (const hour of committedHours) {
-    if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(hour.plannedKWh)) continue;
-    if (hour.plannedKWh <= epsilonKWh) continue;
-    const startsAtMs = Math.floor(hour.startsAtMs / HOUR_MS) * HOUR_MS;
-    byHour.set(startsAtMs, (byHour.get(startsAtMs) ?? 0) + hour.plannedKWh);
-  }
-  return byHour;
-};
-
 const compareReserve = (
   left: Pick<NormalizedBucket, 'reserve'>,
   right: Pick<NormalizedBucket, 'reserve'>,
@@ -474,12 +513,26 @@ const preferenceRank = (preference: DeferredObjectiveBucketPreference): number =
   }
 };
 
+// Per-hour kWh ceiling. Three caps stacked via Math.min:
+//   - `step.usefulPowerKw × durationHours`: device-side step capacity.
+//   - `bucket.usefulEnergyCapKWh`: daily-budget per-bucket pacing slice
+//     (Infinity for `exemptFromBudget` tasks).
+//   - `bucket.reservedHeadroomKw × durationHours`: physical headroom
+//     forecast (hard-cap minus uncontrolled background, divided across
+//     concurrent eligible tasks). Skipped when the forecast is not
+//     available (`undefined`); a value of 0 caps the hour at 0 kWh, which
+//     is the right behavior when the producer's forecast says the
+//     hard-cap room is fully consumed.
 const resolveBucketStepCapacityKWh = (
   bucket: NormalizedBucket,
   step: DeferredObjectiveStep,
-): number => (
-  Math.max(0, Math.min(step.usefulPowerKw * bucket.durationHours, bucket.usefulEnergyCapKWh))
-);
+): number => {
+  const stepCapacityKWh = step.usefulPowerKw * bucket.durationHours;
+  const headroomCapKWh = bucket.reservedHeadroomKw === undefined
+    ? Number.POSITIVE_INFINITY
+    : bucket.reservedHeadroomKw * bucket.durationHours;
+  return Math.max(0, Math.min(stepCapacityKWh, bucket.usefulEnergyCapKWh, headroomCapKWh));
+};
 
 const buildPlannedBuckets = (params: {
   buckets: NormalizedBucket[];

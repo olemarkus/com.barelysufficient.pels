@@ -573,9 +573,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // adds hour 5 via expansion. The commitment grows to include hour 5;
     // hour 2's plannedKWh stays at the committed 1.5 kWh because the
     // committed value is the contract floor — letting a shrinking live
-    // value rewrite it downward would cap future delivery against the
-    // original commitment (next cycle's `buildCommittedHourMap` would
-    // enforce 1.0 kWh).
+    // value rewrite it downward would shrink the persisted floor and
+    // weaken the guarantee for the remaining hours of the plan.
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
@@ -641,6 +640,60 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Schedule itself did not shrink — `latest.hours` mirrors the preserved commitment.
     expect(preserved?.latest?.hours.map((h) => h.startsAtMs)).toEqual(initialHours);
     expect(initialRevision).toBe(1);
+  });
+
+  it('does not write a new revision when within-hour drift grows primary kWh inside step capacity', () => {
+    // Production scenario (Connected 300, 2026-05-27 20:00-21:00 local):
+    // primary bucket committed at 0.71 kWh on rev 1, then 9 subsequent
+    // plan cycles drove energyNeededKWh up by 0.03 kWh each as natural
+    // cooling accumulated. Pre-floor-not-ceiling-fix the committed cap
+    // bound phase-1 at 0.71 and each cycle spilled the residual into a
+    // new uncommitted hour via phase-2, writing 9 `schedule_revised`
+    // revisions in one clock hour. Post-fix, primary absorbs the drift
+    // up to step capacity, the hour set never changes, and
+    // `sameHourSchedule` suppresses the revision writes entirely. Pin
+    // this at the recorder layer so the user-visible "noise stays gone"
+    // contract is guarded against either phase-1 regressions OR a recorder
+    // diff-gate that becomes kWh-sensitive.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Rev 1: single planned hour at 0.71 kWh.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      energyNeededKWh: 0.71,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 0.71)]),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+    ]);
+
+    // Subsequent cycles: drift grows primary's plannedKWh inside the same
+    // committed hour, well inside step capacity (1.5 kWh per hour for the
+    // default 1.5 kW useful step in this test fixture). Hour set never
+    // changes; the recorder must keep rev=1.
+    for (const kWh of [0.82, 0.95, 1.08, 1.20, 1.30, 1.40]) {
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        energyNeededKWh: kWh,
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, kWh)]),
+      })], 2 * HOUR_MS);
+    }
+
+    const stable = recorder.getPlanForTests('dev');
+    expect(stable?.latest?.revision).toBe(1);
+    expect(stable?.history ?? []).toEqual([]);
+    // Commitment kWh floor is preserved at the original 0.71 even though
+    // the live cycles ran with up to 1.40 kWh — that's intentional. The
+    // commitment is the minimum guarantee; the executor's step-climb
+    // (and within-hour delivery) absorbs the extra demand against the
+    // remaining bucket capacity without rewriting the commitment.
+    expect(stable?.commitment?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+    ]);
   });
 
   it('emits an objective_changed revision when the target temperature changes mid-flight', () => {

@@ -22,8 +22,9 @@ describe('mergeHoursPreservingCommitment', () => {
     // The committed kWh is the contract for that hour. A shrinking live
     // value (allocator's per-cycle re-fill against a lower current need)
     // must not be allowed to rewrite the commitment downward — otherwise
-    // the next cycle's `buildCommittedHourMap` would enforce the smaller
-    // cap, silently shrinking future delivery.
+    // the persisted `commitment.hours[].plannedKWh` floor would shrink and
+    // silently weaken the guarantee against further cycles' optimizer
+    // thrash.
     const merged = mergeHoursPreservingCommitment(
       [{ startsAtMs: 2_000, plannedKWh: 0.65 }],
       [
