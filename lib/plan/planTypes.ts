@@ -209,6 +209,22 @@ export type PlanInputDevice = {
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   priority?: number;
+  /**
+   * Producer-resolved bit (chunk 2 of the planner-detype refactor): true when
+   * the device is commandable in this cycle, false when physically blocked
+   * (EV unplugged/discharging, snapshot `available === false`, etc.). Optional
+   * for the duration of the dual-read transition; chunk 6 makes it required.
+   * Consumers MUST go through `lib/device/deviceActionProjection.isCommandableNow`
+   * (or the boost equivalent) so the dual-read fallback applies uniformly.
+   */
+  commandableNow?: boolean;
+  /** Opaque diagnostic string; UI / diagnostics consumers only. */
+  commandableNowReason?: string | null;
+  /**
+   * Producer-resolved aggregate boost flag (chunk 2): true if either the
+   * temperature-boost or EV-boost policy is active this cycle.
+   */
+  boostActive?: boolean;
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
   currentState?: string;

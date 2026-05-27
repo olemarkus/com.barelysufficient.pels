@@ -1,4 +1,8 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
+import {
+  resolveCommandableNow,
+  type CommandableNowGraceEntry,
+} from '../device/deviceActionProjection';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -329,6 +333,28 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     ctx,
     device,
   );
+  const nowMs = ctx.getNow().getTime();
+  const previousObservation = ctx.lastKnownCommandableByDevice[device.id];
+  const commandable = resolveCommandableNow({
+    dev: {
+      deviceClass: device.deviceClass,
+      controlCapabilityId: device.controlCapabilityId,
+      evChargingState: device.evChargingState,
+      available: device.available,
+    },
+    previousObservation,
+    nowMs,
+  });
+  // Write the resolved bit back as the next cycle's grace-window observation
+  // (only on a confident answer — uncertain reads inherited from the previous
+  // observation already passed through, so writing them would extend the
+  // grace window indefinitely).
+  if (!isUncertainCommandableRead(device)) {
+    recordCommandableObservation(ctx.lastKnownCommandableByDevice, device.id, {
+      commandableNow: commandable.commandableNow,
+      observedAtMs: nowMs,
+    });
+  }
   return {
     ...device,
     hasBinaryControl: resolveHasBinaryControl(device),
@@ -340,9 +366,41 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     evBoost: ctx.getEvBoostConfig?.(device.id),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
+    commandableNow: commandable.commandableNow,
+    commandableNowReason: commandable.reason,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
   };
+}
+
+/**
+ * An EV snapshot with no `evChargingState` is "uncertain" — the SDK didn't
+ * return a state this poll. We don't extend the grace window in that case
+ * because the resolver already chose to fall back to the previous
+ * observation; rewriting the observation here would re-anchor the grace
+ * timestamp every cycle and make the window effectively infinite.
+ *
+ * EV detection mirrors `resolveCommandableNow`'s gate
+ * (`controlCapabilityId === 'evcharger_charging'`).
+ */
+function isUncertainCommandableRead(device: TargetDeviceSnapshot): boolean {
+  return device.controlCapabilityId === 'evcharger_charging' && device.evChargingState === undefined;
+}
+
+/**
+ * Record the resolved commandable observation for `deviceId` into the
+ * AppContext-owned grace-window record. Mirrors how `managerRuntime`
+ * writes through to `state.lastKnownPowerKw`: the record itself is the
+ * mutable store, this helper just isolates the assignment so the call
+ * site at `toPlanDevice` doesn't trip `no-param-reassign` on `ctx`.
+ */
+function recordCommandableObservation(
+  record: Record<string, CommandableNowGraceEntry>,
+  deviceId: string,
+  entry: CommandableNowGraceEntry,
+): void {
+  // eslint-disable-next-line functional/immutable-data, no-param-reassign
+  record[deviceId] = entry;
 }

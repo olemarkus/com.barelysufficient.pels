@@ -35,6 +35,7 @@ import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
+import type { CommandableNowGraceEntry } from './lib/device/deviceActionProjection';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -338,6 +339,7 @@ class PelsApp extends Homey.App {
   private snapshotWarmupGate?: SnapshotWarmupGate;
   private defaultComputeDynamicSoftLimit?: () => number;
   private lastKnownPowerKw: Record<string, number> = {};
+  private lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
   private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
@@ -808,6 +810,7 @@ class PelsApp extends Homey.App {
       get defaultComputeDynamicSoftLimit() { return app.defaultComputeDynamicSoftLimit; },
       set defaultComputeDynamicSoftLimit(value) { appRef.defaultComputeDynamicSoftLimit = value; },
       get lastKnownPowerKw() { return app.lastKnownPowerKw; },
+      get lastKnownCommandableByDevice() { return app.lastKnownCommandableByDevice; },
       get expectedPowerKwOverrides() { return app.expectedPowerKwOverrides; },
       get lastPositiveMeasuredPowerKw() { return app.lastPositiveMeasuredPowerKw; },
       get lastNotifiedOperatingMode() { return app.lastNotifiedOperatingMode; },
