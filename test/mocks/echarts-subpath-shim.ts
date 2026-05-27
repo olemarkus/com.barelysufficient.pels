@@ -27,6 +27,7 @@ export const format = { encodeHTML };
 
 export const BarChart = noopInstaller;
 export const HeatmapChart = noopInstaller;
+export const LineChart = noopInstaller;
 export const ScatterChart = noopInstaller;
 export const GridComponent = noopInstaller;
 export const LegendComponent = noopInstaller;
