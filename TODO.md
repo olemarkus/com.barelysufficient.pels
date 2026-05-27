@@ -394,6 +394,66 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
+      `lib/plan/planExecutorSupport.ts:31` stays on `getBinaryControlPlan` +
+      `getEvRestoreBlockReason` because the producer-resolved `commandableNow`
+      bit does not replicate the `canSet` check (`canSetControl !== false`
+      with the legacy `canSetOnOff` fallback in `getBinaryControlPlan`).
+      Chunk 6: extend `lib/device/deviceActionProjection.ts` to resolve
+      `canSet` into the producer bit (or surface it as a sibling resolved
+      flag), then migrate `canTurnOnDevice` to consume `commandableNow`.
+      Source: pels-layering-guardian review of PR #1189, 2026-05-27.
+
+- [ ] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
+      `lib/device/deviceActionProjection.ts` produces reason strings
+      ("charger is unplugged", "charger state unknown", etc.) that today
+      live runtime-internal. Chunk 6 routes UI consumers to
+      `commandableNowReason`, at which point these strings will surface in
+      UI and the shared-domain home becomes mandatory per
+      `feedback_ui_text_shared_with_logs`. They duplicate strings already
+      in `lib/plan/restore/devices.ts:108` (`getEvRestoreStateBlockReason`)
+      — both should consolidate to one shared-domain helper.
+      Source: pels-runtime-reality review of PR #1189, 2026-05-27.
+
+- [ ] **Chunk 5/6 — populate and consume `boostActive`.**
+      `lib/plan/planTypes.ts` declares `boostActive?: boolean` and
+      `lib/device/deviceActionProjection.ts` exports `resolveBoostActive`,
+      but `toPlanDevice` does not populate the field and no consumer reads
+      it. Producer/consumer wiring deferred until chunk 5 (opaque shedIntent)
+      or chunk 6 (cleanup). When wiring lands, prune the three dead-code
+      allowlist entries (`resolveBoostActive`, `getCommandableNowReason`,
+      `isCommandableNow`) in `scripts/check-dead-code.mjs`.
+      Source: pels-runtime-reality + pels-layering-guardian reviews of
+      PR #1189, 2026-05-27.
+
+- [ ] **Chunk 6 — normalize EV-detection across producer helpers.**
+      `lib/device/deviceActionProjection.ts` mixes `controlCapabilityId ===
+      'evcharger_charging'` (new helpers) and `deviceClass === 'evcharger'`
+      (older `resolveEvBoostActive`). Pre-existing asymmetry that propagated
+      via the chunk-1 helper move. Normalize on one predicate (`isEvDevice(dev)`)
+      and route all producer EV gates through it.
+      Source: pels-runtime-reality + pels-layering-guardian reviews of
+      PR #1189, 2026-05-27.
+
+- [ ] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
+      device deletion.** Both producer-side caches grow unboundedly when
+      devices are removed from Homey at runtime. Each entry is ~50 bytes;
+      practical bound is a few KB well inside the 160 MB RSS ceiling, but
+      unbounded over the app's lifetime. Add a sweep keyed on "device id no
+      longer present in the latest snapshot" for both records.
+      Source: pels-runtime-reality + pels-layering-guardian reviews of
+      PR #1189, 2026-05-27.
+
+- [ ] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
+      devices.** A fresh EV device with `evChargingState === undefined` and
+      no prior observation in `lastKnownCommandableByDevice` currently
+      resolves to `commandableNow: false, reason: 'charger state unknown'`.
+      No live consumer reads the bit in chunk 2, but once executors consume
+      it (chunks 4-6), pessimistic-on-first-cycle is the safer default
+      (matches "don't write to a device whose state we've never confirmed").
+      Lock that semantics in when executors come online.
+      Source: pels-runtime-reality review of PR #1189, 2026-05-27.
+
 - [ ] **Smart-task lifecycle-end release for stepped devices without binary
       control.** `lib/executor/shedReleaseActuation.ts` materialises the
       configured shedBehavior for a cap-off device when its deferred objective
@@ -440,6 +500,18 @@ release, not v2.7.1 merge-blockers.*
       (cap-off devices don't re-enter capacity-driven shed paths) but it
       undercounts per-device actuations and weakens forensic traces.
       Source: pels-runtime-reality review of PR #1185, 2026-05-27.
+
+- [ ] **Consolidate `observationTrust.ts` into a shared layer.**
+      The detype-chunk-1 producer extraction (PR #1187) inlined
+      `getTrustedCurrentTemperatureC` and `getTrustedStateOfCharge` into
+      `lib/device/deviceActionProjection.ts` because the originals live in
+      `lib/observer/observationTrust.ts` and `lib/device/` cannot import
+      `lib/observer/` per `no-device-to-peer-except-power`. The observer
+      module imports only `lib/utils/appTypeGuards` and a contracts type —
+      no observer-specific state. Moving it to `lib/utils/observationTrust.ts`
+      lets both layers import a single source and lets the inlined copies +
+      dead-code allowlist entries be removed. Source: pels-layering-guardian
+      review of PR #1187, 2026-05-27.
 
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /

@@ -1,30 +1,12 @@
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import { isSteppedLoadDevice } from './planSteppedLoad';
-import { getTrustedStateOfCharge } from '../observer/observationTrust';
 import { getLogger } from '../logging/logger';
 
-const logger = getLogger('plan/ev-boost');
+// `resolveEvBoostActive` moved to `lib/device/deviceActionProjection.ts`
+// as chunk 1 of the planner-detype refactor. Re-exported here so every
+// existing call site continues to work unchanged.
+export { resolveEvBoostActive } from '../device/deviceActionProjection';
 
-export function resolveEvBoostActive(params: {
-  dev: PlanInputDevice;
-  previousActive: boolean;
-}): boolean {
-  const { dev } = params;
-  if (dev.deviceClass !== 'evcharger') return false;
-  if (!isSteppedLoadDevice(dev)) return false;
-  if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
-  // The deferred limit-lower-priority rescue lane forces boost while the task is in its
-  // planned hours, independent of the device's own boost config/threshold.
-  if (dev.forceBoostActive === true) return true;
-  const config = dev.evBoost;
-  if (config?.enabled !== true) return false;
-  const stateOfCharge = getTrustedStateOfCharge(dev);
-  if (!stateOfCharge) return false;
-  const boostBelowPercent = config.boostBelowPercent;
-  if (!Number.isFinite(boostBelowPercent)) return false;
-  return stateOfCharge.percent < boostBelowPercent;
-}
+const logger = getLogger('plan/ev-boost');
 
 export function emitEvBoostStateChange(params: {
   dev: PlanInputDevice;

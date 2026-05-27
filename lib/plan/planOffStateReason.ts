@@ -6,11 +6,15 @@ import { computeBaseRestoreNeed } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildRestoreNeedReason, buildShortfallReason } from './planReasonStrings';
 import { getInactiveReason, getEvRestoreStateBlockReason } from './restore/devices';
+import { isEvPhysicallyUnplugged } from '../device/deviceActionProjection';
 import type { DevicePlanDevice } from './planTypes';
 
 function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): string | null {
-  const { evChargingState } = planDevice;
-  if (evChargingState !== 'plugged_out' && evChargingState !== 'plugged_in_discharging') return null;
+  // Producer-seam consumer (chunk 2): the EV plug-state gate moved into
+  // `deviceActionProjection.isEvPhysicallyUnplugged`. The existing reason
+  // string emitter is kept unchanged so UI strings don't churn here —
+  // chunk 6 reroutes UI consumers to `commandableNowReason`.
+  if (!isEvPhysicallyUnplugged(planDevice)) return null;
   return getEvRestoreStateBlockReason(planDevice) ?? null;
 }
 

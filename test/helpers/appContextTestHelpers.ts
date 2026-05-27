@@ -10,6 +10,7 @@ import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
+import type { CommandableNowGraceEntry } from '../../lib/device/deviceActionProjection';
 import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
@@ -98,6 +99,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
+  const lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {};
   let lastNotifiedOperatingMode = 'Home';
   let powerSampleRebuildState = { lastMs: 0, lastRebuildPowerW: 0 };
   const latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
@@ -223,6 +225,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     get defaultComputeDynamicSoftLimit() { return defaultComputeDynamicSoftLimit; },
     set defaultComputeDynamicSoftLimit(value) { defaultComputeDynamicSoftLimit = value; },
     get lastKnownPowerKw() { return {}; },
+    get lastKnownCommandableByDevice() { return lastKnownCommandableByDevice; },
     get expectedPowerKwOverrides() { return {}; },
     get lastPositiveMeasuredPowerKw() { return {}; },
     get lastNotifiedOperatingMode() { return lastNotifiedOperatingMode; },

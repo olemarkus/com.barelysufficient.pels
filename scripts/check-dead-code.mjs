@@ -118,6 +118,30 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   /^lib\/objectives\/noPowerSourceDiagnostic\.ts:\d+ - resetNoPowerSourceDiagnosticForTests$/,
+  // Chunk 1 of the planner-detype refactor moved the only runtime consumers
+  // of these trust gates (the boost resolvers) into
+  // `lib/device/deviceActionProjection.ts`, which inlines equivalent local
+  // helpers because `lib/device/` may not import `lib/observer/` per the
+  // `no-device-to-peer-except-power` layering rule. The originals stay
+  // exported here for the existing test suite and for `isDeviceObservationTrusted`
+  // (still consumed by plan); a later refactor chunk may consolidate the
+  // trust-gate home and remove these allowlist entries.
+  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedCurrentTemperatureC$/,
+  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedStateOfCharge$/,
+  // Chunk 2 of the planner-detype refactor adds these producer-side
+  // helpers ahead of their full consumer set: `resolveBoostActive` (chunk
+  // 5 aggregator), `getCommandableNowReason` (chunk 6 UI routing), and
+  // `isCommandableNow` (the dual-read consumer helper that chunk 6
+  // routes executors through once they consume `PlanInputDevice`).
+  // chunk 2's only in-tree consumer of the producer seam is
+  // `planOffStateReason.isEvPhysicallyUnplugged`; the executor gate stays
+  // on its original `getEvRestoreBlockReason` branch for behaviour
+  // preservation (broader EV detection via the capabilities array). All
+  // three symbols are covered by
+  // `test/deviceActionProjectionCommandableNow.test.ts`.
+  /^lib\/device\/deviceActionProjection\.ts:\d+ - resolveBoostActive$/,
+  /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
+  /^lib\/device\/deviceActionProjection\.ts:\d+ - isCommandableNow$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.

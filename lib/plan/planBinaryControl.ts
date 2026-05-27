@@ -6,12 +6,21 @@ import {
   type BinaryControlActuationMode,
   type BinaryControlDecision,
   type BinaryControlLogContext,
-  type BinaryControlPlan,
   type BinaryControlRestoreSource,
   formatEvSnapshot,
   isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
+// `getBinaryControlPlan` and `getEvRestoreBlockReason` moved to
+// `lib/device/deviceActionProjection.ts` as chunk 1 of the planner-detype
+// refactor. Re-exported here so every existing call site continues to
+// work unchanged.
+import { getBinaryControlPlan } from '../device/deviceActionProjection';
+
+export {
+  getBinaryControlPlan,
+  getEvRestoreBlockReason,
+} from '../device/deviceActionProjection';
 
 export {
   formatEvSnapshot,
@@ -25,35 +34,6 @@ type BinaryControlDeps = {
   state: PlanEngineState;
   deviceObservation: DeviceObservation;
 };
-
-export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryControlPlan | null {
-  const capabilityId = resolveBinaryCapabilityId(snapshot);
-  if (!snapshot || !capabilityId) return null;
-  return {
-    capabilityId,
-    isEv: capabilityId === 'evcharger_charging',
-    canSet: resolveCanSetBinaryControl(snapshot, capabilityId),
-  };
-}
-
-export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
-  if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return null;
-  if (snapshot.evChargingState === undefined) return 'charger state unknown';
-
-  switch (snapshot.evChargingState) {
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case 'plugged_in':
-      return 'charger is not resumable';
-    case 'plugged_out':
-      return 'charger is unplugged';
-    case 'plugged_in_discharging':
-      return 'charger is discharging';
-    default:
-      return `unknown charging state '${snapshot.evChargingState}'`;
-  }
-}
 
 /**
  * Decide whether the device should actuate this cycle.
@@ -124,24 +104,9 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   };
 }
 
-function resolveBinaryCapabilityId(
-  snapshot?: TargetDeviceSnapshot,
-): BinaryControlPlan['capabilityId'] | undefined {
-  if (!snapshot) return undefined;
-  if (snapshot.controlCapabilityId) return snapshot.controlCapabilityId;
-  if (snapshot.capabilities?.includes('evcharger_charging')) return 'evcharger_charging';
-  if (snapshot.capabilities?.includes('onoff')) return 'onoff';
-  return undefined;
-}
-
-function resolveCanSetBinaryControl(
-  snapshot: TargetDeviceSnapshot,
-  capabilityId: BinaryControlPlan['capabilityId'],
-): boolean {
-  const legacyCanSetOnOff = (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff;
-  return snapshot.canSetControl !== false && !(capabilityId === 'onoff' && legacyCanSetOnOff === false);
-}
-
+// `resolveBinaryCapabilityId` and `resolveCanSetBinaryControl` moved with
+// `getBinaryControlPlan` to `lib/device/deviceActionProjection.ts`.
+//
 // `syncPendingBinaryCommands` moved to `lib/observer/pendingBinaryCommands.ts`
 // as part of PR #4 of the observer/transport split. Import from observer
 // directly; tests follow.
