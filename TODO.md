@@ -2074,15 +2074,19 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 
-- [ ] Show a real revision log on the History detail page.
+- [x] Show a real revision log on the History detail page.
       Today the entire revision surface is the single line "Replanned N times." — no timestamps,
       no per-revision reasons, no diff of which hours changed. The page's whole mission of
       "did PELS change the plan and why?" goes unanswered. Render a chronological list of
       revisions with: revision time, plain-English reason (from a kind-aware helper), and an
       optional inline mini-diff showing hours added / removed.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/shared-domain/src/deadlineLabels.ts` (revision-reason copy),
-      contract additions for per-revision metadata.
+      Shipped — `DeadlinePlanHistoryDetail.tsx` now renders a `What changed` card
+      with `<li class="plan-revision-row">` rows fed by `PlanHistoryRevisionLogRow`
+      (`packages/shared-domain/src/deferredPlanHistory.ts`); the kind-aware
+      `revisionReason` resolver in `deadlineLabels.ts` supplies the per-row copy.
+      Contract carries `revisions[]` on `DeferredObjectivePlanHistoryEntry`. The
+      live-task counterpart shipped alongside as the `Recent plan changes` panel
+      on `DeadlinePlan.tsx` (PR #1197).
 
 - [ ] v2.7.1: Switch `report_evcharger_battery_level.json` `battery_percent` argument from
       `type: "number"` to `type: "range"` for a slider-style picker. The card shipped in
@@ -4205,16 +4209,8 @@ should not be folded into the same PR.
         even when collapsed (~80–96 px). Consider folding inside
         `PlanInputsCard` ("What PELS has learned") — natural home for
         "...and what changed since the plan was first written".
-      - **`notes/ui-terminology.md` vocabulary entry.** Add a
-        `### Revision-log row vocabulary` subsection that pins the canonical
-        short labels (`Schedule revised`, `Prices arrived`, etc.) so the
-        next reviewer can grade copy without reverse-engineering it from
-        `deadlineLabels.ts`.
-      - **Documentation-only: `MAX_HISTORY_REVISIONS` per-device size.**
-        The recorder comment says "~10 KB per device" but a 48-bucket
-        horizon × 20 revisions × ~50 B per bucket lands closer to ~60 KB
-        per device worst case. Still well within the 30 MB headroom.
-        Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`.
       - Source: pels-m3-critic / pels-ux-fit / pels-runtime-reality reviews
-        on PR #1197, 2026-05-27.
+        on PR #1197, 2026-05-27. Vocabulary subsection and recorder size
+        comment shipped in the follow-up batch 1 train (notes/ui-terminology.md
+        § Revision-log row vocabulary; activePlanRecorder.ts comment fix).
 
