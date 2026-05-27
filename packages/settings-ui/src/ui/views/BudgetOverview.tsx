@@ -342,7 +342,12 @@ const BudgetChartCard = ({
   );
 };
 
-// ─── Plan Confidence ─────────────────────────────────────────────────────────
+// ─── Budget Confidence ───────────────────────────────────────────────────────
+//
+// User-facing label is `Budget confidence` (memory rule: "plan" is reserved
+// for the planning layer; Budget surfaces use Budget vocabulary). Internal
+// DOM ids and CSS class names keep `budget-confidence-*` / `plan-confidence`
+// shape so existing selectors / tests stay valid.
 
 const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData }) => {
   if (!confidence) return null;
@@ -354,7 +359,7 @@ const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData
             single line so the card occupies one row of vertical chrome at rest. */}
         <summary class="budget-confidence-card__summary">
           <span class="budget-confidence-card__summary-title">
-            <span class="plan-card__title">Plan confidence</span>
+            <span class="plan-card__title">Budget confidence</span>
             <small class="budget-confidence-card__explainer">What this means</small>
           </span>
           <span id="budget-plan-confidence-value" class="budget-confidence-card__value">
@@ -364,8 +369,8 @@ const BudgetConfidenceCard = ({ confidence }: { confidence: BudgetConfidenceData
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <p class="pels-card-supporting budget-confidence-card__explanation">
-          How well PELS can predict this plan from recent complete days. Higher confidence means your
-          usage pattern has been regular and managed devices have followed earlier plans.
+          How well PELS can predict today's budget from recent complete days. Higher confidence means your
+          usage pattern has been regular and managed devices have followed earlier days.
         </p>
         {confidence.details.length > 0 && (
           <div class="budget-settings-list budget-settings-list--compact">
