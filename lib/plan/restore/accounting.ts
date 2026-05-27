@@ -50,6 +50,14 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
 function resolveRestorePower(
   dev: DevicePlanDevice,
 ): { kw: number; source: RestorePowerSource } {
+  // Producer-resolved path (chunk 4 of the planner-detype refactor). When the
+  // device snapshot carries `residualKw.restore`, the
+  // `isSteppedLoadDevice + getSteppedLoadRestoreStep` chain has already been
+  // collapsed at the producer seam (`lib/device/deviceResidualKw.ts`), so the
+  // consumer just reads the resolved `{ kw, source }`. The legacy fallback
+  // below covers fixtures built without the producer-resolved field; chunk 6
+  // removes it.
+  if (dev.residualKw?.restore) return dev.residualKw.restore;
   const stepped = resolveSteppedRestorePower(dev);
   if (stepped !== null) return stepped;
   return getRestoreDrawKw(dev);
