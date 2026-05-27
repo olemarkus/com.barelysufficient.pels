@@ -42,6 +42,26 @@ import {
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
+/**
+ * Producer-internal EV-device predicate. A device is treated as "EV" if EITHER
+ * its `deviceClass` is `'evcharger'` OR its resolved binary control capability
+ * is `'evcharger_charging'`. The union is intentional: real EV devices set both
+ * fields, so this collapses what used to be two slightly different gates inside
+ * this file (`resolveEvBoostActive` historically read `deviceClass`; the
+ * commandability/restore-block helpers read `controlCapabilityId`) into a
+ * single source of truth.
+ *
+ * Returns `false` when both fields are missing.
+ *
+ * Kept private to this producer module: consumers in `lib/plan/restore/**`
+ * receive `TargetDeviceSnapshot` and resolve EV semantics through different
+ * helpers — they don't share the `PlanInputDevice` shape this predicate is
+ * shaped for.
+ */
+const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: string }): boolean => (
+  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
+);
+
 export type BinaryControlPlan = {
   capabilityId: 'onoff' | 'evcharger_charging';
   isEv: boolean;
@@ -65,6 +85,7 @@ type ObservationFreshness = {
 
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   evChargingState?: string;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
@@ -87,7 +108,7 @@ export function resolveEvBoostActive(params: {
   previousActive: boolean;
 }): boolean {
   const { dev } = params;
-  if (dev.deviceClass !== 'evcharger') return false;
+  if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
@@ -145,7 +166,7 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 }
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
-  if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return null;
+  if (!snapshot || !isEvDevice(snapshot)) return null;
   if (snapshot.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
 
   switch (snapshot.evChargingState) {
@@ -393,7 +414,7 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
   return (
-    dev.controlCapabilityId === 'evcharger_charging'
+    isEvDevice(dev)
     && (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging')
   );
 }
@@ -405,13 +426,12 @@ export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolea
 type EvCommandableBlock = { reason: string; uncertain: boolean };
 
 function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandableBlock | null {
-  // Match the legacy `getEvRestoreBlockReason` gate exactly: only branch on
-  // EV semantics when `controlCapabilityId === 'evcharger_charging'`. The
-  // `deviceClass === 'evcharger'` short-circuit used by `planEvBoost` is a
-  // distinct concern (boost activation, not commandability) and stays in
-  // that resolver. Chunk 6 will normalise the two if a unified gate is
-  // shown to be safe.
-  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
+  // Routed through the shared `isEvDevice` union predicate so this helper and
+  // `resolveEvBoostActive` / `getEvRestoreBlockReason` / `isEvPhysicallyUnplugged`
+  // all agree on what counts as an EV device. Real EV devices set both
+  // `deviceClass === 'evcharger'` and `controlCapabilityId === 'evcharger_charging'`,
+  // so this is a no-op for the device shapes the producer sees in practice.
+  if (!isEvDevice(dev)) return null;
 
   switch (dev.evChargingState) {
     case 'plugged_out':
