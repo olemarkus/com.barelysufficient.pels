@@ -154,12 +154,12 @@ module.exports = {
     },
     {
       name: 'no-plan-to-device',
-      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exceptions: the DeviceObservation interface itself, and the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims). PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
+      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exceptions: the DeviceObservation interface itself, the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims), and the deviceResidualKw producer seam (chunk 3). PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
       severity: 'error',
       from: { path: '^lib/plan/' },
       to: {
         path: '^lib/device/',
-        pathNot: '^lib/device/(deviceObservation|deviceActionProjection)\\.ts$',
+        pathNot: '^lib/device/(deviceObservation|deviceActionProjection|deviceResidualKw)\\.ts$',
       },
     },
     {
@@ -168,6 +168,13 @@ module.exports = {
       severity: 'error',
       from: { path: '^lib/device/deviceActionProjection\\.ts$' },
       to: { path: '^lib/plan/' },
+    },
+    {
+      name: 'no-device-residual-kw-to-plan',
+      comment: 'The deviceResidualKw producer seam must stay pure: no transitive imports from lib/plan/** or lib/observer/**. Mirrors the deviceActionProjection invariant for chunk 3 of the planner-detype refactor.',
+      severity: 'error',
+      from: { path: '^lib/device/deviceResidualKw\\.ts$' },
+      to: { path: '^lib/(plan|observer)/' },
     },
     {
       name: 'no-executor-to-device-internals',

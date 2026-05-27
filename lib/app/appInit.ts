@@ -3,6 +3,7 @@ import {
   resolveCommandableNow,
   type CommandableNowGraceEntry,
 } from '../device/deviceActionProjection';
+import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -355,9 +356,15 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
       observedAtMs: nowMs,
     });
   }
+  const hasBinaryControl = resolveHasBinaryControl(device);
+  const residualKw = buildResidualKwForPlanDevice({
+    device,
+    hasBinaryControl,
+    shedBehavior: ctx.getShedBehavior(device.id),
+  });
   return {
     ...device,
-    hasBinaryControl: resolveHasBinaryControl(device),
+    hasBinaryControl,
     observationStale: isDeviceObservationStale(device),
     managed: ctx.resolveManagedState(device.id),
     controllable: ctx.isCapacityControlEnabled(device.id),
@@ -368,12 +375,14 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow: commandable.commandableNow,
     commandableNowReason: commandable.reason,
+    residualKw,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
   };
 }
+
 
 /**
  * An EV snapshot with no `evChargingState` is "uncertain" — the SDK didn't
