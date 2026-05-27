@@ -376,7 +376,7 @@ const resolveConfidenceDebugRows = (
       value: String(Math.max(0, Math.round(confidenceDebug.confidenceValidActualDays))),
     },
     {
-      label: 'Planned days',
+      label: 'Forecasted days',
       value: String(Math.max(0, Math.round(confidenceDebug.confidenceValidPlannedDays))),
     },
     {
