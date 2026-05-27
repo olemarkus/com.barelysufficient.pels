@@ -261,6 +261,17 @@ export type CommandableNowResolution = {
  * `previousObservation` carries the most recent producer-resolved answer for
  * this device (managed in AppContext alongside `lastKnownPowerKw`). `nowMs`
  * is injected so the helper stays pure and unit-testable.
+ *
+ * First-cycle contract (pessimistic-on-first-cycle, load-bearing once
+ * executors consume the bit via `canTurnOnDevice` etc.): a never-seen EV
+ * device whose `evChargingState === undefined` and has no entry in
+ * `lastKnownCommandableByDevice` resolves to
+ * `{ commandableNow: false, reason: 'charger state unknown' }`. The
+ * abandon-grace window applies only *after* a confident observation has
+ * been recorded — new devices have no grace. This is intentional: without
+ * trusted evidence that the device is responsive, the executor must not
+ * actuate. A confident plug-state read on a subsequent cycle flips the bit
+ * to its real value and seeds the grace window for future uncertain reads.
  */
 export function resolveCommandableNow(params: {
   dev: CommandableNowResolveInput;

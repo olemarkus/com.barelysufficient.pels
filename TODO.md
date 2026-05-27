@@ -608,7 +608,7 @@ release, not v2.7.1 merge-blockers.*
       `getEvRestoreBlockReason`, and `isEvPhysicallyUnplugged`. No test
       fixture set only one of the two fields; full suite still green.
 
-- [ ] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
+- [x] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
       device deletion.** Both producer-side caches grow unboundedly when
       devices are removed from Homey at runtime. Each entry is ~50 bytes;
       practical bound is a few KB well inside the 160 MB RSS ceiling, but
@@ -616,8 +616,13 @@ release, not v2.7.1 merge-blockers.*
       longer present in the latest snapshot" for both records.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — added `evictMissingDeviceCacheEntries`
+      in `lib/app/appInit.ts`, called from both batch sites
+      (`createPlanService.getPlanDevices`, `app.ts:getLiveDevices`) on the
+      full snapshot before mapping. Focused unit tests cover present /
+      orphan / no-op / empty-snapshot.
 
-- [ ] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
+- [x] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
       devices.** A fresh EV device with `evChargingState === undefined` and
       no prior observation in `lastKnownCommandableByDevice` currently
       resolves to `commandableNow: false, reason: 'charger state unknown'`.
@@ -626,6 +631,13 @@ release, not v2.7.1 merge-blockers.*
       (matches "don't write to a device whose state we've never confirmed").
       Lock that semantics in when executors come online.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — documented the first-cycle contract
+      in the `resolveCommandableNow` doc-comment ("pessimistic-on-first-
+      cycle, load-bearing once executors consume the bit"); added a
+      focused unit test in `test/deviceActionProjectionCommandableNow.test.ts`
+      pinning the case (never-seen EV, `evChargingState === undefined`,
+      no `previousObservation` → `commandableNow: false`,
+      reason `'charger state unknown'`).
 
 - [x] **Smart-task lifecycle-end release for stepped devices without binary
       control.** `lib/executor/shedReleaseActuation.ts` materialises the
