@@ -759,6 +759,45 @@ release-review pass, 2026-05-26 — the original entry committed as
       `notes/ui-terminology.md` (add the new subtitle variant). Source:
       v2.9.1 RC release-review walk, 2026-05-25.
 
+*Prod walk persona expansions, 2026-05-27. Personas 4–6 in
+`notes/personas.md` are the highest-emotional-intensity visitors and the
+least served across PELS surfaces today. Both items below are product
+surface expansions (not defect fixes) and need an API field added before
+the renderer can land.*
+
+- [ ] **Miss-streak rollup on Overview (persona 5 — recovering-from-
+      mistake).** `packages/shared-domain/src/deferredPlanHistory.ts:213`
+      already exports `formatMissStreakAggregateLine`, used today only on
+      the Smart-tasks list (`DeadlinesHistoryList.tsx`) as e.g.
+      "Connected 300 — 2 of last 4 missed". Persona-5 owners reach
+      Overview from notifications, not via Smart-tasks. Surface the same
+      data as a single chip / rail on Overview ("3 misses this week" or
+      a per-device chip cluster). Needs an Overview API field carrying
+      the per-device aggregate strings — `PlanOverview` doesn't fetch
+      smart-task history today. Files:
+      `packages/contracts/src/settingsUiApi.ts` (new field),
+      `lib/app/**` (populate from history store),
+      `packages/settings-ui/src/ui/views/PlanOverview.tsx`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx` (decide
+      placement: above the device list vs hero chip rail). Source:
+      2026-05-27 prod walk persona-5 gap.
+
+- [ ] **Per-device kWh + money column on Usage (persona 4 — skeptical
+      optimiser).** `packages/settings-ui/src/ui/usageHero.ts` and
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts` emit
+      total kWh only. The live smart-task hero (`Cost ≈ 0.79 kr`) and
+      Budget projection (`57.22 kr today`) already render kr — Usage
+      is the gap that prevents persona 4 from answering "what did this
+      device cost last week?". Add a per-device kWh field to the Usage
+      API and a per-day kr column / annotation on the daily chart
+      (`Σ priceValue × deviceKwh` is derivable today). Files:
+      `packages/contracts/src/settingsUiApi.ts` (new field),
+      `lib/app/**` (populate from per-device kWh store),
+      `packages/settings-ui/src/ui/usageHero.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`. Source:
+      2026-05-27 prod walk persona-4 gap.
+
 *v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
@@ -1977,6 +2016,87 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       reserved-slot grid so card heights converge.
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
+
+*Prod walk follow-ups, 2026-05-27. Six review lenses (live prod state,
+prod logs, pels-copy-and-terminology, pels-m3-critic, internal UX
+critique, and pels-ux-fit walkthrough) on the Marie Michelets household
+flagged ten findings; seven landed as the train PRs #1207–#1211; three
+remain as below + the persona expansions further down.*
+
+- [ ] **"Limited by the hard cap" mis-attributes the actual binding
+      constraint on smart-task-managed devices.** Two prod situations
+      surface the same misleading label:
+      (a) After `softLimitSource` flips from `capacity` to `daily` (seen
+      mid-walk at 18:00 local), already-held devices keep their
+      carry-forward `capacity` reason — `getBaseShedReason`
+      (`lib/plan/planReasons.ts:71`) only re-evaluates on fresh sheds,
+      and the device-card formatter has no `softLimitSource` to
+      override on.
+      (b) When the deferred-objective horizon marks the current bucket
+      `preference: 'avoid'` (a smart task waiting for cheap hours), the
+      planner emits only the aggregate `usesPolicyAvoid` flag
+      (`lib/plan/deferredObjectives/horizonPlanner.ts:482`); no
+      per-device shed reason is written, so the device falls through to
+      the same `capacity` fallback.
+      The user-facing decision sentence (`buildDecisionSentence` rule 4
+      in `packages/shared-domain/src/planHeroSummary.ts:271–278`) has
+      the matching gap: it reads "Holding back N device(s) so the house
+      stays under X kW." regardless of why, even when Power-now is
+      0.6 kW.
+      **Two implementation paths exist; both are honest:**
+      - (i) Add `PLAN_REASON_CODES.deferredObjectiveAvoid` +
+        `PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS =
+        'Waiting for cheaper hours'`. Thread the avoid-bucket flag
+        through to per-device shed reasons. Larger; gives the
+        aspirational smart-task framing for personas 2 / 4.
+      - (ii) Re-evaluate `capacity → dailyBudget` re-attribution on
+        every plan cycle when `softLimitSource === 'daily'`. Smaller;
+        device-card label becomes "Limited by today's daily budget"
+        (already exists at `planStateLabels.ts:55`). Honest about the
+        binding constraint but drops the smart-task framing.
+      Either way, `DecisionSentenceInput` needs a new
+      `deferredObjectiveAvoidCount` / `dailyBudgetLimitedCount` signal
+      so rule 4 can branch.
+      Files: `packages/shared-domain/src/planStateLabels.ts`,
+      `packages/shared-domain/src/planReasonSemanticsCore.ts`,
+      `packages/shared-domain/src/planReasonFormatting.ts`,
+      `packages/shared-domain/src/planHeroSummary.ts`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `lib/plan/planReasons.ts`,
+      `lib/plan/shedding/selection.ts`,
+      `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      tests under `test/planReasonUserFacing.test.ts` +
+      `test/deviceOverview.test.ts` + new producer-side test.
+      Source: 2026-05-27 prod walk, deferred PR-1 of the train.
+
+- [ ] **History-detail hero is a parallel implementation of the shared
+      hero primitive.** `DeadlinePlanHistoryDetail.tsx:752` uses
+      `pels-surface-card plan-history-detail__hero`, while `PlanHero`,
+      `BudgetOverview` and `DeadlinePlan` all use `plan-hero pels-hero`.
+      Visually matches today (verified by `pels-m3-critic` on the
+      2026-05-27 prod walk) but a code-duplication risk and a future
+      target for `pels-layering-guardian` if the hero primitive changes
+      shape. Migrate the root to the shared primitive and collapse the
+      history-detail-specific CSS at `settings/style.css:1700+` into
+      modifiers under `.plan-hero`. Files:
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
+      `settings/style.css`, history-detail snapshot tests under
+      `test/**/deadlinePlanHistoryDetail*`. Source: 2026-05-27 prod
+      walk, deferred PR-7 of the train.
+
+- [ ] **Move BudgetOverview confidence strings to shared-domain.**
+      PR #1211 renamed "Plan confidence" → "Budget confidence"
+      inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      but the strings stay in the view rather than in
+      `packages/shared-domain/**`. Per memory
+      `feedback_ui_text_shared_with_logs`, UI text shared with logs
+      should come from shared-domain helpers. These specific strings
+      aren't currently logged so this is a P3 follow-up, not a parity
+      bug; if budget-confidence logging is added later, promote to P2
+      and land alongside the logger call. Files:
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      new `packages/shared-domain/src/budgetConfidenceStrings.ts`.
+      Source: 2026-05-27 prod walk, scoped out of PR-4.
 
 
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
@@ -3568,6 +3688,34 @@ should not be folded into the same PR.
       `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
+
+*Prod walk follow-ups, 2026-05-27. Two small UI items raised by the
+prod walk that didn't warrant a P2 slot.*
+
+- [ ] **Smart-task live detail energy-band reads as a typo at a glance.**
+      Cold-start energy estimates render as a hyphenated range, e.g.
+      `Needs 0.9–11 kWh` (visible in `smart-task-live-v2-480.png` from
+      the 2026-05-27 prod walk). At a glance the en-dash looks like
+      either a typo or a single weird number. Either render with the
+      word `to` (`0.9 to 11 kWh`), spacing the dash, or fold the band
+      into a single number once `displayConfidence !== 'low'`. Files:
+      `packages/shared-domain/src/deadlineLabels.ts` (banded estimate
+      formatter), `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      Source: 2026-05-27 prod walk.
+
+- [ ] **Overview's held device should stand out at 14-card density.**
+      The Marie Michelets prod state renders 14 device cards uniformly
+      on Overview. The single held device (Connected 300) has the
+      correct warning-tone background per the M3 device-card state
+      tokens, but at this list length the eye still has to scan to
+      find it. Two cheap options: pin the held device above the
+      running cards (sort by `stateKind === 'held'`), or render a
+      single-line "1 device limited" rail between the hero and the
+      device stack with a link to the held card. Files:
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/views/PlanOverview.tsx`,
+      `notes/overview-hero-spec.md` (document the chosen behaviour).
+      Source: 2026-05-27 prod walk first-glance-time observation.
 
 - [x] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
       Pre-existing condition (predates the `SettingsRepository` chip
