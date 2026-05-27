@@ -4013,7 +4013,7 @@ describe('buildChartOption original-series suppression', () => {
         extraPermissionsValue: null,
         provenanceRows: [],
       },
-      revisionLog: [],
+      revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
     };
   };
 

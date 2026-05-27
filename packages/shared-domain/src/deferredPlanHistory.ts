@@ -862,33 +862,46 @@ export const formatPlanHistoryAbandonedSecondary = (
 // page. The producer formats every visible field — the view layer only renders
 // strings and never branches on `reasonId` / hour-diff signs.
 //
-//   `timeLabel`   pre-formatted local time (e.g. `14:32`) of the revision.
-//   `reason`      short "what changed" copy from `revisionReason`.
-//   `hourDiff`    e.g. `+2h −1h` or `+2h` / `−1h`; `null` when both counts
-//                 are zero (the revision touched the same hours the previous
-//                 revision already covered, so the diff is silent).
+// Pre-resolved row for the smart-task history-detail revision log. Every
+// visible field is producer-formatted so the view never branches on reason
+// ID or hour-diff signs. `hourDiffAriaLabel` is the long-form pronouncing
+// of `hourDiff` for screen readers (e.g. `1 hour added` for `+1h`), bound
+// to the chip's `title` + `aria-label`. `null` when `hourDiff === null`.
 export type PlanHistoryRevisionLogRow = {
   timeLabel: string;
   reason: string;
   hourDiff: string | null;
+  hourDiffAriaLabel: string | null;
 };
 
+// Normalize raw bucket-count signals (can be Infinity / NaN on corrupt
+// persistence) into clean non-negative integers. Shared by the glyph + aria
+// formatters so both surfaces agree on the "zero" threshold.
+const normalizeHourCounts = (hoursAdded: number, hoursRemoved: number): { added: number; removed: number } => ({
+  added: Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0,
+  removed: Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0,
+});
+
 const formatHourDiff = (hoursAdded: number, hoursRemoved: number): string | null => {
-  // Both counts are non-negative integer counts of bucket starts in the
-  // symmetric difference between consecutive revisions, so a zero on either
-  // side means "no change in that direction". Producer-side suppression of
-  // the all-zero case keeps the row visually quiet when a revision only
-  // moved per-hour kWh (without adding or removing hours).
-  const added = Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0;
-  const removed = Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0;
+  const { added, removed } = normalizeHourCounts(hoursAdded, hoursRemoved);
   if (added === 0 && removed === 0) return null;
   const parts: string[] = [];
   if (added > 0) parts.push(`+${added}h`);
-  // U+2212 MINUS SIGN — matches the typographic minus used elsewhere in the
-  // smart-task UI (cost meta line, postmortem sentences) so the revision log
-  // doesn't drift to ASCII hyphen and read as a range separator.
+  // U+2212 MINUS SIGN matches the typographic minus elsewhere in the
+  // smart-task UI; ASCII hyphen would read as a range separator.
   if (removed > 0) parts.push(`−${removed}h`);
   return parts.join(' ');
+};
+
+const pluralHour = (n: number): string => (n === 1 ? 'hour' : 'hours');
+
+const formatHourDiffAriaLabel = (hoursAdded: number, hoursRemoved: number): string | null => {
+  const { added, removed } = normalizeHourCounts(hoursAdded, hoursRemoved);
+  if (added === 0 && removed === 0) return null;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`${added} ${pluralHour(added)} added`);
+  if (removed > 0) parts.push(`${removed} ${pluralHour(removed)} dropped`);
+  return parts.join(', ');
 };
 
 /**
@@ -910,7 +923,8 @@ export const formatPlanHistoryRevisionEntry = (
   const timeLabel = formatClockTime(entry.atMs, timeZone) ?? '—';
   const reason = revisionReason(entry.reasonId, kind);
   const hourDiff = formatHourDiff(entry.hoursAdded, entry.hoursRemoved);
-  return { timeLabel, reason, hourDiff };
+  const hourDiffAriaLabel = formatHourDiffAriaLabel(entry.hoursAdded, entry.hoursRemoved);
+  return { timeLabel, reason, hourDiff, hourDiffAriaLabel };
 };
 
 /**

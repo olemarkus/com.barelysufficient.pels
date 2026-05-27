@@ -928,7 +928,13 @@ const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
           <span class="plan-revision-time">{row.timeLabel}</span>
           <span class="plan-revision-reason">{row.reason}</span>
           {row.hourDiff !== null && (
-            <span class="plan-revision-diff">{row.hourDiff}</span>
+            <span
+              class="plan-revision-diff"
+              title={row.hourDiffAriaLabel ?? undefined}
+              aria-label={row.hourDiffAriaLabel ?? undefined}
+            >
+              {row.hourDiff}
+            </span>
           )}
         </li>
       ))}

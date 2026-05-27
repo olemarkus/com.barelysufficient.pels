@@ -4358,14 +4358,6 @@ prod walk that didn't warrant a P2 slot.*
 
 - [ ] Smart-task revision-history panel — follow-ups from PR #1197 subagent
       review (UX / copy / vocabulary):
-      - **Promote latest-revision reason to the collapsed summary line.**
-        Page mission is "why those hours?"; the current `Recent plan changes
-        · N revisions` summary tells the user a count, not a reason.
-        Suggested shape: when the head row carries a newsworthy reason,
-        promote that single most-recent reason inline — e.g.
-        `Recent plan changes · last change: Prices arrived at 15:42 (+1h)`.
-        Producer change (`buildActivePlanRevisionLog`) returns a summary
-        tuple alongside the row array; view binds it to the `<summary>`.
       - **Wire `RevisionReasonDisambiguation` through any future runtime
         log breadcrumb path for `schedule_revised` events** (P2, from
         pels-runtime-reality review of batch 2 / PR #1203). Today no
@@ -4383,22 +4375,6 @@ prod walk that didn't warrant a P2 slot.*
         other, and (b) cap the Set size or rotate on session boundary so
         long-lived settings UIs can't grow it unbounded. Files:
         `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      - **Hour-diff chip lacks aria-label / antecedent.** Add `title=` /
-        `aria-label` like "1 hour added" / "1 hour dropped". Files:
-        `packages/shared-domain/src/activePlanRevisionLog.ts`,
-        `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      - **2-revision threshold suppresses the first interesting
-        transition.** `flow_card → prices_arrived` is exactly when a
-        curious first-time user opens the app. Threshold on reason rather
-        than count: show the panel as soon as there is at least one
-        revision whose reason ≠ `flow_card`. Files: `packages/settings-ui/
-        src/ui/views/DeadlinePlan.tsx` (`revisionLog.length < 2` gate).
-      - **320 px row wrap.** Long reasons wrap and push the diff chip to
-        the bottom-right of the wrapped row, reading like the diff belongs
-        to the next row. Consider `display: grid;
-        grid-template-columns: 5ch 1fr auto;` on `.plan-revision-row` so
-        time / reason / diff stay column-locked. Same change applies to the
-        post-finalization revisions log (shared CSS).
       - **Card chrome density.** At 320 px the panel adds a full card shell
         even when collapsed (~80–96 px). Consider folding inside
         `PlanInputsCard` ("What PELS has learned") — natural home for
@@ -4409,5 +4385,8 @@ prod walk that didn't warrant a P2 slot.*
         § Revision-log row vocabulary; activePlanRecorder.ts comment fix).
         Schedule-revised disambiguation + Plan refreshed fallback handling
         (incl. isFallback flag, hour-diff chip suppression, one-shot
-        console.warn) shipped in batch 2 (PR #1203).
+        console.warn) shipped in batch 2 (PR #1203). Summary line replaces
+        bare count, reason-based panel-visibility threshold, hour-diff chip
+        aria-label / title, and `.plan-revision-row` CSS-grid layout
+        (320 px wrap-safe) shipped in batch 3.
 

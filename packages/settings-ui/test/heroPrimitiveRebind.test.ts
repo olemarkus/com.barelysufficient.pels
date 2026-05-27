@@ -267,7 +267,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     extraPermissionsValue: null,
     provenanceRows: [],
   },
-  revisionLog: [],
+  revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
 });
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
