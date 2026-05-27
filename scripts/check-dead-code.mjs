@@ -119,11 +119,11 @@ const allowedUnusedExportPatterns = [
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   /^lib\/objectives\/noPowerSourceDiagnostic\.ts:\d+ - resetNoPowerSourceDiagnosticForTests$/,
   // Chunk 2 of the planner-detype refactor added these producer-side
-  // helpers ahead of their full consumer set: `resolveBoostActive` (chunk
-  // 5 aggregator) and `getCommandableNowReason` (chunk 6 UI routing).
-  // `isCommandableNow` graduated to a live consumer in chunk 6 via
-  // `planExecutorSupport.canTurnOnDevice`.
-  /^lib\/device\/deviceActionProjection\.ts:\d+ - resolveBoostActive$/,
+  // helpers ahead of their full consumer set. `isCommandableNow`
+  // graduated via `planExecutorSupport.canTurnOnDevice` (chunk 6).
+  // `resolveBoostActive` graduated via `buildBoostPlanDeviceFields`
+  // (chunk 5). `getCommandableNowReason` stays parked until the chunk-6
+  // UI routing reroutes off-state reason strings onto it.
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),

@@ -313,6 +313,23 @@ export function getCommandableNowReason(
   return resolveCommandableNow({ dev, nowMs }).reason;
 }
 
+/**
+ * Dual-read consumer helper for the aggregate boost flag. Prefers the
+ * producer-resolved `boostActive` bit (populated by
+ * `buildBoostPlanDeviceFields`) and falls back to the OR over the two
+ * per-axis flags so manually-built `DevicePlanDevice` fixtures and any
+ * legacy upstream shapes that haven't yet propagated `boostActive`
+ * continue to behave identically.
+ */
+export function isBoostActive(dev: {
+  boostActive?: boolean;
+  temperatureBoostActive?: boolean;
+  evBoostActive?: boolean;
+}): boolean {
+  if (dev.boostActive !== undefined) return dev.boostActive;
+  return dev.temperatureBoostActive === true || dev.evBoostActive === true;
+}
+
 // -----------------------------------------------------------------------------
 // canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype
 // refactor). Mirrors the `canSet` computation inside `getBinaryControlPlan`
