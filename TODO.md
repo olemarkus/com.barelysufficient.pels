@@ -665,7 +665,7 @@ release, not v2.7.1 merge-blockers.*
       undercounts per-device actuations and weakens forensic traces.
       Source: pels-runtime-reality review of PR #1185, 2026-05-27.
 
-- [ ] **Consolidate `observationTrust.ts` into a shared layer.**
+- [x] **Consolidate `observationTrust.ts` into a shared layer.**
       The detype-chunk-1 producer extraction (PR #1187) inlined
       `getTrustedCurrentTemperatureC` and `getTrustedStateOfCharge` into
       `lib/device/deviceActionProjection.ts` because the originals live in

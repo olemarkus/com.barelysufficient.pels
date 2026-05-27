@@ -2,7 +2,7 @@ import {
   getTrustedCurrentTemperatureC,
   getTrustedStateOfCharge,
   isDeviceObservationTrusted,
-} from '../lib/observer/observationTrust';
+} from '../lib/utils/observationTrust';
 
 describe('observation trust', () => {
   describe('isDeviceObservationTrusted', () => {

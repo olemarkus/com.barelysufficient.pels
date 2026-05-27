@@ -118,16 +118,6 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   /^lib\/objectives\/noPowerSourceDiagnostic\.ts:\d+ - resetNoPowerSourceDiagnosticForTests$/,
-  // Chunk 1 of the planner-detype refactor moved the only runtime consumers
-  // of these trust gates (the boost resolvers) into
-  // `lib/device/deviceActionProjection.ts`, which inlines equivalent local
-  // helpers because `lib/device/` may not import `lib/observer/` per the
-  // `no-device-to-peer-except-power` layering rule. The originals stay
-  // exported here for the existing test suite and for `isDeviceObservationTrusted`
-  // (still consumed by plan); a later refactor chunk may consolidate the
-  // trust-gate home and remove these allowlist entries.
-  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedCurrentTemperatureC$/,
-  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedStateOfCharge$/,
   // Chunk 2 of the planner-detype refactor adds these producer-side
   // helpers ahead of their full consumer set: `resolveBoostActive` (chunk
   // 5 aggregator), `getCommandableNowReason` (chunk 6 UI routing), and
