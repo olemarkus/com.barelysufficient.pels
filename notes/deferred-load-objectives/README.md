@@ -249,13 +249,21 @@ prepends the prior `latest` onto a bounded `history[]` array, FIFO-pruned to
 `MAX_HISTORY_REVISIONS = 20` entries (in `activePlanRecorder.ts`). The head of the array is
 always the revision immediately before the current `latest`. The cap covers any realistic
 smart-task lifecycle — schedule-changing replans are typically single-digit per task — while
-keeping per-device persistence under ~10 KB even on a chatty device. Legacy persisted plans
-without the field load as if the array were empty and start populating on the next replan;
-the settings-UI revision panel hides itself when the array is empty or absent. The shared
-helper `buildActivePlanRevisionLog` (`packages/shared-domain/src/activePlanRevisionLog.ts`)
-turns `latest` + `history` into the most-recent-first row list the inline `<details>` panel
-on the smart-task detail page renders; the same row shape is reused on the post-finalization
-history-detail page via the `.plan-revision-*` CSS classes.
+keeping per-device persistence ≈60 KB worst case (48-bucket horizon × 20 revisions × ~50 B
+per bucket; the recorder comment is the authoritative reference). Legacy persisted plans
+without the field load as if the array were empty and start populating on the next replan.
+
+The shared helper `buildActivePlanRevisionLog`
+(`packages/shared-domain/src/activePlanRevisionLog.ts`) turns `latest` + `history` into the
+most-recent-first row list the inline `<details>` panel on the smart-task detail page
+renders; the same row shape is reused on the post-finalization history-detail page via the
+`.plan-revision-*` CSS classes. Companion helper `buildActivePlanRevisionLogSummary` resolves
+the panel's visibility gate (`shouldShowPanel`) and collapsed-state summary line — the
+settings-UI panel hides itself when every revision in the chain was a direct user action
+(today: `flow_card`), so a brand-new task whose only revisions are user-fired Flow cards
+doesn't render a panel that says nothing the user doesn't already know. When the chain
+contains at least one planner-initiated revision the panel renders and the summary line
+narrates the most-recent planner action even if a newer user action is also present.
 
 Records are dropped automatically when:
 - The deadline passes (the history recorder records the outcome from its own observation).

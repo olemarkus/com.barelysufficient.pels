@@ -1851,8 +1851,13 @@ md-filled-button.is-busy {
 }
 
 .plan-revision-panel__summary {
-  display: flex;
-  flex-wrap: wrap;
+  /* Grid keeps the chevron right-anchored on the title row even when the
+   * hint text wraps to a second line at 320 px (`Schedule revised — daily
+   * budget shifted · 15:42 · (+1h)` is wider than the card). Two-column
+   * grid with the title spanning column 1, the chevron pinned to the right
+   * of column 2, and the hint dropping to a full-width second row. */
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--spacing-1) var(--spacing-2);
   /* M3 touch-target floor — binds to the canonical token so any future
@@ -1861,6 +1866,14 @@ md-filled-button.is-busy {
   padding: var(--spacing-1) 0;
   cursor: pointer;
   list-style: none;
+}
+
+/* Hint occupies a full-width row below the title; spans both columns so
+ * it wraps cleanly without affecting the chevron's right-anchor.
+ * `:where()` keeps this rule's specificity at 0, so the base `.section-hint`
+ * rule wherever it appears doesn't have to be re-ordered to come first. */
+:where(.plan-revision-panel__summary) > .section-hint {
+  grid-column: 1 / -1;
 }
 
 .plan-revision-panel__summary::-webkit-details-marker {
@@ -1882,8 +1895,15 @@ md-filled-button.is-busy {
 }
 
 .plan-revision-row {
-  display: flex;
-  flex-wrap: wrap;
+  /* Three columns: time (5ch tabular), reason (absorbs), diff (auto).
+   * Switched from flex+wrap to grid so on 320 px viewports the reason can
+   * wrap onto multiple lines without dragging the diff chip with it — the
+   * diff column stays glued to the right and the reason just gets taller.
+   * Replaces the earlier flex layout where a long reason pushed the chip
+   * to the bottom-right of the wrapped row and read like it belonged to
+   * the next row. */
+  display: grid;
+  grid-template-columns: 5ch 1fr auto;
   align-items: baseline;
   gap: var(--spacing-1) var(--spacing-2);
   padding: var(--spacing-1) var(--spacing-2);
@@ -1894,18 +1914,12 @@ md-filled-button.is-busy {
 .plan-revision-time {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
-  /* Keep the leading time slot a stable width so reasons line up across rows.
-   * `5ch` covers `HH:MM` (4 digits + colon) at any tabular font; the column
-   * narrows naturally if the user shrinks the font size via OS controls. */
-  min-width: 5ch;
 }
 
 .plan-revision-reason {
   color: var(--pels-text-primary);
-  /* Allow the reason to absorb remaining row width so the hour-diff chip
-   * lands flush-right on wide rows; on narrow widths the diff still wraps
-   * cleanly underneath the reason. */
-  flex: 1 1 auto;
+  /* min-width: 0 lets the grid track shrink below the reason's intrinsic
+   * width so long labels wrap inside the column instead of expanding it. */
   min-width: 0;
 }
 
@@ -1913,6 +1927,9 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
+  /* Hint to the user that the chip carries an aria-label tooltip when they
+   * hover. No-op visually but matches the m3 disclosure pattern for chips. */
+  cursor: default;
 }
 
 /* v2.7.3 — Succeeded "receipt" timeline rendered below the outcome headline.

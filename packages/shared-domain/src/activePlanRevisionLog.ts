@@ -48,6 +48,37 @@ export type ActivePlanRevisionLogRow = {
   // quiet) OR when there is no prior revision in the log to diff against
   // (the oldest row).
   hourDiff: string | null;
+  // Long-form accessible label paired with `hourDiff`. e.g. `1 hour added`,
+  // `2 hours dropped`, or `1 hour added, 2 hours dropped`. Bound to the
+  // `<span>`'s `title` and `aria-label` so screen readers don't read the
+  // chip as "plus one h". `null` when `hourDiff === null`.
+  hourDiffAriaLabel: string | null;
+};
+
+// Producer-side gate (`isUserInitiated === true`) marking whether the revision
+// was produced by a direct user action. Single criterion today —
+// `reason === 'flow_card'`. Kept separate from the resolved label string so
+// the consumer never branches on the underlying recorder code.
+const isUserInitiatedReason = (
+  reasonId: DeferredObjectiveActivePlanRevisionV1['reason'],
+): boolean => reasonId === 'flow_card';
+
+// Producer-side summary for the collapsed `<details><summary>` block. The
+// view binds `text` to the summary line and consults `shouldShowPanel` to
+// decide whether to render the panel at all. Computed from the resolved
+// row array (most-recent first) so the producer owns the format string;
+// the consumer never assembles copy from row fields.
+export type ActivePlanRevisionLogSummary = {
+  // Pre-formatted summary line. e.g. `Schedule revised — daily budget shifted
+  // at 15:42 (+1h)`. Null when there are no rows worth surfacing.
+  text: string | null;
+  // Total revision count. Useful as a secondary chip / aria-label.
+  count: number;
+  // True when at least one revision in the log was *not* a direct user action
+  // (i.e. a planner-initiated revision). The panel's mission is to surface
+  // *why PELS changed the plan*; if every revision was a user-fired Flow
+  // card, the panel adds no narrative the user doesn't already know.
+  shouldShowPanel: boolean;
 };
 
 const formatHourDiff = (added: number, removed: number): string | null => {
@@ -60,6 +91,16 @@ const formatHourDiff = (added: number, removed: number): string | null => {
   // read as a range separator.
   if (removed > 0) parts.push(`−${removed}h`);
   return parts.join(' ');
+};
+
+const pluralHour = (n: number): string => (n === 1 ? 'hour' : 'hours');
+
+const formatHourDiffAriaLabel = (added: number, removed: number): string | null => {
+  if (added <= 0 && removed <= 0) return null;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`${added} ${pluralHour(added)} added`);
+  if (removed > 0) parts.push(`${removed} ${pluralHour(removed)} dropped`);
+  return parts.join(', ');
 };
 
 const formatClockTime = (ms: number, timeZone: string): string | null => {
@@ -123,7 +164,14 @@ const buildRow = (
     buildDisambiguation(rev, prior, hourDiff),
   );
   if (hourDiff === null) {
-    return { timeLabel, revision: rev.revision, reason: label, isFallback, hourDiff: null };
+    return {
+      timeLabel,
+      revision: rev.revision,
+      reason: label,
+      isFallback,
+      hourDiff: null,
+      hourDiffAriaLabel: null,
+    };
   }
   return {
     timeLabel,
@@ -131,6 +179,7 @@ const buildRow = (
     reason: label,
     isFallback,
     hourDiff: formatHourDiff(hourDiff.added, hourDiff.removed),
+    hourDiffAriaLabel: formatHourDiffAriaLabel(hourDiff.added, hourDiff.removed),
   };
 };
 
@@ -155,4 +204,59 @@ export const buildActivePlanRevisionLog = (params: {
     ...(params.history ?? []),
   ];
   return chain.map((rev, i) => buildRow(rev, chain[i + 1] ?? null, params.timeZone, params.kind));
+};
+
+// Interpunct (U+00B7) separates the summary's reason / time / diff clauses
+// so labels whose last words form a verb phrase (`Flow changed what this
+// smart task may do`) don't bleed into the time clause and parse as
+// `…what this smart task may do at 15:42`. The middle dot is the existing
+// PELS clause separator (cf. the panel's outer summary `Recent plan changes
+// · …` hint). Single space around the dot keeps screen-reader cadence sane.
+const SUMMARY_CLAUSE_SEP = ' · ';
+
+const formatSummaryText = (head: ActivePlanRevisionLogRow): string => {
+  const parts: string[] = [head.reason, head.timeLabel];
+  // Suppress the diff clause on fallback rows for the same reason the
+  // row-level chip is suppressed: a vague `Plan refreshed` reason paired
+  // with `+1h` mis-attributes the diff to a reason that says nothing.
+  if (head.hourDiff !== null && !head.isFallback) parts.push(head.hourDiff);
+  return parts.join(SUMMARY_CLAUSE_SEP);
+};
+
+/**
+ * Build the producer-side summary for the collapsed `<summary>` block. Takes
+ * the rows + the source chain so the panel-visibility gate can be computed
+ * on the underlying reasonIds without leaking them through the public row
+ * shape. Returns `{ text: null, count: 0, shouldShowPanel: false }` for an
+ * empty log so the view can early-return on the summary alone.
+ */
+export const buildActivePlanRevisionLogSummary = (params: {
+  latest: DeferredObjectiveActivePlanRevisionV1 | null;
+  history: readonly DeferredObjectiveActivePlanRevisionV1[] | undefined;
+  rows: readonly ActivePlanRevisionLogRow[];
+}): ActivePlanRevisionLogSummary => {
+  const { latest, history, rows } = params;
+  if (rows.length === 0 || latest === null) {
+    return { text: null, count: 0, shouldShowPanel: false };
+  }
+  const chainReasons: DeferredObjectiveActivePlanRevisionV1['reason'][] = [
+    latest.reason,
+    ...(history ?? []).map((r) => r.reason),
+  ];
+  const shouldShowPanel = chainReasons.some((reasonId) => !isUserInitiatedReason(reasonId));
+  // Head selection prefers the most-recent *system* revision so the summary
+  // line matches the gate's promise: the panel exists because the planner
+  // did something, so the at-rest line should narrate that something. When
+  // every revision in the chain is user-initiated (`shouldShowPanel` will
+  // be false in that case anyway), fall back to `rows[0]` so the summary
+  // is still populated if a future caller renders the panel unconditionally.
+  // Chain order matches row order (most-recent first), so `findIndex` on
+  // chainReasons maps 1:1 to a rows[] index.
+  const systemHeadIndex = chainReasons.findIndex((reasonId) => !isUserInitiatedReason(reasonId));
+  const head = systemHeadIndex >= 0 ? rows[systemHeadIndex] : rows[0];
+  return {
+    text: head === undefined ? null : formatSummaryText(head),
+    count: rows.length,
+    shouldShowPanel,
+  };
 };

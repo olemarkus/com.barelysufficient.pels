@@ -2,7 +2,10 @@ import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { ActivePlanRevisionLogRow } from '../../../../shared-domain/src/activePlanRevisionLog.ts';
+import type {
+  ActivePlanRevisionLogRow,
+  ActivePlanRevisionLogSummary,
+} from '../../../../shared-domain/src/activePlanRevisionLog.ts';
 import {
   deadlineLabels,
   formatLastSampleValue,
@@ -147,13 +150,18 @@ export type DeadlinePlanPayload = {
   // Resolved most-recent-first revision-log rows for the inline "Revision
   // history" `<details>` panel. The producer (`deadlinePlan.ts`) computes
   // these from the active plan's `latest` + `history` via
-  // `buildActivePlanRevisionLog`. Empty array suppresses the entire panel —
-  // happens on the first-revision case (head row alone is redundant with the
-  // already-rendered hero/timeline) and on legacy persisted plans without a
-  // `history` field. Sharing the row shape with the post-finalization log
-  // (`.plan-revision-row` CSS) keeps the visual binding identical across
-  // both surfaces.
+  // `buildActivePlanRevisionLog`. Sharing the row shape with the
+  // post-finalization log (`.plan-revision-row` CSS) keeps the visual binding
+  // identical across both surfaces. The view consults `revisionSummary`
+  // (not `revisionLog.length`) to gate panel visibility — a brand-new
+  // task whose only revision was a user-fired Flow card has rows but no
+  // narrative the user doesn't already know.
   revisionLog: ActivePlanRevisionLogRow[];
+  // Producer-side summary for the collapsed `<summary>` line plus the
+  // visibility gate. `shouldShowPanel` is false when every revision was a
+  // direct user action (panel adds no system-narrative value); `text` is
+  // the pre-formatted reason+time+diff line that replaces the bare count.
+  revisionSummary: ActivePlanRevisionLogSummary;
 };
 
 export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
@@ -1175,13 +1183,16 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
   useEffect(() => {
     noteFallbackRevisions(payload.revisionLog);
   }, [payload.revisionLog]);
-  if (payload.revisionLog.length < 2) return null;
+  if (!payload.revisionSummary.shouldShowPanel) return null;
+  const { revisionSummary } = payload;
   return (
     <section class="pels-surface-card budget-redesign-card">
       <details class="plan-revision-panel">
         <summary class="plan-revision-panel__summary">
           <span class="plan-card__title">Recent plan changes</span>
-          <small class="section-hint">{`${payload.revisionLog.length} revisions`}</small>
+          {revisionSummary.text !== null && (
+            <small class="section-hint">{revisionSummary.text}</small>
+          )}
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <ol class="plan-revision-log">
@@ -1193,7 +1204,13 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
                   otherwise misattribute the +/−Nh diff to a "Plan refreshed"
                   line that says nothing about why the hours changed. */}
               {row.hourDiff !== null && !row.isFallback && (
-                <span class="plan-revision-diff">{row.hourDiff}</span>
+                <span
+                  class="plan-revision-diff"
+                  title={row.hourDiffAriaLabel ?? undefined}
+                  aria-label={row.hourDiffAriaLabel ?? undefined}
+                >
+                  {row.hourDiff}
+                </span>
               )}
             </li>
           ))}

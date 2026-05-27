@@ -26,8 +26,7 @@ import {
   resolvePendingPriceContext,
   resolvePendingReason,
 } from './deadlinePlanPending.ts';
-import { buildActivePlanRevisionLog } from '../../../shared-domain/src/activePlanRevisionLog.ts';
-import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
+import { buildRevisionPanelFeed } from './deadlinePlanRevisionPanelFeed.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import {
@@ -468,6 +467,12 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       && dailyBudgetExhaustedAnywhere);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
 
+  const revisionPanelFeed = buildRevisionPanelFeed({
+    latest,
+    history: activePlan?.history,
+    kind: objective.kind,
+  });
+
   return {
     kind: objective.kind,
     labels,
@@ -536,17 +541,14 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       nowMs,
       ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
     }),
-    // Inline revision-log panel feed. Empty when there is no `history` array
-    // (legacy persisted plan, or a brand-new task whose first revision is
-    // still the only one — the head row would be redundant with the already-
-    // rendered hero/timeline). The view's `<RevisionHistoryPanel>` short-
-    // circuits its `<details>` block on the empty case.
-    revisionLog: buildActivePlanRevisionLog({
-      latest,
-      history: activePlan?.history,
-      timeZone: resolveBrowserTimeZone(),
-      kind: objective.kind,
-    }),
+    // Inline revision-log panel feed. The view's `<RevisionHistoryPanel>`
+    // consults `revisionSummary.shouldShowPanel` (producer-resolved) to
+    // decide whether to render — true iff at least one revision was *not*
+    // a direct user action, so a brand-new task whose only revision is
+    // `flow_card` doesn't render a single-row panel that says nothing the
+    // user doesn't already know.
+    revisionLog: revisionPanelFeed.rows,
+    revisionSummary: revisionPanelFeed.summary,
   };
 };
 
