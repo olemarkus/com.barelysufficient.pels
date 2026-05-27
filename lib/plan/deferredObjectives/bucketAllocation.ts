@@ -142,12 +142,81 @@ export const allocateCommittedEnergyToBuckets = (params: {
     usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
+  if (remainingKWh > epsilonKWh && committedHours.length > 0) {
+    const expansion = expandCommittedAllocation({
+      buckets,
+      step,
+      epsilonKWh,
+      remainingKWh,
+      plannedByBucketId,
+      committedRemainingByHour,
+    });
+    plannedUsefulEnergyKWh += expansion.plannedUsefulEnergyKWh;
+    remainingKWh = expansion.remainingKWh;
+    usesDeadlineReserve = usesDeadlineReserve || expansion.usesDeadlineReserve;
+    usesPolicyAvoid = usesPolicyAvoid || expansion.usesPolicyAvoid;
+  }
+
   return {
     plannedBuckets: buildPlannedBuckets({ buckets, step, plannedByBucketId }),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
     usesPolicyAvoid,
+  };
+};
+
+// Phase-2 expansion for the committed-plan path. When the original commitment
+// cannot cover the current energy need (e.g. tank reached `satisfied`, drifted
+// below target as standby loss accumulated, and `energyNeededKWh` recomputed
+// upward; or the primary bucket failed to deliver because of capacity-shed),
+// spill the residual into uncommitted buckets using the fresh-allocator sort.
+// Without this, a committed plan that initially fit in a single early-cheap
+// hour can never recover into the remaining cheap hours later in the horizon
+// — the device sits at `cannot_meet` for the rest of the deadline window with
+// unused buckets sitting in the horizon. The caller gates on
+// `committedHours.length > 0` so the existing "stale `cannot_meet` plan with
+// zero committed hours must not silently recover" invariant stays intact for
+// that distinct case. Mutates `plannedByBucketId` in place; returns updated
+// running totals.
+const expandCommittedAllocation = (params: {
+  buckets: NormalizedBucket[];
+  step: DeferredObjectiveStep;
+  epsilonKWh: number;
+  remainingKWh: number;
+  plannedByBucketId: Map<string, number>;
+  committedRemainingByHour: Map<number, number>;
+}): {
+  plannedUsefulEnergyKWh: number;
+  remainingKWh: number;
+  usesDeadlineReserve: boolean;
+  usesPolicyAvoid: boolean;
+} => {
+  const {
+    buckets, step, epsilonKWh, plannedByBucketId, committedRemainingByHour,
+  } = params;
+  let remainingKWh = params.remainingKWh;
+  let plannedUsefulEnergyKWh = 0;
+  let usesDeadlineReserve = false;
+  let usesPolicyAvoid = false;
+  for (const bucket of sortBucketsForAllocation(buckets)) {
+    if (remainingKWh <= epsilonKWh) break;
+    if (plannedByBucketId.has(bucket.id)) continue;
+    // Skip any bucket whose hour was part of the original commitment — the
+    // commitment is the binding ceiling for that hour. Expansion adds *new*
+    // hours; resizing within an existing hour is the normal-revision path's
+    // job, not this one.
+    if (committedRemainingByHour.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
+    const plannedKWh = Math.min(remainingKWh, resolveBucketStepCapacityKWh(bucket, step));
+    if (plannedKWh <= epsilonKWh) continue;
+    plannedByBucketId.set(bucket.id, plannedKWh);
+    plannedUsefulEnergyKWh += plannedKWh;
+    remainingKWh -= plannedKWh;
+    usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
+    usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
+  }
+  return {
+    plannedUsefulEnergyKWh, remainingKWh, usesDeadlineReserve, usesPolicyAvoid,
   };
 };
 
