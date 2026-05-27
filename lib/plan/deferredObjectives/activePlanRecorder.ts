@@ -28,6 +28,7 @@ import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 import type { DeferredObjectiveRescuePermissions } from './settings';
 import {
   buildHoursFromHorizonPlan,
+  mergeHoursPreservingCommitment,
   resolveProjectedFinishAtMs,
   sameHourSchedule,
   shouldFireNotification,
@@ -319,6 +320,28 @@ const shouldWriteReplanRevision = (params: {
     || params.metadataDriftedWithinSchedule || params.sourceChanged
 );
 
+// `objectiveChanged` discards the previous commitment entirely and seeds a
+// fresh one from the live `hours`. `scheduleChanged` (e.g. phase-2
+// expansion grew the commitment) advances `committedAtMs` and persists the
+// merged `effectiveHours`. Otherwise the existing commitment is preserved
+// so within-schedule metadata drift doesn't visibly reshape the timestamp.
+const resolveCommitment = (params: {
+  objectiveChanged: boolean;
+  scheduleChanged: boolean;
+  hours: DeferredObjectiveActivePlanHourV1[];
+  effectiveHours: DeferredObjectiveActivePlanHourV1[];
+  previous: DeferredObjectiveActivePlanV1['commitment'];
+  nowMs: number;
+}): DeferredObjectiveActivePlanV1['commitment'] => {
+  if (params.objectiveChanged) {
+    return { committedAtMs: params.nowMs, hours: params.hours };
+  }
+  if (params.scheduleChanged) {
+    return { committedAtMs: params.nowMs, hours: params.effectiveHours };
+  }
+  return params.previous;
+};
+
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;
 
@@ -557,7 +580,16 @@ export class DeferredObjectiveActivePlanRecorder {
     // names the Flow permission change, not a generic objective edit.
     const sigDiff = compareObjectiveSignatures(current.objectiveSignature, signature);
     const objectiveChanged = sigDiff.changed;
-    const effectiveHours = objectiveChanged ? hours : (current.commitment?.hours ?? hours);
+    // When the objective signature changes, the previous commitment is
+    // discarded and the live `hours` become the new commitment. Otherwise
+    // we merge live into commitment so phase-2 expansion can extend the
+    // commitment (new hours added) while existing committed hours are
+    // preserved (the contract for those hours stands — energy may already
+    // have been delivered, an empty live allocation must not erase them).
+    // See `mergeHoursPreservingCommitment` for the merge rules.
+    const effectiveHours = objectiveChanged
+      ? hours
+      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
@@ -628,9 +660,21 @@ export class DeferredObjectiveActivePlanRecorder {
       targetTemperatureC: diagTargetTemperatureC(diag),
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
-      commitment: objectiveChanged
-        ? { committedAtMs: nowMs, hours }
-        : current.commitment,
+      // Persist the merged `effectiveHours` as the commitment when the
+      // schedule has changed (i.e. expansion added one or more new hours).
+      // `committedAtMs` advances to nowMs on each grow so consumers can
+      // reason about "when did this hour join the plan". When the schedule
+      // is unchanged, preserve the existing commitment (including its
+      // original `committedAtMs`) so within-schedule metadata drift doesn't
+      // visibly reshape the commitment timestamp.
+      commitment: resolveCommitment({
+        objectiveChanged,
+        scheduleChanged,
+        hours,
+        effectiveHours,
+        previous: current.commitment,
+        nowMs,
+      }),
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       ...toPersistedPlanLevelDurationFields(snapshot),
       latest: revision,

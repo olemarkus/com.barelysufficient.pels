@@ -4089,29 +4089,3 @@ should not be folded into the same PR.
       - Files: `lib/observer/idleClassifier.ts`, `lib/observer/idleDetector.ts`,
         `packages/contracts/src/types.ts`, `test/idleClassifier.test.ts`.
 
-- [ ] Persist committed-plan expansion in the active-plan revision so UI /
-      notifications / history see the live schedule. PR #1188's phase-2
-      expansion lets the planner *execute* against uncommitted-then-expanded
-      buckets at runtime (the live `horizonPlan.plannedBuckets` includes
-      them), but `activePlanRecorder.maybeWriteReplanRevision` overrides
-      `effectiveHours` with `current.commitment?.hours` when
-      `objectiveChanged` is false (`lib/plan/deferredObjectives/activePlanRecorder.ts:560`).
-      Consequence: when expansion adds new hours, the persisted
-      `revision.hours` keeps showing only the original commitment.
-      Downstream consumers — the settings-UI timeline
-      (`packages/settings-ui/src/ui/deadlinePlan.ts:218`), the
-      `shouldFireNotification` hour-count gate, the planHistory v4 snapshot
-      (`lib/plan/deferredObjectives/planHistoryV4Helpers.ts:215`), and
-      flow-trigger schedule tokens — see stale hours while the heater
-      actually runs in the expansion hours. The runtime recovery works; the
-      user-visible "what's planned where" is wrong. Two candidate fixes:
-      (a) treat expansion as a commitment extension — rewrite
-      `commitment.hours` to include expanded hours so the existing revision
-      flow surfaces them naturally; (b) persist `revision.hours` from the
-      live diagnostic and decouple it from `commitment.hours`. (a) is more
-      honest if expansion is supposed to BE the new commitment; (b) is
-      cleaner if expansion is supposed to stay ephemeral.
-      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
-      `lib/plan/deferredObjectives/bucketAllocation.ts` (signal hours that
-      came from expansion), `test/deferredObjectiveActivePlan.test.ts`.
-      Source: adversarial review on PR #1188, 2026-05-27.
