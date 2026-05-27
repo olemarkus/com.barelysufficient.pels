@@ -1150,7 +1150,31 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
 // power users investigating why the plan looks the way it does. Suppressed
 // entirely when there are fewer than two revisions worth showing (a brand-new
 // task whose only revision is `latest` would render a single redundant row).
+// One-shot guard so we warn at most once per session per unknown reason
+// pattern. The set survives across panel re-mounts because it lives at module
+// scope; that's intentional — if the recorder ships a new reason code, we
+// want one warning to make it into devtools/Sentry, not one per render tick.
+const warnedFallbackRevisions = new Set<string>();
+
+const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void => {
+  for (const row of rows) {
+    if (!row.isFallback) continue;
+    const key = `r${row.revision}@${row.timeLabel}`;
+    if (warnedFallbackRevisions.has(key)) continue;
+    warnedFallbackRevisions.add(key);
+    console.warn(
+      `[PELS] Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+    );
+  }
+};
+
 const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => {
+  // Run the dev-warning pass as a post-render effect so strict-mode-style
+  // double-invokes (or vitest act() chains) don't double-warn on the same
+  // row before the module-scope Set protects subsequent renders.
+  useEffect(() => {
+    noteFallbackRevisions(payload.revisionLog);
+  }, [payload.revisionLog]);
   if (payload.revisionLog.length < 2) return null;
   return (
     <section class="pels-surface-card budget-redesign-card">
@@ -1165,7 +1189,10 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
             <li key={`${row.revision}-${row.timeLabel}`} class="plan-revision-row">
               <span class="plan-revision-time">{row.timeLabel}</span>
               <span class="plan-revision-reason">{row.reason}</span>
-              {row.hourDiff !== null && (
+              {/* Suppress the diff chip on fallback rows — the chip would
+                  otherwise misattribute the +/−Nh diff to a "Plan refreshed"
+                  line that says nothing about why the hours changed. */}
+              {row.hourDiff !== null && !row.isFallback && (
                 <span class="plan-revision-diff">{row.hourDiff}</span>
               )}
             </li>

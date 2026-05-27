@@ -19,7 +19,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.js';
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
-import { revisionReason } from './deadlineLabels.js';
+import { resolveRevisionReason, type RevisionReasonDisambiguation } from './deadlineLabels.js';
 import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
 // Resolved shape of a single row in the live-plan revision panel. Mirrors
@@ -32,8 +32,17 @@ export type ActivePlanRevisionLogRow = {
   // Pre-resolved revision number (1-indexed). Useful for `aria-label`s and
   // for tests pinning ordering; the row template does not have to render it.
   revision: number;
-  // Short "what changed" copy from `revisionReason`.
+  // Short "what changed" copy from `revisionReason`. For `schedule_revised`
+  // revisions, this may be one of the disambiguated variants
+  // (`Schedule revised — daily budget shifted`, `… — risk changed`,
+  // `… — cheaper hour opened`) when the live-plan signals are conclusive.
   reason: string;
+  // True when the recorder emitted a reason code the resolver hasn't learned
+  // about and the row fell back to `Plan refreshed`. The view layer can use
+  // this to suppress the hour-diff chip (otherwise the chip mis-attributes
+  // the diff to a vague "Plan refreshed" line) and/or emit a one-shot
+  // logging breadcrumb so the gap doesn't go unnoticed.
+  isFallback: boolean;
   // e.g. `+2h −1h`, `+2h`, or `−1h`; `null` when both counts are zero (a
   // revision that only redistributed kWh across the same hours — visually
   // quiet) OR when there is no prior revision in the log to diff against
@@ -81,6 +90,25 @@ const diffHourCounts = (
   return { added, removed };
 };
 
+// Assemble the disambiguation signals for `schedule_revised`. Returns
+// `undefined` when nothing is known so the resolver doesn't waste a check
+// for the bare-label case. `planStatusChanged` requires a prior to compare;
+// budget signals are read off the current revision regardless.
+const buildDisambiguation = (
+  rev: DeferredObjectiveActivePlanRevisionV1,
+  prior: DeferredObjectiveActivePlanRevisionV1 | null,
+  hourDiff: { added: number; removed: number } | null,
+): RevisionReasonDisambiguation | undefined => {
+  if (rev.reason !== 'schedule_revised') return undefined;
+  return {
+    planStatusChanged: prior !== null && prior.planStatus !== rev.planStatus,
+    dailyBudgetExhaustedBucketCount: rev.dailyBudgetExhaustedBucketCount,
+    floorShortfallCause: rev.floorShortfallCause,
+    hoursAdded: hourDiff?.added,
+    hoursRemoved: hourDiff?.removed,
+  };
+};
+
 const buildRow = (
   rev: DeferredObjectiveActivePlanRevisionV1,
   prior: DeferredObjectiveActivePlanRevisionV1 | null,
@@ -88,10 +116,22 @@ const buildRow = (
   kind: DeferredObjectiveSettingsKind,
 ): ActivePlanRevisionLogRow => {
   const timeLabel = formatClockTime(rev.revisedAtMs, timeZone) ?? '—';
-  const reason = revisionReason(rev.reason, kind);
-  if (!prior) return { timeLabel, revision: rev.revision, reason, hourDiff: null };
-  const { added, removed } = diffHourCounts(rev, prior);
-  return { timeLabel, revision: rev.revision, reason, hourDiff: formatHourDiff(added, removed) };
+  const hourDiff = prior !== null ? diffHourCounts(rev, prior) : null;
+  const { label, isFallback } = resolveRevisionReason(
+    rev.reason,
+    kind,
+    buildDisambiguation(rev, prior, hourDiff),
+  );
+  if (hourDiff === null) {
+    return { timeLabel, revision: rev.revision, reason: label, isFallback, hourDiff: null };
+  }
+  return {
+    timeLabel,
+    revision: rev.revision,
+    reason: label,
+    isFallback,
+    hourDiff: formatHourDiff(hourDiff.added, hourDiff.removed),
+  };
 };
 
 /**

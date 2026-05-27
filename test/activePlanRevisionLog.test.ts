@@ -147,4 +147,178 @@ describe('buildActivePlanRevisionLog', () => {
     });
     expect(rows[0]?.timeLabel).toBe('—');
   });
+
+  it('marks isFallback=false on rows with known reason codes', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({ revision: 1, reason: 'flow_card' }),
+      history: undefined,
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.isFallback).toBe(false);
+  });
+
+  it('marks isFallback=true when the recorder ships an unknown reason code', () => {
+    // Cast through unknown — the contract type is a union, but the resolver
+    // intentionally accepts string so persisted plans with a recorder code
+    // newer than the running settings UI don't drop rows.
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({ revision: 1, reason: 'newly_added_recorder_code' as never }),
+      history: undefined,
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.isFallback).toBe(true);
+    expect(rows[0]?.reason).toBe('Plan refreshed');
+  });
+});
+
+describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
+  // All disambiguation paths share the same fixture shape — two revisions
+  // where the latest is `schedule_revised` and only the disambiguation
+  // signals vary. Keeps each test focused on which signal drives which label.
+  const priorRev = revision({
+    revision: 1,
+    reason: 'flow_card',
+    revisedAtMs: HOUR_MS,
+    planStatus: 'on_track',
+    hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+  });
+
+  it('emits "daily budget shifted" when dailyBudgetExhaustedBucketCount > 0', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        dailyBudgetExhaustedBucketCount: 3,
+      }),
+      history: [priorRev],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised — daily budget shifted');
+  });
+
+  it('emits "daily budget shifted" when floorShortfallCause is "budget" even with zero exhausted buckets (per-bucket squeeze case)', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+        dailyBudgetExhaustedBucketCount: 0,
+        floorShortfallCause: 'budget',
+      }),
+      history: [priorRev],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised — daily budget shifted');
+  });
+
+  it('emits "risk changed" when planStatus transitioned and no budget signal is set', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        planStatus: 'at_risk',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: [priorRev], // priorRev.planStatus === 'on_track'
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised — risk changed');
+  });
+
+  it('emits "cheaper hour opened" when hours grew with no budget pressure and no risk transition', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        planStatus: 'on_track',
+        hours: [
+          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+      }),
+      history: [priorRev], // priorRev has only the [2*HOUR_MS] bucket
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised — cheaper hour opened');
+  });
+
+  it('falls through to bare "Schedule revised" when no disambiguation signal is conclusive', () => {
+    // Same hours, same planStatus, no budget pressure — recorder fired the
+    // reason but the signals we carry don't resolve to one of the variants.
+    // Better to under-promise than mislabel.
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        planStatus: 'on_track',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: [priorRev],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised');
+  });
+
+  it('budget signal beats risk transition when both are present (most-actionable wins)', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        planStatus: 'cannot_meet',
+        dailyBudgetExhaustedBucketCount: 2,
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: [priorRev], // priorRev planStatus 'on_track' → risk transition
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised — daily budget shifted');
+  });
+
+  it('falls through to bare label on a mixed-diff swap (1 hour added + 1 removed) — not unambiguously "cheaper hour opened"', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        planStatus: 'on_track',
+        hours: [{ startsAtMs: 3 * HOUR_MS, plannedKWh: 1 }], // swapped: dropped 2*, added 3*
+      }),
+      history: [priorRev], // priorRev has [2*HOUR_MS]
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised');
+  });
+
+  it('does not disambiguate schedule_revised on the oldest row (no prior to compare against)', () => {
+    // The recorder still emits the reason, but we can't compute planStatusChanged
+    // without a prior — only budget signals can drive disambiguation here.
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 1,
+        reason: 'schedule_revised',
+        planStatus: 'at_risk',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: undefined,
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.reason).toBe('Schedule revised');
+  });
 });

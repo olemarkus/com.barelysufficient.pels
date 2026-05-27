@@ -205,14 +205,25 @@ The smart-task detail page renders a `Recent plan changes` panel (live runs) and
 | `flow_card` | `Updated by a Flow card` | A user-authored Flow card fired and updated the task. |
 | `prices_arrived` | `Prices arrived` | First time the planner saw prices for the task's window. |
 | `prices_revised` | `Tomorrow’s prices published` | Nordpool publication — reserved for fresher horizons, not internal replans. Typographic apostrophe (U+2019) per the smart-task UI's typography convention. |
-| `schedule_revised` | `Schedule revised` | Internal replan changed which hours run (budget/risk/expansion). |
+| `schedule_revised` | `Schedule revised` (live-task surface may render one of three disambiguated variants — see below) | Internal replan changed which hours run (budget/risk/expansion). |
 | `rate_refined` | `Rate estimate refined` | Learned delivery rate adjusted the plan length. |
 | `objective_changed` | `Smart task settings changed` | User edited target / deadline / device. |
 | `device_unavailable` | `Device was unreachable` | Names the *event the recorder saw* — a single SDK read miss per `feedback_homey_sdk_unreliable`, not a sustained offline state. |
 | `measured_deviation` | `Measured rate differed from plan` | Names the cause-effect; "rate updated" was rejected as ambiguous. |
 | `flow_permission_changed` | `Flow changed what this smart task may do` | Rescue permission toggle (e.g. exempt-from-budget). |
 
-Fallback for an unmapped reason code: `Plan refreshed`. Used only when the recorder ships a code the resolver hasn't learned about — treat its appearance in prod as a copy-update prompt, not a user-facing default state.
+Fallback for an unmapped reason code: `Plan refreshed`. Used only when the recorder ships a code the resolver hasn't learned about — treat its appearance in prod as a copy-update prompt, not a user-facing default state. On the live-task panel, fallback rows also suppress the hour-diff chip (the chip would otherwise misattribute the diff to a vague "Plan refreshed" line that says nothing about why hours changed) and emit a one-shot `console.warn` so the gap doesn't go unnoticed.
+
+`schedule_revised` disambiguation (live-task panel only — history-detail rows always render the bare label because the recorder-summarised history entry shape doesn't carry the signals):
+
+| Variant label | Trigger signal | Notes |
+|---|---|---|
+| `Schedule revised — daily budget shifted` | `dailyBudgetExhaustedBucketCount > 0` OR `floorShortfallCause === 'budget'` | Strongest signal; the most actionable explanation for the user. Wins ties against the other two. |
+| `Schedule revised — risk changed` | Prior revision's `planStatus` differed from this revision's (and no budget signal) | E.g. `on_track` → `at_risk` or the reverse. |
+| `Schedule revised — cheaper hour opened` | Hours grew vs the prior revision (`hoursAdded > 0 && hoursRemoved === 0`) with no budget or risk signal | Optimizer found new affordable space. |
+| `Schedule revised` (bare) | None of the above conclusive | Under-promise rather than mislabel. Mixed-diff swaps (`hoursAdded > 0 && hoursRemoved > 0`) also fall through. |
+
+Em-dash separator (U+2014) per the existing typography convention.
 
 Hour-diff chip wording: `+Nh` (added), `−Nh` (dropped, U+2212 MINUS SIGN to match the typographic minus used by post-finalization rows and cost-meta lines). Both omitted when a revision only redistributed kWh across the same hours.
 
