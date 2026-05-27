@@ -404,12 +404,12 @@ export default tseslint.config(
   },
   {
     // planExecutor keeps the remaining binary-control dispatch table local so the actuation path
-    // stays navigable in one place. Predicate helpers now live in `planExecutorPredicates.ts`;
-    // the cap reflects the post-extraction PlanExecutor class. Target: <=600 if the binary
+    // stays navigable in one place. Predicate helpers now live in `planExecutorPredicates.ts`
+    // and shed_release actuation lives in `shedReleaseActuation.ts`. Target: <=600 if the binary
     // dispatch table itself is later split per control type.
     files: ['lib/executor/planExecutor.ts'],
     rules: {
-      'max-lines': ['warn', { max: 700, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 730, skipBlankLines: true, skipComments: true }],
     },
   },
   {

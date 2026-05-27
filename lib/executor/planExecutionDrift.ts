@@ -2,8 +2,8 @@ import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
   ExecutableDeviceIntent,
-  ExecutableEvIntent,
   ExecutableObservedDeviceState,
+  ExecutableReleaseIntent,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
 import {
@@ -134,9 +134,14 @@ function hasExecutableBinaryExecutionDrift(
   if (intent.steppedLoad) {
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime);
   }
-  if (intent.ev) {
-    return hasExecutableEvExecutionDrift(intent.ev, observed, runtime);
+  const release = intent.release;
+  if (release && (release.kind === 'ev_resume' || release.kind === 'ev_pause')) {
+    return hasExecutableEvExecutionDrift({ ...release, kind: release.kind }, observed, runtime);
   }
+  // shed_release is materialized at apply time via getShedBehavior; the resulting actuation
+  // (binary off, target setpoint write, stepped command) reuses the same axis-specific
+  // executor primitives that have their own pending-command dampening, so drift here is the
+  // empty case — re-emission cycle-over-cycle is the intended idempotent behaviour.
   const expectedBinaryState = resolveExpectedBinaryStateForIntent(intent);
   return hasBinaryStateDrift({
     expectedBinaryState,
@@ -146,7 +151,7 @@ function hasExecutableBinaryExecutionDrift(
 }
 
 function hasExecutableEvExecutionDrift(
-  intent: ExecutableEvIntent,
+  intent: ExecutableReleaseIntent & { kind: 'ev_resume' | 'ev_pause' },
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
 ): boolean {

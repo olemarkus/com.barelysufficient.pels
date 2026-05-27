@@ -394,6 +394,53 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Smart-task lifecycle-end release for stepped devices without binary
+      control.** `lib/executor/shedReleaseActuation.ts` materialises the
+      configured shedBehavior for a cap-off device when its deferred objective
+      transitions to a terminal status: `turn_off`/`set_step` route through
+      the binary off path, `set_temperature` through a target write. Stepped
+      devices whose only handle is the step capability (no `onoff` /
+      `evcharger_charging`) currently no-op with a `shed_release_skipped` log
+      because lifecycle release does not re-project a shed-purpose stepped
+      intent (the existing stepped action carries `purpose: 'keep'` and
+      `desired.on !== false`, so `applySteppedLoadShedOff` would bail). A
+      proper fix re-projects a synthetic shed-purpose stepped intent at apply
+      time or pushes the projection earlier in planBuilder so the executor
+      receives a shed-ready action for this case. Source: smart-task
+      lifecycle-end generalisation, 2026-05-27.
+
+- [ ] **Integration test: thermostat + binary device lifecycle-end release.**
+      `test/evDevices.integration.test.ts` covers the EV pause regression in
+      depth; the new non-EV shed_release path only has the unit tests in
+      `test/shedReleaseActuation.test.ts`. Mirror the EaseeMockCharger
+      pattern for a mock thermostat and a mock binary heater so the full
+      smart-task → satisfied → release → idempotent-re-emission flow has
+      end-to-end coverage. Source: smart-task lifecycle-end generalisation,
+      2026-05-27.
+
+- [ ] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
+      `lib/executor/shedReleaseActuation.ts:99` skips the binary write only
+      when `snapshot.currentOn === false`. Under a transient Homey SDK miss
+      the field can default to `undefined`, falling through to a redundant
+      `applyBinarySheddingToDevice` write that the 60s shed cooldown then
+      contains. Mirror the abandon-grace pattern in
+      `lib/executor/planExecutionDrift.ts:185-191` and switch the guard to
+      `observed.observedBinaryState === 'off'`, treating `'unknown'` as
+      "no trusted observation yet, skip the write". Source: pels-runtime-reality
+      review of PR #1185, 2026-05-27.
+
+- [ ] **Record shed_release target writes in per-device diagnostics.**
+      `applyShedReleaseTemperature` in `lib/executor/shedReleaseActuation.ts`
+      routes through `applyTargetUpdate` with `isRestoring: false`.
+      `applyTargetUpdatePlan` only records `recordRestoreActuation` when
+      `isRestoring` is true and never calls `recordShedActuation`, so the
+      diagnostics service never logs a `pels_shed` event for the release.
+      Compare `trySetShedTemperature` (`lib/executor/targetExecutor.ts:179`)
+      which does record the actuation. Practically non-blocking today
+      (cap-off devices don't re-enter capacity-driven shed paths) but it
+      undercounts per-device actuations and weakens forensic traces.
+      Source: pels-runtime-reality review of PR #1185, 2026-05-27.
+
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
       1 min, added alongside learned thermostat deadband) lets a temperature

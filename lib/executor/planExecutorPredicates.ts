@@ -40,10 +40,10 @@ export function hasStableUncontrolledRestoreActuation(
 
 export function hasStableEvDeadlineActuation(dev: DevicePlan['devices'][number]): boolean {
   if (dev.binaryCommandPending === true) return false;
-  if (dev.deferredEvCommandIntent === 'ev_resume') {
+  if (dev.deferredReleaseIntent === 'ev_resume') {
     return dev.evChargingState === 'plugged_in_paused';
   }
-  if (dev.deferredEvCommandIntent === 'ev_pause') {
+  if (dev.deferredReleaseIntent === 'ev_pause') {
     return dev.evChargingState === 'plugged_in_charging';
   }
   return false;

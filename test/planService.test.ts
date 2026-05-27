@@ -977,7 +977,7 @@ describe('PlanService', () => {
   it('blocks stale EV deadline resume intents during realtime reconcile', async () => {
     const applyPlanActions = vi.fn().mockImplementation(async (plan: DevicePlan) => {
       expect(plan.meta.powerFreshnessState).toBe('stale_hold');
-      expect(buildExecutablePlan(plan).devices[0].ev).toBeNull();
+      expect(buildExecutablePlan(plan).devices[0].release).toBeNull();
       return { deviceWriteCount: 0, commandRequestCount: 0 };
     });
     const liveDevices: PlanInputDevice[] = [{
@@ -1027,7 +1027,7 @@ describe('PlanService', () => {
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
-        deferredEvCommandIntent: 'ev_resume',
+        deferredReleaseIntent: 'ev_resume',
       },
     );
 
@@ -1038,7 +1038,7 @@ describe('PlanService', () => {
         expect.objectContaining({
           id: 'ev-1',
           evChargingState: 'plugged_in_paused',
-          deferredEvCommandIntent: 'ev_resume',
+          deferredReleaseIntent: 'ev_resume',
         }),
       ],
     }), 'reconcile');

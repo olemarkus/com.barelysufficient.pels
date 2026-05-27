@@ -27,8 +27,8 @@ import type { PlanEngineState } from '../plan/planState';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
-  ExecutableEvIntent,
   ExecutableObservedDeviceState,
+  ExecutableReleaseIntent,
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 
@@ -210,11 +210,12 @@ export const applyBinarySheddingToDevice = async (
 
 export const applyDeferredEvCommand = async (
   ctx: PlanExecutorBinaryContext,
-  intent: ExecutableEvIntent | null,
+  intent: ExecutableReleaseIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (!intent) return false;
+  if (intent.kind === 'shed_release') return false;
   const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
 

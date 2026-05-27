@@ -2,16 +2,18 @@ import type { PlanInputDevice } from '../planTypes';
 import type { DeferredObjectiveDiagnostic } from '../deferredObjectives/diagnosticsBridge';
 import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostatDeadbandStore';
 
+export type DeferredReleaseIntent = 'ev_resume' | 'ev_pause' | 'shed_release';
+
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' }
+  | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' }
   | {
       kind: 'planned';
       budgetExempt: boolean;
       engageBoost: boolean;
       requestedMinimumStepId: string | null;
-      evCommandIntent?: 'ev_resume';
+      releaseIntent?: 'ev_resume';
     }
-  | { kind: 'idle'; budgetExempt: boolean; evCommandIntent?: 'ev_pause' };
+  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
@@ -24,19 +26,25 @@ const PLANNABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
   'cannot_meet',
 ]);
 
-// Note's "EV Semantics" §"Power-limit control off": once the deadline objective is satisfied for a
-// cap-off charger, PELS should pause charging because the deferred objective was the only reason
-// PELS allowed charging at all. We emit a one-shot `ev_pause` whenever the diagnostic reports
-// `satisfied` and the device is cap-off; the executor guards against re-issuing pauses to an
-// already-paused charger so the per-cycle re-emission is idempotent. Cap-on chargers still rely on
-// normal managed admission, so the pause does not fire there.
-const shouldEmitSatisfiedPause = (
+// Once a deferred objective transitions to a terminal status for a cap-off device, PELS must
+// release the device because the objective was the only reason PELS was driving it. EV chargers
+// map to 'ev_pause' (the dedicated EV path); every other device kind maps to 'shed_release',
+// which fires the device's configured shedBehavior (turn_off / set_temperature / set_step)
+// exactly once. The executor's idempotency guards prevent re-actuation on the per-cycle
+// re-emission so the intent is safe to broadcast every cycle while the terminal status holds.
+// Cap-on devices stay on the planner's normal managed lane and never see a release intent.
+const shouldEmitTerminalRelease = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
 ): boolean => (
   diagnostic.status === 'satisfied'
-  && diagnostic.objectiveKind === 'ev_soc'
   && device?.controllable === false
+);
+
+const resolveReleaseIntentForCapOff = (
+  objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
+): 'ev_pause' | 'shed_release' => (
+  objectiveKind === 'ev_soc' ? 'ev_pause' : 'shed_release'
 );
 
 const resolveDecision = (
@@ -52,25 +60,39 @@ const resolveDecision = (
   // lower-priority devices only when it is actually scheduled to run.
   const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
-    return shouldEmitSatisfiedPause(diagnostic, device)
-      ? { kind: 'inactive', budgetExempt: false, evCommandIntent: 'ev_pause' }
-      : { kind: 'inactive', budgetExempt: false };
+    if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
+    const releaseIntent = resolveReleaseIntentForCapOff(diagnostic.objectiveKind);
+    return { kind: 'inactive', budgetExempt: false, releaseIntent };
   }
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
   const currentBucket = horizonPlan.currentBucket;
   const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
   if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) {
-    return isEvObjective
-      ? { kind: 'idle', budgetExempt: false, evCommandIntent: 'ev_pause' }
-      : { kind: 'idle', budgetExempt: false };
+    // Idle bucket: hold the device in its configured release posture.
+    //
+    // EV chargers (cap-on or cap-off): always pause. Off-peak hours have no capacity
+    // pressure, so the planner's normal shed/restore lane would never command the cap-on
+    // charger off — but the smart task's whole point is not to charge outside planned hours,
+    // so we force ev_pause regardless of cap-on/off.
+    //
+    // Non-EV cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
+    // non-EV stays on the planner's normal lane — emitting shed_release there would race
+    // the planner's own decisions (it might be deliberately restoring the device).
+    if (isEvObjective) {
+      return { kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' };
+    }
+    if (device?.controllable === false) {
+      return { kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' };
+    }
+    return { kind: 'idle', budgetExempt: false };
   }
   return {
     kind: 'planned',
     budgetExempt,
     engageBoost,
     requestedMinimumStepId: currentBucket.requestedMinimumStepId,
-    ...(isEvObjective ? { evCommandIntent: 'ev_resume' as const } : {}),
+    ...(isEvObjective ? { releaseIntent: 'ev_resume' as const } : {}),
   };
 };
 
@@ -180,13 +202,13 @@ export const buildDeferredTargetOverrides = (
   return overrides;
 };
 
-export const buildDeferredEvCommandIntents = (
+export const buildDeferredReleaseIntents = (
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
-): Record<string, 'ev_resume' | 'ev_pause'> => {
-  const intents: Record<string, 'ev_resume' | 'ev_pause'> = {};
+): Record<string, DeferredReleaseIntent> => {
+  const intents: Record<string, DeferredReleaseIntent> = {};
   for (const [deviceId, decision] of decisions) {
-    if (!decision.evCommandIntent) continue;
-    intents[deviceId] = decision.evCommandIntent;
+    if (!decision.releaseIntent) continue;
+    intents[deviceId] = decision.releaseIntent;
   }
   return intents;
 };

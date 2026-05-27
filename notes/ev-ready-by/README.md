@@ -95,7 +95,7 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableEvDeadlineActuation`). Integration tests under
   `test/evDevices.integration.test.ts` cover the resume and pause transitions
-  (e.g. `deferredEvCommandIntent: 'ev_resume'` for a paused plugged-in charger).
+  (e.g. `deferredReleaseIntent: 'ev_resume'` for a paused plugged-in charger).
 
 ## Where the trust gap is today
 

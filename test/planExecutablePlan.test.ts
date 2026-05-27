@@ -128,7 +128,7 @@ describe('planExecutablePlan', () => {
       plannedState: 'keep',
       currentState: 'on',
       evChargingState: 'plugged_in_paused',
-      deferredEvCommandIntent: 'ev_resume',
+      deferredReleaseIntent: 'ev_resume',
       reason,
     });
 
@@ -142,7 +142,7 @@ describe('planExecutablePlan', () => {
       devices: [evCharger],
     });
 
-    expect(executablePlan.devices[0]?.ev).toBeNull();
+    expect(executablePlan.devices[0]?.release).toBeNull();
   });
 
   describe('hasExecutableShedDevices', () => {

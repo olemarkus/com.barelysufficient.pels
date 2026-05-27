@@ -17,7 +17,7 @@ export type ExecutableDeviceIntent = {
   controllable: boolean;
   target: ExecutableTargetIntent | null;
   binary: ExecutableBinaryIntent | null;
-  ev: ExecutableEvIntent | null;
+  release: ExecutableReleaseIntent | null;
   steppedLoad: ExecutableSteppedLoadIntent | null;
   projectionError?: unknown;
 };
@@ -73,8 +73,8 @@ export type ExecutableBinaryIntent =
     source: 'controlled' | 'uncontrolled';
   };
 
-export type ExecutableEvIntent = {
-  kind: 'ev_resume' | 'ev_pause';
+export type ExecutableReleaseIntent = {
+  kind: 'ev_resume' | 'ev_pause' | 'shed_release';
   deviceId: string;
   name: string;
 };
