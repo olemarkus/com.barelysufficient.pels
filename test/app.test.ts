@@ -2933,8 +2933,8 @@ describe('periodic snapshot refresh scheduling', () => {
           targets: [],
           controlAdapter: {
             kind: 'capability_adapter',
-            activationRequired: true,
-            activationEnabled: false,
+            activationRequired: false,
+            activationEnabled: true,
           },
           managed: false,
           currentOn: false,
@@ -3071,7 +3071,7 @@ describe('periodic snapshot refresh scheduling', () => {
           controlCapabilityId: 'evcharger_charging',
           controlAdapter: {
             kind: 'capability_adapter',
-            activationRequired: true,
+            activationRequired: false,
             activationEnabled: true,
           },
           managed: true,

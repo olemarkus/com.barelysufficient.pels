@@ -1,5 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
-import { MANAGED_DEVICES, NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
+import { NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
 import {
   deviceDetailNativeWiring,
   deviceDetailNativeWiringConfirm,
@@ -110,29 +110,6 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     refreshSharedDeviceViews,
   } = params;
 
-  const disableManagedForDevice = async (deviceId: string): Promise<boolean> => {
-    const nextMap = await writeFreshSetting<Record<string, boolean>>({
-      key: MANAGED_DEVICES,
-      context: 'device detail',
-      logMessage: 'Failed to disable managed device',
-      toastMessage: 'Failed to disable device management.',
-      // Use the live managed-map snapshot as the fallback so a transient
-      // null or non-object SDK read does not erase entries for other
-      // devices.
-      fallbackValue: state.managedMap,
-      readFresh: readRecordSettingStrict<boolean>,
-      mutate: (currentMap) => ({
-        ...currentMap,
-        [deviceId]: false,
-      }),
-      commit: (managedMap) => {
-        state.managedMap = managedMap;
-      },
-      rollback: refreshCurrentDeviceControlStates,
-    });
-    return nextMap !== null;
-  };
-
   const persistNativeWiringEnabled = async (deviceId: string, nativeWiringEnabled: boolean) => {
     await writeFreshSetting<Record<string, boolean>>({
       key: NATIVE_EV_WIRING_DEVICES,
@@ -176,8 +153,6 @@ export const initDeviceDetailNativeWiringHandler = (params: {
     }
 
     nativeWiringActivationPendingDeviceId = null;
-    const nativeWiringRequired = device.controlAdapter?.activationRequired === true;
-    if (nativeWiringRequired && !await disableManagedForDevice(deviceId)) return;
 
     if (!nativeWiringEffectiveEnabled) {
       refreshSharedDeviceViews();

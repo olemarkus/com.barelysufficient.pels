@@ -1,4 +1,3 @@
-import { shouldEmitOnChange } from '../logging/logDedupe';
 import type {
   DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
@@ -37,9 +36,6 @@ import {
   warnIfTargetPowerCapabilityViolatesContract,
 } from './targetPowerContractWarn';
 import { resolveDeviceCompatibilityTargetPowerConfig } from './compatibility';
-import { getLogger } from '../logging/logger';
-
-const moduleLogger = getLogger('device/native-ev');
 
 export type FlowEffectiveRequiredCapabilityId =
   'onoff'
@@ -49,11 +45,7 @@ export type FlowEffectiveRequiredCapabilityId =
   | 'pels_evcharger_resumable'
   | 'evcharger_charging_state';
 
-const detectionLogState = new Map<string, { signature: string; emittedAt: number }>();
-const DETECTION_LOG_REPEAT_AFTER_MS = 10 * 60 * 1000;
-
 export function __resetNativeEvWiringLogStateForTests(): void {
-  detectionLogState.clear();
   resetTargetPowerContractLogStateForTests();
 }
 
@@ -131,7 +123,6 @@ export function resolveFlowCapabilityOverlay(params: {
   const reportedCapabilities = shouldIgnoreFlowReports({
     rawCapabilities,
     controlAdapter: nativeEvOverlay.controlAdapter,
-    managed: providers.getManaged?.(deviceId) === true,
   })
     ? pickSupplementalFlowReports(allReportedCapabilities)
     : allReportedCapabilities;
@@ -185,12 +176,6 @@ function applyOverlaysWithDiagnostics(params: {
     device: params.device,
     capabilities: params.rawCapabilities,
     capabilityObj: params.rawCapabilityObj,
-    nativeWiringEnabled: params.providers.getNativeEvWiringEnabled?.(params.deviceId) === true,
-  });
-  logNativeEvCandidate({
-    logger: params.logger,
-    device: params.device,
-    controlAdapter: overlay.controlAdapter,
   });
   warnIfTargetPowerCapabilityViolatesContract({
     logger: params.logger,
@@ -204,12 +189,10 @@ function applyOverlaysWithDiagnostics(params: {
 function shouldIgnoreFlowReports(params: {
   rawCapabilities: readonly string[];
   controlAdapter?: DeviceControlAdapterSnapshot;
-  managed: boolean;
 }): boolean {
-  const { rawCapabilities, controlAdapter, managed } = params;
+  const { rawCapabilities, controlAdapter } = params;
   return hasOfficialEvChargerCapabilities(rawCapabilities)
-    || controlAdapter?.activationEnabled === true
-    || (controlAdapter?.activationRequired === true && !managed);
+    || controlAdapter?.activationEnabled === true;
 }
 
 function resolveOverlayControlAdapter(params: {
@@ -217,11 +200,7 @@ function resolveOverlayControlAdapter(params: {
   nativeSteppedControlAdapter?: DeviceControlAdapterSnapshot;
 }): DeviceControlAdapterSnapshot | undefined {
   if (params.nativeEvControlAdapter?.activationEnabled === true) return params.nativeEvControlAdapter;
-  const { nativeEvControlAdapter, nativeSteppedControlAdapter } = params;
-  return nativeEvControlAdapter?.activationRequired === true
-    && nativeEvControlAdapter.activationEnabled !== true
-    ? nativeEvControlAdapter
-    : (nativeSteppedControlAdapter ?? nativeEvControlAdapter);
+  return params.nativeSteppedControlAdapter ?? params.nativeEvControlAdapter;
 }
 
 function isNativeEvControlAdapterActive(params: {
@@ -444,11 +423,7 @@ export function resolveCandidateCapabilities(params: {
 function isCapabilityAdapterEvCandidate(
   controlAdapter?: DeviceControlAdapterSnapshot,
 ): boolean {
-  return controlAdapter?.activationAvailable === true
-    || (
-      controlAdapter?.activationRequired === true
-      && controlAdapter.activationEnabled !== true
-    );
+  return controlAdapter?.activationAvailable === true;
 }
 
 function hasAnyPowerCapability(capabilities: readonly string[]): boolean {
@@ -458,47 +433,3 @@ function hasAnyPowerCapability(capabilities: readonly string[]): boolean {
   ));
 }
 
-function logNativeEvCandidate(params: {
-  logger: Logger;
-  device: HomeyDeviceLike;
-  controlAdapter?: DeviceControlAdapterSnapshot;
-}): void {
-  const {
-    logger,
-    device,
-    controlAdapter,
-  } = params;
-  if (controlAdapter?.activationRequired !== true) return;
-  if (!shouldLogDetection({
-    key: `${device.id}:candidate`,
-    signature: JSON.stringify({
-      driverId: device.driverId ?? null,
-      ownerUri: device.ownerUri ?? null,
-      activationEnabled: controlAdapter.activationEnabled,
-    }),
-  })) {
-    return;
-  }
-  (logger.structuredLog ?? moduleLogger).debug({
-    event: 'native_ev_candidate_detected',
-    deviceId: device.id,
-    deviceName: device.name,
-    driverId: device.driverId ?? null,
-    ownerUri: device.ownerUri ?? null,
-    activationEnabled: controlAdapter.activationEnabled,
-  });
-}
-
-function shouldLogDetection(params: {
-  key: string;
-  signature: string;
-}): boolean {
-  const { key, signature } = params;
-  return shouldEmitOnChange({
-    state: detectionLogState,
-    key,
-    signature,
-    now: Date.now(),
-    repeatAfterMs: DETECTION_LOG_REPEAT_AFTER_MS,
-  });
-}

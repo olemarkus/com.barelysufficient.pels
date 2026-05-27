@@ -942,7 +942,7 @@ describe('native stepped-load wiring', () => {
       controlCapabilityId: 'evcharger_charging',
       controlAdapter: {
         kind: 'capability_adapter',
-        activationRequired: true,
+        activationRequired: false,
         activationEnabled: true,
       },
       targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },

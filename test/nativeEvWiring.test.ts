@@ -52,7 +52,30 @@ describe('native EV wiring shim', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows Zaptec Go while native wiring is disabled but leaves it without an EV control capability', () => {
+  it('always wires Zaptec Go through the native EV shim without any opt-in', () => {
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      {},
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildZaptecDevice()]);
+
+    expect(parsed).toEqual(expect.objectContaining({
+      id: 'zaptec-go-1',
+      deviceClass: 'evcharger',
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationRequired: false,
+        activationEnabled: true,
+      },
+      controlCapabilityId: 'evcharger_charging',
+      controlWriteCapabilityId: 'charging_button',
+      powerCapable: true,
+    }));
+  });
+
+  it('keeps Zaptec wired even when the legacy native_ev_wiring_devices entry is explicitly false', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
@@ -65,14 +88,13 @@ describe('native EV wiring shim', () => {
 
     expect(parsed).toEqual(expect.objectContaining({
       id: 'zaptec-go-1',
-      deviceClass: 'evcharger',
       controlAdapter: {
         kind: 'capability_adapter',
-        activationRequired: true,
-        activationEnabled: false,
+        activationRequired: false,
+        activationEnabled: true,
       },
-      controlCapabilityId: undefined,
-      powerCapable: true,
+      controlCapabilityId: 'evcharger_charging',
+      controlWriteCapabilityId: 'charging_button',
     }));
   });
 
@@ -123,7 +145,7 @@ describe('native EV wiring shim', () => {
       controlWriteCapabilityId: 'charging_button',
       controlAdapter: expect.objectContaining({
         kind: 'capability_adapter',
-        activationRequired: true,
+        activationRequired: false,
         activationEnabled: true,
       }),
       controlModel: 'stepped_load',
@@ -332,7 +354,6 @@ describe('native EV wiring shim', () => {
         charge_mode: { value: 'Connecting to car', lastUpdated: '2026-04-22T09:00:05.000Z' },
         'alarm_generic.car_connected': { value: true, lastUpdated: '2026-04-22T09:00:07.000Z' },
       },
-      nativeWiringEnabled: true,
     });
 
     expect(overlay.capabilityObj.evcharger_charging?.lastUpdated).toBe('2026-04-22T09:00:05.000Z');
@@ -475,13 +496,12 @@ describe('native EV wiring shim', () => {
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
   });
 
-  it('ignores flow-backed EV reports for unmanaged Zaptec candidates before native wiring is enabled', () => {
+  it('ignores flow-backed EV reports for unmanaged Zaptec candidates', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,
       createLogger(),
       {
         getManaged: () => false,
-        getNativeEvWiringEnabled: () => false,
         getFlowReportedCapabilities: () => ({
           evcharger_charging: { value: true, reportedAt: 100, source: 'flow' },
           'alarm_generic.car_connected': { value: true, reportedAt: 100, source: 'flow' },
@@ -497,10 +517,10 @@ describe('native EV wiring shim', () => {
       managed: false,
       controlAdapter: {
         kind: 'capability_adapter',
-        activationRequired: true,
-        activationEnabled: false,
+        activationRequired: false,
+        activationEnabled: true,
       },
-      controlCapabilityId: undefined,
+      controlCapabilityId: 'evcharger_charging',
     }));
     expect(parsed.flowBacked).toBeUndefined();
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
@@ -550,7 +570,6 @@ describe('native EV wiring shim', () => {
         charge_mode: { value: 'Charging' },
         'alarm_generic.car_connected': { value: true },
       },
-      nativeWiringEnabled: true,
     });
 
     const finishedOverlay = applyNativeEvWiringOverlay({
@@ -570,7 +589,6 @@ describe('native EV wiring shim', () => {
         charge_mode: { value: 'Charging finished' },
         'alarm_generic.car_connected': { value: true },
       },
-      nativeWiringEnabled: true,
     });
 
     const disconnectedOverlay = applyNativeEvWiringOverlay({
@@ -588,7 +606,6 @@ describe('native EV wiring shim', () => {
         charge_mode: { value: 'Disconnected' },
         'alarm_generic.car_connected': { value: false },
       },
-      nativeWiringEnabled: true,
     });
 
     expect(chargingOverlay.capabilityObj.evcharger_charging?.value).toBe(true);
