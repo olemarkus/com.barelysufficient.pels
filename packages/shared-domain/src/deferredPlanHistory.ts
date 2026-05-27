@@ -585,9 +585,15 @@ const resolveMetPostmortem = (
     entry.targetPercent,
   );
   if (overshot && timing !== null) {
+    // The `Overshoot N °C` muted subline (rendered separately by
+    // `DeadlinePlanHistoryDetail.tsx`) already carries the magnitude — folding
+    // an em-dash "— overshot." tail into the headline made the `Succeeded`
+    // chip + the headline read as a contradiction. Keep the headline shape
+    // identical to `met-with-margin` so the chip is the only signal that
+    // distinguishes "clean met" from "met-with-overshoot".
     return {
       variant: 'met-with-overshoot',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel} — overshot.`,
+      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel}.`,
     };
   }
   // Met-at-buzzer: reached the target inside the last planned hour of the
