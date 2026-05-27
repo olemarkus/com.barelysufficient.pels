@@ -157,6 +157,27 @@ describe('resolveCommandableNow — abandon-grace window', () => {
     expect(result.reason).toBe('charger is unplugged');
   });
 
+  it('first cycle for a never-seen EV device with no prior observation is pessimistic', () => {
+    // Locks the load-bearing first-cycle contract: an EV charger whose SDK
+    // hasn't yet reported a plug state (evChargingState === undefined) and
+    // has no entry in lastKnownCommandableByDevice resolves to
+    // commandableNow=false with reason='charger state unknown'. The
+    // abandon-grace window only fires once a confident observation exists;
+    // brand-new devices have no grace, so executors won't actuate without
+    // trusted evidence that the device is responsive.
+    const result = resolveCommandableNow({
+      dev: {
+        deviceClass: 'evcharger',
+        controlCapabilityId: 'evcharger_charging',
+        evChargingState: undefined,
+      },
+      // no previousObservation — never-seen device
+      nowMs: NOW_MS,
+    });
+    expect(result.commandableNow).toBe(false);
+    expect(result.reason).toBe('charger state unknown');
+  });
+
   it('does NOT apply grace to a confident available=false read', () => {
     // Abandon-grace only covers uncertain SDK reads (missing
     // `evChargingState` on an EV charger). `available: false` is a

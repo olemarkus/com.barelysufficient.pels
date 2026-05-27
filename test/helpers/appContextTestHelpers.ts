@@ -100,6 +100,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
   let defaultComputeDynamicSoftLimit: (() => number) | undefined;
   const lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {};
+  const lastKnownPowerKw: Record<string, number> = {};
   let lastNotifiedOperatingMode = 'Home';
   let powerSampleRebuildState = { lastMs: 0, lastRebuildPowerW: 0 };
   const latestTargetSnapshot = latestTargetSnapshotOverride ?? [];
@@ -224,7 +225,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set debugLoggingTopics(value) { debugLoggingTopics = value; },
     get defaultComputeDynamicSoftLimit() { return defaultComputeDynamicSoftLimit; },
     set defaultComputeDynamicSoftLimit(value) { defaultComputeDynamicSoftLimit = value; },
-    get lastKnownPowerKw() { return {}; },
+    get lastKnownPowerKw() { return lastKnownPowerKw; },
     get lastKnownCommandableByDevice() { return lastKnownCommandableByDevice; },
     get expectedPowerKwOverrides() { return {}; },
     get lastPositiveMeasuredPowerKw() { return {}; },
