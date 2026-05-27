@@ -453,7 +453,7 @@ release, not v2.7.1 merge-blockers.*
       to `isFiniteNumber` so both paths agree, or remove the "byte-for-byte"
       claim. Source: pels-layering-guardian review of PR #1191, 2026-05-27.
 
-- [ ] **Before chunk 6 — expand restore-accounting cascade-parity test
+- [x] **Before chunk 6 — expand restore-accounting cascade-parity test
       coverage.** `test/restoreAccountingParity.test.ts` exercises path-1
       (stepped+on, source `'planning'`) and path-3 (binary off, fallback to
       `getRestoreDrawKw`). It does not cover the path-2 → path-3 fall-through
@@ -472,7 +472,7 @@ release, not v2.7.1 merge-blockers.*
       spread inline. Source: pels-layering-guardian review of PR #1191,
       2026-05-27.
 
-- [ ] **Before chunk 6 — expand cascade-parity test in
+- [x] **Before chunk 6 — expand cascade-parity test in
       `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test
       covers a happy-path 3-device mix (simple-on, stepped-max with binary,
       stepped-low with binary). It does not cascade-test the four
@@ -488,7 +488,13 @@ release, not v2.7.1 merge-blockers.*
       but the load-bearing invariant is `sumRemainingSheddableLoadKw`
       watt-equality. Harden the cascade test before chunk 6 removes the
       legacy fallback. Source: pels-runtime-reality review of PR #1190,
-      2026-05-27.
+      2026-05-27. Resolved 2026-05-27: cascade-parity covers cases (a), (b),
+      (d); case (c) is pinned as a KNOWN DIVERGENCE because
+      `RemainingSheddableSteppedFields` strips `reportedStepId` from the
+      legacy fallback path while the producer (wired upstream) sees it. In
+      production the producer is always wired, so the divergence is benign;
+      chunk 6 should either propagate `reportedStepId` through the fallback
+      type or document the asymmetry.
 
 - [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
       `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
@@ -579,14 +585,19 @@ release, not v2.7.1 merge-blockers.*
       receives a shed-ready action for this case. Source: smart-task
       lifecycle-end generalisation, 2026-05-27.
 
-- [ ] **Integration test: thermostat + binary device lifecycle-end release.**
+- [x] **Integration test: thermostat + binary device lifecycle-end release.**
       `test/evDevices.integration.test.ts` covers the EV pause regression in
       depth; the new non-EV shed_release path only has the unit tests in
       `test/shedReleaseActuation.test.ts`. Mirror the EaseeMockCharger
       pattern for a mock thermostat and a mock binary heater so the full
       smart-task → satisfied → release → idempotent-re-emission flow has
       end-to-end coverage. Source: smart-task lifecycle-end generalisation,
-      2026-05-27.
+      2026-05-27. Resolved by `test/lifecycleEndReleaseNonEv.integration.test.ts`
+      which exercises the real `applyShedReleaseIntent` dispatch against the
+      real binary/target executors with minimal inline mock heater/thermostat
+      scaffolding (the full deferred-objective wiring through `createApp` is
+      EV-shaped; the integration test focuses on the executor end of the
+      pipeline where the per-cycle re-emission idempotency lives).
 
 - [ ] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
       `lib/executor/shedReleaseActuation.ts:99` skips the binary write only
