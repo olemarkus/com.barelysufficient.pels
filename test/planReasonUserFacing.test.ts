@@ -17,21 +17,21 @@ const BANNED = /\b(shed|restore|headroom|shortfall|backoff|invariant|soft limit|
 describe('formatShortfallReason', () => {
   it('renders the user-facing label when need/headroom are present', () => {
     expect(formatShortfallReason({ needKw: 1.2, headroomKw: 0.15 }))
-      .toBe('Manual action needed — needs 1.2 kW, 0.1 kW available');
+      .toBe('Manual action needed. Needs 1.2 kW, 0.1 kW available.');
   });
 
   it('clamps negative headroom to 0 kW available so users do not see minus signs', () => {
     expect(formatShortfallReason({ needKw: 1.2, headroomKw: -0.5 }))
-      .toBe('Manual action needed — needs 1.2 kW, 0.0 kW available');
+      .toBe('Manual action needed. Needs 1.2 kW, 0.0 kW available.');
   });
 
   it('falls back to the bare label when need or headroom are unknown', () => {
     expect(formatShortfallReason({ needKw: null, headroomKw: null }))
-      .toBe('Manual action needed — hard cap may be exceeded');
+      .toBe('Manual action needed. Hard cap may be exceeded.');
     expect(formatShortfallReason({ needKw: 1.2, headroomKw: null }))
-      .toBe('Manual action needed — hard cap may be exceeded');
+      .toBe('Manual action needed. Hard cap may be exceeded.');
     expect(formatShortfallReason({ needKw: null, headroomKw: 0.15 }))
-      .toBe('Manual action needed — hard cap may be exceeded');
+      .toBe('Manual action needed. Hard cap may be exceeded.');
   });
 
   it('never leaks the internal "shortfall" or "headroom" terms', () => {
@@ -51,12 +51,12 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
     {
       label: 'shortfall reason maps to the manual action label',
       reason: { code: PLAN_REASON_CODES.shortfall, needKw: 1.2, headroomKw: 0.15 },
-      expected: 'Manual action needed — needs 1.2 kW, 0.1 kW available',
+      expected: 'Manual action needed. Needs 1.2 kW, 0.1 kW available.',
     },
     {
       label: 'shortfall reason without numbers maps to the bare label',
       reason: { code: PLAN_REASON_CODES.shortfall, needKw: null, headroomKw: null },
-      expected: 'Manual action needed — hard cap may be exceeded',
+      expected: 'Manual action needed. Hard cap may be exceeded.',
     },
     {
       label: 'capacity shed maps to the hard-cap label',
