@@ -413,6 +413,16 @@ export default tseslint.config(
     },
   },
   {
+    // planDevices is the main materialiser for `DevicePlanDevice` from `PlanInputDevice`; every
+    // chunk of the planner-detype refactor touches it. Chunk 5 added a producer-resolved
+    // `shedIntent` dual-read path alongside the legacy `resolveShedAction` branches; chunk 6
+    // removes the legacy fallback (and shrinks the file back to <500). Bump the cap until then.
+    files: ['lib/plan/planDevices.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // The compatibility wrapper still keeps power-sample state and promise plumbing local while
     // PlanRebuildScheduler owns the cross-intent queue. `schedulePlanRebuildFromPowerSample`
     // remains a long orchestration function — keep `max-lines-per-function` raised until
