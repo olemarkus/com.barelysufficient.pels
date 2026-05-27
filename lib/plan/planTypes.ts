@@ -272,6 +272,18 @@ export type PlanInputDevice = {
       source: 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'fallback';
     };
   };
+  /**
+   * Producer-resolved shed-action intent (chunk 5 of the planner-detype refactor).
+   * Captures "what the device's configured shedBehavior translates to given its
+   * capabilities", independent of plan-cycle controllable/shouldShed gates. Optional
+   * for the dual-read transition; chunk 6 makes it required and retires the
+   * legacy `resolveShedAction` branches in `lib/plan/planDevices.ts`. See
+   * `lib/device/deviceActionProjection.ts:resolveShedIntent` for the producer.
+   */
+  shedIntent?:
+    | { kind: 'turn_off' }
+    | { kind: 'set_temperature'; temperature: number }
+    | { kind: 'set_step' };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
   currentState?: string;

@@ -25,6 +25,7 @@ import type {
   TemperatureBoostConfig,
 } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
+import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 
 // Trust-gate logic intentionally duplicated from
@@ -379,3 +380,77 @@ function isWithinGrace(
   if (nowMs - observation.observedAtMs > COMMANDABLE_NOW_GRACE_MS) return null;
   return observation;
 }
+
+// ---------------------------------------------------------------------------
+// Producer-resolved shed-action intent (chunk 5 of the planner-detype
+// refactor).
+//
+// Today the planner branches on raw `shedBehavior.action` + device-shape
+// fields (`hasBinaryControl`, `isSteppedLoadDevice`, primary target presence)
+// inside `lib/plan/planDevices.ts:resolveShedAction` to materialise the
+// `{ shedAction, shedTemperature, shedStepId }` triple on each
+// `DevicePlanDevice`. Chunk 5 lifts the *device-capability* half of that
+// resolution into the producer: the resulting `ShedActionIntent` captures
+// "what the device's configured shedBehavior translates to given its
+// capabilities", independent of plan-cycle controllable/shouldShed gates.
+//
+// Consumers (planDevices.resolveShedAction, planRemainingSheddableLoad,
+// shedReleaseActuation) read the resolved intent and apply their plan-cycle
+// gates. The intent is structurally a discriminated union — no consumer
+// needs to call back into a device-shape helper.
+//
+// Chunk 6 retires the dual-read fallback in `resolveShedAction` and the
+// `ShedAction` enum on `DevicePlanDevice` is materialised exclusively from
+// `shedIntent` via a snapshot-adapter helper.
+// ---------------------------------------------------------------------------
+
+export type ShedActionIntent =
+  | { kind: 'turn_off' }
+  | { kind: 'set_temperature'; temperature: number }
+  | { kind: 'set_step' };
+
+export type ShedIntentBehaviorInput = {
+  action: 'turn_off' | 'set_temperature' | 'set_step';
+  temperature: number | null;
+  stepId: string | null;
+};
+
+export type ShedIntentResolveInput = {
+  shedBehavior: ShedIntentBehaviorInput;
+  hasBinaryControl?: boolean;
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+  primaryTarget?: TargetCapabilitySnapshot | null;
+};
+
+const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
+  input.controlModel === 'stepped_load'
+  && input.steppedLoadProfile?.model === 'stepped_load'
+);
+
+export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
+  const { shedBehavior, hasBinaryControl, primaryTarget } = input;
+  // set_temperature requires a primary target capability so the executor has a write surface
+  // and a normalised setpoint. Devices configured for set_temperature but without a primary
+  // target fall back to turn_off (cap-off thermostats today land here; chunk 6 cleanup
+  // exposes whether that's the right behaviour).
+  if (
+    shedBehavior.action === 'set_temperature'
+    && shedBehavior.temperature !== null
+    && primaryTarget
+  ) {
+    return {
+      kind: 'set_temperature',
+      temperature: normalizeTargetCapabilityValue({ target: primaryTarget, value: shedBehavior.temperature }),
+    };
+  }
+  // Stepped devices without a binary handle can only shed via the step capability — the
+  // existing `resolveSteppedShedAction` falls back to 'set_step' in that case regardless of
+  // the configured behaviour action.
+  if (isSteppedLoadDeviceShape(input)) {
+    if (shedBehavior.action === 'set_step' || hasBinaryControl === false) {
+      return { kind: 'set_step' };
+    }
+  }
+  return { kind: 'turn_off' };
+};

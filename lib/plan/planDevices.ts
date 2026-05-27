@@ -517,6 +517,11 @@ function resolveShedAction(params: {
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
+  // Producer-resolved path (chunk 5 of the planner-detype refactor). When `shedIntent` is set,
+  // primary-target lookup and setpoint normalisation already happened at the producer; this
+  // consumer just applies the plan-cycle gates. Chunk 6 removes the legacy fallback below and
+  // folds the gating logic into a materialisation adapter.
+  if (dev.shedIntent) return resolveShedActionFromIntent(dev, controllable, shouldShed, shedBehavior);
   if (controllable && shouldShed
     && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
     const target = getPrimaryTargetCapability(dev.targets);
@@ -527,6 +532,22 @@ function resolveShedAction(params: {
     };
   }
   if (isSteppedLoadDevice(dev)) {
+    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
+  }
+  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+}
+
+function resolveShedActionFromIntent(
+  dev: PlanInputDevice,
+  controllable: boolean,
+  shouldShed: boolean,
+  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null },
+): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
+  const intent = dev.shedIntent;
+  if (controllable && shouldShed && intent?.kind === 'set_temperature') {
+    return { shedAction: 'set_temperature', shedTemperature: intent.temperature, shedStepId: null };
+  }
+  if (intent?.kind === 'set_step') {
     return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
   }
   return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };

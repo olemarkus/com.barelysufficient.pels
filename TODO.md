@@ -394,6 +394,32 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
+      `lib/device/deviceActionProjection.ts:resolveShedIntent` (chunk 5)
+      emits `{ kind: 'set_temperature', temperature }` whenever
+      `shedBehavior.action === 'set_temperature'` and a primary target
+      exists — regardless of plan-cycle controllability. The consumer at
+      `lib/plan/planDevices.ts:resolveShedActionFromIntent` then downgrades
+      that intent to `turn_off` when `controllable === false`. This is the
+      "producer leaks, consumer overrides" hedge — works (parity-tested)
+      but creates two cap-off downgrade paths (no-primary-target in
+      producer; controllable=false in consumer) that both land at
+      `turn_off`. Chunk 6: accept `controllable` as a producer input (or
+      add a `{ kind: 'no_op' }` variant) so the consumer never overrides.
+      Source: pels-layering-guardian review of chunk 5 (PR #1193),
+      2026-05-27.
+
+- [ ] **Chunk 6 — collapse `resolveShedActionFromIntent` re-dispatch into
+      a materialisation adapter.** The chunk-5 consumer dispatches the
+      `set_step` intent back into the legacy `resolveSteppedShedAction`,
+      which re-derives the same conditions the producer already evaluated.
+      Chunk 6 retires the legacy fallback, removes the `controllable &&
+      shouldShed` consumer-side gate (once it moves to the producer per
+      the previous TODO), and folds `{ shedAction, shedTemperature,
+      shedStepId }` materialisation into a dedicated adapter — likely
+      `lib/plan/planActionMaterialization.ts`. Source: pels-layering-guardian
+      + pels-runtime-reality reviews of chunk 5 (PR #1193), 2026-05-27.
+
 - [ ] **Chunk 6 — consolidate restore-power source-label union into a shared
       type.** `RestorePowerSource` is duplicated structurally in three
       places: `lib/observer/observedPower.ts:11` (`ExpectedPowerSource`),
