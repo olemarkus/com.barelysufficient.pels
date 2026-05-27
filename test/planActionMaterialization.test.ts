@@ -5,63 +5,36 @@ describe('materializeShedSnapshotFields', () => {
   describe('turn_off intent', () => {
     const intent: ShedActionIntent = { kind: 'turn_off' };
 
-    it('returns the turn_off triple regardless of cycle gates', () => {
-      for (const controllable of [true, false]) {
-        for (const shouldShed of [true, false]) {
-          for (const hasBinaryControl of [true, false, undefined]) {
-            expect(materializeShedSnapshotFields({
-              intent, controllable, shouldShed, hasBinaryControl,
-            })).toEqual({
-              shedAction: 'turn_off',
-              shedTemperature: null,
-              shedStepId: null,
-            });
-          }
-        }
+    it('returns the turn_off triple regardless of shouldShed', () => {
+      for (const shouldShed of [true, false]) {
+        expect(materializeShedSnapshotFields({ intent, shouldShed })).toEqual({
+          shedAction: 'turn_off',
+          shedTemperature: null,
+          shedStepId: null,
+        });
       }
     });
   });
 
   describe('set_temperature intent', () => {
+    // PR A folds `controllable` into `resolveShedIntent`, so the producer never emits
+    // `set_temperature` for a cap-off device. The materialiser only applies the per-cycle
+    // `shouldShed` gate.
     const intent: ShedActionIntent = { kind: 'set_temperature', temperature: 17.5 };
 
-    it('returns set_temperature with the producer-resolved temperature when controllable && shouldShed', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: true, shouldShed: true, hasBinaryControl: true,
-      })).toEqual({
+    it('returns set_temperature with the producer-resolved temperature when shouldShed is true', () => {
+      expect(materializeShedSnapshotFields({ intent, shouldShed: true })).toEqual({
         shedAction: 'set_temperature',
         shedTemperature: 17.5,
         shedStepId: null,
       });
     });
 
-    it('falls back to turn_off when controllable is false', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: false, shouldShed: true, hasBinaryControl: true,
-      })).toEqual({
-        shedAction: 'turn_off',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
     it('falls back to turn_off when shouldShed is false', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: true, shouldShed: false, hasBinaryControl: true,
-      })).toEqual({
-        shedAction: 'turn_off',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
-    it('falls back to turn_off for cap-off + no binary control (set_temperature intent without gate match)', () => {
-      // A cap-off thermostat-stepped without binary control still maps to turn_off here because
-      // the intent kind is set_temperature, not set_step. The set_step path is reserved for
-      // intents whose producer explicitly chose set_step (e.g. stepped no-binary-control).
-      expect(materializeShedSnapshotFields({
-        intent, controllable: false, shouldShed: true, hasBinaryControl: false,
-      })).toEqual({
+      // Non-shedding cycle: the executor projection still needs a well-formed triple, but
+      // the device's binary fallback is not actuated anyway. turn_off keeps the snapshot
+      // shape valid.
+      expect(materializeShedSnapshotFields({ intent, shouldShed: false })).toEqual({
         shedAction: 'turn_off',
         shedTemperature: null,
         shedStepId: null,
@@ -70,59 +43,19 @@ describe('materializeShedSnapshotFields', () => {
   });
 
   describe('set_step intent', () => {
+    // PR A: the producer emits set_step either for a cap-on stepped device configured for
+    // set_step, or for any stepped device with no binary handle (cap-on or cap-off). Both
+    // routes use the step capability.
     const intent: ShedActionIntent = { kind: 'set_step' };
 
-    it('returns set_step when controllable (cap-on stepped)', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: true, shouldShed: true, hasBinaryControl: true,
-      })).toEqual({
-        shedAction: 'set_step',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
-    it('returns set_step for cap-off device with no binary control (no other handle)', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: false, shouldShed: true, hasBinaryControl: false,
-      })).toEqual({
-        shedAction: 'set_step',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
-    it('falls back to turn_off for cap-off device with binary control', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: false, shouldShed: true, hasBinaryControl: true,
-      })).toEqual({
-        shedAction: 'turn_off',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
-    it('falls back to turn_off for cap-off device with undefined hasBinaryControl', () => {
-      // hasBinaryControl=undefined defaults conservatively to "device has binary control" since
-      // the legacy `resolveSteppedShedAction` only fired the no-binary fallback on an explicit
-      // `=== false`. This matches that behaviour.
-      expect(materializeShedSnapshotFields({
-        intent, controllable: false, shouldShed: true, hasBinaryControl: undefined,
-      })).toEqual({
-        shedAction: 'turn_off',
-        shedTemperature: null,
-        shedStepId: null,
-      });
-    });
-
-    it('returns set_step when controllable even with undefined hasBinaryControl', () => {
-      expect(materializeShedSnapshotFields({
-        intent, controllable: true, shouldShed: false, hasBinaryControl: undefined,
-      })).toEqual({
-        shedAction: 'set_step',
-        shedTemperature: null,
-        shedStepId: null,
-      });
+    it('returns set_step regardless of shouldShed', () => {
+      for (const shouldShed of [true, false]) {
+        expect(materializeShedSnapshotFields({ intent, shouldShed })).toEqual({
+          shedAction: 'set_step',
+          shedTemperature: null,
+          shedStepId: null,
+        });
+      }
     });
   });
 });

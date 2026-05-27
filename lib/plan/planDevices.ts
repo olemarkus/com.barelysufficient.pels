@@ -1,5 +1,5 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import type { ShedActionIntent } from '../device/deviceActionProjection';
+import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
@@ -462,11 +462,11 @@ function buildBasePlanDevice(params: {
     shedAction,
     shedTemperature,
     shedStepId,
-    ...pickStepCalibrationFields(dev),
+    ...pickPropagatedPlanFields(dev),
   };
 }
 
-function pickStepCalibrationFields(
+function pickPropagatedPlanFields(
   dev: Pick<
     PlanInputDevice,
     'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
@@ -519,42 +519,20 @@ function resolveShedAction(params: {
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
-  // Producer-resolved path: `shedIntent` is populated by `toPlanDevice` via
-  // `lib/device/deviceActionProjection.ts:resolveShedIntent`. The materialisation adapter
-  // applies the plan-cycle gates and projects the snapshot triple. Test fixtures that build
-  // `PlanInputDevice` directly without going through `toPlanDevice` derive the intent inline
-  // from `shedBehavior` so they still flow through the adapter — keeping one materialisation
-  // contract.
-  const intent: ShedActionIntent = dev.shedIntent ?? deriveFallbackShedIntent({
-    dev,
+  // Single resolution site for the shed-action intent. Called once here with
+  // the post-admission `controllable` so the deferred-objective rescue lane
+  // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only
+  // gates on the per-cycle `shouldShed` decision (no producer equivalent).
+  const intent = resolveShedIntent({
     shedBehavior,
+    controllable,
+    hasBinaryControl: dev.hasBinaryControl,
+    controlModel: dev.controlModel,
+    steppedLoadProfile: dev.steppedLoadProfile,
+    primaryTarget: getPrimaryTargetCapability(dev.targets),
   });
   return materializeShedSnapshotFields({
     intent,
-    controllable,
     shouldShed,
-    hasBinaryControl: dev.hasBinaryControl,
   });
-}
-
-function deriveFallbackShedIntent(params: {
-  dev: PlanInputDevice;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-}): ShedActionIntent {
-  const { dev, shedBehavior } = params;
-  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-    const target = getPrimaryTargetCapability(dev.targets);
-    if (target) {
-      return {
-        kind: 'set_temperature',
-        temperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
-      };
-    }
-  }
-  if (isSteppedLoadDevice(dev)) {
-    if (shedBehavior.action === 'set_step' || dev.hasBinaryControl === false) {
-      return { kind: 'set_step' };
-    }
-  }
-  return { kind: 'turn_off' };
 }

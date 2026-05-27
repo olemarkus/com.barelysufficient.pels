@@ -8,6 +8,8 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
  *   - `name` falls back to `id`
  *   - `targets` defaults to `[]`
  *   - `currentOn` defaults to `true`
+ *   - `shedIntent` defaults to `{ kind: 'turn_off' }` (the post-PR-A required
+ *     field; tests that care about a specific intent override it)
  *
  * Every other `PlanInputDevice` field is left `undefined` unless supplied via
  * `overrides`, so tests never accidentally rely on a fabricated value.
