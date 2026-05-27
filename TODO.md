@@ -441,6 +441,18 @@ release, not v2.7.1 merge-blockers.*
       undercounts per-device actuations and weakens forensic traces.
       Source: pels-runtime-reality review of PR #1185, 2026-05-27.
 
+- [ ] **Consolidate `observationTrust.ts` into a shared layer.**
+      The detype-chunk-1 producer extraction (PR #1187) inlined
+      `getTrustedCurrentTemperatureC` and `getTrustedStateOfCharge` into
+      `lib/device/deviceActionProjection.ts` because the originals live in
+      `lib/observer/observationTrust.ts` and `lib/device/` cannot import
+      `lib/observer/` per `no-device-to-peer-except-power`. The observer
+      module imports only `lib/utils/appTypeGuards` and a contracts type —
+      no observer-specific state. Moving it to `lib/utils/observationTrust.ts`
+      lets both layers import a single source and lets the inlined copies +
+      dead-code allowlist entries be removed. Source: pels-layering-guardian
+      review of PR #1187, 2026-05-27.
+
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
       1 min, added alongside learned thermostat deadband) lets a temperature
