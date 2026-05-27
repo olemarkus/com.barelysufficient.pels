@@ -3,14 +3,15 @@ import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { getLogger } from '../logging/logger';
+import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
 const logger = getLogger('plan/binary-helpers');
 
-export type BinaryControlPlan = {
-  capabilityId: 'onoff' | 'evcharger_charging';
-  isEv: boolean;
-  canSet: boolean;
-};
+// `BinaryControlPlan` is owned by the producer
+// (`lib/device/deviceActionProjection.ts`) — plan consumes the same flat
+// shape it gets back from `getBinaryControlPlan`. Re-exported here for
+// plan-internal consumers that already imported it from this module.
+export type { BinaryControlPlan };
 
 export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
 export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';

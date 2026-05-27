@@ -154,13 +154,20 @@ module.exports = {
     },
     {
       name: 'no-plan-to-device',
-      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exception: the DeviceObservation interface itself. PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
+      comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exceptions: the DeviceObservation interface itself, and the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims). PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
       severity: 'error',
       from: { path: '^lib/plan/' },
       to: {
         path: '^lib/device/',
-        pathNot: '^lib/device/deviceObservation\\.ts$',
+        pathNot: '^lib/device/(deviceObservation|deviceActionProjection)\\.ts$',
       },
+    },
+    {
+      name: 'no-device-action-projection-to-plan',
+      comment: 'The deviceActionProjection producer seam must stay pure: no transitive imports from lib/plan/**. This is the layering invariant that lets plan-side shims re-export the moved helpers without creating a producer<->consumer cycle (chunk 1 of the planner-detype refactor).',
+      severity: 'error',
+      from: { path: '^lib/device/deviceActionProjection\\.ts$' },
+      to: { path: '^lib/plan/' },
     },
     {
       name: 'no-executor-to-device-internals',
