@@ -1,5 +1,9 @@
 import { getSteppedLoadHighestStep } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import {
+  EV_COMMANDABLE_NOW_REASONS,
+  formatUnknownEvChargingStateReason,
+} from '../../../packages/shared-domain/src/commandableNowReason';
 import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
@@ -107,20 +111,20 @@ export function getOnDevices(
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (dev.evChargingState === undefined) return 'charger state unknown';
+  if (dev.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
 
   switch (dev.evChargingState) {
     case 'plugged_in_paused':
     case 'plugged_in_charging':
       return null;
     case 'plugged_in':
-      return 'charger is not resumable';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
     case 'plugged_out':
-      return 'charger is unplugged';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
     case 'plugged_in_discharging':
-      return 'charger is discharging';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
     default:
-      return `unknown charging state '${dev.evChargingState}'`;
+      return formatUnknownEvChargingStateReason(dev.evChargingState);
   }
 }
 
