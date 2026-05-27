@@ -214,6 +214,38 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
   });
 
+  it('does not expand when every committed hour is filtered out (corrupt or sub-epsilon)', () => {
+    // Adversarial-review finding: gating expansion on `committedHours.length`
+    // would let a commitment whose entries all got filtered out by
+    // `buildCommittedHourMap` (non-finite values from migration drift, or
+    // sub-epsilon plannedKWh from rounding) slip through and silently
+    // recover. That is exactly the case the `committed: true, hours: []`
+    // invariant test covers — it must not regress through this back door.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        // Sub-epsilon entry — survives the array but gets filtered from the
+        // committed-hour map. Equivalent in effect to a zero-hour commitment.
+        { startsAtMs: NOW_MS, plannedKWh: 0.0001 },
+      ],
+    });
+
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.plannedUsefulEnergyKWh).toBe(0);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
+  });
+
   it('does not double-allocate inside an already-committed hour during expansion', () => {
     // Phase-2 expansion fills *uncommitted* hours only. A committed hour that
     // is partially used (e.g. committed 0.5 kWh of a 1 kWh capacity) keeps its

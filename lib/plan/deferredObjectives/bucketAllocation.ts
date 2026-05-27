@@ -142,7 +142,12 @@ export const allocateCommittedEnergyToBuckets = (params: {
     usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
-  if (remainingKWh > epsilonKWh && committedHours.length > 0) {
+  // Gate on the *parsed* map size, not the raw array length: a commitment
+  // whose entries all got filtered by `buildCommittedHourMap` (non-finite
+  // values, sub-epsilon plannedKWh — possible after migration or shrink
+  // rounding) is functionally an empty commitment and must continue to fall
+  // under the "stale `cannot_meet` plan must not silently recover" invariant.
+  if (remainingKWh > epsilonKWh && committedRemainingByHour.size > 0) {
     const expansion = expandCommittedAllocation({
       buckets,
       step,
