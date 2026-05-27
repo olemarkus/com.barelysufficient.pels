@@ -402,7 +402,7 @@ describe('resolveConfidenceData', () => {
       percent: '75%',
       details: [
         { label: 'Usage days', value: '12' },
-        { label: 'Planned days', value: '4' },
+        { label: 'Forecasted days', value: '4' },
         { label: 'Usage regularity', value: BUDGET_CONFIDENCE_LABEL_HIGH },
         { label: 'Managed-device fit', value: BUDGET_CONFIDENCE_LABEL_MEDIUM },
       ],
