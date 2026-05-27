@@ -6,6 +6,7 @@ import type {
   BinaryControlObservation,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  RestorePowerSource,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -125,7 +126,7 @@ export type DevicePlanDevice = {
     shed: number;
     restore?: {
       kw: number;
-      source: 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'fallback';
+      source: RestorePowerSource;
     };
   };
 };
@@ -269,7 +270,7 @@ export type PlanInputDevice = {
     shed: number;
     restore?: {
       kw: number;
-      source: 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'fallback';
+      source: RestorePowerSource;
     };
   };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.

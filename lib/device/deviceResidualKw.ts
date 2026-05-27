@@ -43,6 +43,7 @@
  * `lib/observer/**`.
  */
 import type {
+  RestorePowerSource,
   SteppedLoadProfile,
   SteppedLoadStep,
 } from '../../packages/contracts/src/types';
@@ -248,23 +249,6 @@ function canFinishSteppedTurnOffWithBinaryResidual(params: {
   return Boolean(selectedStep && !isSteppedLoadOffStep(steppedLoad.profile, selectedStep.id));
 }
 
-/**
- * Provenance label mirrored from `lib/observer/observedPower.ExpectedPowerSource`.
- * Kept as a local string union so the producer module stays free of the
- * `lib/observer/**` dependency (enforced by the `no-device-residual-kw-to-plan`
- * dep-cruiser rule). The wiring layer in
- * `lib/app/appInit/residualKwForPlanDevice.ts` keeps the two definitions
- * structurally aligned by funnelling the observer's `getRestoreDrawKw` output
- * into `restoreFallback`.
- */
-export type ResidualKwRestorePowerSource =
-  | 'measured'
-  | 'expected'
-  | 'planning'
-  | 'configured'
-  | 'stepped'
-  | 'fallback';
-
 export type ResidualKwRestoreSteppedDevice = {
   profile: SteppedLoadProfile;
   /**
@@ -293,7 +277,7 @@ export type ResidualKwRestoreDeviceInput = {
    *   - as the fallback when a stepped device has no usable planning kW and
    *     no usable lowest-active step.
    */
-  restoreFallback: { kw: number; source: ResidualKwRestorePowerSource };
+  restoreFallback: { kw: number; source: RestorePowerSource };
 };
 
 /**
@@ -322,7 +306,7 @@ export type ResidualKwRestoreDeviceInput = {
  */
 export function resolveResidualKwRestore(
   input: ResidualKwRestoreDeviceInput,
-): { kw: number; source: ResidualKwRestorePowerSource } {
+): { kw: number; source: RestorePowerSource } {
   const stepped = resolveSteppedResidualKwRestore(input.steppedLoad);
   if (stepped !== null) return stepped;
   return input.restoreFallback;
@@ -330,7 +314,7 @@ export function resolveResidualKwRestore(
 
 function resolveSteppedResidualKwRestore(
   steppedLoad: ResidualKwRestoreSteppedDevice | undefined,
-): { kw: number; source: ResidualKwRestorePowerSource } | null {
+): { kw: number; source: RestorePowerSource } | null {
   if (!steppedLoad) return null;
 
   // Path 1: stepped device that is observed-on with a positive planning kW.

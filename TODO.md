@@ -470,18 +470,14 @@ release, not v2.7.1 merge-blockers.*
       with the post-admission controllable and feeds the materialiser,
       which now only applies the `shouldShed` gate.
 
-- [ ] **Chunk 6 — consolidate restore-power source-label union into a shared
-      type.** `RestorePowerSource` is duplicated structurally in three
-      places: `lib/observer/observedPower.ts:11` (`ExpectedPowerSource`),
-      `lib/device/deviceResidualKw.ts:260` (`ResidualKwRestorePowerSource`,
-      marked "mirrored"), and inline at `lib/plan/planTypes.ts:124,268` on
-      `PlanInputDevice` / `DevicePlanDevice`. The `no-device-residual-kw-to-plan`
-      dep-cruiser rule prevents the producer from importing the observer's
-      type directly. Chunk 6 should host the type in `packages/shared-domain/`
-      or `lib/utils/` so all four sites import from one home; until then a
-      seventh source label would have to be touched in lockstep.
-      Source: pels-runtime-reality + pels-layering-guardian reviews of
-      PR #1191, 2026-05-27.
+- [x] **Chunk 6 — consolidate restore-power source-label union into a shared
+      type.** `RestorePowerSource` now lives canonically in
+      `packages/contracts/src/types.ts`. The observer (`lib/observer/observedPower.ts`),
+      producer (`lib/device/deviceResidualKw.ts`), and plan layer
+      (`lib/plan/planTypes.ts`, `lib/plan/restore/accounting.ts`) all import
+      from the contracts package. The wiring adapter
+      `lib/app/appInit/residualKwForPlanDevice.ts` also reads the canonical
+      type. A seventh source label is now a one-line edit. PR B2 (2026-05-27).
 
 - [x] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
       strictness delta.** `lib/device/deviceResidualKw.ts` (`resolveResidualKwRestore`)
