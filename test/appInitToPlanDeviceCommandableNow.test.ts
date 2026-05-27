@@ -83,6 +83,24 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     expect(result.commandableNowReason).toBe('charger state unknown');
   });
 
+  it('populates canSetControlResolved=true for a plugged-in EV with default canSetControl', () => {
+    const ctx = ctxAtFixedNow();
+    const result = toPlanDevice(ctx, buildEvSnapshot({
+      evChargingState: 'plugged_in_paused',
+      canSetControl: true,
+    }));
+    expect(result.canSetControlResolved).toBe(true);
+  });
+
+  it('populates canSetControlResolved=false when canSetControl is explicitly false', () => {
+    const ctx = ctxAtFixedNow();
+    const result = toPlanDevice(ctx, buildEvSnapshot({
+      evChargingState: 'plugged_in_paused',
+      canSetControl: false,
+    }));
+    expect(result.canSetControlResolved).toBe(false);
+  });
+
   it('does not extend the grace window when the current read is uncertain', () => {
     // A succession of uncertain reads must not keep re-anchoring the
     // observedAtMs, otherwise the grace window becomes infinite.

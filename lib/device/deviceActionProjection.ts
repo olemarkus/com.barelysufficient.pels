@@ -132,7 +132,15 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
   return {
     capabilityId,
     isEv: capabilityId === 'evcharger_charging',
-    canSet: resolveCanSetBinaryControl(snapshot, capabilityId),
+    // Routed through `resolveCanSetControl` so the planner-side producer bit
+    // (consumed by the migrated `canTurnOnDevice`) and the legacy
+    // `getBinaryControlPlan().canSet` view stay bit-exact in lockstep.
+    canSet: resolveCanSetControl({
+      controlCapabilityId: snapshot.controlCapabilityId,
+      capabilities: snapshot.capabilities,
+      canSetControl: snapshot.canSetControl,
+      canSetOnOff: (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff,
+    }),
   };
 }
 
@@ -155,8 +163,13 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
   }
 }
 
+type BinaryCapabilityResolveInput = {
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  capabilities?: string[];
+};
+
 function resolveBinaryCapabilityId(
-  snapshot?: TargetDeviceSnapshot,
+  snapshot?: BinaryCapabilityResolveInput,
 ): BinaryControlPlan['capabilityId'] | undefined {
   if (!snapshot) return undefined;
   if (snapshot.controlCapabilityId) return snapshot.controlCapabilityId;
@@ -165,13 +178,9 @@ function resolveBinaryCapabilityId(
   return undefined;
 }
 
-function resolveCanSetBinaryControl(
-  snapshot: TargetDeviceSnapshot,
-  capabilityId: BinaryControlPlan['capabilityId'],
-): boolean {
-  const legacyCanSetOnOff = (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff;
-  return snapshot.canSetControl !== false && !(capabilityId === 'onoff' && legacyCanSetOnOff === false);
-}
+// `resolveCanSetBinaryControl` collapsed into `resolveCanSetControl` above
+// (chunk 6 of the planner-detype refactor). `getBinaryControlPlan` now routes
+// through the same producer that PlanInputDevice consumers read.
 
 // =============================================================================
 // Chunk 2 of the planner-detype refactor: resolve commandableNow + boostActive
@@ -302,6 +311,60 @@ export function getCommandableNowReason(
 ): string | null {
   if (dev.commandableNow !== undefined) return dev.commandableNowReason ?? null;
   return resolveCommandableNow({ dev, nowMs }).reason;
+}
+
+// -----------------------------------------------------------------------------
+// canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype
+// refactor). Mirrors the `canSet` computation inside `getBinaryControlPlan`
+// (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback for the
+// `onoff` capability) so executor consumers can read a single resolved flag
+// instead of round-tripping through `getBinaryControlPlan`.
+//
+// Kept separate from `commandableNow`: commandableNow answers "is the device
+// responsive right now" (EV plug state, available) which `planOffStateReason`
+// reads without caring about `canSet`. canSetControl answers "can we write
+// to its control capability" — different question, separate bit.
+// -----------------------------------------------------------------------------
+
+export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
+  canSetControl?: boolean;
+  canSetOnOff?: boolean;
+};
+
+/**
+ * Resolve whether the device's binary control capability can be written this
+ * cycle. Returns `false` when:
+ *  - the device exposes no resolvable binary capability (no `controlCapabilityId`,
+ *    no matching entry in `capabilities`); or
+ *  - `canSetControl === false`; or
+ *  - the resolved capability is `onoff` and the legacy `canSetOnOff === false`.
+ *
+ * Mirrors `getBinaryControlPlan(snapshot)?.canSet ?? false` exactly so the
+ * migrated `canTurnOnDevice` gate stays byte-for-byte equivalent for the
+ * existing snapshot shapes the executor passes in.
+ */
+export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
+  const capabilityId = resolveBinaryCapabilityId(input);
+  if (!capabilityId) return false;
+  if (input.canSetControl === false) return false;
+  if (capabilityId === 'onoff' && input.canSetOnOff === false) return false;
+  return true;
+}
+
+type CanSetControlConsumerInput = CanSetControlResolveInput & {
+  canSetControlResolved?: boolean;
+};
+
+/**
+ * Dual-read consumer helper: prefer the producer-resolved bit when the
+ * caller passes a `PlanInputDevice` (`canSetControlResolved` set by
+ * `toPlanDevice`), fall back to fresh resolution from raw fields when the
+ * caller passes a `TargetDeviceSnapshot`. Mirrors `isCommandableNow`'s
+ * dual-read pattern from chunk 2.
+ */
+export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
+  if (dev.canSetControlResolved !== undefined) return dev.canSetControlResolved;
+  return resolveCanSetControl(dev);
 }
 
 /**

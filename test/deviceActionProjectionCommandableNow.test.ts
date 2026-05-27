@@ -14,8 +14,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMMANDABLE_NOW_GRACE_MS,
+  isCanSetControl,
   isCommandableNow,
   resolveBoostActive,
+  resolveCanSetControl,
   resolveCommandableNow,
   type CommandableNowGraceEntry,
 } from '../lib/device/deviceActionProjection';
@@ -188,6 +190,84 @@ describe('isCommandableNow — dual-read fallback', () => {
     // pre-populated bit.
     expect(isCommandableNow({ available: false }, NOW_MS)).toBe(false);
     expect(isCommandableNow({ available: true }, NOW_MS)).toBe(true);
+  });
+});
+
+describe('resolveCanSetControl — producer', () => {
+  it('returns false when no binary capability is resolvable', () => {
+    // No controlCapabilityId, no relevant capabilities → no write surface.
+    expect(resolveCanSetControl({})).toBe(false);
+    expect(resolveCanSetControl({ capabilities: ['measure_power'] })).toBe(false);
+  });
+
+  it('returns true for an EV charger with canSetControl !== false', () => {
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+    })).toBe(true);
+    // undefined canSetControl also passes — only an explicit false blocks.
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'evcharger_charging',
+    })).toBe(true);
+  });
+
+  it('returns false when canSetControl is explicitly false', () => {
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: false,
+    })).toBe(false);
+  });
+
+  it('returns true for an onoff device when the legacy canSetOnOff is true or undefined', () => {
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'onoff',
+      canSetOnOff: true,
+    })).toBe(true);
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'onoff',
+    })).toBe(true);
+  });
+
+  it('returns false for an onoff device when the legacy canSetOnOff fallback is false', () => {
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'onoff',
+      canSetOnOff: false,
+    })).toBe(false);
+  });
+
+  it('ignores canSetOnOff for the evcharger_charging capability', () => {
+    // The legacy fallback only applies to onoff.
+    expect(resolveCanSetControl({
+      controlCapabilityId: 'evcharger_charging',
+      canSetOnOff: false,
+    })).toBe(true);
+  });
+
+  it('falls back to the capabilities array when controlCapabilityId is missing', () => {
+    expect(resolveCanSetControl({
+      capabilities: ['onoff'],
+    })).toBe(true);
+    expect(resolveCanSetControl({
+      capabilities: ['evcharger_charging'],
+    })).toBe(true);
+  });
+});
+
+describe('isCanSetControl — dual-read fallback', () => {
+  it('prefers the producer-resolved bit when defined', () => {
+    expect(isCanSetControl({ canSetControlResolved: false })).toBe(false);
+    expect(isCanSetControl({ canSetControlResolved: true })).toBe(true);
+  });
+
+  it('falls back to fresh resolution from raw fields when resolved bit is absent', () => {
+    expect(isCanSetControl({
+      controlCapabilityId: 'onoff',
+      canSetOnOff: false,
+    })).toBe(false);
+    expect(isCanSetControl({
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+    })).toBe(true);
   });
 });
 

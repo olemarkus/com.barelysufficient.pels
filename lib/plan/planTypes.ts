@@ -238,6 +238,15 @@ export type PlanInputDevice = {
   /** Opaque diagnostic string; UI / diagnostics consumers only. */
   commandableNowReason?: string | null;
   /**
+   * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
+   * true when the device's binary control capability can be written this
+   * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback
+   * for the `onoff` capability). Consumers MUST go through
+   * `lib/device/deviceActionProjection.isCanSetControl` so the dual-read
+   * fallback applies to raw-snapshot call sites uniformly.
+   */
+  canSetControlResolved?: boolean;
+  /**
    * Producer-resolved aggregate boost flag (chunk 2): true if either the
    * temperature-boost or EV-boost policy is active this cycle.
    */
