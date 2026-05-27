@@ -1,4 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import type { ShedActionIntent } from '../device/deviceActionProjection';
+import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
@@ -517,53 +519,42 @@ function resolveShedAction(params: {
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
 }): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
-  // Producer-resolved path (chunk 5 of the planner-detype refactor). When `shedIntent` is set,
-  // primary-target lookup and setpoint normalisation already happened at the producer; this
-  // consumer just applies the plan-cycle gates. Chunk 6 removes the legacy fallback below and
-  // folds the gating logic into a materialisation adapter.
-  if (dev.shedIntent) return resolveShedActionFromIntent(dev, controllable, shouldShed, shedBehavior);
-  if (controllable && shouldShed
-    && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-    const target = getPrimaryTargetCapability(dev.targets);
-    return {
-      shedAction: 'set_temperature',
-      shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
-      shedStepId: null,
-    };
-  }
-  if (isSteppedLoadDevice(dev)) {
-    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
-  }
-  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+  // Producer-resolved path: `shedIntent` is populated by `toPlanDevice` via
+  // `lib/device/deviceActionProjection.ts:resolveShedIntent`. The materialisation adapter
+  // applies the plan-cycle gates and projects the snapshot triple. Test fixtures that build
+  // `PlanInputDevice` directly without going through `toPlanDevice` derive the intent inline
+  // from `shedBehavior` so they still flow through the adapter — keeping one materialisation
+  // contract.
+  const intent: ShedActionIntent = dev.shedIntent ?? deriveFallbackShedIntent({
+    dev,
+    shedBehavior,
+  });
+  return materializeShedSnapshotFields({
+    intent,
+    controllable,
+    shouldShed,
+    hasBinaryControl: dev.hasBinaryControl,
+  });
 }
 
-function resolveShedActionFromIntent(
-  dev: PlanInputDevice,
-  controllable: boolean,
-  shouldShed: boolean,
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null },
-): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const intent = dev.shedIntent;
-  if (controllable && shouldShed && intent?.kind === 'set_temperature') {
-    return { shedAction: 'set_temperature', shedTemperature: intent.temperature, shedStepId: null };
-  }
-  if (intent?.kind === 'set_step') {
-    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
-  }
-  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
-}
-function resolveSteppedShedAction(params: {
-  controllable: boolean;
-  hasBinaryControl: boolean | undefined;
+function deriveFallbackShedIntent(params: {
+  dev: PlanInputDevice;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const { controllable, hasBinaryControl, shedBehavior } = params;
-  if (controllable && shedBehavior.action === 'set_step') {
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
+}): ShedActionIntent {
+  const { dev, shedBehavior } = params;
+  if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
+    const target = getPrimaryTargetCapability(dev.targets);
+    if (target) {
+      return {
+        kind: 'set_temperature',
+        temperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
+      };
+    }
   }
-  // turn_off requires binary control; normalize to set_step when missing
-  if (hasBinaryControl === false) {
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
+  if (isSteppedLoadDevice(dev)) {
+    if (shedBehavior.action === 'set_step' || dev.hasBinaryControl === false) {
+      return { kind: 'set_step' };
+    }
   }
-  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+  return { kind: 'turn_off' };
 }

@@ -394,6 +394,15 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
+      `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`
+      directly when revising a `DevicePlanDevice` after the initial plan
+      materialisation. It bypasses the chunk-6 adapter, leaving a second
+      materialisation site for revision-semantics. Extending the adapter
+      to cover post-plan revisions (or routing this call through it)
+      closes the last gap in the single-materialisation-site contract.
+      Source: pels-layering-guardian review of PR #1196, 2026-05-27.
+
 - [ ] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
       `lib/device/deviceActionProjection.ts:resolveShedIntent` (chunk 5)
       emits `{ kind: 'set_temperature', temperature }` whenever
