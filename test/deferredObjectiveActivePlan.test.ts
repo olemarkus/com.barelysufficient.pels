@@ -1300,6 +1300,81 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(0);
   });
 
+  it('emits onRevisionWritten exactly once when phase-2 expansion grows the schedule from empty', () => {
+    // Pins the flow-trigger contract for the satisfied-then-drifted recovery
+    // path (e.g. tonight's 2026-05-27 morning-shower scenario from
+    // production). Sequence:
+    //   1. Task created with target already met → revision 1 has empty hours
+    //      and no notification fires (seed revision is silent).
+    //   2. Drift triggers expansion → revision 2 grows the schedule by N
+    //      hours → `shouldFireNotification(0, N, 'on_track')` fires the
+    //      `deadline_plan_changed` flow trigger once.
+    //   3. Subsequent stable cycle with unchanged schedule → no additional
+    //      notification (no token storm per cycle).
+    // The trigger tokens (`planned_hours`, `remaining_kwh`) come straight
+    // off the revision, so the recorder writing the expansion into
+    // `revision.hours` is what makes the user-visible notification correct.
+    const events: Array<{
+      reason: string; hours: number; planStatus: string; energyNeededKWh: number;
+    }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          reason: event.reason,
+          hours: event.revision.hours.length,
+          planStatus: event.revision.planStatus,
+          energyNeededKWh: event.revision.energyNeededKWh,
+        });
+      },
+    });
+
+    // Seed: task created with target already met (no hours, no notification).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], HOUR_MS);
+    expect(events).toEqual([]);
+
+    // Drift causes phase-2 expansion: 2 future buckets added, hour count
+    // grows from 0 → 2. Trigger fires once.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'on_track',
+      energyNeededKWh: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1),
+        makeBucket(5 * HOUR_MS, 1),
+      ]),
+    })], 2 * HOUR_MS);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      reason: 'schedule_revised',
+      hours: 2,
+      planStatus: 'on_track',
+      energyNeededKWh: 2,
+    });
+
+    // Subsequent stable cycle with identical schedule → no further trigger.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'on_track',
+      energyNeededKWh: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1),
+        makeBucket(5 * HOUR_MS, 1),
+      ]),
+    })], 3 * HOUR_MS);
+    expect(events).toHaveLength(1);
+  });
+
   it('emits onRevisionWritten when the schedule collapses to empty because the plan cannot meet the deadline', () => {
     // Regression for the gap Codex flagged on PR #730: a planner transition
     // like `cannot_meet/target_cannot_be_met` (with partial buckets) →
