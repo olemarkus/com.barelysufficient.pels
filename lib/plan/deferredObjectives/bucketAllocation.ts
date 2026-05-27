@@ -142,12 +142,20 @@ export const allocateCommittedEnergyToBuckets = (params: {
     usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
-  // Gate on the *parsed* map size, not the raw array length: a commitment
-  // whose entries all got filtered by `buildCommittedHourMap` (non-finite
-  // values, sub-epsilon plannedKWh — possible after migration or shrink
-  // rounding) is functionally an empty commitment and must continue to fall
-  // under the "stale `cannot_meet` plan must not silently recover" invariant.
-  if (remainingKWh > epsilonKWh && committedRemainingByHour.size > 0) {
+  // Phase-2 expansion fires whenever the within-commitment fill leaves
+  // residual energy unmet. An empty original commitment used to be a hard
+  // "stale `cannot_meet` plan must not silently recover" stop, but that gate
+  // also blocked the satisfied-then-drifted case: a task created with the
+  // tank already above target gets `committedHours: []`, then if hot-water
+  // draw crashes the tank mid-task the planner had no way to recover even
+  // though the remaining horizon could absorb the new need. The
+  // `!bucket.current` filter inside `expandCommittedAllocation` is the
+  // structural replacement — expansion only adds *future* uncommitted
+  // buckets, leaving the settled per-bucket budget cap on the current
+  // bucket alone. Brief within-bucket cannot_meet flips (from a 60-300 s
+  // shed) deflate naturally as the executor's step-climb catches up; the
+  // committed kWh is an integral over the hour, not a rate.
+  if (remainingKWh > epsilonKWh) {
     const expansion = expandCommittedAllocation({
       buckets,
       step,
@@ -171,19 +179,31 @@ export const allocateCommittedEnergyToBuckets = (params: {
   };
 };
 
-// Phase-2 expansion for the committed-plan path. When the original commitment
-// cannot cover the current energy need (e.g. tank reached `satisfied`, drifted
-// below target as standby loss accumulated, and `energyNeededKWh` recomputed
-// upward; or the primary bucket failed to deliver because of capacity-shed),
-// spill the residual into uncommitted buckets using the fresh-allocator sort.
-// Without this, a committed plan that initially fit in a single early-cheap
-// hour can never recover into the remaining cheap hours later in the horizon
-// — the device sits at `cannot_meet` for the rest of the deadline window with
-// unused buckets sitting in the horizon. The caller gates on
-// `committedHours.length > 0` so the existing "stale `cannot_meet` plan with
-// zero committed hours must not silently recover" invariant stays intact for
-// that distinct case. Mutates `plannedByBucketId` in place; returns updated
-// running totals.
+// Phase-2 expansion for the committed-plan path. Three load-bearing
+// invariants the design rides on:
+//
+//   (a) The current bucket's commitment is the contract for the hour. Its
+//       per-bucket budget cap has settled and any partial consumption is
+//       already in flight. Expansion adds *future* hours only — the
+//       `!bucket.current` filter below enforces this.
+//   (b) Within-hour delivery is the executor / climbed-probe layer's job,
+//       not the allocator's. A bucket commits an integral (kWh), not a
+//       rate; the executor can climb step level to deliver the integral by
+//       hour-end even after brief 60-300 s sheds. So status flutter from
+//       stepped-load oscillation or brief sheds must NOT trigger plan
+//       expansion — they self-resolve at the runtime layer.
+//   (c) Policy buckets stay hour-aligned. The committed-hour skip set is
+//       keyed by `floor(startMs / HOUR_MS)`; relaxing the hour alignment
+//       (sub-hour segments outside the existing reserve split) would
+//       require revisiting both this skip and the per-bucket cap maths.
+//
+// Operationally: spill the residual into uncommitted future buckets using
+// the fresh-allocator sort. This handles both the "primary bucket failed
+// to deliver" case (commitment non-empty, drift made energyNeeded grow)
+// and the "satisfied-then-drifted" case (commitment empty because target
+// was already met at task creation, then real-world load — e.g. a
+// hot-water draw — created a new need). Mutates `plannedByBucketId` in
+// place; returns updated running totals.
 const expandCommittedAllocation = (params: {
   buckets: NormalizedBucket[];
   step: DeferredObjectiveStep;
@@ -218,6 +238,10 @@ const expandCommittedAllocation = (params: {
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
     if (plannedByBucketId.has(bucket.id)) continue;
+    // Skip the current bucket — its per-bucket budget cap has settled and
+    // within-hour delivery is the executor's job (invariants (a) and (b)
+    // above). Expansion adds future hours only.
+    if (bucket.current) continue;
     // Skip any bucket whose hour was part of the original commitment — the
     // commitment is the binding ceiling for that hour. Expansion adds *new*
     // hours; resizing within an existing hour is the normal-revision path's
