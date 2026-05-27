@@ -394,6 +394,34 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Split `recordShedActuation` for lifecycle-end release writes.** The
+      release-shed paths in `lib/executor/shedReleaseActuation.ts` call
+      `recordShedActuation` so the per-device `pels_shed` diagnostic event
+      fires for forensic traces. But the same call also writes
+      `lastDeviceShedMs` and `lastInstabilityMs`, which feed the
+      `isShedThrottled` 5 s gate and the system-wide instability marker.
+      For a lifecycle-end release this is mostly benign — the released
+      device is already in its shed posture so no real capacity shed
+      should follow within the throttle window — but the conflation
+      inverts the semantic. Introduce a `recordReleaseShedActuation`
+      that records only the diagnostic event and leaves the shed-cooldown
+      clock alone, then route both release sites through it. Source:
+      pels-runtime-reality review of PR #1199, 2026-05-27.
+
+- [ ] **Resolve `set_step` target step at the producer instead of at apply
+      time.** `ShedActionIntent` carries only `{ kind: 'set_step' }` with
+      no `targetStepId`. The release path in
+      `lib/executor/shedReleaseActuation.ts` resolves the target step via
+      a cascade (configured `shedBehavior.stepId` → lowest active step →
+      off step); the cap-driven shed path in
+      `lib/plan/planSteppedLoad.ts` only ever picks lowest-active and
+      ignores the configured stepId. Same logical question ("what step
+      is `set_step` for this device") answered two ways. Extend the
+      producer to emit `{ kind: 'set_step'; targetStepId: string }`,
+      apply the cascade once, and have both consumers consume the flat
+      value. Source: pels-layering-guardian review of PR #1199,
+      2026-05-27.
+
 - [ ] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
       `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`
       directly when revising a `DevicePlanDevice` after the initial plan
@@ -570,7 +598,7 @@ release, not v2.7.1 merge-blockers.*
       Lock that semantics in when executors come online.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
 
-- [ ] **Smart-task lifecycle-end release for stepped devices without binary
+- [x] **Smart-task lifecycle-end release for stepped devices without binary
       control.** `lib/executor/shedReleaseActuation.ts` materialises the
       configured shedBehavior for a cap-off device when its deferred objective
       transitions to a terminal status: `turn_off`/`set_step` route through
@@ -599,7 +627,7 @@ release, not v2.7.1 merge-blockers.*
       EV-shaped; the integration test focuses on the executor end of the
       pipeline where the per-cycle re-emission idempotency lives).
 
-- [ ] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
+- [x] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
       `lib/executor/shedReleaseActuation.ts:99` skips the binary write only
       when `snapshot.currentOn === false`. Under a transient Homey SDK miss
       the field can default to `undefined`, falling through to a redundant
@@ -610,7 +638,7 @@ release, not v2.7.1 merge-blockers.*
       "no trusted observation yet, skip the write". Source: pels-runtime-reality
       review of PR #1185, 2026-05-27.
 
-- [ ] **Record shed_release target writes in per-device diagnostics.**
+- [x] **Record shed_release target writes in per-device diagnostics.**
       `applyShedReleaseTemperature` in `lib/executor/shedReleaseActuation.ts`
       routes through `applyTargetUpdate` with `isRestoring: false`.
       `applyTargetUpdatePlan` only records `recordRestoreActuation` when
