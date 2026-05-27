@@ -394,6 +394,17 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
+      `packages/settings-ui/src/ui/deviceDetail/evBoost.ts:78-79` carries two
+      EV-state-gated strings — `'Car not connected. Boost will not activate.'`
+      and `'Car is discharging. Boost will not activate.'` — keyed off the
+      same `evChargingState` discriminator as `EV_COMMANDABLE_NOW_REASONS`.
+      They predate PR #1212 and stayed inline; same logs-reuse principle
+      (`feedback_ui_text_shared_with_logs`) applies. Co-locate them in
+      `packages/shared-domain/` so settings-ui imports the strings rather
+      than carrying its own literals. Source: pels-copy-and-terminology
+      review of PR #1212, 2026-05-27.
+
 - [ ] **Split `recordShedActuation` for lifecycle-end release writes.** The
       release-shed paths in `lib/executor/shedReleaseActuation.ts` call
       `recordShedActuation` so the per-device `pels_shed` diagnostic event
@@ -559,7 +570,7 @@ release, not v2.7.1 merge-blockers.*
       flag), then migrate `canTurnOnDevice` to consume `commandableNow`.
       Source: pels-layering-guardian review of PR #1189, 2026-05-27.
 
-- [ ] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
+- [x] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
       `lib/device/deviceActionProjection.ts` produces reason strings
       ("charger is unplugged", "charger state unknown", etc.) that today
       live runtime-internal. Chunk 6 routes UI consumers to

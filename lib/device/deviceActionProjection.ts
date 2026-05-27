@@ -30,6 +30,10 @@ import {
 } from '../utils/observationTrust';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
+import {
+  EV_COMMANDABLE_NOW_REASONS,
+  formatUnknownEvChargingStateReason,
+} from '../../packages/shared-domain/src/commandableNowReason';
 
 // Trust gates (`getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`)
 // live in `lib/utils/observationTrust.ts` so both this module and
@@ -134,20 +138,20 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return null;
-  if (snapshot.evChargingState === undefined) return 'charger state unknown';
+  if (snapshot.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
 
   switch (snapshot.evChargingState) {
     case 'plugged_in_paused':
     case 'plugged_in_charging':
       return null;
     case 'plugged_in':
-      return 'charger is not resumable';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
     case 'plugged_out':
-      return 'charger is unplugged';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
     case 'plugged_in_discharging':
-      return 'charger is discharging';
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
     default:
-      return `unknown charging state '${snapshot.evChargingState}'`;
+      return formatUnknownEvChargingStateReason(snapshot.evChargingState);
   }
 }
 
@@ -331,20 +335,23 @@ function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandab
 
   switch (dev.evChargingState) {
     case 'plugged_out':
-      return { reason: 'charger is unplugged', uncertain: false };
+      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_out, uncertain: false };
     case 'plugged_in_discharging':
-      return { reason: 'charger is discharging', uncertain: false };
+      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging, uncertain: false };
     case 'plugged_in':
-      return { reason: 'charger is not resumable', uncertain: false };
+      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_in, uncertain: false };
     case 'plugged_in_paused':
     case 'plugged_in_charging':
       return null;
     case undefined:
       // No EV state read this cycle — uncertain. Caller may apply the
       // abandon-grace window.
-      return { reason: 'charger state unknown', uncertain: true };
+      return { reason: EV_COMMANDABLE_NOW_REASONS.state_unknown, uncertain: true };
     default:
-      return { reason: `unknown charging state '${dev.evChargingState}'`, uncertain: false };
+      return {
+        reason: formatUnknownEvChargingStateReason(dev.evChargingState),
+        uncertain: false,
+      };
   }
 }
 
