@@ -291,10 +291,10 @@ export function formatShortfallReason(opts: {
   needKw: number | null;
   headroomKw: number | null;
 }): string {
-  const base = 'Manual action needed — hard cap may be exceeded';
+  const base = 'Manual action needed. Hard cap may be exceeded.';
   if (opts.needKw === null || opts.headroomKw === null) return base;
   const suffix = formatNeedAvailableSuffix(opts.needKw, opts.headroomKw);
-  return suffix ? `Manual action needed — ${suffix}` : base;
+  return suffix ? `Manual action needed. ${suffix.charAt(0).toUpperCase()}${suffix.slice(1)}.` : base;
 }
 
 // Reads the loosely-typed `detail` slot off a `DeviceReason`-shaped value
