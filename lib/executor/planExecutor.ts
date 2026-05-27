@@ -32,6 +32,7 @@ import type {
   ExecutablePlan,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
   ExecutableTargetIntent,
   ExecutableTargetUpdate,
 } from './executablePlan';
@@ -433,6 +434,7 @@ export class PlanExecutor {
 
   private async applyShedReleaseIntent(params: {
     intent: ExecutableReleaseIntent;
+    steppedLoadIntent: ExecutableSteppedLoadIntent | null;
     observed: ExecutableObservedDeviceState | undefined;
     snapshot: TargetDeviceSnapshot | undefined;
     mode: PlanActuationMode;
@@ -443,6 +445,8 @@ export class PlanExecutor {
         getShedBehavior: this.boundGetShedBehavior,
         buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
         buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
+        buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
+        recordShedActuation: this.boundRecordShedActuation,
       },
     });
   }
@@ -705,6 +709,7 @@ export class PlanExecutor {
             if (intent.release?.kind === 'shed_release') {
               if (await this.applyShedReleaseIntent({
                 intent: intent.release,
+                steppedLoadIntent: intent.steppedLoad,
                 observed,
                 snapshot,
                 mode,
