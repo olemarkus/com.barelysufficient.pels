@@ -263,7 +263,7 @@ describe('DeadlinePlan revision history panel', () => {
     const mount = mountIntoBody();
     const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
     payload.revisionLog = [
-      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', hourDiff: null },
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', isFallback: false, hourDiff: null },
     ];
     renderDeadlinePlan(mount, { status: 'ready', payload });
     expect(mount.querySelector('.plan-revision-panel')).toBeNull();
@@ -273,9 +273,9 @@ describe('DeadlinePlan revision history panel', () => {
     const mount = mountIntoBody();
     const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
     payload.revisionLog = [
-      { revision: 3, timeLabel: '15:42', reason: 'Schedule revised', hourDiff: '+1h' },
-      { revision: 2, timeLabel: '15:00', reason: 'Prices arrived', hourDiff: '−1h' },
-      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', hourDiff: null },
+      { revision: 3, timeLabel: '15:42', reason: 'Schedule revised', isFallback: false, hourDiff: '+1h' },
+      { revision: 2, timeLabel: '15:00', reason: 'Prices arrived', isFallback: false, hourDiff: '−1h' },
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', isFallback: false, hourDiff: null },
     ];
     renderDeadlinePlan(mount, { status: 'ready', payload });
 
