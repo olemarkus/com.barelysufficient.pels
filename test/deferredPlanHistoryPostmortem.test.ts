@@ -101,7 +101,11 @@ describe('formatPlanHistoryPostmortem', () => {
       });
       const result = formatPlanHistoryPostmortem(entry, 'UTC');
       expect(result.variant).toBe('met-with-overshoot');
-      expect(result.sentence).toContain('overshot');
+      // The headline drops the "— overshot." tail so it does not contradict
+      // the `Succeeded` chip; the muted `Overshoot N °C` subline (rendered
+      // by `DeadlinePlanHistoryDetail.tsx`) carries the magnitude instead.
+      expect(result.sentence).not.toContain('overshot');
+      expect(result.sentence).toMatch(/^Hit .* at .*, before .*\.$/);
     });
 
     it('resolves met-with-overshoot for EV when > 10 % above target', () => {
