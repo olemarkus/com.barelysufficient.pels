@@ -196,6 +196,26 @@ Use `while the smart task is scheduled to run` / `while it's scheduled to run` f
 
 Visible Flow labels and hints use full words for time units: `hours`, not `h`.
 
+### Revision-log row vocabulary
+
+The smart-task detail page renders a `Recent plan changes` panel (live runs) and a `What changed` card (post-finalization). Both surfaces read the same row helpers and the same `revisionReason` resolver in `packages/shared-domain/src/deadlineLabels.ts`, so the canonical short labels for each recorder reason are pinned here and must not drift between surfaces or between user-facing copy and runtime log breadcrumbs.
+
+| Recorder reason | Label | Notes |
+|---|---|---|
+| `flow_card` | `Updated by a Flow card` | A user-authored Flow card fired and updated the task. |
+| `prices_arrived` | `Prices arrived` | First time the planner saw prices for the task's window. |
+| `prices_revised` | `Tomorrow’s prices published` | Nordpool publication — reserved for fresher horizons, not internal replans. Typographic apostrophe (U+2019) per the smart-task UI's typography convention. |
+| `schedule_revised` | `Schedule revised` | Internal replan changed which hours run (budget/risk/expansion). |
+| `rate_refined` | `Rate estimate refined` | Learned delivery rate adjusted the plan length. |
+| `objective_changed` | `Smart task settings changed` | User edited target / deadline / device. |
+| `device_unavailable` | `Device was unreachable` | Names the *event the recorder saw* — a single SDK read miss per `feedback_homey_sdk_unreliable`, not a sustained offline state. |
+| `measured_deviation` | `Measured rate differed from plan` | Names the cause-effect; "rate updated" was rejected as ambiguous. |
+| `flow_permission_changed` | `Flow changed what this smart task may do` | Rescue permission toggle (e.g. exempt-from-budget). |
+
+Fallback for an unmapped reason code: `Plan refreshed`. Used only when the recorder ships a code the resolver hasn't learned about — treat its appearance in prod as a copy-update prompt, not a user-facing default state.
+
+Hour-diff chip wording: `+Nh` (added), `−Nh` (dropped, U+2212 MINUS SIGN to match the typographic minus used by post-finalization rows and cost-meta lines). Both omitted when a revision only redistributed kWh across the same hours.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector
