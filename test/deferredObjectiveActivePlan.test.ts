@@ -440,6 +440,72 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.latest?.reason).toBe('prices_arrived');
   });
 
+  it('logs each replan into a most-recent-first history capped at 20 entries', () => {
+    // Persistence contract for batch 4's smart-task revision history panel:
+    // every revision write prepends the prior `latest` onto the `history`
+    // array (so head === "previous-to-latest"). 20 covers any realistic
+    // task lifecycle (single-digit replans typical); we slice past the cap
+    // to keep the persisted blob bounded. Legacy persisted plans without
+    // a `history` field load as undefined and start populating on next
+    // replan — tested separately in `accepts legacy persisted plans
+    // without a history field` below.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First revision — no history yet.
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.history).toBeUndefined();
+
+    // Drive 25 objective-changed replans by varying the target temperature
+    // each cycle — that forces an unconditional revision write regardless
+    // of the merge / committed-replan logic, which is what we want for a
+    // pure history-mechanism test (no entanglement with batch 1+2's
+    // expansion / commitment-preservation semantics).
+    for (let cycle = 1; cycle <= 25; cycle += 1) {
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 30 * HOUR_MS,
+        targetTemperatureC: 60 + cycle,
+        horizonPlan: makeHorizon([
+          makeBucket((1 + cycle) * HOUR_MS, 1.5),
+        ]),
+      })], (1 + cycle) * HOUR_MS);
+    }
+
+    const plan = recorder.getPlanForTests('dev');
+    // History is capped at 20 entries, most-recent first.
+    expect(plan?.history).toHaveLength(20);
+    // Head of history is the revision immediately before `latest`.
+    expect(plan?.history?.[0]?.revision).toBe((plan?.latest?.revision ?? 0) - 1);
+    // Tail of history is the oldest preserved revision (FIFO prune of older).
+    expect(plan?.history?.at(-1)?.revision)
+      .toBe((plan?.latest?.revision ?? 0) - 20);
+    // Order is strictly descending by revision number.
+    const revisions = plan?.history?.map((h) => h.revision) ?? [];
+    for (let i = 0; i < revisions.length - 1; i += 1) {
+      expect(revisions[i]).toBeGreaterThan(revisions[i + 1]!);
+    }
+  });
+
+  it('does not grow history when a cycle produces no new revision', () => {
+    // The history log advances only when `maybeWriteReplanRevision`
+    // actually writes a new revision. Cycles that produce identical
+    // diagnostics (or sub-threshold drift) must not push duplicate entries
+    // — the per-cycle 30 s cadence would otherwise blow through the cap
+    // in under 11 minutes on a stable task.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
+    // Drive 10 identical observations — none should produce a revision write.
+    for (let cycle = 1; cycle <= 10; cycle += 1) {
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], (1 + cycle) * HOUR_MS);
+    }
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.revision).toBe(1);
+    expect(plan?.history).toBeUndefined();
+  });
+
   it('does not write a new revision when subsequent cycles produce identical hours', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -2118,6 +2184,53 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('rate_refined');
       expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('learned');
+    });
+
+    it('accepts a persisted plan with a non-empty revision history', () => {
+      const historyEntry = {
+        ...baseRevision,
+        revision: 2,
+        revisedAtMs: 2 * HOUR_MS,
+        reason: 'schedule_revised',
+      };
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: { ...basePlan({ revision: 3, reason: 'schedule_revised' }), history: [historyEntry] },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.history).toHaveLength(1);
+      expect(normalized.plansByDeviceId.dev?.history?.[0]?.revision).toBe(2);
+    });
+
+    it('accepts legacy persisted plans without a history field (treated as absent)', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card' }), // no `history` key
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeDefined();
+      expect(normalized.plansByDeviceId.dev?.history).toBeUndefined();
+    });
+
+    it('rejects a persisted plan whose history contains a malformed revision', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            history: [
+              { ...baseRevision, reason: 'schedule_revised' }, // valid
+              { foo: 'bar' }, // garbage — must drop the whole plan
+            ],
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
     });
 
     it('preserves a schedule_revised revision through the validator', () => {

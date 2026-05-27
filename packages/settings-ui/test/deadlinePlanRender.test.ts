@@ -211,6 +211,7 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     extraPermissionsValue: null,
     provenanceRows: [],
   },
+  revisionLog: [],
 });
 
 describe('DeadlinePlan loading skeleton', () => {
@@ -250,5 +251,49 @@ describe('DeadlinePlan live-hero recourse button', () => {
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
     expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
+  });
+});
+
+describe('DeadlinePlan revision history panel', () => {
+  it('suppresses the panel when the revisionLog has fewer than 2 rows', () => {
+    // A brand-new task whose only revision is `latest` would render a single
+    // row narrating the current plan — redundant with the already-rendered
+    // hero/timeline. The view short-circuits in that case so the page shape
+    // is unchanged for the common single-revision case.
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', hourDiff: null },
+    ];
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    expect(mount.querySelector('.plan-revision-panel')).toBeNull();
+  });
+
+  it('renders a collapsed `<details>` panel with most-recent-first rows when 2+ revisions exist', () => {
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      { revision: 3, timeLabel: '15:42', reason: 'Schedule revised', hourDiff: '+1h' },
+      { revision: 2, timeLabel: '15:00', reason: 'Prices arrived', hourDiff: '−1h' },
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', hourDiff: null },
+    ];
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+
+    const panel = mount.querySelector<HTMLDetailsElement>('.plan-revision-panel');
+    expect(panel).not.toBeNull();
+    // Default-collapsed per the m3 design call.
+    expect(panel?.open).toBe(false);
+    // Summary surfaces the count so users can decide whether to expand.
+    expect(panel?.querySelector('.section-hint')?.textContent).toBe('3 revisions');
+    // Most-recent first; head row carries the latest reason and its hour-diff.
+    const rows = Array.from(mount.querySelectorAll<HTMLElement>('.plan-revision-row'));
+    expect(rows.map((r) => r.querySelector('.plan-revision-reason')?.textContent)).toEqual([
+      'Schedule revised',
+      'Prices arrived',
+      'Updated by a Flow card',
+    ]);
+    expect(rows[0]?.querySelector('.plan-revision-diff')?.textContent).toBe('+1h');
+    // The oldest row (no prior to diff against) suppresses the diff chip.
+    expect(rows[2]?.querySelector('.plan-revision-diff')).toBeNull();
   });
 });

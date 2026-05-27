@@ -67,6 +67,7 @@ const buildPlanInputsPayloadWithFreshnessRow = (params: {
       },
     ],
   },
+  revisionLog: [],
 });
 
 const findProvenanceRowValue = (mount: HTMLElement, label: string): string | null => {
@@ -239,6 +240,7 @@ describe('DeadlinePlan plan-inputs freshness tick', () => {
           extraPermissionsValue: null,
           provenanceRows: [{ label: 'Source', value: 'Starting estimate', tone: null }],
         },
+        revisionLog: [],
       };
       render(h(PlanInputsCard, { payload }), mount);
       await flushEffects();

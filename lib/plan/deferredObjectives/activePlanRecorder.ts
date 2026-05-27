@@ -320,6 +320,15 @@ const shouldWriteReplanRevision = (params: {
     || params.metadataDriftedWithinSchedule || params.sourceChanged
 );
 
+// Bounded most-recent-first log of past revisions kept on the active plan
+// record so the smart-task detail page can render a revision-history panel
+// without re-fetching anything. Each replan prepends the previous `latest`
+// onto the array and slices to this cap (FIFO prune). 20 covers any
+// realistic smart-task lifecycle — schedule-changing replans are typically
+// single-digit per task — while keeping per-device persistence under ~10 KB
+// even on a chatty device.
+const MAX_HISTORY_REVISIONS = 20;
+
 // `objectiveChanged` discards the previous commitment entirely and seeds a
 // fresh one from the live `hours`. `scheduleChanged` (e.g. phase-2
 // expansion grew the commitment) advances `committedAtMs` and persists the
@@ -678,6 +687,10 @@ export class DeferredObjectiveActivePlanRecorder {
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       ...toPersistedPlanLevelDurationFields(snapshot),
       latest: revision,
+      // Prepend the prior `latest` onto the history log, FIFO-pruned to the
+      // cap so the persisted blob stays bounded. The head of the array is
+      // always "the revision immediately before the current `latest`."
+      history: [latest, ...(current.history ?? [])].slice(0, MAX_HISTORY_REVISIONS),
     };
     this.dirty = true;
     this.emit({

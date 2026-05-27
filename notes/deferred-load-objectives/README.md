@@ -244,6 +244,19 @@ the record. This is what makes the plan stable: the runtime can re-evaluate ever
 only listed triggers produce a new revision, and committed hours remain the execution source
 until the user clears/replaces the objective or the deadline passes.
 
+**Revision history (`history[]`).** Each replan that writes a new `latest` revision also
+prepends the prior `latest` onto a bounded `history[]` array, FIFO-pruned to
+`MAX_HISTORY_REVISIONS = 20` entries (in `activePlanRecorder.ts`). The head of the array is
+always the revision immediately before the current `latest`. The cap covers any realistic
+smart-task lifecycle — schedule-changing replans are typically single-digit per task — while
+keeping per-device persistence under ~10 KB even on a chatty device. Legacy persisted plans
+without the field load as if the array were empty and start populating on the next replan;
+the settings-UI revision panel hides itself when the array is empty or absent. The shared
+helper `buildActivePlanRevisionLog` (`packages/shared-domain/src/activePlanRevisionLog.ts`)
+turns `latest` + `history` into the most-recent-first row list the inline `<details>` panel
+on the smart-task detail page renders; the same row shape is reused on the post-finalization
+history-detail page via the `.plan-revision-*` CSS classes.
+
 Records are dropped automatically when:
 - The deadline passes (the history recorder records the outcome from its own observation).
 - The diagnostic stops appearing for the device (objective was disabled, device removed,

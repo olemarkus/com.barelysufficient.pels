@@ -1839,12 +1839,40 @@ md-filled-button.is-busy {
   margin-top: 0;
 }
 
+/* Inline revision-history `<details>` panel rendered on the smart-task
+ * detail page (live plan). Default-collapsed; the `<summary>` row carries the
+ * title + count and opens the embedded `.plan-revision-log`. Shares the row
+ * styles with the post-finalization history-detail page so both surfaces
+ * look identical when narrating the same revision shape. */
+.plan-revision-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.plan-revision-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
+  /* 48 px touch target per M3 — padding + the title line-height combine to
+   * land at the spec minimum on the 320–480 px mobile WebView. */
+  min-height: 48px;
+  padding: var(--spacing-1) 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.plan-revision-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
 /* Per-revision log card on the smart-task history detail page (v2.7.2 PR 5).
  * One row per replan; the producer (`formatPlanHistoryRevisionEntry`) resolves
  * the visible strings so the view layer only positions them. Rows stack
  * vertically; on the 320–480 px target widths the time/reason/diff segments
  * sit on one line whenever they fit and wrap onto the next line otherwise. */
-.plan-history-detail__revision-log {
+.plan-revision-log {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1853,7 +1881,7 @@ md-filled-button.is-busy {
   gap: var(--spacing-1);
 }
 
-.plan-history-detail__revision-row {
+.plan-revision-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -1863,7 +1891,7 @@ md-filled-button.is-busy {
   border-radius: var(--radius-sm);
 }
 
-.plan-history-detail__revision-time {
+.plan-revision-time {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
   /* Keep the leading time slot a stable width so reasons line up across rows.
@@ -1872,7 +1900,7 @@ md-filled-button.is-busy {
   min-width: 5ch;
 }
 
-.plan-history-detail__revision-reason {
+.plan-revision-reason {
   color: var(--pels-text-primary);
   /* Allow the reason to absorb remaining row width so the hour-diff chip
    * lands flush-right on wide rows; on narrow widths the diff still wraps
@@ -1881,7 +1909,7 @@ md-filled-button.is-busy {
   min-width: 0;
 }
 
-.plan-history-detail__revision-diff {
+.plan-revision-diff {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
