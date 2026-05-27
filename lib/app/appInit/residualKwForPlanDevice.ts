@@ -1,25 +1,36 @@
 /**
- * Producer-side wiring for `PlanInputDevice.residualKw` (chunk 3 of the
+ * Producer-side wiring for `PlanInputDevice.residualKw` (chunks 3-4 of the
  * planner-detype refactor). `toPlanDevice` in `../appInit.ts` calls
  * `buildResidualKwForPlanDevice`, which adapts a `TargetDeviceSnapshot` to
- * the structural input shape consumed by `resolveResidualKwShed` in
+ * the structural input shapes consumed by `resolveResidualKwShed` (chunk 3)
+ * and `resolveResidualKwRestore` (chunk 4) in
  * `lib/device/deviceResidualKw.ts`.
  *
- * Currently exposes only `.shed`; chunks 4-6 will layer `restore` (and
- * possibly `keep`) onto the same field. The consumer in
- * `lib/plan/planRemainingSheddableLoad.ts` reads `.shed` after its flat
+ * Exposes `.shed` (chunk 3) and `.restore` (chunk 4). Future chunks may layer
+ * `keep` onto the same field. The consumers in
+ * `lib/plan/planRemainingSheddableLoad.ts` (shed) and
+ * `lib/plan/restore/accounting.ts` (restore) read these after their flat
  * plan-cycle gates instead of branching on the device's discriminated-union
  * kind.
+ *
+ * The restore wiring funnels the observer-resolved `getRestoreDrawKw`
+ * fallback into the producer so the producer module stays free of
+ * `lib/observer/**` (enforced by the `no-device-residual-kw-to-plan`
+ * dep-cruiser rule).
  */
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import {
+  resolveResidualKwRestore,
   resolveResidualKwShed,
+  type ResidualKwRestorePowerSource,
+  type ResidualKwRestoreSteppedDevice,
   type ResidualKwShedBehavior,
   type ResidualKwShedSteppedDevice,
   type ResidualKwShedTemperatureTarget,
 } from '../../device/deviceResidualKw';
 import { isDeviceObservationStale } from '../../observer/observationFreshness';
-import { getCurrentDrawKw } from '../../observer/observedPower';
+import { getCurrentDrawKw, getRestoreDrawKw } from '../../observer/observedPower';
+import { resolveObservedCurrentState } from '../../observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
@@ -37,7 +48,7 @@ export function buildResidualKwForPlanDevice(params: {
   device: TargetDeviceSnapshot;
   hasBinaryControl: boolean;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
-}): { shed: number } {
+}): { shed: number; restore: { kw: number; source: ResidualKwRestorePowerSource } } {
   const { device, hasBinaryControl, shedBehavior } = params;
   const observationStale = isDeviceObservationStale(device);
   const currentDrawKw = getCurrentDrawKw({
@@ -52,7 +63,44 @@ export function buildResidualKwForPlanDevice(params: {
     },
     shedBehavior: toResidualShedBehavior(shedBehavior),
   });
-  return { shed };
+  const restore = resolveResidualKwRestore({
+    steppedLoad: toRestoreSteppedLoad(device, hasBinaryControl, observationStale),
+    restoreFallback: getRestoreDrawKw(device),
+  });
+  return { shed, restore };
+}
+
+function toRestoreSteppedLoad(
+  device: TargetDeviceSnapshot,
+  hasBinaryControl: boolean,
+  observationStale: boolean,
+): ResidualKwRestoreSteppedDevice | undefined {
+  if (
+    device.controlModel !== 'stepped_load'
+    || !device.steppedLoadProfile
+    || device.steppedLoadProfile.model !== 'stepped_load'
+  ) {
+    return undefined;
+  }
+  // Mirrors `dev.currentState !== 'off'` in the legacy
+  // `resolveSteppedRestorePower` chain. `currentState` is observer-resolved,
+  // so the wiring layer computes the same projection here and funnels the
+  // resolved boolean into the producer.
+  const currentState = resolveObservedCurrentState({
+    currentOn: device.currentOn,
+    hasBinaryControl,
+    observationStale,
+    controlModel: device.controlModel,
+    steppedLoadProfile: device.steppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+  });
+  return {
+    profile: device.steppedLoadProfile,
+    currentStateIsOff: currentState === 'off',
+    ...(typeof device.planningPowerKw === 'number' && Number.isFinite(device.planningPowerKw)
+      ? { planningPowerKw: device.planningPowerKw }
+      : {}),
+  };
 }
 
 function toResidualShedBehavior(

@@ -394,6 +394,49 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Chunk 6 — consolidate restore-power source-label union into a shared
+      type.** `RestorePowerSource` is duplicated structurally in three
+      places: `lib/observer/observedPower.ts:11` (`ExpectedPowerSource`),
+      `lib/device/deviceResidualKw.ts:260` (`ResidualKwRestorePowerSource`,
+      marked "mirrored"), and inline at `lib/plan/planTypes.ts:124,268` on
+      `PlanInputDevice` / `DevicePlanDevice`. The `no-device-residual-kw-to-plan`
+      dep-cruiser rule prevents the producer from importing the observer's
+      type directly. Chunk 6 should host the type in `packages/shared-domain/`
+      or `lib/utils/` so all four sites import from one home; until then a
+      seventh source label would have to be touched in lockstep.
+      Source: pels-runtime-reality + pels-layering-guardian reviews of
+      PR #1191, 2026-05-27.
+
+- [ ] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
+      strictness delta.** `lib/device/deviceResidualKw.ts` (`resolveResidualKwRestore`)
+      uses `isFiniteNumber(planningPowerKw)` where the legacy
+      `lib/plan/restore/accounting.ts:resolveSteppedRestorePower` uses
+      `typeof dev.planningPowerKw === 'number'`. The only delta is `±Infinity`
+      (legacy: accept; producer: reject). Snapshots never produce `Infinity`,
+      so the cascade-parity test still passes, but the chunk-4a doc-block
+      claims "byte-for-byte" preservation. Chunk 6: tighten the legacy guard
+      to `isFiniteNumber` so both paths agree, or remove the "byte-for-byte"
+      claim. Source: pels-layering-guardian review of PR #1191, 2026-05-27.
+
+- [ ] **Before chunk 6 — expand restore-accounting cascade-parity test
+      coverage.** `test/restoreAccountingParity.test.ts` exercises path-1
+      (stepped+on, source `'planning'`) and path-3 (binary off, fallback to
+      `getRestoreDrawKw`). It does not cover the path-2 → path-3 fall-through
+      where a stepped device is observed-off AND
+      `getSteppedLoadRestoreStep` returns a step with `planningPowerW === 0`
+      (or `null`), nor the stepped-with-`selectedStepId`-absent case. Both
+      producer and legacy return the fallback for these cases, but adding
+      fixtures hardens the test against future producer drift before chunk 6
+      removes the legacy fallback. Source: pels-runtime-reality + pels-layering-guardian
+      reviews of PR #1191, 2026-05-27.
+
+- [ ] **Chunk 6 — rename `pickStepCalibrationFields` →
+      `pickPropagatedPlanFields`.** `lib/plan/planDevices.ts:467` now
+      propagates `residualKw` in addition to step-calibration fields; the
+      helper's original name is misleading. Either rename, or split the
+      spread inline. Source: pels-layering-guardian review of PR #1191,
+      2026-05-27.
+
 - [ ] **Before chunk 6 — expand cascade-parity test in
       `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test
       covers a happy-path 3-device mix (simple-on, stepped-max with binary,

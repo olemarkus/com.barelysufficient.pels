@@ -465,13 +465,20 @@ function buildBasePlanDevice(params: {
 }
 
 function pickStepCalibrationFields(
-  dev: Pick<PlanInputDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>,
-): Partial<Pick<DevicePlanDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>> {
+  dev: Pick<
+    PlanInputDevice,
+    'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+  >,
+): Partial<Pick<
+  DevicePlanDevice,
+  'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+>> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
     ...(dev.hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep: dev.hasRecentObservedDrawAtSelectedStep }
       : {}),
+    ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
   };
 }
 function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {

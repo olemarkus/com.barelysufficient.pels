@@ -112,6 +112,22 @@ export type DevicePlanDevice = {
   pendingTargetCommand?: PendingTargetCommandSummary;
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
   hasRecentObservedDrawAtSelectedStep?: boolean;
+  /**
+   * Producer-resolved residual-kW projection propagated from
+   * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the
+   * planner-detype refactor). Consumers in
+   * `lib/plan/planRemainingSheddableLoad.ts` (chunk 3) and
+   * `lib/plan/restore/accounting.ts` (chunk 4) read this after the flat
+   * plan-cycle gates. See the corresponding doc-block on `PlanInputDevice`
+   * for field semantics.
+   */
+  residualKw?: {
+    shed: number;
+    restore?: {
+      kw: number;
+      source: 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'fallback';
+    };
+  };
 };
 
 export type DevicePlan = {
@@ -226,17 +242,35 @@ export type PlanInputDevice = {
    */
   boostActive?: boolean;
   /**
-   * Producer-resolved residual-kW projection (chunk 3 of the planner-detype
-   * refactor). `shed` is the observable kW the configured shed behavior would
-   * remove if applied right now (post-kind-switch). Consumers in
-   * `lib/plan/planRemainingSheddableLoad.ts` read this directly after the
-   * flat plan-cycle gates instead of branching on the device's discriminated-
-   * union kind. Optional for the duration of the dual-read transition; chunk
-   * 6 makes it required. Future chunks layer `restore` (chunk 4) and
-   * potentially `keep` (chunk 5) on this same field.
+   * Producer-resolved residual-kW projection (chunks 3-4 of the planner-
+   * detype refactor).
+   *
+   * - `shed` (chunk 3): the observable kW the configured shed behavior would
+   *   remove if applied right now (post-kind-switch). Consumers in
+   *   `lib/plan/planRemainingSheddableLoad.ts` read this directly after the
+   *   flat plan-cycle gates instead of branching on the device's
+   *   discriminated-union kind.
+   * - `restore` (chunk 4): the kW the consumer would add by restoring this
+   *   device. Collapses the `isSteppedLoadDevice + getSteppedLoadRestoreStep`
+   *   chain in `lib/plan/restore/accounting.ts` into a single `{ kw, source }`
+   *   pair. The `source` label preserves the legacy debug-log vocabulary
+   *   (`'measured' | 'expected' | 'planning' | 'configured' | 'stepped' |
+   *   'fallback'`). The producer keeps the stepped-vs-binary asymmetry
+   *   intact: stepped+on uses live `planningPowerKw` (source `'planning'`),
+   *   stepped+off uses the lowest-active step from the profile (source
+   *   `'stepped'`), everything else falls back to the observer's
+   *   `getRestoreDrawKw` (sources `'measured'` / `'expected'` / `'planning'`
+   *   / `'configured'` / `'fallback'`).
+   *
+   * Both fields are optional for the duration of the dual-read transition;
+   * chunk 6 makes them required.
    */
   residualKw?: {
     shed: number;
+    restore?: {
+      kw: number;
+      source: 'measured' | 'expected' | 'planning' | 'configured' | 'stepped' | 'fallback';
+    };
   };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
