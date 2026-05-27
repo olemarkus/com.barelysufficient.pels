@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { ActivePlanRevisionLogRow } from '../../../../shared-domain/src/activePlanRevisionLog.ts';
 import {
   deadlineLabels,
   formatLastSampleValue,
@@ -142,6 +143,16 @@ export type DeadlinePlanPayload = {
     // Empty array when no provenance is available.
     provenanceRows: KwhPerUnitProvenanceRow[];
   };
+  // Resolved most-recent-first revision-log rows for the inline "Revision
+  // history" `<details>` panel. The producer (`deadlinePlan.ts`) computes
+  // these from the active plan's `latest` + `history` via
+  // `buildActivePlanRevisionLog`. Empty array suppresses the entire panel —
+  // happens on the first-revision case (head row alone is redundant with the
+  // already-rendered hero/timeline) and on legacy persisted plans without a
+  // `history` field. Sharing the row shape with the post-finalization log
+  // (`.plan-revision-row` CSS) keeps the visual binding identical across
+  // both surfaces.
+  revisionLog: ActivePlanRevisionLogRow[];
 };
 
 export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
@@ -1125,8 +1136,41 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <DeadlineHero payload={loadState.payload} />
       <HorizonCard payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
+      <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
     </>
+  );
+};
+
+// Inline "what changed" panel rendered below the plan inputs and above the
+// prior-runs history. Default-collapsed `<details>` per the m3-critic
+// recommendation — keeps the at-rest page shape unchanged for the common case
+// (most users won't open it), surfaces the revision narrative on tap for
+// power users investigating why the plan looks the way it does. Suppressed
+// entirely when there are fewer than two revisions worth showing (a brand-new
+// task whose only revision is `latest` would render a single redundant row).
+const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => {
+  if (payload.revisionLog.length < 2) return null;
+  return (
+    <section class="pels-surface-card budget-redesign-card">
+      <details class="plan-revision-panel">
+        <summary class="plan-revision-panel__summary">
+          <span class="plan-card__title">Revision history</span>
+          <small class="section-hint">{`${payload.revisionLog.length} revisions`}</small>
+        </summary>
+        <ol class="plan-revision-log">
+          {payload.revisionLog.map((row) => (
+            <li key={`${row.revision}-${row.timeLabel}`} class="plan-revision-row">
+              <span class="plan-revision-time">{row.timeLabel}</span>
+              <span class="plan-revision-reason">{row.reason}</span>
+              {row.hourDiff !== null && (
+                <span class="plan-revision-diff">{row.hourDiff}</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </details>
+    </section>
   );
 };
 

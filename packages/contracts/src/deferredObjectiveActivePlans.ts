@@ -216,6 +216,15 @@ export type DeferredObjectiveActivePlanV1 = {
   commitment?: DeferredObjectiveActivePlanCommitmentV1;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
+  // Bounded, most-recent-first log of past revisions, capped at
+  // `MAX_HISTORY_REVISIONS` entries in the recorder. The first element is the
+  // revision that landed *before* `latest` (so the head is always "previous
+  // commit"); `original` may also appear here once the task has lived past
+  // its first revision. Optional for backward compatibility: legacy persisted
+  // plans without the field load as if the history were empty, and the
+  // recorder starts logging on the next replan. The UI's revision panel hides
+  // itself when the array is empty or absent.
+  history?: DeferredObjectiveActivePlanRevisionV1[];
 };
 
 export type DeferredObjectiveActivePlansV1 = {

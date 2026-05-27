@@ -918,17 +918,17 @@ const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
     <div class="budget-card-header">
       <h2 class="plan-card__title">What changed</h2>
     </div>
-    <ol class="plan-history-detail__revision-log">
+    <ol class="plan-revision-log">
       {rows.map((row) => (
         // `atMs` is the recorder-issued timestamp at which the revision was
         // written; revisions are at-most-one-per-replan and the recorder
         // guarantees monotonic ordering, so this is a stable per-row key
         // without us inventing a synthetic id field on the contract.
-        <li key={row.atMs} class="plan-history-detail__revision-row">
-          <span class="plan-history-detail__revision-time">{row.timeLabel}</span>
-          <span class="plan-history-detail__revision-reason">{row.reason}</span>
+        <li key={row.atMs} class="plan-revision-row">
+          <span class="plan-revision-time">{row.timeLabel}</span>
+          <span class="plan-revision-reason">{row.reason}</span>
           {row.hourDiff !== null && (
-            <span class="plan-history-detail__revision-diff">{row.hourDiff}</span>
+            <span class="plan-revision-diff">{row.hourDiff}</span>
           )}
         </li>
       ))}

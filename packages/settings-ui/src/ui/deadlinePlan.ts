@@ -26,6 +26,8 @@ import {
   resolvePendingPriceContext,
   resolvePendingReason,
 } from './deadlinePlanPending.ts';
+import { buildActivePlanRevisionLog } from '../../../shared-domain/src/activePlanRevisionLog.ts';
+import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from './priceUnit.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import {
@@ -533,6 +535,17 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       planningSpeedKw,
       nowMs,
       ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
+    }),
+    // Inline revision-log panel feed. Empty when there is no `history` array
+    // (legacy persisted plan, or a brand-new task whose first revision is
+    // still the only one — the head row would be redundant with the already-
+    // rendered hero/timeline). The view's `<RevisionHistoryPanel>` short-
+    // circuits its `<details>` block on the empty case.
+    revisionLog: buildActivePlanRevisionLog({
+      latest,
+      history: activePlan!.history,
+      timeZone: resolveBrowserTimeZone(),
+      kind: objective.kind,
     }),
   };
 };
