@@ -1,7 +1,7 @@
 /**
  * Cascade parity test for chunk 4 of the planner-detype refactor.
  *
- * Walks 4 representative devices through `estimateRestorePower` and
+ * Walks representative devices through `estimateRestorePower` and
  * `computeBaseRestoreNeed` in two passes:
  *   1. Legacy pass — fixtures built without `residualKw.restore`. The
  *      `resolveSteppedRestorePower + getRestoreDrawKw` chain in
@@ -14,6 +14,18 @@
  * `computeBaseRestoreNeed` totals must match to the watt across both passes.
  * If chunk 6 deletes the legacy branch and the producer drifts, this test
  * fires.
+ *
+ * Edge-case coverage closes TODO §"Before chunk 6 — expand restore-accounting
+ * cascade-parity test coverage." (2026-05-27):
+ *  - (a) stepped, `hasBinaryControl: false`, already at lowest active step
+ *        (path-2 → path-3 fall-through with `restoreStep.planningPowerW === 0`
+ *        when the profile lowest-active step has no positive planning kW).
+ *  - (b) stepped, `selectedStepId` absent and `hasKnownEffectiveStep === false`
+ *        (measured-power fallback via path-3 `getRestoreDrawKw`).
+ *  - (c) stepped, `selectedStepId` absent but `hasKnownEffectiveStep === true`
+ *        (one of `reportedStepId` / `actualStepId` / `assumedStepId` set).
+ *  - (d) temperature device with `currentValue == normalized shedTemperature`
+ *        (no-op shed case; restore-side parity unaffected by shed semantics).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -22,11 +34,29 @@ import {
   resolveRestorePowerSource,
 } from '../lib/plan/restore/accounting';
 import type { DevicePlanDevice } from '../lib/plan/planTypes';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
   resolveResidualKwRestore,
 } from '../lib/device/deviceResidualKw';
 import { getRestoreDrawKw } from '../lib/observer/observedPower';
 import { steppedProfile, buildPlanDevice } from './utils/planTestUtils';
+
+// A degenerate stepped profile whose every step has `planningPowerW <= 0`.
+// `getSteppedLoadRestoreStep` falls back to `getSteppedLoadHighestStep` and
+// returns a step whose `planningPowerW === 0`, which fails the
+// `restoreStep.planningPowerW > 0` guard in both the producer
+// (`resolveSteppedResidualKwRestore`) and the legacy chain
+// (`resolveSteppedRestorePower`) — both fall through to path-3
+// (`getRestoreDrawKw`). Used by edge case (a) to pin parity through that
+// fall-through.
+const zeroPowerSteppedProfile: SteppedLoadProfile = {
+  model: 'stepped_load',
+  steps: [
+    { id: 'off', planningPowerW: 0 },
+    { id: 'low', planningPowerW: 0 },
+    { id: 'high', planningPowerW: 0 },
+  ],
+};
 
 function withProducerResolvedRestore(dev: DevicePlanDevice): DevicePlanDevice {
   // Mirror the wiring in `lib/app/appInit/residualKwForPlanDevice.ts`. The
@@ -96,7 +126,76 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     planningPowerKw: 0,
   });
 
-  const fixtures = [deviceA, deviceB, deviceC, deviceD] as const;
+  // Edge-case fixtures added 2026-05-27 to harden cascade-parity coverage
+  // before chunk 6 removes the legacy fallback.
+  //
+  // (a) Stepped device, `hasBinaryControl: false`, already at lowest active
+  //     step. Profile has every step at planningPowerW = 0, so
+  //     `getSteppedLoadRestoreStep` returns a zero-power step which fails the
+  //     `> 0` guard. Both legacy and producer fall through to path-3
+  //     `getRestoreDrawKw`, which (with no measured/expected/planning kW)
+  //     returns the generic 1.0 kW fallback.
+  const deviceE = buildPlanDevice({
+    id: 'E-stepped-lowest-no-binary',
+    name: 'Stepped lowest no-binary',
+    currentOn: false,
+    currentState: 'off',
+    controlModel: 'stepped_load',
+    steppedLoadProfile: zeroPowerSteppedProfile,
+    selectedStepId: 'low',
+    hasBinaryControl: false,
+    planningPowerKw: 0,
+  });
+  // (b) Stepped device with `selectedStepId` absent and
+  //     `hasKnownEffectiveStep === false`. With no reported / actual / assumed
+  //     step set, both paths see no positive planning kW and the legacy chain's
+  //     `dev.currentState !== 'off' && planningPowerKw > 0` branch fails. The
+  //     profile's lowest-active step is still positive, so both legacy and
+  //     producer take path-2 (source `'stepped'`, kw from lowest-active step).
+  const deviceF = buildPlanDevice({
+    id: 'F-stepped-step-absent-unknown',
+    name: 'Stepped unknown step',
+    currentOn: true,
+    currentState: 'on',
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    measuredPowerKw: 1.1,
+  });
+  // (c) Stepped device with `selectedStepId` absent but
+  //     `hasKnownEffectiveStep === true` via `reportedStepId`. The legacy
+  //     `resolveSteppedRestorePower` doesn't look at reported/actual/assumed;
+  //     it gates on `planningPowerKw` (live planning kW). Without a positive
+  //     `planningPowerKw`, both paths still take path-2 (source `'stepped'`).
+  //     This pins that the producer's `hasKnownEffectiveStep` flag does not
+  //     accidentally change the restore-side resolution.
+  const deviceG = buildPlanDevice({
+    id: 'G-stepped-reported',
+    name: 'Stepped reported only',
+    currentOn: true,
+    currentState: 'on',
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    reportedStepId: 'medium',
+    measuredPowerKw: 2.05,
+  });
+  // (d) Temperature device with `currentValue == normalized shedTemperature`.
+  //     The restore-side code does not consult the temperature target at all
+  //     (shed semantics live on the shed-residual producer); both legacy and
+  //     producer route through path-3 `getRestoreDrawKw` which returns the
+  //     highest of measured/expected/planning/configured.
+  const deviceH = buildPlanDevice({
+    id: 'H-temperature-noop-shed',
+    name: 'Thermostat at shed setpoint',
+    currentOn: true,
+    currentState: 'on',
+    measuredPowerKw: 1.8,
+    expectedPowerKw: 1.8,
+    shedAction: 'set_temperature',
+    shedTemperature: 18,
+    currentTarget: 18,
+  });
+
+  const fixtures = [deviceA, deviceB, deviceC, deviceD, deviceE, deviceF, deviceG, deviceH] as const;
 
   it('estimateRestorePower returns the same number per device across legacy and producer paths', () => {
     for (const dev of fixtures) {
@@ -132,6 +231,18 @@ describe('restore accounting parity — producer vs legacy chain', () => {
       producerTotal += computeBaseRestoreNeed(withProducerResolvedRestore(dev)).needed;
     }
     expect(producerTotal).toBeCloseTo(legacyTotal, 9);
+  });
+
+  // Adversarial guard: each new edge-case fixture must actually exercise
+  // the resolution path we documented in its comment, not just happy-path
+  // equality through the same branch. If a future refactor changes which
+  // branch handles a fixture, this assertion fires.
+  it('edge-case fixtures exercise the intended resolution sources', () => {
+    expect(resolveRestorePowerSource(deviceE)).toBe('fallback');
+    expect(resolveRestorePowerSource(deviceF)).toBe('stepped');
+    expect(resolveRestorePowerSource(deviceG)).toBe('stepped');
+    // Path-3 with measuredPowerKw set returns source 'measured'.
+    expect(resolveRestorePowerSource(deviceH)).toBe('measured');
   });
 
   it('cap-off device (controllable=false) restore residual is unaffected — both paths read the same kW', () => {
