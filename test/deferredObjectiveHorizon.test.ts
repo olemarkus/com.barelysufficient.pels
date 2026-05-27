@@ -214,6 +214,45 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
   });
 
+  it('skips partially-filtered committed hours (sub-epsilon entries) during expansion', () => {
+    // Adversarial-review follow-up (gemini): a commitment whose *some* entries
+    // were sub-epsilon or non-finite would pass the `committedRemainingByHour`
+    // skip check (those filtered hours don't appear in the map) — and
+    // expansion could allocate fresh energy into them, violating the
+    // commitment ceiling of zero for those specific hours. The expansion's
+    // skip set must be built from the raw `committedHours` array, not from
+    // the filtered map.
+    //
+    // Two committed hours: hour 0 has 1 kWh, hour 1 has explicit 0 (the user
+    // earmarked that slot but with zero allocation). Need 2 kWh total. Phase
+    // 1 fills hour 0 with 1 kWh; shortfall is 1 kWh. Phase 2 must NOT
+    // allocate to hour 1 (committed-as-zero); it should fall through to hour
+    // 2 (genuinely uncommitted preferred).
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+        { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 0 },
+      ],
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
   it('does not expand when every committed hour is filtered out (corrupt or sub-epsilon)', () => {
     // Adversarial-review finding: gating expansion on `committedHours.length`
     // would let a commitment whose entries all got filtered out by
