@@ -595,7 +595,7 @@ release, not v2.7.1 merge-blockers.*
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
 
-- [ ] **Chunk 6 — normalize EV-detection across producer helpers.**
+- [x] **Chunk 6 — normalize EV-detection across producer helpers.**
       `lib/device/deviceActionProjection.ts` mixes `controlCapabilityId ===
       'evcharger_charging'` (new helpers) and `deviceClass === 'evcharger'`
       (older `resolveEvBoostActive`). Pre-existing asymmetry that propagated
@@ -603,6 +603,10 @@ release, not v2.7.1 merge-blockers.*
       and route all producer EV gates through it.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-c3-ev-predicate — introduced module-private `isEvDevice`
+      union helper, migrated `resolveEvBoostActive`, `resolveEvCommandableBlock`,
+      `getEvRestoreBlockReason`, and `isEvPhysicallyUnplugged`. No test
+      fixture set only one of the two fields; full suite still green.
 
 - [ ] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
       device deletion.** Both producer-side caches grow unboundedly when
