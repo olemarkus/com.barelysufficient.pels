@@ -35,6 +35,7 @@ import type {
   TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
+import type { CommandableNowGraceEntry } from '../device/deviceActionProjection';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
@@ -183,6 +184,15 @@ export type AppContext = {
   get defaultComputeDynamicSoftLimit(): (() => number) | undefined;
   set defaultComputeDynamicSoftLimit(value: (() => number) | undefined);
   get lastKnownPowerKw(): Record<string, number>;
+  /**
+   * Abandon-grace window state for the producer-resolved `commandableNow`
+   * bit. `toPlanDevice` reads the previous observation per device, applies it
+   * to the resolver as the dual-read fallback, then writes the freshly
+   * resolved value back. Pattern source: `planHistory.ts` ABANDON_GRACE_MS.
+   * Tests that don't populate this default to an empty record; the resolver
+   * treats `undefined` as "no recent observation" (no grace applied).
+   */
+  get lastKnownCommandableByDevice(): Record<string, CommandableNowGraceEntry>;
   get expectedPowerKwOverrides(): Record<string, { kw: number; ts: number }>;
   get lastPositiveMeasuredPowerKw(): Record<string, { kw: number; ts: number }>;
   get lastNotifiedOperatingMode(): string;

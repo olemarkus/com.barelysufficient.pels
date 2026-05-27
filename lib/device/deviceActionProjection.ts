@@ -191,3 +191,191 @@ function resolveCanSetBinaryControl(
   const legacyCanSetOnOff = (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff;
   return snapshot.canSetControl !== false && !(capabilityId === 'onoff' && legacyCanSetOnOff === false);
 }
+
+// =============================================================================
+// Chunk 2 of the planner-detype refactor: resolve commandableNow + boostActive
+// at the producer seam (toPlanDevice) and let consumers consume the resolved
+// bit instead of branching on raw evChargingState / controlCapabilityId /
+// deviceClass / boost-threshold math.
+//
+// Pure helpers: state-dependent inputs (previous boost, abandon-grace window)
+// are passed in explicitly. No closure over runtime singletons.
+// =============================================================================
+
+/**
+ * Grace window during which a missing/empty SDK read is allowed to fall back
+ * to the previously observed commandableNow. Tuned to comfortably exceed the
+ * typical Homey snapshot-refresh cadence (a couple of poll cycles); shorter
+ * than the deferred-objective ABANDON_GRACE_MS because commandability is a
+ * per-cycle decision rather than a multi-hour planning bet.
+ *
+ * Pattern source: `lib/plan/deferredObjectives/planHistory.ts` —
+ * `ABANDON_GRACE_MS`. See `feedback_homey_sdk_unreliable.md` — never drop
+ * persisted state on a single missing read.
+ */
+export const COMMANDABLE_NOW_GRACE_MS = 5 * 60 * 1000;
+
+export type CommandableNowResolveInput = {
+  deviceClass?: string;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  evChargingState?: string;
+  available?: boolean;
+};
+
+export type CommandableNowGraceEntry = {
+  commandableNow: boolean;
+  observedAtMs: number;
+};
+
+export type CommandableNowResolution = {
+  commandableNow: boolean;
+  reason: string | null;
+};
+
+/**
+ * Resolve whether the device is commandable in this cycle.
+ *
+ * Returns:
+ *   - `commandableNow: false` with a reason string when the device is
+ *     physically blocked (EV unplugged / discharging, unavailable, etc.).
+ *   - `commandableNow: true` with `reason: null` when the device accepts
+ *     commands.
+ *
+ * Abandon-grace semantics: if the current SDK read is uncertain (no EV state
+ * available on an EV charger, no controlCapabilityId yet, but we previously
+ * observed a stable commandable answer within the grace window), the prior
+ * observation wins. This protects against single-cycle SDK hiccups where
+ * polling returns an empty payload — see `feedback_homey_sdk_unreliable.md`.
+ *
+ * `previousObservation` carries the most recent producer-resolved answer for
+ * this device (managed in AppContext alongside `lastKnownPowerKw`). `nowMs`
+ * is injected so the helper stays pure and unit-testable.
+ */
+export function resolveCommandableNow(params: {
+  dev: CommandableNowResolveInput;
+  previousObservation?: CommandableNowGraceEntry;
+  nowMs: number;
+}): CommandableNowResolution {
+  const { dev, previousObservation, nowMs } = params;
+
+  const evBlock = resolveEvCommandableBlock(dev);
+  if (evBlock !== null) {
+    // Only uncertain reads (no `evChargingState` from the SDK this cycle)
+    // are eligible for the abandon-grace fallback. A confident negative
+    // (plugged_out / discharging / explicit unknown state) is reported
+    // as-is. Likewise, `available === false` is a confident SDK answer —
+    // not a missing read — so it bypasses grace entirely.
+    if (evBlock.uncertain) {
+      const recent = isWithinGrace(previousObservation, nowMs);
+      if (recent) return { commandableNow: recent.commandableNow, reason: null };
+    }
+    return { commandableNow: false, reason: evBlock.reason };
+  }
+
+  if (dev.available === false) {
+    return { commandableNow: false, reason: 'device unavailable' };
+  }
+
+  return { commandableNow: true, reason: null };
+}
+
+/**
+ * Resolve aggregate boost activation: true if either temperature-boost or
+ * EV-boost policies fire. Producer-side aggregator over the two
+ * domain-specific resolvers added in chunk 1.
+ *
+ * Two-arg form (preferred at the planner call site, which already computed
+ * both booleans for state tracking + transition emission): pass the
+ * resolved temperature/EV booleans directly. Stays pure.
+ */
+export function resolveBoostActive(params: {
+  temperatureBoostActive: boolean;
+  evBoostActive: boolean;
+}): boolean {
+  return params.temperatureBoostActive === true || params.evBoostActive === true;
+}
+
+// -----------------------------------------------------------------------------
+// Dual-read consumer helpers (transitional bridge — removed in chunk 6).
+//
+// While `commandableNow` rolls out, planner consumers should prefer the
+// producer-resolved bit when present and fall back to local resolution when
+// undefined. Tests that build PlanInputDevice shapes manually keep working
+// unchanged via the fallback path; chunk 6 removes the fallback once tests
+// migrate.
+// -----------------------------------------------------------------------------
+
+type CommandableNowConsumerInput = CommandableNowResolveInput & {
+  commandableNow?: boolean;
+  commandableNowReason?: string | null;
+};
+
+export function isCommandableNow(dev: CommandableNowConsumerInput, nowMs: number = Date.now()): boolean {
+  if (dev.commandableNow !== undefined) return dev.commandableNow;
+  return resolveCommandableNow({ dev, nowMs }).commandableNow;
+}
+
+export function getCommandableNowReason(
+  dev: CommandableNowConsumerInput,
+  nowMs: number = Date.now(),
+): string | null {
+  if (dev.commandableNow !== undefined) return dev.commandableNowReason ?? null;
+  return resolveCommandableNow({ dev, nowMs }).reason;
+}
+
+/**
+ * Detects the specific "EV physical block" sub-case that the consumer at
+ * `planOffStateReason.resolveEvPhysicalBlockInactiveReason` cares about:
+ * the device is an EV charger and the plug is out or discharging. Other
+ * not-commandable reasons (e.g. `available === false`) are not physical
+ * EV blocks and stay outside this gate.
+ */
+export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
+  return (
+    dev.controlCapabilityId === 'evcharger_charging'
+    && (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging')
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Internal helpers
+// -----------------------------------------------------------------------------
+
+type EvCommandableBlock = { reason: string; uncertain: boolean };
+
+function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandableBlock | null {
+  // Match the legacy `getEvRestoreBlockReason` gate exactly: only branch on
+  // EV semantics when `controlCapabilityId === 'evcharger_charging'`. The
+  // `deviceClass === 'evcharger'` short-circuit used by `planEvBoost` is a
+  // distinct concern (boost activation, not commandability) and stays in
+  // that resolver. Chunk 6 will normalise the two if a unified gate is
+  // shown to be safe.
+  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
+
+  switch (dev.evChargingState) {
+    case 'plugged_out':
+      return { reason: 'charger is unplugged', uncertain: false };
+    case 'plugged_in_discharging':
+      return { reason: 'charger is discharging', uncertain: false };
+    case 'plugged_in':
+      return { reason: 'charger is not resumable', uncertain: false };
+    case 'plugged_in_paused':
+    case 'plugged_in_charging':
+      return null;
+    case undefined:
+      // No EV state read this cycle — uncertain. Caller may apply the
+      // abandon-grace window.
+      return { reason: 'charger state unknown', uncertain: true };
+    default:
+      return { reason: `unknown charging state '${dev.evChargingState}'`, uncertain: false };
+  }
+}
+
+function isWithinGrace(
+  observation: CommandableNowGraceEntry | undefined,
+  nowMs: number,
+): CommandableNowGraceEntry | null {
+  if (!observation) return null;
+  if (nowMs - observation.observedAtMs > COMMANDABLE_NOW_GRACE_MS) return null;
+  return observation;
+}

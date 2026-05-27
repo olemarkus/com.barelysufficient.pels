@@ -30,6 +30,16 @@ const isShedThrottled = (params: {
 
 export const canTurnOnDevice = (snapshot?: TargetDeviceSnapshot): boolean => {
   if (!snapshot) return false;
+  // NOTE (chunk 2 of the planner-detype refactor): this gate intentionally
+  // stays on `getBinaryControlPlan` + `getEvRestoreBlockReason` rather than
+  // routing through `isCommandableNow`. The blocking gap is the `canSet`
+  // check (`controlPlan.canSet` below — backed by `canSetControl !== false`
+  // and the legacy `canSetOnOff` fallback inside `getBinaryControlPlan`),
+  // which the producer-resolved `commandableNow` bit does not yet replicate.
+  // Migrating here without first lifting `canSet` into the producer would
+  // drop the "device's control capability cannot be set right now" guard
+  // for non-EV devices. Chunk 6 lifts `canSet` into the producer and routes
+  // this gate through `commandableNow`.
   if (snapshot.available === false) return false;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (!controlPlan?.canSet) return false;
