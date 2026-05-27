@@ -88,3 +88,59 @@ export const sameHourSchedule = (
   }
   return true;
 };
+
+// Merge live horizon hours into the existing commitment. Captures two
+// distinct intents at the same call site:
+//
+// **Expansion (live ⊇ committed)** — the planner allocated at least every
+// committed hour plus possibly new ones. This is the phase-2 expansion
+// shape: drift triggered the allocator to add future buckets to the
+// existing commitment. We adopt the live hours wholesale (overlapping
+// hours pick up the live `plannedKWh`, which reflects the latest
+// allocation against current energy need; new live hours grow the
+// commitment). This is the "expansion extends the commitment" path.
+//
+// **Optimizer-disagreement (live ⊉ committed)** — the live allocation is
+// missing one or more committed hours. That is NOT expansion — it's the
+// committed-replan path producing a different set of hours than the
+// commitment (e.g. energy need shrank so phase-1 didn't fill every
+// committed hour; or a fresh re-optimization picked different hours). The
+// commitment is the contract; we preserve it as-is and ignore the live
+// hours that disagree. This preserves the long-standing "committed
+// schedule cannot shrink mid-task and cannot churn from optimizer
+// thrash" invariant.
+//
+// The two intents are distinguished purely by the set inclusion test
+// (`committed.every(h => live has h.startsAtMs)`). When `committed` is
+// empty the check is vacuously true → the live hours become the new
+// commitment, which is exactly what we want for the satisfied-then-drift
+// case (commitment was `[]` because target was already met at task
+// creation; drift triggered expansion; we lay down the expansion hours
+// as the first real commitment).
+export const mergeHoursPreservingCommitment = (
+  committed: readonly DeferredObjectiveActivePlanHourV1[],
+  live: readonly DeferredObjectiveActivePlanHourV1[],
+): DeferredObjectiveActivePlanHourV1[] => {
+  if (committed.length === 0) return [...live];
+  const liveByStart = new Map(live.map((h) => [h.startsAtMs, h] as const));
+  const liveCoversCommitment = committed.every((h) => liveByStart.has(h.startsAtMs));
+  if (!liveCoversCommitment) return [...committed];
+  // Expansion branch: live is a superset of committed. Adopt live as the
+  // shape (which includes any new expansion hours), but for overlapping
+  // hours take `Math.max(committed.plannedKWh, live.plannedKWh)` so the
+  // historical commitment kWh is preserved as a floor. Without this, a
+  // shrinking `energyNeededKWh` would let the allocator's per-cycle
+  // re-fill rewrite a committed hour's cap downward — and the next
+  // cycle's `buildCommittedHourMap` would then enforce the smaller cap,
+  // silently shrinking future delivery against the original contract.
+  const committedByStart = new Map(committed.map((h) => [h.startsAtMs, h] as const));
+  return [...live]
+    .map((liveHour) => {
+      const c = committedByStart.get(liveHour.startsAtMs);
+      if (!c) return liveHour;
+      return c.plannedKWh > liveHour.plannedKWh
+        ? { ...liveHour, plannedKWh: c.plannedKWh }
+        : liveHour;
+    })
+    .sort((left, right) => left.startsAtMs - right.startsAtMs);
+};
