@@ -116,7 +116,7 @@ The **Plan** view shows a selected-day chart and live stats:
 - **Allowed now** or **Budget this hour**: cumulative or hourly kWh that the plan allows up to the current hour.
 - **Remaining**: daily budget minus used (can be negative).
 - **Deviation**: used minus allowed so far (positive means over plan).
-- **Plan confidence**: backtested forecast-skill score - how regular the home's hourly usage is, and how well it follows shifted budget plans when managed load exists.
+- **Budget confidence**: backtested forecast-skill score - how regular the home's hourly usage is, and how well it follows shifted budget plans when managed load exists.
 - **Use cheaper hours**: shows whether price-aware shaping is active.
 - **Plan frozen**: appears while budget-managed load is over plan; exempt devices can leave reporting over plan without freezing the daily plan.
 
