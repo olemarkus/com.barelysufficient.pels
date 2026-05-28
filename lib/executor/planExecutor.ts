@@ -218,7 +218,7 @@ export class PlanExecutor {
         name: string;
         capabilityId: 'onoff' | 'evcharger_charging';
         desired: boolean;
-        logContext: 'capacity' | 'capacity_control_off';
+        logContext: 'capacity' | 'capacity_control_off' | 'release';
         actuationMode: PlanActuationMode;
       }) => this.triggerFlowBackedBinaryControlRequest(params),
     };
@@ -229,7 +229,7 @@ export class PlanExecutor {
     name: string;
     capabilityId: 'onoff' | 'evcharger_charging';
     desired: boolean;
-    logContext: 'capacity' | 'capacity_control_off';
+    logContext: 'capacity' | 'capacity_control_off' | 'release';
     actuationMode: PlanActuationMode;
   }): Promise<void> {
     const { deviceId, capabilityId, desired } = params;
@@ -243,9 +243,8 @@ export class PlanExecutor {
     });
   }
 
-  private recordShedActuation(deviceId: string, name: string, now: number): void {
-    this.state.lastInstabilityMs = now;
-    this.state.lastDeviceShedMs[deviceId] = now;
+  private recordShedActuation(deviceId: string, name: string, now: number, isRelease = false): void {
+    if (!isRelease) { this.state.lastInstabilityMs = now; this.state.lastDeviceShedMs[deviceId] = now; }
     this.recordReleaseShedActuation(deviceId, name, now);
   }
 
@@ -335,7 +334,10 @@ export class PlanExecutor {
       }
 
     } else {
-      this.recordShedActuation(deviceId, liveDevice.name, now);
+      // Flow-backed shed_release confirmations skip the cap-shed markers via
+      // the `pending.logContext === 'release'` discriminator — diagnostic-only
+      // recorder, mirrors `buildBinaryReleaseExecutorContext`.
+      this.recordShedActuation(deviceId, liveDevice.name, now, pending.logContext === 'release');
     }
 
     this.flushLastControlledPersistence();

@@ -7,7 +7,10 @@ import type {
 } from './planTypes';
 
 export type ActivationAttemptSource = 'pels_restore' | 'tracked_step_up';
-export type PendingBinaryLogContext = 'capacity' | 'capacity_control_off';
+// 'release' marks a lifecycle-end shed_release pending entry so
+// `handleConfirmedBinaryCommand` routes through the diagnostic-only release
+// recorder instead of the cap-shed recorder on flow-backed confirmations.
+export type PendingBinaryLogContext = 'capacity' | 'capacity_control_off' | 'release';
 export type PendingBinaryRestoreSource = 'shed_state' | 'current_plan';
 export type PendingBinaryActuationMode = 'plan' | 'reconcile';
 

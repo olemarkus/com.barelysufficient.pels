@@ -38,7 +38,12 @@ export const CLOUD_BINARY_COMMAND_PENDING_MS = 75 * 1000;
 
 export type CommunicationModel = 'local' | 'cloud' | undefined;
 
-export type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off';
+// `release` marks a pending command produced by the lifecycle-end shed_release
+// path (`lib/executor/shedReleaseActuation.ts`). `handleConfirmedBinaryCommand`
+// branches on this to dispatch the release recorder rather than the cap-shed
+// recorder when a flow-backed off-write confirms — otherwise the instability
+// markers bump on what is a planning decision, not a capacity event.
+export type PendingBinaryCommandLogContext = 'capacity' | 'capacity_control_off' | 'release';
 export type PendingBinaryCommandRestoreSource = 'shed_state' | 'current_plan';
 export type PendingBinaryCommandActuationMode = 'plan' | 'reconcile';
 

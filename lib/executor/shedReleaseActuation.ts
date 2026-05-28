@@ -153,9 +153,16 @@ const applyShedReleaseBinaryOff = async (params: {
   // Homey restart, before any snapshot refresh) cannot fire a spurious release write
   // against a never-observed device.
   if (!observed || observed.observedBinaryState !== 'on') return false;
+  // logContext: 'release' propagates into the pending command's metadata so
+  // `handleConfirmedBinaryCommand` can dispatch through the release recorder
+  // when the flow-backed off-write later confirms. For direct (non-flow-backed)
+  // writes the swapped context's recordShedActuation handles it inline; the
+  // logContext is still set so future cap-shed-only callers don't have to
+  // discriminate.
   return applyBinarySheddingToDevice(deps.buildBinaryExecutorContext(), {
     deviceId: intent.deviceId,
     deviceName: intent.name,
+    logContext: 'release',
   });
 };
 

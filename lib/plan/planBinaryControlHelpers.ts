@@ -13,7 +13,7 @@ const logger = getLogger('plan/binary-helpers');
 // plan-internal consumers that already imported it from this module.
 export type { BinaryControlPlan };
 
-export type BinaryControlLogContext = 'capacity' | 'capacity_control_off';
+export type BinaryControlLogContext = 'capacity' | 'capacity_control_off' | 'release';
 export type BinaryControlRestoreSource = 'shed_state' | 'current_plan';
 export type BinaryControlActuationMode = 'plan' | 'reconcile';
 

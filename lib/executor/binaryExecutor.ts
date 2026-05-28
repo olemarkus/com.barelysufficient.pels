@@ -51,7 +51,7 @@ const runBinaryControl = async (params: {
   name: string;
   desired: boolean;
   snapshot?: TargetDeviceSnapshot;
-  logContext: 'capacity' | 'capacity_control_off';
+  logContext: 'capacity' | 'capacity_control_off' | 'release';
   restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;
   actuationMode?: PlanActuationMode;
@@ -168,6 +168,11 @@ export const applyBinarySheddingToDevice = async (
     reason?: string;
     skipPrecheck?: boolean;
     trackPendingShed?: boolean;
+    // 'capacity' = cap-driven shed (default); 'release' = lifecycle-end
+    // shed_release. The release variant propagates into the pending
+    // command's logContext so `handleConfirmedBinaryCommand` dispatches
+    // through the release recorder on flow-backed confirmations.
+    logContext?: 'capacity' | 'release';
   },
 ): Promise<boolean> => {
   const {
@@ -176,6 +181,7 @@ export const applyBinarySheddingToDevice = async (
     reason,
     skipPrecheck = false,
     trackPendingShed = true,
+    logContext = 'capacity',
   } = params;
   if (ctx.capacityDryRun) return false;
   const snapshotState = ctx.observation.getSnapshotByDeviceId(deviceId);
@@ -193,6 +199,7 @@ export const applyBinarySheddingToDevice = async (
       name: deviceName,
       reason,
       snapshot: snapshotState,
+      logContext,
     });
   }
   ctx.state.pendingSheds.add(deviceId);
@@ -202,6 +209,7 @@ export const applyBinarySheddingToDevice = async (
       name: deviceName,
       reason,
       snapshot: snapshotState,
+      logContext,
     });
   } finally {
     ctx.state.pendingSheds.delete(deviceId);
@@ -250,7 +258,7 @@ const canApplyRestoreSnapshot = (
     snapshot?: TargetDeviceSnapshot;
     deviceId: string;
     name: string;
-    logContext: 'capacity' | 'capacity_control_off';
+    logContext: 'capacity' | 'capacity_control_off' | 'release';
     mode: PlanActuationMode;
   },
 ): boolean => {
@@ -474,6 +482,9 @@ const turnOffDevice = async (
     name: string;
     reason?: string;
     snapshot?: TargetDeviceSnapshot;
+    // 'capacity' (default) = cap-driven shed; 'release' = lifecycle-end
+    // shed_release. Propagates into the pending command's logContext.
+    logContext?: 'capacity' | 'release';
   },
 ): Promise<boolean> => {
   const {
@@ -481,6 +492,7 @@ const turnOffDevice = async (
     name,
     reason,
     snapshot,
+    logContext = 'capacity',
   } = params;
   const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
@@ -520,7 +532,7 @@ const turnOffDevice = async (
       name,
       desired: false,
       snapshot: snapshotEntry,
-      logContext: 'capacity',
+      logContext,
       reason,
       actuationMode: 'plan',
     });

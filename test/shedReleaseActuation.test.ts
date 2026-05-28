@@ -148,6 +148,31 @@ describe('applyShedReleaseIntent', () => {
     expect((ctxArg as { tag: symbol }).tag).toBe(releaseTag);
   });
 
+  it('passes logContext: "release" so flow-backed pending entries can be dispatched through the release recorder on confirmation', async () => {
+    // Regression for codex review of PR #1249: the direct-write context swap
+    // alone does NOT cover flow-backed binary devices. For those,
+    // `applyBinarySheddingToDevice` records a pending command and waits for
+    // confirmation — the recorder fires later in
+    // `handleConfirmedBinaryCommand`, which branches on the pending entry's
+    // `logContext`. Pinning that the binary release path threads
+    // `logContext: 'release'` through so the recorded pending entry will
+    // route through `recordReleaseShedActuation` instead of the cap-shed
+    // recorder when the off-write confirms.
+    const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
+    const result = await applyShedReleaseIntent({
+      intent: buildIntent(),
+      steppedLoadIntent: null,
+      observed: buildObserved(),
+      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      mode: 'plan',
+      deps,
+    });
+    expect(result).toBe(true);
+    expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledTimes(1);
+    const [, paramsArg] = mockedApplyBinarySheddingToDevice.mock.calls[0]!;
+    expect((paramsArg as { logContext?: string }).logContext).toBe('release');
+  });
+
   it('skips the binary write when observedBinaryState is already "off" (trusted-evidence idempotent)', async () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
