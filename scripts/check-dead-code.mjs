@@ -151,6 +151,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveChipConfidence$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskLearning$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatEnergyEstimateKWh$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - REVISION_REASON_FALLBACK_WITH_DETAIL$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskListConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL$/,

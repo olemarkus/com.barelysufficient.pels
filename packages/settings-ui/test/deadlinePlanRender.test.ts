@@ -293,7 +293,24 @@ describe('DeadlinePlan revision history panel', () => {
     // pre-formatted string comes from `revisionSummary.text` (producer
     // resolved). Interpunct U+00B7 separates the clauses so reason labels
     // whose last words form verb phrases don't parse into the time clause.
-    expect(panel?.querySelector('.section-hint')?.textContent).toBe('Schedule revised · 15:42 · +1h');
+    //
+    // Lives OUTSIDE the `<details>` so it's visible while the panel is
+    // collapsed (HTML hides every child of `<details>` except `<summary>`
+    // when closed) — the at-rest "why?" answer is the discoverability
+    // gain for users who don't bother expanding the panel.
+    const subline = mount.querySelector('.plan-revision-panel__summary-subline');
+    expect(subline?.textContent).toBe('Schedule revised · 15:42 · +1h');
+    expect(panel?.contains(subline)).toBe(false);
+    // Eyebrow distinguishes this live-task panel from the post-finalization
+    // history-detail card (which uses "After this task ran"). Scope the
+    // query to the panel's containing section — the page hero also renders
+    // an `.eyebrow` (`section label`) so a `mount`-wide query would pick
+    // that one up instead of the revision-panel's "Live" tag.
+    const eyebrow = panel?.parentElement?.querySelector('.eyebrow');
+    expect(eyebrow?.textContent).toBe('Live');
+    // The `<summary>` row carries only the heading + chevron now; the
+    // subline was lifted out so it stays visible at-rest.
+    expect(panel?.querySelector('summary .section-hint')).toBeNull();
     // Most-recent first; head row carries the latest reason and its hour-diff.
     const rows = Array.from(mount.querySelectorAll<HTMLElement>('.plan-revision-row'));
     expect(rows.map((r) => r.querySelector('.plan-revision-reason')?.textContent)).toEqual([
@@ -308,5 +325,50 @@ describe('DeadlinePlan revision history panel', () => {
     expect(rows[0]?.querySelector('.plan-revision-diff')?.getAttribute('title')).toBe('1 hour added');
     // The oldest row (no prior to diff against) suppresses the diff chip.
     expect(rows[2]?.querySelector('.plan-revision-diff')).toBeNull();
+  });
+
+  it('renders the longer fallback reason copy and suppresses the diff chip when isFallback === true', () => {
+    // Regression for the "Plan refreshed" row reading as an empty-handed
+    // narration: when the resolver fell back (unknown recorder code), the
+    // row template now reads `Plan refreshed (details unavailable)` so the
+    // absent `+/−Nh` chip is self-explanatory. Producer summary copy stays
+    // on the bare `Plan refreshed` (see activePlanRevisionLog summary test).
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      {
+        revision: 2,
+        timeLabel: '15:42',
+        reason: 'Plan refreshed',
+        isFallback: true,
+        // Producer would happily compute a diff; the view suppresses it on
+        // fallback rows because the longer reason copy alone explains the
+        // gap and the chip would mis-attribute to a vague label.
+        hourDiff: '+1h',
+        hourDiffAriaLabel: '1 hour added',
+      },
+      {
+        revision: 1,
+        timeLabel: '14:00',
+        reason: 'Prices arrived',
+        isFallback: false,
+        hourDiff: null,
+        hourDiffAriaLabel: null,
+      },
+    ];
+    payload.revisionSummary = {
+      text: 'Plan refreshed · 15:42',
+      count: 2,
+      shouldShowPanel: true,
+    };
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+
+    const rows = Array.from(mount.querySelectorAll<HTMLElement>('.plan-revision-row'));
+    expect(rows[0]?.querySelector('.plan-revision-reason')?.textContent).toBe(
+      'Plan refreshed (details unavailable)',
+    );
+    expect(rows[0]?.querySelector('.plan-revision-diff')).toBeNull();
+    // Non-fallback row keeps the producer-resolved short label.
+    expect(rows[1]?.querySelector('.plan-revision-reason')?.textContent).toBe('Prices arrived');
   });
 });

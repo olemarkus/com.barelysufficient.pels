@@ -1869,16 +1869,24 @@ md-filled-button.is-busy {
   list-style: none;
 }
 
-/* Hint occupies a full-width row below the title; spans both columns so
- * it wraps cleanly without affecting the chevron's right-anchor.
- * `:where()` keeps this rule's specificity at 0, so the base `.section-hint`
- * rule wherever it appears doesn't have to be re-ordered to come first. */
-:where(.plan-revision-panel__summary) > .section-hint {
-  grid-column: 1 / -1;
-}
-
 .plan-revision-panel__summary::-webkit-details-marker {
   display: none;
+}
+
+/* Producer-resolved subline that narrates the latest *system* revision
+ * (`Schedule revised — daily budget shifted · 15:42 · +1h`). Lives OUTSIDE
+ * the `<details>` so it stays visible while the panel is collapsed — HTML
+ * hides every child of `<details>` except `<summary>` when closed, so the
+ * subline must be a sibling.
+ *
+ * Tokens only: muted tone via `--pels-text-supporting-color`; the card's
+ * grid gap (`--pels-card-gap` on `.pels-surface-card`) governs the spacing
+ * to the eyebrow above and the `<details>` block below, so the `<p>` only
+ * needs its default browser margins zeroed. Wraps cleanly at 320 px by
+ * inheriting the card's natural width. */
+.plan-revision-panel__summary-subline {
+  margin: 0;
+  color: var(--pels-text-supporting-color);
 }
 
 /* Per-revision log card on the smart-task history detail page (v2.7.2 PR 5).
@@ -4998,6 +5006,10 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
+.budget-toggle-mount {
+  min-width: 0;
+}
+
 .budget-card-header > button,
 .budget-card-header > .budget-toggle-mount {
   flex-shrink: 0;
@@ -5006,10 +5018,6 @@ details[open] > summary .disclosure-chevron {
 .budget-card-header h3,
 .budget-card-header .section-title {
   margin-top: 0;
-}
-
-.budget-toggle-mount {
-  min-width: 0;
 }
 
 .budget-chart-card {
