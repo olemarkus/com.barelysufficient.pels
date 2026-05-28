@@ -2074,24 +2074,26 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
 *Prod walk follow-ups, 2026-05-27. Six review lenses (live prod state,
 prod logs, pels-copy-and-terminology, pels-m3-critic, internal UX
 critique, and pels-ux-fit walkthrough) on the Marie Michelets household
-flagged ten findings; seven landed as the train PRs #1207–#1211 + #1220.
-Remaining: PR-7 hero-primitive migration + the persona expansions
-further down.*
+flagged ten findings; eight landed as the train PRs #1207–#1211, #1220,
+and #1222. Remaining: the persona expansions below.*
 
-- [ ] **History-detail hero is a parallel implementation of the shared
-      hero primitive.** `DeadlinePlanHistoryDetail.tsx:752` uses
-      `pels-surface-card plan-history-detail__hero`, while `PlanHero`,
-      `BudgetOverview` and `DeadlinePlan` all use `plan-hero pels-hero`.
-      Visually matches today (verified by `pels-m3-critic` on the
-      2026-05-27 prod walk) but a code-duplication risk and a future
-      target for `pels-layering-guardian` if the hero primitive changes
-      shape. Migrate the root to the shared primitive and collapse the
-      history-detail-specific CSS at `settings/style.css:1700+` into
-      modifiers under `.plan-hero`. Files:
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `settings/style.css`, history-detail snapshot tests under
-      `test/**/deadlinePlanHistoryDetail*`. Source: 2026-05-27 prod
-      walk, deferred PR-7 of the train.
+- [ ] **Walk history-detail hero on prod after the primitive migration.**
+      PR #1222 moved `DeadlinePlanHistoryDetail`'s hero root onto the
+      shared `plan-hero pels-hero` primitive (`--pels-surface-container-high`
+      tier, `--radius-lg`, inset highlight). The `pels-m3-critic` review
+      called the visual shift a judgment call rather than a violation
+      (receipts conventionally sit at surface-1; the live smart-task
+      hero sits at container-high). Walk a Succeeded and a Missed
+      entry on the production Homey alongside the live PlanHero. If
+      the receipt feels "still live" / too loud at the new tier, the
+      correct fix is a dedicated `--pels-surface-receipt` token
+      between `--color-surface-1` and `--pels-surface-container-high`,
+      not reverting to `pels-surface-card` (which would re-introduce
+      the primitive duplication PR #1222 closed). Files:
+      `settings/tokens.css` (new token if needed), `settings/style.css`
+      (re-point `.plan-hero` / `.plan-history-detail__hero` if needed),
+      `notes/overview-hero-spec.md` (document the tier ladder). Source:
+      `pels-m3-critic` follow-up on PR #1222, 2026-05-28.
 
 - [ ] **Move BudgetOverview confidence strings to shared-domain.**
       PR #1211 renamed "Plan confidence" → "Budget confidence"
