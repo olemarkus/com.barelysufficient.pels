@@ -120,6 +120,34 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledTimes(1);
   });
 
+  it('routes the binary turn-off through the deps-provided binary context (release variant) so its recordShedActuation does not bump lastInstabilityMs', async () => {
+    // Regression for PR #1233/#1242 follow-up: `applyBinarySheddingToDevice`
+    // internally calls `ctx.recordShedActuation(...)` after a successful write.
+    // The planExecutor passes the release-variant binary context here whose
+    // `recordShedActuation` is wired to `recordReleaseShedActuation` (no
+    // `lastInstabilityMs` / `lastDeviceShedMs[deviceId]` bump). This test
+    // pins the contract by tagging the deps-provided context so we can prove
+    // `applyBinarySheddingToDevice` received that exact context.
+    const releaseTag = Symbol('binary-release-ctx');
+    const taggedCtx = { tag: releaseTag } as unknown as ReturnType<ShedReleaseActuationDeps['buildBinaryExecutorContext']>;
+    const deps = buildDeps(
+      { action: 'turn_off', temperature: null, stepId: null },
+      { buildBinaryExecutorContext: () => taggedCtx },
+    );
+    const result = await applyShedReleaseIntent({
+      intent: buildIntent(),
+      steppedLoadIntent: null,
+      observed: buildObserved(),
+      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      mode: 'plan',
+      deps,
+    });
+    expect(result).toBe(true);
+    expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledTimes(1);
+    const [ctxArg] = mockedApplyBinarySheddingToDevice.mock.calls[0]!;
+    expect((ctxArg as { tag: symbol }).tag).toBe(releaseTag);
+  });
+
   it('skips the binary write when observedBinaryState is already "off" (trusted-evidence idempotent)', async () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({

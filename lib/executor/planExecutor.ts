@@ -423,6 +423,13 @@ export class PlanExecutor {
     return this.binaryExecutorContext;
   }
 
+  // Release variant: same context, but `recordShedActuation` is the release recorder so
+  // `applyBinarySheddingToDevice` from the shed_release path doesn't bump
+  // `lastInstabilityMs`/`lastDeviceShedMs`.
+  private buildBinaryReleaseExecutorContext(): PlanExecutorBinaryContext {
+    return { ...this.buildBinaryExecutorContext(), recordShedActuation: this.recordReleaseShedActuation };
+  }
+
   private async applyBinaryRestoreIntent(
     intent: ExecutableBinaryIntent | null,
     observed: ExecutableObservedDeviceState | undefined,
@@ -450,7 +457,11 @@ export class PlanExecutor {
       ...params,
       deps: {
         getShedBehavior: this.boundGetShedBehavior,
-        buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
+        // The release variant of the binary context swaps in
+        // `recordReleaseShedActuation` for `recordShedActuation`, so the inner
+        // `applyBinarySheddingToDevice` call from `shedReleaseActuation.ts`'s
+        // binary branch doesn't bump `lastInstabilityMs` / `lastDeviceShedMs`.
+        buildBinaryExecutorContext: () => this.buildBinaryReleaseExecutorContext(),
         buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
         buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
         recordReleaseShedActuation: this.recordReleaseShedActuation,
