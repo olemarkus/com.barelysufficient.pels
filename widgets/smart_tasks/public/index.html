@@ -8,17 +8,39 @@
     <link rel="stylesheet" href="./index.css">
   </head>
   <body class="homey-widget-small">
-    <main id="widget-root" class="widget-root" aria-label="Smart tasks">
-      <ol class="rows" data-rows></ol>
-      <p class="empty" data-empty hidden></p>
-      <p class="overflow" data-overflow hidden></p>
+    <main id="widget-root" class="widget-root" data-state="ready" data-view="list" aria-label="Smart tasks">
+      <section class="list-view" data-list-view>
+        <ol class="rows" data-rows></ol>
+        <p class="empty" data-empty hidden></p>
+        <p class="empty-hint" data-empty-hint hidden></p>
+        <p class="overflow" data-overflow hidden></p>
+      </section>
+      <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
+        <header class="detail-header">
+          <button type="button" class="back-btn" data-detail-back aria-label="Back to smart tasks">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-detail-name></span>
+          </button>
+          <span class="chip" data-detail-chip></span>
+        </header>
+        <div class="detail-body">
+          <p class="detail-line detail-line--target" data-detail-target></p>
+          <p class="detail-line detail-line--deadline" data-detail-deadline hidden></p>
+          <p class="detail-line detail-line--why" data-detail-why hidden></p>
+          <p class="detail-line detail-line--recourse" data-detail-recourse hidden></p>
+          <p class="detail-line detail-line--meta" data-detail-meta hidden></p>
+          <p class="detail-line detail-line--confidence" data-detail-confidence hidden></p>
+        </div>
+      </section>
     </main>
     <template id="row-template">
       <li class="row">
-        <span class="row__name" data-row-name></span>
-        <span class="row__values" data-row-values></span>
-        <span class="row__eta" data-row-eta></span>
-        <span class="chip" data-row-chip></span>
+        <button type="button" class="row__btn" data-row-button aria-controls="smart-task-detail" aria-label="Smart task">
+          <span class="row__name" data-row-name></span>
+          <span class="row__values" data-row-values></span>
+          <span class="row__eta" data-row-eta></span>
+          <span class="chip" data-row-chip></span>
+        </button>
       </li>
     </template>
     <script src="./index.js"></script>

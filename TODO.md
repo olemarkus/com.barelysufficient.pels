@@ -78,11 +78,9 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       `drivers/pels_insights/device.ts:140-152`. Source: release-review
       pels-runtime-reality, 2026-05-26.
 
-- [ ] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
-      to `var(--homey-font-size-small, 14px)` (or
-      `calc(var(--homey-font-size-small, 14px) - 2px)` if a distinctly
-      smaller secondary is required). Only raw `px` in the new widget CSS;
-      breaks the widget's host-token scaling. Source: release-review
+- [x] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
+      to `var(--homey-font-size-small, 14px)`. Done in the interactive-widget
+      PR — `.row__values` now uses the host token. Source: release-review
       pels-m3-critic, 2026-05-26.
 
 - [ ] Rename capability `mode_indicator` title from "Mode" to "PELS mode"
@@ -904,20 +902,35 @@ the renderer can land.*
       available kW (e.g. `5 kW free · 7 of 12 used`). Source: release-review
       pels-ux-fit, 2026-05-26.
 
-- [ ] **Smart-tasks widget — on `cannot_meet` rows, replace
+- [x] **Smart-tasks widget — on `cannot_meet` rows, replace
       `Ready by HH:MM` with `Due HH:MM` so the time half doesn't contradict
-      the chip.** "Ready by 07:30" plus a `Cannot finish` chip on the same
-      row reads as internally contradictory. Files:
-      `widgets/smart_tasks/src/public/render.ts:~47`. Source:
-      release-review pels-ux-fit, 2026-05-26.
+      the chip.** Done in the interactive-widget PR — the ETA verb is now
+      producer-resolved (`resolveSmartTaskWidgetEtaVerb`, "Due" on failing
+      tasks else "Ready by"), shared between the list row and the detail
+      panel. Source: release-review pels-ux-fit, 2026-05-26.
 
-- [ ] **Smart-tasks widget — add a one-sentence pointer in the empty
-      state** (e.g. "Add one from a Flow → PELS action."). A first-time
-      widget user who hasn't created a Smart task yet sees only
-      "No active smart tasks" with no breadcrumb to action. Files:
-      `widgets/smart_tasks/src/smartTasksWidgetPayload.ts:19` (where
-      `EMPTY_SUBTITLE_DEFAULT` lives). Source: release-review pels-ux-fit,
-      2026-05-26.
+- [x] **Smart-tasks widget — add a one-sentence pointer in the empty
+      state.** Done in the interactive-widget PR — `SMART_TASK_WIDGET_EMPTY_HINT`
+      ("Add a smart task from a Flow card to see it here.") renders under the
+      empty subtitle. Source: release-review pels-ux-fit, 2026-05-26.
+
+- [ ] **Smart-tasks widget — detail-panel polish follow-ups (interactive-widget
+      PR P2/P3).** Carry the lower-priority findings from the four review
+      subagents on the interactive widget:
+      (1) `formatDeadlineLong` weekday window (`dayDiff -6..6`) can label a
+      6-day-out deadline with a bare weekday that collides with today's
+      weekday name — tighten the window to the remaining days of the current
+      week or update the comment (`widgets/smart_tasks/src/smartTasksWidgetPayload.ts`,
+      pels-ux-fit P3).
+      (2) `rehydrateView` collapses an open detail to the list on a single
+      payload where the device is transiently absent/satisfied mid-cycle —
+      consider a one-cycle grace mirroring the load-failure grace window
+      (`widgets/smart_tasks/src/public/widgetApp.ts`, pels-runtime-reality P2).
+      (3) Low-contrast 6% hover tint on `.row__btn` / `.back-btn` is near-
+      invisible under Homey's desktop invert — non-essential on touch
+      (`widgets/smart_tasks/public/index.css`, pels-m3-critic P3).
+      Source: review subagents on the interactive smart_tasks widget,
+      2026-05-28.
 
 - [ ] **Learned-deadband store — soft cap or GC entries for devices not
       seen in N days.** The persisted map has no per-device cap and no GC
