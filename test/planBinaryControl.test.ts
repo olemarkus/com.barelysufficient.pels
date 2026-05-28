@@ -403,6 +403,70 @@ describe('plan binary control helpers', () => {
     });
   });
 
+  it('promotes a pending release entry to capacity when a later capacity shed targets the same device', async () => {
+    // Codex review of #1249 round 3: when a flow-backed binary device has an
+    // in-flight `logContext: 'release'` pending off-write (smart-task
+    // lifecycle release) and a later cycle decides the same device must be
+    // off for capacity, the pending entry was satisfying the new request
+    // without upgrading. `handleConfirmedBinaryCommand` would then route the
+    // confirmation through the diagnostic-only recorder, leaving the
+    // capacity shed without its lastInstabilityMs/lastDeviceShedMs cooldown
+    // markers. The promotion path mutates the pending's logContext to
+    // 'capacity' on the second cycle.
+    const state = createPlanEngineState();
+    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
+    const deviceManager = withGetSnapshotByDeviceId({
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([]),
+    });
+    const snapshot = {
+      id: 'socket1',
+      name: 'Socket',
+      controlCapabilityId: 'onoff' as const,
+      canSetControl: true,
+    };
+    // Cycle 1: release-initiated off-write.
+    await setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug,
+      error: vi.fn(),
+      debugStructured,
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot,
+      logContext: 'release',
+      reason: 'release',
+    });
+    expect(state.pendingBinaryCommands.socket1?.logContext).toBe('release');
+
+    // Cycle 2: capacity shed targets the same device.
+    await setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      updateLocalSnapshot: vi.fn(),
+      log: vi.fn(),
+      logDebug,
+      error: vi.fn(),
+      debugStructured,
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot,
+      logContext: 'capacity',
+      reason: 'shedding',
+    });
+
+    // No duplicate write; the pending entry's logContext is promoted so the
+    // confirmation will route through the cap-shed recorder.
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(state.pendingBinaryCommands.socket1?.logContext).toBe('capacity');
+  });
+
   it('skips a standard binary command when the latest snapshot already matches the desired state', async () => {
     const state = createPlanEngineState();
     const log = vi.fn();

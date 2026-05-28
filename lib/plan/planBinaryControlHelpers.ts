@@ -105,6 +105,18 @@ export function shouldSkipBinaryControl(params: {
     return true;
   }
   if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired })) {
+    // Codex review of #1249: when an in-flight `release` pending entry would
+    // otherwise satisfy a fresh capacity shed for the same device, promote
+    // the pending's logContext so `handleConfirmedBinaryCommand` records
+    // the cap-shed markers (lastInstabilityMs / lastDeviceShedMs) when the
+    // off-write confirms. Without this, the capacity shed silently rides
+    // the release entry's diagnostic-only recorder and the cooldown clock
+    // never advances. Promotion is one-way (release → capacity); reverse
+    // direction stays as-is since capacity cooldown semantics are stronger.
+    const pending = getPendingBinaryCommand(state, deviceId);
+    if (pending && pending.logContext === 'release' && logContext === 'capacity') {
+      pending.logContext = 'capacity';
+    }
     logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
