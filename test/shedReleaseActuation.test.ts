@@ -273,7 +273,7 @@ describe('applyShedReleaseIntent', () => {
       { recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'low' }),
+      intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
@@ -298,11 +298,11 @@ describe('applyShedReleaseIntent', () => {
 
   it('uses the producer-resolved step (lowest-active fallback) when the configured stepId is null', async () => {
     // The producer's release cascade picks `lowest-active` when no preferred stepId is
-    // configured; the consumer just reads `intent.shedStepId`. This test simulates that
+    // configured; the consumer just reads `intent.releaseShedStepId`. This test simulates that
     // producer-side resolution by passing the already-resolved id on the intent.
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'low' }),
+      intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
@@ -317,10 +317,10 @@ describe('applyShedReleaseIntent', () => {
     expect(action.desired.stepId).toBe('low');
   });
 
-  it('skips the stepped re-projection when intent.shedStepId is null (degenerate profile)', async () => {
+  it('skips the stepped re-projection when intent.releaseShedStepId is null (degenerate profile)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: null }),
+      intent: buildIntent({ releaseShedStepId: null }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
@@ -336,7 +336,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips the stepped re-projection when the device is already at the shed step (idempotent)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'low' }),
+      intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
@@ -352,7 +352,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips the stepped re-projection when the device is already below the shed step (never step up)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'mid' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'mid' }),
+      intent: buildIntent({ releaseShedStepId: 'mid' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
@@ -383,7 +383,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips stepped release when no observed step id is present (trusted-evidence gate)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'low' }),
+      intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: undefined },
@@ -399,7 +399,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips stepped release when the observed step id is not in the current profile (ambiguous state)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent({ shedStepId: 'low' }),
+      intent: buildIntent({ releaseShedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },

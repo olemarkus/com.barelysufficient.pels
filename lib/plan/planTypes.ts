@@ -113,7 +113,7 @@ export type DevicePlanDevice = {
   binaryCommandPending?: boolean;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
-  shedStepId?: string | null;
+  releaseShedStepId?: string | null;
   available?: boolean;
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;

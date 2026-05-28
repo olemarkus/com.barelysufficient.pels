@@ -482,16 +482,19 @@ release, not v2.7.1 merge-blockers.*
       maximises load drop, release honours the user-configured shed
       posture).
 
-- [ ] **Rename snapshot `shedStepId` to `releaseShedStepId` (or document the
+- [x] **Rename snapshot `shedStepId` to `releaseShedStepId` (or document the
       asymmetric read).** After the p2-polish-batch PR, `DevicePlanDevice.shedStepId`
-      carries the producer-resolved release-cascade target step. The release
+      carried the producer-resolved release-cascade target step. The release
       executor reads it; the cap-driven shed path in `planSteppedLoad.ts`
       ignores it (cap-shed re-derives lowest-active itself). Any new consumer
-      that reads `shedStepId` to predict cap-shed behaviour will be wrong.
+      that reads `shedStepId` to predict cap-shed behaviour would be wrong.
       Either rename to `releaseShedStepId` (clearer intent) or add a producer-
       side comment block on the snapshot triple explicitly naming the
       asymmetric read. Source: pels-runtime-reality review of the
-      p2-polish-batch PR, 2026-05-28.
+      p2-polish-batch PR, 2026-05-28. Resolved in the rename-shedstepid PR —
+      both: the field is renamed to `releaseShedStepId` across runtime + tests,
+      and `ShedSnapshotTriple` carries a doc-block naming the asymmetric
+      cap-shed-ignores / release-reads contract.
 
 - [x] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
       `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`

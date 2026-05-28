@@ -2663,7 +2663,7 @@ describe('restore admission — headroom and penalty gates', () => {
     expect(device?.desiredStepId).toBe('medium');
     expect(device?.targetStepId).toBe('medium');
     expect(device?.shedAction).toBe('set_step');
-    expect(device?.shedStepId).toBe('medium');
+    expect(device?.releaseShedStepId).toBe('medium');
     expect(reasonText(device?.reason)).toContain('shortfall');
   });
 
