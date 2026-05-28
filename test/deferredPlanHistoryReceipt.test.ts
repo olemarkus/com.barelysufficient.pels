@@ -209,39 +209,142 @@ describe('formatPlanHistoryAbandonedDetails', () => {
 });
 
 describe('groupPlanHistoryByIsoWeek', () => {
-  it('groups entries by ISO week and renders quiet "Week N · M deadlines met" headings', () => {
-    // Three entries: two in ISO week 20 (Sat 16 May 2026, Thu 14 May), one in week 19 (Sun 10 May).
+  // "Now" = Sat 16 May 2026 12:00 UTC — same ISO week (20) as the canonical
+  // DEADLINE_MS, with the previous week being ISO 19 (Mon 4 May–Sun 10 May).
+  // Older entries fall back to "Week of <day month>" copy.
+  const NOW_MS = Date.UTC(2026, 4, 16, 12, 0, 0);
+
+  it('uses chip-vocabulary outcome counts and surfaces misses + abandons (PR-11)', () => {
+    // Mixed week: 2 succeeded, 1 missed, 1 abandoned, 1 replaced. The
+    // divider should surface the non-zero outcome counts and roll abandoned
+    // + replaced into a single `abandoned` figure per ui-terminology.md.
     const entries = [
       buildEntry({ id: 'a', outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 10 }),
-      buildEntry({ id: 'b', outcome: 'met', deadlineAtMs: DEADLINE_MS - 2 * 24 * HOUR_MS, totalCost: 8 }),
-      buildEntry({ id: 'c', outcome: 'missed', deadlineAtMs: DEADLINE_MS - 6 * 24 * HOUR_MS, totalCost: 5 }),
+      buildEntry({ id: 'b', outcome: 'met', deadlineAtMs: DEADLINE_MS - HOUR_MS, totalCost: 8 }),
+      buildEntry({ id: 'c', outcome: 'missed', deadlineAtMs: DEADLINE_MS - 2 * HOUR_MS, totalCost: 5 }),
+      buildEntry({ id: 'd', outcome: 'abandoned', deadlineAtMs: DEADLINE_MS - 3 * HOUR_MS, totalCost: 2 }),
+      buildEntry({ id: 'e', outcome: 'replaced', deadlineAtMs: DEADLINE_MS - 4 * HOUR_MS, totalCost: 1 }),
     ];
-    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', 'kr');
-    expect(groups).toHaveLength(2);
-    expect(groups[0]!.weekKey).toBe('2026-W20');
-    expect(groups[0]!.heading).toContain('Week 20');
-    expect(groups[0]!.heading).toContain('2 deadlines met');
-    expect(groups[0]!.heading).toContain('18 kr');
-    // v2.7.3 P2 — section headings drop the trailing period.
-    expect(groups[0]!.heading.endsWith('.')).toBe(false);
-    expect(groups[1]!.weekKey).toBe('2026-W19');
-    // v2.7.3 P2 — zero-met weeks render as just "Week N" (no cold fallback
-    // "1 task" / "N tasks" count). Per-row chips still carry the outcome.
-    expect(groups[1]!.heading).toContain('Week 19');
-    expect(groups[1]!.heading).not.toContain('task');
+    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', 'kr', NOW_MS);
+    expect(groups).toHaveLength(1);
+    const heading = groups[0]!.heading;
+    expect(heading).toContain('2 succeeded');
+    expect(heading).toContain('1 missed');
+    // abandoned + replaced both collapse into the `abandoned` chip noun.
+    expect(heading).toContain('2 abandoned');
+    // Engineer-facing "Week 20" copy is gone — relative phrasing leads.
+    expect(heading).not.toMatch(/Week \d/);
+    // Chip vocabulary, not the legacy verb "N deadlines met".
+    expect(heading).not.toContain('deadlines met');
+    expect(heading.endsWith('.')).toBe(false);
+  });
+
+  it('shows missed/abandoned counts even when nothing succeeded that week', () => {
+    // Zero succeeded; previous version dropped this week's outcomes entirely
+    // and rendered a bare "Week 19" — PR-11 surfaces the misses/abandons.
+    const entries = [
+      buildEntry({ id: 'a', outcome: 'missed', deadlineAtMs: DEADLINE_MS - 6 * 24 * HOUR_MS, totalCost: 5 }),
+      buildEntry({ id: 'b', outcome: 'abandoned', deadlineAtMs: DEADLINE_MS - 7 * 24 * HOUR_MS }),
+    ];
+    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', 'kr', NOW_MS);
+    expect(groups).toHaveLength(1);
+    const heading = groups[0]!.heading;
+    expect(heading).toContain('1 missed');
+    expect(heading).toContain('1 abandoned');
+    expect(heading).not.toContain('succeeded');
+  });
+
+  it('renders "This week" for the current ISO week', () => {
+    const groups = groupPlanHistoryByIsoWeek(
+      [buildEntry({ outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 12 })],
+      'UTC',
+      'kr',
+      NOW_MS,
+    );
+    expect(groups[0]!.heading.startsWith('This week')).toBe(true);
+  });
+
+  it('renders "Last week" for the immediately preceding ISO week', () => {
+    // Mon 4 May 2026 12:00 UTC — ISO week 19 (one week before NOW_MS).
+    const lastWeekMs = Date.UTC(2026, 4, 4, 12, 0, 0);
+    const groups = groupPlanHistoryByIsoWeek(
+      [buildEntry({ outcome: 'met', deadlineAtMs: lastWeekMs })],
+      'UTC',
+      '',
+      NOW_MS,
+    );
+    expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
+  });
+
+  it('renders "Week of <day month>" for older weeks', () => {
+    // Wed 22 Apr 2026 — ISO week 17. Monday of that week is 20 Apr.
+    const olderMs = Date.UTC(2026, 3, 22, 12, 0, 0);
+    const groups = groupPlanHistoryByIsoWeek(
+      [buildEntry({ outcome: 'met', deadlineAtMs: olderMs })],
+      'UTC',
+      '',
+      NOW_MS,
+    );
+    // "Week of 20 Apr" — Intl short-month rendering in UTC. Tolerate
+    // locale variation in the month spelling but pin the day + prefix.
+    expect(groups[0]!.heading).toMatch(/^Week of 20 \w+/);
   });
 
   it('drops the cost half cleanly when the unit suffix is empty', () => {
     const groups = groupPlanHistoryByIsoWeek(
-      [buildEntry({ outcome: 'met', totalCost: 12 })],
+      [buildEntry({ outcome: 'met', totalCost: 12, deadlineAtMs: DEADLINE_MS })],
       'UTC',
       '',
+      NOW_MS,
     );
-    expect(groups[0]!.heading).toContain('Week');
+    expect(groups[0]!.heading).toContain('This week');
     expect(groups[0]!.heading).not.toContain('kr');
   });
 
   it('returns an empty array on empty input', () => {
-    expect(groupPlanHistoryByIsoWeek([], 'UTC', 'kr')).toEqual([]);
+    expect(groupPlanHistoryByIsoWeek([], 'UTC', 'kr', NOW_MS)).toEqual([]);
+  });
+
+  // Regression: in time zones west of UTC, an earlier revision of
+  // `formatRelativeWeekLabel` anchored the "previous Monday" instant at
+  // 00:00 UTC of the current Monday's local date. In America/New_York
+  // (UTC-4 in May) that midnight-UTC instant is actually Sunday evening
+  // *local time*, so `getWeekStartInTimeZone` bucketed it two weeks back.
+  // The result: "Last week" rows were mislabeled "Week of …" and the week
+  // before that wore the "Last week" tag. Stepping back 7×24h from `nowMs`
+  // and re-bucketing through `getWeekStartInTimeZone` keeps the comparison
+  // anchored on a real wall-clock instant in the target zone.
+  describe('relative week labels in non-UTC time zones', () => {
+    const NY_TZ = 'America/New_York';
+    // Mon 11 May 2026 09:00 New York time = 13:00 UTC. ISO week 20 locally.
+    const NY_NOW_MS = Date.UTC(2026, 4, 11, 13, 0, 0);
+
+    it('labels the immediately preceding week as "Last week" in America/New_York', () => {
+      // Wed 6 May 2026 12:00 NY = 16:00 UTC — ISO week 19 locally.
+      const lastWeekMs = Date.UTC(2026, 4, 6, 16, 0, 0);
+      const groups = groupPlanHistoryByIsoWeek(
+        [buildEntry({ outcome: 'met', deadlineAtMs: lastWeekMs })],
+        NY_TZ,
+        '',
+        NY_NOW_MS,
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
+    });
+
+    it('does not mislabel two-weeks-back as "Last week" in America/New_York', () => {
+      // Tue 28 Apr 2026 12:00 NY = 16:00 UTC — ISO week 18 locally
+      // (two weeks before NY_NOW_MS).
+      const twoWeeksBackMs = Date.UTC(2026, 3, 28, 16, 0, 0);
+      const groups = groupPlanHistoryByIsoWeek(
+        [buildEntry({ outcome: 'met', deadlineAtMs: twoWeeksBackMs })],
+        NY_TZ,
+        '',
+        NY_NOW_MS,
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.heading.startsWith('Last week')).toBe(false);
+      expect(groups[0]!.heading).toMatch(/^Week of /);
+    });
   });
 });
