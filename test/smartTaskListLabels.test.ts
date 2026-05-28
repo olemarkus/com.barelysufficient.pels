@@ -7,6 +7,7 @@ import {
   resolveBuildingPlanChipTone,
   resolvePausedUnpluggedChipTone,
   resolveSmartTaskLearning,
+  resolveSmartTaskListReadyByTone,
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   SMART_TASK_LIST_STATUS_LABELS,
@@ -173,6 +174,29 @@ describe('pending-state chip tone (Building plan… / Paused — unplugged)', ()
 
   it('resolves Paused — unplugged to the call-to-action warn tone', () => {
     expect(resolvePausedUnpluggedChipTone()).toBe('warn');
+  });
+});
+
+describe('resolveSmartTaskListReadyByTone', () => {
+  // The hero gradient and status chip both already paint `cannot_meet` red.
+  // Letting the "Ready by" timestamp also go red stacks three red surfaces
+  // on one card — alarming and redundant. The resolver demotes the timestamp
+  // to `warn` so the chip stays the definitive status signal while the
+  // timestamp drops one tone.
+  it('demotes cannot_meet to warn so the timestamp does not echo the chip', () => {
+    expect(resolveSmartTaskListReadyByTone('cannot_meet')).toBe('warn');
+  });
+
+  it('keeps at_risk and paused_unplugged on warn', () => {
+    expect(resolveSmartTaskListReadyByTone('at_risk')).toBe('warn');
+    expect(resolveSmartTaskListReadyByTone('paused_unplugged')).toBe('warn');
+  });
+
+  it('returns the default accent tone for healthy / pending / queued / satisfied states', () => {
+    expect(resolveSmartTaskListReadyByTone('on_track')).toBe('accent');
+    expect(resolveSmartTaskListReadyByTone('building_plan')).toBe('accent');
+    expect(resolveSmartTaskListReadyByTone('queued')).toBe('accent');
+    expect(resolveSmartTaskListReadyByTone('satisfied')).toBe('accent');
   });
 });
 
