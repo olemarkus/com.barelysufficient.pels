@@ -11,7 +11,16 @@ type WidgetApiApp = {
 type WidgetApiContext = {
   homey: {
     app?: WidgetApiApp;
+    // Homey SDK clock. The widget API runs in the app process (often UTC),
+    // so the user's configured timezone must be plumbed explicitly or the
+    // detail-panel day/time labels fall back to the host zone.
+    clock?: { getTimezone?: () => string };
   };
+};
+
+const readTimeZone = (homey: WidgetApiContext['homey']): string | null => {
+  const tz = homey.clock?.getTimezone?.();
+  return typeof tz === 'string' && tz.length > 0 ? tz : null;
 };
 
 export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartTasksWidgetPayload> => {
@@ -26,5 +35,6 @@ export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartT
     activePlans,
     devices,
     nowMs: Date.now(),
+    timeZone: readTimeZone(homey),
   });
 };

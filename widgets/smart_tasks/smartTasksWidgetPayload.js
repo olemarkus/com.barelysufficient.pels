@@ -42,6 +42,65 @@ var SMART_TASK_WIDGET_STATUS_LABELS = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: "Unplugged"
 };
+var SMART_TASK_WIDGET_WHY_BY_STATUS = {
+  building_plan: null,
+  // resolved by pendingReason
+  queued: null,
+  // composed from firstPlannedTimeLabel when present
+  paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
+  on_track: null,
+  // affirmative line resolved from firstPlannedTimeLabel
+  at_risk: null,
+  // disambiguated by budget vs time below
+  cannot_meet: null,
+  // resolved by floor cause / budget bucket count
+  satisfied: null
+};
+var SMART_TASK_WIDGET_WHY_BY_PENDING_REASON = {
+  awaiting_horizon_plan: "Waiting for tomorrow\u2019s prices.",
+  device_data_missing: "Waiting for a reading from this device.",
+  invalid_session: "EV is unplugged \u2014 plug in to start.",
+  missing_capacity: "Learning energy use from this device.",
+  price_feature_disabled: "Price-aware planning is off."
+};
+var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the deadline.";
+var WHY_CANNOT_MEET_DEVICE = "Not enough delivery before the deadline.";
+var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
+var WHY_AT_RISK_TIME = "Limited time left before the deadline.";
+var RECOURSE_CANNOT_MEET_BUDGET = "Lower the daily budget so future days reserve power earlier.";
+var RECOURSE_CANNOT_MEET_DEVICE = "Open this device\u2019s settings in the PELS app to see what\u2019s holding it back.";
+var RECOURSE_INVALID_SESSION = "Plug the EV in to resume.";
+var isBudgetDriven = (input) => {
+  if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
+  return input.statusId === "at_risk" && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+};
+var resolveSmartTaskWidgetDetailCopy = (input) => {
+  if (input.statusId === "cannot_meet") {
+    return isBudgetDriven(input) ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
+  }
+  if (input.statusId === "at_risk") {
+    return isBudgetDriven(input) ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+  }
+  if (input.statusId === "building_plan") {
+    const reason = input.pendingReason ?? "awaiting_horizon_plan";
+    const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason] ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan ?? null;
+    return {
+      whyLabel: why,
+      recourseHint: reason === "invalid_session" ? RECOURSE_INVALID_SESSION : null
+    };
+  }
+  if (input.statusId === "queued" && input.firstPlannedTimeLabel) {
+    return {
+      whyLabel: `Cheaper hours start at ${input.firstPlannedTimeLabel}.`,
+      recourseHint: null
+    };
+  }
+  return {
+    whyLabel: SMART_TASK_WIDGET_WHY_BY_STATUS[input.statusId],
+    recourseHint: null
+  };
+};
+var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card to see it here.";
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
@@ -53,6 +112,51 @@ var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
   cannot_meet: "alert",
   satisfied: "ok"
 };
+var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
+  building_plan: null,
+  queued: null,
+  // The inline word is joined to the timestamp with an em-dash separator
+  // ("Ready by … — <word>"). For paused we use the compressed widget label
+  // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
+  // latter carries its own em-dash, which would render a confusing double-dash
+  // ("… — Paused — unplugged") on the Ready-by line. The chip still shows the
+  // full label; this is the same sanctioned shared-domain string, not a new
+  // variant.
+  paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+  on_track: null,
+  at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+  cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+  satisfied: null
+};
+var formatConfidenceChipLabel = (confidence) => {
+  if (confidence === "low") return "Estimating";
+  if (confidence === "medium") return "Refining";
+  return null;
+};
+var MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4;
+var resolveSmartTaskLearning = (provenance) => {
+  if (!provenance) return false;
+  if (provenance.source === "bootstrap") return true;
+  return provenance.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP;
+};
+var formatSmartTaskListConfidenceChipLabel = (params) => {
+  if (params.statusId === "cannot_meet" || params.statusId === "on_track") return null;
+  if (!params.learning) return null;
+  return formatConfidenceChipLabel(params.confidence);
+};
+var SMART_TASK_LIST_ROW_LABELS = {
+  target: "Target",
+  starts: "Starts",
+  readyBy: "Ready by"
+};
+var SMART_TASK_WIDGET_DUE_VERB = "Due";
+var resolveSmartTaskWidgetEtaVerb = (isFailing) => isFailing ? SMART_TASK_WIDGET_DUE_VERB : SMART_TASK_LIST_ROW_LABELS.readyBy;
+var SMART_TASK_WIDGET_TARGET_ACTION_VERB = {
+  temperature: "Heat to",
+  ev_soc: "Charge to"
+};
+var resolveSmartTaskWidgetTargetActionVerb = (kind) => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
+var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
 var resolveSmartTaskListStatus = (params) => {
   const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
   if (diagnosticReasonCode === "objective_invalid_session") return "paused_unplugged";
@@ -80,6 +184,10 @@ var REVISION_REASON_TOOLTIP_LINE = {
   rate_refined: "Updated as rates were refined",
   flow_permission_changed: "Updated after a Flow changed what this smart task may do"
 };
+var SCHEDULE_REVISED_BASE = "Schedule revised";
+var SCHEDULE_REVISED_BUDGET = `${SCHEDULE_REVISED_BASE} \u2014 daily budget shifted`;
+var SCHEDULE_REVISED_RISK = `${SCHEDULE_REVISED_BASE} \u2014 risk changed`;
+var SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} \u2014 cheaper hour opened`;
 var withLastFetched = (base, lastFetchedShort) => lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base;
 var resolveQueuedHeadlineReason = (params) => {
   if (params.pricesShortOfDeadline) {
@@ -354,9 +462,106 @@ var formatLocalHHMM = (ms, timeZone) => {
     return formatLocalHHMMFallback(date);
   }
 };
-var emptyPayload = (subtitle) => ({
+var calendarDayIndex = (ms, timeZone) => {
+  try {
+    const ymd = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: timeZone ?? void 0
+    }).format(new Date(ms));
+    const [y, m, d] = ymd.split("-").map(Number);
+    return Math.round(Date.UTC(y, m - 1, d) / (24 * 60 * 60 * 1e3));
+  } catch {
+    const date = new Date(ms);
+    return Math.round(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / (24 * 60 * 60 * 1e3)
+    );
+  }
+};
+var localDayDiff = (deadlineMs, nowMs, timeZone) => calendarDayIndex(deadlineMs, timeZone) - calendarDayIndex(nowMs, timeZone);
+var formatDeadlineLong = (ms, nowMs, timeZone) => {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "";
+  const timePart = formatLocalHHMM(ms, timeZone);
+  const dayDiff = localDayDiff(ms, nowMs, timeZone);
+  if (dayDiff === 0) return `Today ${timePart}`;
+  if (dayDiff === 1) return `Tomorrow ${timePart}`;
+  try {
+    if (dayDiff >= -6 && dayDiff <= 6) {
+      const weekday = new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        timeZone: timeZone ?? void 0
+      }).format(date);
+      return `${weekday} ${timePart}`;
+    }
+    const dayMonth = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      timeZone: timeZone ?? void 0
+    }).format(date);
+    return `${dayMonth} ${timePart}`;
+  } catch {
+    return formatLocalHHMMFallback(date);
+  }
+};
+var formatDurationFromHours = (hours) => {
+  if (!Number.isFinite(hours) || hours <= 0) return "";
+  const totalMinutes = Math.max(1, Math.round(hours * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+};
+var formatKwh = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded.toFixed(1)} kWh`;
+};
+var resolveDurationPart = (revision) => {
+  if (revision.estimatedDurationText) return `\u2248${revision.estimatedDurationText}`;
+  const speed = revision.planningSpeedKw;
+  if (speed && speed > 0 && revision.energyNeededKWh > 0) {
+    const dur = formatDurationFromHours(revision.energyNeededKWh / speed);
+    return dur ? `\u2248${dur}` : null;
+  }
+  return null;
+};
+var resolveSpeedPart = (revision) => {
+  const speed = revision.planningSpeedKw;
+  if (!speed || speed <= 0) return null;
+  return `${(Math.round(speed * 10) / 10).toFixed(1)} kW`;
+};
+var resolveEnergyPart = (revision) => {
+  const expected = revision.energyExpectedKWh;
+  const needed = revision.energyNeededKWh;
+  if (isFiniteNumber(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
+    const low = Math.round(Math.min(expected, needed) * 10) / 10;
+    const high = Math.round(Math.max(expected, needed) * 10) / 10;
+    return `\u2248${low.toFixed(1)}\u2013${high.toFixed(1)} kWh`;
+  }
+  if (needed > 0) return `\u2248${formatKwh(needed)}`;
+  return null;
+};
+var formatPlanMetaLabel = (revision) => {
+  const parts = [
+    resolveDurationPart(revision),
+    resolveSpeedPart(revision),
+    resolveEnergyPart(revision)
+  ].filter((part) => part !== null && part !== "");
+  if (parts.length === 0) return null;
+  return parts.join(" \xB7 ");
+};
+var resolveConfidenceLabel = (provenance, statusId) => formatSmartTaskListConfidenceChipLabel({
+  confidence: provenance?.displayConfidence ?? provenance?.confidence ?? null,
+  statusId,
+  learning: resolveSmartTaskLearning(provenance)
+});
+var emptyPayload = (subtitle, hint) => ({
   state: "empty",
-  subtitle
+  subtitle,
+  hint
 });
 var compareCandidates = (a, b) => {
   if (a.tier !== b.tier) return a.tier - b.tier;
@@ -374,9 +579,29 @@ var resolveStatusId = (plan, nowMs) => resolveSmartTaskListStatus({
   firstActionAtMs: plan.latest?.hours[0]?.startsAtMs ?? null,
   nowMs
 });
+var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
+  const detail = resolveSmartTaskWidgetDetailCopy({
+    statusId,
+    pendingReason: plan.pendingReason,
+    floorShortfallCause: plan.latest?.floorShortfallCause,
+    dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
+    firstPlannedTimeLabel
+  });
+  const suppressPlanMeta = statusId === "cannot_meet" || !plan.latest;
+  const suppressConfidence = statusId === "building_plan" && plan.pendingReason === "awaiting_horizon_plan";
+  return {
+    planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
+    confidenceLabel: suppressConfidence ? null : resolveConfidenceLabel(plan.kwhPerUnitProvenance, statusId),
+    whyLabel: detail.whyLabel,
+    recourseHint: detail.recourseHint
+  };
+};
 var buildRow = (params) => {
-  const { deviceId, plan, device, targetValue, statusId, finishMs, timeZone } = params;
+  const { deviceId, plan, device, targetValue, statusId, finishMs, nowMs, timeZone } = params;
   const finiteFinish = isFiniteNumber(finishMs) ? finishMs : null;
+  const firstHourMs = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const firstPlannedTimeLabel = isFiniteNumber(firstHourMs) ? formatLocalHHMM(firstHourMs, timeZone) : null;
+  const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
@@ -386,7 +611,15 @@ var buildRow = (params) => {
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
-    tone: STATUS_TONE[statusId]
+    tone: STATUS_TONE[statusId],
+    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === "cannot_meet"),
+    targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
+    targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
+    deadlineLongLabel: finiteFinish !== null ? formatDeadlineLong(finiteFinish, nowMs, timeZone) : null,
+    planMetaLabel: copy.planMetaLabel,
+    confidenceLabel: copy.confidenceLabel,
+    whyLabel: copy.whyLabel,
+    recourseHint: copy.recourseHint
   };
 };
 var buildCandidate = (params) => {
@@ -404,18 +637,19 @@ var buildCandidate = (params) => {
     targetValue,
     statusId,
     finishMs: plan.deadlineAtMs,
+    nowMs,
     timeZone
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
 };
 var buildSmartTasksWidgetPayload = (input) => {
   const plans = input.activePlans?.plansByDeviceId;
-  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
   const devicesById = new Map(
     input.devices.map((device) => [device.id, device])
   );
   const candidates = Object.entries(plans).map(([deviceId, plan]) => plan ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone: input.timeZone ?? null }) : null).filter((candidate) => candidate !== null);
-  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
   const sorted = [...candidates].sort(compareCandidates);
   const top = sorted.slice(0, ROW_CAP);
   const overflowCount = Math.max(0, sorted.length - top.length);

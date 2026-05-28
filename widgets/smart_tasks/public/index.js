@@ -17,7 +17,17 @@
         targetValue: 55,
         finishLabel: "04:30",
         statusLabel: "Cannot finish",
-        tone: "danger"
+        tone: "danger",
+        etaVerb: "Due",
+        targetActionVerb: "Heat to",
+        targetNoun: "Target",
+        deadlineLongLabel: "Tomorrow 04:30",
+        // Plan-meta is intentionally suppressed on a failing (cannot_meet) task so
+        // the recourse line stays above the fold in the 220 px detail panel.
+        planMetaLabel: null,
+        confidenceLabel: null,
+        whyLabel: "Today\u2019s daily budget runs out before the deadline.",
+        recourseHint: "Lower the daily budget so future days reserve power earlier."
       },
       {
         deviceId: "preview-hot-water",
@@ -28,7 +38,15 @@
         targetValue: 55,
         finishLabel: "05:30",
         statusLabel: "At risk",
-        tone: "warn"
+        tone: "warn",
+        etaVerb: "Ready by",
+        targetActionVerb: "Heat to",
+        targetNoun: "Target",
+        deadlineLongLabel: "Tomorrow 05:30",
+        planMetaLabel: "\u22482h 15m \xB7 1.8 kW \xB7 \u22484.0 kWh",
+        confidenceLabel: null,
+        whyLabel: "Limited time left before the deadline.",
+        recourseHint: null
       },
       {
         // Demonstrates the "Target X" rendering when the device snapshot hasn't
@@ -42,7 +60,17 @@
         targetValue: 22,
         finishLabel: "07:00",
         statusLabel: "Building plan\u2026",
-        tone: "muted"
+        tone: "muted",
+        etaVerb: "Ready by",
+        targetActionVerb: "Heat to",
+        targetNoun: "Target",
+        deadlineLongLabel: "Tomorrow 07:00",
+        planMetaLabel: null,
+        // Confidence chip suppressed while waiting on prices (would conflict with
+        // the "Waiting for tomorrow's prices" reason).
+        confidenceLabel: null,
+        whyLabel: "Waiting for tomorrow\u2019s prices.",
+        recourseHint: null
       }
     ]
   };
@@ -73,6 +101,28 @@
     cannot_meet: "alert",
     satisfied: "ok"
   };
+  var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
+    building_plan: null,
+    queued: null,
+    // The inline word is joined to the timestamp with an em-dash separator
+    // ("Ready by … — <word>"). For paused we use the compressed widget label
+    // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
+    // latter carries its own em-dash, which would render a confusing double-dash
+    // ("… — Paused — unplugged") on the Ready-by line. The chip still shows the
+    // full label; this is the same sanctioned shared-domain string, not a new
+    // variant.
+    paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+    on_track: null,
+    at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+    cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+    satisfied: null
+  };
+  var SMART_TASK_LIST_ROW_LABELS = {
+    target: "Target",
+    starts: "Starts",
+    readyBy: "Ready by"
+  };
+  var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
   var REVISION_REASON_TOOLTIP_LINE = {
     flow_card: "Updated after a flow card fired",
     prices_arrived: "Updated as prices became available",
@@ -87,6 +137,10 @@
     rate_refined: "Updated as rates were refined",
     flow_permission_changed: "Updated after a Flow changed what this smart task may do"
   };
+  var SCHEDULE_REVISED_BASE = "Schedule revised";
+  var SCHEDULE_REVISED_BUDGET = `${SCHEDULE_REVISED_BASE} \u2014 daily budget shifted`;
+  var SCHEDULE_REVISED_RISK = `${SCHEDULE_REVISED_BASE} \u2014 risk changed`;
+  var SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} \u2014 cheaper hour opened`;
   var withLastFetched = (base, lastFetchedShort) => lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base;
   var resolveQueuedHeadlineReason = (params) => {
     if (params.pricesShortOfDeadline) {
@@ -313,28 +367,41 @@
     const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
     return `${text} ${unitSymbol}`;
   };
-  var formatValuesLine = (currentValue, targetValue, unitSymbol) => {
-    const target = formatValue(targetValue, unitSymbol);
-    if (currentValue === null || !Number.isFinite(currentValue)) {
-      return `Target ${target}`;
+  var formatValuesLine = (row) => {
+    const target = formatValue(row.targetValue, row.unitSymbol);
+    if (row.currentValue === null || !Number.isFinite(row.currentValue)) {
+      return `${row.targetNoun} ${target}`;
     }
-    return `${formatValue(currentValue, unitSymbol)} \u2192 ${target}`;
+    return `${formatValue(row.currentValue, row.unitSymbol)} \u2192 ${target}`;
   };
+  var formatRowEta = (row) => {
+    if (row.finishLabel === null) return "";
+    return `${row.etaVerb} ${row.finishLabel}`;
+  };
+  var targetSentence = (row) => `${row.targetActionVerb} ${formatValue(row.targetValue, row.unitSymbol)}`;
   var renderRow = (template, row) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
     if (!(li instanceof HTMLElement)) throw new Error("row template missing .row");
     li.dataset.tone = row.tone;
+    const button = li.querySelector("[data-row-button]");
+    if (button instanceof HTMLElement) {
+      button.dataset.deviceId = row.deviceId;
+      button.setAttribute(
+        "aria-label",
+        `${row.deviceName}, ${row.statusLabel}${row.finishLabel ? `, ${formatRowEta(row)}` : ""}`
+      );
+    }
     const nameEl = li.querySelector("[data-row-name]");
     const valuesEl = li.querySelector("[data-row-values]");
     const etaEl = li.querySelector("[data-row-eta]");
     const chipEl = li.querySelector("[data-row-chip]");
     if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
     if (valuesEl instanceof HTMLElement) {
-      valuesEl.textContent = formatValuesLine(row.currentValue, row.targetValue, row.unitSymbol);
+      valuesEl.textContent = formatValuesLine(row);
     }
     if (etaEl instanceof HTMLElement) {
-      etaEl.textContent = row.finishLabel !== null ? `Ready by ${row.finishLabel}` : "";
+      etaEl.textContent = formatRowEta(row);
     }
     if (chipEl instanceof HTMLElement) {
       chipEl.textContent = row.statusLabel;
@@ -345,18 +412,20 @@
   var clearChildren = (el) => {
     while (el.firstChild) el.removeChild(el.firstChild);
   };
-  var renderReady = (targets, payload) => {
-    const { rowsList, emptyEl, overflowEl, rowTemplate } = targets;
+  var renderListReady = (targets, payload) => {
+    const { rowsList, emptyEl, emptyHintEl, overflowEl, rowTemplate } = targets;
     clearChildren(rowsList);
     if (payload.rows.length === 0) {
       rowsList.hidden = true;
       emptyEl.hidden = false;
       emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
+      emptyHintEl.hidden = true;
       overflowEl.hidden = true;
       return;
     }
     rowsList.hidden = false;
     emptyEl.hidden = true;
+    emptyHintEl.hidden = true;
     for (const row of payload.rows) {
       rowsList.appendChild(renderRow(rowTemplate, row));
     }
@@ -367,29 +436,96 @@
       overflowEl.hidden = true;
     }
   };
-  var renderEmpty = (targets, subtitle) => {
-    const { rowsList, emptyEl, overflowEl } = targets;
+  var renderListEmpty = (targets, payload) => {
+    const { rowsList, emptyEl, emptyHintEl, overflowEl } = targets;
     clearChildren(rowsList);
     rowsList.hidden = true;
     emptyEl.hidden = false;
-    emptyEl.textContent = subtitle;
+    emptyEl.textContent = payload.subtitle;
+    if (payload.hint) {
+      emptyHintEl.hidden = false;
+      emptyHintEl.textContent = payload.hint;
+    } else {
+      emptyHintEl.hidden = true;
+    }
     overflowEl.hidden = true;
   };
-  var renderWidget = (targets, payload) => {
-    const { root } = targets;
+  var setOptionalLine = (el, text) => {
+    const visible = Boolean(text && text.trim());
+    el.textContent = visible ? text : "";
+    el.hidden = !visible;
+  };
+  var renderDetail = (targets, payload, deviceId) => {
+    const row = payload.rows.find((candidate) => candidate.deviceId === deviceId);
+    if (!row) {
+      const { root, listView, detailView } = targets;
+      renderListReady(targets, payload);
+      root.dataset.view = "list";
+      listView.hidden = false;
+      detailView.hidden = true;
+      return;
+    }
+    const {
+      detailHeaderEl,
+      detailChipEl,
+      detailDeadlineEl,
+      detailTargetEl,
+      detailWhyEl,
+      detailRecourseEl,
+      detailMetaEl,
+      detailConfidenceEl
+    } = targets;
+    detailHeaderEl.textContent = row.deviceName;
+    detailChipEl.textContent = row.statusLabel;
+    detailChipEl.dataset.tone = row.tone;
+    const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
+    setOptionalLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
+    detailTargetEl.textContent = targetSentence(row);
+    detailTargetEl.hidden = false;
+    setOptionalLine(detailWhyEl, row.whyLabel);
+    setOptionalLine(detailRecourseEl, row.recourseHint);
+    setOptionalLine(detailMetaEl, row.planMetaLabel);
+    setOptionalLine(detailConfidenceEl, row.confidenceLabel);
+  };
+  var renderWidget = (targets, payload, view) => {
+    const { root, listView, detailView } = targets;
     if (!payload || payload.state !== "ready") {
-      const subtitle = payload?.state === "empty" ? payload.subtitle : EMPTY_SUBTITLE_DEFAULT;
+      const emptyPayload = payload?.state === "empty" ? payload : { state: "empty", subtitle: EMPTY_SUBTITLE_DEFAULT, hint: null };
       root.dataset.state = "empty";
-      renderEmpty(targets, subtitle);
+      root.dataset.view = "list";
+      listView.hidden = false;
+      detailView.hidden = true;
+      renderListEmpty(targets, emptyPayload);
+      return;
+    }
+    if (view.kind === "detail") {
+      root.dataset.state = "ready";
+      root.dataset.view = "detail";
+      listView.hidden = true;
+      detailView.hidden = false;
+      renderDetail(targets, payload, view.deviceId);
       return;
     }
     root.dataset.state = payload.rows.length === 0 ? "empty" : "ready";
-    renderReady(targets, payload);
+    root.dataset.view = "list";
+    listView.hidden = false;
+    detailView.hidden = true;
+    renderListReady(targets, payload);
   };
 
   // widgets/smart_tasks/src/public/widgetApp.ts
   var REFRESH_INTERVAL_MS = 60 * 1e3;
   var LOAD_ERROR_SUBTITLE = "Unable to load";
+  var MAX_CONSECUTIVE_LOAD_FAILURES = 3;
+  var rehydrateView = (view, payload) => {
+    if (view.kind !== "detail") return view;
+    if (!payload || payload.state !== "ready") return { kind: "list" };
+    return payload.rows.some((row) => row.deviceId === view.deviceId) ? view : { kind: "list" };
+  };
+  var focusRowButton = (targets, deviceId) => {
+    const button = targets.rowsList.querySelector(`[data-row-button][data-device-id="${deviceId}"]`);
+    if (button instanceof HTMLElement) button.focus();
+  };
   var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
     const theme = searchParams.get("theme");
     if (theme === "dark") {
@@ -398,16 +534,39 @@
       widgetDocument.body.classList.remove("homey-dark-mode");
     }
   };
+  var GENERIC_TARGET_SELECTORS = {
+    listView: "[data-list-view]",
+    detailView: "[data-detail-view]",
+    rowsList: "[data-rows]",
+    emptyEl: "[data-empty]",
+    emptyHintEl: "[data-empty-hint]",
+    overflowEl: "[data-overflow]",
+    detailHeaderEl: "[data-detail-name]",
+    detailChipEl: "[data-detail-chip]",
+    detailDeadlineEl: "[data-detail-deadline]",
+    detailTargetEl: "[data-detail-target]",
+    detailWhyEl: "[data-detail-why]",
+    detailRecourseEl: "[data-detail-recourse]",
+    detailMetaEl: "[data-detail-meta]",
+    detailConfidenceEl: "[data-detail-confidence]"
+  };
+  var resolveGenericTargets = (widgetDocument) => {
+    const entries = Object.entries(GENERIC_TARGET_SELECTORS).map(([key, selector]) => {
+      const el = widgetDocument.querySelector(selector);
+      return el instanceof HTMLElement ? [key, el] : null;
+    });
+    if (entries.some((entry) => entry === null)) return null;
+    return Object.fromEntries(entries);
+  };
   var resolveTargets = (widgetDocument) => {
     const root = widgetDocument.getElementById("widget-root");
-    const rowsList = widgetDocument.querySelector("[data-rows]");
-    const emptyEl = widgetDocument.querySelector("[data-empty]");
-    const overflowEl = widgetDocument.querySelector("[data-overflow]");
     const rowTemplate = widgetDocument.getElementById("row-template");
-    if (!(root instanceof HTMLElement) || !(rowsList instanceof HTMLElement) || !(emptyEl instanceof HTMLElement) || !(overflowEl instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement)) {
+    const detailBackBtn = widgetDocument.querySelector("[data-detail-back]");
+    const generic = resolveGenericTargets(widgetDocument);
+    if (!(root instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement) || !(detailBackBtn instanceof HTMLButtonElement) || generic === null) {
       return null;
     }
-    return { root, rowsList, emptyEl, overflowEl, rowTemplate };
+    return { root, rowTemplate, detailBackBtn, ...generic };
   };
   var createWidgetController = (params) => {
     const { targets, widgetDocument, widgetWindow } = params;
@@ -416,6 +575,43 @@
     let loadSequence = 0;
     let refreshTimer = null;
     let visibilityListenerBound = false;
+    let lastPayload = null;
+    let view = { kind: "list" };
+    let interactionBound = false;
+    let consecutiveLoadFailures = 0;
+    const render = () => {
+      renderWidget(targets, lastPayload, view);
+    };
+    const handleRowClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const button = target.closest("[data-row-button]");
+      if (!(button instanceof HTMLElement)) return;
+      const deviceId = button.dataset.deviceId;
+      if (!deviceId) return;
+      view = { kind: "detail", deviceId };
+      render();
+      targets.detailBackBtn.focus();
+    };
+    const handleBackClick = () => {
+      if (view.kind === "list") return;
+      const returnToDeviceId = view.deviceId;
+      view = { kind: "list" };
+      render();
+      focusRowButton(targets, returnToDeviceId);
+    };
+    const bindInteraction = () => {
+      if (interactionBound) return;
+      targets.rowsList.addEventListener("click", handleRowClick);
+      targets.detailBackBtn.addEventListener("click", handleBackClick);
+      interactionBound = true;
+    };
+    const unbindInteraction = () => {
+      if (!interactionBound) return;
+      targets.rowsList.removeEventListener("click", handleRowClick);
+      targets.detailBackBtn.removeEventListener("click", handleBackClick);
+      interactionBound = false;
+    };
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       try {
@@ -424,11 +620,20 @@
         maybeApplyPreviewTheme(widgetDocument, searchParams);
         const payload = preview || !homeyRef ? PREVIEW_SMART_TASKS_PAYLOAD : await homeyRef.api("GET", "/smart_tasks");
         if (loadId !== loadSequence) return;
-        renderWidget(targets, payload);
+        consecutiveLoadFailures = 0;
+        lastPayload = payload;
+        view = rehydrateView(view, payload);
+        render();
       } catch (error) {
         if (loadId !== loadSequence) return;
         console.error("Failed to load smart_tasks widget", error);
-        renderWidget(targets, { state: "empty", subtitle: LOAD_ERROR_SUBTITLE });
+        consecutiveLoadFailures += 1;
+        if (consecutiveLoadFailures < MAX_CONSECUTIVE_LOAD_FAILURES && lastPayload?.state === "ready") {
+          return;
+        }
+        lastPayload = { state: "empty", subtitle: LOAD_ERROR_SUBTITLE, hint: null };
+        view = { kind: "list" };
+        render();
       } finally {
         if (loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
           homeyRef.ready();
@@ -457,6 +662,7 @@
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
+      bindInteraction();
       void loadAndRender();
       startRefreshLoop();
       bindVisibilityReload();
@@ -466,6 +672,7 @@
         widgetWindow.clearInterval(refreshTimer);
         refreshTimer = null;
       }
+      unbindInteraction();
       if (!visibilityListenerBound) return;
       widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
       visibilityListenerBound = false;

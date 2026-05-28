@@ -16,6 +16,16 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       finishLabel: '04:30',
       statusLabel: 'Cannot finish',
       tone: 'danger',
+      etaVerb: 'Due',
+      targetActionVerb: 'Heat to',
+      targetNoun: 'Target',
+      deadlineLongLabel: 'Tomorrow 04:30',
+      // Plan-meta is intentionally suppressed on a failing (cannot_meet) task so
+      // the recourse line stays above the fold in the 220 px detail panel.
+      planMetaLabel: null,
+      confidenceLabel: null,
+      whyLabel: 'Today’s daily budget runs out before the deadline.',
+      recourseHint: 'Lower the daily budget so future days reserve power earlier.',
     },
     {
       deviceId: 'preview-hot-water',
@@ -27,6 +37,14 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       finishLabel: '05:30',
       statusLabel: 'At risk',
       tone: 'warn',
+      etaVerb: 'Ready by',
+      targetActionVerb: 'Heat to',
+      targetNoun: 'Target',
+      deadlineLongLabel: 'Tomorrow 05:30',
+      planMetaLabel: '≈2h 15m · 1.8 kW · ≈4.0 kWh',
+      confidenceLabel: null,
+      whyLabel: 'Limited time left before the deadline.',
+      recourseHint: null,
     },
     {
       // Demonstrates the "Target X" rendering when the device snapshot hasn't
@@ -41,6 +59,16 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       finishLabel: '07:00',
       statusLabel: 'Building plan…',
       tone: 'muted',
+      etaVerb: 'Ready by',
+      targetActionVerb: 'Heat to',
+      targetNoun: 'Target',
+      deadlineLongLabel: 'Tomorrow 07:00',
+      planMetaLabel: null,
+      // Confidence chip suppressed while waiting on prices (would conflict with
+      // the "Waiting for tomorrow's prices" reason).
+      confidenceLabel: null,
+      whyLabel: 'Waiting for tomorrow’s prices.',
+      recourseHint: null,
     },
   ],
 };

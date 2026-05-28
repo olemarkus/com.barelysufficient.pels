@@ -93,6 +93,117 @@ export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, stri
   paused_unplugged: 'Unplugged',
 };
 
+// Widget detail-panel "why" + recourse copy. Composed from producer-resolved
+// fields so the browser-side renderer never branches on statusId /
+// pendingReason / floor shortfall cause (per
+// `feedback_layering_resolution_in_producer.md`). Strings stay short — the
+// widget surface is 320–480 px wide and the detail panel must fit in 220 px
+// of vertical space alongside the device name, deadline, target, and back
+// chevron. Lifted into shared-domain per
+// `feedback_ui_text_shared_with_logs.md` so runtime structured logs can
+// surface the same one-line reasons when the detail surface fires.
+
+const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | null> = {
+  building_plan: null, // resolved by pendingReason
+  queued: null, // composed from firstPlannedTimeLabel when present
+  paused_unplugged: 'EV is unplugged — plug in to resume.',
+  on_track: null, // affirmative line resolved from firstPlannedTimeLabel
+  at_risk: null, // disambiguated by budget vs time below
+  cannot_meet: null, // resolved by floor cause / budget bucket count
+  satisfied: null,
+};
+
+const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
+Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
+  awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
+  device_data_missing: 'Waiting for a reading from this device.',
+  invalid_session: 'EV is unplugged — plug in to start.',
+  missing_capacity: 'Learning energy use from this device.',
+  price_feature_disabled: 'Price-aware planning is off.',
+};
+
+const WHY_CANNOT_MEET_BUDGET = 'Today’s daily budget runs out before the deadline.';
+const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
+// At-risk is the same two causes as cannot-finish, hedged to "may" because the
+// task can still land. Disambiguated so the detail panel never shows the
+// "time OR budget" guess the user would otherwise have to resolve themselves.
+const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
+const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
+
+const RECOURSE_CANNOT_MEET_BUDGET = 'Lower the daily budget so future days reserve power earlier.';
+const RECOURSE_CANNOT_MEET_DEVICE = 'Open this device’s settings in the PELS app to see what’s holding it back.';
+const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
+
+export type SmartTaskWidgetDetailCopy = {
+  whyLabel: string | null;
+  recourseHint: string | null;
+};
+
+export type SmartTaskWidgetDetailInput = {
+  statusId: SmartTaskListStatusId;
+  pendingReason?: DeferredObjectiveActivePlanPendingReason;
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  dailyBudgetExhaustedBucketCount?: number;
+  // Pre-formatted local time of the first planned hour (e.g. "16:00") for the
+  // `queued` "Cheaper hours start at HH:MM" line. Locale formatting lives in the
+  // caller so shared-domain stays free of Intl.
+  firstPlannedTimeLabel?: string | null;
+};
+
+// Budget vs device cause. The producer-resolved `floorShortfallCause` is
+// authoritative (per `feedback_layering_resolution_in_producer`): when present,
+// it alone decides. The `dailyBudgetExhaustedBucketCount` fallback is gated on
+// `floorShortfallCause === undefined` (legacy pre-producer-field revisions) AND
+// `at_risk` only — mirroring the settings UI (`deadlinePlan.ts`). The producer
+// never returns `cannot_meet` with a budget cause, so a non-budget cause that
+// merely brushed the budget cap in the run-up (bucket count > 0) must not be
+// misclassified as budget-driven.
+const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => {
+  if (input.floorShortfallCause !== undefined) return input.floorShortfallCause === 'budget';
+  return input.statusId === 'at_risk' && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+};
+
+export const resolveSmartTaskWidgetDetailCopy = (
+  input: SmartTaskWidgetDetailInput,
+): SmartTaskWidgetDetailCopy => {
+  if (input.statusId === 'cannot_meet') {
+    return isBudgetDriven(input)
+      ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
+      : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
+  }
+  if (input.statusId === 'at_risk') {
+    return isBudgetDriven(input)
+      ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
+      : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+  }
+  if (input.statusId === 'building_plan') {
+    const reason = input.pendingReason ?? 'awaiting_horizon_plan';
+    const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason]
+      ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan
+      ?? null;
+    return {
+      whyLabel: why,
+      recourseHint: reason === 'invalid_session' ? RECOURSE_INVALID_SESSION : null,
+    };
+  }
+  if (input.statusId === 'queued' && input.firstPlannedTimeLabel) {
+    return {
+      whyLabel: `Cheaper hours start at ${input.firstPlannedTimeLabel}.`,
+      recourseHint: null,
+    };
+  }
+  return {
+    whyLabel: SMART_TASK_WIDGET_WHY_BY_STATUS[input.statusId],
+    recourseHint: null,
+  };
+};
+
+// Compressed empty-state pointer for the widget. The settings-UI variant
+// (`SMART_TASK_LIST_EMPTY_COPY`) wraps Flow-action names in rich markup the
+// widget can't render at 320–480 px; this is the one-sentence form.
+export const SMART_TASK_WIDGET_EMPTY_HINT
+  = 'Add a smart task from a Flow card to see it here.';
+
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone
@@ -343,6 +454,37 @@ export const SMART_TASK_LIST_ROW_LABELS = {
   starts: 'Starts',
   readyBy: 'Ready by',
 } as const;
+
+// Word sources for the dashboard widget so its renderer never hardcodes
+// user-facing copy (per `feedback_ui_text_shared_with_logs`). Declared after
+// `SMART_TASK_LIST_ROW_LABELS` because they reuse it.
+//
+// The ETA verb pairs the canonical `Ready by` with a `Due` variant for failing
+// tasks, where `Ready by HH:MM` next to a `Cannot finish` chip reads as
+// contradictory.
+export const SMART_TASK_WIDGET_DUE_VERB = 'Due';
+
+export const resolveSmartTaskWidgetEtaVerb = (isFailing: boolean): string => (
+  isFailing ? SMART_TASK_WIDGET_DUE_VERB : SMART_TASK_LIST_ROW_LABELS.readyBy
+);
+
+// Kind-aware target action verb ("Heat to 65 °C" / "Charge to 80 %"). Kept
+// beside the other kind-aware smart-task vocabulary so the heat/charge split
+// can't drift; the "temperature never says charge" rule
+// (`notes/ui-terminology.md`) is enforced by the kind key.
+const SMART_TASK_WIDGET_TARGET_ACTION_VERB: Record<'temperature' | 'ev_soc', string> = {
+  temperature: 'Heat to',
+  ev_soc: 'Charge to',
+};
+
+export const resolveSmartTaskWidgetTargetActionVerb = (
+  kind: 'temperature' | 'ev_soc',
+): string => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
+
+// "Target" noun for the list values line when no current reading is available.
+// Re-exported from the canonical list-row label so the widget and the
+// settings-UI list card share one source.
+export const SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
 
 // Empty-state copy for the Smart-tasks list when no smart tasks have been
 // scheduled yet. Split into discrete fragments so the JSX renderer can wrap
