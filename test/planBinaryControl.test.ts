@@ -465,6 +465,77 @@ describe('plan binary control helpers', () => {
     // confirmation will route through the cap-shed recorder.
     expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
     expect(state.pendingBinaryCommands.socket1?.logContext).toBe('capacity');
+    // Direct (non-flow-backed) device: handleConfirmedBinaryCommand
+    // early-returns for !flowBackedControl, so the promoted logContext is
+    // never read at confirmation. Set the cap-shed cooldown markers here
+    // so the capacity shed gets its instability/cooldown clock advance
+    // (codex round-4 finding on PR #1249).
+    expect(state.lastInstabilityMs).toBeGreaterThan(0);
+    expect(state.lastDeviceShedMs.socket1).toBeGreaterThan(0);
+  });
+
+  it('promotes a flow-backed pending release without setting instability markers at promotion time', async () => {
+    // Counter-case for the direct-device branch above. For flow-backed
+    // devices, handleConfirmedBinaryCommand reads the promoted logContext
+    // on confirmation and dispatches via the cap-shed recorder, which sets
+    // the markers there. Setting them at promotion time too would be
+    // redundant — verify the synchronous marker-set is gated on
+    // !pending.flowBackedControl.
+    const state = createPlanEngineState();
+    const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
+    const deviceManager = withGetSnapshotByDeviceId({
+      setCapability: vi.fn().mockResolvedValue(undefined),
+      getSnapshot: vi.fn().mockReturnValue([]),
+    });
+    const snapshot = {
+      id: 'socket1',
+      name: 'Socket',
+      controlCapabilityId: 'onoff' as const,
+      flowBacked: true,
+      flowBackedCapabilityIds: ['onoff'],
+      canSetControl: true,
+      currentOn: true,
+    };
+    await setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      triggerFlowBackedBinaryControlRequest,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+      debugStructured: vi.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot,
+      logContext: 'release',
+      reason: 'release',
+    });
+    await setBinaryControl({
+      state,
+      deviceManager: deviceManager as never,
+      triggerFlowBackedBinaryControlRequest,
+      log: vi.fn(),
+      logDebug: vi.fn(),
+      error: vi.fn(),
+      structuredLog,
+      debugStructured: vi.fn(),
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: false,
+      snapshot,
+      logContext: 'capacity',
+      reason: 'shedding',
+    });
+    expect(state.pendingBinaryCommands.socket1?.logContext).toBe('capacity');
+    expect(state.pendingBinaryCommands.socket1?.flowBackedControl).toBe(true);
+    // Flow-backed path: markers stay unset until confirmation. The
+    // promoted logContext routes the eventual recordShedActuation
+    // through the cap-shed branch (isRelease=false).
+    expect(state.lastInstabilityMs ?? 0).toBe(0);
+    expect(state.lastDeviceShedMs.socket1 ?? 0).toBe(0);
   });
 
   it('skips a standard binary command when the latest snapshot already matches the desired state', async () => {

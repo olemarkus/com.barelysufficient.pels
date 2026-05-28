@@ -113,9 +113,23 @@ export function shouldSkipBinaryControl(params: {
     // the release entry's diagnostic-only recorder and the cooldown clock
     // never advances. Promotion is one-way (release → capacity); reverse
     // direction stays as-is since capacity cooldown semantics are stronger.
+    //
+    // Flow-backed devices: `handleConfirmedBinaryCommand` reads the promoted
+    // logContext on the confirmation cycle and dispatches via the cap-shed
+    // recorder. Direct (non-flow-backed) devices: the confirmation handler
+    // early-returns for `!pending.flowBackedControl`, so the promoted
+    // logContext is never read — the original release write already fired
+    // the release recorder (no markers) and the cap-shed otherwise gets no
+    // cooldown markers at all. Set them here for the direct case (codex
+    // round-4 finding on PR #1249).
     const pending = getPendingBinaryCommand(state, deviceId);
     if (pending && pending.logContext === 'release' && logContext === 'capacity') {
       pending.logContext = 'capacity';
+      if (!pending.flowBackedControl) {
+        const promotedAtMs = Date.now();
+        state.lastInstabilityMs = promotedAtMs;
+        state.lastDeviceShedMs[deviceId] = promotedAtMs;
+      }
     }
     logger.debug({
       event: 'binary_command_skipped',
