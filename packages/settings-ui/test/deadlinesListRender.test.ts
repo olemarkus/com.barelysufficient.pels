@@ -612,6 +612,106 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
       expect(chip.getAttribute('type')).toBe('button');
     });
   });
+
+  // PR-29: the pressed/selected chip must NOT reuse the `--info` tone. Blue is
+  // the informational-status pill elsewhere; selection is carried by
+  // `aria-pressed` alone, styled via `.plan-chip--link[aria-pressed="true"]`
+  // (accent + outline). Guards against a regression back to the tone overload.
+  it('does not tag any filter chip with the --info tone (selection is aria-pressed only)', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: 'dev_b',
+    });
+    const chips = Array.from(
+      mount.querySelectorAll('.deadlines-history__filter-row .plan-chip'),
+    );
+    expect(chips.length).toBeGreaterThan(0);
+    chips.forEach((chip) => {
+      expect(chip.classList.contains('plan-chip--info')).toBe(false);
+    });
+    // The selected chip still carries the link affordance class so it keeps
+    // the 48 dp tap target and the pressed-state CSS hook.
+    expect(findChip(mount, 'Connected 300')?.classList.contains('plan-chip--link')).toBe(true);
+  });
+});
+
+// PR-29: the miss-streak badge list narrows in lockstep with the device
+// filter. Filtering to one device must not leave another device's badge on
+// screen, which contradicted the "collapse to one device" promise.
+describe('DeadlinesHistoryList miss-streak badges follow the device filter', () => {
+  const DEADLINE_BASE = Date.UTC(2026, 4, 16, 16, 0, 0);
+
+  const buildMissEntry = (
+    deviceId: string,
+    deviceName: string,
+    offsetHours: number,
+    outcome: 'met' | 'missed',
+  ): DeferredObjectivePlanHistoryEntry => ({
+    id: `${deviceId}-${offsetHours}`,
+    deviceId,
+    deviceName,
+    objectiveKind: 'temperature',
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startedAtMs: DEADLINE_BASE - (offsetHours + 6) * HOUR_MS,
+    finalizedAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 4,
+    outcome,
+    metAtMs: outcome === 'met' ? DEADLINE_BASE - offsetHours * HOUR_MS : null,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation',
+    originalPlan: null,
+    finalPlan: null,
+  });
+
+  // Two devices, each with a miss streak (3 of 3 missed), so both produce a
+  // badge in the unfiltered "All" view.
+  const twoStreakingDevices = (): DeferredObjectivePlanHistoryEntry[] => [
+    buildMissEntry('dev_a', 'Boiler', 0, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 1, 'missed'),
+    buildMissEntry('dev_a', 'Boiler', 2, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 3, 'missed'),
+    buildMissEntry('dev_a', 'Boiler', 4, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 5, 'missed'),
+  ];
+
+  const badgeDeviceNames = (mount: HTMLElement): string[] => (
+    Array.from(mount.querySelectorAll('.deadlines-history__miss-streak-device'))
+      .map((el) => (el.textContent ?? '').trim())
+  );
+
+  it('shows every streaking device badge in the unfiltered (All) view', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: twoStreakingDevices(),
+      timeZone: 'UTC',
+      selectedDeviceId: null,
+    });
+    expect(badgeDeviceNames(mount)).toEqual(['Boiler', 'Connected 300']);
+  });
+
+  it('shows only the selected device badge when filtered', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: twoStreakingDevices(),
+      timeZone: 'UTC',
+      selectedDeviceId: 'dev_b',
+    });
+    expect(badgeDeviceNames(mount)).toEqual(['Connected 300']);
+  });
 });
 
 // PR-10 — 7-day hit-rate strip rendered above the past-tasks list. The view
