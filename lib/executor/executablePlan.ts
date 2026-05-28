@@ -82,7 +82,7 @@ export type ExecutableReleaseIntent = {
   // configured shedBehavior is `set_step`; null otherwise (including for EV pause/resume).
   // The lifecycle-end release executor reads this directly instead of re-running the
   // cascade at apply time.
-  shedStepId?: string | null;
+  releaseShedStepId?: string | null;
 };
 
 export type ExecutableTargetIntent = {

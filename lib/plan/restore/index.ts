@@ -496,7 +496,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
       // Route the post-plan revision through the chunk-6 materialisation adapter so this
       // site shares the single shed-action snapshot contract. The intent is `set_step`
       // with `targetStepId` set to the specific step the revision targets — the adapter
-      // forwards it to `shedStepId` on the projected triple.
+      // forwards it to `releaseShedStepId` on the projected triple.
       const triple = materializeShedSnapshotFields({
         intent: { kind: 'set_step', targetStepId: dev.selectedStepId },
         shouldShed: true,
@@ -506,7 +506,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
       update.targetStepId = dev.selectedStepId;
       update.shedAction = triple.shedAction;
       update.shedTemperature = triple.shedTemperature;
-      update.shedStepId = triple.shedStepId;
+      update.releaseShedStepId = triple.releaseShedStepId;
     }
     setPlanDevice(dev.id, update);
   }
