@@ -6629,6 +6629,36 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
+/* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
+ * list of "Device — N of last M runs missed" rows so the recovering-from-
+ * mistake user gets a pattern-at-a-glance signal without rescanning the
+ * card stack. Plain block rows (no flex) because the row content includes
+ * a literal em-dash text node between the two spans; the dash needs to flow
+ * inline with the surrounding text. */
+.deadlines-history__miss-streaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__miss-streak {
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+.deadlines-history__miss-streak-device {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.deadlines-history__miss-streak-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
 .usage-return-link {
