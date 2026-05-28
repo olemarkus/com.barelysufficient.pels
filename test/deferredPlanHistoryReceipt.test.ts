@@ -524,9 +524,12 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
   });
 
   it('includes entries on the 7-day boundary and excludes those just outside it', () => {
-    // Entry whose finalizedAtMs is exactly cutoff = NOW_MS - 7d → included.
-    // Entry one millisecond older → excluded.
-    const cutoffMs = NOW_MS - 7 * 24 * HOUR_MS;
+    // The window is exactly 7 local date buckets — today plus the 6 preceding
+    // ones — so the cutoff is 6 local midnights before NOW_MS's local day-start.
+    // In UTC that is 2026-05-10 00:00 (NOW_MS = 2026-05-16 12:00, local midnight
+    // 05-16 00:00, minus 6 days). Entry exactly on the cutoff → included; one
+    // millisecond older → excluded.
+    const cutoffMs = Date.UTC(2026, 4, 10, 0, 0, 0);
     const strip = resolvePlanHistory7DayHitRateStrip(
       [
         buildEntry({
@@ -549,5 +552,108 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip!.succeeded).toBe(1);
     expect(strip!.missed).toBe(0);
     expect(strip!.hitRatePercent).toBe(100);
+  });
+
+  it('keeps the window to exactly 7 local date buckets (no 8th-day bleed)', () => {
+    // Codex's exact example (PR #1264 P2): at 2026-05-16 23:00 UTC the old
+    // cutoff stepped back 7 local midnights from today's start-of-day, landing
+    // at 2026-05-09 00:00 — so entries from the first 23h of May 9 leaked into
+    // the "Last 7 days" rate even though they predate a true 7-day span. The
+    // fix steps back only 6 midnights: the window is today (May 16) plus the 6
+    // preceding dates (May 10–15) = 7 buckets, cutoff 2026-05-10 00:00. A May 9
+    // entry must NOT count; a May 10 00:00 entry must.
+    const nowMs = Date.UTC(2026, 4, 16, 23, 0, 0); // 2026-05-16 23:00 UTC
+    const newCutoffMs = Date.UTC(2026, 4, 10, 0, 0, 0); // first in-window bucket
+    const eighthDayMs = Date.UTC(2026, 4, 9, 12, 0, 0); // mid-May 9 — the bleed
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({
+          id: 'eighth-day-ago',
+          outcome: 'met',
+          deadlineAtMs: eighthDayMs,
+          finalizedAtMs: eighthDayMs,
+        }),
+        buildEntry({
+          id: 'first-bucket',
+          outcome: 'missed',
+          deadlineAtMs: newCutoffMs,
+          finalizedAtMs: newCutoffMs,
+        }),
+      ],
+      nowMs,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    // Only the May 10 entry is in-window; the May 9 entry is excluded.
+    expect(strip!.succeeded).toBe(0);
+    expect(strip!.missed).toBe(1);
+    expect(strip!.hitRatePercent).toBe(0);
+  });
+
+  // Regression for the DST defect Codex's pels-runtime-reality flagged: the
+  // cutoff used to be `nowMs − N×24h`, a fixed millisecond offset. On a window
+  // that straddles a DST transition that offset drifts the cutoff by the lost
+  // or gained hour, so an early-morning entry on the window's first local day
+  // is silently dropped (spring-forward) or admitted (fall-back) when it
+  // shouldn't be. The fix steps back 6 local calendar days from `nowMs`'s
+  // local day-start (7 local date buckets total), anchoring the cutoff at local
+  // midnight regardless of the 23h/25h day — same approach PR #1259 applied to
+  // the "Last week" divider. Europe/Oslo: spring-forward Sun 29 Mar 2026
+  // (02:00→03:00, 23h day), fall-back Sun 25 Oct 2026 (03:00→02:00, 25h day).
+  // Each test places the DST Sunday as the window's first (oldest) bucket so the
+  // fixed-offset drift would land the cutoff past the entry's wall-clock hour.
+  describe('7-day window across DST transitions (Europe/Oslo)', () => {
+    const OSLO_TZ = 'Europe/Oslo';
+
+    it('includes a first-local-day entry across the 23h spring-forward day', () => {
+      // "Now" is Sat 4 Apr 10:00 Oslo. The correct cutoff is Sun 29 Mar 00:00
+      // Oslo (local midnight, 6 local days back; first of 7 buckets). The entry
+      // is Sun 29 Mar 04:00 Oslo — inside the window. The buggy `nowMs − 6×24h`
+      // cutoff lands at Sun 29 Mar 10:00 Oslo (the 23h DST day pulls the fixed
+      // offset deeper into the day), which would wrongly exclude this 04:00
+      // entry.
+      const nowMs = Date.UTC(2026, 3, 4, 8, 0, 0); // Sat 4 Apr 10:00 Oslo
+      const firstDayEntryMs = Date.UTC(2026, 2, 29, 2, 0, 0); // Sun 29 Mar 04:00 Oslo
+      const strip = resolvePlanHistory7DayHitRateStrip(
+        [
+          buildEntry({
+            id: 'spring',
+            outcome: 'met',
+            deadlineAtMs: firstDayEntryMs,
+            finalizedAtMs: firstDayEntryMs,
+          }),
+        ],
+        nowMs,
+        OSLO_TZ,
+      );
+      expect(strip).not.toBeNull();
+      expect(strip!.succeeded).toBe(1);
+      expect(strip!.hitRatePercent).toBe(100);
+    });
+
+    it('includes a first-local-day entry across the 25h fall-back day', () => {
+      // "Now" is Sat 31 Oct 10:00 Oslo. The correct cutoff is Sun 25 Oct 00:00
+      // Oslo (6 local days back; first of 7 buckets). The entry is Sun 25 Oct
+      // 01:00 Oslo — inside the window. The buggy `nowMs − 6×24h` cutoff lands
+      // at Sun 25 Oct 10:00 Oslo (the 25h DST day pushes the fixed offset later
+      // in the day), which would wrongly exclude this 01:00 entry.
+      const nowMs = Date.UTC(2026, 9, 31, 9, 0, 0); // Sat 31 Oct 10:00 Oslo
+      const firstDayEntryMs = Date.UTC(2026, 9, 24, 23, 0, 0); // Sun 25 Oct 01:00 Oslo
+      const strip = resolvePlanHistory7DayHitRateStrip(
+        [
+          buildEntry({
+            id: 'fall',
+            outcome: 'met',
+            deadlineAtMs: firstDayEntryMs,
+            finalizedAtMs: firstDayEntryMs,
+          }),
+        ],
+        nowMs,
+        OSLO_TZ,
+      );
+      expect(strip).not.toBeNull();
+      expect(strip!.succeeded).toBe(1);
+      expect(strip!.hitRatePercent).toBe(100);
+    });
   });
 });
