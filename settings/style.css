@@ -1563,6 +1563,24 @@ md-filled-button.is-busy {
   transform: translateY(1px);
 }
 
+/* Selected/pressed link chip (e.g. the past-tasks device-filter row, PR-29).
+   `aria-pressed="true"` is the single source of selection truth — the markup
+   no longer layers a `--info` tone, which collided with the informational
+   blue pill used elsewhere. The pressed treatment leans on the accent +
+   outline pairing instead: a faint accent-tinted fill plus an accent border,
+   matching the segmented-control selected look so "this filter is active"
+   reads as a control state rather than a status tone. */
+.plan-chip--link[aria-pressed="true"] {
+  background: var(--pels-segmented-selected-background);
+  border-color: var(--accent);
+  color: var(--pels-segmented-selected-text);
+}
+
+.plan-chip--link[aria-pressed="true"]:hover {
+  background: var(--pels-segmented-selected-background);
+  border-color: var(--accent-strong);
+}
+
 /* `strong` inside a chip inherits the chip's colour + the chip's own
    `--chip-font-weight` (semibold). The earlier `.chip strong` cascade bumped
    weight to bold, but at xs font size the 1-step lift above the chip's own

@@ -315,9 +315,11 @@ describe('groupPlanHistoryByIsoWeek', () => {
   // (UTC-4 in May) that midnight-UTC instant is actually Sunday evening
   // *local time*, so `getWeekStartInTimeZone` bucketed it two weeks back.
   // The result: "Last week" rows were mislabeled "Week of …" and the week
-  // before that wore the "Last week" tag. Stepping back 7×24h from `nowMs`
-  // and re-bucketing through `getWeekStartInTimeZone` keeps the comparison
-  // anchored on a real wall-clock instant in the target zone.
+  // before that wore the "Last week" tag. The fix steps back one local
+  // calendar day from the current week's Monday and re-buckets through
+  // `getWeekStartInTimeZone`, keeping the comparison anchored on the local
+  // calendar rather than UTC midnight. (The DST-transition suite below
+  // pins the related 23h/25h-week defect.)
   describe('relative week labels in non-UTC time zones', () => {
     const NY_TZ = 'America/New_York';
     // Mon 11 May 2026 09:00 New York time = 13:00 UTC. ISO week 20 locally.
@@ -349,6 +351,57 @@ describe('groupPlanHistoryByIsoWeek', () => {
       expect(groups).toHaveLength(1);
       expect(groups[0]!.heading.startsWith('Last week')).toBe(false);
       expect(groups[0]!.heading).toMatch(/^Week of /);
+    });
+  });
+
+  // Regression for the DST defect Codex flagged on merged PR #1243. The
+  // "Last week" comparison used to step back a fixed 7×24h from `nowMs`
+  // before re-bucketing. That offset is wrong on weeks that straddle a DST
+  // transition: a spring-forward week is only 23h on its short day, so the
+  // subtraction undershoots and stays inside the *current* week (mislabels
+  // the prior week "Week of …"); a fall-back week is 25h on its long day,
+  // so the subtraction overshoots and lands *two* weeks back (the prior
+  // week never wins "Last week"). The fix steps back one local calendar day
+  // from the current week's Monday and re-buckets, so the comparison is
+  // pure calendar arithmetic and immune to 23h/25h weeks. Europe/Oslo:
+  // spring-forward Sun 29 Mar 2026 (02:00→03:00), fall-back Sun 25 Oct 2026
+  // (03:00→02:00).
+  describe('relative week labels across DST transitions (Europe/Oslo)', () => {
+    const OSLO_TZ = 'Europe/Oslo';
+
+    it('labels the 23h spring-forward week as "Last week"', () => {
+      // The DST week is Mon 23 Mar–Sun 29 Mar 2026 (loses an hour Sun). "Now"
+      // is Mon 30 Mar 00:30 local (= 22:30 UTC Sun 29), just into the next
+      // week. nowMs − 7×24h lands inside the current week (the short DST week
+      // ate the boundary), so the old code dropped "Last week" entirely.
+      const nowMs = Date.UTC(2026, 2, 29, 22, 30, 0); // Mon 30 Mar 00:30 Oslo
+      const dstWeekEntryMs = Date.UTC(2026, 2, 25, 9, 0, 0); // Wed 25 Mar 10:00 Oslo
+      const groups = groupPlanHistoryByIsoWeek(
+        [buildEntry({ outcome: 'met', deadlineAtMs: dstWeekEntryMs })],
+        OSLO_TZ,
+        '',
+        nowMs,
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
+    });
+
+    it('labels the week before the 25h fall-back week as "Last week"', () => {
+      // "Now" is Sun 25 Oct 2026 23:30 local (= 22:30 UTC, already CET), the
+      // tail of the 25h fall-back week (Mon 19–Sun 25 Oct). The immediately
+      // preceding week is Mon 12–Sun 18 Oct. nowMs − 7×24h overshoots past
+      // that week's Monday — the extra fall-back hour pushed a calendar week
+      // beyond 168h — so the old code mislabeled it "Week of …".
+      const nowMs = Date.UTC(2026, 9, 25, 22, 30, 0); // Sun 25 Oct 23:30 Oslo
+      const priorWeekEntryMs = Date.UTC(2026, 9, 14, 8, 0, 0); // Wed 14 Oct 10:00 Oslo
+      const groups = groupPlanHistoryByIsoWeek(
+        [buildEntry({ outcome: 'met', deadlineAtMs: priorWeekEntryMs })],
+        OSLO_TZ,
+        '',
+        nowMs,
+      );
+      expect(groups).toHaveLength(1);
+      expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
     });
   });
 });
