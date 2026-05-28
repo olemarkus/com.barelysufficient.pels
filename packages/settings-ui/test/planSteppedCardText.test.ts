@@ -7,7 +7,10 @@ import {
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
 } from '../../shared-domain/src/planSteppedCardText.ts';
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../shared-domain/src/planStateLabels.ts';
+import {
+  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  PLAN_STATE_HELD_FALLBACK_STATUS,
+} from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 
 const NOW_MS = 1_000_000;
@@ -496,6 +499,19 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       )).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+    });
+
+    it('returns the deferred-objective avoid status when the smart task is waiting for cheaper hours', () => {
+      expect(resolveSteppedStatusLine(
+        {
+          ...baseDevice,
+          currentState: 'off',
+          steppedLoad: steppedLoad({ targetStepId: 'low' }),
+          reason: { code: 'deferred_objective_avoid', detail: null },
+        },
+        profile,
+        NOW_MS,
+      )).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
     });
 
     it('returns shed invariant status with count and max step', () => {

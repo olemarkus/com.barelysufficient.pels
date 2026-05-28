@@ -2,7 +2,10 @@ import {
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
 } from '../../shared-domain/src/planTemperatureCardText.ts';
-import { PLAN_STATE_DAILY_BUDGET_STATUS } from '../../shared-domain/src/planStateLabels.ts';
+import {
+  PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+} from '../../shared-domain/src/planStateLabels.ts';
 
 describe('resolveTemperatureLine', () => {
   it('shows the planned target when the target is stable', () => {
@@ -71,5 +74,15 @@ describe('resolveTemperatureReasonLine', () => {
       plannedTarget: 21,
       reason: { code: 'daily_budget', detail: null },
     })).toBe(PLAN_STATE_DAILY_BUDGET_STATUS);
+  });
+
+  it('renders the deferred-objective avoid status for smart-task waiting', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTemperature: 20.2,
+      plannedTarget: 21,
+      reason: { code: 'deferred_objective_avoid', detail: null },
+    })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
 });

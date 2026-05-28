@@ -293,12 +293,13 @@ export const buildDecisionSentence = (
     }
 
     // 4b. Mixed: some devices are smart-task waiting, others are held by
-    // physical constraints. Name both subsets so neither narrative wins
-    // falsely. Two short sentences instead of an em-dash join (Nordic
-    // register voice rules).
+    // physical constraints. Comma-join keeps the two subsets in one
+    // thought; avoids the em-dash diagnostic shape Nordic voice bans and
+    // the fragment-shape ("1 waiting for cheaper hours.") that reads as a
+    // sentence start.
     if (avoidCount > 0) {
       return {
-        text: `Holding back ${formatDevices(input.limitedCount)}. `
+        text: `Holding back ${formatDevices(input.limitedCount)}, `
           + `${avoidCount} waiting for cheaper hours.`,
         positive: false,
       };
@@ -308,7 +309,7 @@ export const buildDecisionSentence = (
     // well under the hard cap; naming the budget keeps the sentence honest.
     if (dailyCount > 0 && dailyCount === input.limitedCount) {
       return {
-        text: `Holding back ${formatDevices(input.limitedCount)} to stay within today's budget.`,
+        text: `Holding back ${formatDevices(input.limitedCount)} to stay within today’s budget.`,
         positive: false,
       };
     }
