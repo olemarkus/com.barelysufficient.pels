@@ -48,23 +48,36 @@ import {
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
 /**
- * Producer-internal EV-device predicate. A device is treated as "EV" if EITHER
- * its `deviceClass` is `'evcharger'` OR its resolved binary control capability
- * is `'evcharger_charging'`. The union is intentional: real EV devices set both
- * fields, so this collapses what used to be two slightly different gates inside
- * this file (`resolveEvBoostActive` historically read `deviceClass`; the
- * commandability/restore-block helpers read `controlCapabilityId`) into a
- * single source of truth.
+ * Producer-internal EV-device predicate. A device is treated as "EV" if any of:
+ *  - `deviceClass` is `'evcharger'`
+ *  - resolved binary control capability is `'evcharger_charging'`
+ *  - the raw `capabilities` list contains `'evcharger_charging'`
  *
- * Returns `false` when both fields are missing.
+ * The union over three fields is intentional. Real EV devices set the first
+ * two; the third is the parity check that aligns this predicate with the
+ * sibling `resolveBinaryCapabilityId` helper, which already infers an EV
+ * binary-control capability from `capabilities.includes('evcharger_charging')`
+ * when `controlCapabilityId` is missing. Without it, a `PlanInputDevice` that
+ * carries the capability list but has not yet had its `controlCapabilityId`
+ * resolved (e.g. early producer projections, snapshot-light shapes) would
+ * mis-route through the non-EV branches of helpers like `resolveEvBoostActive`,
+ * `getEvRestoreBlockReason`, and `resolveEvCommandableBlock`.
+ *
+ * Returns `false` when all three fields are missing or absent.
  *
  * Kept private to this producer module: consumers in `lib/plan/restore/**`
  * receive `TargetDeviceSnapshot` and resolve EV semantics through different
  * helpers — they don't share the `PlanInputDevice` shape this predicate is
  * shaped for.
  */
-const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: string }): boolean => (
-  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
+const isEvDevice = (dev: {
+  deviceClass?: string;
+  controlCapabilityId?: string;
+  capabilities?: readonly string[];
+}): boolean => (
+  dev.deviceClass === 'evcharger'
+    || dev.controlCapabilityId === 'evcharger_charging'
+    || dev.capabilities?.includes('evcharger_charging') === true
 );
 
 export type BinaryControlPlan = {
@@ -95,6 +108,9 @@ export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & Obse
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
+  // See `isEvDevice` — carried so the predicate can mirror the producer's
+  // capability-list inference when `controlCapabilityId` is not yet set.
+  capabilities?: readonly string[];
 };
 
 export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
@@ -236,6 +252,11 @@ export type CommandableNowResolveInput = {
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   evChargingState?: string;
   available?: boolean;
+  // Carried so `isEvDevice` can detect EV chargers whose `controlCapabilityId`
+  // is not yet resolved by mirroring the producer's
+  // `resolveBinaryCapabilityId` inference (`capabilities` includes
+  // `'evcharger_charging'` → treat as EV).
+  capabilities?: readonly string[];
 };
 
 export type CommandableNowGraceEntry = {

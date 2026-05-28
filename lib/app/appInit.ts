@@ -347,6 +347,7 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
       controlCapabilityId: device.controlCapabilityId,
       evChargingState: device.evChargingState,
       available: device.available,
+      capabilities: device.capabilities,
     },
     previousObservation,
     nowMs,
