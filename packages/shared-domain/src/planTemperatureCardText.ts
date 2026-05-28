@@ -85,6 +85,17 @@ const resolveWaitingText = (reason: unknown): string => {
   return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
 };
 
+// Map a reason code to its limited-status label. Extracted so the parent
+// resolver stays under the SonarJS / ESLint complexity caps after the
+// deferred-objective avoid branch was added.
+const resolveLimitedReasonLabel = (reasonCode: string): string | null => {
+  if (reasonCode === PLAN_REASON_CODES.deferredObjectiveAvoid) return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
+  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
+  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
+  if (isLimitedReason(reasonCode)) return PLAN_STATE_HELD_FALLBACK_STATUS;
+  return null;
+};
+
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
@@ -96,9 +107,7 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (kind === 'idle') return null;
   if (kind === 'resuming') return 'Resuming';
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
-  if (reasonCode === PLAN_REASON_CODES.deferredObjectiveAvoid) return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
-  if (reasonCode === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
-  if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
-  if (isLimitedReason(reasonCode)) return PLAN_STATE_HELD_FALLBACK_STATUS;
+  const limitedLabel = resolveLimitedReasonLabel(reasonCode);
+  if (limitedLabel !== null) return limitedLabel;
   return kind === 'held' ? 'Lowered by PELS' : null;
 };

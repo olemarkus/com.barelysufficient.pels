@@ -1055,6 +1055,22 @@ function normalizeDeviceReason(params: {
     return { ...dev, reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null } };
   }
 
+  // Carry-forward `capacity` reasons re-attribute to `dailyBudget` whenever
+  // the binding constraint is currently the daily-budget pacing. Without
+  // this, a device shed in an earlier cycle (capacity binding) keeps a
+  // stale capacity reason after softLimitSource flips to daily — the
+  // device card then reads "Limited by the hard cap" while the hero
+  // safe-pace number is the daily-budget pacing. The fresh-this-cycle
+  // entry in `shedReasons` is left alone — the shedding selector set it
+  // with the already-correct source.
+  if (
+    softLimitSource === 'daily'
+    && currentReason.code === PLAN_REASON_CODES.capacity
+    && !shedReasons.has(dev.id)
+  ) {
+    return { ...dev, reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null } };
+  }
+
   if (shouldNormalizeReason(currentReason)) {
     return { ...dev, reason: baseReason };
   }
