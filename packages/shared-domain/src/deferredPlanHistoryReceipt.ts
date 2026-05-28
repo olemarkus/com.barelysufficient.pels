@@ -64,6 +64,7 @@ import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
   getPreviousLocalDayStartUtcMs,
+  getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
 } from './utils/dateUtils.js';
@@ -700,7 +701,35 @@ const computeWeekStart = (ms: number, timeZone: string): number | null => {
 // outcomes (`unknown` — backfill / pre-schema entries) are not counted in any
 // bucket; they don't represent a meaningful planner result.
 
-const SEVEN_DAY_WINDOW_MS = 7 * 24 * HOUR_MS;
+const SEVEN_DAY_WINDOW_DAYS = 7;
+// Today's local date is the 7th (most recent) bucket, so the cutoff steps back
+// one fewer local midnight than the bucket count.
+const SEVEN_DAY_WINDOW_STEPS_BACK = SEVEN_DAY_WINDOW_DAYS - 1;
+
+// Resolves the inclusive lower bound of the "Last 7 days" window: the window
+// covers exactly `SEVEN_DAY_WINDOW_DAYS` (7) local date buckets — today's local
+// date plus the 6 preceding ones — so the cutoff is today's local day-start
+// stepped back `SEVEN_DAY_WINDOW_STEPS_BACK` (6) local midnights, never a fixed
+// `7×24h` millisecond offset.
+//
+// Stepping back 7 midnights (the bucket count) would over-include: anchoring at
+// today's midnight and going back 7 days spans today's partial date PLUS 7
+// earlier dates — up to ~8 date buckets, an extra day's early results bleeding
+// into the rate. Stepping back 6 keeps the span to exactly 7 local dates.
+//
+// A fixed-ms subtraction would also drift by the DST hour at week boundaries (a
+// 23h spring-forward week pulls the cutoff an hour later; a 25h fall-back week
+// an hour earlier), silently flipping an entry near the edge in or out of the
+// window. Stepping by local days — same approach PR #1259 used for the "Last
+// week" boundary — keeps the cutoff anchored to local midnight regardless of
+// any DST transition in the window.
+const resolveSevenDayCutoffMs = (nowMs: number, timeZone: string): number => {
+  let dayStartMs = getStartOfDayInTimeZone(new Date(nowMs), timeZone);
+  for (let step = 0; step < SEVEN_DAY_WINDOW_STEPS_BACK; step += 1) {
+    dayStartMs = getPreviousLocalDayStartUtcMs(dayStartMs, timeZone);
+  }
+  return dayStartMs;
+};
 
 type SevenDayCounts = {
   succeeded: number;
@@ -767,7 +796,7 @@ export type PlanHistory7DayHitRateStrip = {
 /**
  * Resolves the 7-day hit-rate strip rendered above the weekly archive on
  * the past-tasks surface. Returns `null` when no history entries fall in
- * the `[nowMs - 7d, nowMs]` window — the view hides the strip entirely in
+ * the `[cutoff, nowMs]` window — the view hides the strip entirely in
  * that case so brand-new users (or week-long quiet patches) don't see an
  * empty-looking pill.
  *
@@ -775,10 +804,12 @@ export type PlanHistory7DayHitRateStrip = {
  * falls back to `deadlineAtMs` for entries that finalised before the
  * `finalizedAtMs` field was persisted (older schemas, malformed records) so
  * the strip doesn't silently lose legacy rows. Both timestamps are wall-
- * clock instants — the time zone parameter is reserved for future per-day
- * bucketing but doesn't change the window selection today; the 7-day
- * horizon is anchored on `nowMs` directly so DST-week edge cases don't
- * shift the window by an hour.
+ * clock instants. The window covers exactly 7 local date buckets — today's
+ * local date plus the 6 preceding ones — so its lower bound is 6 local
+ * midnights before `nowMs`'s local day-start, stepped one local day at a time
+ * (never a fixed `7×24h` millisecond offset) so a 23h spring-forward or 25h
+ * fall-back week inside the window doesn't drift the cutoff by an hour — the
+ * same local-day stepping PR #1259 applied to the "Last week" divider boundary.
  *
  * Hit rate: `succeeded ÷ (succeeded + missed) × 100`, rounded to the
  * nearest whole percent. Abandoned/replaced and `unknown` entries are
@@ -794,14 +825,14 @@ export type PlanHistory7DayHitRateStrip = {
 export const resolvePlanHistory7DayHitRateStrip = (
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   nowMs: number,
-  // Reserved for future per-day bucketing; the 7-day window itself is
-  // anchored on `nowMs` directly so DST-week edges don't shift the horizon
-  // by an hour. Accepting the time zone keeps the producer signature
-  // symmetric with `groupPlanHistoryByIsoWeek` above.
-  _timeZone: string,
+  // Anchors the 7-day window's lower bound: the cutoff is 6 local midnights
+  // before `nowMs`'s local day-start (7 local date buckets total — today plus
+  // the 6 preceding ones), stepped one local day at a time so a 23h/25h DST
+  // week doesn't drift the boundary by an hour.
+  timeZone: string,
 ): PlanHistory7DayHitRateStrip | null => {
   if (!Number.isFinite(nowMs)) return null;
-  const cutoffMs = nowMs - SEVEN_DAY_WINDOW_MS;
+  const cutoffMs = resolveSevenDayCutoffMs(nowMs, timeZone);
   const counts = entries.reduce<SevenDayCounts>(
     (acc, entry) => tallySevenDayEntry(acc, entry, cutoffMs, nowMs),
     { succeeded: 0, missed: 0, abandoned: 0, inWindow: 0 },
