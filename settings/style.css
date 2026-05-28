@@ -1409,7 +1409,12 @@ md-filled-button.is-busy {
 
 /* History-detail-only tone for the Abandoned shape — a log entry, not a
  * receipt or a diagnosis. Neutral surface so the chip + postmortem carry
- * the muted framing without competing with succeeded/missed tones. */
+ * the muted framing without competing with succeeded/missed tones. The
+ * other tones (`good`, `warn`, `alert`, `info`) flow through from the
+ * shared `.plan-hero` / `.pels-hero` primitive because the
+ * `.plan-history-detail__hero` root carries `.plan-hero pels-hero` in
+ * markup (DeadlinePlanHistoryDetail.tsx); see PR #1242 codex/gemini
+ * audit. */
 .plan-history-detail__hero[data-tone="muted"] {
   border-color: var(--color-border-subtle);
   background: var(--color-surface-3);
