@@ -127,6 +127,9 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
+  // Consumed by packages/settings-ui/src/ui/deviceDetail/evBoost.ts via cross-package relative import; ts-prune ignores cross-package edges.
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EV_BOOST_BLOCK_REASONS$/,
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EvBoostBlockReasonKey$/,
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
   // Consumed by packages/settings-ui/src/ui/views/PlanSteppedCard.tsx via cross-package relative import; ts-prune ignores cross-package edges.

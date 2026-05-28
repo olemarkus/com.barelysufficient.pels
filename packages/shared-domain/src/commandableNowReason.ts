@@ -47,3 +47,23 @@ export const EV_COMMANDABLE_NOW_REASONS: Record<EvCommandableNowReasonKey, strin
 export const formatUnknownEvChargingStateReason = (state: string): string => (
   `unknown charging state '${state}'`
 );
+
+/**
+ * EV-boost-context status strings for EV-state cases that block boost
+ * activation. Read by the settings-UI boost panel
+ * (`packages/settings-ui/src/ui/deviceDetail/evBoost.ts`) — co-located here
+ * with the other EV-state-keyed reason strings so both vocabularies live in
+ * one browser-safe home, per `feedback_ui_text_shared_with_logs`.
+ *
+ * The two keys mirror the EV-state values the boost panel branches on; the
+ * remaining EV states (`plugged_in_paused`, `plugged_in_charging`,
+ * `plugged_in`) either allow boost or fall through to the battery-level
+ * checks downstream. Strings are byte-for-byte identical to the prior
+ * inline literals.
+ */
+export type EvBoostBlockReasonKey = 'plugged_out' | 'plugged_in_discharging';
+
+export const EV_BOOST_BLOCK_REASONS: Record<EvBoostBlockReasonKey, string> = {
+  plugged_out: 'Car not connected. Boost will not activate.',
+  plugged_in_discharging: 'Car is discharging. Boost will not activate.',
+};
