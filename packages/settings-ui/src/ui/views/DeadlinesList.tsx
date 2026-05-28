@@ -153,13 +153,25 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           <dt>{SMART_TASK_LIST_ROW_LABELS.readyBy}</dt>
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>
-        {card.extraPermissionsValue !== null && (
-          <div class="deadline-list-card__when-row deadline-list-card__when-row--muted">
-            <dt>{SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}</dt>
-            <dd>{card.extraPermissionsValue}</dd>
-          </div>
-        )}
       </dl>
+      {/* Extra permissions are pulled out of the timestamp `<dl>` because the
+          joined value ("May go over daily budget · May limit lower-priority
+          devices") is much longer than any `dd` in that grid and previously
+          wrapped into a narrow ragged column — reading as overflow rather
+          than deliberate metadata. The strip spans the content column so the
+          value gets the full card width with a muted eyebrow label, and at
+          320 px portrait the value wraps cleanly on its own line instead of
+          fighting the dt/dd grid. */}
+      {card.extraPermissionsValue !== null && (
+        <div class="deadline-list-card__extras">
+          <span class="deadline-list-card__extras-label">
+            {SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}
+          </span>
+          <span class="deadline-list-card__extras-value">
+            {card.extraPermissionsValue}
+          </span>
+        </div>
+      )}
       <ChevronRightIcon class="deadline-list-card__chevron" />
     </a>
   );

@@ -6596,6 +6596,38 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-medium);
 }
 
+/* Extra-permissions strip below the timestamp `<dl>`. Pulled out of the
+ * grid because the joined value ("May go over daily budget · May limit
+ * lower-priority devices") is much longer than the timestamp `dd`s and
+ * previously wrapped into a narrow ragged column, reading as overflow
+ * rather than deliberate metadata. The strip spans the card width so the
+ * value gets the full content column and wraps at the natural separator. */
+.deadline-list-card__extras {
+  grid-column: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  font-size: var(--font-size-sm);
+}
+
+.deadline-list-card__extras-label {
+  /* Mirrors `.eyebrow` typography. Inlined here rather than swapping the
+   * BEM-friendly class for the primitive so the strip's structure stays
+   * symmetric with `__extras-value` and a future tone modifier can hang
+   * off the same element. */
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--font-line-height-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.deadline-list-card__extras-value {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
 .deadlines-history {
   margin-top: var(--spacing-5);
   display: flex;

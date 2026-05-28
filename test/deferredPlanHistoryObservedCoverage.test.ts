@@ -1,5 +1,5 @@
 // Unit tests for `formatPlanHistoryObservedCoverage` — the v2.9.x rewrite that
-// flips the actionable "N=0 of M=5 planned hours" case from invisible (the old
+// flips the actionable "N=0 of M=5 scheduled hours" case from invisible (the old
 // time-based ≥99 %-of-window heuristic dropped to null) to visible. The string
 // feeds the past-tasks list card and the smart-task history-detail hero.
 import {
@@ -59,16 +59,16 @@ const buildEntry = (
 });
 
 describe('formatPlanHistoryObservedCoverage', () => {
-  it('emits "Observed 0 of 5 planned hours" when the planner allocated active hours but no observation was recorded', () => {
+  it('emits "Observed 0 of 5 scheduled hours" when the planner allocated active hours but no observation was recorded', () => {
     // The canonical actionable case: planner thought the device was active across 5 hours
     // but it never drew power. Pre-rewrite, this collapsed to null (the window was fully
     // "observed" because the diagnostic stream was up); the hour-bucket rewrite makes the
     // planner-vs-reality mismatch visible so the user can see something went wrong.
     const line = formatPlanHistoryObservedCoverage(buildEntry({ observedIntervals: [] }));
-    expect(line).toBe('Observed 0 of 5 planned hours');
+    expect(line).toBe('Observed 0 of 5 scheduled hours');
   });
 
-  it('counts a planned hour as observed when any observed interval overlaps the hour bucket', () => {
+  it('counts a scheduled hour as observed when any observed interval overlaps the hour bucket', () => {
     // 2 of 5 buckets overlap an observed interval — the matched buckets are
     // [start, start+1h] and [start+1h, start+2h], both touched by the single interval.
     const line = formatPlanHistoryObservedCoverage(buildEntry({
@@ -76,21 +76,21 @@ describe('formatPlanHistoryObservedCoverage', () => {
         { fromMs: STARTED_MS, toMs: STARTED_MS + 2 * HOUR_MS },
       ],
     }));
-    expect(line).toBe('Observed 2 of 5 planned hours');
+    expect(line).toBe('Observed 2 of 5 scheduled hours');
   });
 
-  it('emits "Observed 5 of 5 planned hours" when every planned bucket overlaps observation', () => {
+  it('emits "Observed 5 of 5 scheduled hours" when every planned bucket overlaps observation', () => {
     const line = formatPlanHistoryObservedCoverage(buildEntry({
       observedIntervals: [
         { fromMs: STARTED_MS, toMs: STARTED_MS + 5 * HOUR_MS },
       ],
     }));
-    expect(line).toBe('Observed 5 of 5 planned hours');
+    expect(line).toBe('Observed 5 of 5 scheduled hours');
   });
 
-  it('singularizes the noun when the plan carries exactly one active hour ("of 1 planned hour")', () => {
+  it('singularizes the noun when the plan carries exactly one active hour ("of 1 scheduled hour")', () => {
     // Single-hour plans are common (short EV top-ups, water-heater boost runs scheduled into
-    // one cheap slot). The plural-as-default would read "of 1 planned hours" — wrong, and
+    // one cheap slot). The plural-as-default would read "of 1 scheduled hours" — wrong, and
     // the only string-shape edge case in the helper.
     const snapshot = buildSnapshot({
       hours: [{ startsAtMs: STARTED_MS, plannedKWh: 2 }],
@@ -100,7 +100,7 @@ describe('formatPlanHistoryObservedCoverage', () => {
       finalPlan: snapshot,
       observedIntervals: [],
     }));
-    expect(line).toBe('Observed 0 of 1 planned hour');
+    expect(line).toBe('Observed 0 of 1 scheduled hour');
   });
 
   it('ignores plan hours whose plannedKWh is zero (counts only active-allocation buckets)', () => {
@@ -121,7 +121,7 @@ describe('formatPlanHistoryObservedCoverage', () => {
       // Cover the first two active buckets [start, start+3h], skip the third (start+4h).
       observedIntervals: [{ fromMs: STARTED_MS, toMs: STARTED_MS + 3 * HOUR_MS }],
     }));
-    expect(line).toBe('Observed 2 of 3 planned hours');
+    expect(line).toBe('Observed 2 of 3 scheduled hours');
   });
 
   it('returns null when no plan was ever recorded (legacy entry, no plan snapshot to count against)', () => {
@@ -184,7 +184,7 @@ describe('formatPlanHistoryObservedCoverage', () => {
       finalPlan,
       observedIntervals: [{ fromMs: STARTED_MS + 2 * HOUR_MS, toMs: STARTED_MS + 4 * HOUR_MS }],
     }));
-    expect(line).toBe('Observed 2 of 3 planned hours');
+    expect(line).toBe('Observed 2 of 3 scheduled hours');
   });
 
 });
