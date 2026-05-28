@@ -400,7 +400,7 @@ function buildBasePlanDevice(params: {
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
-  const { shedAction, shedTemperature, shedStepId } = resolveShedAction({
+  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
     dev,
     controllable,
     shouldShed: shedSet.has(dev.id),
@@ -456,7 +456,7 @@ function buildBasePlanDevice(params: {
     binaryCommandPending: binaryCommandPending || undefined,
     shedAction,
     shedTemperature,
-    shedStepId,
+    releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
   };
 }
@@ -512,7 +512,7 @@ function resolveShedAction(params: {
   controllable: boolean;
   shouldShed: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
+}): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
   // Single resolution site for the shed-action intent. Called once here with
   // the post-admission `controllable` so the deferred-objective rescue lane
