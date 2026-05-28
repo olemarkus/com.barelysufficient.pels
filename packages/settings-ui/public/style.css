@@ -6662,6 +6662,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
+/* v2.7.4 — 7-day hit-rate strip above the past-tasks list (PR-10). Quiet,
+ * single-line pill that gives the recovering-from-mistake user a first-
+ * impression "how have my deadlines been doing this week?" signal without
+ * scanning the per-row chips. Producer composes the text (`shared-domain/
+ * deferredPlanHistoryReceipt.ts`); the view only paints it. Wraps on narrow
+ * viewports — at 320 px the producer's `·`-joined string flows onto two
+ * lines rather than truncating. */
+.deadlines-history__summary-strip {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+  font-variant-numeric: tabular-nums;
+}
+
 /* v2.7.4 — past-tasks device-filter chip row (PR-19). Sits above the weekly
  * archive so the user can collapse the list to one device. Wraps at the 320
  * px floor when many devices have history — each `.plan-chip--link` already
