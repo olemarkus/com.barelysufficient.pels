@@ -5,6 +5,7 @@ import {
   deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskListReadyByTone,
+  resolveSmartTaskListReadyByStatusWord,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_LIST_EMPTY_COPY,
   SMART_TASK_LIST_ROW_LABELS,
@@ -123,6 +124,11 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
     learning: card.learning,
   });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
+  // Inline status word for non-healthy states so the at-risk / cannot-finish /
+  // paused signal on the Ready-by line isn't carried by colour alone. null for
+  // healthy / pending / queued / satisfied (resolved producer-side; the view
+  // never branches on `statusId`).
+  const readyByStatusWord = resolveSmartTaskListReadyByStatusWord(card.statusId);
   return (
     <a class="pels-surface-card deadline-list-card clickable" href={card.href} data-device-id={card.deviceId} data-interactive>
       <MdElevation aria-hidden="true" />
@@ -157,7 +163,10 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         )}
         <div class={`deadline-list-card__when-row deadline-list-card__when-row--${readyByTone}`}>
           <dt>{SMART_TASK_LIST_ROW_LABELS.readyBy}</dt>
-          <dd>{formatWhen(card.deadlineAtMs)}</dd>
+          <dd>
+            {formatWhen(card.deadlineAtMs)}
+            {readyByStatusWord !== null && ` — ${readyByStatusWord}`}
+          </dd>
         </div>
       </dl>
       {/* Extra permissions are pulled out of the timestamp `<dl>` because the

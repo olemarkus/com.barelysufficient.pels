@@ -196,6 +196,55 @@ describe('DeadlinesList', () => {
     expect(mount.querySelector('.deadline-list-card__when-row--accent')).not.toBeNull();
   });
 
+  // Inline status word on the "Ready by" line: the warn/alert tones above are
+  // colour-only, which a red-green-deficient user can't read off the timestamp.
+  // Non-healthy states append the canonical status word so the signal is also
+  // textual; healthy states stay as just the timestamp.
+  const readyByText = (mount: HTMLElement): string => {
+    const rows = Array.from(mount.querySelectorAll('.deadline-list-card__when-row'));
+    const readyByRow = rows.find((row) => row.querySelector('dt')?.textContent === 'Ready by');
+    return readyByRow?.querySelector('dd')?.textContent ?? '';
+  };
+
+  it('appends "At risk" to the Ready-by line on at_risk cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'at_risk' })],
+    });
+    expect(readyByText(mount)).toContain('— At risk');
+  });
+
+  it('appends "Cannot finish" to the Ready-by line on cannot_meet cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'cannot_meet' })],
+    });
+    expect(readyByText(mount)).toContain('— Cannot finish');
+  });
+
+  it('appends the compressed "— Unplugged" word to the Ready-by line on paused cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ kind: 'ev_soc', statusId: 'paused_unplugged' })],
+    });
+    // Compressed widget label, not the full "Paused — unplugged" chip label,
+    // so the Ready-by line never shows a double em-dash.
+    expect(readyByText(mount)).toContain('— Unplugged');
+    expect(readyByText(mount)).not.toContain('— Paused —');
+  });
+
+  it('renders no inline status word on healthy on_track cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'on_track' })],
+    });
+    expect(readyByText(mount)).not.toContain('—');
+  });
+
   // Populated-state hero (v2.7.3 loveable batch). The renderer asks the shared
   // resolver for a hero copy and mounts it above the card list. The hero is
   // suppressed for empty `cards` arrays (the empty-state paragraph already
