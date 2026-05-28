@@ -3637,6 +3637,48 @@ consolidation + a11y polish (8 P2)`.*
       release paths landed; the stepped-only re-projection path is still
       open. Source: release-review pels-runtime-reality, 2026-05-28.
 
+*Bot-review audit follow-ups (2026-05-28). Items surfaced by
+chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
+follow-up train that were missed at merge time; filed here for the next
+wave.*
+
+- [ ] **Binary `shed_release` path still bumps the capacity-instability
+      marker.** Commit `5d44846b polish: shared EV-boost copy, release-only
+      actuation recorder, producer-side set_step target` introduced
+      `recordReleaseShedActuation` but only wired it into the temperature
+      and stepped release branches of `lib/executor/planExecutor.ts`. The
+      default binary `shed_release` path still calls
+      `applyBinarySheddingToDevice(deps.buildBinaryExecutorContext())`,
+      whose context is built with `boundRecordShedActuation`. For non-flow-
+      backed `turn_off` release actions that means `lastInstabilityMs` and
+      `lastDeviceShedMs` are still bumped, so the new diagnostic-only
+      release marker does not apply to the common binary release case.
+      Acceptance: route the binary `shed_release` path through
+      `recordReleaseShedActuation` (the helper is already an arrow-function
+      field on `PlanExecutor` and auto-bound to `this`, so no separate
+      `bound*` wrapper is needed); add a regression test in
+      `test/shedReleaseActuation.test.ts` pinning that a binary release
+      intent does not bump `lastInstabilityMs`. Files:
+      `lib/executor/planExecutor.ts` (around the binary-release-intent
+      branch), `test/shedReleaseActuation.test.ts`. Source: codex review
+      of closed PR #1233, 2026-05-28.
+
+- [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
+      selectors.** Source CSS (`packages/settings-ui/public/style.css`) has
+      muted-only with a comment claiming other tones flow through from
+      `.plan-hero` / `.pels-hero`; generated `settings/style.css` has
+      explicit `.plan-history-detail__hero[data-tone="good"]` and
+      `[data-tone="warn"]` selectors grouped with the shared primitives.
+      The markup audit (gemini review of PR #1242): the root element in
+      `DeadlinePlanHistoryDetail.tsx:753-756` carries
+      `class="plan-hero pels-hero plan-history-detail__hero"`, so the
+      tone selectors DO flow through from `.plan-hero` / `.pels-hero`
+      and source is correct. Fix direction: remove the redundant explicit
+      `.plan-history-detail__hero[data-tone="good"]` and `[data-tone="warn"]`
+      selectors from generated `settings/style.css` and regenerate via
+      `npm run build:settings`. Files: `settings/style.css`. Source:
+      bot-review audit + gemini confirmation on PR #1242, 2026-05-28.
+
 ## P2 M3 alignment pass (post desktop-light-mode-fix)
 
 Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
@@ -4481,4 +4523,19 @@ prod walk that didn't warrant a P2 slot.*
       if a future change touches the file. Not a self-standing PR — pick
       this up the next time the file is edited. Source: release-review
       pels-m3-critic, 2026-05-28.
+
+- [ ] **25-cycle revision-history FIFO test under-exercises by 2 cycles.**
+      In `test/deferredObjectiveActivePlan.test.ts` (around line 460), the
+      loop builds `cycle + 1` buckets per iteration on a plan that was
+      seeded with 3 buckets. Cycles 1–2 don't actually grow the schedule
+      (their `live` ⊊ `committed`, so `mergeHoursPreservingCommitment`
+      keeps the commitment as-is and no revision is written); only cycle
+      3+ triggers `schedule_revised`. The 20-entry FIFO cap is still
+      validated (23 revisions ≥ 20), but the test name and comments
+      overstate what's exercised. Fix: start the loop with `cycle + 3`
+      buckets so all 25 cycles fire revisions (`cycle + 2` still produces
+      a 3-bucket live schedule on cycle 1, which doesn't exceed the
+      3-bucket commitment, per gemini math on PR #1242). Pick up the next
+      time the file is touched — cosmetic-only. Source: gemini reviews
+      of PRs #1227 + #1242, 2026-05-28.
 
