@@ -32,7 +32,6 @@ export type DeadlinesListCard = {
   kind: DeferredObjectiveSettingsKind;
   targetTemperatureC: number | null;
   targetPercent: number | null;
-  createdAtMs: number;
   firstActionAtMs: number | null;
   deadlineAtMs: number;
   href: string;
@@ -144,10 +143,6 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         )}
       </div>
       <dl class="deadline-list-card__when">
-        <div class="deadline-list-card__when-row">
-          <dt>{SMART_TASK_LIST_ROW_LABELS.created}</dt>
-          <dd>{formatWhen(card.createdAtMs)}</dd>
-        </div>
         {card.firstActionAtMs !== null && (
           <div class="deadline-list-card__when-row">
             <dt>{SMART_TASK_LIST_ROW_LABELS.starts}</dt>

@@ -160,10 +160,9 @@ describe('smart-task list card copy constants', () => {
   // Pins the row-label record + empty-state and load-error sentences to the
   // canonical shared-domain source so runtime log breadcrumbs and the UI
   // can't drift (per `feedback_ui_text_shared_with_logs.md`).
-  it('exports the four list-card row labels (Target / Created / Starts / Ready by)', () => {
+  it('exports the three list-card row labels (Target / Starts / Ready by)', () => {
     expect(SMART_TASK_LIST_ROW_LABELS).toStrictEqual({
       target: 'Target',
-      created: 'Created',
       starts: 'Starts',
       readyBy: 'Ready by',
     });

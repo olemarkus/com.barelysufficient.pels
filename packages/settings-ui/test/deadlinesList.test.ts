@@ -154,7 +154,6 @@ describe('resolveDeadlinesListCards', () => {
       deviceName: 'Living-room heater',
       kind: 'temperature',
       targetTemperatureC: 21,
-      createdAtMs: T0,
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './?page=deadline-plan&deviceId=dev_a',

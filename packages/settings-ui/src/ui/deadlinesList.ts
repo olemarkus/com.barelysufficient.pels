@@ -92,7 +92,6 @@ const buildCard = (params: {
     kind: plan.objectiveKind,
     targetTemperatureC: plan.targetTemperatureC,
     targetPercent: plan.targetPercent,
-    createdAtMs: plan.startedAtMs,
     firstActionAtMs: firstHour,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),

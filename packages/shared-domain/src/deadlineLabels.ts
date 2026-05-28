@@ -294,14 +294,16 @@ export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days';
 // abandoned/replaced) is documented on `resolvePlanHistory7DayHitRateStrip`.
 export const SMART_TASK_LIST_HIT_RATE_NOUN = 'hit rate';
 
-// Row labels for the Smart-tasks list card's `<dl>` block (Target / Created /
-// Starts / Ready by). Lifted to shared-domain so runtime log breadcrumbs and
-// the UI render identical labels (per `feedback_ui_text_shared_with_logs.md`).
-// The four labels stay grouped so the list-card surface reads them from a
-// single record rather than four loose imports.
+// Row labels for the Smart-tasks list card's `<dl>` block (Target / Starts /
+// Ready by). Lifted to shared-domain so runtime log breadcrumbs and the UI
+// render identical labels (per `feedback_ui_text_shared_with_logs.md`). The
+// three labels stay grouped so the list-card surface reads them from a single
+// record rather than three loose imports. The `Created` row was dropped from
+// the list card because it duplicated `Starts` in nearly every case (a task
+// starts on creation); the detail page still shows the created timestamp for
+// its audit-trail use case, but reads it directly off the plan-history entry.
 export const SMART_TASK_LIST_ROW_LABELS = {
   target: 'Target',
-  created: 'Created',
   starts: 'Starts',
   readyBy: 'Ready by',
 } as const;
