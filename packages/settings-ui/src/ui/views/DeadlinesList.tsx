@@ -135,11 +135,17 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">
         <h3 class="deadline-list-card__title">{formatDisplayDeviceName(card.deviceName)}</h3>
-        <span class="plan-chip plan-chip--muted">{labels.kindChipLabel}</span>
-        <StatusChip statusId={card.statusId} />
-        {confidenceLabel !== null && (
-          <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
-        )}
+        {/* Chips live in their own flex group so at 320 px they wrap below the
+            title as a coherent block instead of one chip dangling beside it.
+            Within the group they wrap among themselves; the group never splits
+            a single chip onto the title's row. */}
+        <div class="deadline-list-card__chips">
+          <span class="plan-chip plan-chip--muted">{labels.kindChipLabel}</span>
+          <StatusChip statusId={card.statusId} />
+          {confidenceLabel !== null && (
+            <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
+          )}
+        </div>
       </div>
       <div class="deadline-list-card__target">
         <span class="deadline-list-card__target-label">{SMART_TASK_LIST_ROW_LABELS.target}</span>
