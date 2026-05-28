@@ -164,6 +164,38 @@ Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
 (used in chip-tone resolvers and the list status id) so log schemas and JSON
 contracts remain stable — only the user-visible chip label changed.
 
+### Past-task outcome chips
+
+The smart-task history surface (past-tasks archive, history-detail hero) uses a
+closed noun set to label how a finished run ended. Source: `OUTCOME_LABELS` in
+`packages/shared-domain/src/deferredPlanHistory.ts`.
+
+| Outcome (`entry.outcome`) | Chip | Tone |
+|---|---|---|
+| `met` | `Succeeded` | ok |
+| `missed` | `Missed` | warn |
+| `abandoned` | `Abandoned` | muted |
+| `replaced` | `Abandoned` | muted |
+| `unknown` | `Unknown` | muted |
+
+`Abandoned` is the canonical word for a run that stopped before the deadline
+without succeeding or missing — e.g. the user cleared the smart task, replaced
+it with a fresh one, or the diagnostic stream stopped (EV unplugged) before the
+deadline. Both the `abandoned` and `replaced` underlying outcomes render the
+same `Abandoned` chip; the distinction lives in the postmortem body, not the
+chip. Do **not** drift to `Cancelled`, `Aborted`, `Skipped`, `Ended`, or
+`Stopped` in user-facing copy — the chip word is `Abandoned`.
+
+#### Chip nouns vs divider verbs
+
+The chip set is noun-shaped (`Succeeded` / `Missed` / `Abandoned`). The past-tasks
+week-divider heading currently uses a verb form — `Week 20 · 4 deadlines met · ≈
+41 kr` — which doesn't line up with the chip vocabulary the rows underneath it
+carry. The chip set is the canonical one; future summary copy should align to
+the chip nouns (`3 succeeded`, not `3 met`) so the divider and the rows speak
+the same language. This note records the tension; the divider rewrite is
+deferred to a copy PR, not pre-emptively flipped here.
+
 ### Recourse labels
 
 Smart-task heroes render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. The **live "cannot finish"** hero and the **history-detail "missed"** card use *different* label sets — keep them distinct. Source: `CANNOT_MEET_RECOURSE` (live) and `resolveMissedHistoryRecourse` (history) in `deadlineLabels.ts`.
@@ -191,6 +223,23 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 ### Smart-task Flow permissions
 
 The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
+
+The smart-task detail and list surfaces render the granted permissions on a
+single row whose canonical label is **`Extra permissions (set via Flow)`**
+(source: `SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL` in
+`packages/shared-domain/src/deadlineLabels.ts`). The label hoists `(set via
+Flow)` onto the row owner — what kind of setting this is — so it doesn't read
+as a qualifier on the last joined permission clause. Value clauses are
+`May go over daily budget` and `May limit lower-priority devices`, optionally
+suffixed with ` if at risk` when the mode is `at_risk`.
+
+In user-facing copy this scope is `Extra permissions`. It is **not**
+`Allowances`, `Overrides`, `Rescue`, `Rescue scope`, `Rescue permissions`, or
+`Smart-task rescue` — even though the code uses `rescue` internally (Flow
+action id `allow_smart_task_rescue`, type `DeferredObjectiveRescuePermissions`,
+field `objective.rescue`). The internal name predates the user-facing one and
+stays as-is for log schema and JSON contract stability; UI copy uses
+`Extra permissions`.
 
 Use `while the smart task is scheduled to run` / `while it's scheduled to run` for the shipped `always` mode. Avoid `planned to run` in user-facing error text. Permission changes take effect on the next plan refresh, not immediately; copy should say so when it states the timing at all.
 
