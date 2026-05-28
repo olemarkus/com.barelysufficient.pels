@@ -25,10 +25,11 @@ const mockedApplyTargetUpdate = applyTargetUpdate as unknown as ReturnType<typeo
 const mockedApplyBinarySheddingToDevice = applyBinarySheddingToDevice as unknown as ReturnType<typeof vi.fn>;
 const mockedApplySteppedLoadCommand = applySteppedLoadCommand as unknown as ReturnType<typeof vi.fn>;
 
-const buildIntent = (): ExecutableReleaseIntent => ({
+const buildIntent = (overrides?: Partial<ExecutableReleaseIntent>): ExecutableReleaseIntent => ({
   kind: 'shed_release',
   deviceId: 'dev-1',
   name: 'Device 1',
+  ...overrides,
 });
 
 const buildObserved = (
@@ -80,7 +81,7 @@ const buildDeps = (
   buildBinaryExecutorContext: () => ({} as never),
   buildTargetExecutorContext: () => ({} as never),
   buildSteppedExecutorContext: () => ({} as never),
-  recordShedActuation: vi.fn(),
+  recordReleaseShedActuation: vi.fn(),
   ...overrides,
 });
 
@@ -164,10 +165,10 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('fires a target write at the shed temperature when shedBehavior is set_temperature', async () => {
-    const recordShedActuation = vi.fn();
+    const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(
       { action: 'set_temperature', temperature: 18, stepId: null },
-      { recordShedActuation },
+      { recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
@@ -190,14 +191,14 @@ describe('applyShedReleaseIntent', () => {
     });
     // Diagnostics fix: a release-shed target write must record a pels_shed event so the
     // diagnostics service registers the actuation.
-    expect(recordShedActuation).toHaveBeenCalledWith('dev-1', 'Device 1', expect.any(Number));
+    expect(recordReleaseShedActuation).toHaveBeenCalledWith('dev-1', 'Device 1', expect.any(Number));
   });
 
   it('does not record a pels_shed event when the temperature target is skipped (no double-record)', async () => {
-    const recordShedActuation = vi.fn();
+    const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(
       { action: 'set_temperature', temperature: 18, stepId: null },
-      { recordShedActuation },
+      { recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
@@ -211,14 +212,14 @@ describe('applyShedReleaseIntent', () => {
     });
     expect(result).toBe(false);
     expect(mockedApplyTargetUpdate).not.toHaveBeenCalled();
-    expect(recordShedActuation).not.toHaveBeenCalled();
+    expect(recordReleaseShedActuation).not.toHaveBeenCalled();
   });
 
   it('does not record a pels_shed event in reconcile mode (release writes are plan-only)', async () => {
-    const recordShedActuation = vi.fn();
+    const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(
       { action: 'set_temperature', temperature: 18, stepId: null },
-      { recordShedActuation },
+      { recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
@@ -231,7 +232,7 @@ describe('applyShedReleaseIntent', () => {
       deps,
     });
     expect(result).toBe(true);
-    expect(recordShedActuation).not.toHaveBeenCalled();
+    expect(recordReleaseShedActuation).not.toHaveBeenCalled();
   });
 
   it('skips the temperature write when the observed target already equals the shed temperature', async () => {
@@ -266,13 +267,13 @@ describe('applyShedReleaseIntent', () => {
   });
 
   it('fires a stepped-load command for set_step on a stepped-only device with no binary control', async () => {
-    const recordShedActuation = vi.fn();
+    const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(
       { action: 'set_step', temperature: null, stepId: 'low' },
-      { recordShedActuation },
+      { recordReleaseShedActuation },
     );
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
@@ -292,13 +293,16 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
     // The synthesized release action carries `transition: null`; applySteppedLoadCommand
     // would not record `pels_shed` on its own, so the helper must record explicitly.
-    expect(recordShedActuation).toHaveBeenCalledWith('dev-1', 'Device 1', expect.any(Number));
+    expect(recordReleaseShedActuation).toHaveBeenCalledWith('dev-1', 'Device 1', expect.any(Number));
   });
 
-  it('falls back to the lowest active step when shedBehavior has no stepId on a stepped-only device', async () => {
+  it('uses the producer-resolved step (lowest-active fallback) when the configured stepId is null', async () => {
+    // The producer's release cascade picks `lowest-active` when no preferred stepId is
+    // configured; the consumer just reads `intent.shedStepId`. This test simulates that
+    // producer-side resolution by passing the already-resolved id on the intent.
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
@@ -310,14 +314,29 @@ describe('applyShedReleaseIntent', () => {
     expect(result).toBe(true);
     expect(mockedApplySteppedLoadCommand).toHaveBeenCalledTimes(1);
     const [, action] = mockedApplySteppedLoadCommand.mock.calls[0];
-    // Lowest active step ("low" with 500W is the lowest non-zero step in the test profile).
     expect(action.desired.stepId).toBe('low');
+  });
+
+  it('skips the stepped re-projection when intent.shedStepId is null (degenerate profile)', async () => {
+    const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
+    const result = await applyShedReleaseIntent({
+      intent: buildIntent({ shedStepId: null }),
+      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      observed: buildObserved({
+        steppedLoad: { on: true, stepId: 'high' },
+      }),
+      snapshot: { id: 'dev-1', currentOn: true } as never,
+      mode: 'plan',
+      deps,
+    });
+    expect(result).toBe(false);
+    expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
   });
 
   it('skips the stepped re-projection when the device is already at the shed step (idempotent)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
@@ -333,7 +352,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips the stepped re-projection when the device is already below the shed step (never step up)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'mid' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'mid' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
@@ -364,7 +383,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips stepped release when no observed step id is present (trusted-evidence gate)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: undefined },
@@ -380,7 +399,7 @@ describe('applyShedReleaseIntent', () => {
   it('skips stepped release when the observed step id is not in the current profile (ambiguous state)', async () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
+      intent: buildIntent({ shedStepId: 'low' }),
       steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },
