@@ -567,7 +567,7 @@ describe('formatMissStreakAggregateLine', () => {
       buildMissed('e3'),
       buildMet('e4'),    // older entry that shouldn't influence the window
     ];
-    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('3 of last 4 missed');
+    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('3 of last 4 runs missed');
   });
 
   it('returns null when the device has fewer than 2 history entries', () => {
@@ -594,7 +594,7 @@ describe('formatMissStreakAggregateLine', () => {
       buildEntry({ id: 'd', deviceId: 'dev-1', outcome: 'met' }),
     ];
     // dev-1 has 1 missed + 1 met in the window → 50 % triggers the aggregate.
-    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('1 of last 2 missed');
+    expect(formatMissStreakAggregateLine(entries, 'dev-1')).toBe('1 of last 2 runs missed');
   });
 });
 
