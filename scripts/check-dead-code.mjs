@@ -163,6 +163,8 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskCurrentValueLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_7DAY_HIT_RATE_LABEL$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_HIT_RATE_NOUN$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_ROW_LABELS$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_EMPTY_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_LOAD_ERROR_COPY$/,

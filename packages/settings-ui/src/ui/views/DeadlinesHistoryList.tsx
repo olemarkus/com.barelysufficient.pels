@@ -10,7 +10,10 @@ import {
   SMART_TASK_HISTORY_FILTER_GROUP_LABEL,
   type SmartTaskHistoryFilterDevice,
 } from '../../../../shared-domain/src/deferredPlanHistoryDeviceFilter.ts';
-import { groupPlanHistoryByIsoWeek } from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
+import {
+  groupPlanHistoryByIsoWeek,
+  resolvePlanHistory7DayHitRateStrip,
+} from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { PlanHistoryCard } from './DeadlinePlanHistory.tsx';
 
@@ -158,6 +161,17 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   // chip row stays stable while the user toggles the filter, and so a
   // miss-streak badge for a non-selected device still surfaces if any.
   const badges = resolveMissStreakBadges(state.entries);
+  // 7-day hit-rate strip — first-impression aggregate for the recovering-
+  // from-mistake persona ("how have my deadlines been doing this week?").
+  // Threaded with the same `nowMs` anchor as the week dividers so the strip
+  // is snapshot-stable. Resolved from the *unfiltered* entry list so the
+  // strip stays stable while the user toggles the device filter — toggling
+  // the chips should narrow the per-row list, not redefine "the week".
+  const hitRateStrip = resolvePlanHistory7DayHitRateStrip(
+    state.entries,
+    state.nowMs ?? Date.now(),
+    state.timeZone,
+  );
   const devices = resolveSmartTaskHistoryFilterDevices(state.entries);
   const selectedDeviceId = state.selectedDeviceId ?? null;
   const onSelectDevice = state.onSelectDevice ?? (() => {});
@@ -197,6 +211,9 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
             </li>
           ))}
         </ul>
+      )}
+      {hitRateStrip !== null && (
+        <p class="deadlines-history__summary-strip">{hitRateStrip.text}</p>
       )}
       <DeviceFilterChipRow
         devices={devices}

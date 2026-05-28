@@ -279,6 +279,21 @@ export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
+// Lead label for the past-tasks 7-day hit-rate strip (PR-10). Sits above the
+// weekly archive so the recovering-from-mistake user gets a single-glance
+// "how did this week go?" signal without rescanning the per-row chips.
+// Kept here so runtime log breadcrumbs and the UI render identical strings
+// (per `feedback_ui_text_shared_with_logs.md`); the window length (7 days)
+// is part of the user-facing copy on purpose — naming the horizon makes the
+// strip stand on its own without a tooltip.
+export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days';
+// Trailing fragment for the hit-rate value (`67% hit rate`). Held as a
+// constant so the producer can compose the strip via `join(' · ')` without
+// the noun ever drifting between the UI and the log breadcrumb that mirrors
+// it. The hit-rate definition (succeeded ÷ (succeeded + missed), excluding
+// abandoned/replaced) is documented on `resolvePlanHistory7DayHitRateStrip`.
+export const SMART_TASK_LIST_HIT_RATE_NOUN = 'hit rate';
+
 // Row labels for the Smart-tasks list card's `<dl>` block (Target / Created /
 // Starts / Ready by). Lifted to shared-domain so runtime log breadcrumbs and
 // the UI render identical labels (per `feedback_ui_text_shared_with_logs.md`).

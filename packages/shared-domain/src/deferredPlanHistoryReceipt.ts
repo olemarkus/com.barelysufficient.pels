@@ -55,7 +55,11 @@ import type {
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH } from './deadlineLabels.js';
+import {
+  APPROX_GLYPH,
+  SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
+  SMART_TASK_LIST_HIT_RATE_NOUN,
+} from './deadlineLabels.js';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -674,4 +678,152 @@ const computeWeekStart = (ms: number, timeZone: string): number | null => {
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
   return getWeekStartInTimeZone(date, timeZone);
+};
+
+// ─── 7-day hit-rate strip (PR-10) ────────────────────────────────────────────
+//
+// The past-tasks surface had no single "how have my deadlines been doing this
+// week?" signal — the user had to scan miss-streak chips per device + week-
+// divider headings to piece together a mental aggregate. The 7-day strip is
+// the first-impression number the recovering-from-mistake persona needs at a
+// glance, anchored at the top of the past-tasks list.
+//
+// Hit-rate definition: `succeeded ÷ (succeeded + missed)`. Abandoned/replaced
+// entries are excluded from the denominator on purpose — the user clearing a
+// run (or the diagnostic stream going stale) isn't a planner success or
+// failure, and folding it into the rate would penalise blameless aborts. The
+// abandoned count still surfaces in the strip so the run isn't invisible.
+//
+// `replaced` collapses into `abandoned` in the strip totals, mirroring
+// `countOutcomes` above and the chip-vocabulary divider headings. Other
+// outcomes (`unknown` — backfill / pre-schema entries) are not counted in any
+// bucket; they don't represent a meaningful planner result.
+
+const SEVEN_DAY_WINDOW_MS = 7 * 24 * HOUR_MS;
+
+type SevenDayCounts = {
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+  inWindow: number;
+};
+
+// Anchors an entry against the 7-day window. Prefers `finalizedAtMs` (the
+// moment the run wrapped up — the right anchor for "last 7 days") and falls
+// back to `deadlineAtMs` for older schema rows that persisted without a
+// finalisation timestamp, so the strip doesn't silently lose legacy entries.
+const resolveWindowAnchorMs = (
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
+): number => (
+  Number.isFinite(entry.finalizedAtMs) ? entry.finalizedAtMs : entry.deadlineAtMs
+);
+
+// Tallies a single entry against the 7-day counts. Returns the counts
+// unchanged when the entry falls outside the window or is unparseable;
+// `unknown` outcomes are counted toward `inWindow` (so the strip still
+// renders when only backfill rows survive) but not toward any bucket.
+const tallySevenDayEntry = (
+  counts: SevenDayCounts,
+  entry: DeferredObjectivePlanHistoryEntry,
+  cutoffMs: number,
+  nowMs: number,
+): SevenDayCounts => {
+  const stampMs = resolveWindowAnchorMs(entry);
+  if (!Number.isFinite(stampMs)) return counts;
+  if (stampMs < cutoffMs || stampMs > nowMs) return counts;
+  const next: SevenDayCounts = {
+    succeeded: counts.succeeded,
+    missed: counts.missed,
+    abandoned: counts.abandoned,
+    inWindow: counts.inWindow + 1,
+  };
+  if (entry.outcome === 'met') next.succeeded += 1;
+  else if (entry.outcome === 'missed') next.missed += 1;
+  else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
+    next.abandoned += 1;
+  }
+  return next;
+};
+
+export type PlanHistory7DayHitRateStrip = {
+  // Pre-formatted strip copy, joined with " · ". Example:
+  // `Last 7 days · 8 succeeded · 3 missed · 1 abandoned · 67% hit rate`.
+  // Renders verbatim; the view never branches on the counts.
+  text: string;
+  // Raw aggregate so callers (telemetry, future surfaces, tests) can read
+  // the numbers without re-parsing the formatted string. The producer is
+  // the only place that decides what counts; consumers stay flat.
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+  // Hit rate as an integer percent rounded to the nearest whole number.
+  // `null` when no Succeeded + Missed entries landed in the window — a
+  // strip that read "0% hit rate" off only abandoned entries would
+  // misrepresent the user's experience.
+  hitRatePercent: number | null;
+};
+
+/**
+ * Resolves the 7-day hit-rate strip rendered above the weekly archive on
+ * the past-tasks surface. Returns `null` when no history entries fall in
+ * the `[nowMs - 7d, nowMs]` window — the view hides the strip entirely in
+ * that case so brand-new users (or week-long quiet patches) don't see an
+ * empty-looking pill.
+ *
+ * Window selection uses `finalizedAtMs` when present (most entries) and
+ * falls back to `deadlineAtMs` for entries that finalised before the
+ * `finalizedAtMs` field was persisted (older schemas, malformed records) so
+ * the strip doesn't silently lose legacy rows. Both timestamps are wall-
+ * clock instants — the time zone parameter is reserved for future per-day
+ * bucketing but doesn't change the window selection today; the 7-day
+ * horizon is anchored on `nowMs` directly so DST-week edge cases don't
+ * shift the window by an hour.
+ *
+ * Hit rate: `succeeded ÷ (succeeded + missed) × 100`, rounded to the
+ * nearest whole percent. Abandoned/replaced and `unknown` entries are
+ * excluded from the denominator — see the file-block comment above for
+ * the rationale. The abandoned count still appears in the strip so the
+ * runs aren't hidden from the user.
+ *
+ * Per `feedback_layering_resolution_in_producer.md` the producer composes
+ * the visible string; the view only renders. Per
+ * `feedback_ui_text_shared_with_logs.md` the same helper feeds runtime
+ * log breadcrumbs so structured logs and the UI never drift.
+ */
+export const resolvePlanHistory7DayHitRateStrip = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  nowMs: number,
+  // Reserved for future per-day bucketing; the 7-day window itself is
+  // anchored on `nowMs` directly so DST-week edges don't shift the horizon
+  // by an hour. Accepting the time zone keeps the producer signature
+  // symmetric with `groupPlanHistoryByIsoWeek` above.
+  _timeZone: string,
+): PlanHistory7DayHitRateStrip | null => {
+  if (!Number.isFinite(nowMs)) return null;
+  const cutoffMs = nowMs - SEVEN_DAY_WINDOW_MS;
+  const counts = entries.reduce<SevenDayCounts>(
+    (acc, entry) => tallySevenDayEntry(acc, entry, cutoffMs, nowMs),
+    { succeeded: 0, missed: 0, abandoned: 0, inWindow: 0 },
+  );
+  if (counts.inWindow === 0) return null;
+  const decisive = counts.succeeded + counts.missed;
+  const hitRatePercent = decisive === 0
+    ? null
+    : Math.round((counts.succeeded / decisive) * 100);
+  const parts: string[] = [SMART_TASK_LIST_7DAY_HIT_RATE_LABEL];
+  // Chip vocabulary, non-zero counts only — mirrors the week-divider headings
+  // above so the two surfaces speak the same language.
+  if (counts.succeeded > 0) parts.push(`${counts.succeeded} succeeded`);
+  if (counts.missed > 0) parts.push(`${counts.missed} missed`);
+  if (counts.abandoned > 0) parts.push(`${counts.abandoned} abandoned`);
+  if (hitRatePercent !== null) {
+    parts.push(`${hitRatePercent}% ${SMART_TASK_LIST_HIT_RATE_NOUN}`);
+  }
+  return {
+    text: parts.join(' · '),
+    succeeded: counts.succeeded,
+    missed: counts.missed,
+    abandoned: counts.abandoned,
+    hitRatePercent,
+  };
 };
