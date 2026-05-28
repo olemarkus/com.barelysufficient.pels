@@ -144,7 +144,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // `cannot_meet` collapse to the same timestamp tone here — the chip
 // preserves the distinction.
 //
-// Returns 'accent' (default green) for healthy / pending / queued / satisfied
+// Maps to 'accent' (default green) for healthy / pending / queued / satisfied
 // states; 'warn' for at-risk / paused / cannot-meet. The view layer renders
 // `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per the
 // resolved slug — never branches on status itself. The `--alert` CSS variant
@@ -152,16 +152,22 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // codes that may legitimately warrant the strongest tone on the timestamp.
 export type SmartTaskListReadyByTone = 'accent' | 'warn' | 'alert';
 
+// Total mapping (mirrors `SMART_TASK_LIST_STATUS_CHIP_VARIANT` above) so a new
+// `SmartTaskListStatusId` member produces a TypeScript error here rather than
+// silently falling through to the default tone.
+const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskListReadyByTone> = {
+  building_plan: 'accent',
+  queued: 'accent',
+  paused_unplugged: 'warn',
+  on_track: 'accent',
+  at_risk: 'warn',
+  cannot_meet: 'warn',
+  satisfied: 'accent',
+};
+
 export const resolveSmartTaskListReadyByTone = (
   status: SmartTaskListStatusId,
-): SmartTaskListReadyByTone => {
-  if (
-    status === 'cannot_meet'
-    || status === 'at_risk'
-    || status === 'paused_unplugged'
-  ) return 'warn';
-  return 'accent';
-};
+): SmartTaskListReadyByTone => SMART_TASK_LIST_READY_BY_TONE[status];
 
 // Confidence chip label shown on the live hero and the Smart-tasks list card.
 // Centralised so the two surfaces stay phrased identically. High confidence is
