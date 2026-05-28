@@ -285,9 +285,12 @@ describe('groupPlanHistoryByIsoWeek', () => {
       '',
       NOW_MS,
     );
-    // "Week of 20 Apr" — Intl short-month rendering in UTC. Tolerate
-    // locale variation in the month spelling but pin the day + prefix.
-    expect(groups[0]!.heading).toMatch(/^Week of 20 \w+/);
+    // "Week of 20 Apr" (en-GB) or "Week of Apr 20" (en-US) — Intl
+    // short-month rendering depends on the runtime locale, which the
+    // formatter inherits via `toLocaleDateString([], ...)` (see
+    // `formatDateInTimeZone`). Tolerate both day-first and month-first
+    // orderings while pinning the prefix + the day "20".
+    expect(groups[0]!.heading).toMatch(/^Week of (?:20 \w+|\w+ 20)\b/);
   });
 
   it('drops the cost half cleanly when the unit suffix is empty', () => {

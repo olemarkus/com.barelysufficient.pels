@@ -26,6 +26,7 @@ import {
   resolveChipConfidence,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
+  SMART_TASK_LIST_LOAD_ERROR_COPY,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
@@ -142,6 +143,40 @@ const getHistorySurface = (): HTMLElement | null => (
   document.getElementById('deadlines-history-root')
 );
 
+// Persisted-filter localStorage key for the past-tasks chip row. Namespaced
+// under `pels.` so it can't collide with other Homey-shell consumers, and
+// includes the surface ("smart-tasks.history") so future filters on adjacent
+// surfaces (active list, usage day) can claim their own key without
+// re-litigating this one.
+const HISTORY_DEVICE_FILTER_STORAGE_KEY = 'pels.smart-tasks.history.deviceFilter';
+
+// localStorage may be unavailable inside the Homey iframe (privacy mode,
+// sandboxed contexts, SSR-style preact tests). The two helpers below swallow
+// access errors so a missing/forbidden storage surface degrades to "no
+// persistence" rather than crashing the panel render.
+const readPersistedDeviceFilter = (): string | null => {
+  try {
+    const value = window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY);
+    if (typeof value !== 'string' || value.length === 0) return null;
+    return value;
+  } catch {
+    return null;
+  }
+};
+
+const writePersistedDeviceFilter = (deviceId: string | null): void => {
+  try {
+    if (deviceId === null) {
+      window.localStorage.removeItem(HISTORY_DEVICE_FILTER_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(HISTORY_DEVICE_FILTER_STORAGE_KEY, deviceId);
+  } catch {
+    // Storage write failures degrade to in-memory-only state; the chip row
+    // still reflects the click for the current session.
+  }
+};
+
 const fetchPlanHistoryOrNull = async (): Promise<
   SettingsUiDeferredObjectivePlanHistoryPayload | null
 > => {
@@ -155,6 +190,19 @@ const fetchPlanHistoryOrNull = async (): Promise<
   }
 };
 
+// In-memory mirror of the persisted filter. Persistent state lives in
+// localStorage; this cache keeps the chip-click round-trip fast (no read on
+// every render) and lets the test suite reset state per-case without driving
+// the storage surface directly.
+let activeDeviceFilter: string | null = null;
+let activeDeviceFilterInitialized = false;
+
+const ensureDeviceFilterInitialized = (): void => {
+  if (activeDeviceFilterInitialized) return;
+  activeDeviceFilter = readPersistedDeviceFilter();
+  activeDeviceFilterInitialized = true;
+};
+
 const renderHistorySurface = (
   surface: HTMLElement,
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
@@ -165,9 +213,26 @@ const renderHistorySurface = (
   // explanatory line — the section silently vanishing was the bug. `hidden`
   // remains a valid state for callers that genuinely want to suppress the
   // section (e.g. a transient render before any data has arrived).
-  const state: DeadlinesHistoryListState = entries.length === 0
-    ? { status: 'empty' }
-    : { status: 'ready', entries, timeZone: resolveBrowserTimeZone() };
+  if (entries.length === 0) {
+    renderDeadlinesHistoryList(surface, { status: 'empty' });
+    return;
+  }
+  ensureDeviceFilterInitialized();
+  const handleSelectDevice = (deviceId: string | null): void => {
+    activeDeviceFilter = deviceId;
+    writePersistedDeviceFilter(deviceId);
+    // Re-render the same payload from cache so the chip row reflects the new
+    // selection immediately — no network round-trip needed since the filter
+    // is a pure view-side narrowing.
+    renderHistorySurface(surface, payload);
+  };
+  const state: DeadlinesHistoryListState = {
+    status: 'ready',
+    entries,
+    timeZone: resolveBrowserTimeZone(),
+    selectedDeviceId: activeDeviceFilter,
+    onSelectDevice: handleSelectDevice,
+  };
   renderDeadlinesHistoryList(surface, state);
 };
 
@@ -205,7 +270,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');
     renderDeadlinesList(surface, {
       status: 'error',
-      message: 'Could not load smart tasks. Try again later.',
+      message: SMART_TASK_LIST_LOAD_ERROR_COPY,
     });
   }
 };
@@ -213,4 +278,14 @@ export const refreshDeadlinesList = async (): Promise<void> => {
 export const testExports = {
   resolveDeadlinesListCards,
   resolveDeadlinesHistoryEntries,
+  // Past-tasks device-filter persistence — surfaced for tests so they can
+  // exercise the round-trip without coupling to the localStorage key name.
+  HISTORY_DEVICE_FILTER_STORAGE_KEY,
+  // In-memory cache reset; lets each test land on a deterministic "no filter
+  // active" baseline before the renderer reads the persisted value.
+  resetDeviceFilterCacheForTests: (): void => {
+    activeDeviceFilter = null;
+    activeDeviceFilterInitialized = false;
+  },
+  renderHistorySurface,
 };
