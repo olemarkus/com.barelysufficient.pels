@@ -279,6 +279,39 @@ export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
+// Row labels for the Smart-tasks list card's `<dl>` block (Target / Created /
+// Starts / Ready by). Lifted to shared-domain so runtime log breadcrumbs and
+// the UI render identical labels (per `feedback_ui_text_shared_with_logs.md`).
+// The four labels stay grouped so the list-card surface reads them from a
+// single record rather than four loose imports.
+export const SMART_TASK_LIST_ROW_LABELS = {
+  target: 'Target',
+  created: 'Created',
+  starts: 'Starts',
+  readyBy: 'Ready by',
+} as const;
+
+// Empty-state copy for the Smart-tasks list when no smart tasks have been
+// scheduled yet. Split into discrete fragments so the JSX renderer can wrap
+// the action names in `<strong>` and the example sentences in `<em>` without
+// the strings drifting from this canonical source. Runtime log breadcrumbs
+// join the fragments with single spaces to recover the full sentence.
+export const SMART_TASK_LIST_EMPTY_COPY = {
+  intro: 'No smart tasks yet. Open the Flow editor and add the',
+  heatingAction: 'Add heating task',
+  actionWord: 'action',
+  heatingExample: '(Heat … to … °C by Ready by)',
+  conjunction: 'or the',
+  chargingAction: 'Add charging task',
+  chargingExample: '(Charge … to … % by Ready by)',
+  outro: 'to schedule a device for a specific ready-by time.',
+} as const;
+
+// Banner copy for the Smart-tasks list when the bootstrap fetch fails. Lifted
+// to shared-domain so runtime log breadcrumbs and the UI render the same
+// sentence (per `feedback_ui_text_shared_with_logs.md`).
+export const SMART_TASK_LIST_LOAD_ERROR_COPY = 'Could not load smart tasks. Try again later.';
+
 // Error/loading banner copy for the deadline-plan SPA route. Lifted to
 // shared-domain so runtime log breadcrumbs and the UI render identical
 // wording (per `feedback_ui_text_shared_with_logs.md`); the "plan" noun is

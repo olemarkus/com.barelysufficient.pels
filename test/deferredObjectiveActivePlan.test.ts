@@ -456,15 +456,17 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
     expect(recorder.getPlanForTests('dev')?.history).toBeUndefined();
 
-    // Drive 25 schedule-growth replans by extending the horizon by one new
-    // hour each cycle. Each cycle's `live` strictly contains the prior
-    // committed hour set, which routes through the `mergeHoursPreservingCommitment`
-    // grow branch and emits `schedule_revised`. Objective signature stays
+    // Drive 25 schedule-growth replans by extending the horizon each cycle.
+    // The seeded plan committed 3 buckets on the initial observe above, so
+    // the live schedule must exceed 3 to trigger `mergeHoursPreservingCommitment`'s
+    // grow branch and emit `schedule_revised`. Start the loop with `cycle + 3`
+    // buckets (cycle 1 = 4 buckets, > 3 committed) so every iteration actually
+    // grows the schedule and writes a revision. Objective signature stays
     // stable — we want to exercise the history-cap mechanism in isolation,
     // not the `objective_changed` reset path (which clears history by design).
     for (let cycle = 1; cycle <= 25; cycle += 1) {
       const buckets = [];
-      for (let i = 0; i <= cycle; i += 1) {
+      for (let i = 0; i <= cycle + 2; i += 1) {
         buckets.push(makeBucket((2 + i) * HOUR_MS, 1.5));
       }
       recorder.observe([makeDiag({

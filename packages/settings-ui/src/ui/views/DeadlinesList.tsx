@@ -6,6 +6,8 @@ import {
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskListReadyByTone,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
+  SMART_TASK_LIST_EMPTY_COPY,
+  SMART_TASK_LIST_ROW_LABELS,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type SmartTaskListStatusId,
@@ -135,7 +137,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         )}
       </div>
       <div class="deadline-list-card__target">
-        <span class="deadline-list-card__target-label">Target</span>
+        <span class="deadline-list-card__target-label">{SMART_TASK_LIST_ROW_LABELS.target}</span>
         <span class="deadline-list-card__target-value">{formatTarget(card)}</span>
         {card.currentValueLine !== null && (
           <span class="deadline-list-card__current">{card.currentValueLine}</span>
@@ -143,17 +145,17 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       </div>
       <dl class="deadline-list-card__when">
         <div class="deadline-list-card__when-row">
-          <dt>Created</dt>
+          <dt>{SMART_TASK_LIST_ROW_LABELS.created}</dt>
           <dd>{formatWhen(card.createdAtMs)}</dd>
         </div>
         {card.firstActionAtMs !== null && (
           <div class="deadline-list-card__when-row">
-            <dt>Starts</dt>
+            <dt>{SMART_TASK_LIST_ROW_LABELS.starts}</dt>
             <dd>{formatWhen(card.firstActionAtMs)}</dd>
           </div>
         )}
         <div class={`deadline-list-card__when-row deadline-list-card__when-row--${readyByTone}`}>
-          <dt>Ready by</dt>
+          <dt>{SMART_TASK_LIST_ROW_LABELS.readyBy}</dt>
           <dd>{formatWhen(card.deadlineAtMs)}</dd>
         </div>
         {card.extraPermissionsValue !== null && (
@@ -272,12 +274,15 @@ const ErrorBody = ({ message }: { message: string }) => (
 
 const EmptyBody = () => (
   <p class="muted deadlines-list-body" data-state="empty">
-    No smart tasks yet. Open the Flow editor and add the
-    {' '}<strong>Add heating task</strong> action
-    (<em>Heat … to … °C by Ready by</em>) or the
-    {' '}<strong>Add charging task</strong> action
-    (<em>Charge … to … % by Ready by</em>) to schedule a device
-    for a specific ready-by time.
+    {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
+    <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
+    <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.conjunction}{' '}
+    <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
+    <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.outro}
   </p>
 );
 
