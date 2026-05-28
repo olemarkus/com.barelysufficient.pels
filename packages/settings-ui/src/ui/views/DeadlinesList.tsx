@@ -129,7 +129,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">
         <h3 class="deadline-list-card__title">{formatDisplayDeviceName(card.deviceName)}</h3>
-        <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
+        <span class="plan-chip plan-chip--muted">{labels.kindChipLabel}</span>
         <StatusChip statusId={card.statusId} />
         {confidenceLabel !== null && (
           <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
