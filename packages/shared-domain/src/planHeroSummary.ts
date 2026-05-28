@@ -250,6 +250,44 @@ export type DecisionSentenceResult = {
 
 const formatDevices = (n: number): string => `${n} ${n === 1 ? 'device' : 'devices'}`;
 
+// Pick the most-specific "actively limiting" decision sentence for rule 4 of
+// `buildDecisionSentence`. Extracted so the rule ladder stays under the
+// SonarJS / ESLint cognitive-complexity caps.
+//
+// Precedence (highest first):
+//   - All limited devices are smart-task waiting → calm "Waiting for cheaper
+//     hours" framing. positive: true.
+//   - Some limited devices are smart-task waiting → blended comma-join.
+//   - All limited devices are daily-budget pacing → "to stay within today's
+//     budget" framing.
+//   - Otherwise → existing capacity-defense wording (safe-pace clause when
+//     `safePaceKw !== null`).
+const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): DecisionSentenceResult => {
+  const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
+  const dailyCount = input.dailyBudgetLimitedCount ?? 0;
+  const devicesText = formatDevices(input.limitedCount);
+
+  if (avoidCount > 0 && avoidCount === input.limitedCount) {
+    return { text: `Waiting for cheaper hours before running ${devicesText}.`, positive: true };
+  }
+
+  if (avoidCount > 0) {
+    return {
+      text: `Holding back ${devicesText}, ${avoidCount} waiting for cheaper hours.`,
+      positive: false,
+    };
+  }
+
+  if (dailyCount > 0 && dailyCount === input.limitedCount) {
+    return { text: `Holding back ${devicesText} to stay within today’s budget.`, positive: false };
+  }
+
+  const safePaceText = input.safePaceKw !== null
+    ? ` so the house stays under ${formatKw(input.safePaceKw)}`
+    : '';
+  return { text: `Holding back ${devicesText}${safePaceText}.`, positive: false };
+};
+
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
@@ -279,51 +317,7 @@ export const buildDecisionSentence = (
 
   // 4. Actively limiting. Pick the most-specific framing that honestly
   // describes why the limited devices are being held.
-  if (input.limitedCount > 0) {
-    const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
-    const dailyCount = input.dailyBudgetLimitedCount ?? 0;
-
-    // 4a. Every held device is a smart task waiting for cheaper hours. The
-    // user opted into the price-aware plan; reflect that as a calm signal.
-    if (avoidCount > 0 && avoidCount === input.limitedCount) {
-      return {
-        text: `Waiting for cheaper hours before running ${formatDevices(input.limitedCount)}.`,
-        positive: true,
-      };
-    }
-
-    // 4b. Mixed: some devices are smart-task waiting, others are held by
-    // physical constraints. Comma-join keeps the two subsets in one
-    // thought; avoids the em-dash diagnostic shape Nordic voice bans and
-    // the fragment-shape ("1 waiting for cheaper hours.") that reads as a
-    // sentence start.
-    if (avoidCount > 0) {
-      return {
-        text: `Holding back ${formatDevices(input.limitedCount)}, `
-          + `${avoidCount} waiting for cheaper hours.`,
-        positive: false,
-      };
-    }
-
-    // 4c. Every held device is on the daily-budget pacing. Power may be
-    // well under the hard cap; naming the budget keeps the sentence honest.
-    if (dailyCount > 0 && dailyCount === input.limitedCount) {
-      return {
-        text: `Holding back ${formatDevices(input.limitedCount)} to stay within today’s budget.`,
-        positive: false,
-      };
-    }
-
-    // 4d. Generic capacity defense. Existing wording preserved for the
-    // hard-cap-binding case (with the safe-pace clause when known).
-    const safePaceText = input.safePaceKw !== null
-      ? ` so the house stays under ${formatKw(input.safePaceKw)}`
-      : '';
-    return {
-      text: `Holding back ${formatDevices(input.limitedCount)}${safePaceText}.`,
-      positive: false,
-    };
-  }
+  if (input.limitedCount > 0) return resolveLimitingDecisionSentence(input);
 
   // 5. Resuming.
   if (input.resumingCount > 0) {

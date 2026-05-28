@@ -262,7 +262,9 @@ const resolveOffStatusLine = (device: SteppedDevice): string | null => {
     const gap = resolveHeadroomGapKw(device.reason);
     return gap !== null ? `Waiting to resume — ${gap.toFixed(1)} kW more needed` : 'Waiting for available power';
   }
-  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
+  if (device.reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
+    return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
+  }
   if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
   if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
   if (isLimitedReason(device.reason.code)) return PLAN_STATE_HELD_FALLBACK_STATUS;

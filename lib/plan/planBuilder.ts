@@ -301,7 +301,13 @@ export class PlanBuilder {
     const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan, deferredAvoidDeviceIds);
+    planDevices = this.normalizeReasonsWithTiming(
+      planDevices,
+      context,
+      restoreResult,
+      sheddingPlan,
+      deferredAvoidDeviceIds,
+    );
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
