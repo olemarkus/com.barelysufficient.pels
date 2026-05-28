@@ -6659,6 +6659,17 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
+/* v2.7.4 — past-tasks device-filter chip row (PR-19). Sits above the weekly
+ * archive so the user can collapse the list to one device. Wraps at the 320
+ * px floor when many devices have history — each `.plan-chip--link` already
+ * enforces the 48 dp tap-target minimum, so the row only owns spacing here. */
+.deadlines-history__filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
 .usage-return-link {
