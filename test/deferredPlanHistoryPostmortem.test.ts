@@ -13,6 +13,7 @@ import {
   formatPlanHistoryMissedReason,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
+  formatPlanHistoryProgressLine,
   formatPlanHistoryUsageDayLinkLabel,
 } from '../packages/shared-domain/src/deferredPlanHistory';
 import type {
@@ -608,5 +609,91 @@ describe('formatPlanHistoryUsageDayLinkLabel', () => {
       .toBe('See household usage on 16 May →');
     expect(formatPlanHistoryUsageDayLinkLabel('   ', '16 May'))
       .toBe('See household usage on 16 May →');
+  });
+});
+
+// Regression: PR-8 of the v2.7.x smart-tasks polish train.
+//
+// `formatPlanHistoryProgressLine` historically rendered `start → final · target`
+// on every outcome shape. On `'abandoned'` / `'replaced'` entries the persisted
+// `finalProgressC` / `finalProgressPercent` is the reading at the moment the
+// user cleared the smart task (or the diagnostic stream went stale) — not the
+// result of any PELS-driven heating/charging. The arrow read as "we moved the
+// needle from X to Y", which inverted the truth (no progress is attributable
+// to PELS on those outcomes).
+//
+// The producer now suppresses the `→ final` segment on those two outcomes
+// while keeping the start reading + target so the user still has context.
+// Succeeded / Missed keep the arrow — the final reading is meaningful there.
+describe('formatPlanHistoryProgressLine', () => {
+  it('keeps the start → final · target arrow on Succeeded runs', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      startProgressC: 50,
+      finalProgressC: 65,
+      targetTemperatureC: 65,
+    }))).toBe('50.0 °C → 65.0 °C  ·  target 65.0 °C');
+  });
+
+  it('keeps the arrow on Missed runs (final reading is meaningful)', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'missed',
+      startProgressC: 50,
+      finalProgressC: 58,
+      targetTemperatureC: 65,
+    }))).toBe('50.0 °C → 58.0 °C  ·  target 65.0 °C');
+  });
+
+  it('suppresses the → final segment on Abandoned temperature runs', () => {
+    // Lived-state example: an Abandoned thermostat run that read 57.6 °C when
+    // the user cleared the smart task, target 40 °C. Pre-fix the arrow read
+    // "57.6 → 26.0 °C", implying PELS cooled the device — the cooling came
+    // from ambient drift, not the planner.
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'abandoned',
+      startProgressC: 57.6,
+      finalProgressC: 26.0,
+      targetTemperatureC: 40,
+    }))).toBe('57.6 °C  ·  target 40.0 °C');
+  });
+
+  it('suppresses the → final segment on Replaced temperature runs', () => {
+    // `'replaced'` covers the user-swapped path (target / deadline changed
+    // mid-run); same treatment as `'abandoned'` — no PELS-driven progress
+    // happened on the previous configuration.
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'replaced',
+      startProgressC: 50,
+      finalProgressC: 38,
+      targetTemperatureC: 65,
+    }))).toBe('50.0 °C  ·  target 65.0 °C');
+  });
+
+  it('suppresses the → final segment on Abandoned EV runs', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'abandoned',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      startProgressC: null,
+      startProgressPercent: 35,
+      finalProgressC: null,
+      finalProgressPercent: 42,
+    }))).toBe('35 %  ·  target 80 %');
+  });
+
+  it('returns null when start or target is missing (every outcome)', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'abandoned',
+      startProgressC: null,
+      finalProgressC: 26,
+      targetTemperatureC: 40,
+    }))).toBeNull();
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      startProgressC: 50,
+      finalProgressC: 65,
+      targetTemperatureC: null,
+    }))).toBeNull();
   });
 });
