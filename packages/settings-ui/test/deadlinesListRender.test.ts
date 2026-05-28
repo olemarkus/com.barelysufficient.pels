@@ -260,6 +260,33 @@ describe('DeadlinesList', () => {
     const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-card-id')).toBe('dev_water_heater');
+    // The affordance lives inside the standard `.plan-hero__subline` paragraph
+    // so the subline reads as ordinary de-emphasised hero body copy rather than
+    // a separate inverted/light container.
+    expect(button?.closest('.plan-hero__subline')).not.toBeNull();
+  });
+
+  // Flat dark-theme affordance contract (PR-2 + PR-6): the subline is plain
+  // hero body text + a trailing chevron, with press feedback supplied by an
+  // `md-ripple` rather than a permanent light/inverted background. Pins the
+  // chevron cue and the ripple so a future change can't silently reintroduce
+  // the inverted-box treatment or drop the tap feedback.
+  it('renders the subline affordance as flat text + chevron with a ripple', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' })],
+    });
+    const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
+    expect(button).not.toBeNull();
+    // Press feedback is a Material ripple, not a standing background.
+    expect(button?.querySelector('md-ripple')).not.toBeNull();
+    // Chevron stays as the only tappability cue.
+    const chevron = button?.querySelector('.deadlines-list-hero__nav-target-chevron');
+    expect(chevron?.textContent).toBe('›');
+    expect(chevron?.getAttribute('aria-hidden')).toBe('true');
+    // Subline copy renders as plain text inside the button.
+    expect(button?.textContent).toContain('Connected 300');
   });
 
   // Header-persistence parity: the panel must keep a visible title/header in
