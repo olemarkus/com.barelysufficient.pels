@@ -694,7 +694,23 @@ export class DeferredObjectiveActivePlanRecorder {
       // Prepend the prior `latest` onto the history log, FIFO-pruned to the
       // cap so the persisted blob stays bounded. The head of the array is
       // always "the revision immediately before the current `latest`."
-      history: [latest, ...(current.history ?? [])].slice(0, MAX_HISTORY_REVISIONS),
+      //
+      // Exception: when the smart-task settings themselves changed
+      // (`reason === 'objective_changed'`), the prior history belongs to a
+      // different objective (target, deadline, or device). Carrying it
+      // forward would interleave pre-change revisions with the new
+      // objective's revisions in the smart-task detail page revision panel
+      // until 20 fresh entries rolled over. Clear instead — the new `latest`
+      // revision carries reason `'objective_changed'` ("Smart task settings
+      // changed"), which is itself the natural separator the user sees.
+      //
+      // Rescue-permission-only toggles (`reason === 'flow_permission_changed'`)
+      // intentionally do NOT clear history: the target / deadline / device
+      // are unchanged, and the user benefits from continuity of the prior
+      // schedule's revisions across a permission edit.
+      history: reason === 'objective_changed'
+        ? []
+        : [latest, ...(current.history ?? [])].slice(0, MAX_HISTORY_REVISIONS),
     };
     this.dirty = true;
     this.emit({
