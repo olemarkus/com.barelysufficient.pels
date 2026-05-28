@@ -1154,12 +1154,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('lifts plannedTarget to the deadline target when it exceeds the mode target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 60 },
         deps: defaultDeps,
       });
 
@@ -1168,12 +1167,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('keeps the mode target when it already exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 65 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 65 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 60 },
         deps: defaultDeps,
       });
 
@@ -1182,12 +1180,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('does not double-apply the cheap-hour delta on top of the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 60 })]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 60 },
         deps: {
           ...defaultDeps,
           isCurrentHourCheap: () => true,
@@ -1202,12 +1199,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('lets mode + cheap delta win when the result still exceeds the deadline target', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 55 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 56 })]), desiredForMode: { tank: 55 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 56 },
         deps: {
           ...defaultDeps,
           isCurrentHourCheap: () => true,
@@ -1222,12 +1218,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('seeds plannedTarget from the deadline target when no mode target is configured', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), desiredForMode: {} },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 58 },
         deps: defaultDeps,
       });
 
@@ -1236,12 +1231,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('clips the deadline target to the device capability max', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 95 })]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 95 },
         deps: defaultDeps,
       });
 
@@ -1249,14 +1243,13 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(planDevice.plannedTarget).toBe(70);
     });
 
-    it('does not override when the device has no entry in the override map', () => {
+    it('does not override when the device has no deadline floor stamped', () => {
       const [planDevice] = buildInitialPlanDevices({
         context: { ...buildContext([tempInputDevice()]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: {},
         deps: defaultDeps,
       });
 
@@ -1264,14 +1257,13 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     });
 
     it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
-      const device = tempInputDevice({ currentOn: true });
+      const device = tempInputDevice({ currentOn: true, deadlineFloorTargetC: 60 });
       const [planDevice] = buildInitialPlanDevices({
         context: { ...buildContext([device]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(['tank']),
         shedReasons: new Map([['tank', 'shed due to capacity']]),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 60 },
         deps: {
           ...defaultDeps,
           getShedBehavior: () => ({ action: 'set_temperature', temperature: 40, stepId: null }),
@@ -1357,12 +1349,11 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
     it('combines the current-target fallback with an active deferred objective', () => {
       const [planDevice] = buildInitialPlanDevices({
-        context: { ...buildContext([tempInputDevice()]), desiredForMode: {} },
+        context: { ...buildContext([tempInputDevice({ deadlineFloorTargetC: 58 })]), desiredForMode: {} },
         state: createPlanEngineState(),
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 58 },
         deps: defaultDeps,
       });
 
@@ -1397,6 +1388,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         context: {
           ...buildContext([tempInputDevice({
             targets: [{ id: 'target_temperature', unit: '°C', min: 30, max: 70 }],
+            deadlineFloorTargetC: 58,
           })]),
           desiredForMode: {},
         },
@@ -1404,7 +1396,6 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deferredTargetTempByDeviceId: { tank: 58 },
         deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
       });
 
