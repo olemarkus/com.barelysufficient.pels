@@ -750,7 +750,7 @@ const HistoryDetailHero = ({
   usageLink: { href: string; label: string; deviceId: string; returnContext: string } | null;
 }) => (
   <section
-    class="pels-surface-card plan-history-detail__hero"
+    class="plan-hero pels-hero plan-history-detail__hero"
     data-tone={hero.tone}
   >
     <p class="eyebrow plan-history-detail__eyebrow">{hero.eyebrow}</p>
