@@ -5009,8 +5009,12 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
+/* The flex-grow on title side. `> h2` matches DeadlinePlan / DeadlinePlanHistoryDetail
+ * where the title is a direct child; `> div:first-child` matches BudgetOverview where
+ * the h3 + subtitle pair is wrapped in a div (the wrapping div is the flex item, so
+ * targeting the h3 directly is dead code — caught in PR #1241 gemini review). */
 .budget-card-header > h2,
-.budget-card-header > h3,
+.budget-card-header > div:first-child,
 .budget-card-header > .section-title {
   flex: 1 1 auto;
   min-width: 0;
