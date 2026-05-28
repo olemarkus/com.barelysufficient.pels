@@ -77,6 +77,12 @@ export type ExecutableReleaseIntent = {
   kind: 'ev_resume' | 'ev_pause' | 'shed_release';
   deviceId: string;
   name: string;
+  // Producer-resolved release-cascade target step (configured `shedBehavior.stepId` →
+  // lowest-active → off-step). Populated only for `shed_release` on a stepped device whose
+  // configured shedBehavior is `set_step`; null otherwise (including for EV pause/resume).
+  // The lifecycle-end release executor reads this directly instead of re-running the
+  // cascade at apply time.
+  shedStepId?: string | null;
 };
 
 export type ExecutableTargetIntent = {

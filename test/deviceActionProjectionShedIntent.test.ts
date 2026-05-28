@@ -67,14 +67,34 @@ describe('resolveShedIntent', () => {
     })).toEqual({ kind: 'turn_off' });
   });
 
-  it('returns set_step when behaviour is set_step on a stepped device', () => {
+  it('returns set_step with the configured stepId resolved when behaviour is set_step on a stepped device', () => {
     expect(resolveShedIntent({
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: true,
       hasBinaryControl: true,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
-    })).toEqual({ kind: 'set_step' });
+    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
+  });
+
+  it('falls back to the lowest active step when the configured stepId is null', () => {
+    expect(resolveShedIntent({
+      shedBehavior: { action: 'set_step', temperature: null, stepId: null },
+      controllable: true,
+      hasBinaryControl: false,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
+  });
+
+  it('falls back to the lowest active step when the configured stepId is unknown', () => {
+    expect(resolveShedIntent({
+      shedBehavior: { action: 'set_step', temperature: null, stepId: 'does_not_exist' },
+      controllable: true,
+      hasBinaryControl: false,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
 
   it('returns set_step for a stepped device with no binary control regardless of behaviour action', () => {
@@ -84,7 +104,7 @@ describe('resolveShedIntent', () => {
       hasBinaryControl: false,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
-    })).toEqual({ kind: 'set_step' });
+    })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
 
   it('returns turn_off for a stepped device with binary control and turn_off behaviour', () => {
@@ -145,7 +165,7 @@ describe('resolveShedIntent', () => {
         hasBinaryControl: false,
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
-      })).toEqual({ kind: 'set_step' });
+      })).toEqual({ kind: 'set_step', targetStepId: 'low' });
     });
 
     it('collapses set_step to turn_off when controllable=false on stepped+binary device', () => {
