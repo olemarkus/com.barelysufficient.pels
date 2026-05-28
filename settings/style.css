@@ -7442,9 +7442,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     #modes-panel,
     #limits-panel,
     #simulation-panel,
+    #usage-panel,
     #advanced-panel,
     #electricity-prices-panel,
-    #price-aware-devices-panel
+    #price-aware-devices-panel,
+    #deadlines-panel
   ) {
     gap: var(--spacing-2);
   }
