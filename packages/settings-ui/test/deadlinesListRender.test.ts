@@ -17,7 +17,6 @@ const buildCard = (overrides: Partial<DeadlinesListCard> = {}): DeadlinesListCar
   kind: 'temperature',
   targetTemperatureC: 65,
   targetPercent: null,
-  createdAtMs: T0 - HOUR_MS,
   firstActionAtMs: T0,
   deadlineAtMs: T0 + 6 * HOUR_MS,
   href: './?page=deadline-plan&deviceId=dev_water_heater',
@@ -135,6 +134,23 @@ describe('DeadlinesList', () => {
       cards: [buildCard({ currentValueLine: null })],
     });
     expect(mount.querySelector('.deadline-list-card__current')).toBeNull();
+  });
+
+  // Active-card timestamp rows: the list card surfaces "Starts" and "Ready by".
+  // The "Created" row used to render above Starts and showed the same timestamp
+  // in nearly every case (a task starts on creation), so it added a noisy
+  // duplicate. Detail-page audit-trail kept this signal; the list card drops it.
+  it('omits the Created row from the active-card timestamp list', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'on_track' })],
+    });
+    const whenLabels = Array.from(
+      mount.querySelectorAll<HTMLElement>('.deadline-list-card__when dt'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(whenLabels).not.toContain('Created');
+    expect(whenLabels).toEqual(expect.arrayContaining(['Starts', 'Ready by']));
   });
 
   it('renders extra permissions when the producer supplies them', () => {
