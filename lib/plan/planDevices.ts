@@ -75,7 +75,6 @@ export function buildInitialPlanDevices(params: {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
-  deferredTargetTempByDeviceId?: Record<string, number>;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
   const {
@@ -84,7 +83,6 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     shedReasons,
     guardInShortfall,
-    deferredTargetTempByDeviceId = {},
     deps,
   } = params;
   // Filter the executor-side phantom set_step shed entries that hasExecutableShedDevices
@@ -109,7 +107,6 @@ export function buildInitialPlanDevices(params: {
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
-      deferredTargetTempByDeviceId,
       supportsTemperature,
       state,
       deps,
@@ -179,7 +176,6 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
-  deferredTargetTempByDeviceId: Record<string, number>;
   supportsTemperature: boolean;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
@@ -187,14 +183,13 @@ function resolvePlannedTarget(params: {
   const {
     dev,
     desiredForMode,
-    deferredTargetTempByDeviceId,
     supportsTemperature,
     state,
     deps,
   } = params;
   if (!supportsTemperature) return undefined;
   const target = getPrimaryTargetCapability(dev.targets);
-  const deferredC = deferredTargetTempByDeviceId[dev.id];
+  const deferredC = dev.deadlineFloorTargetC;
   const hasDeferred = typeof deferredC === 'number';
   const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, state, deps);
   if (seed.kind === 'skip') {
