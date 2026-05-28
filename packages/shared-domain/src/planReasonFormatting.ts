@@ -4,6 +4,7 @@ import {
 } from './planReasonSemanticsCore.js';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from './planStateLabels.js';
@@ -16,6 +17,7 @@ type DetailReason = Extract<
   | { code: typeof PLAN_REASON_CODES.sheddingActive }
   | { code: typeof PLAN_REASON_CODES.inactive }
   | { code: typeof PLAN_REASON_CODES.capacity }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
 >;
 
 type TimedReason = Extract<
@@ -87,7 +89,8 @@ function isDetailReason(reason: DeviceReason): reason is DetailReason {
     || reason.code === PLAN_REASON_CODES.dailyBudget
     || reason.code === PLAN_REASON_CODES.sheddingActive
     || reason.code === PLAN_REASON_CODES.inactive
-    || reason.code === PLAN_REASON_CODES.capacity;
+    || reason.code === PLAN_REASON_CODES.capacity
+    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid;
 }
 
 function formatDetailReason(reason: DetailReason): string {
@@ -104,6 +107,8 @@ function formatDetailReason(reason: DetailReason): string {
       return reason.detail ? `inactive (${reason.detail})` : 'inactive';
     case PLAN_REASON_CODES.capacity:
       return formatShedReason('shed due to capacity', reason.detail);
+    case PLAN_REASON_CODES.deferredObjectiveAvoid:
+      return formatShedReason('waiting for cheaper hours', reason.detail);
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -398,6 +403,8 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
       return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
     case PLAN_REASON_CODES.capacity:
       return appendUserDetail(PLAN_STATE_HELD_FALLBACK_STATUS, reason.detail);
+    case PLAN_REASON_CODES.deferredObjectiveAvoid:
+      return appendUserDetail(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS, reason.detail);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

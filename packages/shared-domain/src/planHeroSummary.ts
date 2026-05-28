@@ -231,6 +231,16 @@ export type DecisionSentenceInput = {
   overHardLimit: boolean;
   projectedOverBudget: boolean;
   safePaceKw: number | null;
+  // Subset of `limitedCount` whose hold is attributed to a smart task waiting
+  // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
+  // limited set falls into this bucket, the decision sentence frames the
+  // hold as the user's price-aware plan instead of a capacity defense.
+  deferredObjectiveAvoidCount?: number;
+  // Subset of `limitedCount` whose hold is attributed to today's daily budget
+  // pacing (reason code `dailyBudget`). When the whole limited set falls into
+  // this bucket and no smart-task waiting is in play, frame the hold as
+  // budget pacing instead of generic capacity defense.
+  dailyBudgetLimitedCount?: number;
 };
 
 export type DecisionSentenceResult = {
@@ -267,8 +277,44 @@ export const buildDecisionSentence = (
     };
   }
 
-  // 4. Actively limiting.
+  // 4. Actively limiting. Pick the most-specific framing that honestly
+  // describes why the limited devices are being held.
   if (input.limitedCount > 0) {
+    const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
+    const dailyCount = input.dailyBudgetLimitedCount ?? 0;
+
+    // 4a. Every held device is a smart task waiting for cheaper hours. The
+    // user opted into the price-aware plan; reflect that as a calm signal.
+    if (avoidCount > 0 && avoidCount === input.limitedCount) {
+      return {
+        text: `Waiting for cheaper hours before running ${formatDevices(input.limitedCount)}.`,
+        positive: true,
+      };
+    }
+
+    // 4b. Mixed: some devices are smart-task waiting, others are held by
+    // physical constraints. Name both subsets so neither narrative wins
+    // falsely. Two short sentences instead of an em-dash join (Nordic
+    // register voice rules).
+    if (avoidCount > 0) {
+      return {
+        text: `Holding back ${formatDevices(input.limitedCount)}. `
+          + `${avoidCount} waiting for cheaper hours.`,
+        positive: false,
+      };
+    }
+
+    // 4c. Every held device is on the daily-budget pacing. Power may be
+    // well under the hard cap; naming the budget keeps the sentence honest.
+    if (dailyCount > 0 && dailyCount === input.limitedCount) {
+      return {
+        text: `Holding back ${formatDevices(input.limitedCount)} to stay within today's budget.`,
+        positive: false,
+      };
+    }
+
+    // 4d. Generic capacity defense. Existing wording preserved for the
+    // hard-cap-binding case (with the safe-pace clause when known).
     const safePaceText = input.safePaceKw !== null
       ? ` so the house stays under ${formatKw(input.safePaceKw)}`
       : '';

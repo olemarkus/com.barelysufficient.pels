@@ -8,6 +8,7 @@ import {
 } from '../packages/shared-domain/src/planReasonSemantics';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from '../packages/shared-domain/src/planStateLabels';
@@ -72,6 +73,11 @@ describe('formatDeviceReasonUserFacing — terminology guide alignment', () => {
       label: 'hourly budget shed maps to the hourly hard cap label',
       reason: { code: PLAN_REASON_CODES.hourlyBudget, detail: null },
       expected: PLAN_STATE_HOURLY_BUDGET_STATUS,
+    },
+    {
+      label: 'deferred objective avoid maps to the waiting-for-cheaper-hours label',
+      reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null },
+      expected: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
     },
     {
       label: 'cooldown restore maps to the waiting-to-resume label',

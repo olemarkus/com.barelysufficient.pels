@@ -241,6 +241,7 @@ export class PlanBuilder {
     const {
       admittedDevices,
       forceShedSet,
+      deferredAvoidDeviceIds,
       deferredTargetTempByDeviceId,
       deferredReleaseIntentByDeviceId,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
@@ -252,9 +253,20 @@ export class PlanBuilder {
       );
       const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
       const admission = applyDeferredAdmissionToInput(devices, deferredAdmission);
+      // Devices whose smart task has no allocated energy this hour (current
+      // bucket is `preference: 'avoid'`, or the task is between planned
+      // hours). Used downstream by `normalizeShedReasons` to render the
+      // `deferredObjectiveAvoid` reason ("Waiting for cheaper hours") instead
+      // of the misleading capacity/dailyBudget fallback when the device ends
+      // up held this cycle.
+      const deferredAvoidIds = new Set<string>();
+      for (const [deviceId, decision] of deferredAdmission) {
+        if (decision.kind === 'idle') deferredAvoidIds.add(deviceId);
+      }
       return {
         admittedDevices: admission.devices,
         forceShedSet: admission.forceShedSet,
+        deferredAvoidDeviceIds: deferredAvoidIds,
         deferredTargetTempByDeviceId: buildDeferredTargetOverrides(
           deferredEvaluations,
           this.deps.getLearnedThermostatDeadbandC,
@@ -278,7 +290,7 @@ export class PlanBuilder {
     const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan);
+    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan, deferredAvoidDeviceIds);
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
@@ -605,6 +617,7 @@ export class PlanBuilder {
     context: PlanContext,
     restoreResult: RestorePlanResult,
     sheddingPlan: SheddingPlan,
+    deferredObjectiveAvoidDeviceIds: ReadonlySet<string>,
   ): DevicePlanDevice[] {
     return this.trackDuration('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
@@ -616,6 +629,8 @@ export class PlanBuilder {
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
       shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
       shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
+      deferredObjectiveAvoidDeviceIds,
+      softLimitSource: context.softLimitSource,
     }));
   }
 
