@@ -65,6 +65,52 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.textContent).toContain('50.0 °C → 58.0 °C');
   });
 
+  // Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+  // line on Missed cards so the scanning user sees the cause without tap-through.
+  // The full branch matrix of `formatPlanHistoryMissedReason` is pinned in
+  // `test/deferredPlanHistoryPostmortem.test.ts`; this test only confirms the
+  // helper's output reaches `.plan-history-card__reason` in the rendered list
+  // card and stays hidden on Succeeded / Abandoned rows.
+  it('renders the muted reason line on Missed list cards', () => {
+    const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const reason = mount.querySelector('.plan-history-card__reason');
+    expect(reason?.textContent).toBe('The device did not reach the target before the deadline.');
+  });
+
+  it('renders the budget-exhausted reason line on Missed list cards when the snapshot recorded the cap', () => {
+    const start = Date.UTC(2026, 4, 6, 0, 0, 0);
+    const finalPlan = {
+      hours: [{ startsAtMs: start, plannedKWh: 2 }],
+      energyNeededKWh: 10,
+      planStatus: 'cannot_meet' as const,
+      revisedAtMs: start,
+      dailyBudgetExhaustedBucketCount: 3,
+    };
+    const entry = buildEntry({
+      outcome: 'missed',
+      metAtMs: null,
+      finalProgressC: 58,
+      finalPlan,
+      originalPlan: finalPlan,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const reason = mount.querySelector('.plan-history-card__reason');
+    expect(reason?.textContent)
+      .toBe("Today's daily budget filled before the deadline could be reached.");
+  });
+
+  it('does not render the reason line on Succeeded list cards', () => {
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
+  });
+
+  it('does not render the reason line on Abandoned list cards', () => {
+    const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
+  });
+
   it('does not show the stale backup-hours pill when the run leaned on avoid buckets', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [buildEntry({ usedPolicyAvoid: true })],
