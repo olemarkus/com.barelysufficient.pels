@@ -3,7 +3,7 @@ import type { ShedAction } from './planTypes';
 
 /**
  * Materialises the snapshot-side shed-action triple
- * (`shedAction`, `shedTemperature`, `shedStepId`) consumed by
+ * (`shedAction`, `shedTemperature`, `releaseShedStepId`) consumed by
  * `DevicePlanDevice` / the executor projection, from a producer-resolved
  * `ShedActionIntent` plus the per-cycle `shouldShed` decision and the device's
  * binary-control capability.
@@ -37,7 +37,14 @@ import type { ShedAction } from './planTypes';
 export type ShedSnapshotTriple = {
   shedAction: ShedAction;
   shedTemperature: number | null;
-  shedStepId: string | null;
+  // Producer-resolved step ID the *lifecycle-end release* path actuates toward
+  // (configured `shedBehavior.stepId` → lowest-active → off-step). Read by
+  // `lib/executor/shedReleaseActuation.ts` via `ExecutableReleaseIntent.releaseShedStepId`.
+  //
+  // The *cap-driven* shed path in `lib/plan/planSteppedLoad.ts` does NOT read this field —
+  // it re-derives the lowest-active step itself to maximise load drop. New consumers must
+  // not read this field on the cap-shed axis; the field name makes the scoping explicit.
+  releaseShedStepId: string | null;
 };
 
 export type ShedSnapshotMaterializationInput = {
@@ -48,7 +55,7 @@ export type ShedSnapshotMaterializationInput = {
 const TURN_OFF: ShedSnapshotTriple = {
   shedAction: 'turn_off',
   shedTemperature: null,
-  shedStepId: null,
+  releaseShedStepId: null,
 };
 
 export function materializeShedSnapshotFields(input: ShedSnapshotMaterializationInput): ShedSnapshotTriple {
@@ -58,7 +65,7 @@ export function materializeShedSnapshotFields(input: ShedSnapshotMaterialization
   // is the only remaining check here: on a non-shedding cycle the device falls through to
   // its binary fallback so the executor projection still has a well-formed snapshot triple.
   if (shouldShed && intent.kind === 'set_temperature') {
-    return { shedAction: 'set_temperature', shedTemperature: intent.temperature, shedStepId: null };
+    return { shedAction: 'set_temperature', shedTemperature: intent.temperature, releaseShedStepId: null };
   }
   if (intent.kind === 'set_step') {
     // The producer emits `set_step` either for a cap-on stepped device configured for
@@ -66,7 +73,7 @@ export function materializeShedSnapshotFields(input: ShedSnapshotMaterialization
     // routes use the step capability. `targetStepId` is the producer-resolved release-cascade
     // step; the lifecycle-end release path reads it from the snapshot triple, and the
     // cap-driven shed path ignores it (it picks lowest-active itself in planSteppedLoad).
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: intent.targetStepId };
+    return { shedAction: 'set_step', shedTemperature: null, releaseShedStepId: intent.targetStepId };
   }
   // turn_off intent (any cycle), or set_temperature on a non-shedding cycle.
   return TURN_OFF;

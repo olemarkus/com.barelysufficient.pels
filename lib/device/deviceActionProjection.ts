@@ -508,7 +508,7 @@ function isWithinGrace(
 // Today the planner branches on raw `shedBehavior.action` + device-shape
 // fields (`hasBinaryControl`, `isSteppedLoadDevice`, primary target presence)
 // inside `lib/plan/planDevices.ts:resolveShedAction` to materialise the
-// `{ shedAction, shedTemperature, shedStepId }` triple on each
+// `{ shedAction, shedTemperature, releaseShedStepId }` triple on each
 // `DevicePlanDevice`. Chunk 5 lifts the *device-capability* half of that
 // resolution into the producer: the resulting `ShedActionIntent` captures
 // "what the device's configured shedBehavior translates to given its
