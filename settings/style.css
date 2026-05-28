@@ -1386,7 +1386,8 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="good"],
-.pels-hero[data-tone="good"] {
+.pels-hero[data-tone="good"],
+.plan-history-detail__hero[data-tone="good"] {
   border-color: var(--color-state-positive-border);
   background: linear-gradient(
     180deg,
@@ -1396,7 +1397,8 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="warn"],
-.pels-hero[data-tone="warn"] {
+.pels-hero[data-tone="warn"],
+.plan-history-detail__hero[data-tone="warn"] {
   border-color: var(--color-state-warning-border);
   background: linear-gradient(
     180deg,
@@ -1407,10 +1409,7 @@ md-filled-button.is-busy {
 
 /* History-detail-only tone for the Abandoned shape — a log entry, not a
  * receipt or a diagnosis. Neutral surface so the chip + postmortem carry
- * the muted framing without competing with succeeded/missed tones. The
- * other tones (`good`, `warn`, `alert`, `info`) flow through from the
- * shared `.plan-hero` / `.pels-hero` primitive now that the root class
- * list includes `plan-hero pels-hero`. */
+ * the muted framing without competing with succeeded/missed tones. */
 .plan-history-detail__hero[data-tone="muted"] {
   border-color: var(--color-border-subtle);
   background: var(--color-surface-3);
@@ -1670,6 +1669,16 @@ md-filled-button.is-busy {
  * and within-threshold runs (see `formatPlanHistoryOvershootLine`); the
  * view never reads `outcome` to decide whether to render. */
 .plan-history-card__overshoot {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
+/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+ * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
+ * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
+ * scanning user sees the cause without tapping through. Producer resolves
+ * `null` on non-missed outcomes; the view never branches on `outcome`. */
+.plan-history-card__reason {
   font-size: var(--font-size-xs);
   color: var(--pels-text-supporting-color);
 }
@@ -4999,8 +5008,12 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
+/* The flex-grow on title side. `> h2` matches DeadlinePlan / DeadlinePlanHistoryDetail
+ * where the title is a direct child; `> div:first-child` matches BudgetOverview where
+ * the h3 + subtitle pair is wrapped in a div (the wrapping div is the flex item, so
+ * targeting the h3 directly is dead code — caught in PR #1241 gemini review). */
 .budget-card-header > h2,
-.budget-card-header > h3,
+.budget-card-header > div:first-child,
 .budget-card-header > .section-title {
   flex: 1 1 auto;
   min-width: 0;
@@ -6613,6 +6626,36 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
+ * list of "Device — N of last M runs missed" rows so the recovering-from-
+ * mistake user gets a pattern-at-a-glance signal without rescanning the
+ * card stack. Plain block rows (no flex) because the row content includes
+ * a literal em-dash text node between the two spans; the dash needs to flow
+ * inline with the surrounding text. */
+.deadlines-history__miss-streaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__miss-streak {
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+.deadlines-history__miss-streak-device {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.deadlines-history__miss-streak-count {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 

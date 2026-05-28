@@ -29,6 +29,7 @@ import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 import { ExpandMoreIcon } from './icons.tsx';
+import { logSettingsWarn } from '../logging.ts';
 
 // Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (~1340-1374). `alert` was previously
@@ -1159,10 +1160,17 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
 // power users investigating why the plan looks the way it does. Suppressed
 // entirely when there are fewer than two revisions worth showing (a brand-new
 // task whose only revision is `latest` would render a single redundant row).
-// One-shot guard so we warn at most once per session per unknown reason
-// pattern. The set survives across panel re-mounts because it lives at module
-// scope; that's intentional — if the recorder ships a new reason code, we
-// want one warning to make it into devtools/Sentry, not one per render tick.
+// One-shot guard so we breadcrumb at most once per session per unknown
+// reason. The set survives across panel re-mounts because it lives at
+// module scope; that's intentional — if the recorder ships a new reason
+// code, we want one entry in the runtime log per session, not one per
+// render tick.
+//
+// Breadcrumbs route through `logSettingsWarn` to the runtime
+// `settings_ui_log` API → `app.log(...)`, so the signal lands in the
+// app's stdout log (`/tmp/pels/start.*.stdout.log`) where new reason
+// codes are actually noticed; the settings UI's `console` is invisible
+// to users in the Homey WebView and out of scope for ops anyway.
 const warnedFallbackRevisions = new Set<string>();
 
 const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void => {
@@ -1171,8 +1179,10 @@ const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void 
     const key = `r${row.revision}@${row.timeLabel}`;
     if (warnedFallbackRevisions.has(key)) continue;
     warnedFallbackRevisions.add(key);
-    console.warn(
-      `[PELS] Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+    void logSettingsWarn(
+      `Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+      undefined,
+      'deadline_plan.unknown_revision_reason',
     );
   }
 };

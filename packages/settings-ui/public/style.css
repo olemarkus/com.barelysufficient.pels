@@ -1673,6 +1673,16 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
+/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+ * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
+ * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
+ * scanning user sees the cause without tapping through. Producer resolves
+ * `null` on non-missed outcomes; the view never branches on `outcome`. */
+.plan-history-card__reason {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;
@@ -1868,16 +1878,24 @@ md-filled-button.is-busy {
   list-style: none;
 }
 
-/* Hint occupies a full-width row below the title; spans both columns so
- * it wraps cleanly without affecting the chevron's right-anchor.
- * `:where()` keeps this rule's specificity at 0, so the base `.section-hint`
- * rule wherever it appears doesn't have to be re-ordered to come first. */
-:where(.plan-revision-panel__summary) > .section-hint {
-  grid-column: 1 / -1;
-}
-
 .plan-revision-panel__summary::-webkit-details-marker {
   display: none;
+}
+
+/* Producer-resolved subline that narrates the latest *system* revision
+ * (`Schedule revised — daily budget shifted · 15:42 · +1h`). Lives OUTSIDE
+ * the `<details>` so it stays visible while the panel is collapsed — HTML
+ * hides every child of `<details>` except `<summary>` when closed, so the
+ * subline must be a sibling.
+ *
+ * Tokens only: muted tone via `--pels-text-supporting-color`; the card's
+ * grid gap (`--pels-card-gap` on `.pels-surface-card`) governs the spacing
+ * to the eyebrow above and the `<details>` block below, so the `<p>` only
+ * needs its default browser margins zeroed. Wraps cleanly at 320 px by
+ * inheriting the card's natural width. */
+.plan-revision-panel__summary-subline {
+  margin: 0;
+  color: var(--pels-text-supporting-color);
 }
 
 /* Per-revision log card on the smart-task history detail page (v2.7.2 PR 5).
@@ -4990,13 +5008,29 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
-.budget-card-header h3,
-.budget-card-header .section-title {
-  margin-top: 0;
+/* The flex-grow on title side. `> h2` matches DeadlinePlan / DeadlinePlanHistoryDetail
+ * where the title is a direct child; `> div:first-child` matches BudgetOverview where
+ * the h3 + subtitle pair is wrapped in a div (the wrapping div is the flex item, so
+ * targeting the h3 directly is dead code — caught in PR #1241 gemini review). */
+.budget-card-header > h2,
+.budget-card-header > div:first-child,
+.budget-card-header > .section-title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .budget-toggle-mount {
   min-width: 0;
+}
+
+.budget-card-header > button,
+.budget-card-header > .budget-toggle-mount {
+  flex-shrink: 0;
+}
+
+.budget-card-header h3,
+.budget-card-header .section-title {
+  margin-top: 0;
 }
 
 .budget-chart-card {
@@ -6592,6 +6626,36 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
+ * list of "Device — N of last M runs missed" rows so the recovering-from-
+ * mistake user gets a pattern-at-a-glance signal without rescanning the
+ * card stack. Plain block rows (no flex) because the row content includes
+ * a literal em-dash text node between the two spans; the dash needs to flow
+ * inline with the surrounding text. */
+.deadlines-history__miss-streaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__miss-streak {
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+.deadlines-history__miss-streak-device {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.deadlines-history__miss-streak-count {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
