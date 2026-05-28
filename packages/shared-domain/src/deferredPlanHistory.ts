@@ -956,10 +956,13 @@ export const formatPlanHistoryRevisionEntry = (
 
 /**
  * Returns a short human-readable note about how many of the planner's allocated hours we
- * actually observed the device drawing power during. Resolves to `"Observed N of M planned
+ * actually observed the device drawing power during. Resolves to `"Observed N of M scheduled
  * hours"` whenever the recorded plan carries at least one active hour (`plannedKWh > 0`) so
  * the N=0-of-M>0 case — the planner thought the device was active but it never drew power —
- * surfaces as a visible, actionable signal rather than silently disappearing.
+ * surfaces as a visible, actionable signal rather than silently disappearing. User-facing
+ * copy says "scheduled" (not "planned") to keep planner-layer vocabulary out of UI/log strings
+ * per `feedback_terminology_plan_vs_deadline.md`; the internal field stays `plannedKWh`
+ * because that's the schema name.
  *
  * Returns `"No observations recorded — smart task reconstructed from settings"` for backfill
  * entries (no live observation stream to count against) and `null` when no active plan hours
@@ -1002,12 +1005,14 @@ export const formatPlanHistoryObservedCoverage = (
     const hourEndMs = hour.startsAtMs + HOUR_MS;
     return intervals.some((interval) => interval.fromMs < hourEndMs && interval.toMs > hour.startsAtMs);
   }).length;
-  // Singularize the noun for the M === 1 case ("…of 1 planned hour") — matches the
+  // Singularize the noun for the M === 1 case ("…of 1 scheduled hour") — matches the
   // `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}` pattern elsewhere in this
-  // file. M === 0 is short-circuited above so the helper never has to render "0 planned
-  // hours" as the denominator.
+  // file. M === 0 is short-circuited above so the helper never has to render "0 scheduled
+  // hours" as the denominator. "Scheduled" aligns with `SMART_TASK_LIST_STATUS_LABELS.queued`
+  // and keeps planner-layer vocabulary ("planned") out of user copy
+  // (feedback_terminology_plan_vs_deadline).
   const noun = plannedBuckets.length === 1 ? 'hour' : 'hours';
-  return `Observed ${observedBuckets} of ${plannedBuckets.length} planned ${noun}`;
+  return `Observed ${observedBuckets} of ${plannedBuckets.length} scheduled ${noun}`;
 };
 
 // ─── Actual-vs-plan trajectory chart data (v2.7.2 PR 4) ───────────────────────

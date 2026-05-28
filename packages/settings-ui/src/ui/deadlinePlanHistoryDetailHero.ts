@@ -170,7 +170,7 @@ export const buildHistoryDetailHero = (
   // coverageLine was retired in v2.7.3 as "plumbing noise" when its semantics
   // were time-based ("Brief gap (Xm)") and the line collapsed to null on the
   // common ≥99 %-observed case. The helper's v2.9.x rewrite ("Observed N of M
-  // planned hours") flips the actionable case (N=0, M>0 — planner thought the
+  // scheduled hours") flips the actionable case (N=0, M>0 — planner thought the
   // device was active but it never drew power) from invisible to visible, so
   // the line now carries real signal on every outcome shape and earns its
   // place back on the hero.
@@ -203,7 +203,7 @@ export const buildHistoryDetailHero = (
       // The receipt timeline's "Started …", "Largest planned hour …", "Ready
       // 06:42, 18 min before 07:00" rows already encode the same information;
       // stacking them again was the density problem `pels-ux-fit` flagged.
-      // coverageLine returns in v2.9.x with its actionable "N of M planned
+      // coverageLine returns in v2.9.x with its actionable "N of M scheduled
       // hours" rewrite — see the helper resolution above.
       //
       // v2.9.x batch 47 — `overshootLine` is the exception. The receipt
@@ -259,7 +259,7 @@ export const buildHistoryDetailHero = (
       // v2.7.3 — Missed retires progressLine; the shortfall chip already
       // answers "by how much, in kWh". reachedAtLine + overshootLine
       // survive because they carry time / temperature signal the chip
-      // doesn't. coverageLine returns in v2.9.x — the "N of M planned hours"
+      // doesn't. coverageLine returns in v2.9.x — the "N of M scheduled hours"
       // rewrite makes the planned-but-unobserved case (e.g. EV plugged in but
       // never drew power) actionable on the miss diagnosis, which the
       // shortfall chip alone doesn't explain.
