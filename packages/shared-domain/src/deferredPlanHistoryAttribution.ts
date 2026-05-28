@@ -200,15 +200,16 @@ export const resolveDeferredPlanHistoryMissAttribution = (
 };
 
 const formatLowConfidenceCause = (acceptedSamples: number | null): string => {
-  // Leads with "PELS" as the subject (matching the sibling missed-reason copy)
-  // and reuses the "what PELS has learned" framing from the live confidence
-  // surface, so the receipt reads as the same story the user saw while the task
-  // ran under the "Estimating" chip.
+  // Reuses the "what PELS has learned" framing from the live confidence surface
+  // so the receipt reads as the same story the user saw while the task ran under
+  // the "Estimating" chip. Kept tight (no "PELS was…" / "…when it planned this
+  // run") so it fits the one-line list-card reason slot at 320px; the consumer
+  // prefixes "Why:" which supplies the subject.
   if (acceptedSamples !== null && acceptedSamples > 0) {
     const readings = `${acceptedSamples} ${acceptedSamples === 1 ? 'reading' : 'readings'}`;
-    return `PELS was still learning this device's energy use (${readings}) when it planned this run.`;
+    return `Still learning this device's energy use (${readings}).`;
   }
-  return "PELS was still learning this device's energy use when it planned this run.";
+  return "Still learning this device's energy use.";
 };
 
 /**
@@ -237,7 +238,7 @@ export const formatRefinedMissCause = (
     case 'low_confidence':
       return formatLowConfidenceCause(attribution.acceptedSamples);
     case 'energy_underestimate':
-      return 'Power was available, but the target needed more energy than estimated.';
+      return 'Target needed more energy than estimated.';
     default:
       return null;
   }

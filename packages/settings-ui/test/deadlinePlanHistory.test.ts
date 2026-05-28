@@ -75,7 +75,7 @@ describe('DeadlinePlanHistory', () => {
     const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
-    expect(reason?.textContent).toBe('The device did not reach the target before the deadline.');
+    expect(reason?.textContent).toBe("Why: Didn't reach the target before the deadline.");
   });
 
   it('renders the budget-exhausted reason line on Missed list cards when the snapshot recorded the cap', () => {
@@ -97,7 +97,7 @@ describe('DeadlinePlanHistory', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const reason = mount.querySelector('.plan-history-card__reason');
     expect(reason?.textContent)
-      .toBe("Today's daily budget filled before the deadline could be reached.");
+      .toBe('Why: Daily budget filled before the deadline.');
   });
 
   it('does not render the reason line on Succeeded list cards', () => {

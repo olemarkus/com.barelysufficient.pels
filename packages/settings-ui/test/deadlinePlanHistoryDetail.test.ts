@@ -353,9 +353,9 @@ describe('DeadlinePlanHistoryDetail', () => {
     }));
     const reason = root.querySelector('.plan-history-detail__missed-reason');
     expect(reason).not.toBeNull();
-    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "PELS
-    // couldn't reserve enough cheap hours before the deadline." with no
-    // recourse copy (the recourse button carries that signal).
+    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "Couldn't
+    // reserve enough cheap hours in time." with no recourse copy (the recourse
+    // button carries that signal).
     expect(reason?.textContent).toMatch(/couldn.t reserve enough cheap hours/i);
     // Recourse copy must not duplicate the recourse button.
     expect(reason?.textContent?.toLowerCase()).not.toContain('try lowering');
