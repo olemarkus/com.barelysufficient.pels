@@ -164,12 +164,18 @@ describe('card primitive: per-page forked surface rules are retired', () => {
     expect(match, 'expected a `.deadline-list-card` rule in style.css').not.toBeNull();
     const body = match?.[1] ?? '';
     // The only surface redeclaration allowed is the active-tier token bump.
-    const backgroundDecls = body.match(/background\s*:[^;]*;/g) ?? [];
+    // Capture stops at `;` OR `}` (`[^;}]`) so a semicolon-less `background`
+    // written as the rule block's LAST declaration (e.g. `background: #123`
+    // with no trailing `;`) is still caught — a `[^;]*;` form would require a
+    // trailing semicolon and silently miss that final-property bypass. The
+    // `}`-stop can pull trailing whitespace into the capture, so the
+    // value-equality assertion below trims and drops the optional `;`.
+    const backgroundDecls = body.match(/background\s*:\s*[^;}]+/g) ?? [];
     backgroundDecls.forEach((decl) => {
       expect(
-        decl,
+        decl.trim(),
         'deadline-list-card may only re-tier background to --pels-surface-container-high (active-vs-history split), not refork an arbitrary surface',
-      ).toMatch(/background\s*:\s*var\(--pels-surface-container-high\)\s*;/);
+      ).toMatch(/^background\s*:\s*var\(--pels-surface-container-high\)\s*;?$/);
     });
     expect(body, 'deadline-list-card base must NOT redeclare border:').not.toMatch(/(?:^|\s)border\s*:/);
     expect(body, 'deadline-list-card base must NOT redeclare border-radius').not.toMatch(/border-radius\s*:/);
