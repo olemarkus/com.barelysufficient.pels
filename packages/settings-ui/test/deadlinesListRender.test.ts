@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -397,5 +398,202 @@ describe('DeadlinesHistoryList', () => {
     expect(section?.querySelectorAll('.pels-skeleton').length).toBeGreaterThan(0);
     const srText = section?.querySelector('.visually-hidden');
     expect(srText?.textContent).toBe('Loading past tasks…');
+  });
+});
+
+// v2.7.4 — past-tasks device-filter chip row (PR-19). Lets the user collapse
+// the archive to a single device with persistent state.
+describe('DeadlinesHistoryList device-filter chip row', () => {
+  const DEADLINE_BASE = Date.UTC(2026, 4, 16, 16, 0, 0);
+
+  const buildHistoryEntry = (
+    deviceId: string,
+    deviceName: string,
+    offsetHours: number,
+  ): DeferredObjectivePlanHistoryEntry => ({
+    id: `${deviceId}-${offsetHours}`,
+    deviceId,
+    deviceName,
+    objectiveKind: 'temperature',
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startedAtMs: DEADLINE_BASE - (offsetHours + 6) * HOUR_MS,
+    finalizedAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 4,
+    outcome: 'met',
+    metAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation',
+    originalPlan: null,
+    finalPlan: null,
+  });
+
+  const renderReady = (mount: HTMLElement, params: {
+    entries: DeferredObjectivePlanHistoryEntry[];
+    selectedDeviceId?: string | null;
+    onSelectDevice?: (deviceId: string | null) => void;
+  }): void => {
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: params.entries,
+      timeZone: 'UTC',
+      selectedDeviceId: params.selectedDeviceId ?? null,
+      onSelectDevice: params.onSelectDevice ?? (() => {}),
+    });
+  };
+
+  const findChip = (mount: HTMLElement, label: string): HTMLButtonElement | null => (
+    Array.from(mount.querySelectorAll<HTMLButtonElement>('.deadlines-history__filter-row .plan-chip'))
+      .find((el) => (el.textContent ?? '').trim() === label) ?? null
+  );
+
+  it('renders the chip row with an "All" chip and one chip per unique device', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+        buildHistoryEntry('dev_a', 'Boiler', 4),
+      ],
+    });
+    const chips = Array.from(
+      mount.querySelectorAll<HTMLElement>('.deadlines-history__filter-row .plan-chip'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(chips).toEqual(['All', 'Boiler', 'Connected 300']);
+  });
+
+  it('marks "All" with aria-pressed=true when no filter is active', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: null,
+    });
+    expect(findChip(mount, 'All')?.getAttribute('aria-pressed')).toBe('true');
+    expect(findChip(mount, 'Boiler')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('marks the selected device chip with aria-pressed=true', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: 'dev_b',
+    });
+    expect(findChip(mount, 'Connected 300')?.getAttribute('aria-pressed')).toBe('true');
+    expect(findChip(mount, 'All')?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('filters the archive to the selected device', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+        buildHistoryEntry('dev_a', 'Boiler', 4),
+      ],
+      selectedDeviceId: 'dev_a',
+    });
+    const devices = Array.from(mount.querySelectorAll<HTMLElement>('.plan-history-card__device'))
+      .map((el) => (el.textContent ?? '').trim());
+    expect(devices.every((name) => name === 'Boiler')).toBe(true);
+    expect(devices).toHaveLength(2);
+  });
+
+  it('hides the chip row when only one device has history', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_a', 'Boiler', 4),
+      ],
+    });
+    expect(mount.querySelector('.deadlines-history__filter-row')).toBeNull();
+  });
+
+  it('calls onSelectDevice with the device id when a device chip is clicked', () => {
+    const onSelectDevice = vi.fn();
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      onSelectDevice,
+    });
+    findChip(mount, 'Connected 300')?.click();
+    expect(onSelectDevice).toHaveBeenCalledWith('dev_b');
+  });
+
+  it('calls onSelectDevice with null when the active device chip is clicked again', () => {
+    const onSelectDevice = vi.fn();
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: 'dev_b',
+      onSelectDevice,
+    });
+    findChip(mount, 'Connected 300')?.click();
+    expect(onSelectDevice).toHaveBeenCalledWith(null);
+  });
+
+  it('calls onSelectDevice with null when the "All" chip is clicked', () => {
+    const onSelectDevice = vi.fn();
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: 'dev_b',
+      onSelectDevice,
+    });
+    findChip(mount, 'All')?.click();
+    expect(onSelectDevice).toHaveBeenCalledWith(null);
+  });
+
+  it('exposes the chip row as a labelled group for assistive tech', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+    });
+    const row = mount.querySelector('.deadlines-history__filter-row');
+    expect(row?.getAttribute('role')).toBe('group');
+    expect(row?.getAttribute('aria-label')).toBe('Filter past tasks by device');
+  });
+
+  it('renders chips as buttons (keyboard-reachable, no anchor semantics)', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+    });
+    const chips = Array.from(
+      mount.querySelectorAll('.deadlines-history__filter-row .plan-chip'),
+    );
+    expect(chips.length).toBeGreaterThan(0);
+    chips.forEach((chip) => {
+      expect(chip.tagName).toBe('BUTTON');
+      expect(chip.getAttribute('type')).toBe('button');
+    });
   });
 });
