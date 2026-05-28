@@ -17,10 +17,15 @@ export type DeadlinesHistoryListState =
       status: 'ready';
       entries: DeferredObjectivePlanHistoryEntry[];
       timeZone: string;
-      // Cost unit suffix for the weekly section roll-ups (e.g. `kr`). Empty
-      // / null drops the cost half of the heading; the section break still
-      // renders. v2.7.3.
+      // Cost unit suffix for the weekly section roll-ups (e.g. `kr`). An
+      // empty string or omitted prop drops the cost half of the heading;
+      // the section break still renders. v2.7.3.
       costUnit?: string;
+      // Wall-clock anchor for the relative week-divider phrasing ("This
+      // week" / "Last week" / "Week of 12 May"). Optional so legacy callers
+      // and tests can default to `Date.now()` — the production renderer
+      // threads it explicitly so the section copy is snapshot-stable.
+      nowMs?: number;
     };
 
 type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
@@ -86,6 +91,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
     state.entries,
     state.timeZone,
     state.costUnit ?? '',
+    state.nowMs ?? Date.now(),
   );
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">

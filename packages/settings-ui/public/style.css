@@ -1673,6 +1673,16 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
+/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+ * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
+ * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
+ * scanning user sees the cause without tapping through. Producer resolves
+ * `null` on non-missed outcomes; the view never branches on `outcome`. */
+.plan-history-card__reason {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;
@@ -6616,6 +6626,36 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--muted);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
+ * list of "Device — N of last M runs missed" rows so the recovering-from-
+ * mistake user gets a pattern-at-a-glance signal without rescanning the
+ * card stack. Plain block rows (no flex) because the row content includes
+ * a literal em-dash text node between the two spans; the dash needs to flow
+ * inline with the surrounding text. */
+.deadlines-history__miss-streaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__miss-streak {
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+.deadlines-history__miss-streak-device {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.deadlines-history__miss-streak-count {
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
