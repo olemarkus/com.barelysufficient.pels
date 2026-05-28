@@ -196,6 +196,27 @@ describe('DeadlinePlanHistory', () => {
     expect(chip?.textContent).toBe('Abandoned');
   });
 
+  // PR-8 — Abandoned (and Replaced) runs never had PELS-driven progress: the
+  // persisted final reading is the temperature at the moment the user cleared
+  // the smart task (or the diagnostic stream went stale), not a result the
+  // planner produced. Suppress the `→ final` segment so the row reads as
+  // "start, target" rather than implying we moved the needle.
+  it('suppresses the → final progress arrow on Abandoned past-list rows', () => {
+    const entry = buildEntry({
+      outcome: 'abandoned',
+      metAtMs: null,
+      startProgressC: 57.6,
+      finalProgressC: 26.0,
+      targetTemperatureC: 40,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const progress = mount.querySelector('.plan-history-card__progress');
+    expect(progress?.textContent).toContain('57.6 °C');
+    expect(progress?.textContent).toContain('target 40.0 °C');
+    expect(progress?.textContent).not.toContain('→');
+    expect(progress?.textContent).not.toContain('26.0 °C');
+  });
+
   // v2.9.x batch 47 — past-list card variant of the muted Overshoot line.
   // Producer (`formatPlanHistoryOvershootLine`) decides whether to render; the
   // list card mirrors the threshold treatment from the history-detail hero so
