@@ -47,34 +47,16 @@ patch releases, not release blockers; each item carries its own source/date.
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
 
-- [ ] **Smart-task rescue lane leaves stepped device stuck at peak step after the deadline.**
-      Connected 300 (water heater, deviceId `632c4190-168c-407b-bd83-dae6ddd3366e`) was
-      shed toward off at 2026-05-23T12:50:52Z (`stepped_load_command_requested`,
-      `effectiveTransition: "full_shed_to_off"`, `plannedDesiredStepId: "off"`).
-      A `cannot_meet` deferred-objective with `rescueExemptMode: "always"` +
-      `rescueLimitMode: "always"` then activated (Sat 23 May 16:00 deadline,
-      `budgetExemptApplied: true`, `limitLowerPriorityApplied: true`) and stepped the
-      device back up: 12:52:38Z low → medium, 12:53:12Z medium → max. After the
-      deadline missed at 16:00Z, **no further `stepped_load_command_requested` events
-      have been issued for this device for 2.5+ days** (logs confirm: last command at
-      12:53:12Z 2026-05-23; current process still observes `reportedStepId: "max"`,
-      2.87 kW measured, `reasonCode: "capacity_control_off"`, `plannedState: "keep"` on
-      every overview tick). Net effect: rescue lane stepped up but the smart-task
-      lifecycle never stepped the device back down when the objective ended; combined
-      with the per-device `capacity_control_off` setting, the planner cannot revert it
-      either. Real-prod impact is severe — Past tasks history shows the same device
-      overshooting target 65 °C → 77.7 / 79.4 °C on multiple succeeded runs and missing
-      4 of last 4 Week-21 deadlines, all consistent with a device locked at peak step.
-      Acceptance: when a deferred-objective transitions out of `planned` (deadline
-      passed, succeeded, abandoned, finalized) AND the rescue lane previously engaged
-      boost, the planner must emit a step-down command to the device's non-rescue floor
-      step regardless of `capacity_control_off` (the user opted out of *capacity*
-      control, not out of smart-task lifecycle commands they explicitly enrolled in).
-      Files: `lib/plan/admission/deferredObjective.ts`,
-      `lib/plan/planEvBoost.ts`, `lib/plan/planTemperatureBoost.ts`,
-      `lib/plan/deferredObjectives/`, `lib/plan/steppedLoadCommands.ts` (or wherever
-      `stepped_load_command_requested` originates), associated regression test under
-      `test/plan/`. Source: v2.9.1 RC release-review prod log audit, 2026-05-25.
+*Status (2026-05-28 release-review): the rescue-lane stuck-at-peak bullet
+was resolved by commit `61807892 fix(admission): generalise smart-task
+lifecycle-end release beyond EV` + new integration coverage at
+`test/lifecycleEndReleaseNonEv.integration.test.ts`. The fix generalised
+`shouldEmitSatisfiedPause` → `shouldEmitTerminalRelease` so non-EV cap-off
+devices (thermostats, water heaters) now receive a `shed_release` intent
+on lifecycle end and the executor routes it through `getShedBehavior`
+(`set_temperature` for thermostats, binary off otherwise). One residual
+gap — stepped-only devices without `onoff`/`evcharger_charging` — is
+listed below in the P2 release-review 2026-05-28 subsection.*
 
 *v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -391,6 +373,42 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
+
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Lift `revisionSummary.text` out of the collapsed `<details>`/`<summary>` on
+      `DeadlinePlan.tsx` so the live "why?" answer is visible at rest on the
+      smart-task detail page. Render as a standalone subline beneath the panel
+      heading. Today the producer already returns a one-line summary (e.g.
+      `Schedule revised — daily budget shifted · 15:42 · +1h`) but the view
+      buries it inside the `<summary>` row, which means the user has to spot
+      the disclosure chevron and tap it to read the headline answer.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `settings/style.css`. Source: release-review pels-ux-fit, 2026-05-28.
+
+- [ ] Distinguish the live "Recent plan changes" panel from the post-finalization
+      "What changed" card with an eyebrow (`Live` vs `After this task ran`).
+      `pels-m3-critic` confirmed the `.plan-revision-*` row markup is correctly
+      shared by both surfaces, so keep the row contract; only the panel/card
+      heading needs a tone cue. Today a user with both surfaces open in
+      adjacent tabs has no quick visual cue that one is live narration and the
+      other is post-mortem.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
+      release-review pels-ux-fit, 2026-05-28.
+
+- [ ] On revision-log fallback rows (`isFallback === true`), render
+      `Plan refreshed (details unavailable)` so the absent diff chip is
+      self-explained. Today the row shows the `Plan refreshed` label with no
+      chip and no explanation — the producer correctly suppresses the chip to
+      avoid mis-attributing a hour-diff to a vague label, but the suppression
+      is visually mysterious to the user. The `isFallback` boolean already
+      lives on the row shape.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
+      release-review pels-ux-fit, 2026-05-28.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -3537,6 +3555,60 @@ consolidation + a11y polish (8 P2)`.*
       wording was already correct).
       Files: `docs/plan-states.md`.
 
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Snapshot-empty guard before `commitRefreshedSnapshot` in
+      `lib/device/deviceTransport.ts` (~1683-1720). If
+      `previousSnapshot.length > 0 && snapshot.length === 0`, log warn + skip
+      the commit. Mirror the `planHistory.ts` abandon-grace pattern. Practical
+      exposure is small (no devices planned in that cycle anyway) but on
+      recovery one cycle is lost to first-cycle pessimism via the new
+      producer-cache eviction. Source: release-review pels-runtime-reality,
+      2026-05-28.
+
+- [ ] Split `recordReleaseShedActuation` so release intents don't write
+      `lastInstabilityMs`/`lastDeviceShedMs`. The shed-purpose release path
+      (`lib/executor/shedReleaseActuation.ts` at the temperature and binary
+      apply sites) reuses `recordShedActuation`, which writes the
+      system-wide instability marker. For a *release* (device going into
+      shed posture intentionally) this is incorrect — the marker should
+      reflect capacity-driven instability only. Inline TODO noted at
+      `lib/executor/shedReleaseActuation.ts:121`. Source: release-review
+      adversarial-review, 2026-05-28.
+
+- [ ] Clear `history[]` (or insert a separator row) on smart-task signature
+      change in `lib/plan/deferredObjectives/activePlanRecorder.ts:670-697`.
+      When the objective signature changes mid-task, the persisted record is
+      rebuilt with `...currentWithoutSnapshot` which preserves
+      `current.history`, then a fresh `latest` is written and the prior
+      `latest` is prepended. So the user sees pre-target-change revisions
+      interleaved with the new objective's revisions in the panel until 20
+      new entries roll over. A new objective should arguably start an empty
+      history, OR insert a synthetic `objective_changed` separator row (the
+      recorder already emits this reason — verify the path). Source:
+      release-review adversarial-review, 2026-05-28.
+
+- [ ] Fold `capabilities.includes('evcharger_charging')` into `isEvDevice`
+      (`lib/device/deviceActionProjection.ts`). Post-detype refactor the
+      predicate checks `deviceClass === 'evcharger'` or
+      `controlCapabilityId === 'evcharger_charging'` only; if
+      `controlCapabilityId` ever fails to resolve but caps include
+      `evcharger_charging`, the device is mistakenly non-EV. Practical risk
+      low because `managerParseSnapshot.ts` derives `controlCapabilityId`
+      from caps directly, but the asymmetry with pre-refactor logic is real.
+      Source: release-review adversarial-review, 2026-05-28.
+
+- [ ] Stepped-only devices (no `onoff`/`evcharger_charging` handle) skip
+      lifecycle release with a debug log in
+      `lib/executor/shedReleaseActuation.ts`. Re-project a shed-purpose
+      stepped intent at lifecycle end so they wind down at deadline. This is
+      the residual gap from commit `61807892 fix(admission): generalise
+      smart-task lifecycle-end release beyond EV` — the binary and target
+      release paths landed; the stepped-only re-projection path is still
+      open. Source: release-review pels-runtime-reality, 2026-05-28.
+
 ## P2 M3 alignment pass (post desktop-light-mode-fix)
 
 Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
@@ -4363,4 +4435,22 @@ prod walk that didn't warrant a P2 slot.*
         bare count, reason-based panel-visibility threshold, hour-diff chip
         aria-label / title, and `.plan-revision-row` CSS-grid layout
         (320 px wrap-safe) shipped in batch 3.
+
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Gate `DeadlinePlan.tsx` `console.warn` (around line 1173, fires when
+      an unmapped recorder reason arrives) behind
+      `process.env.NODE_ENV !== 'production'` OR convert to a silent
+      logging breadcrumb. Defensive instrumentation is fine but the message
+      ("Update REVISION_REASON_LABEL in deadlineLabels.ts.") talks to a
+      developer in a user's devtools. Source: release-review pels-ux-fit,
+      2026-05-28.
+
+- [ ] Extract the `5ch` revision-time column width in `settings/style.css`
+      (lines ~1893/1898/1906) to a `--pels-revision-time-col` token, only
+      if a future change touches the file. Not a self-standing PR — pick
+      this up the next time the file is edited. Source: release-review
+      pels-m3-critic, 2026-05-28.
 
