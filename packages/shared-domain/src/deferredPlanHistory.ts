@@ -287,17 +287,16 @@ const pickLastPlan = (
  * without inferring from chart bars alone.
  *
  * Branches resolve in priority order (most specific first):
- *  1. Daily budget exhausted on the last revision → "Today's daily budget filled before
- *     the deadline could be reached." (blameless; recourse copy lives on the recourse
- *     button per v2.7.3 history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
- *  2. Final plan status `cannot_meet` → "PELS couldn't reserve enough cheap hours
- *     before the deadline."
- *  3. Final plan status `at_risk`     → "The smart task fell behind and didn't catch up
- *                                       before the deadline."
- *  4. Discovered from backfill        → "PELS was restarted during this smart task —
- *                                       outcome reconstructed from settings."
- *  5. Otherwise                       → "The device did not reach the target before the
- *                                       deadline."
+ *  1. Daily budget exhausted on the last revision → "Daily budget filled before the
+ *     deadline." (blameless; recourse copy lives on the recourse button per v2.7.3
+ *     history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
+ *  2. Final plan status `cannot_meet` → "Couldn't reserve enough cheap hours in time."
+ *  3. Final plan status `at_risk`     → "Fell behind and didn't catch up in time."
+ *  4. Discovered from backfill        → "PELS restarted mid-task; outcome estimated."
+ *  5. Otherwise                       → "Didn't reach the target before the deadline."
+ *
+ * Sentences are kept tight (≤ ~45 chars) so the list-card reason line fits on one
+ * row at 320px; the consumer prefixes "Why:" to set it apart from the coverage line.
  *
  * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page
  * always renders something so the user is never left with a chip and no explanation.
@@ -326,7 +325,7 @@ export const formatPlanHistoryMissedReason = (
   // button's job.
   const lastPlan = pickLastPlan(entry);
   if (snapshotShowsBudgetExhausted(lastPlan)) {
-    return "Today's daily budget filled before the deadline could be reached.";
+    return 'Daily budget filled before the deadline.';
   }
   // v2.7.4 — plan-time miss attribution (Session A). Inserted ahead of the
   // `planStatus` branches so a `cannot_meet` that rested on a low-confidence
@@ -337,15 +336,15 @@ export const formatPlanHistoryMissedReason = (
   const refinedCause = formatRefinedMissCause(entry);
   if (refinedCause !== null) return refinedCause;
   if (lastPlan?.planStatus === 'cannot_meet') {
-    return "PELS couldn't reserve enough cheap hours before the deadline.";
+    return "Couldn't reserve enough cheap hours in time.";
   }
   if (lastPlan?.planStatus === 'at_risk') {
-    return "The smart task fell behind and didn't catch up before the deadline.";
+    return "Fell behind and didn't catch up in time.";
   }
   if (entry.discoveredFrom === 'backfill') {
-    return 'PELS was restarted during this smart task — outcome reconstructed from settings.';
+    return 'PELS restarted mid-task; outcome estimated.';
   }
-  return 'The device did not reach the target before the deadline.';
+  return "Didn't reach the target before the deadline.";
 };
 
 // Outcome variant the postmortem resolver picks for a finalized entry.

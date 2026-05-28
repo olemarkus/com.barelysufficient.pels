@@ -32,12 +32,13 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   // suppressed cleanly — view never branches on `outcome` itself.
   const overshootLine = formatPlanHistoryOvershootLine(entry);
   // Missed-row reason note: muted single-sentence "why" for Missed entries so
-  // the user sees the cause without tapping through to the detail hero. Mirrors
-  // the same blameless sentence the detail "Why:" line renders (sourced from
-  // the shared `formatPlanHistoryMissedReason` helper, which also feeds
-  // runtime log breadcrumbs — `feedback_ui_text_shared_with_logs.md`).
-  // Producer returns null on non-missed outcomes so the view never branches
-  // on `outcome` itself.
+  // the user sees the cause without tapping through to the detail hero. Rendered
+  // with a "Why:" lead-in (matching the detail hero) so it reads distinctly from
+  // the same-tone coverage line below it, and folded into the row aria-label so
+  // screen readers announce the cause. Sourced from the shared
+  // `formatPlanHistoryMissedReason` helper, which also feeds runtime log
+  // breadcrumbs — `feedback_ui_text_shared_with_logs.md`. Producer returns null
+  // on non-missed outcomes so the view never branches on `outcome` itself.
   const missedReasonLine = formatPlanHistoryMissedReason(entry);
   // Trim trailing/leading whitespace from user-entered Homey device names so
   // the displayed row isn't padded. Empty / whitespace-only names collapse the
@@ -46,7 +47,11 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   return (
     <a
       class="pels-surface-card plan-history-card plan-history-card--link"
-      aria-label={`Past smart task ${deadlineLine}`}
+      aria-label={
+        missedReasonLine
+          ? `Past smart task ${deadlineLine}. Why: ${missedReasonLine}`
+          : `Past smart task ${deadlineLine}`
+      }
       href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
       data-interactive
     >
@@ -62,7 +67,9 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
         </div>
       )}
       {missedReasonLine && (
-        <div class="plan-history-card__reason">{missedReasonLine}</div>
+        <div class="plan-history-card__reason">
+          <span class="plan-history-card__reason-label">Why:</span> {missedReasonLine}
+        </div>
       )}
       {overshootLine && (
         <div class="plan-history-card__overshoot">{overshootLine}</div>

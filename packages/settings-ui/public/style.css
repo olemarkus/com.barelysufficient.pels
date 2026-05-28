@@ -1704,6 +1704,14 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
+/* "Why:" prefix on the reason line — a medium-weight, slightly brighter lead-in
+ * so the reason reads distinctly from the same-tone/same-size coverage line that
+ * can sit directly below it. Mirrors the detail hero's "Why:" framing. */
+.plan-history-card__reason-label {
+  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-secondary);
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;
