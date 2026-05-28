@@ -104,4 +104,38 @@ describe('formatPlanHistoryRevisionEntry', () => {
     );
     expect(row.timeLabel).toBe('—');
   });
+
+  it('marks isFallback=false on rows with known reason codes', () => {
+    // The history-detail row shape carries the same `isFallback` flag as
+    // the live-panel rows so both surfaces can swap in the longer
+    // "Plan refreshed (details unavailable)" copy + suppress the diff
+    // chip consistently.
+    const row = formatPlanHistoryRevisionEntry(
+      { atMs, reasonId: 'prices_revised', hoursAdded: 2, hoursRemoved: 1 },
+      'UTC',
+      'temperature',
+    );
+    expect(row.isFallback).toBe(false);
+  });
+
+  it('marks isFallback=true when the recorder ships an unknown reason code', () => {
+    const row = formatPlanHistoryRevisionEntry(
+      { atMs, reasonId: 'some_future_reason', hoursAdded: 1, hoursRemoved: 0 },
+      'UTC',
+      'temperature',
+    );
+    expect(row.isFallback).toBe(true);
+    // Producer label stays terse — the view layer is responsible for
+    // swapping in the longer copy when rendering the row.
+    expect(row.reason).toBe('Plan refreshed');
+  });
+
+  it('marks isFallback=true when the recorder ships an empty/null reason id', () => {
+    const rowNull = formatPlanHistoryRevisionEntry(
+      { atMs, reasonId: null as never, hoursAdded: 0, hoursRemoved: 0 },
+      'UTC',
+      'temperature',
+    );
+    expect(rowNull.isFallback).toBe(true);
+  });
 });

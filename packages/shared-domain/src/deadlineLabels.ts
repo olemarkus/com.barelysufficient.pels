@@ -576,6 +576,16 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
 
 const REVISION_REASON_FALLBACK = 'Plan refreshed';
 
+// View-facing fallback variant used when a row template wants to make the
+// absent diff chip self-explanatory. `REVISION_REASON_FALLBACK` is the
+// producer label (used for the live-panel summary line + runtime log
+// breadcrumbs so those surfaces stay terse); the row templates on both the
+// live-task panel and the post-finalization history-detail card render this
+// longer variant when `isFallback === true` so the user understands why the
+// row carries no `+/−Nh` chip. Per `feedback_ui_text_shared_with_logs.md`,
+// view layers consume it from shared-domain rather than inlining the copy.
+export const REVISION_REASON_FALLBACK_WITH_DETAIL = 'Plan refreshed (details unavailable)';
+
 // Optional disambiguation signals for `schedule_revised`. When the live-task
 // surface passes these in, `revisionReason` returns a more specific label
 // instead of the bare `Schedule revised`. History detail and runtime log
