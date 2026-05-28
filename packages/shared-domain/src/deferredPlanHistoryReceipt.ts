@@ -63,6 +63,7 @@ import {
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
+  getPreviousLocalDayStartUtcMs,
   getWeekStartInTimeZone,
   getZonedParts,
 } from './utils/dateUtils.js';
@@ -536,18 +537,18 @@ const formatRelativeWeekLabel = (
 ): string => {
   const currentWeekStartMs = getWeekStartInTimeZone(new Date(nowMs), timeZone);
   if (weekStartMs === currentWeekStartMs) return 'This week';
-  // Step one week back by subtracting 7×24h from `nowMs` and re-resolving
-  // through `getWeekStartInTimeZone`. `nowMs` is a real wall-clock instant
-  // in the target zone, so the shifted instant always falls inside the
-  // intended previous calendar week — `getWeekStartInTimeZone` re-buckets
-  // it to the same Monday-anchored week-start that the entry's deadline
-  // would land on. Earlier revisions anchored the shift at midnight UTC of
-  // the current Monday's local date, which in zones west of UTC (e.g.
-  // America/New_York at UTC-4) silently landed on the previous local
-  // Sunday and bucketed two weeks back, skipping "Last week" entirely.
-  const previousWeekAnchorMs = nowMs - 7 * 24 * HOUR_MS;
+  // Step one calendar week back via local-day arithmetic, never a fixed
+  // 7×24h millisecond offset. `currentWeekStartMs` is local Monday 00:00;
+  // stepping one local day earlier lands on the previous Sunday 00:00,
+  // which is unambiguously inside the prior calendar week regardless of any
+  // DST transition that week (a spring-forward 23h week or a fall-back 25h
+  // week). Re-bucketing that instant through `getWeekStartInTimeZone`
+  // resolves it to the previous week's Monday anchor — the same week-start
+  // an entry's deadline in that week would land on. A 7×24h subtraction
+  // would miss this: on a 23h week it stays inside the current week, and on
+  // a 25h week it overshoots two weeks back, skipping "Last week" entirely.
   const previousWeekStartMs = getWeekStartInTimeZone(
-    new Date(previousWeekAnchorMs),
+    new Date(getPreviousLocalDayStartUtcMs(currentWeekStartMs, timeZone)),
     timeZone,
   );
   if (weekStartMs === previousWeekStartMs) return 'Last week';
