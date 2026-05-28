@@ -220,10 +220,14 @@ recorder will guarantee for that hour against future optimizer churn — not a c
 how much the allocator may schedule into the hour on later cycles. The per-hour ceiling
 the allocator actually applies stacks three caps via `Math.min`:
 
-- **Step capacity** — `step.usefulPowerKw × durationHours`, where `step` is the resolved
-  floor step (promoted up the active-step ladder for fully-reserved tasks with sufficient
-  horizon-wide reserved headroom; per-bucket promotion is a follow-up). Bounded by the
-  device's calibrated useful-power profile.
+- **Step capacity** — `step.usefulPowerKw × durationHours`, where `step` is the
+  per-bucket-resolved floor step. For fully-reserved tasks, each bucket promotes
+  independently to the highest active step whose `usefulPowerKw` fits THAT bucket's
+  own `reservedHeadroomKw` forecast — generous-headroom hours commit at a higher step
+  (e.g. `max`); tight-headroom hours stay at the lower step (or `activeSteps[0]` if even
+  the min step exceeds the forecast). For non-fully-reserved tasks and single-step
+  devices every bucket stays at `activeSteps[0]`. Bounded by the device's calibrated
+  useful-power profile.
 - **Daily-budget pacing slice** — `bucket.usefulEnergyCapKWh`, derived from
   `perBucketBudgetKWh − backgroundKWh` (Infinity for `exemptFromBudget` tasks).
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
