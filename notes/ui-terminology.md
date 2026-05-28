@@ -167,7 +167,7 @@ contracts remain stable — only the user-visible chip label changed.
 ### Past-task outcome chips
 
 The smart-task history surface (past-tasks archive, history-detail hero) uses a
-closed noun set to label how a finished run ended. Source: `OUTCOME_LABELS` in
+closed adjective set to label how a finished run ended. Source: `OUTCOME_LABELS` in
 `packages/shared-domain/src/deferredPlanHistory.ts`.
 
 | Outcome (`entry.outcome`) | Chip | Tone |
@@ -186,15 +186,17 @@ same `Abandoned` chip; the distinction lives in the postmortem body, not the
 chip. Do **not** drift to `Cancelled`, `Aborted`, `Skipped`, `Ended`, or
 `Stopped` in user-facing copy — the chip word is `Abandoned`.
 
-#### Chip nouns vs divider verbs
+#### Chip adjectives vs divider verbs
 
-The chip set is noun-shaped (`Succeeded` / `Missed` / `Abandoned`). The past-tasks
-week-divider heading currently uses a verb form — `Week 20 · 4 deadlines met · ≈
-41 kr` — which doesn't line up with the chip vocabulary the rows underneath it
-carry. The chip set is the canonical one; future summary copy should align to
-the chip nouns (`3 succeeded`, not `3 met`) so the divider and the rows speak
-the same language. This note records the tension; the divider rewrite is
-deferred to a copy PR, not pre-emptively flipped here.
+The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned`). The
+past-tasks week-divider heading previously used a verb form — `Week 20 · 4
+deadlines met · ≈ 41 kr` — which didn't line up with the chip vocabulary the
+rows underneath it carry. The chip set is the canonical one, and summary copy
+now aligns to the chip adjectives (`3 succeeded`, not `3 met`) so the divider
+and the rows speak the same language. Shipped in PR #1243: the divider lead
+label is now relative (`This week` / `Last week` / `Week of 12 May`) and the
+outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned`,
+non-zero counts only).
 
 ### Recourse labels
 
