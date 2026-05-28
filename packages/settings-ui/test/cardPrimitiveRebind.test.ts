@@ -149,16 +149,28 @@ describe('card primitive: per-page forked surface rules are retired', () => {
     expect(body, 'plan-history-card base must NOT redeclare padding').not.toMatch(/padding\s*:/);
   });
 
-  it('does not redeclare bg / border / radius / padding / box-shadow on `.deadline-list-card` base', () => {
+  it('does not refork radius / padding / box-shadow on `.deadline-list-card` base', () => {
     // The legacy `.deadline-list-card` rule forked padding / border-radius /
     // bg surface tier / box-shadow. Rebound onto `.pels-surface-card`; only
     // layout (grid-template-columns / gap / align-items) + the link-anchor
-    // reset survives.
+    // reset survives — plus the deliberate active-vs-history surface-tier
+    // bump (`background: var(--pels-surface-container-high)`) that elevates
+    // live deadline cards above the history rows. The tier bump is a single
+    // token swap on the canonical primitive, not a return to forked radius /
+    // padding / shadow, so it stays allowed here while everything else that
+    // duplicated the primitive's geometry must remain absent.
     const ruleRegex = /(?:^|\n)\.deadline-list-card\s*\{([^}]*)\}/m;
     const match = STYLE_CSS.match(ruleRegex);
     expect(match, 'expected a `.deadline-list-card` rule in style.css').not.toBeNull();
     const body = match?.[1] ?? '';
-    expect(body, 'deadline-list-card base must NOT redeclare background').not.toMatch(/background\s*:/);
+    // The only surface redeclaration allowed is the active-tier token bump.
+    const backgroundDecls = body.match(/background\s*:[^;]*;/g) ?? [];
+    backgroundDecls.forEach((decl) => {
+      expect(
+        decl,
+        'deadline-list-card may only re-tier background to --pels-surface-container-high (active-vs-history split), not refork an arbitrary surface',
+      ).toMatch(/background\s*:\s*var\(--pels-surface-container-high\)\s*;/);
+    });
     expect(body, 'deadline-list-card base must NOT redeclare border:').not.toMatch(/(?:^|\s)border\s*:/);
     expect(body, 'deadline-list-card base must NOT redeclare border-radius').not.toMatch(/border-radius\s*:/);
     expect(body, 'deadline-list-card base must NOT redeclare padding').not.toMatch(/(?:^|\s)padding\s*:/);

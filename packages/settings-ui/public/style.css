@@ -6535,8 +6535,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-bold);
   line-height: var(--font-line-height-snug);
   color: var(--text);
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Chips sit as one wrapping group. `flex: 0 1 auto` lets the whole block drop
+   below the title when the kind + status (+ confidence) chips can't share its
+   row, instead of a lone chip dangling at the title's edge at 320 px. The
+   inner wrap keeps the chips legible (no shrink) and aligned to the title
+   start once they own their row. */
+.deadline-list-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .deadline-list-card__chevron {
