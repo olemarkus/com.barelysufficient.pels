@@ -431,7 +431,7 @@ release, not v2.7.1 merge-blockers.*
       may need per-device step granularity). Source: pels-runtime-reality
       review of PR #1214, 2026-05-28.
 
-- [ ] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
+- [x] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
       `packages/settings-ui/src/ui/deviceDetail/evBoost.ts:78-79` carries two
       EV-state-gated strings — `'Car not connected. Boost will not activate.'`
       and `'Car is discharging. Boost will not activate.'` — keyed off the
@@ -440,9 +440,11 @@ release, not v2.7.1 merge-blockers.*
       (`feedback_ui_text_shared_with_logs`) applies. Co-locate them in
       `packages/shared-domain/` so settings-ui imports the strings rather
       than carrying its own literals. Source: pels-copy-and-terminology
-      review of PR #1212, 2026-05-27.
+      review of PR #1212, 2026-05-27. Resolved in the p2-polish-batch PR —
+      strings moved to `EV_BOOST_BLOCK_REASONS` in
+      `packages/shared-domain/src/commandableNowReason.ts`.
 
-- [ ] **Split `recordShedActuation` for lifecycle-end release writes.** The
+- [x] **Split `recordShedActuation` for lifecycle-end release writes.** The
       release-shed paths in `lib/executor/shedReleaseActuation.ts` call
       `recordShedActuation` so the per-device `pels_shed` diagnostic event
       fires for forensic traces. But the same call also writes
@@ -454,9 +456,12 @@ release, not v2.7.1 merge-blockers.*
       inverts the semantic. Introduce a `recordReleaseShedActuation`
       that records only the diagnostic event and leaves the shed-cooldown
       clock alone, then route both release sites through it. Source:
-      pels-runtime-reality review of PR #1199, 2026-05-27.
+      pels-runtime-reality review of PR #1199, 2026-05-27. Resolved in
+      the p2-polish-batch PR — `PlanExecutor.recordReleaseShedActuation`
+      skips `lastInstabilityMs` / `lastDeviceShedMs` while still firing the
+      per-device `pels_shed` event and closing any open activation attempt.
 
-- [ ] **Resolve `set_step` target step at the producer instead of at apply
+- [x] **Resolve `set_step` target step at the producer instead of at apply
       time.** `ShedActionIntent` carries only `{ kind: 'set_step' }` with
       no `targetStepId`. The release path in
       `lib/executor/shedReleaseActuation.ts` resolves the target step via
@@ -468,7 +473,28 @@ release, not v2.7.1 merge-blockers.*
       producer to emit `{ kind: 'set_step'; targetStepId: string }`,
       apply the cascade once, and have both consumers consume the flat
       value. Source: pels-layering-guardian review of PR #1199,
-      2026-05-27.
+      2026-05-27. Resolved (narrowly) in the p2-polish-batch PR — the
+      producer now resolves the release cascade onto
+      `ShedActionIntent.set_step.targetStepId`; `shedReleaseActuation`
+      reads it via `intent.shedStepId` on `ExecutableReleaseIntent`. The
+      cap-driven shed path in `planSteppedLoad.ts` keeps its
+      lowest-active-step pick (intentional semantic divergence — cap-shed
+      maximises load drop, release honours the user-configured shed
+      posture).
+
+- [x] **Rename snapshot `shedStepId` to `releaseShedStepId` (or document the
+      asymmetric read).** After the p2-polish-batch PR, `DevicePlanDevice.shedStepId`
+      carried the producer-resolved release-cascade target step. The release
+      executor reads it; the cap-driven shed path in `planSteppedLoad.ts`
+      ignores it (cap-shed re-derives lowest-active itself). Any new consumer
+      that reads `shedStepId` to predict cap-shed behaviour would be wrong.
+      Either rename to `releaseShedStepId` (clearer intent) or add a producer-
+      side comment block on the snapshot triple explicitly naming the
+      asymmetric read. Source: pels-runtime-reality review of the
+      p2-polish-batch PR, 2026-05-28. Resolved in the rename-shedstepid PR —
+      both: the field is renamed to `releaseShedStepId` across runtime + tests,
+      and `ShedSnapshotTriple` carries a doc-block naming the asymmetric
+      cap-shed-ignores / release-reads contract.
 
 - [x] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
       `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`

@@ -34,6 +34,11 @@ import {
   EV_COMMANDABLE_NOW_REASONS,
   formatUnknownEvChargingStateReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadOffStep,
+  getSteppedLoadStep,
+} from '../utils/deviceControlProfiles';
 
 // Trust gates (`getTrustedCurrentTemperatureC`, `getTrustedStateOfCharge`)
 // live in `lib/utils/observationTrust.ts` so both this module and
@@ -482,7 +487,7 @@ function isWithinGrace(
 // Today the planner branches on raw `shedBehavior.action` + device-shape
 // fields (`hasBinaryControl`, `isSteppedLoadDevice`, primary target presence)
 // inside `lib/plan/planDevices.ts:resolveShedAction` to materialise the
-// `{ shedAction, shedTemperature, shedStepId }` triple on each
+// `{ shedAction, shedTemperature, releaseShedStepId }` triple on each
 // `DevicePlanDevice`. Chunk 5 lifts the *device-capability* half of that
 // resolution into the producer: the resulting `ShedActionIntent` captures
 // "what the device's configured shedBehavior translates to given its
@@ -506,7 +511,16 @@ function isWithinGrace(
 export type ShedActionIntent =
   | { kind: 'turn_off' }
   | { kind: 'set_temperature'; temperature: number }
-  | { kind: 'set_step' };
+  // `targetStepId` is the producer-resolved release-cascade target step
+  // (configured `shedBehavior.stepId` → lowest-active step → off-step). The
+  // lifecycle-end release consumer (`lib/executor/shedReleaseActuation.ts`)
+  // reads it directly instead of re-running the cascade at apply time. It is
+  // `null` only on a degenerate empty profile; the consumer gates on null.
+  //
+  // The cap-driven shed path (`lib/plan/planSteppedLoad.ts`) does NOT consult
+  // this field — it picks the lowest-active step itself to maximise load drop.
+  // That intentional semantic divergence is documented at both call sites.
+  | { kind: 'set_step'; targetStepId: string | null };
 
 export type ShedIntentBehaviorInput = {
   action: 'turn_off' | 'set_temperature' | 'set_step';
@@ -527,6 +541,24 @@ const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
   input.controlModel === 'stepped_load'
   && input.steppedLoadProfile?.model === 'stepped_load'
 );
+
+const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | null => {
+  const profile = input.steppedLoadProfile;
+  if (!profile || profile.model !== 'stepped_load') return null;
+  // Release cascade: honour the configured `shedBehavior.stepId` first, then fall back to
+  // the lowest-active step, then the off-step. Mirrors what `shedReleaseActuation.ts` used
+  // to resolve at apply time. Cap-driven sheds do not read this; they pick lowest-active
+  // independently in `planSteppedLoad.ts`.
+  const preferred = input.shedBehavior.stepId;
+  if (preferred) {
+    const exact = getSteppedLoadStep(profile, preferred);
+    if (exact) return exact.id;
+  }
+  const lowestActive = getSteppedLoadLowestActiveStep(profile);
+  if (lowestActive) return lowestActive.id;
+  const offStep = getSteppedLoadOffStep(profile);
+  return offStep ? offStep.id : null;
+};
 
 export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
   const { shedBehavior, controllable, hasBinaryControl, primaryTarget } = input;
@@ -550,10 +582,10 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
   // 'set_step' in that case regardless of the configured behaviour action or controllability.
   if (isSteppedLoadDeviceShape(input)) {
     if (controllable && shedBehavior.action === 'set_step') {
-      return { kind: 'set_step' };
+      return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
     if (hasBinaryControl === false) {
-      return { kind: 'set_step' };
+      return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
   }
   return { kind: 'turn_off' };
