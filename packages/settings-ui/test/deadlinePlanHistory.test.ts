@@ -167,7 +167,7 @@ describe('DeadlinePlanHistory', () => {
     });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__coverage')?.textContent)
-      .toBe('Observed 0 of 5 planned hours');
+      .toBe('Observed 0 of 5 scheduled hours');
   });
 
   it('does not crash when observedIntervals is missing from an entry payload', () => {
