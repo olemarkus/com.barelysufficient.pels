@@ -1386,8 +1386,7 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="good"],
-.pels-hero[data-tone="good"],
-.plan-history-detail__hero[data-tone="good"] {
+.pels-hero[data-tone="good"] {
   border-color: var(--color-state-positive-border);
   background: linear-gradient(
     180deg,
@@ -1397,8 +1396,7 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="warn"],
-.pels-hero[data-tone="warn"],
-.plan-history-detail__hero[data-tone="warn"] {
+.pels-hero[data-tone="warn"] {
   border-color: var(--color-state-warning-border);
   background: linear-gradient(
     180deg,
