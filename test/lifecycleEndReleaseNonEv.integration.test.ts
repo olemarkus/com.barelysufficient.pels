@@ -267,11 +267,11 @@ const buildDeps = (params: {
   buildTargetExecutorContext: () => params.targetCtx,
   // Stub: this integration test focuses on binary + target paths; no stepped
   // dispatch is exercised. Returning an empty context is safe because none of
-  // the asserted paths call applySteppedLoadCommand. The recordShedActuation
-  // no-op is required by ShedReleaseActuationDeps after PR #1199 added the
-  // per-device pels_shed diagnostic recording to the release paths.
+  // the asserted paths call applySteppedLoadCommand. The
+  // recordReleaseShedActuation no-op is required by ShedReleaseActuationDeps —
+  // the release paths fire the per-device pels_shed diagnostic event.
   buildSteppedExecutorContext: () => ({} as never),
-  recordShedActuation: () => {},
+  recordReleaseShedActuation: () => {},
 });
 
 describe('lifecycle-end release for non-EV devices — integration', () => {

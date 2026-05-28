@@ -134,19 +134,32 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // Tone slug for the smart-task list card's "Ready by" accent row. The default
 // `accent` (green) tone reads as "healthy" alongside an on-track chip; on
 // at-risk / cannot-meet cards the accent green semantically contradicts the
-// status pill. This resolver mirrors the chip tone so the two signals agree.
+// status pill.
+//
+// On `cannot_meet` the hero gradient and the status chip both go red; if the
+// timestamp also went red, three red surfaces would stack on one card
+// (alarming and redundant). Demote the timestamp to `warn` so the hero
+// broadcasts context, the chip carries the definitive status, and the
+// timestamp drops one tone without echoing the alert. `at_risk` and
+// `cannot_meet` collapse to the same timestamp tone here — the chip
+// preserves the distinction.
 //
 // Returns 'accent' (default green) for healthy / pending / queued / satisfied
-// states; 'warn' for at-risk / paused; 'alert' for cannot-meet. The view layer
-// renders `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per
-// the resolved slug — never branches on status itself.
+// states; 'warn' for at-risk / paused / cannot-meet. The view layer renders
+// `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per the
+// resolved slug — never branches on status itself. The `--alert` CSS variant
+// is currently unused by this resolver but kept in place for future status
+// codes that may legitimately warrant the strongest tone on the timestamp.
 export type SmartTaskListReadyByTone = 'accent' | 'warn' | 'alert';
 
 export const resolveSmartTaskListReadyByTone = (
   status: SmartTaskListStatusId,
 ): SmartTaskListReadyByTone => {
-  if (status === 'cannot_meet') return 'alert';
-  if (status === 'at_risk' || status === 'paused_unplugged') return 'warn';
+  if (
+    status === 'cannot_meet'
+    || status === 'at_risk'
+    || status === 'paused_unplugged'
+  ) return 'warn';
   return 'accent';
 };
 
@@ -575,6 +588,16 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
 };
 
 const REVISION_REASON_FALLBACK = 'Plan refreshed';
+
+// View-facing fallback variant used when a row template wants to make the
+// absent diff chip self-explanatory. `REVISION_REASON_FALLBACK` is the
+// producer label (used for the live-panel summary line + runtime log
+// breadcrumbs so those surfaces stay terse); the row templates on both the
+// live-task panel and the post-finalization history-detail card render this
+// longer variant when `isFallback === true` so the user understands why the
+// row carries no `+/−Nh` chip. Per `feedback_ui_text_shared_with_logs.md`,
+// view layers consume it from shared-domain rather than inlining the copy.
+export const REVISION_REASON_FALLBACK_WITH_DETAIL = 'Plan refreshed (details unavailable)';
 
 // Optional disambiguation signals for `schedule_revised`. When the live-task
 // surface passes these in, `revisionReason` returns a more specific label

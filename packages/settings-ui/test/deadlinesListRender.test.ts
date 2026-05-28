@@ -148,15 +148,17 @@ describe('DeadlinesList', () => {
 
   // Status-tone parity on the "Ready by" row: an active card with a
   // `cannot_meet` chip used to render the deadline in success-green, which
-  // contradicted the alert pill. The accent row now mirrors the chip tone.
-  it('renders the "Ready by" row with the alert variant on cannot_meet cards', () => {
+  // contradicted the alert pill. The row now mirrors the chip tone — demoted
+  // to `warn` so the hero gradient + status chip carry the red weight without
+  // a third red surface stacking on the timestamp.
+  it('renders the "Ready by" row with the warn variant on cannot_meet cards', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'cannot_meet' })],
     });
     expect(mount.querySelector('.deadline-list-card__when-row--accent')).toBeNull();
-    expect(mount.querySelector('.deadline-list-card__when-row--alert')).not.toBeNull();
+    expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
   });
 
   it('renders the "Ready by" row with the warn variant on at_risk cards', () => {

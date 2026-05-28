@@ -24,8 +24,6 @@ import type {
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import {
-  getSteppedLoadLowestActiveStep,
-  getSteppedLoadOffStep,
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
@@ -41,17 +39,23 @@ const logger = getLogger('executor/shed-release');
 //                              or (for set_step on a stepped-only device) a synthesized
 //                              shed-purpose stepped command via the step capability
 //   'set_temperature'       → target write at the configured shed setpoint, with an
-//                              explicit recordShedActuation so diagnostics see the event
+//                              explicit recordReleaseShedActuation so diagnostics see the event
 // Each axis's existing idempotency guard prevents re-actuation when the device is already in
 // the configured shed posture (binary observedBinaryState; target pendingTargetCommand
 // dampening inside applyTargetUpdate; stepped commandStepId vs current.stepId), so the
 // per-cycle re-emission of the intent is safe.
+//
+// `recordReleaseShedActuation` writes the per-device `pels_shed` diagnostic event and closes
+// any open activation attempt for the (now satisfied) smart task. Unlike a capacity-driven
+// shed, it does NOT poke `lastInstabilityMs` or `lastDeviceShedMs`, so a lifecycle-end
+// release doesn't start a 5 s shed-throttle window that would interfere with later capacity
+// decisions for unrelated devices.
 export type ShedReleaseActuationDeps = {
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   buildBinaryExecutorContext: () => PlanExecutorBinaryContext;
   buildTargetExecutorContext: () => PlanExecutorTargetContext;
   buildSteppedExecutorContext: () => PlanExecutorSteppedContext;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
 };
 
 export const applyShedReleaseIntent = async (params: {
@@ -81,7 +85,6 @@ export const applyShedReleaseIntent = async (params: {
       steppedLoadIntent,
       observed,
       mode,
-      behavior,
       deps,
     });
     if (handled) return true;
@@ -112,14 +115,7 @@ const applyShedReleaseTemperature = async (params: {
     // applyTargetUpdate only records on the restore axis. Mirror trySetShedTemperature's
     // diagnostics: the per-device `pels_shed` event must fire for the release write so
     // forensic traces and per-device actuation counters stay accurate.
-    //
-    // Side-effect caveat: recordShedActuation also writes `lastDeviceShedMs` /
-    // `lastInstabilityMs`, which feed `isShedThrottled` (5 s window) and the system-wide
-    // instability marker. For a lifecycle-end release this is mostly benign — a released
-    // device is already in its shed posture so no real capacity shed should follow within
-    // the throttle window — but the conflation is real. TODO.md tracks a future split into
-    // `recordReleaseShedActuation` that records only the diagnostic event.
-    deps.recordShedActuation(intent.deviceId, intent.name, Date.now());
+    deps.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
   }
   return wrote;
 };
@@ -161,17 +157,6 @@ const applyShedReleaseBinaryOff = async (params: {
     deviceId: intent.deviceId,
     deviceName: intent.name,
   });
-};
-
-const resolveShedReleaseTargetStep = (
-  profile: SteppedLoadProfile,
-  preferredStepId: string | null,
-): SteppedLoadStep | null => {
-  if (preferredStepId) {
-    const exact = getSteppedLoadStep(profile, preferredStepId);
-    if (exact) return exact;
-  }
-  return getSteppedLoadLowestActiveStep(profile) ?? getSteppedLoadOffStep(profile);
 };
 
 const buildShedReleaseSteppedAction = (params: {
@@ -232,19 +217,43 @@ const buildShedReleaseSteppedAction = (params: {
   };
 };
 
+// Producer-resolved release-cascade step (see `resolveShedIntent` in
+// `lib/device/deviceActionProjection.ts`). Returns null on a degenerate empty profile or
+// when the intent isn't a `set_step` release; the caller treats that as "no target to
+// release toward" and bails. Emits a debug log so the silent no-op is observable in
+// /tmp/pels logs (otherwise a stepped-no-binary device with an unpopulated `releaseShedStepId`
+// on fresh boot stays at its current step with zero log signal).
+const resolveProducerShedReleaseStep = (
+  intent: ExecutableReleaseIntent,
+  profile: SteppedLoadProfile,
+): SteppedLoadStep | null => {
+  const targetStepId = intent.releaseShedStepId;
+  const targetStep = targetStepId ? getSteppedLoadStep(profile, targetStepId) : null;
+  if (!targetStep) {
+    logger.debug({
+      event: 'shed_release_skipped',
+      reasonCode: 'no_producer_step_target',
+      deviceId: intent.deviceId,
+      deviceName: intent.name,
+      releaseShedStepId: targetStepId ?? null,
+    });
+    return null;
+  }
+  return targetStep;
+};
+
 const applyShedReleaseSteppedLoad = async (params: {
   intent: ExecutableReleaseIntent;
   steppedLoadIntent: ExecutableSteppedLoadIntent;
   observed: ExecutableObservedDeviceState | undefined;
   mode: PlanActuationMode;
-  behavior: { action: ShedAction; stepId: string | null };
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
   const {
-    intent, steppedLoadIntent, observed, mode, behavior, deps,
+    intent, steppedLoadIntent, observed, mode, deps,
   } = params;
   const profile = steppedLoadIntent.steppedLoadProfile;
-  const targetStep = resolveShedReleaseTargetStep(profile, behavior.stepId);
+  const targetStep = resolveProducerShedReleaseStep(intent, profile);
   if (!targetStep) return false;
   // Trusted-evidence gate (mirrors the binary path's `observedBinaryState === 'on'` check):
   // require an observed step id from a real snapshot. `planningCurrentStepId` can carry a
@@ -300,9 +309,8 @@ const applyShedReleaseSteppedLoad = async (params: {
   if (wrote && mode === 'plan') {
     // applySteppedLoadCommand only records `pels_shed` when the transition is
     // `step_down_while_on`; the synthesized release action carries `transition: null` so
-    // we record explicitly here. Same shed-cooldown side-effect caveat as the temperature
-    // branch above — tracked in TODO.md.
-    deps.recordShedActuation(intent.deviceId, intent.name, Date.now());
+    // we record explicitly here.
+    deps.recordReleaseShedActuation(intent.deviceId, intent.name, Date.now());
   }
   return wrote;
 };

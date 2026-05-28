@@ -9,6 +9,7 @@ import type {
 import {
   deadlineLabels,
   formatLastSampleValue,
+  REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
@@ -1187,19 +1188,33 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
   const { revisionSummary } = payload;
   return (
     <section class="pels-surface-card budget-redesign-card">
+      {/* Eyebrow distinguishes the live-task surface ("Live") from the
+          post-finalization history-detail surface ("After this task ran"),
+          which share the `.plan-revision-row` markup per `pels-m3-critic`'s
+          contract. Anchored to the canonical `.eyebrow` primitive. */}
+      <p class="eyebrow">Live</p>
+      {/* Summary subline sits OUTSIDE `<details>` so the producer's
+          one-line "why?" answer is visible while the panel is collapsed.
+          HTML hides every child of `<details>` except `<summary>` when
+          closed, so the subline must be a sibling — placing it here keeps
+          the at-rest "Recent plan changes — Schedule revised · 15:42 · +1h"
+          read without forcing the user to expand. Wraps cleanly at 320 px
+          via the `.plan-revision-panel` flex column. */}
+      {revisionSummary.text !== null && (
+        <p class="plan-revision-panel__summary-subline">{revisionSummary.text}</p>
+      )}
       <details class="plan-revision-panel">
         <summary class="plan-revision-panel__summary">
           <span class="plan-card__title">Recent plan changes</span>
-          {revisionSummary.text !== null && (
-            <small class="section-hint">{revisionSummary.text}</small>
-          )}
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <ol class="plan-revision-log">
           {payload.revisionLog.map((row) => (
             <li key={`${row.revision}-${row.timeLabel}`} class="plan-revision-row">
               <span class="plan-revision-time">{row.timeLabel}</span>
-              <span class="plan-revision-reason">{row.reason}</span>
+              <span class="plan-revision-reason">
+                {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
+              </span>
               {/* Suppress the diff chip on fallback rows — the chip would
                   otherwise misattribute the +/−Nh diff to a "Plan refreshed"
                   line that says nothing about why the hours changed. */}

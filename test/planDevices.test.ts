@@ -243,12 +243,12 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.plannedState).toBe('shed');
     expect(planDevice.shedAction).toBe('set_temperature');
     expect(planDevice.shedTemperature).toBe(55);
-    expect(planDevice.shedStepId).toBeNull();
+    expect(planDevice.releaseShedStepId).toBeNull();
     expect(planDevice.plannedTarget).toBe(55);
     expect(planDevice.desiredStepId).toBe('max');
   });
 
-  it('preserves stepped set_step shed action without requiring a configured step id', () => {
+  it('resolves stepped set_step shed action via the producer cascade when no step id is configured', () => {
     const steppedDevice: PlanInputDevice = {
       id: 'dev-1',
       name: 'Water Heater',
@@ -289,7 +289,11 @@ describe('buildInitialPlanDevices', () => {
 
     expect(planDevice.plannedState).toBe('shed');
     expect(planDevice.shedAction).toBe('set_step');
-    expect(planDevice.shedStepId).toBeNull();
+    // Producer fills releaseShedStepId from its release cascade (lowest-active step) when
+    // shedBehavior.stepId is null. The cap-driven shed path in planSteppedLoad ignores
+    // this field, but it must still be present on the materialised triple so the
+    // lifecycle-end release executor can read it.
+    expect(planDevice.releaseShedStepId).toBe('low');
     expect(planDevice.desiredStepId).toBe('low');
   });
 

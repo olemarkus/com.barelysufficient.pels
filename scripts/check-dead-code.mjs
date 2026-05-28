@@ -127,6 +127,9 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
+  // Consumed by packages/settings-ui/src/ui/deviceDetail/evBoost.ts via cross-package relative import; ts-prune ignores cross-package edges.
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EV_BOOST_BLOCK_REASONS$/,
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EvBoostBlockReasonKey$/,
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
   // Consumed by packages/settings-ui/src/ui/views/PlanSteppedCard.tsx via cross-package relative import; ts-prune ignores cross-package edges.
@@ -151,6 +154,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveChipConfidence$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskLearning$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatEnergyEstimateKWh$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - REVISION_REASON_FALLBACK_WITH_DETAIL$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskListConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL$/,
