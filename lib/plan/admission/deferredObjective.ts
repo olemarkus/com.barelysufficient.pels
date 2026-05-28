@@ -129,16 +129,24 @@ const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } =
 
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
-// they only see a managed device and (for idle hours) a seeded shed-set entry.
+// they only see a managed device and (for idle hours) a seeded shed-set entry. The deadline
+// thermostat-floor (built once via `buildDeferredTargetOverrides`) is stamped onto the device
+// here too so `resolvePlannedTarget` can read it from a single per-device field instead of a
+// parallel id→°C map.
 export const applyDeferredAdmissionToInput = (
   devices: PlanInputDevice[],
   decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+  targetOverrides: Readonly<Record<string, number>> = {},
 ): DeferredAdmissionInput => {
-  if (decisions.size === 0) return { devices, forceShedSet: new Set() };
+  if (decisions.size === 0 && Object.keys(targetOverrides).length === 0) {
+    return { devices, forceShedSet: new Set() };
+  }
   const forceShedSet = new Set<string>();
   const transformed = devices.map((device) => {
     const decision = decisions.get(device.id);
-    if (!decision) return device;
+    const deadlineFloorTargetC = targetOverrides[device.id];
+    const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
+    if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
     const override = requiresOverride(decision, device);
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
     // Engage the device's boost while a limit-lower-priority task is in its planned hours.
@@ -150,12 +158,13 @@ export const applyDeferredAdmissionToInput = (
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
     // device's standing budget-exemption setting.
-    if (!override && !decision.budgetExempt && !engageBoost) return device;
+    if (!override && !decision.budgetExempt && !engageBoost && !hasDeadlineFloor) return device;
     return {
       ...device,
       ...(override ? { controllable: true } : {}),
       ...(decision.budgetExempt ? { budgetExempt: true } : {}),
       ...resolveBoostFields(engageBoost),
+      ...(hasDeadlineFloor ? { deadlineFloorTargetC } : {}),
     };
   });
   return { devices: transformed, forceShedSet };

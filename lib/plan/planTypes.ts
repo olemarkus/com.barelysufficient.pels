@@ -306,6 +306,16 @@ export type PlanInputDevice = {
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
   // from lower-priority devices.
   forceBoostActive?: boolean;
+  /**
+   * Producer-resolved deadline floor for the thermostat setpoint, °C — the
+   * deadline-target plus learned over-command. Stamped by
+   * `applyDeferredAdmissionToInput` for temperature objectives whose current
+   * bucket has planned energy. `resolvePlannedTarget` lifts the commanded
+   * setpoint to `max(modeTarget + priceOptDelta, deadlineFloorTargetC)` so the
+   * device's local thermostat can actually reach the deadline target; outside
+   * planned hours the field is absent and the override drops out.
+   */
+  deadlineFloorTargetC?: number;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   controllable?: boolean;
   managed?: boolean;

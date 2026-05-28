@@ -242,7 +242,6 @@ export class PlanBuilder {
       admittedDevices,
       forceShedSet,
       deferredAvoidDeviceIds,
-      deferredTargetTempByDeviceId,
       deferredReleaseIntentByDeviceId,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
       this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
@@ -252,7 +251,11 @@ export class PlanBuilder {
         this.deps.getStallClassification,
       );
       const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
-      const admission = applyDeferredAdmissionToInput(devices, deferredAdmission);
+      const deferredTargetOverrides = buildDeferredTargetOverrides(
+        deferredEvaluations,
+        this.deps.getLearnedThermostatDeadbandC,
+      );
+      const admission = applyDeferredAdmissionToInput(devices, deferredAdmission, deferredTargetOverrides);
       // Devices whose smart task is on track AND has no allocated energy
       // this hour (current bucket is `preference: 'avoid'`, or the task is
       // between planned hours). Used downstream by `normalizeShedReasons`
@@ -278,10 +281,6 @@ export class PlanBuilder {
         admittedDevices: admission.devices,
         forceShedSet: admission.forceShedSet,
         deferredAvoidDeviceIds: deferredAvoidIds,
-        deferredTargetTempByDeviceId: buildDeferredTargetOverrides(
-          deferredEvaluations,
-          this.deps.getLearnedThermostatDeadbandC,
-        ),
         deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(deferredAdmission),
       };
     });
@@ -294,7 +293,7 @@ export class PlanBuilder {
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
     for (const id of forceShedSet) sheddingPlan.shedSet.add(id);
 
-    let planDevices = this.buildPlanDevices(context, sheddingPlan, deferredTargetTempByDeviceId);
+    let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
     planDevices = restoreResult.planDevices;
 
@@ -565,7 +564,6 @@ export class PlanBuilder {
   private buildPlanDevices(
     context: PlanContext,
     sheddingPlan: SheddingPlan,
-    deferredTargetTempByDeviceId: Record<string, number>,
   ): DevicePlanDevice[] {
     return this.trackDuration('plan_devices_ms', () => buildInitialPlanDevices({
       context,
@@ -573,7 +571,6 @@ export class PlanBuilder {
       shedSet: sheddingPlan.shedSet,
       shedReasons: sheddingPlan.shedReasons,
       guardInShortfall: sheddingPlan.guardInShortfall,
-      deferredTargetTempByDeviceId,
       deps: {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
