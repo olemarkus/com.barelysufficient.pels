@@ -100,6 +100,13 @@ export type DevicePlanDevice = {
   temperatureBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
+  /**
+   * Producer-resolved aggregate boost flag: `true` when either
+   * `temperatureBoostActive` or `evBoostActive` fires this cycle. Resolved
+   * once in `buildBoostPlanDeviceFields` so restore-side consumers read a
+   * single bit instead of recomputing the OR per call.
+   */
+  boostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
@@ -237,6 +244,15 @@ export type PlanInputDevice = {
   commandableNow?: boolean;
   /** Opaque diagnostic string; UI / diagnostics consumers only. */
   commandableNowReason?: string | null;
+  /**
+   * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
+   * true when the device's binary control capability can be written this
+   * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback
+   * for the `onoff` capability). Consumers MUST go through
+   * `lib/device/deviceActionProjection.isCanSetControl` so the dual-read
+   * fallback applies to raw-snapshot call sites uniformly.
+   */
+  canSetControlResolved?: boolean;
   /**
    * Producer-resolved aggregate boost flag (chunk 2): true if either the
    * temperature-boost or EV-boost policy is active this cycle.

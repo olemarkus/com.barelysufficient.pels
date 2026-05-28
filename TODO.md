@@ -599,14 +599,16 @@ release, not v2.7.1 merge-blockers.*
       of PR #1190 flagged chunk 3's new file as misplaced; root cause is
       the un-finished sunsetting, not chunk 3.
 
-- [ ] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
-      `lib/plan/planExecutorSupport.ts:31` stays on `getBinaryControlPlan` +
-      `getEvRestoreBlockReason` because the producer-resolved `commandableNow`
-      bit does not replicate the `canSet` check (`canSetControl !== false`
-      with the legacy `canSetOnOff` fallback in `getBinaryControlPlan`).
-      Chunk 6: extend `lib/device/deviceActionProjection.ts` to resolve
-      `canSet` into the producer bit (or surface it as a sibling resolved
-      flag), then migrate `canTurnOnDevice` to consume `commandableNow`.
+- [x] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
+      `lib/device/deviceActionProjection.ts` now exports `resolveCanSetControl`
+      / `isCanSetControl` as a sibling producer bit to `commandableNow`
+      (`canSetControl !== false` plus the legacy `canSetOnOff` fallback),
+      `toPlanDevice` populates `PlanInputDevice.canSetControlResolved`, and
+      `planExecutorSupport.canTurnOnDevice` now reads
+      `isCommandableNow(snapshot) && isCanSetControl(snapshot)` instead of
+      round-tripping through `getBinaryControlPlan` + `getEvRestoreBlockReason`.
+      `getBinaryControlPlan`'s own `canSet` is rewritten on top of the new
+      producer so the legacy view stays bit-exact.
       Source: pels-layering-guardian review of PR #1189, 2026-05-27.
 
 - [x] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
@@ -620,18 +622,19 @@ release, not v2.7.1 merge-blockers.*
       — both should consolidate to one shared-domain helper.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
 
-- [ ] **Chunk 5/6 — populate and consume `boostActive`.**
-      `lib/plan/planTypes.ts` declares `boostActive?: boolean` and
-      `lib/device/deviceActionProjection.ts` exports `resolveBoostActive`,
-      but `toPlanDevice` does not populate the field and no consumer reads
-      it. Producer/consumer wiring deferred until chunk 5 (opaque shedIntent)
-      or chunk 6 (cleanup). When wiring lands, prune the three dead-code
-      allowlist entries (`resolveBoostActive`, `getCommandableNowReason`,
-      `isCommandableNow`) in `scripts/check-dead-code.mjs`.
+- [x] **Chunk 5/6 — populate and consume `boostActive`.**
+      `buildBoostPlanDeviceFields` now resolves `boostActive` via
+      `resolveBoostActive({ temperatureBoostActive, evBoostActive })` and
+      writes it onto `DevicePlanDevice`. `restore/helpers.ts`
+      `isBoostEffectiveForEscalation` reads `dev.boostActive === true`
+      instead of recomputing the OR. `resolveBoostActive` and
+      `isCommandableNow` allowlist entries dropped in
+      `scripts/check-dead-code.mjs`; `getCommandableNowReason` stays
+      parked until the chunk-6 UI off-state-reason routing lands.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
 
-- [ ] **Chunk 6 — normalize EV-detection across producer helpers.**
+- [x] **Chunk 6 — normalize EV-detection across producer helpers.**
       `lib/device/deviceActionProjection.ts` mixes `controlCapabilityId ===
       'evcharger_charging'` (new helpers) and `deviceClass === 'evcharger'`
       (older `resolveEvBoostActive`). Pre-existing asymmetry that propagated
@@ -639,8 +642,12 @@ release, not v2.7.1 merge-blockers.*
       and route all producer EV gates through it.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-c3-ev-predicate — introduced module-private `isEvDevice`
+      union helper, migrated `resolveEvBoostActive`, `resolveEvCommandableBlock`,
+      `getEvRestoreBlockReason`, and `isEvPhysicallyUnplugged`. No test
+      fixture set only one of the two fields; full suite still green.
 
-- [ ] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
+- [x] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
       device deletion.** Both producer-side caches grow unboundedly when
       devices are removed from Homey at runtime. Each entry is ~50 bytes;
       practical bound is a few KB well inside the 160 MB RSS ceiling, but
@@ -648,8 +655,13 @@ release, not v2.7.1 merge-blockers.*
       longer present in the latest snapshot" for both records.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — added `evictMissingDeviceCacheEntries`
+      in `lib/app/appInit.ts`, called from both batch sites
+      (`createPlanService.getPlanDevices`, `app.ts:getLiveDevices`) on the
+      full snapshot before mapping. Focused unit tests cover present /
+      orphan / no-op / empty-snapshot.
 
-- [ ] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
+- [x] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
       devices.** A fresh EV device with `evChargingState === undefined` and
       no prior observation in `lastKnownCommandableByDevice` currently
       resolves to `commandableNow: false, reason: 'charger state unknown'`.
@@ -658,6 +670,13 @@ release, not v2.7.1 merge-blockers.*
       (matches "don't write to a device whose state we've never confirmed").
       Lock that semantics in when executors come online.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — documented the first-cycle contract
+      in the `resolveCommandableNow` doc-comment ("pessimistic-on-first-
+      cycle, load-bearing once executors consume the bit"); added a
+      focused unit test in `test/deviceActionProjectionCommandableNow.test.ts`
+      pinning the case (never-seen EV, `evChargingState === undefined`,
+      no `previousObservation` → `commandableNow: false`,
+      reason `'charger state unknown'`).
 
 - [x] **Smart-task lifecycle-end release for stepped devices without binary
       control.** `lib/executor/shedReleaseActuation.ts` materialises the
@@ -4378,14 +4397,6 @@ prod walk that didn't warrant a P2 slot.*
 
 - [ ] Smart-task revision-history panel — follow-ups from PR #1197 subagent
       review (UX / copy / vocabulary):
-      - **Promote latest-revision reason to the collapsed summary line.**
-        Page mission is "why those hours?"; the current `Recent plan changes
-        · N revisions` summary tells the user a count, not a reason.
-        Suggested shape: when the head row carries a newsworthy reason,
-        promote that single most-recent reason inline — e.g.
-        `Recent plan changes · last change: Prices arrived at 15:42 (+1h)`.
-        Producer change (`buildActivePlanRevisionLog`) returns a summary
-        tuple alongside the row array; view binds it to the `<summary>`.
       - **Wire `RevisionReasonDisambiguation` through any future runtime
         log breadcrumb path for `schedule_revised` events** (P2, from
         pels-runtime-reality review of batch 2 / PR #1203). Today no
@@ -4403,22 +4414,6 @@ prod walk that didn't warrant a P2 slot.*
         other, and (b) cap the Set size or rotate on session boundary so
         long-lived settings UIs can't grow it unbounded. Files:
         `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      - **Hour-diff chip lacks aria-label / antecedent.** Add `title=` /
-        `aria-label` like "1 hour added" / "1 hour dropped". Files:
-        `packages/shared-domain/src/activePlanRevisionLog.ts`,
-        `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      - **2-revision threshold suppresses the first interesting
-        transition.** `flow_card → prices_arrived` is exactly when a
-        curious first-time user opens the app. Threshold on reason rather
-        than count: show the panel as soon as there is at least one
-        revision whose reason ≠ `flow_card`. Files: `packages/settings-ui/
-        src/ui/views/DeadlinePlan.tsx` (`revisionLog.length < 2` gate).
-      - **320 px row wrap.** Long reasons wrap and push the diff chip to
-        the bottom-right of the wrapped row, reading like the diff belongs
-        to the next row. Consider `display: grid;
-        grid-template-columns: 5ch 1fr auto;` on `.plan-revision-row` so
-        time / reason / diff stay column-locked. Same change applies to the
-        post-finalization revisions log (shared CSS).
       - **Card chrome density.** At 320 px the panel adds a full card shell
         even when collapsed (~80–96 px). Consider folding inside
         `PlanInputsCard` ("What PELS has learned") — natural home for
@@ -4429,5 +4424,8 @@ prod walk that didn't warrant a P2 slot.*
         § Revision-log row vocabulary; activePlanRecorder.ts comment fix).
         Schedule-revised disambiguation + Plan refreshed fallback handling
         (incl. isFallback flag, hour-diff chip suppression, one-shot
-        console.warn) shipped in batch 2 (PR #1203).
+        console.warn) shipped in batch 2 (PR #1203). Summary line replaces
+        bare count, reason-based panel-visibility threshold, hour-diff chip
+        aria-label / title, and `.plan-revision-row` CSS-grid layout
+        (320 px wrap-safe) shipped in batch 3.
 

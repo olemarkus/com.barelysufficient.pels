@@ -42,6 +42,26 @@ import {
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
+/**
+ * Producer-internal EV-device predicate. A device is treated as "EV" if EITHER
+ * its `deviceClass` is `'evcharger'` OR its resolved binary control capability
+ * is `'evcharger_charging'`. The union is intentional: real EV devices set both
+ * fields, so this collapses what used to be two slightly different gates inside
+ * this file (`resolveEvBoostActive` historically read `deviceClass`; the
+ * commandability/restore-block helpers read `controlCapabilityId`) into a
+ * single source of truth.
+ *
+ * Returns `false` when both fields are missing.
+ *
+ * Kept private to this producer module: consumers in `lib/plan/restore/**`
+ * receive `TargetDeviceSnapshot` and resolve EV semantics through different
+ * helpers — they don't share the `PlanInputDevice` shape this predicate is
+ * shaped for.
+ */
+const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: string }): boolean => (
+  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
+);
+
 export type BinaryControlPlan = {
   capabilityId: 'onoff' | 'evcharger_charging';
   isEv: boolean;
@@ -65,6 +85,7 @@ type ObservationFreshness = {
 
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   evChargingState?: string;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
@@ -87,7 +108,7 @@ export function resolveEvBoostActive(params: {
   previousActive: boolean;
 }): boolean {
   const { dev } = params;
-  if (dev.deviceClass !== 'evcharger') return false;
+  if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
@@ -132,12 +153,20 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
   return {
     capabilityId,
     isEv: capabilityId === 'evcharger_charging',
-    canSet: resolveCanSetBinaryControl(snapshot, capabilityId),
+    // Routed through `resolveCanSetControl` so the planner-side producer bit
+    // (consumed by the migrated `canTurnOnDevice`) and the legacy
+    // `getBinaryControlPlan().canSet` view stay bit-exact in lockstep.
+    canSet: resolveCanSetControl({
+      controlCapabilityId: snapshot.controlCapabilityId,
+      capabilities: snapshot.capabilities,
+      canSetControl: snapshot.canSetControl,
+      canSetOnOff: (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff,
+    }),
   };
 }
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
-  if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return null;
+  if (!snapshot || !isEvDevice(snapshot)) return null;
   if (snapshot.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
 
   switch (snapshot.evChargingState) {
@@ -155,8 +184,13 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
   }
 }
 
+type BinaryCapabilityResolveInput = {
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  capabilities?: string[];
+};
+
 function resolveBinaryCapabilityId(
-  snapshot?: TargetDeviceSnapshot,
+  snapshot?: BinaryCapabilityResolveInput,
 ): BinaryControlPlan['capabilityId'] | undefined {
   if (!snapshot) return undefined;
   if (snapshot.controlCapabilityId) return snapshot.controlCapabilityId;
@@ -165,13 +199,9 @@ function resolveBinaryCapabilityId(
   return undefined;
 }
 
-function resolveCanSetBinaryControl(
-  snapshot: TargetDeviceSnapshot,
-  capabilityId: BinaryControlPlan['capabilityId'],
-): boolean {
-  const legacyCanSetOnOff = (snapshot as (TargetDeviceSnapshot & { canSetOnOff?: boolean })).canSetOnOff;
-  return snapshot.canSetControl !== false && !(capabilityId === 'onoff' && legacyCanSetOnOff === false);
-}
+// `resolveCanSetBinaryControl` collapsed into `resolveCanSetControl` above
+// (chunk 6 of the planner-detype refactor). `getBinaryControlPlan` now routes
+// through the same producer that PlanInputDevice consumers read.
 
 // =============================================================================
 // Chunk 2 of the planner-detype refactor: resolve commandableNow + boostActive
@@ -231,6 +261,17 @@ export type CommandableNowResolution = {
  * `previousObservation` carries the most recent producer-resolved answer for
  * this device (managed in AppContext alongside `lastKnownPowerKw`). `nowMs`
  * is injected so the helper stays pure and unit-testable.
+ *
+ * First-cycle contract (pessimistic-on-first-cycle, load-bearing once
+ * executors consume the bit via `canTurnOnDevice` etc.): a never-seen EV
+ * device whose `evChargingState === undefined` and has no entry in
+ * `lastKnownCommandableByDevice` resolves to
+ * `{ commandableNow: false, reason: 'charger state unknown' }`. The
+ * abandon-grace window applies only *after* a confident observation has
+ * been recorded — new devices have no grace. This is intentional: without
+ * trusted evidence that the device is responsive, the executor must not
+ * actuate. A confident plug-state read on a subsequent cycle flips the bit
+ * to its real value and seeds the grace window for future uncertain reads.
  */
 export function resolveCommandableNow(params: {
   dev: CommandableNowResolveInput;
@@ -305,6 +346,77 @@ export function getCommandableNowReason(
 }
 
 /**
+ * Dual-read consumer helper for the aggregate boost flag. Prefers the
+ * producer-resolved `boostActive` bit (populated by
+ * `buildBoostPlanDeviceFields`) and falls back to the OR over the two
+ * per-axis flags so manually-built `DevicePlanDevice` fixtures and any
+ * legacy upstream shapes that haven't yet propagated `boostActive`
+ * continue to behave identically.
+ */
+export function isBoostActive(dev: {
+  boostActive?: boolean;
+  temperatureBoostActive?: boolean;
+  evBoostActive?: boolean;
+}): boolean {
+  if (dev.boostActive !== undefined) return dev.boostActive;
+  return dev.temperatureBoostActive === true || dev.evBoostActive === true;
+}
+
+// -----------------------------------------------------------------------------
+// canSetControl — sibling producer-resolved bit (chunk 6 of the planner-detype
+// refactor). Mirrors the `canSet` computation inside `getBinaryControlPlan`
+// (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback for the
+// `onoff` capability) so executor consumers can read a single resolved flag
+// instead of round-tripping through `getBinaryControlPlan`.
+//
+// Kept separate from `commandableNow`: commandableNow answers "is the device
+// responsive right now" (EV plug state, available) which `planOffStateReason`
+// reads without caring about `canSet`. canSetControl answers "can we write
+// to its control capability" — different question, separate bit.
+// -----------------------------------------------------------------------------
+
+export type CanSetControlResolveInput = BinaryCapabilityResolveInput & {
+  canSetControl?: boolean;
+  canSetOnOff?: boolean;
+};
+
+/**
+ * Resolve whether the device's binary control capability can be written this
+ * cycle. Returns `false` when:
+ *  - the device exposes no resolvable binary capability (no `controlCapabilityId`,
+ *    no matching entry in `capabilities`); or
+ *  - `canSetControl === false`; or
+ *  - the resolved capability is `onoff` and the legacy `canSetOnOff === false`.
+ *
+ * Mirrors `getBinaryControlPlan(snapshot)?.canSet ?? false` exactly so the
+ * migrated `canTurnOnDevice` gate stays byte-for-byte equivalent for the
+ * existing snapshot shapes the executor passes in.
+ */
+export function resolveCanSetControl(input: CanSetControlResolveInput): boolean {
+  const capabilityId = resolveBinaryCapabilityId(input);
+  if (!capabilityId) return false;
+  if (input.canSetControl === false) return false;
+  if (capabilityId === 'onoff' && input.canSetOnOff === false) return false;
+  return true;
+}
+
+type CanSetControlConsumerInput = CanSetControlResolveInput & {
+  canSetControlResolved?: boolean;
+};
+
+/**
+ * Dual-read consumer helper: prefer the producer-resolved bit when the
+ * caller passes a `PlanInputDevice` (`canSetControlResolved` set by
+ * `toPlanDevice`), fall back to fresh resolution from raw fields when the
+ * caller passes a `TargetDeviceSnapshot`. Mirrors `isCommandableNow`'s
+ * dual-read pattern from chunk 2.
+ */
+export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
+  if (dev.canSetControlResolved !== undefined) return dev.canSetControlResolved;
+  return resolveCanSetControl(dev);
+}
+
+/**
  * Detects the specific "EV physical block" sub-case that the consumer at
  * `planOffStateReason.resolveEvPhysicalBlockInactiveReason` cares about:
  * the device is an EV charger and the plug is out or discharging. Other
@@ -313,7 +425,7 @@ export function getCommandableNowReason(
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
   return (
-    dev.controlCapabilityId === 'evcharger_charging'
+    isEvDevice(dev)
     && (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging')
   );
 }
@@ -325,13 +437,12 @@ export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolea
 type EvCommandableBlock = { reason: string; uncertain: boolean };
 
 function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandableBlock | null {
-  // Match the legacy `getEvRestoreBlockReason` gate exactly: only branch on
-  // EV semantics when `controlCapabilityId === 'evcharger_charging'`. The
-  // `deviceClass === 'evcharger'` short-circuit used by `planEvBoost` is a
-  // distinct concern (boost activation, not commandability) and stays in
-  // that resolver. Chunk 6 will normalise the two if a unified gate is
-  // shown to be safe.
-  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
+  // Routed through the shared `isEvDevice` union predicate so this helper and
+  // `resolveEvBoostActive` / `getEvRestoreBlockReason` / `isEvPhysicallyUnplugged`
+  // all agree on what counts as an EV device. Real EV devices set both
+  // `deviceClass === 'evcharger'` and `controlCapabilityId === 'evcharger_charging'`,
+  // so this is a no-op for the device shapes the producer sees in practice.
+  if (!isEvDevice(dev)) return null;
 
   switch (dev.evChargingState) {
     case 'plugged_out':

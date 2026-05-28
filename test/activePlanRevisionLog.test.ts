@@ -3,6 +3,7 @@
 // from the live active plan's `latest` + `history`.
 import {
   buildActivePlanRevisionLog,
+  buildActivePlanRevisionLogSummary,
 } from '../packages/shared-domain/src/activePlanRevisionLog';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
@@ -320,5 +321,224 @@ describe('buildActivePlanRevisionLog schedule_revised disambiguation', () => {
       kind: 'temperature',
     });
     expect(rows[0]?.reason).toBe('Schedule revised');
+  });
+});
+
+describe('buildActivePlanRevisionLog hourDiffAriaLabel', () => {
+  // Verifies the long-form accessible label paired with the `+Nh` / `−Nh`
+  // chip. The chip's `aria-label` / `title` is bound to this string so
+  // screen readers don't pronounce `+1h` as "plus one h".
+  it('emits `1 hour added` (singular) for hoursAdded === 1, hoursRemoved === 0', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [
+          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+      }),
+      history: [revision({
+        revision: 1,
+        reason: 'flow_card',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      })],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.hourDiffAriaLabel).toBe('1 hour added');
+  });
+
+  it('emits `2 hours dropped` (plural) for hoursRemoved === 2, hoursAdded === 0', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: [revision({
+        revision: 1,
+        reason: 'flow_card',
+        hours: [
+          { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
+        ],
+      })],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.hourDiffAriaLabel).toBe('2 hours dropped');
+  });
+
+  it('emits combined `N hour(s) added, M hour(s) dropped` for mixed-diff swaps', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 2,
+        reason: 'schedule_revised',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [
+          { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
+        ],
+      }),
+      history: [revision({
+        revision: 1,
+        reason: 'flow_card',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      })],
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.hourDiffAriaLabel).toBe('2 hours added, 1 hour dropped');
+  });
+
+  it('returns null when both added and removed are zero (silent revision)', () => {
+    const rows = buildActivePlanRevisionLog({
+      latest: revision({
+        revision: 1,
+        reason: 'flow_card',
+        hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+      }),
+      history: undefined,
+      timeZone: TZ,
+      kind: 'temperature',
+    });
+    expect(rows[0]?.hourDiffAriaLabel).toBeNull();
+  });
+});
+
+describe('buildActivePlanRevisionLogSummary', () => {
+  // Verifies the producer-side summary that drives the collapsed `<summary>`
+  // line + the panel-visibility gate. `shouldShowPanel === false` when every
+  // revision was a direct user action (flow_card today) so the panel adds
+  // no system-narrative value.
+  it('returns shouldShowPanel=false for an empty rows array', () => {
+    const summary = buildActivePlanRevisionLogSummary({
+      latest: null,
+      history: undefined,
+      rows: [],
+    });
+    expect(summary).toEqual({ text: null, count: 0, shouldShowPanel: false });
+  });
+
+  it('returns shouldShowPanel=false when the only revision is a user-fired Flow card', () => {
+    const latest = revision({ revision: 1, reason: 'flow_card' });
+    const rows = buildActivePlanRevisionLog({
+      latest, history: undefined, timeZone: TZ, kind: 'temperature',
+    });
+    const summary = buildActivePlanRevisionLogSummary({
+      latest, history: undefined, rows,
+    });
+    expect(summary.shouldShowPanel).toBe(false);
+    expect(summary.count).toBe(1);
+  });
+
+  it('returns shouldShowPanel=false when every revision is user-fired (3 flow_card rows)', () => {
+    const latest = revision({ revision: 3, reason: 'flow_card', revisedAtMs: 3 * HOUR_MS });
+    const history = [
+      revision({ revision: 2, reason: 'flow_card', revisedAtMs: 2 * HOUR_MS }),
+      revision({ revision: 1, reason: 'flow_card', revisedAtMs: HOUR_MS }),
+    ];
+    const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
+    const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
+    expect(summary.shouldShowPanel).toBe(false);
+    expect(summary.count).toBe(3);
+  });
+
+  it('returns shouldShowPanel=true as soon as one revision is system-initiated', () => {
+    const latest = revision({ revision: 2, reason: 'prices_arrived', revisedAtMs: 2 * HOUR_MS });
+    const history = [revision({ revision: 1, reason: 'flow_card', revisedAtMs: HOUR_MS })];
+    const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
+    const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
+    expect(summary.shouldShowPanel).toBe(true);
+    expect(summary.count).toBe(2);
+  });
+
+  it('formats summary text with interpunct-separated clauses: `<reason> · <time> · <diff>`', () => {
+    const latest = revision({
+      revision: 2,
+      reason: 'prices_arrived',
+      revisedAtMs: 2 * HOUR_MS,
+      hours: [
+        { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
+        { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+      ],
+    });
+    const history = [revision({
+      revision: 1,
+      reason: 'flow_card',
+      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+    })];
+    const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
+    const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
+    // Time format is locale-pinned `HH:MM` via Intl; with Europe/Oslo and
+    // 2 * HOUR_MS the UTC timestamp lands at 03:00 local (CET, UTC+1).
+    // Interpunct U+00B7 separates the three clauses so reason labels whose
+    // last words form verb phrases don't bleed into the time clause.
+    expect(summary.text).toBe('Prices arrived · 03:00 · +1h');
+  });
+
+  it('suppresses the diff clause on fallback summary rows', () => {
+    // When the head row falls back to `Plan refreshed`, the diff would
+    // misattribute the +/-Nh change to a vague reason — same logic as the
+    // row-level chip suppression. Summary line should follow suit.
+    const latest = revision({
+      revision: 2,
+      // Cast through unknown — unknown recorder code triggers fallback path.
+      reason: 'newly_added_recorder_code' as never,
+      revisedAtMs: 2 * HOUR_MS,
+      hours: [
+        { startsAtMs: 2 * HOUR_MS, plannedKWh: 1 },
+        { startsAtMs: 3 * HOUR_MS, plannedKWh: 1 },
+      ],
+    });
+    const history = [revision({
+      revision: 1,
+      reason: 'flow_card',
+      hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1 }],
+    })];
+    const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
+    const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
+    expect(summary.text).toBe('Plan refreshed · 03:00');
+  });
+
+  it('picks the most-recent system revision (not the head) for the summary text when the head is user-initiated', () => {
+    // Regression for the gate-vs-narrative mismatch flagged in pels-ux-fit:
+    // when the latest revision is a user-fired Flow card AND the chain has
+    // an older system revision, the gate says `shouldShowPanel === true`
+    // (the panel exists because of the system row) but the summary previously
+    // narrated the user's action, hiding the very thing the panel exists
+    // to surface. The producer now skips past leading user-initiated rows
+    // when picking the head for the summary text. The user-initiated row
+    // is still visible at the top of the expanded panel.
+    const latest = revision({
+      revision: 3,
+      reason: 'flow_card',
+      revisedAtMs: 3 * HOUR_MS,
+      hours: [{ startsAtMs: 5 * HOUR_MS, plannedKWh: 1 }],
+    });
+    const history = [
+      revision({
+        revision: 2,
+        reason: 'prices_arrived',
+        revisedAtMs: 2 * HOUR_MS,
+        hours: [
+          { startsAtMs: 4 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: 5 * HOUR_MS, plannedKWh: 1 },
+        ],
+      }),
+      revision({ revision: 1, reason: 'flow_card', revisedAtMs: HOUR_MS }),
+    ];
+    const rows = buildActivePlanRevisionLog({ latest, history, timeZone: TZ, kind: 'temperature' });
+    const summary = buildActivePlanRevisionLogSummary({ latest, history, rows });
+    expect(summary.shouldShowPanel).toBe(true);
+    // 2 * HOUR_MS → 03:00 in Europe/Oslo (CET).
+    expect(summary.text).toContain('Prices arrived');
+    expect(summary.text).toContain('03:00');
+    // Should NOT name the user's Flow card action.
+    expect(summary.text).not.toContain('Flow card');
   });
 });
