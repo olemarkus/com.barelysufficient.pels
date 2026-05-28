@@ -9,6 +9,9 @@ import {
   resolveSmartTaskLearning,
   resolveSmartTaskListReadyByTone,
   SMART_TASK_HISTORY_EYEBROW,
+  SMART_TASK_LIST_EMPTY_COPY,
+  SMART_TASK_LIST_LOAD_ERROR_COPY,
+  SMART_TASK_LIST_ROW_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_PAST_EMPTY_COPY,
@@ -150,6 +153,37 @@ describe('smart-task history copy constants', () => {
     expect(SMART_TASK_PAST_EMPTY_COPY).toBe(
       "No completed tasks yet — they'll appear here after a smart task finishes.",
     );
+  });
+});
+
+describe('smart-task list card copy constants', () => {
+  // Pins the row-label record + empty-state and load-error sentences to the
+  // canonical shared-domain source so runtime log breadcrumbs and the UI
+  // can't drift (per `feedback_ui_text_shared_with_logs.md`).
+  it('exports the four list-card row labels (Target / Created / Starts / Ready by)', () => {
+    expect(SMART_TASK_LIST_ROW_LABELS).toStrictEqual({
+      target: 'Target',
+      created: 'Created',
+      starts: 'Starts',
+      readyBy: 'Ready by',
+    });
+  });
+
+  it('exports the empty-state fragments that assemble into the canonical sentence', () => {
+    expect(SMART_TASK_LIST_EMPTY_COPY).toStrictEqual({
+      intro: 'No smart tasks yet. Open the Flow editor and add the',
+      heatingAction: 'Add heating task',
+      actionWord: 'action',
+      heatingExample: '(Heat … to … °C by Ready by)',
+      conjunction: 'or the',
+      chargingAction: 'Add charging task',
+      chargingExample: '(Charge … to … % by Ready by)',
+      outro: 'to schedule a device for a specific ready-by time.',
+    });
+  });
+
+  it('exports the load-error sentence', () => {
+    expect(SMART_TASK_LIST_LOAD_ERROR_COPY).toBe('Could not load smart tasks. Try again later.');
   });
 });
 
