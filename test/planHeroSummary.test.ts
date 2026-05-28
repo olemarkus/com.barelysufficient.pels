@@ -244,14 +244,14 @@ describe('buildDecisionSentence', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 3,
       deferredObjectiveAvoidCount: 1,
-    })).text).toBe('Holding back 3 devices. 1 waiting for cheaper hours.');
+    })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours.');
   });
 
-  it('names today\'s budget when every held device is on daily-budget pacing', () => {
+  it('names today’s budget when every held device is on daily-budget pacing', () => {
     expect(buildDecisionSentence(baseline({
       limitedCount: 2,
       dailyBudgetLimitedCount: 2,
-    })).text).toBe("Holding back 2 devices to stay within today's budget.");
+    })).text).toBe('Holding back 2 devices to stay within today’s budget.');
   });
 
   it('falls through to capacity defense when no smart-task / daily-budget signal is present', () => {

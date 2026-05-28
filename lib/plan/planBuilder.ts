@@ -253,15 +253,26 @@ export class PlanBuilder {
       );
       const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
       const admission = applyDeferredAdmissionToInput(devices, deferredAdmission);
-      // Devices whose smart task has no allocated energy this hour (current
-      // bucket is `preference: 'avoid'`, or the task is between planned
-      // hours). Used downstream by `normalizeShedReasons` to render the
-      // `deferredObjectiveAvoid` reason ("Waiting for cheaper hours") instead
-      // of the misleading capacity/dailyBudget fallback when the device ends
-      // up held this cycle.
+      // Devices whose smart task is on track AND has no allocated energy
+      // this hour (current bucket is `preference: 'avoid'`, or the task is
+      // between planned hours). Used downstream by `normalizeShedReasons`
+      // to render the `deferredObjectiveAvoid` reason ("Waiting for cheaper
+      // hours") instead of the misleading capacity/dailyBudget fallback
+      // when the device ends up held this cycle.
+      //
+      // Gating on `status === 'on_track'` is intentional: the calm
+      // "Waiting for cheaper hours" framing is honest only while PELS still
+      // believes the deadline will be met. `at_risk` / `cannot_meet` tasks
+      // must fall through to the physical-constraint framing so the
+      // Overview doesn't mask a failure the user already got notified
+      // about. `inactive` / `satisfied` / `invalid` never reach this
+      // branch because they don't co-occur with a current-bucket avoid.
       const deferredAvoidIds = new Set<string>();
-      for (const [deviceId, decision] of deferredAdmission) {
-        if (decision.kind === 'idle') deferredAvoidIds.add(deviceId);
+      for (const diag of deferredEvaluations) {
+        if (diag.status !== 'on_track') continue;
+        const currentBucket = diag.horizonPlan?.currentBucket;
+        const isAvoidBucket = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
+        if (isAvoidBucket) deferredAvoidIds.add(diag.deviceId);
       }
       return {
         admittedDevices: admission.devices,
