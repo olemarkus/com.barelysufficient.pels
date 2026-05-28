@@ -66,11 +66,10 @@ export const filterPlanHistoryByDevice = <T extends Pick<DeferredObjectivePlanHi
 export const SMART_TASK_HISTORY_FILTER_ALL_LABEL = 'All';
 export const SMART_TASK_HISTORY_FILTER_GROUP_LABEL = 'Filter past tasks by device';
 
-// Muted "No past runs for X" copy for the active-filter empty state. Reuses
-// the same trim-then-fallback shape that the row cards apply to device names
-// so a trailing-whitespace device name never leaks into the message.
-export const formatSmartTaskHistoryDeviceFilterEmpty = (deviceName: string): string => {
-  const trimmed = deviceName.trim();
-  if (trimmed.length === 0) return 'No past runs for this device.';
-  return `No past runs for ${trimmed}.`;
-};
+// NOTE (PR-29): the active-filter empty-state copy (`formatSmartTaskHistory-
+// DeviceFilterEmpty`) was removed. `filterPlanHistoryByDevice` self-heals a
+// stale filter back to the unfiltered list, so a non-empty archive can never
+// render zero rows under a device filter — the empty branch that consumed the
+// copy was unreachable, and a dead string with no live caller is worse than no
+// string. If a future change can make the filtered list genuinely empty, add
+// the copy back together with the branch that renders it.
