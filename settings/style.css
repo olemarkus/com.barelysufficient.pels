@@ -6987,7 +6987,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
-  #price-aware-devices-panel
+  #price-aware-devices-panel,
+  #deadlines-panel
 ) {
   display: grid;
   gap: var(--spacing-3);
@@ -7006,7 +7007,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
-  #price-aware-devices-panel
+  #price-aware-devices-panel,
+  #deadlines-panel
 ).hidden {
   display: none;
 }
