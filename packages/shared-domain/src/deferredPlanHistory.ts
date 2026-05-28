@@ -204,11 +204,11 @@ export const formatPlanHistoryUsageDayLinkLabel = (
 // miss in an otherwise-healthy device never trips the aggregate.
 const MISS_STREAK_WINDOW = 4;
 // Half the window is the threshold — keeps the resolver kind-agnostic and matches the
-// notes' "3 of last 4 missed" framing (3/4 ≥ 0.5).
+// notes' "3 of last 4 runs missed" framing (3/4 ≥ 0.5).
 const MISS_STREAK_THRESHOLD = 0.5;
 
 /**
- * Composes the "Past tasks (N of last M missed)" subhead string when a device's most-recent
+ * Composes the "Past tasks (N of last M runs missed)" subhead string when a device's most-recent
  * history entries show a meaningful miss streak. Returns `null` when the streak is below the
  * threshold (or the window is too short to be meaningful) so the caller can render the plain
  * "Past tasks" heading instead.
@@ -238,7 +238,7 @@ export const formatMissStreakAggregateLine = (
   if (recent.length < 2) return null;
   const missed = recent.filter((entry) => entry.outcome === 'missed').length;
   if (missed / recent.length < MISS_STREAK_THRESHOLD) return null;
-  return `${missed} of last ${recent.length} missed`;
+  return `${missed} of last ${recent.length} runs missed`;
 };
 
 const MINUTE_MS = 60 * 1000;
