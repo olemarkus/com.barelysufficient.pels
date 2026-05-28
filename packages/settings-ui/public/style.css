@@ -7540,7 +7540,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 @media (max-width: 430px) {
-  :where(
+  /* Match the base `.card.panel:where(...)` reset specificity (0,2,0) so this
+     narrow-viewport override actually wins. A bare `:where()` (0,0,0) loses to
+     the earlier base rule regardless of source order; with equal specificity
+     the later-in-source rule wins. */
+  .card.panel:where(
     #devices-panel,
     #modes-panel,
     #limits-panel,
