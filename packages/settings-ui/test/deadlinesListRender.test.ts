@@ -597,3 +597,71 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
     });
   });
 });
+
+// PR-10 — 7-day hit-rate strip rendered above the past-tasks list. The view
+// only paints what the producer composes; these tests pin presence/absence
+// and that `nowMs` threads through so the strip is snapshot-stable like the
+// week dividers above the same list.
+describe('DeadlinesHistoryList 7-day hit-rate strip', () => {
+  const DEADLINE_BASE = Date.UTC(2026, 4, 16, 16, 0, 0);
+
+  const buildHistoryEntry = (
+    overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
+  ): DeferredObjectivePlanHistoryEntry => ({
+    id: 'entry-1',
+    deviceId: 'dev_a',
+    deviceName: 'Boiler',
+    objectiveKind: 'temperature',
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: DEADLINE_BASE,
+    startedAtMs: DEADLINE_BASE - 6 * HOUR_MS,
+    finalizedAtMs: DEADLINE_BASE,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 4,
+    outcome: 'met',
+    metAtMs: DEADLINE_BASE,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation',
+    originalPlan: null,
+    finalPlan: null,
+    ...overrides,
+  });
+
+  it('renders the strip with the producer-composed text when entries land in the window', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: [
+        buildHistoryEntry({ id: 'a', outcome: 'met' }),
+        buildHistoryEntry({ id: 'b', outcome: 'met' }),
+        buildHistoryEntry({ id: 'c', outcome: 'missed' }),
+      ],
+      timeZone: 'UTC',
+      nowMs: DEADLINE_BASE + HOUR_MS,
+    });
+    const strip = mount.querySelector('.deadlines-history__summary-strip');
+    expect(strip).not.toBeNull();
+    expect(strip!.textContent).toBe('Last 7 days · 2 succeeded · 1 missed · 67% hit rate');
+  });
+
+  it('hides the strip when no entries fall in the 7-day window', () => {
+    // Entries dated two weeks before `nowMs` — outside the window. The strip
+    // must not render at all so a quiet-week landing surface stays quiet
+    // rather than displaying an empty pill.
+    const mount = mountIntoBody();
+    const nowMs = DEADLINE_BASE + 14 * 24 * HOUR_MS;
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: [buildHistoryEntry({ outcome: 'met' })],
+      timeZone: 'UTC',
+      nowMs,
+    });
+    expect(mount.querySelector('.deadlines-history__summary-strip')).toBeNull();
+  });
+});
