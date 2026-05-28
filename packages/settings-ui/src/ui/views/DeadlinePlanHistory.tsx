@@ -1,6 +1,7 @@
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryDeadlineLine,
+  formatPlanHistoryMissedReason,
   formatPlanHistoryObservedCoverage,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryProgressLine,
@@ -30,6 +31,14 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   // the target by > 5 °C / > 10 %. Null on the other outcomes so the line is
   // suppressed cleanly — view never branches on `outcome` itself.
   const overshootLine = formatPlanHistoryOvershootLine(entry);
+  // Missed-row reason note: muted single-sentence "why" for Missed entries so
+  // the user sees the cause without tapping through to the detail hero. Mirrors
+  // the same blameless sentence the detail "Why:" line renders (sourced from
+  // the shared `formatPlanHistoryMissedReason` helper, which also feeds
+  // runtime log breadcrumbs — `feedback_ui_text_shared_with_logs.md`).
+  // Producer returns null on non-missed outcomes so the view never branches
+  // on `outcome` itself.
+  const missedReasonLine = formatPlanHistoryMissedReason(entry);
   // Trim trailing/leading whitespace from user-entered Homey device names so
   // the displayed row isn't padded. Empty / whitespace-only names collapse the
   // device line — matches the pre-fix falsy guard on the raw value.
@@ -51,6 +60,9 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
           {progressLine}
           {reachedAtLine && <span class="plan-history-card__reached">  ·  {reachedAtLine}</span>}
         </div>
+      )}
+      {missedReasonLine && (
+        <div class="plan-history-card__reason">{missedReasonLine}</div>
       )}
       {overshootLine && (
         <div class="plan-history-card__overshoot">{overshootLine}</div>

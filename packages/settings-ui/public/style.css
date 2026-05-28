@@ -1673,6 +1673,16 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
+/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+ * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
+ * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
+ * scanning user sees the cause without tapping through. Producer resolves
+ * `null` on non-missed outcomes; the view never branches on `outcome`. */
+.plan-history-card__reason {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 .plan-history-card__pills {
   display: flex;
   flex-wrap: wrap;
