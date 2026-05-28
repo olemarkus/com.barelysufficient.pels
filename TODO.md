@@ -849,7 +849,7 @@ the renderer can land.*
       mistake).** `packages/shared-domain/src/deferredPlanHistory.ts:213`
       already exports `formatMissStreakAggregateLine`, used today only on
       the Smart-tasks list (`DeadlinesHistoryList.tsx`) as e.g.
-      "Connected 300 — 2 of last 4 missed". Persona-5 owners reach
+      "Connected 300 — 2 of last 4 runs missed". Persona-5 owners reach
       Overview from notifications, not via Smart-tasks. Surface the same
       data as a single chip / rail on Overview ("3 misses this week" or
       a per-device chip cluster). Needs an Overview API field carrying
