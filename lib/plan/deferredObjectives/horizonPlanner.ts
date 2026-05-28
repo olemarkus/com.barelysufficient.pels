@@ -3,6 +3,7 @@ import {
   allocateEnergyToBuckets,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
+  type StepForBucket,
 } from './bucketAllocation';
 import {
   getActiveObjectiveSteps,
@@ -11,7 +12,6 @@ import {
 } from './stepSelection';
 import type {
   DeferredObjectiveCurrentBucketPlan,
-  DeferredObjectiveHorizonBucket,
   DeferredObjectiveHorizonInput,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveHorizonStatus,
@@ -92,23 +92,25 @@ export const planDeferredObjectiveHorizon = (
     committed: input.committed,
     committedHours: input.committedHours,
   });
-  // Floor commitment: by default the lowest active step is the only level we can
-  // guarantee for the full hour (higher steps depend on transient headroom). For
-  // a *fully-reserved* objective (both `exemptFromBudget` and
-  // `limitLowerPriorityDevices` set to 'always'), `resolveFloorStep` promotes
-  // the floor to the highest step the per-bucket reserved-headroom forecast
-  // supports — those higher steps are then as guaranteed as the min step, by
-  // construction of the forecast (Slice 2 of Cause #2). `hard-cap-is-physical`
-  // is preserved: the planner commits at a step the producer has verified
-  // against the forecast, and a wrong forecast is caught by the per-cycle
-  // re-solve and the deadline-reserve backstop.
-  const floorStep = resolveFloorStep({
-    activeSteps,
-    buckets: input.buckets,
-    fullyReserved: input.objective.fullyReserved ?? false,
-  });
+  // Floor commitment: by default the lowest active step is the only level we
+  // can guarantee for the full hour (higher steps depend on transient
+  // headroom). For a *fully-reserved* objective (both `exemptFromBudget` and
+  // `limitLowerPriorityDevices` set to 'always'), `resolveStepForBucket`
+  // promotes each bucket independently to the highest step its own
+  // reserved-headroom forecast supports — those higher steps are then as
+  // guaranteed as the min step *for that hour*, by construction of the
+  // forecast. Different buckets across the horizon can land at different
+  // steps. `hard-cap-is-physical` holds: each bucket commits at a step the
+  // producer has verified against that bucket's forecast, and a wrong
+  // forecast is caught by the per-cycle re-solve, the deadline-reserve
+  // at-risk backstop, and the per-hour `reservedHeadroomKw × duration`
+  // ceiling in `resolveBucketStepCapacityKWh`.
+  const fullyReserved = input.objective.fullyReserved ?? false;
+  const stepForBucket: StepForBucket = (bucket) => (
+    resolveStepForBucket(bucket, activeSteps, fullyReserved)
+  );
   const allocation = resolveAllocation({
-    step: floorStep,
+    stepForBucket,
     buckets,
     committed,
     committedHours: input.committedHours,
@@ -123,7 +125,7 @@ export const planDeferredObjectiveHorizon = (
     energyNeededKWh,
     epsilonKWh,
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
-    floorStep,
+    stepForBucket,
   });
   const budgetBound = resolveBudgetBoundFeasibility({
     activeSteps,
@@ -175,14 +177,14 @@ const resolveCommittedFlag = (params: {
 // `resolveClimbedBandFeasibility`) without re-introducing optimism into the
 // commitment.
 const resolveAllocation = (params: {
-  step: DeferredObjectiveStep;
+  stepForBucket: StepForBucket;
   buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
   committed: boolean;
   committedHours: DeferredObjectiveHorizonInput['committedHours'];
   energyNeededKWh: number;
   epsilonKWh: number;
 }): BucketAllocationResult => {
-  const { step } = params;
+  const { stepForBucket } = params;
   // Branch on `committed`, not `committedHours.length`. An active commitment
   // with zero allocated hours (e.g. a previously stored `cannot_meet` plan)
   // must stay on the committed-replan path so the allocator cannot silently
@@ -190,7 +192,7 @@ const resolveAllocation = (params: {
   if (params.committed) {
     return allocateCommittedEnergyToBuckets({
       buckets: params.buckets,
-      step,
+      stepForBucket,
       energyNeededKWh: params.energyNeededKWh,
       epsilonKWh: params.epsilonKWh,
       committedHours: params.committedHours ?? [],
@@ -198,7 +200,7 @@ const resolveAllocation = (params: {
   }
   return allocateEnergyToBuckets({
     buckets: params.buckets,
-    step,
+    stepForBucket,
     energyNeededKWh: params.energyNeededKWh,
     epsilonKWh: params.epsilonKWh,
   });
@@ -227,16 +229,25 @@ const resolveClimbedBandFeasibility = (params: {
   energyNeededKWh: number;
   epsilonKWh: number;
   floorUnplannedKWh: number;
-  // The step the floor pass actually used. With Slice 2's reserved-headroom
-  // promotion this may be higher than `activeSteps[0]`; the climbed probe only
-  // adds information when there is genuine headroom above the floor step.
-  floorStep: DeferredObjectiveStep;
+  // Per-bucket floor step resolver used by the floor pass. With per-bucket
+  // promotion, different buckets land at different steps; the probe runs
+  // at the *uniform* max step for every bucket as the feasibility upper
+  // bound. The probe is skipped when no bucket would gain capacity by
+  // climbing (climb step ≤ every bucket's floor step).
+  stepForBucket: StepForBucket;
 }): boolean => {
   if (params.floorUnplannedKWh <= params.epsilonKWh) return false;
   const climbStep = params.activeSteps[params.activeSteps.length - 1];
-  if (climbStep.usefulPowerKw <= params.floorStep.usefulPowerKw) return false;
+  // No bucket can gain capacity if climb step doesn't exceed every bucket's
+  // floor step. (For non-fully-reserved / single-step devices the floor is
+  // always `activeSteps[0]`, so this only short-circuits when activeSteps
+  // has a single rung.)
+  const climbAddsCapacity = params.buckets.some(
+    (bucket) => climbStep.usefulPowerKw > params.stepForBucket(bucket).usefulPowerKw,
+  );
+  if (!climbAddsCapacity) return false;
   const climbed = resolveAllocation({
-    step: climbStep,
+    stepForBucket: () => climbStep,
     buckets: params.buckets,
     committed: params.committed,
     committedHours: params.committedHours,
@@ -246,52 +257,44 @@ const resolveClimbedBandFeasibility = (params: {
   return climbed.unplannedUsefulEnergyKWh <= params.epsilonKWh;
 };
 
-// Per-horizon (v1) committed-floor step selection for fully-reserved smart
-// tasks. By default the floor stays at `activeSteps[0]` (the min step is the
-// only level guaranteed for the full hour). When the objective holds both the
+// Per-bucket floor step selection for fully-reserved smart tasks. By default
+// each bucket's floor stays at `activeSteps[0]` (the min step is the only
+// level guaranteed for the full hour). When the objective holds both the
 // `exemptFromBudget` and `limitLowerPriorityDevices === 'always'` rescue
-// permissions, the higher steps are as guaranteed as the min step *within the
-// reserved-headroom forecast* — we can clear lower-priority controlled
-// devices up to the hard cap and the budget cap is lifted. This picks the
-// highest active step whose `usefulPowerKw` fits the *minimum*
-// `reservedHeadroomKw` across all horizon buckets, so the chosen floor is safe
-// for every hour of the horizon. If any bucket lacks a forecast we cannot
-// promise more than the min step and fall back to it. Single-step devices
-// (`activeSteps.length === 1`) trivially keep the min step.
+// permissions, each bucket can be promoted independently to the highest
+// active step whose `usefulPowerKw` fits THAT bucket's own
+// `reservedHeadroomKw` forecast. Hours with generous forecast headroom
+// commit at a higher step's capacity; hours with tight forecast headroom
+// stay at the lower step. Buckets lacking a forecast fall back to
+// `activeSteps[0]` (we cannot promise more than the producer has verified).
+// Single-step devices (`activeSteps.length === 1`) trivially keep the min
+// step on every bucket.
 //
-// `hard-cap-is-physical` holds: the floor is still committed at a step the
-// producer has verified against the forecast — never at the max step. A drift
-// in the forecast (an unexpected non-sheddable surge) is caught by the
-// per-cycle re-solve and the deadline-reserve at-risk backstop, not by
-// over-committing here.
-const resolveFloorStep = (params: {
-  activeSteps: NonEmptyObjectiveSteps;
-  buckets: readonly DeferredObjectiveHorizonBucket[];
-  fullyReserved: boolean;
-}): DeferredObjectiveStep => {
-  const { activeSteps, buckets, fullyReserved } = params;
-  if (!fullyReserved || activeSteps.length === 1 || buckets.length === 0) {
-    return activeSteps[0];
-  }
-  let minHeadroomKw = Number.POSITIVE_INFINITY;
-  for (const bucket of buckets) {
-    if (
-      typeof bucket.reservedHeadroomKw !== 'number'
-      || !Number.isFinite(bucket.reservedHeadroomKw)
-    ) {
-      return activeSteps[0];
-    }
-    if (bucket.reservedHeadroomKw < minHeadroomKw) {
-      minHeadroomKw = bucket.reservedHeadroomKw;
-    }
-  }
-  if (minHeadroomKw === Number.POSITIVE_INFINITY) return activeSteps[0];
+// `hard-cap-is-physical` holds: each bucket commits at a step the producer
+// has verified against THAT bucket's forecast. A drift in the forecast (an
+// unexpected non-sheddable surge) is caught by the per-cycle re-solve, the
+// deadline-reserve at-risk backstop, and — load-bearing — the per-hour
+// `reservedHeadroomKw × duration` ceiling stacked into
+// `resolveBucketStepCapacityKWh` (`bucketAllocation.ts`). A transient
+// forecast spike that promotes the step is harmless because the SAME
+// `reservedHeadroomKw` also caps the planned kWh, so a wrongly-promoted
+// step cannot grow the bucket's committed energy beyond what the forecast
+// also allows. Keep step selection and the kWh ceiling using the same
+// `reservedHeadroomKw` source so this invariant doesn't decouple.
+const resolveStepForBucket = (
+  bucket: { reservedHeadroomKw?: number | undefined },
+  activeSteps: NonEmptyObjectiveSteps,
+  fullyReserved: boolean,
+): DeferredObjectiveStep => {
+  if (!fullyReserved || activeSteps.length === 1) return activeSteps[0];
+  const headroom = bucket.reservedHeadroomKw;
+  if (typeof headroom !== 'number' || !Number.isFinite(headroom)) return activeSteps[0];
   // `activeSteps` is sorted ascending by `usefulPowerKw` (see
   // `normalizeObjectiveSteps`). Pick the rightmost step that fits; default to
   // the min step when even it does not.
   let promotedIndex = 0;
   for (let i = 1; i < activeSteps.length; i += 1) {
-    if (activeSteps[i].usefulPowerKw <= minHeadroomKw) {
+    if (activeSteps[i].usefulPowerKw <= headroom) {
       promotedIndex = i;
     }
   }
@@ -335,8 +338,9 @@ const resolveBudgetBoundFeasibility = (params: {
     ...bucket,
     usefulEnergyCapKWh: Number.POSITIVE_INFINITY,
   }));
+  const climbStep = params.activeSteps[params.activeSteps.length - 1];
   const uncapped = resolveAllocation({
-    step: params.activeSteps[params.activeSteps.length - 1],
+    stepForBucket: () => climbStep,
     buckets: uncappedBuckets,
     committed: params.committed,
     committedHours: params.committedHours,
