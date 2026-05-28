@@ -19,6 +19,7 @@ import {
   formatSafePaceTooltip,
 } from '../../../../shared-domain/src/planHeroTooltips.ts';
 import { resolveDisplayPlanDevices } from '../planLiveData.ts';
+import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemantics.ts';
 import type { PlanDeviceSnapshot, PlanMetaSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type {
   SettingsUiPowerStatus,
@@ -121,15 +122,20 @@ const buildDecisionSentence = ({
   overHardLimit: boolean;
   projectionTone: ProjectionTone | null;
   safePaceKw: number | null;
-}): { text: string; positive: boolean } => buildSharedDecisionSentence({
-  limitedCount: devices.filter(isLimitedDevice).length,
-  resumingCount: devices.filter(isResumingDevice).length,
-  freshness: freshnessState,
-  dryRun,
-  overHardLimit,
-  projectedOverBudget: projectionTone === 'warning' || projectionTone === 'critical',
-  safePaceKw,
-});
+}): { text: string; positive: boolean } => {
+  const limited = devices.filter(isLimitedDevice);
+  return buildSharedDecisionSentence({
+    limitedCount: limited.length,
+    resumingCount: devices.filter(isResumingDevice).length,
+    freshness: freshnessState,
+    dryRun,
+    overHardLimit,
+    projectedOverBudget: projectionTone === 'warning' || projectionTone === 'critical',
+    safePaceKw,
+    deferredObjectiveAvoidCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.deferredObjectiveAvoid).length,
+    dailyBudgetLimitedCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.dailyBudget).length,
+  });
+};
 
 // ─── Power bar helpers ────────────────────────────────────────────────────────
 
