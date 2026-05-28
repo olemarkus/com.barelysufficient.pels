@@ -8,6 +8,7 @@ import {
   formatPlanHistoryReceiptTimeline,
   formatPlanHistoryShortfallChip,
   groupPlanHistoryByIsoWeek,
+  resolvePlanHistory7DayHitRateStrip,
 } from '../packages/shared-domain/src/deferredPlanHistoryReceipt';
 import type {
   DeferredObjectivePlanHistoryEntry,
@@ -349,5 +350,151 @@ describe('groupPlanHistoryByIsoWeek', () => {
       expect(groups[0]!.heading.startsWith('Last week')).toBe(false);
       expect(groups[0]!.heading).toMatch(/^Week of /);
     });
+  });
+});
+
+// PR-10 — 7-day hit-rate strip rendered above the past-tasks weekly archive.
+// First-impression aggregate for the recovering-from-mistake persona. The
+// hit-rate denominator excludes abandoned/replaced/unknown entries so a
+// blameless abort doesn't penalise the user's planner success rate.
+describe('resolvePlanHistory7DayHitRateStrip', () => {
+  // Anchor inside the canonical DEADLINE_MS week so the entries built with
+  // `buildEntry` (finalizedAtMs = DEADLINE_MS - 1h) land in-window by default.
+  const NOW_MS = Date.UTC(2026, 4, 16, 12, 0, 0);
+
+  it('returns null on empty entry lists so the view hides the strip', () => {
+    expect(resolvePlanHistory7DayHitRateStrip([], NOW_MS, 'UTC')).toBeNull();
+  });
+
+  it('returns null when every entry falls outside the 7-day window', () => {
+    // Push every entry's finalizedAtMs two weeks back — both the deadline
+    // and the finalised stamp must land outside the window.
+    const twoWeeksBackMs = NOW_MS - 14 * 24 * HOUR_MS;
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({
+          outcome: 'met',
+          deadlineAtMs: twoWeeksBackMs,
+          finalizedAtMs: twoWeeksBackMs,
+        }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).toBeNull();
+  });
+
+  it('renders 100% hit rate when every in-window entry succeeded', () => {
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({ id: 'a', outcome: 'met' }),
+        buildEntry({ id: 'b', outcome: 'met' }),
+        buildEntry({ id: 'c', outcome: 'met' }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    expect(strip!.succeeded).toBe(3);
+    expect(strip!.missed).toBe(0);
+    expect(strip!.abandoned).toBe(0);
+    expect(strip!.hitRatePercent).toBe(100);
+    expect(strip!.text).toBe('Last 7 days · 3 succeeded · 100% hit rate');
+  });
+
+  it('renders 0% hit rate when every in-window entry missed', () => {
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({ id: 'a', outcome: 'missed' }),
+        buildEntry({ id: 'b', outcome: 'missed' }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    expect(strip!.succeeded).toBe(0);
+    expect(strip!.missed).toBe(2);
+    expect(strip!.hitRatePercent).toBe(0);
+    expect(strip!.text).toBe('Last 7 days · 2 missed · 0% hit rate');
+  });
+
+  it('mixes succeeded/missed/abandoned with chip vocabulary and rounded percent', () => {
+    // 8 succeeded + 3 missed + 1 abandoned: hit rate = 8 / 11 ≈ 72.7% → 73%.
+    // The abandoned entry surfaces in the strip but is excluded from the
+    // denominator so blameless aborts don't move the rate.
+    const entries = [
+      ...Array.from({ length: 8 }, (_, i) => buildEntry({ id: `m${i}`, outcome: 'met' as const })),
+      ...Array.from({ length: 3 }, (_, i) => buildEntry({ id: `x${i}`, outcome: 'missed' as const })),
+      buildEntry({ id: 'a', outcome: 'abandoned' }),
+    ];
+    const strip = resolvePlanHistory7DayHitRateStrip(entries, NOW_MS, 'UTC');
+    expect(strip).not.toBeNull();
+    expect(strip!.succeeded).toBe(8);
+    expect(strip!.missed).toBe(3);
+    expect(strip!.abandoned).toBe(1);
+    expect(strip!.hitRatePercent).toBe(73);
+    expect(strip!.text).toBe('Last 7 days · 8 succeeded · 3 missed · 1 abandoned · 73% hit rate');
+  });
+
+  it('collapses replaced into abandoned for the chip count', () => {
+    // `replaced` is the user-swapped path; it should fold into the same
+    // chip-vocabulary `abandoned` bucket as the week-divider grouping does.
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({ id: 'a', outcome: 'met' }),
+        buildEntry({ id: 'b', outcome: 'abandoned' }),
+        buildEntry({ id: 'c', outcome: 'replaced' }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    expect(strip!.abandoned).toBe(2);
+    expect(strip!.succeeded).toBe(1);
+    expect(strip!.text).toContain('2 abandoned');
+  });
+
+  it('returns a null hit rate when only abandoned entries land in the window', () => {
+    // No Succeeded + Missed entries → the percent half is suppressed entirely
+    // rather than fabricating a "0% hit rate" off blameless aborts.
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({ id: 'a', outcome: 'abandoned' }),
+        buildEntry({ id: 'b', outcome: 'replaced' }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    expect(strip!.hitRatePercent).toBeNull();
+    expect(strip!.text).toBe('Last 7 days · 2 abandoned');
+  });
+
+  it('includes entries on the 7-day boundary and excludes those just outside it', () => {
+    // Entry whose finalizedAtMs is exactly cutoff = NOW_MS - 7d → included.
+    // Entry one millisecond older → excluded.
+    const cutoffMs = NOW_MS - 7 * 24 * HOUR_MS;
+    const strip = resolvePlanHistory7DayHitRateStrip(
+      [
+        buildEntry({
+          id: 'on-boundary',
+          outcome: 'met',
+          deadlineAtMs: cutoffMs,
+          finalizedAtMs: cutoffMs,
+        }),
+        buildEntry({
+          id: 'just-outside',
+          outcome: 'missed',
+          deadlineAtMs: cutoffMs - 1,
+          finalizedAtMs: cutoffMs - 1,
+        }),
+      ],
+      NOW_MS,
+      'UTC',
+    );
+    expect(strip).not.toBeNull();
+    expect(strip!.succeeded).toBe(1);
+    expect(strip!.missed).toBe(0);
+    expect(strip!.hitRatePercent).toBe(100);
   });
 });
