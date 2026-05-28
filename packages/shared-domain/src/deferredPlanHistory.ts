@@ -5,7 +5,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH, revisionReason } from './deadlineLabels.js';
+import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels.js';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution.js';
 import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
@@ -870,6 +870,14 @@ export const formatPlanHistoryAbandonedSecondary = (
 export type PlanHistoryRevisionLogRow = {
   timeLabel: string;
   reason: string;
+  // True when the recorder emitted a reason code the resolver hasn't learned
+  // about and the row fell back to the producer label `Plan refreshed`. The
+  // view layer reads this to swap in the longer `Plan refreshed (details
+  // unavailable)` row copy and to suppress the hour-diff chip (otherwise the
+  // chip would misattribute the diff to a vague reason). Mirrors the same
+  // field on `ActivePlanRevisionLogRow` so both surfaces handle fallback
+  // rows identically.
+  isFallback: boolean;
   hourDiff: string | null;
   hourDiffAriaLabel: string | null;
 };
@@ -921,10 +929,15 @@ export const formatPlanHistoryRevisionEntry = (
   kind: DeferredObjectiveSettingsKind,
 ): PlanHistoryRevisionLogRow => {
   const timeLabel = formatClockTime(entry.atMs, timeZone) ?? '—';
-  const reason = revisionReason(entry.reasonId, kind);
+  // Use the structural resolver so the row carries `isFallback`. History-detail
+  // entries never pass disambiguation signals — the recorder-summarised entry
+  // shape doesn't carry them — so `schedule_revised` rows stay on the bare
+  // label, matching the live panel's behaviour when the disambiguation signals
+  // are absent.
+  const { label: reason, isFallback } = resolveRevisionReason(entry.reasonId, kind);
   const hourDiff = formatHourDiff(entry.hoursAdded, entry.hoursRemoved);
   const hourDiffAriaLabel = formatHourDiffAriaLabel(entry.hoursAdded, entry.hoursRemoved);
-  return { timeLabel, reason, hourDiff, hourDiffAriaLabel };
+  return { timeLabel, reason, isFallback, hourDiff, hourDiffAriaLabel };
 };
 
 /**

@@ -9,6 +9,7 @@ import type {
 import {
   deadlineLabels,
   formatLastSampleValue,
+  REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
@@ -28,6 +29,7 @@ import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
 import { ExpandMoreIcon } from './icons.tsx';
+import { logSettingsWarn } from '../logging.ts';
 
 // Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (~1340-1374). `alert` was previously
@@ -1158,10 +1160,17 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
 // power users investigating why the plan looks the way it does. Suppressed
 // entirely when there are fewer than two revisions worth showing (a brand-new
 // task whose only revision is `latest` would render a single redundant row).
-// One-shot guard so we warn at most once per session per unknown reason
-// pattern. The set survives across panel re-mounts because it lives at module
-// scope; that's intentional — if the recorder ships a new reason code, we
-// want one warning to make it into devtools/Sentry, not one per render tick.
+// One-shot guard so we breadcrumb at most once per session per unknown
+// reason. The set survives across panel re-mounts because it lives at
+// module scope; that's intentional — if the recorder ships a new reason
+// code, we want one entry in the runtime log per session, not one per
+// render tick.
+//
+// Breadcrumbs route through `logSettingsWarn` to the runtime
+// `settings_ui_log` API → `app.log(...)`, so the signal lands in the
+// app's stdout log (`/tmp/pels/start.*.stdout.log`) where new reason
+// codes are actually noticed; the settings UI's `console` is invisible
+// to users in the Homey WebView and out of scope for ops anyway.
 const warnedFallbackRevisions = new Set<string>();
 
 const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void => {
@@ -1170,8 +1179,10 @@ const noteFallbackRevisions = (rows: readonly ActivePlanRevisionLogRow[]): void 
     const key = `r${row.revision}@${row.timeLabel}`;
     if (warnedFallbackRevisions.has(key)) continue;
     warnedFallbackRevisions.add(key);
-    console.warn(
-      `[PELS] Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+    void logSettingsWarn(
+      `Revision ${row.revision} (${row.timeLabel}) has an unknown reason code; rendered as fallback label. Update REVISION_REASON_LABEL in deadlineLabels.ts.`,
+      undefined,
+      'deadline_plan.unknown_revision_reason',
     );
   }
 };
@@ -1187,19 +1198,33 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
   const { revisionSummary } = payload;
   return (
     <section class="pels-surface-card budget-redesign-card">
+      {/* Eyebrow distinguishes the live-task surface ("Live") from the
+          post-finalization history-detail surface ("After this task ran"),
+          which share the `.plan-revision-row` markup per `pels-m3-critic`'s
+          contract. Anchored to the canonical `.eyebrow` primitive. */}
+      <p class="eyebrow">Live</p>
+      {/* Summary subline sits OUTSIDE `<details>` so the producer's
+          one-line "why?" answer is visible while the panel is collapsed.
+          HTML hides every child of `<details>` except `<summary>` when
+          closed, so the subline must be a sibling — placing it here keeps
+          the at-rest "Recent plan changes — Schedule revised · 15:42 · +1h"
+          read without forcing the user to expand. Wraps cleanly at 320 px
+          via the `.plan-revision-panel` flex column. */}
+      {revisionSummary.text !== null && (
+        <p class="plan-revision-panel__summary-subline">{revisionSummary.text}</p>
+      )}
       <details class="plan-revision-panel">
         <summary class="plan-revision-panel__summary">
           <span class="plan-card__title">Recent plan changes</span>
-          {revisionSummary.text !== null && (
-            <small class="section-hint">{revisionSummary.text}</small>
-          )}
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <ol class="plan-revision-log">
           {payload.revisionLog.map((row) => (
             <li key={`${row.revision}-${row.timeLabel}`} class="plan-revision-row">
               <span class="plan-revision-time">{row.timeLabel}</span>
-              <span class="plan-revision-reason">{row.reason}</span>
+              <span class="plan-revision-reason">
+                {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
+              </span>
               {/* Suppress the diff chip on fallback rows — the chip would
                   otherwise misattribute the +/−Nh diff to a "Plan refreshed"
                   line that says nothing about why the hours changed. */}

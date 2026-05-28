@@ -21,6 +21,7 @@ import {
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
   deadlineLabels,
+  REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
@@ -915,6 +916,12 @@ type RevisionsCardRow = PlanHistoryRevisionLogRow & { atMs: number };
 
 const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
   <section class="pels-surface-card budget-redesign-card plan-history-detail__revisions-card">
+    {/* Eyebrow distinguishes the post-finalization surface ("After this
+        task ran") from the live-task panel's "Live" eyebrow; the row
+        markup (`.plan-revision-row`) stays shared per `pels-m3-critic`'s
+        contract so both surfaces look identical when narrating the same
+        revision shape. */}
+    <p class="eyebrow">After this task ran</p>
     <div class="budget-card-header">
       <h2 class="plan-card__title">What changed</h2>
     </div>
@@ -926,8 +933,13 @@ const RevisionsCard = ({ rows }: { rows: RevisionsCardRow[] }) => (
         // without us inventing a synthetic id field on the contract.
         <li key={row.atMs} class="plan-revision-row">
           <span class="plan-revision-time">{row.timeLabel}</span>
-          <span class="plan-revision-reason">{row.reason}</span>
-          {row.hourDiff !== null && (
+          <span class="plan-revision-reason">
+            {row.isFallback ? REVISION_REASON_FALLBACK_WITH_DETAIL : row.reason}
+          </span>
+          {/* Suppress the diff chip on fallback rows for the same reason
+              the live panel does — the `+/−Nh` would otherwise misattribute
+              the diff to a vague "Plan refreshed" line. */}
+          {row.hourDiff !== null && !row.isFallback && (
             <span
               class="plan-revision-diff"
               title={row.hourDiffAriaLabel ?? undefined}

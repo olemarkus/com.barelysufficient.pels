@@ -10,7 +10,7 @@ describe('materializeShedSnapshotFields', () => {
         expect(materializeShedSnapshotFields({ intent, shouldShed })).toEqual({
           shedAction: 'turn_off',
           shedTemperature: null,
-          shedStepId: null,
+          releaseShedStepId: null,
         });
       }
     });
@@ -26,7 +26,7 @@ describe('materializeShedSnapshotFields', () => {
       expect(materializeShedSnapshotFields({ intent, shouldShed: true })).toEqual({
         shedAction: 'set_temperature',
         shedTemperature: 17.5,
-        shedStepId: null,
+        releaseShedStepId: null,
       });
     });
 
@@ -37,7 +37,7 @@ describe('materializeShedSnapshotFields', () => {
       expect(materializeShedSnapshotFields({ intent, shouldShed: false })).toEqual({
         shedAction: 'turn_off',
         shedTemperature: null,
-        shedStepId: null,
+        releaseShedStepId: null,
       });
     });
   });
@@ -45,17 +45,26 @@ describe('materializeShedSnapshotFields', () => {
   describe('set_step intent', () => {
     // PR A: the producer emits set_step either for a cap-on stepped device configured for
     // set_step, or for any stepped device with no binary handle (cap-on or cap-off). Both
-    // routes use the step capability.
-    const intent: ShedActionIntent = { kind: 'set_step' };
-
-    it('returns set_step regardless of shouldShed', () => {
+    // routes use the step capability. The producer-resolved release-cascade target step is
+    // forwarded onto the snapshot triple as `releaseShedStepId`.
+    it('returns set_step with the producer-resolved targetStepId regardless of shouldShed', () => {
+      const intent: ShedActionIntent = { kind: 'set_step', targetStepId: 'low' };
       for (const shouldShed of [true, false]) {
         expect(materializeShedSnapshotFields({ intent, shouldShed })).toEqual({
           shedAction: 'set_step',
           shedTemperature: null,
-          shedStepId: null,
+          releaseShedStepId: 'low',
         });
       }
+    });
+
+    it('forwards a null targetStepId (degenerate empty profile) onto the triple', () => {
+      const intent: ShedActionIntent = { kind: 'set_step', targetStepId: null };
+      expect(materializeShedSnapshotFields({ intent, shouldShed: true })).toEqual({
+        shedAction: 'set_step',
+        shedTemperature: null,
+        releaseShedStepId: null,
+      });
     });
   });
 });
