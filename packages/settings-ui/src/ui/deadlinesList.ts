@@ -26,6 +26,7 @@ import {
   resolveChipConfidence,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
+  SMART_TASK_LIST_LOAD_ERROR_COPY,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import {
   renderDeadlinesList,
@@ -269,7 +270,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');
     renderDeadlinesList(surface, {
       status: 'error',
-      message: 'Could not load smart tasks. Try again later.',
+      message: SMART_TASK_LIST_LOAD_ERROR_COPY,
     });
   }
 };
