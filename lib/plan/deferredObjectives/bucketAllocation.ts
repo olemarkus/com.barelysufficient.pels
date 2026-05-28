@@ -16,6 +16,21 @@ type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
   reservedHeadroomKw: number | undefined;
 };
 
+// Per-bucket step resolver. Each bucket may commit at a different step when
+// the objective is fully-reserved and the producer's per-bucket
+// `reservedHeadroomKw` forecast varies across the horizon — generous-headroom
+// hours promote to a higher step, tight-headroom hours stay lower. For
+// non-fully-reserved objectives and single-step devices the resolver returns
+// the same `activeSteps[0]` for every bucket. Probes (climbed-band /
+// budget-bound feasibility) supply a uniform `() => climbStep` instead.
+//
+// Signature accepts the minimal structural shape needed — `reservedHeadroomKw`
+// alone — so callers can be the planner (`NormalizedBucket`) or test fixtures
+// without importing the full normalized type.
+export type StepForBucket = (
+  bucket: { reservedHeadroomKw?: number | undefined },
+) => DeferredObjectiveStep;
+
 type BucketSegment = {
   id: string;
   sourceBucketId: string;
@@ -76,13 +91,13 @@ export const normalizeHorizonBuckets = (params: {
 
 export const allocateEnergyToBuckets = (params: {
   buckets: NormalizedBucket[];
-  step: DeferredObjectiveStep;
+  stepForBucket: StepForBucket;
   energyNeededKWh: number;
   epsilonKWh: number;
 }): BucketAllocationResult => {
   const {
     buckets,
-    step,
+    stepForBucket,
     energyNeededKWh,
     epsilonKWh,
   } = params;
@@ -95,7 +110,7 @@ export const allocateEnergyToBuckets = (params: {
 
   for (const bucket of allocationOrder) {
     if (remainingKWh <= epsilonKWh) break;
-    const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, step);
+    const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket));
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
@@ -106,7 +121,7 @@ export const allocateEnergyToBuckets = (params: {
   }
 
   return {
-    plannedBuckets: buildPlannedBuckets({ buckets, step, plannedByBucketId }),
+    plannedBuckets: buildPlannedBuckets({ buckets, stepForBucket, plannedByBucketId }),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
@@ -134,14 +149,14 @@ export const allocateEnergyToBuckets = (params: {
 // genuine "primary's hour cannot deliver enough; we need more hours" case.
 export const allocateCommittedEnergyToBuckets = (params: {
   buckets: NormalizedBucket[];
-  step: DeferredObjectiveStep;
+  stepForBucket: StepForBucket;
   energyNeededKWh: number;
   epsilonKWh: number;
   committedHours: readonly DeferredObjectiveCommittedHour[];
 }): BucketAllocationResult => {
   const {
     buckets,
-    step,
+    stepForBucket,
     energyNeededKWh,
     epsilonKWh,
     committedHours,
@@ -158,7 +173,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
     if (remainingKWh <= epsilonKWh) break;
     const hourStartMs = Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS;
     if (!committedHourSet.has(hourStartMs)) continue;
-    const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, step);
+    const usefulEnergyCapacityKWh = resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket));
     const plannedKWh = Math.min(remainingKWh, usefulEnergyCapacityKWh);
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
@@ -186,7 +201,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
   if (remainingKWh > epsilonKWh) {
     const expansion = expandCommittedAllocation({
       buckets,
-      step,
+      stepForBucket,
       epsilonKWh,
       remainingKWh,
       plannedByBucketId,
@@ -199,7 +214,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
   }
 
   return {
-    plannedBuckets: buildPlannedBuckets({ buckets, step, plannedByBucketId }),
+    plannedBuckets: buildPlannedBuckets({ buckets, stepForBucket, plannedByBucketId }),
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
@@ -236,7 +251,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
 // in place; returns updated running totals.
 const expandCommittedAllocation = (params: {
   buckets: NormalizedBucket[];
-  step: DeferredObjectiveStep;
+  stepForBucket: StepForBucket;
   epsilonKWh: number;
   remainingKWh: number;
   plannedByBucketId: Map<string, number>;
@@ -248,7 +263,7 @@ const expandCommittedAllocation = (params: {
   usesPolicyAvoid: boolean;
 } => {
   const {
-    buckets, step, epsilonKWh, plannedByBucketId, committedHours,
+    buckets, stepForBucket, epsilonKWh, plannedByBucketId, committedHours,
   } = params;
   let remainingKWh = params.remainingKWh;
   let plannedUsefulEnergyKWh = 0;
@@ -266,7 +281,10 @@ const expandCommittedAllocation = (params: {
     // phase-1 already filled those up to step capacity. Expansion adds
     // *new* hours, never duplicating allocation against a committed slot.
     if (committedHourSet.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
-    const plannedKWh = Math.min(remainingKWh, resolveBucketStepCapacityKWh(bucket, step));
+    const plannedKWh = Math.min(
+      remainingKWh,
+      resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
+    );
     if (plannedKWh <= epsilonKWh) continue;
     plannedByBucketId.set(bucket.id, plannedKWh);
     plannedUsefulEnergyKWh += plannedKWh;
@@ -536,12 +554,12 @@ const resolveBucketStepCapacityKWh = (
 
 const buildPlannedBuckets = (params: {
   buckets: NormalizedBucket[];
-  step: DeferredObjectiveStep;
+  stepForBucket: StepForBucket;
   plannedByBucketId: ReadonlyMap<string, number>;
 }): DeferredObjectivePlannedBucket[] => {
   const {
     buckets,
-    step,
+    stepForBucket,
     plannedByBucketId,
   } = params;
   return buckets.map((bucket) => ({
@@ -554,7 +572,7 @@ const buildPlannedBuckets = (params: {
     policyScore: bucket.policyScore,
     reserve: bucket.reserve,
     current: bucket.current,
-    usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, step),
+    usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
     plannedUsefulEnergyKWh: plannedByBucketId.get(bucket.id) ?? 0,
   }));
 };

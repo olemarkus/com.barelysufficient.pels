@@ -772,17 +772,17 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
   });
 
-  it('uses the minimum across buckets (per-horizon v1) — a single tight bucket holds the whole horizon to min step', () => {
-    // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). The v1
-    // per-horizon floor-step selection uses the *minimum* so the chosen
-    // floor is safe in every bucket; the v1 per-hour cap then enforces
-    // the actual per-bucket headroom on top. → floor stays at min step,
-    // 7 generous buckets place a full 1 kWh, the tight bucket is capped
-    // at 0.5 kWh. Climb probe at max=3 reaches min(3, 4) = 3 kWh in the
-    // generous buckets, leaving 21.5 kWh of climbed capacity vs 18 kWh
-    // need → `feasible_above_floor`. (Per-horizon floor selection is a
-    // known limitation — promotion to per-bucket step selection is a
-    // separate follow-up.)
+  it('promotes generous-headroom buckets to higher steps while tight-headroom buckets stay at min step', () => {
+    // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). Per-bucket
+    // promotion: generous buckets commit at the highest active step that
+    // fits 4 kW = `max` (3 kW); the tight bucket has no step that fits 0.5
+    // kW (even low = 1 kW exceeds it), so it falls back to `activeSteps[0]`
+    // = low. Per-hour cap then enforces the actual per-bucket headroom on
+    // top: generous buckets place min(3, ∞, 4) = 3 kWh; tight bucket places
+    // min(1, ∞, 0.5) = 0.5 kWh. 7 × 3 + 0.5 = 21.5 kWh capacity against 18
+    // kWh need → on_track. (Pre-per-bucket behaviour: a single tight bucket
+    // held the whole horizon to min step and the task degraded to at_risk;
+    // per-bucket promotion eliminates that pessimism.)
     const headrooms = [4, 4, 0.5, 4, 4, 4, 4, 4];
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
@@ -795,19 +795,21 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: headrooms.map((h, i) => bucket(i, 'neutral', { reservedHeadroomKw: h })),
     });
 
-    expect(plan.status).toBe('at_risk');
-    expect(plan.statusDetail).toBe('feasible_above_floor');
-    // Generous bucket at min step capacity = 1 kWh.
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
-    // 7 × 1 (generous) + 1 × 0.5 (tight) = 7.5 kWh placed.
-    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(7.5);
+    expect(plan.status).toBe('on_track');
+    // Tight bucket (h2) capped at headroom = 0.5 kWh.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.5);
+    // Generous bucket (h0) gets the full max-step capacity = 3 kWh.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(3);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(18);
   });
 
-  it('falls back to min step when any bucket lacks a reservedHeadroomKw forecast — we cannot promise more than we can verify', () => {
-    // Two buckets carry headroom = 4; one is missing the forecast field. The
-    // resolver fails closed (returns min step) — Slice 2 only promotes when
-    // the producer has resolved a forecast for every horizon bucket. The
-    // shortfall remains classified by Slice-1's climbed-band probe.
+  it('promotes per bucket independently — buckets without a forecast stay at min step, others promote', () => {
+    // Two buckets carry headroom = 4; one is missing the forecast field.
+    // Per-bucket promotion: forecasted buckets land at `max` (3 kW useful,
+    // capped to headroom 4 kW = 3 kWh/h); the bucket without a forecast
+    // falls back to `activeSteps[0]` = low (1 kWh/h). 3 + 1 + 3 = 7 kWh
+    // floor capacity against 8 kWh need → 1 kWh shortfall. Climb probe
+    // (uniform max=3) gets 3 × 3 = 9 kWh, fits → at_risk/feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -818,17 +820,17 @@ describe('planDeferredObjectiveHorizon', () => {
       steps: defaultSteps,
       buckets: [
         bucket(0, 'neutral', { reservedHeadroomKw: 4 }),
-        bucket(1, 'neutral'), // no reservedHeadroomKw
+        bucket(1, 'neutral'), // no reservedHeadroomKw — stays at min step
         bucket(2, 'neutral', { reservedHeadroomKw: 4 }),
       ],
     });
 
-    // Climbed-band probe (top step) DOES fit 8 kWh in 3 h (3 × 3 = 9), so the
-    // verdict softens to at_risk. Slice-2's job is only "verify we can promote
-    // the *floor*"; classification correctness still belongs to Slice 1.
     expect(plan.status).toBe('at_risk');
     expect(plan.statusDetail).toBe('feasible_above_floor');
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    // Forecasted bucket promoted to max-step capacity.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(3);
+    // Bucket without forecast holds at min step.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
   it('does not promote the floor when the objective is not fully reserved (even with ample headroom)', () => {
@@ -852,6 +854,36 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.statusDetail).toBe('feasible_above_floor');
     // Floor itself stayed at min step.
     expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('current-bucket requestedMinimumStepId reflects planned kWh, not the promoted floor-step ceiling', () => {
+    // Per-bucket promotion can put a generous bucket at `max` step capacity
+    // (e.g. 3 kWh available in 1 h), but the planner may only NEED to fill
+    // a small slice of that capacity (e.g. 0.3 kWh in the current hour to
+    // hit the target on time). The executor's `requestedMinimumStepId`
+    // must reflect what the executor actually needs to run NOW — the
+    // smallest step that fits the planned kWh — not the promoted ceiling.
+    // Otherwise the executor would over-climb and trip the hard cap.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 0.3,
+        deadlineAtMs: NOW_MS + (2 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred', { reservedHeadroomKw: 4 }),
+        bucket(1, 'preferred', { reservedHeadroomKw: 4 }),
+      ],
+    });
+
+    // Current bucket has 0.3 kWh of work — low step (1 kW × 1 h = 1 kWh)
+    // covers that comfortably, so the executor only needs to run at low.
+    // The PER-BUCKET PROMOTION (max @ 3 kW useful) is a CEILING for the
+    // commitment, not a floor for the executor's setpoint.
+    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.currentBucket?.requestedMinimumStepId).toBe('low');
   });
 
   it('is a no-op for single-step devices (the only available step is already the floor)', () => {
