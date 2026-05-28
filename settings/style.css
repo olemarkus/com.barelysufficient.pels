@@ -6438,12 +6438,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* Hero subline affordance: when the subline names a specific card, the
  * subline wraps in this button so the user can scroll the named card into
- * view. Styled as a quiet inline affordance — no chrome that competes with
- * the headline; just a hover/focus underline and a chevron suffix that
- * signals tappability. The negative-margin / padding pattern keeps the
- * visual line tight while expanding the touch target to the shared
- * Android Material touch-target floor. */
+ * view. Flat dark-theme treatment — the subline reads as ordinary
+ * de-emphasised hero body copy (`color: inherit` picks up the
+ * `.plan-hero__subline` supporting tone), with a trailing chevron as the only
+ * tappability cue. Press feedback comes from the nested `md-ripple`, so there
+ * is no permanent light/inverted container competing with the headline. The
+ * negative-margin / padding pattern keeps the visual line tight while the
+ * `min-height` token expands the hit area to the shared Android Material
+ * 48 dp touch-target floor; `position: relative` anchors the ripple overlay. */
 .deadlines-list-hero__nav-target {
+  /* Neutral, text-toned ripple — a quiet subline affordance, not the green
+     accent the surface cards use. Opacities match `.pels-surface-card` so the
+     press feel is consistent across interactive surfaces. */
+  --md-ripple-hover-color: var(--pels-text-supporting-color);
+  --md-ripple-pressed-color: var(--pels-text-supporting-color);
+  --md-ripple-hover-opacity: 0.06;
+  --md-ripple-pressed-opacity: 0.1;
+  position: relative;
   display: inline-flex;
   align-items: baseline;
   gap: var(--spacing-1);
@@ -6457,24 +6468,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: background-color var(--transition-fast);
-}
-
-.deadlines-list-hero__nav-target:hover,
-.deadlines-list-hero__nav-target:focus-visible {
-  background: var(--color-surface-3);
+  overflow: hidden;
 }
 
 .deadlines-list-hero__nav-target:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-}
-
-.deadlines-list-hero__nav-target-text {
-  text-decoration: underline;
-  text-decoration-color: var(--muted);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
 }
 
 .deadlines-list-hero__nav-target-chevron {

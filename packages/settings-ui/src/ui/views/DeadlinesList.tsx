@@ -217,12 +217,21 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
         <h2 class="plan-hero__headline" id="deadlines-list-hero-headline">{copy.headline}</h2>
         {target !== undefined ? (
           <p class="plan-hero__subline">
+            {/* Flat dark-theme text + chevron affordance — no inverted/light
+                container. The subline reads as ordinary de-emphasised hero
+                body copy (inheriting `.plan-hero__subline` supporting tone);
+                the trailing chevron is the only tappability cue, and an
+                `MdRipple` supplies press feedback so we don't carry a
+                permanent background. The button is the 48dp finger-safe hit
+                area (`min-height` token + `position: relative` to anchor the
+                ripple). */}
             <button
               type="button"
               class="deadlines-list-hero__nav-target"
               data-deadline-card-id={target.deviceId}
               onClick={() => scrollToCardByDeviceId(target.deviceId)}
             >
+              <MdRipple aria-hidden="true" />
               <span class="deadlines-list-hero__nav-target-text">{copy.subline}</span>
               <span class="deadlines-list-hero__nav-target-chevron" aria-hidden="true">›</span>
             </button>
