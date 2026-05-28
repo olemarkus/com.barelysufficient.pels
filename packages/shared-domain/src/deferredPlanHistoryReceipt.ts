@@ -48,7 +48,7 @@
 //     Outcome counts use the chip vocabulary (`succeeded` / `missed` /
 //     `abandoned`) and surface non-zero counts only, so misses and abandons
 //     don't vanish from the strip while still showing up in the per-row
-//     chips. See notes/ui-terminology.md "Chip nouns vs divider verbs".
+//     chips. See notes/ui-terminology.md "Chip adjectives vs divider verbs".
 
 import type {
   DeferredObjectivePlanHistoryEntry,
@@ -595,7 +595,7 @@ const formatWeekHeading = (
   const counts = countOutcomes(entries);
   const outcomeFragments: string[] = [];
   // Chip vocabulary on the divider — see notes/ui-terminology.md
-  // "Chip nouns vs divider verbs". Non-zero counts only so a quiet
+  // "Chip adjectives vs divider verbs". Non-zero counts only so a quiet
   // all-succeeded week doesn't carry a noisy "0 missed · 0 abandoned" tail,
   // and a zero-succeeded week still surfaces the misses/abandons that the
   // previous "N deadlines met" wording dropped on the floor.
