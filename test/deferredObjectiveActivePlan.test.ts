@@ -456,19 +456,21 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
     expect(recorder.getPlanForTests('dev')?.history).toBeUndefined();
 
-    // Drive 25 objective-changed replans by varying the target temperature
-    // each cycle — that forces an unconditional revision write regardless
-    // of the merge / committed-replan logic, which is what we want for a
-    // pure history-mechanism test (no entanglement with batch 1+2's
-    // expansion / commitment-preservation semantics).
+    // Drive 25 schedule-growth replans by extending the horizon by one new
+    // hour each cycle. Each cycle's `live` strictly contains the prior
+    // committed hour set, which routes through the `mergeHoursPreservingCommitment`
+    // grow branch and emits `schedule_revised`. Objective signature stays
+    // stable — we want to exercise the history-cap mechanism in isolation,
+    // not the `objective_changed` reset path (which clears history by design).
     for (let cycle = 1; cycle <= 25; cycle += 1) {
+      const buckets = [];
+      for (let i = 0; i <= cycle; i += 1) {
+        buckets.push(makeBucket((2 + i) * HOUR_MS, 1.5));
+      }
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs: 30 * HOUR_MS,
-        targetTemperatureC: 60 + cycle,
-        horizonPlan: makeHorizon([
-          makeBucket((1 + cycle) * HOUR_MS, 1.5),
-        ]),
+        horizonPlan: makeHorizon(buckets),
       })], (1 + cycle) * HOUR_MS);
     }
 
@@ -726,6 +728,103 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
   });
 
+  it('clears the revision history when the smart-task settings change (objective_changed)', () => {
+    // Regression: the smart-task detail page revision panel reads
+    // `latest` + `history`. Pre-change history belongs to a *different*
+    // objective (target, deadline, or device), so carrying it forward
+    // interleaves two objectives' revisions in the user-visible panel until
+    // 20 fresh entries roll over. When the resolved reason is
+    // `objective_changed` ("Smart task settings changed") the history must
+    // start empty; the new `latest` with that reason is itself the natural
+    // separator the user sees. Rescue-permission-only toggles route to
+    // `flow_permission_changed` and intentionally preserve prior history
+    // (covered by the negative test under `rescue-permission-only replan
+    // routing`).
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Build up three prior revisions (revisions 1, 2, 3) under the original
+    // objective (target 65). Each cycle extends the schedule by one new
+    // hour so `live ⊇ committed` — that drives `schedule_revised` writes
+    // and prepends each prior `latest` onto `history`.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ]),
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+        makeBucket(6 * HOUR_MS, 1.5),
+      ]),
+    })], 3 * HOUR_MS);
+
+    const beforeChange = recorder.getPlanForTests('dev');
+    expect(beforeChange?.latest?.revision).toBe(3);
+    expect(beforeChange?.history?.length).toBe(2);
+
+    // Objective signature now changes: target shifts 65 → 70.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      targetTemperatureC: 70,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2.0),
+        makeBucket(3 * HOUR_MS, 2.0),
+        makeBucket(4 * HOUR_MS, 2.0),
+      ]),
+    })], 4 * HOUR_MS);
+
+    const afterChange = recorder.getPlanForTests('dev');
+    expect(afterChange?.latest?.reason).toBe('objective_changed');
+    expect(afterChange?.latest?.revision).toBe(4);
+    // The prior 2 history entries (revisions 1 and 2) are gone — the new
+    // pending plan starts with an empty revision log.
+    expect(afterChange?.history).toEqual([]);
+
+    // Subsequent revisions append from empty: the next `schedule_revised`
+    // pushes the just-written `objective_changed` revision onto history,
+    // so the panel shows exactly one prior entry (the objective change)
+    // plus the new latest — no pre-change rows leak through. Drive a
+    // schedule grow under the new objective to force `schedule_revised`.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      targetTemperatureC: 70,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2.0),
+        makeBucket(3 * HOUR_MS, 2.0),
+        makeBucket(4 * HOUR_MS, 2.0),
+        makeBucket(5 * HOUR_MS, 2.0),
+      ]),
+    })], 5 * HOUR_MS);
+
+    const afterNext = recorder.getPlanForTests('dev');
+    expect(afterNext?.latest?.revision).toBe(5);
+    expect(afterNext?.history?.length).toBe(1);
+    expect(afterNext?.history?.[0]?.revision).toBe(4);
+    expect(afterNext?.history?.[0]?.reason).toBe('objective_changed');
+  });
+
   // Regression for the rescue-only branch of the replan-reason cascade. Toggling
   // a Flow rescue permission changes the active-plan objective signature, which
   // would otherwise route the replan through generic `objective_changed` — the
@@ -762,6 +861,67 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // The new schedule is committed under the new permission set; the next
       // cycle should treat the re-balanced hours as the committed envelope.
       expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
+    });
+
+    it('preserves prior revision history across a rescue-permission-only toggle', () => {
+      // Negative case for the objective_changed history reset: the signature
+      // changed (sigDiff.changed === true) but the resolved reason is
+      // `flow_permission_changed`, NOT `objective_changed`. The target /
+      // deadline / device are unchanged, so the prior schedule's revision
+      // log must continue across the permission toggle — only the
+      // smart-task settings edit clears the panel.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Build two revisions under the original (no-rescue) objective by
+      // growing the schedule one hour. The second observe writes revision 2
+      // with reason `schedule_revised` and prepends revision 1 onto history.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+        ]),
+      })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const beforeToggle = recorder.getPlanForTests('dev');
+      expect(beforeToggle?.latest?.revision).toBe(2);
+      expect(beforeToggle?.history?.length).toBe(1);
+
+      // Toggle rescue permission on — signature changes via the rescue tail
+      // only. Reason resolves to `flow_permission_changed`.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        rescue: { exemptFromBudget: 'at_risk' },
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 3 * HOUR_MS);
+
+      const afterToggle = recorder.getPlanForTests('dev');
+      expect(afterToggle?.latest?.reason).toBe('flow_permission_changed');
+      expect(afterToggle?.latest?.revision).toBe(3);
+      // The prior 1-entry history is preserved with the just-written
+      // schedule_revised revision prepended — not cleared.
+      expect(afterToggle?.history?.length).toBe(2);
+      expect(afterToggle?.history?.[0]?.revision).toBe(2);
+      expect(afterToggle?.history?.[1]?.revision).toBe(1);
     });
 
     it('emits flow_permission_changed when a granted rescue permission is revoked', () => {
