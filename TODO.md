@@ -2056,54 +2056,9 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
 *Prod walk follow-ups, 2026-05-27. Six review lenses (live prod state,
 prod logs, pels-copy-and-terminology, pels-m3-critic, internal UX
 critique, and pels-ux-fit walkthrough) on the Marie Michelets household
-flagged ten findings; seven landed as the train PRs #1207–#1211; three
-remain as below + the persona expansions further down.*
-
-- [ ] **"Limited by the hard cap" mis-attributes the actual binding
-      constraint on smart-task-managed devices.** Two prod situations
-      surface the same misleading label:
-      (a) After `softLimitSource` flips from `capacity` to `daily` (seen
-      mid-walk at 18:00 local), already-held devices keep their
-      carry-forward `capacity` reason — `getBaseShedReason`
-      (`lib/plan/planReasons.ts:71`) only re-evaluates on fresh sheds,
-      and the device-card formatter has no `softLimitSource` to
-      override on.
-      (b) When the deferred-objective horizon marks the current bucket
-      `preference: 'avoid'` (a smart task waiting for cheap hours), the
-      planner emits only the aggregate `usesPolicyAvoid` flag
-      (`lib/plan/deferredObjectives/horizonPlanner.ts:482`); no
-      per-device shed reason is written, so the device falls through to
-      the same `capacity` fallback.
-      The user-facing decision sentence (`buildDecisionSentence` rule 4
-      in `packages/shared-domain/src/planHeroSummary.ts:271–278`) has
-      the matching gap: it reads "Holding back N device(s) so the house
-      stays under X kW." regardless of why, even when Power-now is
-      0.6 kW.
-      **Two implementation paths exist; both are honest:**
-      - (i) Add `PLAN_REASON_CODES.deferredObjectiveAvoid` +
-        `PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS =
-        'Waiting for cheaper hours'`. Thread the avoid-bucket flag
-        through to per-device shed reasons. Larger; gives the
-        aspirational smart-task framing for personas 2 / 4.
-      - (ii) Re-evaluate `capacity → dailyBudget` re-attribution on
-        every plan cycle when `softLimitSource === 'daily'`. Smaller;
-        device-card label becomes "Limited by today's daily budget"
-        (already exists at `planStateLabels.ts:55`). Honest about the
-        binding constraint but drops the smart-task framing.
-      Either way, `DecisionSentenceInput` needs a new
-      `deferredObjectiveAvoidCount` / `dailyBudgetLimitedCount` signal
-      so rule 4 can branch.
-      Files: `packages/shared-domain/src/planStateLabels.ts`,
-      `packages/shared-domain/src/planReasonSemanticsCore.ts`,
-      `packages/shared-domain/src/planReasonFormatting.ts`,
-      `packages/shared-domain/src/planHeroSummary.ts`,
-      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `lib/plan/planReasons.ts`,
-      `lib/plan/shedding/selection.ts`,
-      `lib/plan/deferredObjectives/horizonPlanner.ts`,
-      tests under `test/planReasonUserFacing.test.ts` +
-      `test/deviceOverview.test.ts` + new producer-side test.
-      Source: 2026-05-27 prod walk, deferred PR-1 of the train.
+flagged ten findings; seven landed as the train PRs #1207–#1211 + #1220.
+Remaining: PR-7 hero-primitive migration + the persona expansions
+further down.*
 
 - [ ] **History-detail hero is a parallel implementation of the shared
       hero primitive.** `DeadlinePlanHistoryDetail.tsx:752` uses
