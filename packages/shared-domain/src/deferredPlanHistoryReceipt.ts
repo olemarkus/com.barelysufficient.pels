@@ -41,8 +41,14 @@
 //     would be fabricated. See `formatPlanHistoryAbandonedDetails`.
 //
 //   - Weekly archive (DeadlinesHistoryList): ISO-week section headings
-//     ("Week 20 · 4 deadlines met · ≈ 41 kr"). Grouping + heading copy live
-//     here so the view layer never inspects per-week aggregates.
+//     ("This week · 3 succeeded · 1 missed · ≈ 41 kr"). Grouping + heading
+//     copy live here so the view layer never inspects per-week aggregates.
+//     The lead label uses relative phrasing ("This week" / "Last week" /
+//     "Week of 12 May") rather than the engineer-facing "Week 22" ISO number.
+//     Outcome counts use the chip vocabulary (`succeeded` / `missed` /
+//     `abandoned`) and surface non-zero counts only, so misses and abandons
+//     don't vanish from the strip while still showing up in the per-row
+//     chips. See notes/ui-terminology.md "Chip nouns vs divider verbs".
 
 import type {
   DeferredObjectivePlanHistoryEntry,
@@ -51,6 +57,7 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
 import { APPROX_GLYPH } from './deadlineLabels.js';
 import {
+  formatDateInTimeZone,
   formatTimeInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
@@ -507,21 +514,91 @@ const sumEntryCost = (entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>)
   return total;
 };
 
+// Resolves the relative lead label for a week's section heading. The
+// past-tasks archive is a consumer surface — ISO week numbers ("Week 22")
+// read as engineer-speak. Anchor on the user's current week instead.
+//   - Current week → "This week"
+//   - Previous week → "Last week"
+//   - Older         → "Week of 12 May" (the week's Monday formatted)
+//
+// `weekStartMs` and `nowMs` are anchored to the supplied time zone so the
+// comparison is purely calendar-bucket (which Monday does each fall on?),
+// not wall-clock arithmetic — this side-steps DST cliffs where a 23h or 25h
+// week would otherwise flip a boundary unexpectedly.
+const formatRelativeWeekLabel = (
+  weekStartMs: number,
+  nowMs: number,
+  timeZone: string,
+): string => {
+  const currentWeekStartMs = getWeekStartInTimeZone(new Date(nowMs), timeZone);
+  if (weekStartMs === currentWeekStartMs) return 'This week';
+  // Step one week back by subtracting 7×24h from `nowMs` and re-resolving
+  // through `getWeekStartInTimeZone`. `nowMs` is a real wall-clock instant
+  // in the target zone, so the shifted instant always falls inside the
+  // intended previous calendar week — `getWeekStartInTimeZone` re-buckets
+  // it to the same Monday-anchored week-start that the entry's deadline
+  // would land on. Earlier revisions anchored the shift at midnight UTC of
+  // the current Monday's local date, which in zones west of UTC (e.g.
+  // America/New_York at UTC-4) silently landed on the previous local
+  // Sunday and bucketed two weeks back, skipping "Last week" entirely.
+  const previousWeekAnchorMs = nowMs - 7 * 24 * HOUR_MS;
+  const previousWeekStartMs = getWeekStartInTimeZone(
+    new Date(previousWeekAnchorMs),
+    timeZone,
+  );
+  if (weekStartMs === previousWeekStartMs) return 'Last week';
+  // Older weeks render as "Week of 12 May" — the Monday formatted day +
+  // short month, in the user's time zone.
+  const monthDay = formatDateInTimeZone(
+    new Date(weekStartMs),
+    { day: 'numeric', month: 'short' },
+    timeZone,
+  );
+  return `Week of ${monthDay}`;
+};
+
+type OutcomeCounts = {
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+};
+
+// `replaced` collapses into `abandoned` for the chip strip per
+// notes/ui-terminology.md — both render the same `Abandoned` chip on each
+// row, and the divider summary speaks the chip language.
+const countOutcomes = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+): OutcomeCounts => {
+  const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0 };
+  for (const entry of entries) {
+    if (entry.outcome === 'met') counts.succeeded += 1;
+    else if (entry.outcome === 'missed') counts.missed += 1;
+    else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
+      counts.abandoned += 1;
+    }
+  }
+  return counts;
+};
+
 const formatWeekHeading = (
-  week: number,
+  weekStartMs: number,
+  nowMs: number,
+  timeZone: string,
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   costUnit: string,
 ): string => {
-  const metCount = entries.filter((entry) => entry.outcome === 'met').length;
-  const lead = `Week ${week}`;
-  // v2.7.3 P2 — zero-met weeks no longer surface a "N tasks" cold fallback.
-  // The week heading reads as a quiet stripe ("Week 19") when nothing was
-  // met; the per-row chips still carry the missed/abandoned outcome. Surfacing
-  // "1 task" in the header reads as a cold audit count, not an anchor.
-  const metFragment = metCount > 0
-    ? `${metCount} ${metCount === 1 ? 'deadline' : 'deadlines'} met`
-    : null;
-  const parts = [metFragment === null ? lead : `${lead} · ${metFragment}`];
+  const lead = formatRelativeWeekLabel(weekStartMs, nowMs, timeZone);
+  const counts = countOutcomes(entries);
+  const outcomeFragments: string[] = [];
+  // Chip vocabulary on the divider — see notes/ui-terminology.md
+  // "Chip nouns vs divider verbs". Non-zero counts only so a quiet
+  // all-succeeded week doesn't carry a noisy "0 missed · 0 abandoned" tail,
+  // and a zero-succeeded week still surfaces the misses/abandons that the
+  // previous "N deadlines met" wording dropped on the floor.
+  if (counts.succeeded > 0) outcomeFragments.push(`${counts.succeeded} succeeded`);
+  if (counts.missed > 0) outcomeFragments.push(`${counts.missed} missed`);
+  if (counts.abandoned > 0) outcomeFragments.push(`${counts.abandoned} abandoned`);
+  const parts = [lead, ...outcomeFragments];
   const unit = costUnit.trim();
   const cost = sumEntryCost(entries);
   // Nordpool prices can briefly go negative; preserve the sign so a credit
@@ -544,11 +621,16 @@ const formatWeekHeading = (
  * `costUnit` is threaded through to the per-group heading so the rolled-up
  * cost ("≈ 41 kr") reads in the user's display currency. Empty unit drops
  * the cost half of the heading cleanly.
+ *
+ * `nowMs` anchors the relative-week phrasing ("This week" / "Last week" /
+ * "Week of 12 May"). The view layer threads its real wall-clock time in so
+ * the helper stays pure and snapshot-testable.
  */
 export const groupPlanHistoryByIsoWeek = (
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   timeZone: string,
   costUnit: string,
+  nowMs: number,
 ): PlanHistoryWeekGroup[] => {
   const groups: PlanHistoryWeekGroup[] = [];
   const indexByKey = new Map<string, number>();
@@ -575,10 +657,21 @@ export const groupPlanHistoryByIsoWeek = (
   // are populated. Keeps the helper O(n) and avoids the temptation to
   // recompute the heading on every push.
   return groups.map((group) => {
-    const iso = computeIsoWeekKey(group.entries[0]!.deadlineAtMs, timeZone);
-    const heading = iso === null
+    const weekStartMs = computeWeekStart(group.entries[0]!.deadlineAtMs, timeZone);
+    const heading = weekStartMs === null
       ? `Other tasks · ${group.entries.length} ${group.entries.length === 1 ? 'task' : 'tasks'}`
-      : formatWeekHeading(iso.week, group.entries, costUnit);
+      : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries, costUnit);
     return { ...group, heading };
   });
+};
+
+// Local wrapper over `getWeekStartInTimeZone` that preserves the
+// "unparseable deadline" branch the heading formatter relies on. Returning
+// `null` keeps the synthetic "Other tasks" bucket from accidentally
+// claiming a relative-week label.
+const computeWeekStart = (ms: number, timeZone: string): number | null => {
+  if (!Number.isFinite(ms)) return null;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return getWeekStartInTimeZone(date, timeZone);
 };

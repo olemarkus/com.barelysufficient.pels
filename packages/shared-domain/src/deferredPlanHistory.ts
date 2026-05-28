@@ -55,10 +55,21 @@ const formatPercent = (value: number | null): string | null => (
   value === null ? null : `${value.toFixed(0)} %`
 );
 
+// `'abandoned'` and `'replaced'` runs are finalized before the device ever
+// reached (or even attempted) the target — the persisted `finalProgressC` /
+// `finalProgressPercent` is the reading at the moment the user cleared the
+// smart task (or the diagnostic stream went stale), not the result of any
+// PELS-driven heating/charging. Rendering `start → final` for those outcomes
+// reads as "we moved the needle from X to Y", which is the opposite of what
+// happened — the run was abandoned and no progress is attributable to PELS.
+// Producer-resolves the suppression so the view layer never branches on
+// outcome; mirrors the same rule used by `formatPlanHistoryReachedAtLine`
+// (suppressed on every outcome except `'met'`).
 export const formatPlanHistoryProgressLine = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
     'objectiveKind'
+    | 'outcome'
     | 'targetTemperatureC'
     | 'targetPercent'
     | 'startProgressC'
@@ -67,17 +78,20 @@ export const formatPlanHistoryProgressLine = (
     | 'finalProgressPercent'
   >,
 ): string | null => {
+  const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
   if (entry.objectiveKind === 'temperature') {
     const start = formatTemperature(entry.startProgressC);
     const end = formatTemperature(entry.finalProgressC);
     const target = formatTemperature(entry.targetTemperatureC);
     if (!start || !target) return null;
+    if (suppressArrow) return `${start}  ·  target ${target}`;
     return `${start} → ${end ?? '—'}  ·  target ${target}`;
   }
   const start = formatPercent(entry.startProgressPercent);
   const end = formatPercent(entry.finalProgressPercent);
   const target = formatPercent(entry.targetPercent);
   if (!start || !target) return null;
+  if (suppressArrow) return `${start}  ·  target ${target}`;
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
 };
 
