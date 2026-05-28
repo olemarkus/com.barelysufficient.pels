@@ -6493,11 +6493,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
    tightens the inline gap, and carries the link-anchor reset (`color:
    inherit`, `text-decoration: none`) so the `<a>` host inherits text
    styling. Hover/focus elevation lift + outline ride the canonical
-   `data-interactive` hook; only the accent border swap is local. */
+   `data-interactive` hook; only the accent border swap is local.
+
+   Surface tier is bumped to `--pels-surface-container-high` (one step above
+   the base `.pels-surface-card` `--color-surface-1`) so the live "happening
+   now" deadlines read as the primary content tier — mirroring the hero-above-
+   cards rhythm on Overview / Budget. The past-task `.plan-history-card` rows
+   below intentionally stay on the base surface, so the active-vs-history split
+   is a class-level tier distinction (no per-card "active" flag). The hero
+   directly above shares this tier but keeps its inset highlight + larger
+   padding / toned gradients as its own differentiator, so an active card never
+   reads as identical to the hero. The tonal `--warn` / `--alert` treatments
+   live on `__when-row` text only (never a card background), so this surface
+   bump layers cleanly beneath them. */
 .deadline-list-card {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--spacing-2) var(--spacing-3);
   align-items: start;
+  background: var(--pels-surface-container-high);
   color: var(--text);
   text-decoration: none;
 }
@@ -7751,13 +7764,22 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     color: var(--color-state-negative-text);
   }
 
-  /* Smart-tasks list — `.deadline-list-card` and `.plan-history-card` no
-     longer redeclare their surface here. After the card-primitive rebind
-     they walk the canonical `.pels-surface-card` shell, which already
-     paints the neutral white surface + hairline border (same values this
-     desktop block used to set) and never carries a `box-shadow` (the
-     active-card "elevated" pop is now an opt-in `<md-elevation>` mount,
-     so dropping the per-page shadow override is a no-op). */
+  /* Smart-tasks list — `.plan-history-card` walks the canonical
+     `.pels-surface-card` shell (neutral white surface + hairline border)
+     and needs no override here.
+
+     `.deadline-list-card` carries a dark-canvas surface bump to
+     `--pels-surface-container-high` so the live deadlines read as the
+     primary tier above the history rows. On the desktop light palette that
+     token resolves to `--color-surface-4` (`#dddee2`, mono-10) — a heavy
+     gray slab against the white page, the same inversion the hero-idle
+     override above neutralises. So on desktop we keep the active card on the
+     white component surface and carry the active-vs-history distinction with
+     the same `--shadow-card` lift the hero uses, instead of a coloured tier. */
+  .deadline-list-card {
+    background: var(--color-surface-1);
+    box-shadow: var(--shadow-card);
+  }
 }
 
 /* Tonal hero gradient restoration that previously lived here
