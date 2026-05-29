@@ -54,11 +54,12 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   actuationMode?: BinaryControlActuationMode;
+  lifecycleRelease?: boolean;
 }): BinaryControlDecision | null {
   const {
     state, deviceObservation,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
-    actuationMode = 'plan',
+    actuationMode = 'plan', lifecycleRelease,
   } = params;
   const controlPlan = getBinaryControlPlan(snapshot);
   if (shouldSkipBinaryControl({
@@ -101,6 +102,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     restoreSource,
     reason,
     isEv: controlPlan.isEv,
+    ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
   };
 }
 

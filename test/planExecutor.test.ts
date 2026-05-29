@@ -634,6 +634,56 @@ describe('PlanExecutor restore logging', () => {
     expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
   });
 
+  it('does NOT stamp capacity cooldown markers on a confirmed flow-backed lifecycle-release', () => {
+    // Regression for the flow-backed half of the binary lifecycle-release bug: the
+    // marker stamp is deferred to handleConfirmedBinaryCommand, so a pending entry
+    // tagged lifecycleRelease must route through the diagnostic-only recorder and
+    // leave lastInstabilityMs / lastDeviceShedMs untouched (a lifecycle disable is a
+    // planning decision, not capacity pressure).
+    const state = createPlanEngineState();
+    const { executor } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+    state.pendingBinaryCommands['dev-1'] = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now(),
+      flowBackedControl: true,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+      lifecycleRelease: true,
+    };
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    // The confirmation log attributes the event as a lifecycle release, not a shed.
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: false,
+      reasonCode: 'lifecycle_release',
+    }));
+    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    // The diagnostic / last-controlled bookkeeping still happens via the release recorder.
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+  });
+
   it('logs neutral restore text when matching the current plan after a later external off', async () => {
     const state = createPlanEngineState();
     state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;

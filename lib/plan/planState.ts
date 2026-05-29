@@ -96,6 +96,10 @@ export type PlanEngineState = {
     restoreSource?: PendingBinaryRestoreSource;
     actuationMode?: PendingBinaryActuationMode;
     reason?: string;
+    // True when issued by the smart-task lifecycle-end disable path (not a
+    // capacity shed); routes the deferred flow-backed confirmation through the
+    // diagnostic-only release recorder so it does not stamp the cooldown markers.
+    lifecycleRelease?: boolean;
     lastObservedValue?: boolean | string;
     lastObservedSource?: PendingTargetObservationSource;
     lastObservedAtMs?: number;

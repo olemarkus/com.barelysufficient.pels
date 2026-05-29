@@ -17,6 +17,7 @@ export function resolveConfirmedBinaryCommandReasonCode(
   pending: PlanEngineState['pendingBinaryCommands'][string],
 ): string {
   if (!pending.desired) {
+    if (pending.lifecycleRelease) return 'lifecycle_release';
     return pending.reason ? 'shed_with_reason' : 'shedding';
   }
   if (pending.logContext === 'capacity_control_off') {

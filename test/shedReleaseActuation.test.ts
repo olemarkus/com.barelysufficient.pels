@@ -120,6 +120,31 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledTimes(1);
   });
 
+  it('dispatches the binary turn-off as a lifecycle release: off the capacity path, diagnostic-only', async () => {
+    // The binary disable must carry lifecycleRelease so both the direct write and any
+    // deferred flow-backed confirmation record via the diagnostic-only recorder (no
+    // capacity cooldown markers), and skip the capacity throttle / pendingSheds path.
+    const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
+    await applyShedReleaseIntent({
+      intent: buildIntent(),
+      steppedLoadIntent: null,
+      observed: buildObserved(),
+      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      mode: 'plan',
+      deps,
+    });
+    expect(mockedApplyBinarySheddingToDevice).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        deviceId: 'dev-1',
+        deviceName: 'Device 1',
+        lifecycleRelease: true,
+      }),
+    );
+    // lifecycleRelease alone drives the off-the-capacity-path behavior: applyBinarySheddingToDevice
+    // derives skipPrecheck/trackPendingShed from it (covered in binaryExecutorLifecycleRelease.test.ts).
+  });
+
   it('skips the binary write when observedBinaryState is already "off" (trusted-evidence idempotent)', async () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
