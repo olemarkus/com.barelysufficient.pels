@@ -686,16 +686,32 @@ describe('Settings UI', () => {
           expectedContainer: style.getPropertyValue('--pels-shell-nav-tab-selected-background').trim(),
         };
       });
-      expect(activeTabTheme.container).toBe('rgb(34, 197, 94)');
-      // On-accent text uses the same designer-tuned dark value on both
-      // mobile and desktop — `#0c1610` on `#22c55e` is ~9.3 : 1 (AA pass),
-      // while `#ffffff` on the same green is only ~1.86 : 1 (AA fail). The
-      // desktop palette gate intentionally inherits this value from the
-      // default `:root` rather than flipping to white. See
-      // notes/desktop-light-mobile-dark.md.
-      expect(activeTabTheme.activeText).toBe('rgb(12, 22, 16)');
-      expect(activeTabTheme.expectedContainer).toBe('#22c55e');
-      expect(activeTabTheme.expectedActiveText).toBe('#0c1610');
+      // PR2 colour policy: the selected nav tab is a TONAL selected-container
+      // (a faint accent tint), NOT the full-saturated brand-green block it used
+      // to be. `primary` (brand green) is reserved for actions and strong-
+      // positive state; the nav tab is page chrome, so it shares the segmented
+      // control's tonal-accent selected language rather than a third green
+      // meaning (one green, not three: nav + success + action). The container
+      // resolves to the same `rgba(accent, 0.28)` fill the segmented control
+      // uses, and the label now binds to `--pels-text-primary` (the on-surface
+      // text role) rather than the dark-on-green inverse value, so it reads
+      // against the tonal tint in whichever palette is active.
+      expect(activeTabTheme.container).toBe('rgba(34, 197, 94, 0.28)');
+      // This Playwright page runs the DESKTOP palette (no touch emulation, so
+      // the `(hover: hover) and (pointer: fine)` gate applies its light theme),
+      // where `--pels-text-primary` resolves to Homey mono-90 `#181818`. On the
+      // mobile dark palette the same token is `#e6ecf5` — both are the primary
+      // on-surface text for their theme, the point being the label tracks the
+      // text role, not a hard-coded inverse colour.
+      expect(activeTabTheme.activeText).toBe('rgb(24, 24, 24)');
+      // `getPropertyValue` returns the COMPUTED custom-property value, so the
+      // browser resolves the nested var() chains: the container token resolves
+      // its inner `var(--color-base-accent-default-rgb)` to the literal channels
+      // (the original test relied on the same resolution to read `#22c55e`),
+      // and the text token resolves its `var(--pels-text-primary)` chain to the
+      // active palette's primary colour (desktop `#181818`).
+      expect(activeTabTheme.expectedContainer).toBe('rgba(34, 197, 94, 0.28)');
+      expect(activeTabTheme.expectedActiveText).toBe('#181818');
     });
 
     test('overview card has backdrop blur effect', async () => {

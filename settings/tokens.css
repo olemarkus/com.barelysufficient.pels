@@ -177,6 +177,8 @@
   --pels-shell-nav-tab-label-size: var(--font-size-sm);
   --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
   --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
+  --pels-shell-nav-tab-selected-background: rgba(var(--color-base-accent-default-rgb), 0.28); /** PR2 colour policy: the selected nav tab is a TONAL selected-container, not a full-saturated brand-green fill. `primary` (brand green) is reserved for actions and strong-positive state; the nav tab is page chrome, so it shares the segmented control's tonal-accent selected language (`component.segmented.selected.background`) rather than a third green meaning. Keep this value equal to that token. */
+  --pels-shell-nav-tab-selected-hover-background: rgba(var(--color-base-accent-default-rgb), 0.38); /** Hover bump for the tonal selected-container — a deeper tint of the same accent fill, not the saturated `accent-strong` block. */
   --pels-deadline-close-size: var(--pels-touch-target-min);
   --pels-chart-price-line: var(--color-base-price-default);
   --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
@@ -219,9 +221,6 @@
   --pels-segmented-container-border: var(--pels-surface-outline);
   --pels-shell-nav-container-background: var(--pels-surface-container-low);
   --pels-shell-nav-container-border: var(--pels-surface-outline);
-  --pels-shell-nav-tab-selected-background: var(--color-semantic-accent);
-  --pels-shell-nav-tab-selected-hover-background: var(--color-semantic-accent-strong);
-  --pels-shell-nav-tab-selected-text: var(--color-semantic-text-inverse);
   --pels-deadline-close-background: var(--pels-surface-container-high);
   --pels-deadline-close-outline: var(--pels-surface-outline);
   --pels-chart-actual: var(--color-semantic-text-primary);
@@ -266,5 +265,6 @@
   --pels-segmented-selected-text: var(--pels-text-primary);
   --pels-shell-nav-tab-label-color: var(--pels-text-secondary);
   --pels-shell-nav-tab-label-hover-color: var(--pels-text-primary);
+  --pels-shell-nav-tab-selected-text: var(--pels-text-primary);
   --pels-deadline-close-text: var(--pels-text-primary);
 }
