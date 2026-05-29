@@ -1,5 +1,5 @@
-import type { SettingsUiPlanDeviceSnapshot } from '../../contracts/src/settingsUiApi.js';
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
+import type { SettingsUiPlanDeviceSnapshot } from '../../contracts/src/settingsUiApi';
+import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 
 type CooldownDevice = Pick<SettingsUiPlanDeviceSnapshot, 'reason'>;
 type CooldownDisplayDevice = CooldownDevice & {

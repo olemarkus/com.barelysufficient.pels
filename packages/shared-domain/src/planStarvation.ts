@@ -1,7 +1,7 @@
 import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanDeviceStarvation,
-} from '../../contracts/src/settingsUiApi.js';
+} from '../../contracts/src/settingsUiApi';
 
 export type PlanStarvationTone = 'warn' | 'info' | 'muted';
 

@@ -3,13 +3,13 @@ import {
   formatDeviceReasonUserFacing,
   PLAN_REASON_CODES,
   type DeviceReason,
-} from './planReasonSemantics.js';
+} from './planReasonSemantics';
 import {
   isGrayStateDevice,
   isOffLikeState,
   isOnLikeState,
   normalizeDeviceState,
-} from './deviceStatePredicates.js';
+} from './deviceStatePredicates';
 
 export type DeviceOverviewSnapshot = {
   currentState?: string;

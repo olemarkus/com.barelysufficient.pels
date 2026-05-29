@@ -12,7 +12,7 @@
 // breadcrumbs alongside the UI (per `feedback_ui_text_shared_with_logs.md`).
 // Extracted from `deferredPlanHistory.ts` so that file stays under its
 // ESLint max-lines budget; consumers import directly from here.
-import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory.js';
+import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
 
 // Unique-device summary used by the chip row. Entries are returned in the
 // order their device first appears in `entries`; callers MUST already pass

@@ -1,13 +1,13 @@
-import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanOutcome,
-} from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels.js';
-import { formatRefinedMissCause } from './deferredPlanHistoryAttribution.js';
-import { formatTimeInTimeZone } from './utils/dateUtils.js';
+} from '../../contracts/src/deferredObjectivePlanHistory';
+import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
+import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
+import { formatTimeInTimeZone } from './utils/dateUtils';
 
 export type DeferredPlanHistoryChipTone = 'ok' | 'warn' | 'muted';
 
@@ -1026,7 +1026,7 @@ export {
   type DeferredPlanHistoryChartMode,
   type DeferredPlanHistoryChartPoint,
   type HistoryDetailChartLabels,
-} from './deferredPlanHistoryChartData.js';
+} from './deferredPlanHistoryChartData';
 
 // ─── Per-hour bar strip (v2.7.3) ──────────────────────────────────────────────
 //
@@ -1037,4 +1037,4 @@ export {
   resolveHistoryDetailHourlyStrip,
   type DeferredPlanHistoryHourlyStripData,
   type HourlyStripBucket,
-} from './deferredPlanHistoryHourlyStrip.js';
+} from './deferredPlanHistoryHourlyStrip';

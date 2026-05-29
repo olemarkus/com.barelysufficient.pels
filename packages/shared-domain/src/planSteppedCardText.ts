@@ -1,13 +1,13 @@
-import type { SteppedLoadProfile } from '../../contracts/src/types.js';
-import type { DeviceOverviewSnapshot } from './deviceOverview.js';
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
-import type { DeviceReason } from './planReasonSemanticsCore.js';
+import type { SteppedLoadProfile } from '../../contracts/src/types';
+import type { DeviceOverviewSnapshot } from './deviceOverview';
+import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
+import type { DeviceReason } from './planReasonSemanticsCore';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
-} from './planStateLabels.js';
+} from './planStateLabels';
 
 const capitalize = (s: string): string => (
   s.length === 0 ? s : `${s.charAt(0).toUpperCase()}${s.slice(1)}`

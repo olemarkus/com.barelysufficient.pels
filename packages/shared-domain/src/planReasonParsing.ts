@@ -1,4 +1,4 @@
-import { PLAN_REASON_CODES, type DeviceReason } from './planReasonSemanticsCore.js';
+import { PLAN_REASON_CODES, type DeviceReason } from './planReasonSemanticsCore';
 
 const KEEP_REASON = /^keep(?: \((.+)\))?$/;
 const RESTORE_NEED_REASON = (

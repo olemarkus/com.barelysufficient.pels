@@ -2,7 +2,7 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
   type PlanReasonCode,
-} from './planReasonSemanticsCore.js';
+} from './planReasonSemanticsCore';
 
 type ComparablePlanReasonBase = {
   code: PlanReasonCode;

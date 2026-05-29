@@ -1,7 +1,7 @@
 import type {
   TargetPowerSteppedLoadConfig,
   TargetPowerSteppedLoadPreset,
-} from '../../contracts/src/types.js';
+} from '../../contracts/src/types';
 
 export const createEvTargetPowerConfig = (
   preset: TargetPowerSteppedLoadPreset,
