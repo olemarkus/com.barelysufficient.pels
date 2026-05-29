@@ -92,18 +92,21 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       existing user dashboards. Source: release-review
       pels-copy-and-terminology, 2026-05-26.
 
-- [ ] Hoist widget user-facing copy into `packages/shared-domain/src/` per
-      `feedback_ui_text_shared_with_logs`. Today `Ready by`, the empty-state
-      strings, the `+N in Smart tasks` overflow, the price-level labels
-      (`cheap` / `expensive`), and the `N paused` line are all inlined in
-      `widgets/headroom/src/public/render.ts` and
-      `widgets/smart_tasks/src/public/render.ts`. Move to a shared helper
-      so runtime logging and the widget share strings — every other PELS
-      surface already follows the convention. Files:
+- [ ] Hoist the remaining **headroom-widget** user-facing copy into
+      `packages/shared-domain/src/` per `feedback_ui_text_shared_with_logs`.
+      Still inlined in the headroom widget: the price-level labels
+      (`cheap` / `expensive`) and the `N paused` line in
+      `widgets/headroom/src/public/render.ts`. Move to a shared helper so
+      runtime logging and the widget share strings — every other PELS surface
+      already follows the convention. Files:
       `widgets/headroom/src/public/render.ts`,
-      `widgets/smart_tasks/src/public/render.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`. Source:
       release-review pels-copy-and-terminology, 2026-05-26.
+      *(Smart-tasks-widget copy is done: `Ready by` already routes through
+      `resolveSmartTaskWidgetEtaVerb`, and the empty-state subtitle +
+      `+N in Smart tasks` overflow now source from
+      `SMART_TASK_WIDGET_EMPTY_SUBTITLE` / `formatSmartTaskWidgetOverflow` in
+      `deadlineLabels.ts`.)*
 
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch

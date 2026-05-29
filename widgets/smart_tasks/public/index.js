@@ -90,6 +90,8 @@
     ...SMART_TASK_LIST_STATUS_LABELS,
     paused_unplugged: "Unplugged"
   };
+  var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
+  var formatSmartTaskWidgetOverflow = (count) => `+${count} in Smart tasks`;
   var resolveBuildingPlanChipTone = () => "info";
   var resolvePausedUnpluggedChipTone = () => "warn";
   var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
@@ -359,7 +361,7 @@
   var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
   // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
-  var EMPTY_SUBTITLE_DEFAULT = "No active smart tasks";
+  var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 
   // widgets/smart_tasks/src/public/render.ts
   var formatValue = (value, unitSymbol) => {
@@ -431,7 +433,7 @@
     }
     if (payload.overflowCount > 0) {
       overflowEl.hidden = false;
-      overflowEl.textContent = `+${payload.overflowCount} in Smart tasks`;
+      overflowEl.textContent = formatSmartTaskWidgetOverflow(payload.overflowCount);
     } else {
       overflowEl.hidden = true;
     }

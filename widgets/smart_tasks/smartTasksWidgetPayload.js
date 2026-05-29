@@ -101,6 +101,7 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
   };
 };
 var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card to see it here.";
+var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
@@ -407,7 +408,7 @@ var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
 // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
 var ROW_CAP = 3;
-var EMPTY_SUBTITLE_DEFAULT = "No active smart tasks";
+var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 var STATUS_TIER = {
   cannot_meet: 0,
   at_risk: 1,
