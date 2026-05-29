@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New smart task</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget-small">
+    <main id="widget-root" class="widget-root" data-view="picker" aria-label="New smart task">
+      <!-- Step 1: pick a device -->
+      <section class="picker-view" data-picker-view>
+        <p class="step-title" data-picker-prompt>Choose a device</p>
+        <ol class="rows" data-device-list></ol>
+        <p class="empty" data-picker-empty hidden></p>
+        <p class="empty-hint" data-picker-empty-hint hidden></p>
+      </section>
+
+      <!-- Step 2: set goal + ready by -->
+      <section class="compose-view" data-compose-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-compose-back aria-label="Back to devices">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-compose-title></span>
+          </button>
+        </header>
+        <div class="field">
+          <span class="field__label" data-goal-label>Goal</span>
+          <div class="stepper">
+            <button type="button" class="stepper__btn" data-goal-dec aria-label="Lower goal">&#8722;</button>
+            <span class="stepper__value" data-goal-value></span>
+            <button type="button" class="stepper__btn" data-goal-inc aria-label="Raise goal">&#43;</button>
+          </div>
+        </div>
+        <p class="goal-context" data-goal-context hidden></p>
+        <div class="field">
+          <span class="field__label" data-ready-by-label>Ready by</span>
+          <div class="chip-row" data-ready-by-list></div>
+        </div>
+        <p class="ready-by-echo" data-ready-by-echo hidden></p>
+        <button type="button" class="primary-btn" data-preview-btn>Preview</button>
+      </section>
+
+      <!-- Step 3: preview + confirm -->
+      <section class="preview-view" data-preview-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-preview-back aria-label="Back to goal">
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-preview-title>Preview</span>
+          </button>
+        </header>
+        <div class="preview-body">
+          <p class="preview-line preview-line--cost" data-preview-cost hidden></p>
+          <p class="preview-line preview-line--cost-subtext" data-preview-cost-subtext hidden></p>
+          <p class="preview-line preview-line--when" data-preview-when hidden></p>
+          <p class="preview-line preview-line--energy" data-preview-energy hidden></p>
+          <p class="preview-line preview-line--unavailable" data-preview-unavailable hidden></p>
+          <p class="preview-line preview-line--caveat" data-preview-caveat hidden></p>
+          <p class="preview-line preview-line--error" data-preview-error hidden></p>
+        </div>
+        <button type="button" class="primary-btn" data-create-btn>Create smart task</button>
+      </section>
+
+      <!-- Success flash -->
+      <section class="created-view" data-created-view hidden aria-live="polite">
+        <p class="created-msg" data-created-msg></p>
+      </section>
+    </main>
+
+    <template id="device-template">
+      <li class="row">
+        <button type="button" class="row__btn" data-device-button aria-label="Device">
+          <span class="row__name" data-device-name></span>
+          <span class="row__meta" data-device-meta></span>
+          <span class="row__chevron" aria-hidden="true">&#8594;</span>
+        </button>
+      </li>
+    </template>
+    <template id="ready-by-template">
+      <button type="button" class="chip-btn" data-ready-by aria-pressed="false" aria-label="Ready by time"></button>
+    </template>
+    <script src="./index.js"></script>
+  </body>
+</html>

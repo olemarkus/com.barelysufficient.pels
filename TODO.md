@@ -397,6 +397,37 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
+- [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
+      promoted cost to the headline and demoted the energy estimate
+      ("Energy: 3.6–4.0 kWh") to a muted secondary line under the when-window
+      (`widgets/create_smart_task/public/index.html` preview body,
+      `render.ts` `formatEnergyLine`). Open product call: keep it muted, fold the
+      figure into the cost subtext ("≈4 kWh · cheapest hours before 07:00"), or
+      drop it entirely so the tile reads cost-and-when only. User-visible
+      outcome: how much numeric detail the pre-commit preview carries. Source:
+      PR #1274 fix-up, 2026-05-29.
+
+- [ ] **Create-smart-task load-error — add a tap-to-retry affordance.** When the
+      device fetch fails, the picker shows `CREATE_SMART_TASK_WIDGET_COPY.loadError`
+      ("Could not load devices. Try again later.") as static text with no way to
+      retry without leaving and reopening the widget
+      (`widgets/create_smart_task/src/public/render.ts` empty/error branch). Give
+      the error state a retry tap target that re-runs `loadAndRender`. User-visible
+      outcome: a stuck load can be recovered in place. Source: PR #1274 fix-up,
+      2026-05-29.
+
+- [ ] **Bring `widgets/create_smart_task/src` into `arch:check` scope.** The
+      widget source (`widgets/create_smart_task/src/**`) imports backend types
+      (`widgets/create_smart_task/src/api.ts` reaches into `lib/plan/**` /
+      contracts) but is NOT in the `.dependency-cruiser.cjs` cruise scope, so the
+      widget→`lib/plan` edges are currently unenforced — a widget could grow an
+      illegal runtime-backend import without `arch:check` failing. Add the widget
+      `src` to the cruise (mirroring how `packages/settings-ui/src` is scoped) and
+      add the boundary rules the settings-UI gets (widget may consume shared
+      contracts / shared-domain, never runtime backend internals directly).
+      Internal correctness only; no user-visible outcome. Source: PR #1274
+      pels-layering-guardian, 2026-05-29.
+
 - [ ] **Smart-tasks widget — `at_risk` dark-theme contrast + cannot_meet
       recourse copy.** The `data-tone="warn"` row paints a 12%-mixed warning
       wash (`widgets/smart_tasks/public/index.css:72-74`, eta recolor
@@ -4596,3 +4627,15 @@ prod walk that didn't warrant a P2 slot.*
       time the file is touched — cosmetic-only. Source: gemini reviews
       of PRs #1227 + #1242, 2026-05-28.
 
+
+- [ ] **Per-device-key storage for deferred objectives.** Objectives are
+      persisted as one whole-map blob under `objectivesByDeviceId`
+      (`DEFERRED_OBJECTIVES_SETTINGS`), so every device-scoped create/clear is
+      a read-modify-write of the entire map. A transient or malformed settings
+      read of one device can therefore clobber sibling devices' tasks — the
+      class the hardened settings-mutation primitive currently guards against
+      with the active-plan-recorder reconcile + abandon-grace refusal.
+      Consider migrating to per-device-key storage (one settings key per
+      device) so a bad read of one device structurally cannot affect others,
+      eliminating the whole-map clobber class rather than guarding it at
+      runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.

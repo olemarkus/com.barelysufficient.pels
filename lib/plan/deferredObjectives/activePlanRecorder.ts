@@ -367,11 +367,44 @@ export class DeferredObjectiveActivePlanRecorder {
 
   private dirty = false;
 
+  // Whether the recorder's in-memory live-device set can be trusted as an
+  // authoritative answer to "which devices hold a live objective". The
+  // clobber guard (`mutateDeferredObjectiveSettings`) uses the recorder as a
+  // second source of truth to refuse a write born from a transient-empty
+  // objectives read. But the boot `load()` of the active-plans store can ITSELF
+  // transiently return empty/absent (see `feedback_homey_sdk_unreliable`): a
+  // restart that hits a flaky read on BOTH the active-plans store AND an early
+  // create's objectives read would leave both guard arms empty, so the create
+  // would clobber real persisted objectives.
+  //
+  // Confirmation is NOT derived from the boot `load()`'s shape — and
+  // deliberately so. Any boot-read shape can lie: absent/non-object reads, but
+  // ALSO a malformed or wrong-version payload that `normalizeDeferredObjective-
+  // ActivePlans` reduces to an empty-but-present map. Trusting a present-shaped
+  // payload would mark the set confirmed-empty and let the clobber guard believe
+  // "no siblings are live" off a garbage read. So the live set starts UNCONFIRMED
+  // at boot regardless of read shape; only the first `observe()` — a real plan
+  // cycle that re-derives the live objectives from diagnostics — confirms it.
+  // While unconfirmed, the clobber guard refuses ANY write that would drop
+  // persisted objectives against an empty objectives read rather than risk
+  // losing siblings — the refusal self-heals on the next cycle / retry (seconds).
+  private liveSetConfirmed: boolean;
+
   constructor(private readonly deps: ActivePlanPersistDeps) {
     const loaded = deps.load();
     this.plans = loaded ? { ...loaded.plansByDeviceId } : {};
+    // Always start unconfirmed: the boot read's shape proves nothing about
+    // whether the in-memory set matches what is genuinely persisted. The first
+    // observe() cycle is the only authoritative confirmation.
+    this.liveSetConfirmed = false;
     const constructedAtMs = Date.now();
     this.lastSeenAtMs = new Map(Object.keys(this.plans).map((id) => [id, constructedAtMs]));
+  }
+
+  // Authoritative once the first real plan cycle has been observed. Consumed by
+  // the hardened objective-write clobber guard. NOT set by the boot read.
+  isLiveSetConfirmed(): boolean {
+    return this.liveSetConfirmed;
   }
 
   // Called from the flow card handler so the UI shows a pending hero immediately,
@@ -402,6 +435,12 @@ export class DeferredObjectiveActivePlanRecorder {
   // Per-cycle observation. Reads `horizonPlan` from each diagnostic and updates
   // the persisted plan iff a replan trigger fires.
   observe(diagnostics: readonly DeferredObjectiveDiagnostic[], nowMs: number): void {
+    // A real plan cycle re-derived the live objectives from diagnostics, so the
+    // in-memory set is now authoritative — even when the cycle emitted zero
+    // diagnostics (genuinely no active objectives). This is what lets the
+    // clobber guard trust the recorder arm after the first cycle following a
+    // boot whose active-plans read transiently came back empty.
+    this.liveSetConfirmed = true;
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
       this.lastSeenAtMs.set(diag.deviceId, nowMs);
@@ -785,6 +824,7 @@ export class DeferredObjectiveActivePlanRecorder {
     this.plans = {};
     this.lastSeenAtMs.clear();
     this.dirty = false;
+    this.liveSetConfirmed = true;
   }
 
   private emit(payload: Record<string, unknown>): void {

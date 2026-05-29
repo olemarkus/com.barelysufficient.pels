@@ -124,6 +124,47 @@ const buildPersistDeps = (initial?: DeferredObjectiveActivePlansV1): {
   };
 };
 
+describe('DeferredObjectiveActivePlanRecorder live-set confirmation (cold-start clobber guard)', () => {
+  it('is UNCONFIRMED after a null boot load and CONFIRMED after the first observe', () => {
+    const { deps } = buildPersistDeps(); // load() → null (transient-empty boot read)
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+    // The dangerous post-restart window: the boot read came back empty/absent,
+    // so the recorder must not assert "no objectives are live".
+    expect(recorder.isLiveSetConfirmed()).toBe(false);
+    // A real plan cycle (even with zero diagnostics) re-derives the live set.
+    recorder.observe([], HOUR_MS);
+    expect(recorder.isLiveSetConfirmed()).toBe(true);
+  });
+
+  it('stays UNCONFIRMED at boot regardless of read shape; only observe() confirms', () => {
+    // Confirmation is NOT derived from the boot-read shape. A present-but-empty
+    // payload (and, critically, a malformed/wrong-version payload that the
+    // normalizer reduces to an empty-but-present map) must NOT be treated as
+    // authoritative-empty — that was the P1-b clobber window.
+    const presentEmpty: DeferredObjectiveActivePlansV1 = { version: 1, plansByDeviceId: {} };
+    const recorderPresent = new DeferredObjectiveActivePlanRecorder({
+      load: () => presentEmpty,
+      save: () => {},
+    });
+    expect(recorderPresent.isLiveSetConfirmed()).toBe(false);
+
+    // A populated boot read is likewise unconfirmed until a real cycle runs.
+    // Build a genuine persisted payload by observing on a throwaway recorder.
+    const seed = buildPersistDeps();
+    const seedRecorder = new DeferredObjectiveActivePlanRecorder(seed.deps);
+    seedRecorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    seedRecorder.flushIfDirty();
+    const populated = seed.saved()!;
+    const recorderPopulated = new DeferredObjectiveActivePlanRecorder({
+      load: () => populated,
+      save: () => {},
+    });
+    expect(recorderPopulated.isLiveSetConfirmed()).toBe(false);
+    recorderPopulated.observe([], HOUR_MS);
+    expect(recorderPopulated.isLiveSetConfirmed()).toBe(true);
+  });
+});
+
 describe('DeferredObjectiveActivePlanRecorder', () => {
   it('persists energyExpectedKWh only when it differs from the buffered energyNeededKWh', () => {
     // horizonPlan.energyNeededKWh = 4.5 (sum of buckets). A lower expected

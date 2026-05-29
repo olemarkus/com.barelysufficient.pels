@@ -36,6 +36,14 @@ export {
   applyDeferredObjectiveChange,
   type DeferredObjectiveChangeInput,
 } from './objectiveChange';
+export {
+  mutateDeferredObjectiveSettings,
+  upsertObjectiveForDevice,
+  clearObjectiveForDevice,
+  type DeferredObjectiveSettingsMutationDeps,
+  type DeferredObjectiveSettingsMutator,
+  type DeferredObjectiveDeviceWriteDeps,
+} from './objectiveWrite';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
@@ -50,6 +58,7 @@ export {
 export {
   createEmptyDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettings,
+  normalizeDeferredObjectiveSettingsEntry,
 } from './settings';
 export type {
   DeferredObjectiveDiagnostic,

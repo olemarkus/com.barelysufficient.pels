@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>New smart task widget preview (light)</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: transparent; width: 1024px; height: 1024px; }
+    </style>
+  </head>
+  <body>
+    <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="160%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="22"/>
+          <feOffset dx="0" dy="22" result="offsetblur"/>
+          <feComponentTransfer><feFuncA type="linear" slope="0.30"/></feComponentTransfer>
+          <feMerge>
+            <feMergeNode/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <g filter="url(#card-shadow)">
+        <rect x="100" y="200" width="824" height="720" rx="44" ry="44" fill="#FFFFFF"/>
+      </g>
+
+      <!-- Back header (chevron + device name) -->
+      <rect x="150" y="258" width="40" height="40" rx="10" ry="10" fill="#d9dee3"/>
+      <rect x="208" y="266" width="240" height="26" rx="13" ry="13" fill="#d9dee3"/>
+
+      <!-- Cost headline (the line that earns the visit) -->
+      <rect x="150" y="368" width="360" height="46" rx="14" ry="14" fill="#2f8f47"/>
+      <!-- "cheapest hours before HH:MM" subtext -->
+      <rect x="150" y="436" width="300" height="26" rx="13" ry="13" fill="#c4ccd3"/>
+      <!-- When-window: "Scheduled 02:00–04:00 · Ready by …" -->
+      <rect x="150" y="492" width="560" height="30" rx="15" ry="15" fill="#9aa3ab"/>
+      <!-- Energy (demoted, muted) -->
+      <rect x="150" y="548" width="240" height="26" rx="13" ry="13" fill="#d9dee3"/>
+      <!-- Estimate caveat -->
+      <rect x="150" y="600" width="600" height="22" rx="11" ry="11" fill="#e8ebee"/>
+
+      <!-- Primary button (Create smart task) -->
+      <rect x="150" y="800" width="724" height="72" rx="20" ry="20" fill="#58c56a"/>
+    </svg>
+  </body>
+</html>

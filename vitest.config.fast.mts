@@ -29,6 +29,7 @@ export default defineConfig({
     exclude: [
       'test/settings-ui.test.ts',
       'test/planPriceWidgetBrowser.test.ts',
+      'test/createSmartTaskWidgetBrowser.test.ts',
       'test/**/*.perf.test.ts',
     ],
     setupFiles: ['test/setup.ts'],

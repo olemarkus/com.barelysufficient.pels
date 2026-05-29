@@ -50,6 +50,10 @@ import type {
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
 import { type DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
+  resolveSmartTaskDeviceKind,
+  resolveSmartTaskGoalBounds,
+} from './packages/shared-domain/src/smartTaskDeviceKind';
+import {
   AppDeviceControlHelpers,
   normalizeStoredDeviceControlProfiles,
 } from './lib/app/appDeviceControlHelpers';
@@ -89,6 +93,7 @@ import {
 } from './lib/device/devicePowerCalibrationStore';
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
 import {
+  buildDeferredObjectiveDeviceWriteDeps,
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
   createDeviceDiagnosticsService,
@@ -109,12 +114,15 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
+  normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
+  upsertObjectiveForDevice,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectivePlanRevisionBus,
+  type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveStatusBus,
 } from './lib/plan/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
@@ -123,6 +131,7 @@ import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
   seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
+  isRuntimePlannedDevice,
 } from './lib/app/appDeviceSupport';
 import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
@@ -829,6 +838,7 @@ class PelsApp extends Homey.App {
       set powerSampleRebuildState(value) { appRef.powerSampleRebuildState = value; },
       get latestTargetSnapshot() { return app.latestTargetSnapshot; },
       getUiPickerDevices: () => app.getUiPickerDevices(),
+      getCreateSmartTaskCandidateDevices: () => app.getCreateSmartTaskCandidateDevices(),
       get priceOptimizationEnabled() { return app.priceOptimizationEnabled; },
       get priceOptimizationSettings() { return app.priceOptimizationSettings; },
       get capacityGuard() { return app.capacityGuard; },
@@ -1635,6 +1645,17 @@ class PelsApp extends Homey.App {
     const snapshot = this.deviceManager?.getUiPickerDevices() ?? [];
     return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
   }
+  // Devices the create-smart-task widget may OFFER. Sourced from the runtime-
+  // planned snapshot AND filtered by the EXACT planned-set predicate the plan
+  // service uses (`isRuntimePlannedDevice`, i.e. `managed !== false`). The raw
+  // runtime snapshot can still carry `managed: false` devices when the managed
+  // filter is inactive (no device explicitly opted-in) — those are dropped by
+  // the planner, so offering one would let the widget create a task that never
+  // plans or controls anything. `createDeferredObjective` re-applies the same
+  // predicate at write time, so listing and validation share one definition.
+  getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[] {
+    return this.latestTargetSnapshot.filter(isRuntimePlannedDevice);
+  }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
@@ -1752,6 +1773,99 @@ class PelsApp extends Homey.App {
       // converts it to a money unit for the total `costEstimate`.
       priceRateLabel: this.priceCoordinator.getPriceUnitLabel(),
     });
+  }
+  // Persist a new smart task (deferred objective) for an eligible device,
+  // routing through the SAME device-scoped write op the deadline Flow cards use
+  // (`upsertObjectiveForDevice` over the hardened settings-mutation primitive,
+  // built by `buildDeferredObjectiveDeviceWriteDeps`). There is no parallel
+  // persistence path: the candidate is validated through the same
+  // `normalizeDeferredObjectiveSettingsEntry` normalizer that gates Flow-card
+  // and settings writes, and the device's eligibility/kind is checked against
+  // the live snapshot the same way the Flow cards check it.
+  //
+  // PLANNED-SET HONESTY: persistence is restricted to devices in
+  // `latestTargetSnapshot` — the managed, runtime-planned set. The planner only
+  // evaluates objectives whose device is in that snapshot (see
+  // `buildDeferredObjectiveDiagnostics`: a missing device yields
+  // `objective_missing_device` and is never planned). When the managed-device
+  // filter is active, a picker-only (unmanaged) device is absent from the
+  // snapshot, so creating a task on it would persist a task that never plans or
+  // controls anything. The Flow-card create path is already honest here — its
+  // device autocomplete is sourced from the same runtime snapshot — so to match
+  // it we reject picker-only devices with `device_not_planned` rather than
+  // inventing a promotion mechanism neither path has. (The preview at
+  // `previewDeferredObjectivePlan` keeps its picker fallback: previewing an
+  // unmanaged device is harmless and read-only.)
+  //
+  // The candidate's `deadlineAtMs` is resolved by the caller (the widget API
+  // handler, server-side, via `resolveDeferredObjectiveDeadline` against the
+  // app timezone) so this method stays timezone-agnostic and matches the
+  // Flow-card contract of receiving an already-absolute deadline.
+  //
+  // Returns `{ ok: false }` with a stable reason code on rejection so the
+  // widget can surface an honest error without leaking internal detail.
+  public createDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): { ok: true } | {
+    ok: false;
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+  } {
+    // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
+    // HONESTY above. A device that exists in the picker but not here, OR that is
+    // in the runtime snapshot but `managed: false` (so the planner's
+    // `isRuntimePlannedDevice` filter drops it — possible when the managed
+    // filter is inactive), is reported as `device_not_planned`, not silently
+    // persisted. Uses the SAME predicate the plan service and the candidate
+    // listing use so the three never diverge.
+    const device = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    if (!device || !isRuntimePlannedDevice(device)) {
+      const inPickerOrSnapshot = device !== undefined
+        || this.getUiPickerDevices().some((entry) => entry.id === deviceId);
+      return { ok: false, reason: inPickerOrSnapshot ? 'device_not_planned' : 'device_not_found' };
+    }
+    // The device must support the goal kind the candidate claims — an EV-SoC
+    // goal on a thermostat (or vice versa) is rejected before it can persist.
+    const kind = resolveSmartTaskDeviceKind(device);
+    if (kind !== candidate.kind) {
+      return { ok: false, reason: 'device_not_eligible' };
+    }
+    // Validate the target against the DEVICE's actual setpoint range, not just
+    // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
+    // Flow-card `validateTargetTemperature` (which reads the device capability
+    // min/max) and the picker bounds the widget itself offered, so the create
+    // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
+    // persisting one the device can never reach.
+    const bounds = resolveSmartTaskGoalBounds(device, kind);
+    const targetValue = candidate.kind === 'temperature' ? candidate.targetTemperatureC : candidate.targetPercent;
+    if (!Number.isFinite(targetValue) || targetValue < bounds.min || targetValue > bounds.max) {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+    // Re-validate via the canonical normalizer with `enabled: true`; a creation
+    // is implicitly an enabled objective. This rejects malformed deadlines and
+    // the generic target envelope exactly as the Flow-card / settings paths do.
+    const entry = normalizeDeferredObjectiveSettingsEntry(
+      { ...candidate, enabled: true } as DeferredObjectiveSettingsEntry,
+    );
+    if (!entry) return { ok: false, reason: 'invalid_candidate' };
+
+    if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+
+    // `false` means the hardened primitive refused the write as a suspected
+    // clobber (a transient-empty settings read while sibling tasks are live).
+    // Report it as a transient conflict so the widget shows a retry-able error
+    // rather than a false "created" flash for a task that never persisted.
+    const persisted = upsertObjectiveForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
+        nowMs: this.getNow().getTime(),
+        rebuildReason: 'flow_card:create_smart_task_widget',
+      }),
+      { deviceId, deviceName: device.name ?? null, entry },
+    );
+    if (!persisted) return { ok: false, reason: 'write_conflict' };
+    return { ok: true };
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();

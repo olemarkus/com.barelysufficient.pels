@@ -186,6 +186,8 @@ describe('app init plan service wiring', () => {
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
       deferredObjectiveActivePlanRecorder: {
         clearForDevice,
+        getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+        isLiveSetConfirmed: () => true,
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     }));
 
@@ -200,6 +202,78 @@ describe('app init plan service wiring', () => {
     expect(stored.objectivesByDeviceId['heater-1']?.enabled).toBe(false);
     expect(forgetDevice).toHaveBeenCalledWith('heater-1');
     expect(clearForDevice).toHaveBeenCalledWith('heater-1');
+  });
+
+  it('disableDeferredObjective routes through the hardened primitive: preserves a live sibling on a transient bad read', () => {
+    // FIX 3 regression: a partial/transient read that drops a live sibling must
+    // NOT let the auto-disable clobber it. The disable routes through
+    // `mutateDeferredObjectiveSettings`, whose clobber guard refuses the write
+    // when a recorder-known sibling would vanish. The elapsed objective is not
+    // left enabled in settings (the refusal preserves the on-disk state, which
+    // for a transient bad read is whatever truly persisted), and the sibling is
+    // never wiped.
+    capturedPlanEngineDeps.current = null;
+    const settingsStore = new Map<string, unknown>();
+    // Transient bad read: settings momentarily report ONLY the elapsed device,
+    // having lost the live sibling `other-1` that is genuinely persisted.
+    settingsStore.set('deferred_objectives', {
+      version: 1,
+      objectivesByDeviceId: {
+        'heater-1': {
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 55,
+          deadlineAtMs: Date.now() + 60_000,
+        },
+      },
+    });
+    const forgetDevice = vi.fn();
+    const clearForDevice = vi.fn();
+    const homey = {
+      flow: {
+        getTriggerCard: vi.fn(),
+        getConditionCard: vi.fn(),
+        getActionCard: vi.fn(),
+      },
+      settings: {
+        get: vi.fn((key: string) => settingsStore.get(key)),
+        set: vi.fn((key: string, value: unknown) => { settingsStore.set(key, value); }),
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+    } as unknown as AppContext['homey'];
+
+    createPlanEngine(createAppContextMock({
+      homey,
+      deviceManager: {} as AppContext['deviceManager'],
+      deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
+      deferredObjectiveActivePlanRecorder: {
+        clearForDevice,
+        // Recorder still believes both heater-1 (being disabled) and the live
+        // sibling other-1 are active — so the guard catches the lost sibling.
+        getActivePlansSnapshot: () => ({
+          version: 1,
+          plansByDeviceId: { 'heater-1': {}, 'other-1': {} } as never,
+        }),
+        isLiveSetConfirmed: () => true,
+      } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
+    }));
+
+    const disable = (capturedPlanEngineDeps.current as {
+      disableDeferredObjective: (deviceId: string) => void;
+    }).disableDeferredObjective;
+    disable('heater-1');
+
+    // Write refused → settings untouched, so the sibling is preserved (it was
+    // never in this transient read to begin with) and no in-memory cleanup ran
+    // for a disable that did not persist.
+    const stored = settingsStore.get('deferred_objectives') as {
+      objectivesByDeviceId: Record<string, unknown>;
+    };
+    expect(Object.keys(stored.objectivesByDeviceId)).toEqual(['heater-1']);
+    expect(forgetDevice).not.toHaveBeenCalled();
+    expect(clearForDevice).not.toHaveBeenCalled();
   });
 
   it('seeds the deferred-objective observation watermark on first install', () => {
