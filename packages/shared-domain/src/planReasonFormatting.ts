@@ -1,13 +1,13 @@
 import {
   PLAN_REASON_CODES,
   type DeviceReason,
-} from './planReasonSemanticsCore.js';
+} from './planReasonSemanticsCore';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
-} from './planStateLabels.js';
+} from './planStateLabels';
 
 type DetailReason = Extract<
   DeviceReason,

@@ -1,4 +1,4 @@
-import type { DeviceOverviewSnapshot } from './deviceOverview.js';
+import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 export type PlanStateKind =
   | 'active'

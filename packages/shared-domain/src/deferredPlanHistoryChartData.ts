@@ -14,7 +14,7 @@
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../../contracts/src/deferredObjectivePlanHistory.js';
+} from '../../contracts/src/deferredObjectivePlanHistory';
 
 // Trajectory chart mode. `trajectory` is the v4 shape used when the entry has
 // enough information to render the planned staircase + observed line in the

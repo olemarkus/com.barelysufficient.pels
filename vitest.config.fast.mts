@@ -20,10 +20,6 @@ export default defineConfig({
       'echarts/components': resolve(configDir, 'test/mocks/echarts-subpath-shim.ts'),
       'echarts/renderers.js': resolve(configDir, 'test/mocks/echarts-subpath-shim.ts'),
       'echarts/renderers': resolve(configDir, 'test/mocks/echarts-subpath-shim.ts'),
-      './planReasonSemanticsCore.js': resolve(configDir, 'packages/shared-domain/src/planReasonSemanticsCore.ts'),
-      './planReasonComparable.js': resolve(configDir, 'packages/shared-domain/src/planReasonComparable.ts'),
-      './planReasonFormatting.js': resolve(configDir, 'packages/shared-domain/src/planReasonFormatting.ts'),
-      './planReasonParsing.js': resolve(configDir, 'packages/shared-domain/src/planReasonParsing.ts'),
     },
   },
   test: {

@@ -54,12 +54,12 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../../contracts/src/deferredObjectivePlanHistory.js';
+} from '../../contracts/src/deferredObjectivePlanHistory';
 import {
   APPROX_GLYPH,
   SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
   SMART_TASK_LIST_HIT_RATE_NOUN,
-} from './deadlineLabels.js';
+} from './deadlineLabels';
 import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
@@ -67,7 +67,7 @@ import {
   getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
-} from './utils/dateUtils.js';
+} from './utils/dateUtils';
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;

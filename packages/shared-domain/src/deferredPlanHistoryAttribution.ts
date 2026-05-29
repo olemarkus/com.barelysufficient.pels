@@ -22,7 +22,7 @@
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../../contracts/src/deferredObjectivePlanHistory.js';
+} from '../../contracts/src/deferredObjectivePlanHistory';
 
 // Why a `missed` run missed, in the order we check (most concrete cause wins):
 //   - `budget_limited`     — the daily budget cap collapsed one or more planned

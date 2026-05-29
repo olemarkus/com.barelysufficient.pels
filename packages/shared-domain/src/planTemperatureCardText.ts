@@ -1,12 +1,12 @@
-import { PLAN_REASON_CODES } from './planReasonSemanticsCore.js';
+import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
   resolvePlanStateKind,
-} from './planStateLabels.js';
-import type { DeviceOverviewSnapshot } from './deviceOverview.js';
+} from './planStateLabels';
+import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
   measuredPowerKw?: number;

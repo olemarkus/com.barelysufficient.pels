@@ -2654,16 +2654,22 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/**` rendering call sites.
-- [ ] Investigate Settings UI bundle growth and the runtime module-type warning from Homey runs.
-      Current start logs show esbuild warning on `dist/script.js 1.2mb` and Node
-      `[MODULE_TYPELESS_PACKAGE_JSON]` warnings for
-      `packages/shared-domain/src/planReasonSemanticsCore.js`, despite
-      `packages/shared-domain/package.json` declaring ESM. Verify why the packaged runtime import
-      path does not see the workspace package metadata, fix the warning without broad package-mode
-      churn, and decide whether the settings script needs an explicit size budget.
-      Files: `package.json`, `packages/shared-domain/package.json`,
-      `packages/shared-domain/src/planReasonSemanticsCore.js`,
-      `packages/settings-ui/package.json`, settings build/sync scripts.
+- [ ] Investigate Settings UI bundle growth. Current start logs show an esbuild warning on
+      `dist/script.js` (now ~1.3 MB); decide whether the settings script needs an explicit
+      size budget and trim if so.
+      Files: `packages/settings-ui/package.json`, settings build/sync scripts.
+- [x] Runtime `[MODULE_TYPELESS_PACKAGE_JSON]` warning from Homey runs.
+      DONE (2026-05-29): root cause was tsc emitting `packages/shared-domain` as ESM into the
+      type-less `.homeybuild` deploy (the source `package.json` declared `"type":"module"`, but
+      no `package.json` ships inside `.homeybuild`, so Node reparsed the ESM-syntax `.js` under
+      the type-less `/app` manifest). `lib/**` already emitted CJS, so only shared-domain tripped
+      the warning. Earlier note's `.mjs`/package-metadata theory was wrong. Fix: switched
+      `packages/shared-domain` to `"type":"commonjs"` so tsc emits CJS (matches the deploy), and
+      dropped the `.js` import extensions so both tsc (nodenext-CJS) and esbuild
+      (`moduleResolution: bundler`) resolve extension-less to the `.ts` — which also let the five
+      hand-written `.js` re-export shims be deleted. `contracts` stays ESM (type-only, never
+      value-imported at runtime, so it never warned). Root `package.json` left type-less on
+      purpose: adding `"type":"module"` there breaks Homey's CJS app loader.
 - [ ] Update public deadline documentation once the feature enters testing. Keep
       `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`

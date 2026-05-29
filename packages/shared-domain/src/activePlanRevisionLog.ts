@@ -17,10 +17,10 @@
 
 import type {
   DeferredObjectiveActivePlanRevisionV1,
-} from '../../contracts/src/deferredObjectiveActivePlans.js';
-import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
-import { resolveRevisionReason, type RevisionReasonDisambiguation } from './deadlineLabels.js';
-import { formatTimeInTimeZone } from './utils/dateUtils.js';
+} from '../../contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
+import { resolveRevisionReason, type RevisionReasonDisambiguation } from './deadlineLabels';
+import { formatTimeInTimeZone } from './utils/dateUtils';
 
 // Resolved shape of a single row in the live-plan revision panel. Mirrors
 // `PlanHistoryRevisionLogRow` deliberately — the visual binding on the page

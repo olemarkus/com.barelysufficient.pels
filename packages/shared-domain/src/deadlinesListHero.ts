@@ -55,8 +55,8 @@
 // Time formatting is provider-supplied (`formatTime`) so shared-domain stays
 // free of locale / Date helpers, matching the rest of the deadline copy.
 
-import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings.js';
-import type { SmartTaskListStatusId } from './deadlineLabels.js';
+import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
+import type { SmartTaskListStatusId } from './deadlineLabels';
 
 // Minimal card payload the hero consumes. Mirrors the relevant subset of
 // `DeadlinesListCard` so the renderer (settings-ui) can pass cards through

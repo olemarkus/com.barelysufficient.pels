@@ -3156,7 +3156,7 @@ describe('stepped-load shed invariant', () => {
 
   it('rejects stepped upgrade from medium to max while another device is shed', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, powerKw: 1 }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true, powerKw: 1 }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -3188,7 +3188,7 @@ describe('stepped-load shed invariant', () => {
 
   it('allows restore from off to low (lowest non-zero step) while another device is shed', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -3223,7 +3223,7 @@ describe('stepped-load shed invariant', () => {
     // This verifies the invariant is enforced at the correct profile boundary:
     // off→medium is allowed because medium IS the lowest non-zero step in this profile.
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
 
     // Use a profile where steps go: off(0), medium(2000), max(3000) — no 'low' step.
     // The restore step is then 'medium' (lowest non-zero), so off→medium is allowed.
@@ -3294,7 +3294,7 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected event is emitted with blockedByShedInvariant=true on upgrade block', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step',
       name: 'Tank',
@@ -3334,7 +3334,7 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected is suppressed when rejection params are unchanged on repeated rebuilds', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
@@ -3364,8 +3364,8 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected re-emits when shed count changes', () => {
     const state = createPlanEngineState();
-    const shed1 = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'shed-1', name: 'Heater1', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const shed2 = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'shed-2', name: 'Heater2', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shed1 = { ...buildPlanDevice({ id: 'shed-1', name: 'Heater1', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const shed2 = { ...buildPlanDevice({ id: 'shed-2', name: 'Heater2', currentState: 'off', plannedState: 'shed', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
@@ -3407,8 +3407,8 @@ describe('stepped-load shed invariant', () => {
 
   it('restore_stepped_rejected re-emits after device was unblocked and shed resumes', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const restoredDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
@@ -3460,8 +3460,8 @@ describe('stepped-load shed invariant', () => {
 
   it('tracking cleared when shed resolves during cooldown, so next shed episode re-emits', () => {
     const state = createPlanEngineState();
-    const shedDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
-    const restoredDevice = { ...require('./utils/planTestUtils.ts').buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
+    const shedDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', controllable: true }) };
+    const restoredDevice = { ...buildPlanDevice({ id: 'binary-shed', name: 'Heater', currentState: 'on', plannedState: 'keep', controllable: true }) };
     const steppedDev = steppedPlanDevice({
       id: 'dev-step', name: 'Tank', currentState: 'on', plannedState: 'keep',
       selectedStepId: 'medium', desiredStepId: 'medium',
@@ -3561,7 +3561,7 @@ describe('stepped-load shed invariant', () => {
     const state = createPlanEngineState();
     const result = applyRestorePlan({
       planDevices: [
-        require('./utils/planTestUtils.ts').buildPlanDevice({
+        buildPlanDevice({
           id: 'binary-shed',
           name: 'Heater',
           currentState: 'off',

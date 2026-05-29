@@ -7,15 +7,15 @@ import type {
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveRescueMode,
   DeferredObjectiveSettingsKind,
-} from '../../contracts/src/deferredObjectiveSettings.js';
+} from '../../contracts/src/deferredObjectiveSettings';
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveKwhPerUnitProvenanceV1,
-} from '../../contracts/src/deferredObjectiveActivePlans.js';
-import type { ObjectiveProfileConfidence } from '../../contracts/src/objectiveProfileTypes.js';
+} from '../../contracts/src/deferredObjectiveActivePlans';
+import type { ObjectiveProfileConfidence } from '../../contracts/src/objectiveProfileTypes';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'

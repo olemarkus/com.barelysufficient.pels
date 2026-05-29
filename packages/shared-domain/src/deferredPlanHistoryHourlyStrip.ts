@@ -11,7 +11,7 @@ import type {
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../../contracts/src/deferredObjectivePlanHistory.js';
+} from '../../contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 

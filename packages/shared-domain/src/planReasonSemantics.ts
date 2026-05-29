@@ -1,13 +1,13 @@
-import { PLAN_REASON_CODES, getPlanReasonLabel } from './planReasonSemanticsCore.js';
-import { buildComparableDeviceReason } from './planReasonComparable.js';
+import { PLAN_REASON_CODES, getPlanReasonLabel } from './planReasonSemanticsCore';
+import { buildComparableDeviceReason } from './planReasonComparable';
 import {
   formatDeviceReason,
   formatDeviceReasonUserFacing,
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
-} from './planReasonFormatting.js';
-import { buildComparablePlanReason } from './planReasonParsing.js';
+} from './planReasonFormatting';
+import { buildComparablePlanReason } from './planReasonParsing';
 
 export {
   PLAN_REASON_CODES,
@@ -20,4 +20,4 @@ export {
   resolveReportedLoadAfterPauseText,
   buildComparablePlanReason,
 };
-export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore.js';
+export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore';
