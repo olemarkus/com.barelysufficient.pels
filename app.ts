@@ -209,6 +209,10 @@ const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+// Cadence for re-running native-wiring flow-conflict detection so Flows added
+// after startup (or a degraded-startup empty snapshot) are picked up without a
+// restart. No-op unless the verdict changed.
+const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 const getAppPlanRebuildNowMs = (): number => (
@@ -332,6 +336,13 @@ class PelsApp extends Homey.App {
   // Per-device flow-conflict verdict (the native-write capabilities a user
   // Flow drives), surfaced on the snapshot for the device-detail banner.
   private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[] }> = {};
+  private nativeWiringDecisionInFlight = false;
+  // Flipped in onUninit. The native-wiring probe is fire-and-forget and can
+  // still be parked on a slow flow read when the app tears down; this flag lets
+  // its continuation drop every side effect (logging, snapshot refresh, plan
+  // rebuild) instead of acting on a half-torn-down app or logging into a
+  // closing worker rpc (the `onUserConsoleLog`-during-teardown error in CI).
+  private nativeWiringUninitializing = false;
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowReportedCapabilitiesEmptyParseWarned = false;
@@ -981,11 +992,27 @@ class PelsApp extends Homey.App {
     // Fire-and-forget native-wiring flow-conflict detection. Best-effort: must
     // never block or fail startup, and reads fail closed. See
     // setup/flowConflictProbe.ts.
+    this.runNativeWiringDetectionBestEffort();
+    // Re-run periodically so a conflicting Flow added after startup is
+    // reflected without a restart, and a degraded startup (empty snapshot at
+    // warm-up) recovers once the snapshot populates. The no-change guard makes
+    // each run a no-op unless the verdict actually changed; the in-flight guard
+    // and a dedicated timer (not the refresh path) keep it from looping.
+    this.timers.registerInterval('nativeWiringRequery', setInterval(
+      () => this.runNativeWiringDetectionBestEffort(),
+      NATIVE_WIRING_REQUERY_INTERVAL_MS,
+    ));
+  }
+
+  private runNativeWiringDetectionBestEffort(): void {
+    if (this.nativeWiringUninitializing) return;
     void this.applyNativeWiringAutoDecisions()
       .catch((error) => {
         // Best-effort: a failed detection/refresh never blocks startup, and
         // the next normal plan cycle re-reads the provider so any applied
-        // decision self-heals. Log so prod audits can see the miss.
+        // decision self-heals. Log so prod audits can see the miss — unless we
+        // are tearing down, where logging would hit a closing worker rpc.
+        if (this.nativeWiringUninitializing) return;
         this.structuredLogger?.child({ component: 'flow_conflict' }).error({
           event: 'flow_conflict_detection_failed',
           err: normalizeError(error),
@@ -1001,24 +1028,45 @@ class PelsApp extends Homey.App {
   // with the snapshot not yet populated; treating that empty result as a final
   // "no candidates" would leave conflict-free Hoiax devices native-off until
   // the next restart. A populated snapshot with no candidates is final.
+  //
+  // An empty snapshot that survives every retry resolves to `unknown`, never an
+  // empty `ok` verdict: on a periodic re-query a transient empty snapshot (a
+  // refresh/SDK hiccup) would otherwise clear existing auto decisions and turn
+  // native control off until the next tick. `unknown` makes it a no-op that
+  // keeps prior decisions — and with genuinely zero devices there is nothing to
+  // auto-enable, so we lose nothing by not emitting an empty `ok`.
   private async detectNativeWiringConflictsWithSnapshotRetry(): Promise<NativeWiringConflictDetection> {
     for (let attempt = 1; attempt <= PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS; attempt += 1) {
+      if (this.nativeWiringUninitializing) return { status: 'unknown' };
       const snapshot = this.deviceManager?.getSnapshot() ?? [];
       const lastAttempt = attempt === PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS;
-      if (snapshot.length === 0 && !lastAttempt) {
-        await this.delayMs(PelsApp.NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
-        continue;
+      if (snapshot.length === 0) {
+        if (!lastAttempt) {
+          await this.delayMs(PelsApp.NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
+          continue;
+        }
+        return { status: 'unknown' };
       }
       return detectNativeWiringConflicts({
         get: (path) => getRawFromHomeyApi(path),
         getSnapshot: () => snapshot,
-        structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
+        // Guarded sink: the flow read can resolve after teardown, so drop the
+        // outcome line once uninitializing rather than log into a closing rpc.
+        structuredLog: {
+          info: (obj) => {
+            if (this.nativeWiringUninitializing) return;
+            this.structuredLogger?.child({ component: 'flow_conflict' }).info(obj);
+          },
+        },
       });
     }
     return { status: 'unknown' };
   }
 
   private delayMs(ms: number): Promise<void> {
+    // A detection retry can be pending when the app tears down; resolve at once
+    // so the fire-and-forget probe settles promptly instead of holding a timer.
+    if (this.nativeWiringUninitializing) return Promise.resolve();
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
@@ -1032,14 +1080,29 @@ class PelsApp extends Homey.App {
     return this.autoNativeWiringDecisions[deviceId] === true;
   }
 
+  // Guarded entry point: startup runs this once and a periodic timer re-runs it
+  // (see startPostStartupBackgroundTasks). The in-flight flag keeps overlapping
+  // runs — startup vs a periodic tick, or two ticks — from racing.
   private async applyNativeWiringAutoDecisions(): Promise<void> {
+    if (this.nativeWiringDecisionInFlight) return;
+    this.nativeWiringDecisionInFlight = true;
+    try {
+      await this.runNativeWiringDecision();
+    } finally {
+      this.nativeWiringDecisionInFlight = false;
+    }
+  }
+
+  private async runNativeWiringDecision(): Promise<void> {
     // Wait for the snapshot warm-up gate so detection runs against a populated
     // snapshot rather than the initial empty array — the bootstrap refresh is
     // deferred in production. The gate also releases on its own timeout bound,
     // so this can never hang startup, and the call stays fire-and-forget.
     await this.snapshotWarmupGate?.wait();
     const detection = await this.detectNativeWiringConflictsWithSnapshotRetry();
-    if (detection.status !== 'ok') return;
+    // The read above can resolve after teardown began; never refresh the
+    // snapshot or rebuild the plan against a half-torn-down app.
+    if (this.nativeWiringUninitializing || detection.status !== 'ok') return;
 
     const nextDecisions: Record<string, boolean> = {};
     for (const deviceId of detection.autoEnableDeviceIds) {
@@ -1332,6 +1395,11 @@ class PelsApp extends Homey.App {
     this.stopSettingsHandler = settingsHandler.stop;
   }
   async onUninit(): Promise<void> {
+    // Signal the fire-and-forget native-wiring probe to drop its side effects
+    // before anything else tears down. We deliberately do NOT await it: it can
+    // be parked on a slow flow read, and blocking teardown on that read would
+    // stall shutdown. Suppressing its continuation is enough.
+    this.nativeWiringUninitializing = true;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
