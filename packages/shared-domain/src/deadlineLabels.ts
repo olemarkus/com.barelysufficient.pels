@@ -169,6 +169,42 @@ export const resolveSmartTaskListReadyByTone = (
   status: SmartTaskListStatusId,
 ): SmartTaskListReadyByTone => SMART_TASK_LIST_READY_BY_TONE[status];
 
+// Inline status word appended to the smart-task list card's "Ready by" line so
+// the at-risk / cannot-finish / paused signal isn't carried by colour alone
+// (`.deadline-list-card__when-row--warn/--alert` were the sole differentiator,
+// which a red-green-deficient user can't read off the timestamp). Returns null
+// for healthy / pending / queued / satisfied states: green is the default-
+// positive case and the status chip already names it ("On track"), so no extra
+// word is warranted — only the non-healthy states need the redundant text cue.
+//
+// The word reuses the canonical `SMART_TASK_LIST_STATUS_LABELS` strings so the
+// inline word and the status chip can never disagree (per
+// `feedback_ui_text_shared_with_logs.md`). Producer-resolved keyed off status
+// so the view never branches on `statusId` itself (per
+// `feedback_layering_resolution_in_producer.md`). The total mapping mirrors
+// `SMART_TASK_LIST_READY_BY_TONE` so a new status id is a compile error here
+// rather than a silent fall-through.
+const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string | null> = {
+  building_plan: null,
+  queued: null,
+  // The inline word is joined to the timestamp with an em-dash separator
+  // ("Ready by … — <word>"). For paused we use the compressed widget label
+  // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
+  // latter carries its own em-dash, which would render a confusing double-dash
+  // ("… — Paused — unplugged") on the Ready-by line. The chip still shows the
+  // full label; this is the same sanctioned shared-domain string, not a new
+  // variant.
+  paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+  on_track: null,
+  at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+  cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+  satisfied: null,
+};
+
+export const resolveSmartTaskListReadyByStatusWord = (
+  status: SmartTaskListStatusId,
+): string | null => SMART_TASK_LIST_READY_BY_STATUS_WORD[status];
+
 // Confidence chip label shown on the live hero and the Smart-tasks list card.
 // Centralised so the two surfaces stay phrased identically. High confidence is
 // the normal state and carries no useful chip signal; low / medium confidence

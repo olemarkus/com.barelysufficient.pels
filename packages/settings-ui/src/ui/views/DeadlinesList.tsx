@@ -5,6 +5,7 @@ import {
   deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskListReadyByTone,
+  resolveSmartTaskListReadyByStatusWord,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_LIST_EMPTY_COPY,
   SMART_TASK_LIST_ROW_LABELS,
@@ -123,17 +124,28 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
     learning: card.learning,
   });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
+  // Inline status word for non-healthy states so the at-risk / cannot-finish /
+  // paused signal on the Ready-by line isn't carried by colour alone. null for
+  // healthy / pending / queued / satisfied (resolved producer-side; the view
+  // never branches on `statusId`).
+  const readyByStatusWord = resolveSmartTaskListReadyByStatusWord(card.statusId);
   return (
     <a class="pels-surface-card deadline-list-card clickable" href={card.href} data-device-id={card.deviceId} data-interactive>
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">
         <h3 class="deadline-list-card__title">{formatDisplayDeviceName(card.deviceName)}</h3>
-        <span class="plan-chip plan-chip--info">{labels.kindChipLabel}</span>
-        <StatusChip statusId={card.statusId} />
-        {confidenceLabel !== null && (
-          <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
-        )}
+        {/* Chips live in their own flex group so at 320 px they wrap below the
+            title as a coherent block instead of one chip dangling beside it.
+            Within the group they wrap among themselves; the group never splits
+            a single chip onto the title's row. */}
+        <div class="deadline-list-card__chips">
+          <span class="plan-chip plan-chip--muted">{labels.kindChipLabel}</span>
+          <StatusChip statusId={card.statusId} />
+          {confidenceLabel !== null && (
+            <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>
+          )}
+        </div>
       </div>
       <div class="deadline-list-card__target">
         <span class="deadline-list-card__target-label">{SMART_TASK_LIST_ROW_LABELS.target}</span>
@@ -151,7 +163,10 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         )}
         <div class={`deadline-list-card__when-row deadline-list-card__when-row--${readyByTone}`}>
           <dt>{SMART_TASK_LIST_ROW_LABELS.readyBy}</dt>
-          <dd>{formatWhen(card.deadlineAtMs)}</dd>
+          <dd>
+            {formatWhen(card.deadlineAtMs)}
+            {readyByStatusWord !== null && ` — ${readyByStatusWord}`}
+          </dd>
         </div>
       </dl>
       {/* Extra permissions are pulled out of the timestamp `<dl>` because the
@@ -217,12 +232,21 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
         <h2 class="plan-hero__headline" id="deadlines-list-hero-headline">{copy.headline}</h2>
         {target !== undefined ? (
           <p class="plan-hero__subline">
+            {/* Flat dark-theme text + chevron affordance — no inverted/light
+                container. The subline reads as ordinary de-emphasised hero
+                body copy (inheriting `.plan-hero__subline` supporting tone);
+                the trailing chevron is the only tappability cue, and an
+                `MdRipple` supplies press feedback so we don't carry a
+                permanent background. The button is the 48dp finger-safe hit
+                area (`min-height` token + `position: relative` to anchor the
+                ripple). */}
             <button
               type="button"
               class="deadlines-list-hero__nav-target"
               data-deadline-card-id={target.deviceId}
               onClick={() => scrollToCardByDeviceId(target.deviceId)}
             >
+              <MdRipple aria-hidden="true" />
               <span class="deadlines-list-hero__nav-target-text">{copy.subline}</span>
               <span class="deadlines-list-hero__nav-target-chevron" aria-hidden="true">›</span>
             </button>

@@ -1,12 +1,13 @@
 // Unit tests for the past-tasks device-filter shared-domain helpers (v2.7.4
-// PR-19). Three concerns: unique-device derivation order, list narrowing
-// (including stale-filter self-heal), and the active-filter empty-state copy.
-// All three feed the chip-row affordance on the past-tasks list — keeping the
-// helpers in shared-domain so the UI and runtime log breadcrumbs render
-// identical strings (per `feedback_ui_text_shared_with_logs.md`).
+// PR-19). Two concerns: unique-device derivation order, and list narrowing
+// (including stale-filter self-heal). Both feed the chip-row affordance on the
+// past-tasks list — keeping the helpers in shared-domain so the UI and runtime
+// log breadcrumbs render identical strings (per
+// `feedback_ui_text_shared_with_logs.md`). The active-filter empty-state copy
+// was removed in PR-29: the self-heal makes the filtered list never empty, so
+// the branch and its string were dead.
 import {
   filterPlanHistoryByDevice,
-  formatSmartTaskHistoryDeviceFilterEmpty,
   resolveSmartTaskHistoryFilterDevices,
 } from '../packages/shared-domain/src/deferredPlanHistoryDeviceFilter';
 import type {
@@ -71,22 +72,5 @@ describe('filterPlanHistoryByDevice', () => {
   it('returns a defensive shallow copy so the caller can mutate freely', () => {
     const result = filterPlanHistoryByDevice(entries, null);
     expect(result).not.toBe(entries);
-  });
-});
-
-describe('formatSmartTaskHistoryDeviceFilterEmpty', () => {
-  it('renders the named-device empty-state copy', () => {
-    expect(formatSmartTaskHistoryDeviceFilterEmpty('Connected 300'))
-      .toBe('No past runs for Connected 300.');
-  });
-
-  it('trims surrounding whitespace from the device name', () => {
-    expect(formatSmartTaskHistoryDeviceFilterEmpty('  Boiler  '))
-      .toBe('No past runs for Boiler.');
-  });
-
-  it('falls back to a generic sentence when the name is empty', () => {
-    expect(formatSmartTaskHistoryDeviceFilterEmpty('   '))
-      .toBe('No past runs for this device.');
   });
 });

@@ -196,6 +196,55 @@ describe('DeadlinesList', () => {
     expect(mount.querySelector('.deadline-list-card__when-row--accent')).not.toBeNull();
   });
 
+  // Inline status word on the "Ready by" line: the warn/alert tones above are
+  // colour-only, which a red-green-deficient user can't read off the timestamp.
+  // Non-healthy states append the canonical status word so the signal is also
+  // textual; healthy states stay as just the timestamp.
+  const readyByText = (mount: HTMLElement): string => {
+    const rows = Array.from(mount.querySelectorAll('.deadline-list-card__when-row'));
+    const readyByRow = rows.find((row) => row.querySelector('dt')?.textContent === 'Ready by');
+    return readyByRow?.querySelector('dd')?.textContent ?? '';
+  };
+
+  it('appends "At risk" to the Ready-by line on at_risk cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'at_risk' })],
+    });
+    expect(readyByText(mount)).toContain('— At risk');
+  });
+
+  it('appends "Cannot finish" to the Ready-by line on cannot_meet cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'cannot_meet' })],
+    });
+    expect(readyByText(mount)).toContain('— Cannot finish');
+  });
+
+  it('appends the compressed "— Unplugged" word to the Ready-by line on paused cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ kind: 'ev_soc', statusId: 'paused_unplugged' })],
+    });
+    // Compressed widget label, not the full "Paused — unplugged" chip label,
+    // so the Ready-by line never shows a double em-dash.
+    expect(readyByText(mount)).toContain('— Unplugged');
+    expect(readyByText(mount)).not.toContain('— Paused —');
+  });
+
+  it('renders no inline status word on healthy on_track cards', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'on_track' })],
+    });
+    expect(readyByText(mount)).not.toContain('—');
+  });
+
   // Populated-state hero (v2.7.3 loveable batch). The renderer asks the shared
   // resolver for a hero copy and mounts it above the card list. The hero is
   // suppressed for empty `cards` arrays (the empty-state paragraph already
@@ -260,6 +309,33 @@ describe('DeadlinesList', () => {
     const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-card-id')).toBe('dev_water_heater');
+    // The affordance lives inside the standard `.plan-hero__subline` paragraph
+    // so the subline reads as ordinary de-emphasised hero body copy rather than
+    // a separate inverted/light container.
+    expect(button?.closest('.plan-hero__subline')).not.toBeNull();
+  });
+
+  // Flat dark-theme affordance contract (PR-2 + PR-6): the subline is plain
+  // hero body text + a trailing chevron, with press feedback supplied by an
+  // `md-ripple` rather than a permanent light/inverted background. Pins the
+  // chevron cue and the ripple so a future change can't silently reintroduce
+  // the inverted-box treatment or drop the tap feedback.
+  it('renders the subline affordance as flat text + chevron with a ripple', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ deviceId: 'dev_water_heater', statusId: 'on_track' })],
+    });
+    const button = mount.querySelector<HTMLButtonElement>('.deadlines-list-hero__nav-target');
+    expect(button).not.toBeNull();
+    // Press feedback is a Material ripple, not a standing background.
+    expect(button?.querySelector('md-ripple')).not.toBeNull();
+    // Chevron stays as the only tappability cue.
+    const chevron = button?.querySelector('.deadlines-list-hero__nav-target-chevron');
+    expect(chevron?.textContent).toBe('›');
+    expect(chevron?.getAttribute('aria-hidden')).toBe('true');
+    // Subline copy renders as plain text inside the button.
+    expect(button?.textContent).toContain('Connected 300');
   });
 
   // Header-persistence parity: the panel must keep a visible title/header in
@@ -611,6 +687,106 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
       expect(chip.tagName).toBe('BUTTON');
       expect(chip.getAttribute('type')).toBe('button');
     });
+  });
+
+  // PR-29: the pressed/selected chip must NOT reuse the `--info` tone. Blue is
+  // the informational-status pill elsewhere; selection is carried by
+  // `aria-pressed` alone, styled via `.plan-chip--link[aria-pressed="true"]`
+  // (accent + outline). Guards against a regression back to the tone overload.
+  it('does not tag any filter chip with the --info tone (selection is aria-pressed only)', () => {
+    const mount = mountIntoBody();
+    renderReady(mount, {
+      entries: [
+        buildHistoryEntry('dev_a', 'Boiler', 0),
+        buildHistoryEntry('dev_b', 'Connected 300', 2),
+      ],
+      selectedDeviceId: 'dev_b',
+    });
+    const chips = Array.from(
+      mount.querySelectorAll('.deadlines-history__filter-row .plan-chip'),
+    );
+    expect(chips.length).toBeGreaterThan(0);
+    chips.forEach((chip) => {
+      expect(chip.classList.contains('plan-chip--info')).toBe(false);
+    });
+    // The selected chip still carries the link affordance class so it keeps
+    // the 48 dp tap target and the pressed-state CSS hook.
+    expect(findChip(mount, 'Connected 300')?.classList.contains('plan-chip--link')).toBe(true);
+  });
+});
+
+// PR-29: the miss-streak badge list narrows in lockstep with the device
+// filter. Filtering to one device must not leave another device's badge on
+// screen, which contradicted the "collapse to one device" promise.
+describe('DeadlinesHistoryList miss-streak badges follow the device filter', () => {
+  const DEADLINE_BASE = Date.UTC(2026, 4, 16, 16, 0, 0);
+
+  const buildMissEntry = (
+    deviceId: string,
+    deviceName: string,
+    offsetHours: number,
+    outcome: 'met' | 'missed',
+  ): DeferredObjectivePlanHistoryEntry => ({
+    id: `${deviceId}-${offsetHours}`,
+    deviceId,
+    deviceName,
+    objectiveKind: 'temperature',
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startedAtMs: DEADLINE_BASE - (offsetHours + 6) * HOUR_MS,
+    finalizedAtMs: DEADLINE_BASE - offsetHours * HOUR_MS,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 4,
+    outcome,
+    metAtMs: outcome === 'met' ? DEADLINE_BASE - offsetHours * HOUR_MS : null,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation',
+    originalPlan: null,
+    finalPlan: null,
+  });
+
+  // Two devices, each with a miss streak (3 of 3 missed), so both produce a
+  // badge in the unfiltered "All" view.
+  const twoStreakingDevices = (): DeferredObjectivePlanHistoryEntry[] => [
+    buildMissEntry('dev_a', 'Boiler', 0, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 1, 'missed'),
+    buildMissEntry('dev_a', 'Boiler', 2, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 3, 'missed'),
+    buildMissEntry('dev_a', 'Boiler', 4, 'missed'),
+    buildMissEntry('dev_b', 'Connected 300', 5, 'missed'),
+  ];
+
+  const badgeDeviceNames = (mount: HTMLElement): string[] => (
+    Array.from(mount.querySelectorAll('.deadlines-history__miss-streak-device'))
+      .map((el) => (el.textContent ?? '').trim())
+  );
+
+  it('shows every streaking device badge in the unfiltered (All) view', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: twoStreakingDevices(),
+      timeZone: 'UTC',
+      selectedDeviceId: null,
+    });
+    expect(badgeDeviceNames(mount)).toEqual(['Boiler', 'Connected 300']);
+  });
+
+  it('shows only the selected device badge when filtered', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: twoStreakingDevices(),
+      timeZone: 'UTC',
+      selectedDeviceId: 'dev_b',
+    });
+    expect(badgeDeviceNames(mount)).toEqual(['Connected 300']);
   });
 });
 

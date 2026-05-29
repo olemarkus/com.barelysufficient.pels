@@ -4,7 +4,6 @@ import { SMART_TASK_PAST_EMPTY_COPY } from '../../../../shared-domain/src/deadli
 import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
   filterPlanHistoryByDevice,
-  formatSmartTaskHistoryDeviceFilterEmpty,
   resolveSmartTaskHistoryFilterDevices,
   SMART_TASK_HISTORY_FILTER_ALL_LABEL,
   SMART_TASK_HISTORY_FILTER_GROUP_LABEL,
@@ -104,7 +103,12 @@ const DeviceFilterChipRow = ({
     >
       <button
         type="button"
-        class={`plan-chip plan-chip--link${allActive ? ' plan-chip--info' : ''}`}
+        // Selection is carried by `aria-pressed` alone — the
+        // `.plan-chip--link[aria-pressed="true"]` rule paints the accent/outline
+        // pressed treatment. We deliberately avoid the `--info` tone here: blue
+        // is the informational-status pill elsewhere, so reusing it for "this
+        // filter is active" muddied the chip vocabulary (PR-29).
+        class="plan-chip plan-chip--link"
         aria-pressed={allActive}
         onClick={() => onSelectDevice(null)}
       >
@@ -116,7 +120,7 @@ const DeviceFilterChipRow = ({
           <button
             key={device.deviceId}
             type="button"
-            class={`plan-chip plan-chip--link${active ? ' plan-chip--info' : ''}`}
+            class="plan-chip plan-chip--link"
             aria-pressed={active}
             // Tapping the active chip clears the filter; tapping an inactive
             // chip switches to that device. Matches the spec's "tap selected
@@ -157,10 +161,6 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
       </section>
     );
   }
-  // Badges + chip row both derive from the *unfiltered* entry list so the
-  // chip row stays stable while the user toggles the filter, and so a
-  // miss-streak badge for a non-selected device still surfaces if any.
-  const badges = resolveMissStreakBadges(state.entries);
   // 7-day hit-rate strip — first-impression aggregate for the recovering-
   // from-mistake persona ("how have my deadlines been doing this week?").
   // Threaded with the same `nowMs` anchor as the week dividers so the strip
@@ -179,15 +179,14 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   // collapses a stale filter (device id no longer in history) back to the
   // unfiltered list, which the chip-row removal handles on the same render.
   const filteredEntries = filterPlanHistoryByDevice(state.entries, selectedDeviceId);
-  // Resolve the active-filter empty-state copy from the selected chip's
-  // display name. We render this when the filter matched zero rows even
-  // though the unfiltered list is non-empty — `filterPlanHistoryByDevice`
-  // self-heals stale filters by returning the unfiltered list, so this
-  // branch should not fire in practice, but the empty surface still keeps
-  // the user oriented if filter shape ever changes.
-  const selectedDevice = selectedDeviceId === null
-    ? null
-    : devices.find((device) => device.deviceId === selectedDeviceId) ?? null;
+  // Miss-streak badges derive from the *filtered* entries so the badge list
+  // narrows in lockstep with the device filter (PR-29). When the user collapses
+  // the archive to one device, surfacing other devices' badges contradicted the
+  // "show me just this device" promise. Resolving from `filteredEntries` (which
+  // self-heals a stale filter back to the full list) means the "All" view still
+  // shows every device's badge, while a single-device view shows at most that
+  // one device's badge.
+  const badges = resolveMissStreakBadges(filteredEntries);
   // v2.7.3 — ISO-week section breaks. Producer-resolved grouping + heading copy
   // so the view layer never inspects per-week aggregates. The weekly stripe is
   // the emotional anchor for the archive shape; per-row content stays exactly
@@ -220,9 +219,6 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
         selectedDeviceId={selectedDeviceId}
         onSelectDevice={onSelectDevice}
       />
-      {weekGroups.length === 0 && selectedDevice !== null && (
-        <p class="muted">{formatSmartTaskHistoryDeviceFilterEmpty(selectedDevice.deviceName)}</p>
-      )}
       {weekGroups.map((group) => (
         <div key={group.weekKey} class="deadlines-history__week-group">
           <h4 class="deadlines-history__week">{group.heading}</h4>

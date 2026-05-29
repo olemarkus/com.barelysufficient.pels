@@ -204,7 +204,7 @@ describe('formatRefinedMissCause', () => {
       finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 3 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
-      "PELS was still learning this device's energy use (3 readings) when it planned this run.",
+      "Still learning this device's energy use (3 readings).",
     );
   });
 
@@ -214,7 +214,7 @@ describe('formatRefinedMissCause', () => {
       finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
-      "PELS was still learning this device's energy use (1 reading) when it planned this run.",
+      "Still learning this device's energy use (1 reading).",
     );
   });
 
@@ -224,7 +224,7 @@ describe('formatRefinedMissCause', () => {
       finalPlan: buildSnapshot({ rateConfidence: 'low' }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
-      "PELS was still learning this device's energy use when it planned this run.",
+      "Still learning this device's energy use.",
     );
   });
 
@@ -234,7 +234,7 @@ describe('formatRefinedMissCause', () => {
       finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 12 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
-      'Power was available, but the target needed more energy than estimated.',
+      'Target needed more energy than estimated.',
     );
   });
 

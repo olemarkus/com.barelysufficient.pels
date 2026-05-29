@@ -7,6 +7,7 @@ import {
   resolveBuildingPlanChipTone,
   resolvePausedUnpluggedChipTone,
   resolveSmartTaskLearning,
+  resolveSmartTaskListReadyByStatusWord,
   resolveSmartTaskListReadyByTone,
   SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_LIST_EMPTY_COPY,
@@ -14,6 +15,7 @@ import {
   SMART_TASK_LIST_ROW_LABELS,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   SMART_TASK_LIST_STATUS_LABELS,
+  SMART_TASK_WIDGET_STATUS_LABELS,
   SMART_TASK_PAST_EMPTY_COPY,
 } from '../packages/shared-domain/src/deadlineLabels';
 import {
@@ -230,6 +232,40 @@ describe('resolveSmartTaskListReadyByTone', () => {
     expect(resolveSmartTaskListReadyByTone('building_plan')).toBe('accent');
     expect(resolveSmartTaskListReadyByTone('queued')).toBe('accent');
     expect(resolveSmartTaskListReadyByTone('satisfied')).toBe('accent');
+  });
+});
+
+describe('resolveSmartTaskListReadyByStatusWord', () => {
+  // The Ready-by line previously signalled non-healthy states with colour only
+  // (`--warn`/`--alert`). A red-green-deficient user can't read that off the
+  // timestamp, so the non-healthy states gain an inline status word; healthy /
+  // pending / queued / satisfied stay null (green is default-positive and the
+  // chip already names "On track").
+  it('returns null for healthy / pending / queued / satisfied states', () => {
+    expect(resolveSmartTaskListReadyByStatusWord('on_track')).toBeNull();
+    expect(resolveSmartTaskListReadyByStatusWord('building_plan')).toBeNull();
+    expect(resolveSmartTaskListReadyByStatusWord('queued')).toBeNull();
+    expect(resolveSmartTaskListReadyByStatusWord('satisfied')).toBeNull();
+  });
+
+  // The inline word reuses canonical shared-domain labels so the word and the
+  // status chip can never drift apart (per `feedback_ui_text_shared_with_logs`).
+  it('reuses the canonical chip label for at_risk / cannot_meet', () => {
+    expect(resolveSmartTaskListReadyByStatusWord('at_risk'))
+      .toBe(SMART_TASK_LIST_STATUS_LABELS.at_risk);
+    expect(resolveSmartTaskListReadyByStatusWord('cannot_meet'))
+      .toBe(SMART_TASK_LIST_STATUS_LABELS.cannot_meet);
+  });
+
+  // Paused uses the compressed widget label ('Unplugged') rather than the full
+  // chip label ('Paused — unplugged'): the inline word is joined with an
+  // em-dash separator, and the full label's own em-dash would render a
+  // confusing double-dash on the Ready-by line. Still a sanctioned label.
+  it('uses the compressed widget label for paused to avoid a double em-dash', () => {
+    expect(resolveSmartTaskListReadyByStatusWord('paused_unplugged'))
+      .toBe(SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged);
+    expect(resolveSmartTaskListReadyByStatusWord('paused_unplugged'))
+      .not.toContain('—');
   });
 });
 
