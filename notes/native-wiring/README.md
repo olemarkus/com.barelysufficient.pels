@@ -135,19 +135,28 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
 
 ## PR decomposition
 
-1. **PR1 (this):** `lib/flowApi/` defensive reader + pure normalizer →
+1. **PR1 (shipped):** `lib/flowApi/` defensive reader + pure normalizer →
    `Map<deviceId, Set<capabilityId>>`, fail-closed three-state, plus a
    fire-and-forget startup telemetry probe (`setup/flowConflictProbe.ts`)
    that structured-logs read outcome + write counts. No behaviour change.
-2. **PR2:** conflict classifier — intersect the write map with the per-class
-   native-write sets; produce a flat `flowConflict` per candidate device
-   (producer-resolved; consumers never branch on Flow internals).
+2. **PR2 (shipped):** pure conflict classifier (`lib/flowApi/flowConflict.ts`)
+   — intersects the write map with each device's owned native-write
+   capabilities and returns the conflicting capability ids. Deliberately
+   **class-agnostic**: the caller passes already-resolved owned capabilities,
+   so `lib/flowApi` keeps no per-class capability constants and no cross-peer
+   dependency on `lib/device`. Resolving each device's owned native-write set
+   (`charging_button`; `max_power_3000`/`max_power_2000`/`max_power`/`onoff`;
+   `target_power`) is PR3's job, at the entry layer where importing
+   `lib/device` is allowed. No wiring/behaviour change yet.
 3. **PR3:** default native stepped wiring ON for Hoiax / `target_power`
-   unless `flowConflict`; persist a per-device `autoDecisionMade` marker so a
-   user's explicit toggle is never auto-reverted on a later upgrade; re-query
-   cadence (startup + settings open).
-4. **PR4:** device-detail conflict banner naming the conflicting Flow; copy
-   in `packages/shared-domain/`.
+   unless a flow conflict is found; resolve each device's owned native-write
+   capabilities and feed them + the PR1 read into the PR2 classifier; persist
+   a per-device `autoDecisionMade` marker so a user's explicit toggle is never
+   auto-reverted on a later upgrade; re-query cadence (startup + settings
+   open). Treat a `status: 'unknown'` read as "do not auto-flip".
+4. **PR4:** device-detail conflict banner naming the conflicting Flow /
+   capability (uses the classifier's returned capability ids); copy in
+   `packages/shared-domain/`.
 
 ## Validation reference
 

@@ -40,6 +40,10 @@ const allowedOrphans = new Set([
   'drivers/pels_insights/driver.ts',
   // Pure scheduler entrypoint for the deferred-objective planner; runtime integration follows separately.
   'lib/plan/deferredObjectives/index.ts',
+  // Pure conflict classifier for native-wiring flow detection (notes/native-wiring/).
+  // Runtime wiring lands in the follow-up PR that resolves each device's owned
+  // native-write capabilities and feeds them in.
+  'lib/flowApi/flowConflict.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [
@@ -77,6 +81,8 @@ const deferredObjectiveBarrelExports = [
 const allowedUnusedExportPatterns = [
   /:Infinity - prototype$/,
   /\(used in module\)$/,
+  // Pure conflict classifier staged ahead of its runtime caller (PR3 wiring).
+  /^lib\/flowApi\/flowConflict\.ts:\d+ - classifyFlowConflicts$/,
   // TODO(dead-code): Include settings UI in this check and remove these exceptions.
   /^lib\/utils\/dateUtils\.ts:\d+ - getWeekStartInTimeZone$/,
   /^lib\/utils\/dateUtils\.ts:\d+ - formatDateInTimeZone$/,
