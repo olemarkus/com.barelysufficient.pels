@@ -943,13 +943,24 @@ class PelsApp extends Homey.App {
 
   private startPostStartupBackgroundTasks(): void {
     this.startPowerTrackerPruning();
-    // Fire-and-forget telemetry probe (PR1 of the native-wiring flow-conflict
-    // initiative). Best-effort: must never block or fail startup, and reads
+    // Fire-and-forget telemetry probe for the native-wiring flow-conflict
+    // initiative. Best-effort: must never block or fail startup, and reads
     // fail closed. See setup/flowConflictProbe.ts.
-    void runFlowConflictProbe({
+    void this.runFlowConflictProbeAfterSnapshotWarmup()
+      .catch(() => { /* probe is best-effort telemetry */ });
+  }
+
+  private async runFlowConflictProbeAfterSnapshotWarmup(): Promise<void> {
+    // Wait for the snapshot warm-up gate so the probe classifies a populated
+    // snapshot rather than the initial empty array — the bootstrap refresh is
+    // deferred in production. The gate also releases on its own timeout bound,
+    // so this can never hang startup, and the probe stays fire-and-forget.
+    await this.snapshotWarmupGate?.wait();
+    await runFlowConflictProbe({
       get: (path) => getRawFromHomeyApi(path),
+      getSnapshot: () => this.deviceManager?.getSnapshot() ?? [],
       structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
-    }).catch(() => { /* probe is best-effort telemetry */ });
+    });
   }
   private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);

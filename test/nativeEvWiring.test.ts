@@ -160,6 +160,11 @@ describe('native EV wiring shim', () => {
       targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
     }));
     expect(parsed.capabilities).toContain('target_power');
+    // The target_power here is synthetic (Zaptec has no real setable
+    // target_power); PELS drives the charger via charging_button, not
+    // target_power, so it must NOT be reported as a native-write capability
+    // for the flow-conflict signal.
+    expect(parsed.nativeWriteCapabilities).toBeUndefined();
   });
 
   it('updates EV preset stepped-load observation from realtime available installation current', async () => {

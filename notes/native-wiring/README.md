@@ -148,13 +148,25 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    (`charging_button`; `max_power_3000`/`max_power_2000`/`max_power`/`onoff`;
    `target_power`) is PR3's job, at the entry layer where importing
    `lib/device` is allowed. No wiring/behaviour change yet.
-3. **PR3:** default native stepped wiring ON for Hoiax / `target_power`
-   unless a flow conflict is found; resolve each device's owned native-write
-   capabilities and feed them + the PR1 read into the PR2 classifier; persist
-   a per-device `autoDecisionMade` marker so a user's explicit toggle is never
-   auto-reverted on a later upgrade; re-query cadence (startup + settings
-   open). Treat a `status: 'unknown'` read as "do not auto-flip".
-4. **PR4:** device-detail conflict banner naming the conflicting Flow /
+3. **PR3 (shipped):** resolve each native stepped-load device's owned
+   native-write capabilities (`resolveNativeSteppedLoadWriteCapabilities` in
+   `lib/device/nativeSteppedLoadWiring.ts`) and run the PR2 classifier against
+   the PR1 read inside the startup probe, structured-logging the per-device
+   conflict verdict (`candidateCount` / `conflictCount` / `conflicts`).
+   **Telemetry only — no default flip.** Validates the full detection pipeline
+   on real Homeys before any behaviour changes. The candidate enumeration +
+   owned-cap resolution it adds is reused by PR4.
+4. **PR4:** flip native stepped wiring ON by default for Hoiax (`max_power_*`)
+   devices unless a flow conflict is found, gating on `status: 'ok'` (an
+   `unknown` read does **not** auto-flip). Persist a per-device auto-decided
+   marker (separate from the user-set flag) so a user's explicit choice is
+   never auto-reverted. Run the decision once the device snapshot is ready
+   (not the fixed end-of-startup probe slot) and re-query on settings open.
+   **Scope note:** `target_power` steppers are already default-ON today (via
+   the `targetPowerSteppedCandidate` branch in `managerNativeEv.ts`) with no
+   conflict gating; PR4 changes only the Hoiax default and leaves the existing
+   `target_power` behaviour untouched.
+5. **PR5:** device-detail conflict banner naming the conflicting Flow /
    capability (uses the classifier's returned capability ids); copy in
    `packages/shared-domain/`.
 

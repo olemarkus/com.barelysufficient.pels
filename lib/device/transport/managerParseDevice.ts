@@ -147,11 +147,11 @@ export function parseDevice(params: {
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
         reportedCapabilities,
-        reportedStepId,
-        reportedStepObservedAtMs,
+        reportedStepId, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
@@ -245,6 +245,7 @@ export function parseDevice(params: {
         controlObservationCapabilityId,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         canSetControl,
         binaryControlObservation: resolveBinaryControlObservation(
@@ -321,6 +322,7 @@ function buildParsedDeviceSnapshot(params: {
     controlObservationCapabilityId?: string;
     controlModel?: TargetDeviceSnapshot['controlModel'];
     steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
+    nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
     targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
@@ -353,6 +355,7 @@ function buildParsedDeviceSnapshot(params: {
         controlObservationCapabilityId,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         canSetControl,
         binaryControlObservation,
@@ -373,6 +376,7 @@ function buildParsedDeviceSnapshot(params: {
         ...resolveParsedDeviceSettings(deviceId, providers),
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         controlCapabilityId,
         powerKw: powerEstimate.powerKw,
