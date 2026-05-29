@@ -77,7 +77,7 @@ import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
-import { runFlowConflictProbe } from './setup/flowConflictProbe';
+import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from './setup/flowConflictProbe';
 import { getRawFromHomeyApi } from './lib/device/transport/managerHomeyApi';
 import {
   persistPowerTrackerStateForApp,
@@ -307,6 +307,11 @@ class PelsApp extends Homey.App {
   private temperatureBoostSettings: import('./packages/contracts/src/types').TemperatureBoostSettings = {};
   private evBoostSettings: import('./packages/contracts/src/types').EvBoostSettings = {};
   private nativeEvWiringDevices: Record<string, boolean> = {};
+  // Conflict-gated auto-enable decisions for Hoiax native stepped wiring
+  // (notes/native-wiring/). In-memory only — recomputed each startup from the
+  // flow read + conflict classifier. An explicit user entry in
+  // `nativeEvWiringDevices` always takes precedence over this default.
+  private autoNativeWiringDecisions: Record<string, boolean> = {};
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowReportedCapabilitiesEmptyParseWarned = false;
@@ -953,24 +958,94 @@ class PelsApp extends Homey.App {
 
   private startPostStartupBackgroundTasks(): void {
     this.startPowerTrackerPruning();
-    // Fire-and-forget telemetry probe for the native-wiring flow-conflict
-    // initiative. Best-effort: must never block or fail startup, and reads
-    // fail closed. See setup/flowConflictProbe.ts.
-    void this.runFlowConflictProbeAfterSnapshotWarmup()
-      .catch(() => { /* probe is best-effort telemetry */ });
+    // Fire-and-forget native-wiring flow-conflict detection. Best-effort: must
+    // never block or fail startup, and reads fail closed. See
+    // setup/flowConflictProbe.ts.
+    void this.applyNativeWiringAutoDecisions()
+      .catch((error) => {
+        // Best-effort: a failed detection/refresh never blocks startup, and
+        // the next normal plan cycle re-reads the provider so any applied
+        // decision self-heals. Log so prod audits can see the miss.
+        this.structuredLogger?.child({ component: 'flow_conflict' }).error({
+          event: 'flow_conflict_detection_failed',
+          err: normalizeError(error),
+        });
+      });
   }
 
-  private async runFlowConflictProbeAfterSnapshotWarmup(): Promise<void> {
-    // Wait for the snapshot warm-up gate so the probe classifies a populated
+  private static readonly NATIVE_WIRING_DETECTION_MAX_ATTEMPTS = 3;
+  private static readonly NATIVE_WIRING_DETECTION_RETRY_DELAY_MS = 2000;
+
+  // Run detection, retrying while the device snapshot is still empty. The
+  // warm-up gate can release via its timeout bound (slow/failed first refresh)
+  // with the snapshot not yet populated; treating that empty result as a final
+  // "no candidates" would leave conflict-free Hoiax devices native-off until
+  // the next restart. A populated snapshot with no candidates is final.
+  private async detectNativeWiringConflictsWithSnapshotRetry(): Promise<NativeWiringConflictDetection> {
+    for (let attempt = 1; attempt <= PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS; attempt += 1) {
+      const snapshot = this.deviceManager?.getSnapshot() ?? [];
+      const lastAttempt = attempt === PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS;
+      if (snapshot.length === 0 && !lastAttempt) {
+        await this.delayMs(PelsApp.NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
+        continue;
+      }
+      return detectNativeWiringConflicts({
+        get: (path) => getRawFromHomeyApi(path),
+        getSnapshot: () => snapshot,
+        structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
+      });
+    }
+    return { status: 'unknown' };
+  }
+
+  private delayMs(ms: number): Promise<void> {
+    return new Promise((resolve) => { setTimeout(resolve, ms); });
+  }
+
+  // Explicit user choice (true or false in `nativeEvWiringDevices`) always wins;
+  // for devices the user has never touched, fall back to the conflict-gated
+  // auto-enable decision. See notes/native-wiring/.
+  private resolveNativeWiringEnabled(deviceId: string): boolean {
+    if (Object.prototype.hasOwnProperty.call(this.nativeEvWiringDevices, deviceId)) {
+      return this.nativeEvWiringDevices[deviceId] === true;
+    }
+    return this.autoNativeWiringDecisions[deviceId] === true;
+  }
+
+  private async applyNativeWiringAutoDecisions(): Promise<void> {
+    // Wait for the snapshot warm-up gate so detection runs against a populated
     // snapshot rather than the initial empty array — the bootstrap refresh is
     // deferred in production. The gate also releases on its own timeout bound,
-    // so this can never hang startup, and the probe stays fire-and-forget.
+    // so this can never hang startup, and the call stays fire-and-forget.
     await this.snapshotWarmupGate?.wait();
-    await runFlowConflictProbe({
-      get: (path) => getRawFromHomeyApi(path),
-      getSnapshot: () => this.deviceManager?.getSnapshot() ?? [],
-      structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
-    });
+    const detection = await this.detectNativeWiringConflictsWithSnapshotRetry();
+    if (detection.status !== 'ok') return;
+
+    const nextDecisions: Record<string, boolean> = {};
+    for (const deviceId of detection.autoEnableDeviceIds) {
+      nextDecisions[deviceId] = true;
+    }
+    // The maps only ever hold `true`, so an identical key set means no change.
+    const previousIds = Object.keys(this.autoNativeWiringDecisions);
+    const unchanged = previousIds.length === detection.autoEnableDeviceIds.length
+      && detection.autoEnableDeviceIds.every((id) => this.autoNativeWiringDecisions[id] === true);
+    if (unchanged) return;
+
+    const previousDecisions = this.autoNativeWiringDecisions;
+    this.autoNativeWiringDecisions = nextDecisions;
+    try {
+      // Re-parse the snapshot (the native-wiring provider now reports the new
+      // defaults) and rebuild the plan so the decision takes effect — mirrors
+      // the native-wiring settings-change handler.
+      await this.refreshTargetDevicesSnapshot();
+      await this.planService?.rebuildPlanFromCache('native_wiring_auto_decision');
+    } catch (error) {
+      // Keep the apply atomic: if the refresh/rebuild fails, roll the decision
+      // back so a later re-query re-attempts it cleanly rather than being
+      // short-circuited by the no-change guard above.
+      this.autoNativeWiringDecisions = previousDecisions;
+      throw error;
+    }
   }
   private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);
@@ -1039,7 +1114,7 @@ class PelsApp extends Homey.App {
       isManagedFilterActive: () => this.isManagedFilterActive(),
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
-      getNativeEvWiringEnabled: (id) => this.nativeEvWiringDevices[id] === true,
+      getNativeEvWiringEnabled: (id) => this.resolveNativeWiringEnabled(id),
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
       getDeviceTargetPowerConfig: (id) => this.deviceTargetPowerConfigs[id],

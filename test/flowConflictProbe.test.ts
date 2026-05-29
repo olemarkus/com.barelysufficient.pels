@@ -1,11 +1,12 @@
-import { runFlowConflictProbe } from '../setup/flowConflictProbe';
+import { detectNativeWiringConflicts } from '../setup/flowConflictProbe';
 import { FLOW_API_PATH, ADVANCED_FLOW_API_PATH, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { Logger as PinoLogger } from 'pino';
 
 const hoiaxId = 'hoiax-1';
+const targetPowerId = 'tp-1';
 
-const steppedDevice = (id: string, nativeWriteCapabilities: string[]): TargetDeviceSnapshot => ({
+const candidateDevice = (id: string, nativeWriteCapabilities: string[]): TargetDeviceSnapshot => ({
   id,
   name: id,
   nativeWriteCapabilities,
@@ -22,66 +23,66 @@ const getReturning = (responses: Record<string, unknown>): FlowApiGet => async (
   throw new Error(`unexpected path ${path}`);
 };
 
-describe('runFlowConflictProbe', () => {
-  it('logs a conflict when a Flow writes a capability a candidate device owns', async () => {
+const advancedWrite = (deviceId: string, capabilityId: string) => ({
+  adv: { cards: { c1: { id: `homey:device:${deviceId}:${capabilityId}`, type: 'action' } } },
+});
+
+describe('detectNativeWiringConflicts', () => {
+  it('auto-enables a Hoiax candidate with no conflicting Flow', async () => {
     const { logger, events } = captureLog();
-    await runFlowConflictProbe({
-      get: getReturning({
-        [FLOW_API_PATH]: {},
-        [ADVANCED_FLOW_API_PATH]: {
-          adv: { cards: { c1: { id: `homey:device:${hoiaxId}:max_power_3000`, type: 'action' } } },
-        },
-      }),
-      getSnapshot: () => [steppedDevice(hoiaxId, ['max_power_3000', 'onoff'])],
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
+      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
       structuredLog: logger,
     });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
-      event: 'flow_conflict_probe',
-      outcome: 'ok',
-      candidateCount: 1,
-      conflictCount: 1,
-      conflicts: [{ deviceId: hoiaxId, capabilities: ['max_power_3000'] }],
-    });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId] });
+    expect(events[0]).toMatchObject({ outcome: 'ok', candidateCount: 1, conflictCount: 0, autoEnableCount: 1 });
   });
 
-  it('reports no conflict when the Flow only writes a non-owned capability (bridge pattern)', async () => {
-    const { logger, events } = captureLog();
-    await runFlowConflictProbe({
+  it('excludes a Hoiax device whose owned capability a Flow writes', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'max_power_3000') }),
+      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
+    });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
+  });
+
+  it('keeps auto-enabling when the Flow only writes a non-owned capability (bridge pattern)', async () => {
+    const result = await detectNativeWiringConflicts({
       get: getReturning({
         [FLOW_API_PATH]: {},
-        [ADVANCED_FLOW_API_PATH]: {
-          adv: { cards: { c1: { id: `homey:device:${hoiaxId}:installation_current_control`, type: 'action' } } },
-        },
+        [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'installation_current_control'),
       }),
-      getSnapshot: () => [steppedDevice(hoiaxId, ['max_power_3000', 'onoff'])],
-      structuredLog: logger,
+      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
-
-    expect(events[0]).toMatchObject({ outcome: 'ok', candidateCount: 1, conflictCount: 0, conflicts: [] });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId] });
   });
 
-  it('logs unknown and does not classify when the read fails closed', async () => {
+  it('does not auto-enable target_power steppers (already default-on, out of scope)', async () => {
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
+      getSnapshot: () => [candidateDevice(targetPowerId, ['target_power'])],
+    });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
+  });
+
+  it('returns unknown and no decisions when the flow read fails closed', async () => {
     const { logger, events } = captureLog();
-    await runFlowConflictProbe({
+    const result = await detectNativeWiringConflicts({
       get: async () => { throw new Error('403 Forbidden'); },
-      getSnapshot: () => [steppedDevice(hoiaxId, ['max_power_3000'])],
+      getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000'])],
       structuredLog: logger,
     });
-
-    expect(events[0]).toMatchObject({ event: 'flow_conflict_probe', outcome: 'unknown' });
-    expect(events[0]).not.toHaveProperty('conflictCount');
+    expect(result).toEqual({ status: 'unknown' });
+    expect(events[0]).toMatchObject({ event: 'flow_conflict_detection', outcome: 'unknown' });
   });
 
-  it('reports zero candidates when the snapshot has no native stepped devices', async () => {
-    const { logger, events } = captureLog();
-    await runFlowConflictProbe({
+  it('returns no decisions when the snapshot has no candidates', async () => {
+    const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getSnapshot: () => [],
-      structuredLog: logger,
     });
-
-    expect(events[0]).toMatchObject({ outcome: 'ok', candidateCount: 0, conflictCount: 0 });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
   });
 });

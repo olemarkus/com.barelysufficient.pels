@@ -163,6 +163,22 @@ describe('MyApp initialization', () => {
     vi.restoreAllMocks();
   });
 
+  it('resolves native wiring: explicit user choice wins, else conflict-gated auto-decision', () => {
+    const app = createApp();
+    (app as any).nativeEvWiringDevices = { 'user-on': true, 'user-off': false };
+    (app as any).autoNativeWiringDecisions = { 'auto-on': true };
+
+    const resolve = (id: string) => (app as any).resolveNativeWiringEnabled(id);
+
+    // Explicit user entries always win, even against an auto-decision.
+    expect(resolve('user-on')).toBe(true);
+    expect(resolve('user-off')).toBe(false);
+    // Untouched device with an auto-enable decision → on.
+    expect(resolve('auto-on')).toBe(true);
+    // Untouched device with no decision → off (fail-closed default).
+    expect(resolve('unknown-device')).toBe(false);
+  });
+
   it('initializes and creates device snapshot', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
 
