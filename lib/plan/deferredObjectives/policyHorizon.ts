@@ -107,6 +107,24 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   };
 };
 
+// Per-bucket spot price keyed by bucket id (the bucket's ISO start string,
+// which is also `DeferredObjectivePlannedBucket.sourceBucketId`). Built from
+// the SAME `collectSnapshotPriceBuckets` source the policy horizon consumes,
+// so a cost estimate computed by multiplying planned kWh by these prices uses
+// exactly the price data the planner saw. Returns an empty map when the
+// snapshot has no usable price buckets. Used by the plan-preview composition;
+// the live planner does not need raw prices (it ranks them into `policyScore`).
+export const buildDeferredObjectivePolicyBucketPrices = (
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+): Map<string, number> => {
+  if (!dailyBudgetSnapshot) return new Map();
+  const prices = new Map<string, number>();
+  for (const bucket of collectSnapshotPriceBuckets(dailyBudgetSnapshot)) {
+    prices.set(bucket.id, bucket.price);
+  }
+  return prices;
+};
+
 const countDailyBudgetExhausted = (buckets: PolicyBucketSource[]): number => (
   buckets.reduce((count, bucket) => count + (bucket.dailyBudgetExhausted ? 1 : 0), 0)
 );

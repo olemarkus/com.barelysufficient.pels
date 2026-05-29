@@ -211,6 +211,10 @@ export class PriceCoordinator {
     return this.priceService.getCombinedHourlyPrices();
   }
 
+  getPriceUnitLabel(): string {
+    return this.priceService.getPriceUnitLabel();
+  }
+
   findCheapestHours(count: number): string[] {
     return this.priceService.findCheapestHours(count);
   }
