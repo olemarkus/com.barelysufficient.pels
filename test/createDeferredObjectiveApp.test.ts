@@ -202,4 +202,53 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
   });
+
+  // The preview must reflect what `rescueDeviceWithBudgetExemption` will PERSIST
+  // (merge-not-replace), not the fresh rescue candidate. Both derive the
+  // (target, deadline) from the same shared resolver, so they cannot diverge.
+  describe('previewStarvationRescuePlan (preview ≡ persist)', () => {
+    it('WITHOUT an existing objective: previews the FRESH rescue candidate (target + now+3h)', async () => {
+      const app = await initApp();
+      const candidate = rescueCandidate(65);
+      const preview = app.previewStarvationRescuePlan('heater-1', candidate);
+      expect(preview.hasExistingObjective).toBe(false);
+      // Fresh case: the resolved deadline is the candidate's own (now+3h).
+      expect(preview.deadlineAtMs).toBe(candidate.deadlineAtMs);
+      await app.onUninit?.();
+    });
+
+    it('WITH an existing objective: previews THAT objective\'s deadline, not the fresh now+3h', async () => {
+      const app = await initApp();
+      // The user's own task: target 70 °C, a later deadline (well past now+3h).
+      const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
+      const created = app.createDeferredObjective('heater-1', {
+        kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: ownDeadline,
+      });
+      expect(created).toEqual({ ok: true });
+
+      // The widget supplies a fresh now+3h / 65 °C candidate, but the merge will
+      // preserve the user's task, so the preview must surface ITS deadline.
+      const preview = app.previewStarvationRescuePlan('heater-1', rescueCandidate(65));
+      expect(preview.hasExistingObjective).toBe(true);
+      expect(preview.deadlineAtMs).toBe(ownDeadline);
+
+      // And it must match exactly what the create path persists.
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
+        targetTemperatureC: 70,
+        deadlineAtMs: ownDeadline,
+        rescue: { exemptFromBudget: 'always' },
+      });
+      await app.onUninit?.();
+    });
+
+    it('hasDeferredObjectiveForDevice reflects whether the device has a persisted objective', async () => {
+      const app = await initApp();
+      expect(app.hasDeferredObjectiveForDevice('heater-1')).toBe(false);
+      app.createDeferredObjective('heater-1', tempCandidate(60));
+      expect(app.hasDeferredObjectiveForDevice('heater-1')).toBe(true);
+      await app.onUninit?.();
+    });
+  });
 });

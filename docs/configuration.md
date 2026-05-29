@@ -106,6 +106,7 @@ Notes:
 
 - Devices without a usable power estimate cannot use power-limit control.
 - Temperature devices can still be managed for mode and price behavior even when power-limit control is unavailable.
+- **Built-in device control** lets PELS adjust a supported device (such as a compatible water heater) directly, without you wiring up Homey Flows, and is on by default for those devices. If PELS detects that one of your own Homey Flows already controls the device, it leaves built-in device control off and shows a notice on the device so it never fights your Flow — remove that Flow to let PELS take over, or turn the switch on to override.
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - If expected usage looks wrong, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
 - For EV current-control setup, see [Configure an EV Charger](/ev-charger).

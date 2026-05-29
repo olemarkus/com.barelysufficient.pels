@@ -227,14 +227,13 @@ var getStarvationRescueDevices = async ({ homey }) => {
 var previewStarvationRescue = async ({ homey, body }) => {
   const request = parseRescueRequest(body);
   if (!request) return previewReject("invalid_request");
-  if (typeof homey.app?.previewDeferredObjectivePlan !== "function") return previewReject("unavailable");
+  if (typeof homey.app?.previewStarvationRescuePlan !== "function") return previewReject("unavailable");
   const rescuable = resolveRescuableDevice(homey.app)(request.deviceId);
   if (!rescuable.ok) return previewReject(rescuable.reason);
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
-  const deadlineAtMs = nowMs + RESCUE_DEADLINE_HORIZON_MS;
-  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
-  const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
+  const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
+  const { estimate, deadlineAtMs } = homey.app.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
     ok: true,
     deadlineAtMs,
@@ -251,7 +250,11 @@ var createStarvationRescue = async ({ homey, body }) => {
   if (!rescuable.ok) return createReject(rescuable.reason);
   const nowMs = Date.now();
   const deadlineAtMs = request.deadlineAtMs ?? nowMs + RESCUE_DEADLINE_HORIZON_MS;
-  if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
+  if (deadlineAtMs <= nowMs) {
+    return createReject("deadline_passed");
+  }
+  const hasExistingObjective = homey.app?.hasDeferredObjectiveForDevice?.(request.deviceId) ?? false;
+  if (!hasExistingObjective && deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
     return createReject("deadline_passed");
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
