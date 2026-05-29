@@ -3,6 +3,7 @@ import {
   formatConfidenceChipLabel,
   formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
+  formatSmartTaskHitRateFragment,
   formatSmartTaskListConfidenceChipLabel,
   resolveBuildingPlanChipTone,
   resolvePausedUnpluggedChipTone,
@@ -175,16 +176,46 @@ describe('smart-task list card copy constants', () => {
       intro: 'No smart tasks yet. Open the Flow editor and add the',
       heatingAction: 'Add heating task',
       actionWord: 'action',
-      heatingExample: '(Heat … to … °C by Ready by)',
+      // User-outcome phrasing — no internal Flow-card field name ("Ready by").
+      heatingExample: '(heat a device to a target temperature by a time)',
       conjunction: 'or the',
       chargingAction: 'Add charging task',
-      chargingExample: '(Charge … to … % by Ready by)',
+      chargingExample: '(charge a device to a target percent by a time)',
       outro: 'to schedule a device for a specific ready-by time.',
     });
   });
 
+  it('keeps the example fragments free of the internal "Ready by" Flow-card field name', () => {
+    // The earlier examples read "(Heat … to … °C by Ready by)" — the trailing
+    // "Ready by" was the literal Flow input label, which leaked an internal
+    // field name into user-outcome copy. Guard against the regression.
+    expect(SMART_TASK_LIST_EMPTY_COPY.heatingExample).not.toContain('Ready by');
+    expect(SMART_TASK_LIST_EMPTY_COPY.chargingExample).not.toContain('Ready by');
+    // Temperature copy must never say "charge"; EV copy uses "percent".
+    expect(SMART_TASK_LIST_EMPTY_COPY.heatingExample.toLowerCase()).not.toContain('charge');
+    expect(SMART_TASK_LIST_EMPTY_COPY.chargingExample).toContain('percent');
+  });
+
   it('exports the load-error sentence', () => {
     expect(SMART_TASK_LIST_LOAD_ERROR_COPY).toBe('Could not load smart tasks. Try again later.');
+  });
+});
+
+describe('formatSmartTaskHitRateFragment', () => {
+  // The 7-day strip's percent excludes abandoned runs from its denominator,
+  // so the bare "67% hit rate" form didn't reconcile with the counts beside
+  // it. The legible fragment names the denominator ("of M finished") so the
+  // percent is self-explanatory. The helper only phrases the already-computed
+  // numbers — it never re-derives the percent.
+  it('names the finished-run denominator so the percent reconciles', () => {
+    // 8 succeeded of 11 finished (8 + 3 missed); the 1 abandoned run is not
+    // part of the denominator and so does not appear here.
+    expect(formatSmartTaskHitRateFragment(73, 11)).toBe('73% of 11 finished');
+  });
+
+  it('handles the all-succeeded and all-missed edges', () => {
+    expect(formatSmartTaskHitRateFragment(100, 3)).toBe('100% of 3 finished');
+    expect(formatSmartTaskHitRateFragment(0, 2)).toBe('0% of 2 finished');
   });
 });
 
