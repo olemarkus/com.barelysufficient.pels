@@ -4659,3 +4659,18 @@ prod walk that didn't warrant a P2 slot.*
       device) so a bad read of one device structurally cannot affect others,
       eliminating the whole-map clobber class rather than guarding it at
       runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.
+
+
+- [ ] **Close the transitive widget WebView import hole.** The
+      `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
+      `widgets/*/src/public/** -> lib|app|setup|...` edges. It does not catch the
+      transitive `public/** -> *WidgetPayload.ts -> lib` path, because the
+      `*WidgetPayload.ts` node builders are allowlisted to import lib and
+      `public/render.ts` (headroom, smart_tasks) imports those builders for
+      constants/types. Today every payload->lib edge is type-only (erased at
+      build, so nothing bundles into the WebView), but a future VALUE import in a
+      payload builder would silently ship runtime code into the browser bundle
+      while `arch:check` stays green. Fix: split the browser-safe constants/types
+      out of the node builders into a shared browser-safe module, then add a rule
+      forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`. Source:
+      codex review of PR #1286, 2026-05-29.
