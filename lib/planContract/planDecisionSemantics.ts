@@ -21,7 +21,8 @@ export type PlanStarvationPauseReason =
   | 'activation_backoff'
   | 'headroom_cooldown'
   | 'keep'
-  | 'inactive';
+  | 'inactive'
+  | 'deferred_objective_avoid';
 
 export type PlanStarvationSuppressionSemantics =
   | { state: 'none'; countingCause: null; pauseReason: null }
@@ -110,6 +111,13 @@ export function resolveStarvationSuppressionSemantics(reason: DeviceReason): Pla
   }
   if (reason.code === PLAN_REASON_CODES.inactive) {
     return { state: 'paused', countingCause: null, pauseReason: 'inactive' };
+  }
+  // A device held by `deferredObjectiveAvoid` is being deliberately deferred by
+  // its own smart-task policy (waiting for a cheaper/reserved hour), not starved
+  // for capacity — pause it with an attributed reason rather than letting it fall
+  // through to the `unknown_suppression_reason` catch-all in planDiagnostics.
+  if (reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
+    return { state: 'paused', countingCause: null, pauseReason: 'deferred_objective_avoid' };
   }
   const countingCause = COUNTING_SUPPRESSION_CAUSES[reason.code];
   if (countingCause) {

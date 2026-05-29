@@ -56,5 +56,10 @@ describe('plan decision semantics', () => {
       countingCause: null,
       pauseReason: 'keep',
     });
+    expect(resolveStarvationSuppressionSemantics(reason(PLAN_REASON_CODES.deferredObjectiveAvoid))).toEqual({
+      state: 'paused',
+      countingCause: null,
+      pauseReason: 'deferred_objective_avoid',
+    });
   });
 });

@@ -8,6 +8,7 @@ import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
+import { PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS } from '../../../../shared-domain/src/planStateLabels.ts';
 import {
   deviceDetailDiagnosticsCards,
   deviceDetailDiagnosticsDisclosure,
@@ -124,6 +125,7 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   suppression_none: 'No active service block',
   invalid_observation: 'Observation invalid',
   sample_gap: 'Fresh observation missing',
+  deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   unknown_suppression_reason: 'Service reason unknown',
 };
 
