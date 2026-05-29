@@ -1,3 +1,4 @@
+import { formatSmartTaskWidgetOverflow } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetPayload';
 import type {
   SmartTasksWidgetEmptyPayload,
@@ -114,7 +115,7 @@ const renderListReady = (
   }
   if (payload.overflowCount > 0) {
     overflowEl.hidden = false;
-    overflowEl.textContent = `+${payload.overflowCount} in Smart tasks`;
+    overflowEl.textContent = formatSmartTaskWidgetOverflow(payload.overflowCount);
   } else {
     overflowEl.hidden = true;
   }

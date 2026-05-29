@@ -13,6 +13,7 @@ import {
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
   SMART_TASK_WIDGET_EMPTY_HINT,
+  SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_STATUS_LABELS,
   SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
@@ -25,7 +26,10 @@ import type {
 } from './smartTasksWidgetTypes';
 
 export const ROW_CAP = 3;
-export const EMPTY_SUBTITLE_DEFAULT = 'No active smart tasks';
+// Re-export under the widget-local name so existing consumers/tests keep a
+// stable import surface; the string itself is sourced from shared-domain so
+// runtime logging and the widget render identical copy.
+export const EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 
 const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   cannot_meet: 0,

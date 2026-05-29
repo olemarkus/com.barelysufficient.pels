@@ -204,6 +204,18 @@ export const resolveSmartTaskWidgetDetailCopy = (
 export const SMART_TASK_WIDGET_EMPTY_HINT
   = 'Add a smart task from a Flow card to see it here.';
 
+// Widget empty-state subtitle. Lives here (not inlined in the widget package)
+// so runtime logging and the widget render the same string per
+// `feedback_ui_text_shared_with_logs`.
+export const SMART_TASK_WIDGET_EMPTY_SUBTITLE = 'No active smart tasks';
+
+// Overflow line shown beneath the capped widget row list when more active
+// tasks exist than the widget renders (`+N in Smart tasks`). Formatter rather
+// than a constant because the count is dynamic; sourced from shared-domain so
+// the runtime can reuse the exact phrasing.
+export const formatSmartTaskWidgetOverflow = (count: number): string =>
+  `+${count} in Smart tasks`;
+
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone
