@@ -268,6 +268,19 @@ function resolveFlowBackedCapabilityReportOutcome(update: {
   };
 }
 
+// Stable canonical strings for the native-wiring auto-decision + flow-conflict
+// maps, so the apply path can detect "no change" regardless of key ordering.
+function nativeWiringDecisionKey(decisions: Record<string, boolean>): string {
+  return Object.keys(decisions).filter((id) => decisions[id] === true).sort().join('|');
+}
+
+function flowConflictKey(conflicts: Record<string, { conflictingCapabilities: readonly string[] }>): string {
+  return Object.keys(conflicts)
+    .sort()
+    .map((id) => `${id}:${[...(conflicts[id]?.conflictingCapabilities ?? [])].sort().join(',')}`)
+    .join('|');
+}
+
 class PelsApp extends Homey.App {
   private powerTracker: PowerTrackerState = {};
   private powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
@@ -312,6 +325,9 @@ class PelsApp extends Homey.App {
   // flow read + conflict classifier. An explicit user entry in
   // `nativeEvWiringDevices` always takes precedence over this default.
   private autoNativeWiringDecisions: Record<string, boolean> = {};
+  // Per-device flow-conflict verdict (the native-write capabilities a user
+  // Flow drives), surfaced on the snapshot for the device-detail banner.
+  private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[] }> = {};
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowReportedCapabilitiesEmptyParseWarned = false;
@@ -1025,25 +1041,34 @@ class PelsApp extends Homey.App {
     for (const deviceId of detection.autoEnableDeviceIds) {
       nextDecisions[deviceId] = true;
     }
-    // The maps only ever hold `true`, so an identical key set means no change.
-    const previousIds = Object.keys(this.autoNativeWiringDecisions);
-    const unchanged = previousIds.length === detection.autoEnableDeviceIds.length
-      && detection.autoEnableDeviceIds.every((id) => this.autoNativeWiringDecisions[id] === true);
-    if (unchanged) return;
+    const nextConflicts: Record<string, { conflictingCapabilities: readonly string[] }> = {};
+    for (const conflict of detection.conflicts) {
+      nextConflicts[conflict.deviceId] = { conflictingCapabilities: conflict.conflictingCapabilities };
+    }
+    if (
+      nativeWiringDecisionKey(this.autoNativeWiringDecisions) === nativeWiringDecisionKey(nextDecisions)
+      && flowConflictKey(this.flowConflictsByDevice) === flowConflictKey(nextConflicts)
+    ) {
+      return;
+    }
 
     const previousDecisions = this.autoNativeWiringDecisions;
+    const previousConflicts = this.flowConflictsByDevice;
     this.autoNativeWiringDecisions = nextDecisions;
+    this.flowConflictsByDevice = nextConflicts;
     try {
-      // Re-parse the snapshot (the native-wiring provider now reports the new
-      // defaults) and rebuild the plan so the decision takes effect — mirrors
-      // the native-wiring settings-change handler.
+      // Re-parse the snapshot (the native-wiring + conflict providers now
+      // report the new state) and rebuild the plan so both the decision and
+      // the surfaced conflict take effect — mirrors the native-wiring
+      // settings-change handler.
       await this.refreshTargetDevicesSnapshot();
       await this.planService?.rebuildPlanFromCache('native_wiring_auto_decision');
     } catch (error) {
-      // Keep the apply atomic: if the refresh/rebuild fails, roll the decision
-      // back so a later re-query re-attempts it cleanly rather than being
+      // Keep the apply atomic: if the refresh/rebuild fails, roll both maps
+      // back so a later re-query re-attempts cleanly rather than being
       // short-circuited by the no-change guard above.
       this.autoNativeWiringDecisions = previousDecisions;
+      this.flowConflictsByDevice = previousConflicts;
       throw error;
     }
   }
@@ -1115,6 +1140,7 @@ class PelsApp extends Homey.App {
       getBudgetExempt: (id) => this.isBudgetExempt(id),
       getCommunicationModel: (id) => this.getCommunicationModel(id),
       getNativeEvWiringEnabled: (id) => this.resolveNativeWiringEnabled(id),
+      getFlowConflict: (id) => this.flowConflictsByDevice[id],
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
       getDeviceTargetPowerConfig: (id) => this.deviceTargetPowerConfigs[id],

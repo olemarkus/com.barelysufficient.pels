@@ -115,6 +115,10 @@ export type TargetDeviceSnapshot = {
     // candidates even when native wiring is off. Used by native-wiring
     // flow-conflict detection (notes/native-wiring/); not a control input.
     nativeWriteCapabilities?: readonly string[];
+    // Set when a user Homey Flow writes a capability PELS would natively
+    // control for this device, so PELS holds off auto-enabling native wiring
+    // (notes/native-wiring/). Drives the device-detail conflict banner.
+    flowConflict?: { conflictingCapabilities: readonly string[] };
     controlCapabilityId?: 'onoff' | 'evcharger_charging';
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;

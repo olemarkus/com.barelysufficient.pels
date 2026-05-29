@@ -180,15 +180,28 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
      periodic snapshot refresh or a restart. The window is time-bounded and
      capacity control is otherwise unaffected, so this is accepted rather than
      given a dedicated recovery path; the re-query follow-up below closes it.
-5. **PR5:** device-detail conflict banner naming the conflicting Flow /
-   capability (uses the classifier's returned capability ids); copy in
-   `packages/shared-domain/`.
+5. **PR5 (shipped):** device-detail conflict banner. The per-device verdict is
+   surfaced on the snapshot as `flowConflict.conflictingCapabilities` (app
+   stores `flowConflictsByDevice`, exposed via the `getFlowConflict` parse
+   provider, attached in `resolveParsedDeviceSettings`); the settings-UI
+   `syncFlowConflictNotice` shows a non-interactive banner when it is set.
+   Copy lives in `packages/shared-domain/src/nativeWiringCopy.ts`. **Copy is
+   intentionally generic** — it names neither the Flow nor the raw capability
+   id (`max_power_3000` would be jargon); the conflict data decides *when* the
+   banner shows, not its text. The banner ties itself to the visible built-in
+   device-control switch and names both remedies (remove the Flow, or flip the
+   switch to override). `flowConflict` is display-only and does not affect the
+   control gate.
 
-   *Follow-up:* re-run conflict detection after snapshot refreshes (settings-open
-   / device-list refresh / the next successful periodic refresh) so that (a) a
-   Flow added after startup is reflected without a restart and (b) a degraded
-   startup that left the snapshot empty recovers automatically once it
-   populates — closing the accepted limitation noted in PR4.
+   *Follow-ups:*
+   - Re-run conflict detection after snapshot refreshes (settings-open /
+     device-list refresh / the next successful periodic refresh) so that (a) a
+     Flow added after startup is reflected without a restart and (b) a degraded
+     startup that left the snapshot empty recovers automatically once it
+     populates — closing the accepted limitation noted in PR4.
+   - Plumb the conflicting Flow's name through `detectNativeWiringConflicts`
+     so the banner can name which Flow to remove (today the remedy points at an
+     unnamed Flow). Requires the flow-list reader to carry flow names.
 
 ## Validation reference
 
