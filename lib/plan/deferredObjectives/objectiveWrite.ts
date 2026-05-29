@@ -218,6 +218,35 @@ export const upsertObjectiveForDevice = (
 };
 
 /**
+ * Resolve the EXACT objective entry the budget-exempt rescue will persist for a
+ * device, given the device's existing objective (if any) and the rescue entry
+ * the caller built for the no-objective case.
+ *
+ * This is the single source of truth for the rescue merge outcome. Both the
+ * write path (`addBudgetExemptionRescueForDevice`) and the rescue PREVIEW path
+ * (the widget's preview handler) derive `(target, deadline, rescue)` from here,
+ * so the plan/cost the user confirms can never diverge from what is persisted:
+ *
+ * - When the device ALREADY has an objective, only `rescue.exemptFromBudget:
+ *   'always'` is added to it and `enabled: true` is ensured. Its target,
+ *   deadline, enforcement, and any OTHER rescue permission are preserved
+ *   verbatim. An existing `exemptFromBudget: 'at_risk'` is PROMOTED to
+ *   `'always'` (the user explicitly asked for power now on an already-starved
+ *   device — there is no "wait until at risk" left to defer to).
+ * - When the device has NO objective, the caller-built `rescueEntry` (the
+ *   device's intended normal target, a near-term deadline, and
+ *   `rescue.exemptFromBudget: 'always'`) is used as-is.
+ */
+export const resolveBudgetExemptionRescueEntry = (
+  prevEntry: DeferredObjectiveSettingsEntry | undefined,
+  rescueEntry: DeferredObjectiveSettingsEntry,
+): DeferredObjectiveSettingsEntry => (
+  prevEntry === undefined
+    ? rescueEntry
+    : { ...prevEntry, enabled: true, rescue: { ...prevEntry.rescue, exemptFromBudget: 'always' } }
+);
+
+/**
  * Grant a device a budget-exempt rescue (the starvation-rescue widget's lane),
  * with MERGE-not-replace semantics:
  *
@@ -266,11 +295,11 @@ export const addBudgetExemptionRescueForDevice = (
 
   const persisted = mutateDeferredObjectiveSettings(deps, (current) => {
     prevEntry = current.objectivesByDeviceId[deviceId];
-    nextEntry = prevEntry === undefined
-      ? params.rescueEntry
-      // Preserve the existing objective; ensure it is enabled (a disabled task's
-      // exemption is ignored by the planner) and the budget exemption is on.
-      : { ...prevEntry, enabled: true, rescue: { ...prevEntry.rescue, exemptFromBudget: 'always' } };
+    // Single source of truth for the merge outcome, shared with the preview path
+    // so preview ≡ persist (see `resolveBudgetExemptionRescueEntry`). Preserves
+    // the existing objective; ensures it is enabled (a disabled task's exemption
+    // is ignored by the planner) and the budget exemption is on.
+    nextEntry = resolveBudgetExemptionRescueEntry(prevEntry, params.rescueEntry);
     return {
       next: {
         version: current.version,

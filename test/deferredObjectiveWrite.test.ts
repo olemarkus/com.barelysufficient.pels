@@ -3,6 +3,7 @@ import {
   addBudgetExemptionRescueForDevice,
   clearObjectiveForDevice,
   mutateDeferredObjectiveSettings,
+  resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
   type DeferredObjectiveSettingsMutationDeps,
@@ -424,6 +425,24 @@ describe('device-scoped objective ops', () => {
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
   });
 
+  it('PREVIEW≡PERSIST: the persisted merge equals the shared resolver the preview uses', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 70,
+      deadlineAtMs: DEADLINE_MS,
+    };
+    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
+    addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    // What was persisted must equal what `resolveBudgetExemptionRescueEntry` (the
+    // SAME function the preview projects) computes — they cannot diverge.
+    expect(h.stored.objectivesByDeviceId['heater-1'])
+      .toEqual(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry));
+  });
+
   it('rescue REFUSES to clobber a sibling on a transient-empty read', () => {
     let stored: DeferredObjectiveSettingsV1 = emptySettings();
     const activePlanRecorder = {
@@ -449,5 +468,44 @@ describe('device-scoped objective ops', () => {
     expect(stored.objectivesByDeviceId).toEqual({});
     expect(activePlanRecorder.markPending).not.toHaveBeenCalled();
     expect(rebuildPlan).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Shared rescue-merge resolver (preview ≡ persist) ───────────────────────
+//
+// `resolveBudgetExemptionRescueEntry` is the single source of truth the write
+// path (`addBudgetExemptionRescueForDevice`) and the preview path
+// (`App.previewStarvationRescuePlan`) both derive `(target, deadline, rescue)`
+// from, so the plan/cost the user confirms can never diverge from what persists.
+describe('resolveBudgetExemptionRescueEntry', () => {
+  it('returns the FRESH rescue entry verbatim when the device has no objective', () => {
+    expect(resolveBudgetExemptionRescueEntry(undefined, rescueTempEntry)).toEqual(rescueTempEntry);
+  });
+
+  it('PRESERVES an existing objective\'s target/deadline, only adding the exemption + enabling', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: false, // a disabled task's exemption is ignored by the planner ⇒ force enabled
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 70, // user's own target — kept, NOT the rescue's 65°
+      deadlineAtMs: DEADLINE_MS, // user's own deadline — kept, NOT the rescue's +3h
+    };
+    // The fresh rescue entry's target/deadline/rescue must NOT leak through.
+    expect(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry)).toEqual({
+      ...existing,
+      enabled: true,
+      rescue: { exemptFromBudget: 'always' },
+    });
+  });
+
+  it('PROMOTES an existing at_risk exemption to always and keeps sibling permissions', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      ...evEntry,
+      rescue: { exemptFromBudget: 'at_risk', limitLowerPriorityDevices: 'at_risk' },
+    };
+    const resolved = resolveBudgetExemptionRescueEntry(existing, rescueTempEntry);
+    expect(resolved.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' });
+    // EV target/deadline untouched (the temperature-shaped rescue entry is ignored).
+    expect(resolved).toMatchObject({ kind: 'ev_soc', targetPercent: 80, deadlineAtMs: DEADLINE_MS });
   });
 });

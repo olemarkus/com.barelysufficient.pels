@@ -64,6 +64,7 @@ import {
 } from './lib/utils/capacityHelpers';
 import {
   DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH,
+  DEFERRED_OBJECTIVES_SETTINGS,
   DEVICE_LAST_CONTROLLED_MS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
@@ -114,8 +115,10 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
+  normalizeDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
+  resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
   addBudgetExemptionRescueForDevice,
   type DeferredObjectiveEndedBus,
@@ -1922,6 +1925,49 @@ class PelsApp extends Homey.App {
   }
   public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
     return this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
+  }
+  // Read the device's currently-persisted deferred objective, or undefined when
+  // none is stored. Used by the starvation-rescue preview/create lanes so they
+  // can resolve the SAME merge outcome `addBudgetExemptionRescueForDevice`
+  // persists (see `resolveBudgetExemptionRescueEntry`).
+  private readDeferredObjectiveEntry(deviceId: string): DeferredObjectiveSettingsEntry | undefined {
+    return normalizeDeferredObjectiveSettings(this.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS))
+      .objectivesByDeviceId[deviceId];
+  }
+  // Whether the device currently has a persisted deferred objective. The
+  // starvation-rescue CREATE path uses this to decide deadline validation:
+  // when an objective exists the merge preserves ITS deadline (the candidate's
+  // is ignored), so the widget's now+3h horizon guard must not reject it.
+  public hasDeferredObjectiveForDevice(deviceId: string): boolean {
+    return this.readDeferredObjectiveEntry(deviceId) !== undefined;
+  }
+  // Preview the plan the starvation rescue would actually produce, accounting
+  // for the merge-not-replace persistence: when the device ALREADY has an
+  // objective, the rescue only adds `exemptFromBudget: 'always'` and preserves
+  // that objective's target/deadline, so the preview must project THAT entry —
+  // not the fresh now+3h rescue candidate the widget supplies. When no objective
+  // exists, the fresh candidate is previewed as-is. The resolved (persisted)
+  // deadline is returned so the widget labels and echoes the right value. This
+  // is the preview≡persist guarantee: both lanes derive `(target, deadline,
+  // rescue)` from `resolveBudgetExemptionRescueEntry`.
+  public previewStarvationRescuePlan(
+    deviceId: string,
+    freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
+  ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
+    const existing = this.readDeferredObjectiveEntry(deviceId);
+    // `freshRescueCandidate` carries `enabled`-less candidate fields; rebuild a
+    // settings entry (enabled: true — a rescue is implicitly live) so the shared
+    // resolver merges against the existing objective exactly as the write does.
+    const resolvedEntry = resolveBudgetExemptionRescueEntry(
+      existing,
+      { ...freshRescueCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
+    );
+    const { enabled: _enabled, ...resolvedCandidate } = resolvedEntry;
+    return {
+      estimate: this.previewDeferredObjectivePlan(deviceId, resolvedCandidate as DeferredObjectivePlanPreviewCandidate),
+      deadlineAtMs: resolvedEntry.deadlineAtMs,
+      hasExistingObjective: existing !== undefined,
+    };
   }
   // Instant, in-isolation estimate of the plan the planner WOULD produce for a
   // candidate deferred objective that is not persisted. Gathers the same plan-
