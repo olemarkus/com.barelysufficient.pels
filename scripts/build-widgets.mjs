@@ -58,3 +58,9 @@ await buildWidget({
   apiEntries: ['api.ts', 'createSmartTaskWidgetPayload.ts'],
   bundleApi: true,
 });
+
+await buildWidget({
+  name: 'starvation_rescue',
+  apiEntries: ['api.ts', 'starvationRescueWidgetPayload.ts'],
+  bundleApi: true,
+});

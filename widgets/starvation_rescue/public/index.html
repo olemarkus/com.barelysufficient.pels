@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Get power now</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./index.css">
+  </head>
+  <body class="homey-widget-small">
+    <main id="widget-root" class="widget-root" data-view="list" aria-label="Get power now">
+      <!-- List: starved devices -->
+      <section class="list-view" data-list-view aria-live="polite">
+        <ol class="rows" data-device-list></ol>
+        <p class="list-more" data-list-more hidden></p>
+        <p class="empty" data-list-empty hidden></p>
+      </section>
+
+      <!-- Confirm: bounded budget-exempt rescue preview -->
+      <section class="confirm-view" data-confirm-view hidden aria-live="polite">
+        <header class="step-header">
+          <button type="button" class="back-btn" data-confirm-back>
+            <span class="back-btn__chevron" aria-hidden="true">&#8592;</span>
+            <span class="back-btn__name" data-confirm-title></span>
+          </button>
+        </header>
+        <p class="consequence" data-confirm-consequence></p>
+        <div class="preview-body">
+          <p class="preview-line preview-line--cost" data-confirm-cost hidden></p>
+          <p class="preview-line preview-line--when" data-confirm-when hidden></p>
+          <p class="preview-line preview-line--energy" data-confirm-energy hidden></p>
+          <p class="preview-line preview-line--unavailable" data-confirm-unavailable hidden></p>
+          <p class="preview-line preview-line--caveat" data-confirm-caveat hidden></p>
+          <p class="preview-line preview-line--error" data-confirm-error hidden></p>
+        </div>
+        <button type="button" class="primary-btn" data-confirm-btn></button>
+      </section>
+
+      <!-- Success flash -->
+      <section class="done-view" data-done-view hidden aria-live="polite">
+        <p class="done-msg" data-done-msg></p>
+      </section>
+    </main>
+
+    <template id="device-template">
+      <li class="row" data-tone="warn">
+        <div class="row__main">
+          <span class="row__name" data-device-name></span>
+          <span class="row__chip" data-device-chip></span>
+        </div>
+        <span class="row__subtext" data-device-subtext></span>
+        <p class="row__note" data-device-note hidden></p>
+        <button type="button" class="rescue-btn" data-rescue-button hidden></button>
+      </li>
+    </template>
+    <script src="./index.js"></script>
+  </body>
+</html>

@@ -108,6 +108,26 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       `SMART_TASK_WIDGET_EMPTY_SUBTITLE` / `formatSmartTaskWidgetOverflow` in
       `deadlineLabels.ts`.)*
 
+- [ ] Revisit the **check-dead-code allowlist exception** for
+      `StarvationRescueDevicesPayload`
+      (`packages/contracts/src/starvationRescue.ts`, allowlisted in
+      `scripts/check-dead-code.mjs`). It is needed only because madge runs
+      against the runtime tsconfig that excludes `widgets/`, so the widget
+      bundle's consumption of the type is invisible. If widget bundling/tsconfig
+      coverage changes so `widgets/**` is traversed, drop the exception. Source:
+      starvation-rescue widget PR (#1281).
+
+- [ ] **Starvation rescue preview should reflect the existing objective +
+      exemption when one already exists (preview ≡ persist), instead of always
+      previewing a fresh rescue objective.** When a budget-starved device
+      already has an objective, the rescue PREVIEW shows a fresh rescue plan
+      (normal target / +3h) while the persisted result preserves the existing
+      objective + adds the budget exemption (merge-not-replace, which is the
+      correct persisted behaviour — runtime-reality confirmed). The preview can
+      therefore over-show vs. what is actually persisted in that edge case. Make
+      the preview path mirror the merge so preview equals persist. Source:
+      Codex P2 (FxDST) on starvation-rescue widget PR (#1281).
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
@@ -4639,3 +4659,18 @@ prod walk that didn't warrant a P2 slot.*
       device) so a bad read of one device structurally cannot affect others,
       eliminating the whole-map clobber class rather than guarding it at
       runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.
+
+
+- [ ] **Close the transitive widget WebView import hole.** The
+      `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
+      `widgets/*/src/public/** -> lib|app|setup|...` edges. It does not catch the
+      transitive `public/** -> *WidgetPayload.ts -> lib` path, because the
+      `*WidgetPayload.ts` node builders are allowlisted to import lib and
+      `public/render.ts` (headroom, smart_tasks) imports those builders for
+      constants/types. Today every payload->lib edge is type-only (erased at
+      build, so nothing bundles into the WebView), but a future VALUE import in a
+      payload builder would silently ship runtime code into the browser bundle
+      while `arch:check` stays green. Fix: split the browser-safe constants/types
+      out of the node builders into a shared browser-safe module, then add a rule
+      forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`. Source:
+      codex review of PR #1286, 2026-05-29.

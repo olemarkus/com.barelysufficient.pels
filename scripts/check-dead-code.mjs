@@ -129,6 +129,12 @@ const allowedUnusedExportPatterns = [
   // in `lib/app/settingsUiAppRuntime.ts`.
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
+  // Consumed by `widgets/starvation_rescue/src/**` (payload builder + types
+  // re-export) via the esbuild widget bundle, which madge (run against the
+  // runtime tsconfig that excludes `widgets/`) doesn't traverse. The sibling
+  // `StarvationRescueDevice` export IS imported by app.ts, so only the payload
+  // type needs the exception.
+  /^packages\/contracts\/src\/starvationRescue\.ts:\d+ - StarvationRescueDevicesPayload$/,
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
   /^lib\/diagnostics\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,

@@ -25,6 +25,14 @@ const tempCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreview
   deadlineAtMs: Date.now() + 6 * 60 * 60 * 1000,
 });
 
+// The rescue candidate the widget API builds: the device's intended normal
+// target, a near-term deadline, and the budget exemption.
+const rescueCandidate = (targetTemperatureC: number): DeferredObjectivePlanPreviewCandidate => ({
+  ...tempCandidate(targetTemperatureC),
+  deadlineAtMs: Date.now() + 3 * 60 * 60 * 1000,
+  rescue: { exemptFromBudget: 'always' },
+});
+
 const readStored = (): DeferredObjectiveSettingsV1 => (
   normalizeDeferredObjectiveSettings(mockHomeyInstance.settings.get(DEFERRED_OBJECTIVES_SETTINGS))
 );
@@ -137,5 +145,61 @@ describe('createDeferredObjective (app)', () => {
     const result = app.createDeferredObjective('heater-1', evCandidate);
     expect(result).toEqual({ ok: false, reason: 'device_not_eligible' });
     await app.onUninit?.();
+  });
+
+  describe('rescueDeviceWithBudgetExemption (merge-not-replace)', () => {
+    it('creates the rescue objective when the device has none', async () => {
+      const app = await initApp();
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
+        enabled: true,
+        kind: 'temperature',
+        targetTemperatureC: 65,
+        rescue: { exemptFromBudget: 'always' },
+      });
+      await app.onUninit?.();
+    });
+
+    it('PRESERVES an existing objective\'s target/deadline and only adds the exemption', async () => {
+      const app = await initApp();
+      // The user already has their own task: target 70 °C, a later deadline.
+      const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
+      const created = app.createDeferredObjective('heater-1', {
+        kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: ownDeadline,
+      });
+      expect(created).toEqual({ ok: true });
+
+      // Rescue aims at 65 °C with a +3h deadline — but must NOT overwrite the user's.
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
+      expect(result).toEqual({ ok: true });
+      const stored = readStored().objectivesByDeviceId['heater-1'];
+      expect(stored).toMatchObject({
+        kind: 'temperature',
+        targetTemperatureC: 70, // user's target preserved
+        deadlineAtMs: ownDeadline, // user's deadline preserved
+        rescue: { exemptFromBudget: 'always' }, // only the exemption added
+      });
+      await app.onUninit?.();
+    });
+
+    it('DEFENCE-IN-DEPTH: rejects a candidate that does not carry the budget exemption', async () => {
+      const app = await initApp();
+      // A plain create candidate (no rescue) must never reach this lane.
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', tempCandidate(65));
+      expect(result).toEqual({ ok: false, reason: 'invalid_candidate' });
+      expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('rejects a picker-only device that is not in the runtime-planned snapshot', async () => {
+      const app = await initApp();
+      app.getUiPickerDevices = () => [
+        { ...buildPlannedHeater(), id: 'picker-only', name: 'Spare heater' },
+      ];
+      const result = app.rescueDeviceWithBudgetExemption('picker-only', rescueCandidate(65));
+      expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
+      await app.onUninit?.();
+    });
   });
 });

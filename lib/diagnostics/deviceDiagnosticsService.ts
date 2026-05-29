@@ -30,6 +30,7 @@ import {
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
+import { buildStarvationThresholds, type StarvationThresholds } from './starvationThresholds';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
@@ -43,14 +44,6 @@ const DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS = 5 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS = 10 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS = 10 * 60 * 1000;
-
-const STARVATION_ENTRY_ANCHORS = [
-  { targetC: 16, deficitC: 2 },
-  { targetC: 21, deficitC: 2 },
-  { targetC: 24, deficitC: 3 },
-  { targetC: 55, deficitC: 10 },
-  { targetC: 80, deficitC: 20 },
-] as const;
 
 export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
 export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
@@ -165,12 +158,6 @@ type LiveDemandObservation = {
   appliedStateSummary: string;
 };
 
-type StarvationThresholds = {
-  entryDeficitC: number;
-  entryThresholdC: number;
-  exitDeficitC: number;
-  exitThresholdC: number;
-};
 
 type LiveStarvationObservation = {
   eligibleForStarvation: boolean;
@@ -316,51 +303,6 @@ const resolveOverviewStarvationCause = (params: {
   return 'external';
 };
 
-const roundUpToStep = (value: number, step: number): number => (
-  Math.ceil(value / step) * step
-);
-
-const roundDownToStep = (value: number, step: number): number => (
-  Math.floor(value / step) * step
-);
-
-const interpolateEntryDeficitC = (targetC: number): number => {
-  const firstAnchor = STARVATION_ENTRY_ANCHORS[0];
-  const lastAnchor = STARVATION_ENTRY_ANCHORS[STARVATION_ENTRY_ANCHORS.length - 1];
-  if (targetC <= firstAnchor.targetC) return firstAnchor.deficitC;
-  if (targetC >= lastAnchor.targetC) return lastAnchor.deficitC;
-
-  for (let index = 1; index < STARVATION_ENTRY_ANCHORS.length; index += 1) {
-    const previous = STARVATION_ENTRY_ANCHORS[index - 1];
-    const current = STARVATION_ENTRY_ANCHORS[index];
-    if (targetC > current.targetC) continue;
-    const span = current.targetC - previous.targetC;
-    const progress = span <= 0 ? 0 : (targetC - previous.targetC) / span;
-    return previous.deficitC + ((current.deficitC - previous.deficitC) * progress);
-  }
-
-  return lastAnchor.deficitC;
-};
-
-const buildStarvationThresholds = (
-  intendedNormalTargetC: number | null,
-  targetStepC: number | null,
-): StarvationThresholds | null => {
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(targetStepC) || targetStepC <= 0) {
-    return null;
-  }
-  const entryDeficitC = Math.max(
-    targetStepC,
-    roundUpToStep(interpolateEntryDeficitC(intendedNormalTargetC), targetStepC),
-  );
-  const exitDeficitC = Math.max(targetStepC, roundDownToStep(entryDeficitC * 0.5, targetStepC));
-  return {
-    entryDeficitC,
-    entryThresholdC: intendedNormalTargetC - entryDeficitC,
-    exitDeficitC,
-    exitThresholdC: intendedNormalTargetC - exitDeficitC,
-  };
-};
 
 const normalizeStarvationObservation = (
   observation: DeviceDiagnosticsPlanObservation,
@@ -606,6 +548,34 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       }),
       startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
     };
+  }
+
+  // Currently-starved devices for the starvation-rescue widget. Mirrors
+  // `getOverviewStarvation` (only fresh, eligible, latched-starved devices) but
+  // enumerates the whole live set and also returns the device's intended normal
+  // target — the value a budget-rescue smart task must aim for so the device
+  // reaches its normal comfort/storage target. Name/kind are joined by the
+  // caller against the device snapshot (see `App.getStarvedRescueDevices`).
+  getStarvedRescueEntries(): Array<{
+    deviceId: string;
+    starvation: SettingsUiPlanDeviceStarvation;
+    intendedNormalTargetC: number | null;
+  }> {
+    const entries: Array<{
+      deviceId: string;
+      starvation: SettingsUiPlanDeviceStarvation;
+      intendedNormalTargetC: number | null;
+    }> = [];
+    for (const deviceId of Object.keys(this.liveByDeviceId)) {
+      const starvation = this.getOverviewStarvation(deviceId);
+      if (!starvation) continue;
+      entries.push({
+        deviceId,
+        starvation,
+        intendedNormalTargetC: this.liveByDeviceId[deviceId]?.lastStarvationObservation?.intendedNormalTargetC ?? null,
+      });
+    }
+    return entries;
   }
 
   destroy(): void {
