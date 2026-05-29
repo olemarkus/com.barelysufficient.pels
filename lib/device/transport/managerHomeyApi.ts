@@ -111,6 +111,17 @@ export async function getEnergyLiveReport(): Promise<unknown> {
   return restClient.get(ENERGY_LIVE_API_PATH);
 }
 
+/**
+ * Generic read-only GET against the Homey local Web API, for endpoints that
+ * have no dedicated helper (e.g. the user-flow lists). Throws when the REST
+ * client is not initialised so callers can fail closed rather than treat an
+ * uninitialised client as an empty result.
+ */
+export async function getRawFromHomeyApi(path: string): Promise<unknown> {
+  if (!restClient) throw new Error('REST client not initialized — call initHomeyHttpClient first');
+  return restClient.get(path);
+}
+
 export function writeErrorToStderr(message: string, error: unknown): void {
   const stderr = typeof process !== 'undefined' ? process.stderr : undefined;
   if (!stderr || typeof stderr.write !== 'function') return;

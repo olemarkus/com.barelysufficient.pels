@@ -73,6 +73,8 @@ import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
+import { runFlowConflictProbe } from './setup/flowConflictProbe';
+import { getRawFromHomeyApi } from './lib/device/transport/managerHomeyApi';
 import {
   persistPowerTrackerStateForApp,
   prunePowerTrackerHistoryForApp,
@@ -932,7 +934,22 @@ class PelsApp extends Homey.App {
       () => this.backgroundTasks.startPriceLowestTriggerChecker(),
       logStartupStepFailure,
     );
-    await runStartupStep('startPowerTrackerPruning', () => this.startPowerTrackerPruning(), logStartupStepFailure);
+    await runStartupStep(
+      'startPostStartupBackgroundTasks',
+      () => this.startPostStartupBackgroundTasks(),
+      logStartupStepFailure,
+    );
+  }
+
+  private startPostStartupBackgroundTasks(): void {
+    this.startPowerTrackerPruning();
+    // Fire-and-forget telemetry probe (PR1 of the native-wiring flow-conflict
+    // initiative). Best-effort: must never block or fail startup, and reads
+    // fail closed. See setup/flowConflictProbe.ts.
+    void runFlowConflictProbe({
+      get: (path) => getRawFromHomeyApi(path),
+      structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
+    }).catch(() => { /* probe is best-effort telemetry */ });
   }
   private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);
