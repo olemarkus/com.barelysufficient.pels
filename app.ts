@@ -117,6 +117,7 @@ import {
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
   upsertObjectiveForDevice,
+  addBudgetExemptionRescueForDevice,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
@@ -166,6 +167,9 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
 } from './packages/contracts/src/deferredObjectivePlanPreview';
 import type {
+  StarvationRescueDevice,
+} from './packages/contracts/src/starvationRescue';
+import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
 import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
@@ -205,6 +209,10 @@ const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 const POWER_TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
 const POWER_TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+// Cadence for re-running native-wiring flow-conflict detection so Flows added
+// after startup (or a degraded-startup empty snapshot) are picked up without a
+// restart. No-op unless the verdict changed.
+const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 const POWER_TRACKER_PERSIST_DELAY_MS = VOLATILE_WRITE_THROTTLE_MS;
 type PriceOptimizationSettings = Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
 const getAppPlanRebuildNowMs = (): number => (
@@ -328,6 +336,13 @@ class PelsApp extends Homey.App {
   // Per-device flow-conflict verdict (the native-write capabilities a user
   // Flow drives), surfaced on the snapshot for the device-detail banner.
   private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[] }> = {};
+  private nativeWiringDecisionInFlight = false;
+  // Flipped in onUninit. The native-wiring probe is fire-and-forget and can
+  // still be parked on a slow flow read when the app tears down; this flag lets
+  // its continuation drop every side effect (logging, snapshot refresh, plan
+  // rebuild) instead of acting on a half-torn-down app or logging into a
+  // closing worker rpc (the `onUserConsoleLog`-during-teardown error in CI).
+  private nativeWiringUninitializing = false;
   private deviceDriverOverrides: Record<string, string> = {};
   private flowReportedCapabilities: FlowReportedCapabilitiesByDevice = {};
   private flowReportedCapabilitiesEmptyParseWarned = false;
@@ -977,11 +992,27 @@ class PelsApp extends Homey.App {
     // Fire-and-forget native-wiring flow-conflict detection. Best-effort: must
     // never block or fail startup, and reads fail closed. See
     // setup/flowConflictProbe.ts.
+    this.runNativeWiringDetectionBestEffort();
+    // Re-run periodically so a conflicting Flow added after startup is
+    // reflected without a restart, and a degraded startup (empty snapshot at
+    // warm-up) recovers once the snapshot populates. The no-change guard makes
+    // each run a no-op unless the verdict actually changed; the in-flight guard
+    // and a dedicated timer (not the refresh path) keep it from looping.
+    this.timers.registerInterval('nativeWiringRequery', setInterval(
+      () => this.runNativeWiringDetectionBestEffort(),
+      NATIVE_WIRING_REQUERY_INTERVAL_MS,
+    ));
+  }
+
+  private runNativeWiringDetectionBestEffort(): void {
+    if (this.nativeWiringUninitializing) return;
     void this.applyNativeWiringAutoDecisions()
       .catch((error) => {
         // Best-effort: a failed detection/refresh never blocks startup, and
         // the next normal plan cycle re-reads the provider so any applied
-        // decision self-heals. Log so prod audits can see the miss.
+        // decision self-heals. Log so prod audits can see the miss — unless we
+        // are tearing down, where logging would hit a closing worker rpc.
+        if (this.nativeWiringUninitializing) return;
         this.structuredLogger?.child({ component: 'flow_conflict' }).error({
           event: 'flow_conflict_detection_failed',
           err: normalizeError(error),
@@ -997,24 +1028,45 @@ class PelsApp extends Homey.App {
   // with the snapshot not yet populated; treating that empty result as a final
   // "no candidates" would leave conflict-free Hoiax devices native-off until
   // the next restart. A populated snapshot with no candidates is final.
+  //
+  // An empty snapshot that survives every retry resolves to `unknown`, never an
+  // empty `ok` verdict: on a periodic re-query a transient empty snapshot (a
+  // refresh/SDK hiccup) would otherwise clear existing auto decisions and turn
+  // native control off until the next tick. `unknown` makes it a no-op that
+  // keeps prior decisions — and with genuinely zero devices there is nothing to
+  // auto-enable, so we lose nothing by not emitting an empty `ok`.
   private async detectNativeWiringConflictsWithSnapshotRetry(): Promise<NativeWiringConflictDetection> {
     for (let attempt = 1; attempt <= PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS; attempt += 1) {
+      if (this.nativeWiringUninitializing) return { status: 'unknown' };
       const snapshot = this.deviceManager?.getSnapshot() ?? [];
       const lastAttempt = attempt === PelsApp.NATIVE_WIRING_DETECTION_MAX_ATTEMPTS;
-      if (snapshot.length === 0 && !lastAttempt) {
-        await this.delayMs(PelsApp.NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
-        continue;
+      if (snapshot.length === 0) {
+        if (!lastAttempt) {
+          await this.delayMs(PelsApp.NATIVE_WIRING_DETECTION_RETRY_DELAY_MS);
+          continue;
+        }
+        return { status: 'unknown' };
       }
       return detectNativeWiringConflicts({
         get: (path) => getRawFromHomeyApi(path),
         getSnapshot: () => snapshot,
-        structuredLog: this.structuredLogger?.child({ component: 'flow_conflict' }),
+        // Guarded sink: the flow read can resolve after teardown, so drop the
+        // outcome line once uninitializing rather than log into a closing rpc.
+        structuredLog: {
+          info: (obj) => {
+            if (this.nativeWiringUninitializing) return;
+            this.structuredLogger?.child({ component: 'flow_conflict' }).info(obj);
+          },
+        },
       });
     }
     return { status: 'unknown' };
   }
 
   private delayMs(ms: number): Promise<void> {
+    // A detection retry can be pending when the app tears down; resolve at once
+    // so the fire-and-forget probe settles promptly instead of holding a timer.
+    if (this.nativeWiringUninitializing) return Promise.resolve();
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
@@ -1028,14 +1080,29 @@ class PelsApp extends Homey.App {
     return this.autoNativeWiringDecisions[deviceId] === true;
   }
 
+  // Guarded entry point: startup runs this once and a periodic timer re-runs it
+  // (see startPostStartupBackgroundTasks). The in-flight flag keeps overlapping
+  // runs — startup vs a periodic tick, or two ticks — from racing.
   private async applyNativeWiringAutoDecisions(): Promise<void> {
+    if (this.nativeWiringDecisionInFlight) return;
+    this.nativeWiringDecisionInFlight = true;
+    try {
+      await this.runNativeWiringDecision();
+    } finally {
+      this.nativeWiringDecisionInFlight = false;
+    }
+  }
+
+  private async runNativeWiringDecision(): Promise<void> {
     // Wait for the snapshot warm-up gate so detection runs against a populated
     // snapshot rather than the initial empty array — the bootstrap refresh is
     // deferred in production. The gate also releases on its own timeout bound,
     // so this can never hang startup, and the call stays fire-and-forget.
     await this.snapshotWarmupGate?.wait();
     const detection = await this.detectNativeWiringConflictsWithSnapshotRetry();
-    if (detection.status !== 'ok') return;
+    // The read above can resolve after teardown began; never refresh the
+    // snapshot or rebuild the plan against a half-torn-down app.
+    if (this.nativeWiringUninitializing || detection.status !== 'ok') return;
 
     const nextDecisions: Record<string, boolean> = {};
     for (const deviceId of detection.autoEnableDeviceIds) {
@@ -1328,6 +1395,11 @@ class PelsApp extends Homey.App {
     this.stopSettingsHandler = settingsHandler.stop;
   }
   async onUninit(): Promise<void> {
+    // Signal the fire-and-forget native-wiring probe to drop its side effects
+    // before anything else tears down. We deliberately do NOT await it: it can
+    // be parked on a slow flow read, and blocking teardown on that read would
+    // stall shutdown. Suppressing its continuation is enough.
+    this.nativeWiringUninitializing = true;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
@@ -1757,6 +1829,35 @@ class PelsApp extends Homey.App {
   getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[] {
     return this.latestTargetSnapshot.filter(isRuntimePlannedDevice);
   }
+  // Currently-starved devices for the starvation-rescue widget. Sourced from the
+  // diagnostics service's live starvation state (`getStarvedRescueEntries`,
+  // which mirrors the overview `getOverviewStarvation` freshness/eligibility
+  // gate) and joined against the runtime-planned snapshot for the device name —
+  // a starved device is by definition managed + capacity-controlled, so it is in
+  // `latestTargetSnapshot`. The `cause` is the producer-resolved flat value; the
+  // widget never re-derives it. Entries whose device is no longer in the snapshot
+  // (e.g. removed mid-cycle) are dropped rather than shown with a stale name.
+  getStarvedRescueDevices(): StarvationRescueDevice[] {
+    const entries = this.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
+    // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
+    // entry — the live snapshot can be sizeable on busy installs.
+    const snapshotById = new Map<string, TargetDeviceSnapshot>(
+      this.latestTargetSnapshot.map((device) => [device.id, device]),
+    );
+    const devices: StarvationRescueDevice[] = [];
+    for (const entry of entries) {
+      const device = snapshotById.get(entry.deviceId);
+      if (!device) continue;
+      devices.push({
+        deviceId: entry.deviceId,
+        deviceName: device.name,
+        cause: entry.starvation.cause,
+        accumulatedMs: entry.starvation.accumulatedMs,
+        intendedNormalTargetC: entry.intendedNormalTargetC,
+      });
+    }
+    return devices;
+  }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
@@ -1905,12 +2006,19 @@ class PelsApp extends Homey.App {
   //
   // Returns `{ ok: false }` with a stable reason code on rejection so the
   // widget can surface an honest error without leaking internal detail.
-  public createDeferredObjective(
+  // Shared validation for both objective-write lanes (`createDeferredObjective`
+  // and `rescueDeviceWithBudgetExemption`): resolve the candidate against the
+  // runtime-planned snapshot, the device's goal kind, and the device's actual
+  // setpoint range, then normalise it through the canonical normalizer. Returns
+  // the validated device + normalised entry, or a stable rejection reason. Both
+  // callers share this so the device honesty / kind / bounds / normalizer gates
+  // never diverge between the two lanes.
+  private resolveValidatedObjectiveEntry(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true } | {
+  ): { ok: true; device: TargetDeviceSnapshot; entry: DeferredObjectiveSettingsEntry } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
   } {
     // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
     // HONESTY above. A device that exists in the picker but not here, OR that is
@@ -1934,7 +2042,7 @@ class PelsApp extends Homey.App {
     // Validate the target against the DEVICE's actual setpoint range, not just
     // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
     // Flow-card `validateTargetTemperature` (which reads the device capability
-    // min/max) and the picker bounds the widget itself offered, so the create
+    // min/max) and the picker bounds the widget itself offered, so the write
     // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
     // persisting one the device can never reach.
     const bounds = resolveSmartTaskGoalBounds(device, kind);
@@ -1949,6 +2057,18 @@ class PelsApp extends Homey.App {
       { ...candidate, enabled: true } as DeferredObjectiveSettingsEntry,
     );
     if (!entry) return { ok: false, reason: 'invalid_candidate' };
+    return { ok: true, device, entry };
+  }
+  public createDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): { ok: true } | {
+    ok: false;
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+  } {
+    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
+    if (!validated.ok) return validated;
+    const { device, entry } = validated;
 
     if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
       return { ok: false, reason: 'invalid_candidate' };
@@ -1958,12 +2078,69 @@ class PelsApp extends Homey.App {
     // clobber (a transient-empty settings read while sibling tasks are live).
     // Report it as a transient conflict so the widget shows a retry-able error
     // rather than a false "created" flash for a task that never persisted.
+    // The create-smart-task widget never carries a rescue permission (the
+    // budget-exempt rescue has its own merge-not-replace lane,
+    // `rescueDeviceWithBudgetExemption`), so the default `preserve` policy keeps
+    // a standing permission set elsewhere intact rather than wiping it.
     const persisted = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:create_smart_task_widget',
       }),
       { deviceId, deviceName: device.name ?? null, entry },
+    );
+    if (!persisted) return { ok: false, reason: 'write_conflict' };
+    return { ok: true };
+  }
+  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue,
+  // with MERGE-not-replace semantics so an existing smart task is never
+  // clobbered:
+  //
+  //  - if the device ALREADY has an objective (its own deadline/target, or a
+  //    standing rescue permission such as `limitLowerPriorityDevices`), only
+  //    `rescue.exemptFromBudget: 'always'` is added — target, deadline, and any
+  //    other rescue permission are preserved verbatim;
+  //  - if the device has NO objective, the rescue objective is created (the
+  //    device's intended normal target, the caller's near-term deadline,
+  //    `rescue.exemptFromBudget: 'always'`).
+  //
+  // Shares the SAME eligibility/kind/bounds validation + hardened write
+  // primitive as `createDeferredObjective`; only the merge op differs. The
+  // caller (the rescue widget API) is responsible for the budget-cause guardrail
+  // — this method only emancipates from the DAILY BUDGET, never capacity (the
+  // hard cap is physical), so a non-budget device gaining the exemption would be
+  // a no-op against capacity, but we assert the candidate is exemption-shaped as
+  // defence-in-depth so the invariant doesn't rest solely on the widget API
+  // being the only caller.
+  public rescueDeviceWithBudgetExemption(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): { ok: true } | {
+    ok: false;
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+  } {
+    // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
+    // grant a budget exemption; reject any candidate that does not carry one so
+    // the exemption can never be smuggled in through a generic create.
+    if (candidate.rescue?.exemptFromBudget !== 'always') {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
+    if (!validated.ok) return validated;
+    const { device, entry: rescueEntry } = validated;
+
+    if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+
+    // The merge op uses `rescueEntry` only when no objective exists yet; when one
+    // does, it preserves that objective and just adds the budget exemption.
+    const persisted = addBudgetExemptionRescueForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
+        nowMs: this.getNow().getTime(),
+        rebuildReason: 'flow_card:starvation_rescue_widget',
+      }),
+      { deviceId, deviceName: device.name ?? null, rescueEntry },
     );
     if (!persisted) return { ok: false, reason: 'write_conflict' };
     return { ok: true };

@@ -17,11 +17,16 @@
  * caller invokes this fire-and-forget, so a slow or failing Web API never
  * blocks or fails app startup.
  */
-import type { Logger as PinoLogger } from 'pino';
 import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
 import { NATIVE_STEPPED_LOAD_CAPABILITY_IDS } from '../lib/device/nativeSteppedLoadWiring';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+
+// Minimal sink for the probe's outcome line. Narrower than a full pino logger
+// (the probe only emits `.info`), which lets the caller hand in a guarded sink
+// that drops the line once the app is uninitializing — so a flow read that
+// resolves after teardown does not log into a closing worker rpc.
+export type FlowConflictLog = { info: (obj: Record<string, unknown>) => void };
 
 export type NativeWiringFlowConflict = { deviceId: string; conflictingCapabilities: string[] };
 
@@ -57,7 +62,7 @@ function isHoiaxAutoEnableCandidate(ownedCapabilities: readonly string[]): boole
 export async function detectNativeWiringConflicts(deps: {
   get: FlowApiGet;
   getSnapshot: () => readonly TargetDeviceSnapshot[];
-  structuredLog?: PinoLogger;
+  structuredLog?: FlowConflictLog;
 }): Promise<NativeWiringConflictDetection> {
   const result = await readFlowCapabilityWrites({ get: deps.get });
 

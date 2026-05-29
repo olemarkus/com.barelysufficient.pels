@@ -70,6 +70,29 @@ module.exports = {
       to: { path: '^app\\.ts$' },
     },
     {
+      name: 'no-widget-to-runtime-except-node-entries',
+      comment: 'Widget source must stay browser-safe: the public/** bundle runs in '
+        + 'Homey\'s widget WebView, and types/preview-fixtures/render helpers feed it. '
+        + 'These must consume only shared contracts/shared-domain and sibling widget '
+        + 'files — never the app runtime (app.ts, flowCards/, drivers/, lib/, setup/). '
+        + 'The only exception is a widget\'s node entries, which run in the app process '
+        + 'when the widget requests data: api.ts (the Homey API handler) and the '
+        + '*WidgetPayload.ts builders may bridge to lib helpers (e.g. '
+        + 'create_smart_task/src/api.ts imports lib/plan/deferredObjectives; '
+        + 'plan_budget/src/planPriceWidgetPayload.ts imports lib/dailyBudget types). '
+        + 'Known gap: this catches only DIRECT public->runtime edges, not the '
+        + 'transitive public/** -> *WidgetPayload.ts -> lib path. Today the '
+        + 'payload->lib edges are type-only (erased at build), so nothing bundles; '
+        + 'closing the transitive hole needs browser-safe constants split out of the '
+        + 'node builders + a public-can\'t-import-node-entry rule. Tracked in TODO.md.',
+      severity: 'error',
+      from: {
+        path: '^widgets/[^/]+/src/',
+        pathNot: '^widgets/[^/]+/src/(api\\.ts|[^/]*WidgetPayload\\.ts)$',
+      },
+      to: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/)' },
+    },
+    {
       name: 'shared-packages-no-runtime',
       comment: 'Shared packages must remain browser-safe and runtime-agnostic.',
       severity: 'error',

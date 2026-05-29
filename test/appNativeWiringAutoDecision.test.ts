@@ -47,6 +47,67 @@ describe('applyNativeWiringAutoDecisions', () => {
     expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
   });
 
+  it('skips a concurrent run while one is in flight (no overlapping reads)', async () => {
+    let releaseGet: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { releaseGet = resolve; });
+    let getCalls = 0;
+    setRestClient({
+      get: async () => { getCalls += 1; await gate; return {}; },
+      put: vi.fn(),
+    });
+    const { app } = stubApp([hoiaxCandidate('hoiax-1')]);
+
+    const first = (app as any).applyNativeWiringAutoDecisions();
+    await Promise.resolve(); // let the first run begin its (gated) reads
+    const callsDuringFirst = getCalls;
+
+    // A concurrent call while the first is in flight must early-return without
+    // starting its own detection reads.
+    await (app as any).applyNativeWiringAutoDecisions();
+    expect(getCalls).toBe(callsDuringFirst);
+
+    releaseGet();
+    await first;
+  });
+
+  it('drops the apply when uninit begins while the flow read is in flight', async () => {
+    // The probe is fire-and-forget: a read can still be parked when the app
+    // tears down. onUninit flips the flag; the continuation must not refresh
+    // the snapshot or rebuild the plan against a half-torn-down app.
+    let releaseGet: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { releaseGet = resolve; });
+    setRestClient({ get: async () => { await gate; return {}; }, put: vi.fn() });
+    const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
+
+    const run = (app as any).applyNativeWiringAutoDecisions();
+    await Promise.resolve(); // park the run on the gated read
+
+    // Simulate onUninit racing the in-flight read.
+    (app as any).nativeWiringUninitializing = true;
+    releaseGet();
+    await run;
+
+    expect((app as any).autoNativeWiringDecisions).toEqual({});
+    expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('keeps existing decisions when a re-query snapshot is empty (transient hiccup)', async () => {
+    // A periodic re-query whose snapshot is transiently empty must not clear a
+    // prior auto decision — an empty snapshot resolves to unknown (no-op), not
+    // an empty "ok" verdict that would turn native control off for a tick.
+    setRestClient({ get: async () => ({}), put: vi.fn() });
+    const { app, refreshTargetDevicesSnapshot, rebuildPlanFromCache } = stubApp([]);
+    (app as any).autoNativeWiringDecisions = { 'hoiax-1': true };
+    (app as any).delayMs = vi.fn().mockResolvedValue(undefined); // skip retry waits
+
+    await (app as any).applyNativeWiringAutoDecisions();
+
+    expect((app as any).autoNativeWiringDecisions).toEqual({ 'hoiax-1': true });
+    expect(refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
   it('rolls back the decision when the refresh/rebuild fails (atomic apply)', async () => {
     setRestClient({ get: async () => ({}), put: vi.fn() });
     const { app, rebuildPlanFromCache } = stubApp([hoiaxCandidate('hoiax-1')]);
