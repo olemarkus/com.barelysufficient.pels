@@ -220,7 +220,12 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_7DAY_HIT_RATE_LABEL$/,
-  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_HIT_RATE_NOUN$/,
+  // `formatSmartTaskHitRateFragment` (+ its `SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN`,
+  // reported `(used in module)`) compose the legible "N% of M finished" hit-rate
+  // fragment. Consumed only by `deferredPlanHistoryReceipt.ts`, whose own
+  // consumers are settings-UI/widget code the runtime tsconfig excludes, so
+  // ts-prune sees no runtime importer.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskHitRateFragment$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_ROW_LABELS$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_EMPTY_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_LOAD_ERROR_COPY$/,

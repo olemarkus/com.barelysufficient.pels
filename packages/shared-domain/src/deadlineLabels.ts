@@ -547,13 +547,39 @@ export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll a
 // (per `feedback_ui_text_shared_with_logs.md`); the window length (7 days)
 // is part of the user-facing copy on purpose — naming the horizon makes the
 // strip stand on its own without a tooltip.
-export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days';
-// Trailing fragment for the hit-rate value (`67% hit rate`). Held as a
-// constant so the producer can compose the strip via `join(' · ')` without
-// the noun ever drifting between the UI and the log breadcrumb that mirrors
-// it. The hit-rate definition (succeeded ÷ (succeeded + missed), excluding
-// abandoned/replaced) is documented on `resolvePlanHistory7DayHitRateStrip`.
-export const SMART_TASK_LIST_HIT_RATE_NOUN = 'hit rate';
+//
+// ", all devices" disambiguates the strip's scope from the calendar-week
+// dividers directly below it: the strip is a rolling 7-day window summed
+// across every device and is unaffected by the device-filter chips (it
+// resolves from the unfiltered entry list), whereas the week dividers are
+// calendar buckets that narrow when a device filter is active. Without the
+// cue, an "all devices" strip count sitting above a filtered "This week"
+// count reads as two contradictory totals for the same period.
+export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days, all devices';
+// Trailing fragment for the hit-rate value. The percent is succeeded ÷
+// (succeeded + missed); abandoned/replaced runs are excluded from the
+// denominator. The earlier bare `67% hit rate` form hid that denominator, so
+// on a strip reading `8 succeeded · 3 missed · 1 abandoned · …` the user had
+// no way to see the percent was 8/11≈73% (over the 11 finished runs) rather
+// than 8/12 (over all 12). Naming the denominator ("of 11 finished") makes the
+// percent reconcile with the counts beside it without changing the math.
+//
+// "finished" names the succeeded + missed runs the rate is computed over: a
+// run that succeeded or missed reached its deadline and got a verdict, so it
+// finished; an abandoned/replaced run stopped early and did not, which is why
+// it sits outside the denominator. Kept here so runtime log breadcrumbs and
+// the UI render the identical fragment (per `feedback_ui_text_shared_with_logs.md`).
+export const SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN = 'finished';
+
+// Composes the legible hit-rate fragment ("73% of 11 finished"). `percent` is
+// the already-rounded integer the producer computed; `finishedCount` is the
+// denominator (succeeded + missed). The producer
+// (`resolvePlanHistory7DayHitRateStrip`) owns the arithmetic and only calls
+// this helper to phrase the result, so the visible string stays single-sourced.
+export const formatSmartTaskHitRateFragment = (
+  percent: number,
+  finishedCount: number,
+): string => `${percent}% of ${finishedCount} ${SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN}`;
 
 // Row labels for the Smart-tasks list card's `<dl>` block (Target / Starts /
 // Ready by). Lifted to shared-domain so runtime log breadcrumbs and the UI
@@ -666,10 +692,15 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   intro: 'No smart tasks yet. Open the Flow editor and add the',
   heatingAction: 'Add heating task',
   actionWord: 'action',
-  heatingExample: '(Heat … to … °C by Ready by)',
+  // User-outcome phrasing, not the internal Flow-card field name. The earlier
+  // "(Heat … to … °C by Ready by)" leaked the literal `Ready by` input label —
+  // it read as a placeholder, not a sentence; this states what the task
+  // achieves. Stays on-vocabulary per `notes/ui-terminology.md` (temperature
+  // says "temperature", never "charge"; EV says "percent").
+  heatingExample: '(heat a device to a target temperature by a time)',
   conjunction: 'or the',
   chargingAction: 'Add charging task',
-  chargingExample: '(Charge … to … % by Ready by)',
+  chargingExample: '(charge a device to a target percent by a time)',
   outro: 'to schedule a device for a specific ready-by time.',
 } as const;
 

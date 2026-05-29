@@ -18,6 +18,7 @@ import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUt
 import {
   DEADLINES_LIST_BASELINE_EYEBROW,
   DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE,
+  DEADLINES_LIST_BETWEEN_RUNS_BODY,
   resolveDeadlinesListHero,
   type DeadlinesListBaselineState,
   type DeadlinesListHeroCopy,
@@ -54,7 +55,17 @@ export type DeadlinesListCard = {
 export type DeadlinesListState =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; cards: DeadlinesListCard[] };
+  // `historyPresent` distinguishes the two zero-active-card empty states: a
+  // true first run (no active cards AND no past-tasks history) keeps the
+  // "Add your first smart task" invitation + Flow setup copy, whereas a
+  // between-runs lull (no active cards but the Past tasks archive has finished
+  // runs) renders the calmer "No smart tasks scheduled" header + a pointer to
+  // Past tasks. Optional because the history fetch resolves independently of —
+  // and must not gate — the active list's first paint; `undefined` means
+  // "history not known yet", which renders the conservative first-run copy
+  // until the history fetch lands and the controller re-renders. Ignored when
+  // `cards` is non-empty (the populated hero owns that case).
+  | { status: 'ready'; cards: DeadlinesListCard[]; historyPresent?: boolean };
 
 // Route both list surfaces (active + past) through the same shared formatter
 // so the date/time shape can't drift again. Time-zone is resolved at render
@@ -317,6 +328,18 @@ const EmptyBody = () => (
   </p>
 );
 
+// Between-runs body: no active tasks, but the Past tasks archive below has
+// finished runs. The user has used smart tasks before, so the first-run Flow
+// setup instructions would be condescending and the "first" / "yet" framing
+// would erase their history. A single calm sentence points them at the archive
+// instead. Copy is sourced from shared-domain so runtime log breadcrumbs and
+// the UI render the same string (Rule 4 — UI text shared with logs).
+const BetweenRunsBody = () => (
+  <p class="muted deadlines-list-body" data-state="empty-between-runs">
+    {DEADLINES_LIST_BETWEEN_RUNS_BODY}
+  </p>
+);
+
 const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
   if (state.status === 'loading') {
     return (
@@ -335,6 +358,21 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
     );
   }
   if (state.cards.length === 0) {
+    // No active cards. Branch on whether the Past tasks archive has finished
+    // runs: a true first run (no history) keeps the "Add your first smart
+    // task" invitation + Flow setup copy, while a between-runs lull (history
+    // exists) renders the calmer "No smart tasks scheduled" header + a pointer
+    // to Past tasks — never "first" / "yet". `historyPresent` is undefined
+    // until the independent history fetch resolves, so the conservative
+    // first-run copy shows until the controller re-renders with the flag.
+    if (state.historyPresent === true) {
+      return (
+        <>
+          <BaselineHeader state="empty_between_runs" />
+          <BetweenRunsBody />
+        </>
+      );
+    }
     return (
       <>
         <BaselineHeader state="empty" />

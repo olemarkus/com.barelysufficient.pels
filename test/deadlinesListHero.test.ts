@@ -1,4 +1,6 @@
 import {
+  DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE,
+  DEADLINES_LIST_BETWEEN_RUNS_BODY,
   resolveDeadlinesListHero,
   type DeadlinesListHeroCard,
 } from '../packages/shared-domain/src/deadlinesListHero';
@@ -467,5 +469,29 @@ describe('resolveDeadlinesListHero', () => {
     });
     expect(hero?.headline).toBe('1 on track, 1 planning, 1 complete.');
     expect(hero?.tone).toBe('good');
+  });
+});
+
+// Baseline-header copy for the two zero-active-card empty states (PR1 "Tell
+// the truth"). The active list distinguishes a true first run from a
+// between-runs lull; these constants are the shared source for both the
+// header headline and the between-runs body so the view never inlines the
+// strings (Rule 4 — UI text shared with logs).
+describe('empty-state baseline copy', () => {
+  it('keeps the first-run headline inviting the user to add their first task', () => {
+    expect(DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE.empty).toBe('Add your first smart task');
+  });
+
+  it('uses a between-runs headline that never says "first" or "yet"', () => {
+    const headline = DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE.empty_between_runs;
+    expect(headline).toBe('No smart tasks scheduled');
+    expect(headline.toLowerCase()).not.toContain('first');
+    expect(headline.toLowerCase()).not.toContain('yet');
+  });
+
+  it('points the between-runs body at the Past tasks archive without first-run framing', () => {
+    expect(DEADLINES_LIST_BETWEEN_RUNS_BODY).toContain('Past tasks');
+    expect(DEADLINES_LIST_BETWEEN_RUNS_BODY.toLowerCase()).not.toContain('first');
+    expect(DEADLINES_LIST_BETWEEN_RUNS_BODY.toLowerCase()).not.toContain('yet');
   });
 });

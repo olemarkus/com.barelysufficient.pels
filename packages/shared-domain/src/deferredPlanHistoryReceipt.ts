@@ -57,8 +57,8 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import {
   APPROX_GLYPH,
+  formatSmartTaskHitRateFragment,
   SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
-  SMART_TASK_LIST_HIT_RATE_NOUN,
 } from './deadlineLabels';
 import {
   formatDateInTimeZone,
@@ -777,8 +777,12 @@ const tallySevenDayEntry = (
 
 export type PlanHistory7DayHitRateStrip = {
   // Pre-formatted strip copy, joined with " · ". Example:
-  // `Last 7 days · 8 succeeded · 3 missed · 1 abandoned · 67% hit rate`.
-  // Renders verbatim; the view never branches on the counts.
+  // `Last 7 days, all devices · 8 succeeded · 3 missed · 1 abandoned · 73% of 11 finished`.
+  // The lead names the scope (rolling 7-day window across all devices) so it
+  // doesn't read as a contradiction against the calendar-week dividers below;
+  // the percent names its denominator (succeeded + missed = the finished runs)
+  // so it reconciles with the counts beside it. Renders verbatim; the view
+  // never branches on the counts.
   text: string;
   // Raw aggregate so callers (telemetry, future surfaces, tests) can read
   // the numbers without re-parsing the formatted string. The producer is
@@ -838,6 +842,11 @@ export const resolvePlanHistory7DayHitRateStrip = (
     { succeeded: 0, missed: 0, abandoned: 0, inWindow: 0 },
   );
   if (counts.inWindow === 0) return null;
+  // `decisive` is the hit-rate denominator: succeeded + missed (the runs that
+  // reached a verdict). Abandoned/replaced runs are deliberately excluded —
+  // see the file-block comment above. The strip names this denominator
+  // ("N% of <decisive> finished") so the percent reconciles with the counts
+  // beside it instead of leaving the user to guess what it's a percent *of*.
   const decisive = counts.succeeded + counts.missed;
   const hitRatePercent = decisive === 0
     ? null
@@ -849,7 +858,7 @@ export const resolvePlanHistory7DayHitRateStrip = (
   if (counts.missed > 0) parts.push(`${counts.missed} missed`);
   if (counts.abandoned > 0) parts.push(`${counts.abandoned} abandoned`);
   if (hitRatePercent !== null) {
-    parts.push(`${hitRatePercent}% ${SMART_TASK_LIST_HIT_RATE_NOUN}`);
+    parts.push(formatSmartTaskHitRateFragment(hitRatePercent, decisive));
   }
   return {
     text: parts.join(' · '),
