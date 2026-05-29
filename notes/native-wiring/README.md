@@ -156,19 +156,39 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    **Telemetry only — no default flip.** Validates the full detection pipeline
    on real Homeys before any behaviour changes. The candidate enumeration +
    owned-cap resolution it adds is reused by PR4.
-4. **PR4:** flip native stepped wiring ON by default for Hoiax (`max_power_*`)
-   devices unless a flow conflict is found, gating on `status: 'ok'` (an
-   `unknown` read does **not** auto-flip). Persist a per-device auto-decided
-   marker (separate from the user-set flag) so a user's explicit choice is
-   never auto-reverted. Run the decision once the device snapshot is ready
-   (not the fixed end-of-startup probe slot) and re-query on settings open.
-   **Scope note:** `target_power` steppers are already default-ON today (via
-   the `targetPowerSteppedCandidate` branch in `managerNativeEv.ts`) with no
-   conflict gating; PR4 changes only the Hoiax default and leaves the existing
-   `target_power` behaviour untouched.
+4. **PR4 (shipped):** native stepped wiring defaults ON for Hoiax
+   (`max_power_*`) devices unless a flow conflict is found.
+   - **Runtime default, not a settings write.** `getNativeEvWiringEnabled`
+     resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
+     false) always wins; an untouched device falls back to an in-memory,
+     conflict-gated auto-decision (`app.autoNativeWiringDecisions`). Nothing is
+     persisted, so there is no migration and no risk of corrupting user state,
+     and an explicit opt-out is never auto-reverted.
+   - **Gating:** `detectNativeWiringConflicts` (`setup/flowConflictProbe.ts`)
+     auto-enables Hoiax candidates with no conflicting Flow; an `unknown` read
+     yields no decisions (fail-closed). It runs once after the snapshot
+     warm-up gate, then re-parses the snapshot + rebuilds the plan so the
+     decision takes effect.
+   - **Scope:** `target_power` steppers are already default-ON (via the
+     `targetPowerSteppedCandidate` branch in `managerNativeEv.ts`) and are left
+     untouched. Detection runs each startup, so a restart picks up
+     newly-added conflicting Flows.
+   - **Accepted limitation:** detection runs once after the warm-up gate, with
+     a bounded retry while the snapshot is still empty. If the startup snapshot
+     refresh fails outright (gate releases via timeout) and stays broken past
+     the retries, a conflict-free Hoiax is not auto-enabled until the next
+     periodic snapshot refresh or a restart. The window is time-bounded and
+     capacity control is otherwise unaffected, so this is accepted rather than
+     given a dedicated recovery path; the re-query follow-up below closes it.
 5. **PR5:** device-detail conflict banner naming the conflicting Flow /
    capability (uses the classifier's returned capability ids); copy in
    `packages/shared-domain/`.
+
+   *Follow-up:* re-run conflict detection after snapshot refreshes (settings-open
+   / device-list refresh / the next successful periodic refresh) so that (a) a
+   Flow added after startup is reflected without a restart and (b) a degraded
+   startup that left the snapshot empty recovers automatically once it
+   populates — closing the accepted limitation noted in PR4.
 
 ## Validation reference
 

@@ -1,37 +1,38 @@
 /*
- * Startup probe for the native-wiring flow-conflict initiative.
+ * Native-wiring flow-conflict detection (notes/native-wiring/).
  *
- * Reads the owner's configured Homey Flows once and structured-logs:
- *   - PR1: how many device-capability writes exist across all Flows.
- *   - PR3 (this): for each native stepped-load device PELS controls, whether a
- *     user Flow writes a capability PELS would own — the per-device conflict
- *     verdict that the follow-up PR will use to gate native-wiring auto-enable.
+ * Reads the owner's configured Homey Flows once, classifies per-device
+ * conflicts against what PELS would natively write, and returns the set of
+ * Hoiax (max_power_*) devices that are safe to auto-enable native wiring for
+ * (eligible candidates with no conflicting Flow). The caller applies that
+ * decision; this module computes and structured-logs it.
  *
- * Telemetry only — it does not change any device, setting, or plan. Its job is
- * to prove the conflict-detection pipeline produces correct verdicts on real
- * Homeys before any default is flipped.
+ * Fail-closed: on an unreadable flow list (`status: 'unknown'`) it returns no
+ * auto-enable decisions, so a transient Web API failure never flips native
+ * wiring on over a real conflict. target_power steppers are already
+ * default-on and are intentionally not part of the auto-enable set; only the
+ * Hoiax max_power_* population is gated here.
  *
  * Best-effort by design: the read fails closed (see readUserFlows) and the
- * caller invokes this fire-and-forget so a slow or failing Web API never
- * blocks or fails app startup. Candidate enumeration reads whatever device
- * snapshot exists at call time; if the snapshot has not warmed up yet the
- * logged `candidateCount` simply reflects that (the follow-up PR that acts on
- * the verdict runs it once the snapshot is ready).
+ * caller invokes this fire-and-forget, so a slow or failing Web API never
+ * blocks or fails app startup.
  */
 import type { Logger as PinoLogger } from 'pino';
 import { readFlowCapabilityWrites, type FlowApiGet } from '../lib/flowApi/readUserFlows';
 import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
+import { NATIVE_STEPPED_LOAD_CAPABILITY_IDS } from '../lib/device/nativeSteppedLoadWiring';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+
+export type NativeWiringConflictDetection =
+  | { status: 'ok'; autoEnableDeviceIds: string[] }
+  | { status: 'unknown' };
 
 /**
  * Stepped-load candidate devices, with the capabilities PELS would natively
- * write — the candidate set the conflict classifier runs against.
- *
- * Reads the producer-resolved `nativeWriteCapabilities` (set on the snapshot
- * from the device's pre-strip capabilities) rather than re-deriving from
- * `capabilities`: the snapshot's `capabilities` has the native control caps
- * stripped, and `nativeWriteCapabilities` is populated for stepped candidates
- * even when native wiring is off — so devices the conflict gate exists for are
+ * write — the candidate set the conflict classifier runs against. Reads the
+ * producer-resolved `nativeWriteCapabilities` (the snapshot's `capabilities`
+ * has the native control caps stripped); it is populated for candidates even
+ * when native wiring is off, so devices the conflict gate exists for are
  * included regardless of activation state.
  */
 function resolveStepCandidates(
@@ -44,40 +45,50 @@ function resolveStepCandidates(
   });
 }
 
-export async function runFlowConflictProbe(deps: {
+/** A Hoiax candidate is one whose native-write set includes a max_power_* cap. */
+function isHoiaxAutoEnableCandidate(ownedCapabilities: readonly string[]): boolean {
+  return ownedCapabilities.some((capabilityId) => (
+    (NATIVE_STEPPED_LOAD_CAPABILITY_IDS as readonly string[]).includes(capabilityId)
+  ));
+}
+
+export async function detectNativeWiringConflicts(deps: {
   get: FlowApiGet;
   getSnapshot: () => readonly TargetDeviceSnapshot[];
   structuredLog?: PinoLogger;
-}): Promise<void> {
+}): Promise<NativeWiringConflictDetection> {
   const result = await readFlowCapabilityWrites({ get: deps.get });
 
   if (result.status === 'unknown') {
     deps.structuredLog?.info({
-      event: 'flow_conflict_probe',
+      event: 'flow_conflict_detection',
       outcome: 'unknown',
       reason: result.reason,
     });
-    return;
-  }
-
-  let writeCount = 0;
-  for (const capabilities of result.writes.values()) {
-    writeCount += capabilities.size;
+    return { status: 'unknown' };
   }
 
   const candidates = resolveStepCandidates(deps.getSnapshot());
   const conflicts = classifyFlowConflicts(result.writes, candidates);
+  const conflictedIds = new Set(conflicts.map((conflict) => conflict.deviceId));
+
+  const autoEnableDeviceIds = candidates
+    .filter((candidate) => (
+      isHoiaxAutoEnableCandidate(candidate.ownedCapabilities) && !conflictedIds.has(candidate.deviceId)
+    ))
+    .map((candidate) => candidate.deviceId);
 
   deps.structuredLog?.info({
-    event: 'flow_conflict_probe',
+    event: 'flow_conflict_detection',
     outcome: 'ok',
-    deviceCount: result.writes.size,
-    writeCount,
     candidateCount: candidates.length,
     conflictCount: conflicts.length,
+    autoEnableCount: autoEnableDeviceIds.length,
     conflicts: conflicts.map((conflict) => ({
       deviceId: conflict.deviceId,
       capabilities: conflict.conflictingCapabilities,
     })),
   });
+
+  return { status: 'ok', autoEnableDeviceIds };
 }
