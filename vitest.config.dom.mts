@@ -44,6 +44,7 @@ export default defineConfig({
     include: [
       'test/planPriceWidgetBrowser.test.ts',
       'test/createSmartTaskWidgetBrowser.test.ts',
+      'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
     ],
     setupFiles: ['test/setup.ts'],
