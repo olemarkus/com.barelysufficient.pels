@@ -3006,7 +3006,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'set_step',
-      shedStepId: 'low',
+      releaseShedStepId: 'low',
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
@@ -3041,7 +3041,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentState: 'off',
       plannedState: 'shed',
       shedAction: 'set_step',
-      shedStepId: 'low',
+      releaseShedStepId: 'low',
       selectedStepId: 'max',
       desiredStepId: 'low',
       reportedStepId: 'max',

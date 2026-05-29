@@ -1386,8 +1386,7 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="good"],
-.pels-hero[data-tone="good"],
-.plan-history-detail__hero[data-tone="good"] {
+.pels-hero[data-tone="good"] {
   border-color: var(--color-state-positive-border);
   background: linear-gradient(
     180deg,
@@ -1397,8 +1396,7 @@ md-filled-button.is-busy {
 }
 
 .plan-hero[data-tone="warn"],
-.pels-hero[data-tone="warn"],
-.plan-history-detail__hero[data-tone="warn"] {
+.pels-hero[data-tone="warn"] {
   border-color: var(--color-state-warning-border);
   background: linear-gradient(
     180deg,
@@ -1409,7 +1407,12 @@ md-filled-button.is-busy {
 
 /* History-detail-only tone for the Abandoned shape — a log entry, not a
  * receipt or a diagnosis. Neutral surface so the chip + postmortem carry
- * the muted framing without competing with succeeded/missed tones. */
+ * the muted framing without competing with succeeded/missed tones. The
+ * other tones (`good`, `warn`, `alert`, `info`) flow through from the
+ * shared `.plan-hero` / `.pels-hero` primitive because the
+ * `.plan-history-detail__hero` root carries `.plan-hero pels-hero` in
+ * markup (DeadlinePlanHistoryDetail.tsx); see PR #1242 codex/gemini
+ * audit. */
 .plan-history-detail__hero[data-tone="muted"] {
   border-color: var(--color-border-subtle);
   background: var(--color-surface-3);
@@ -1560,6 +1563,24 @@ md-filled-button.is-busy {
   transform: translateY(1px);
 }
 
+/* Selected/pressed link chip (e.g. the past-tasks device-filter row, PR-29).
+   `aria-pressed="true"` is the single source of selection truth — the markup
+   no longer layers a `--info` tone, which collided with the informational
+   blue pill used elsewhere. The pressed treatment leans on the accent +
+   outline pairing instead: a faint accent-tinted fill plus an accent border,
+   matching the segmented-control selected look so "this filter is active"
+   reads as a control state rather than a status tone. */
+.plan-chip--link[aria-pressed="true"] {
+  background: var(--pels-segmented-selected-background);
+  border-color: var(--accent);
+  color: var(--pels-segmented-selected-text);
+}
+
+.plan-chip--link[aria-pressed="true"]:hover {
+  background: var(--pels-segmented-selected-background);
+  border-color: var(--accent-strong);
+}
+
 /* `strong` inside a chip inherits the chip's colour + the chip's own
    `--chip-font-weight` (semibold). The earlier `.chip strong` cascade bumped
    weight to bold, but at xs font size the 1-step lift above the chip's own
@@ -1671,6 +1692,24 @@ md-filled-button.is-busy {
 .plan-history-card__overshoot {
   font-size: var(--font-size-xs);
   color: var(--pels-text-supporting-color);
+}
+
+/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+ * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
+ * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
+ * scanning user sees the cause without tapping through. Producer resolves
+ * `null` on non-missed outcomes; the view never branches on `outcome`. */
+.plan-history-card__reason {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
+/* "Why:" prefix on the reason line — a medium-weight, slightly brighter lead-in
+ * so the reason reads distinctly from the same-tone/same-size coverage line that
+ * can sit directly below it. Mirrors the detail hero's "Why:" framing. */
+.plan-history-card__reason-label {
+  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-secondary);
 }
 
 .plan-history-card__pills {
@@ -1839,12 +1878,61 @@ md-filled-button.is-busy {
   margin-top: 0;
 }
 
+/* Inline revision-history `<details>` panel rendered on the smart-task
+ * detail page (live plan). Default-collapsed; the `<summary>` row carries the
+ * title + count and opens the embedded `.plan-revision-log`. Shares the row
+ * styles with the post-finalization history-detail page so both surfaces
+ * look identical when narrating the same revision shape. */
+.plan-revision-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.plan-revision-panel__summary {
+  /* Grid keeps the chevron right-anchored on the title row even when the
+   * hint text wraps to a second line at 320 px (`Schedule revised — daily
+   * budget shifted · 15:42 · (+1h)` is wider than the card). Two-column
+   * grid with the title spanning column 1, the chevron pinned to the right
+   * of column 2, and the hint dropping to a full-width second row. */
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--spacing-1) var(--spacing-2);
+  /* M3 touch-target floor — binds to the canonical token so any future
+   * adjustment lands consistently with the other disclosure summaries. */
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-1) 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.plan-revision-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Producer-resolved subline that narrates the latest *system* revision
+ * (`Schedule revised — daily budget shifted · 15:42 · +1h`). Lives OUTSIDE
+ * the `<details>` so it stays visible while the panel is collapsed — HTML
+ * hides every child of `<details>` except `<summary>` when closed, so the
+ * subline must be a sibling.
+ *
+ * Tokens only: muted tone via `--pels-text-supporting-color`; the card's
+ * grid gap (`--pels-card-gap` on `.pels-surface-card`) governs the spacing
+ * to the eyebrow above and the `<details>` block below, so the `<p>` only
+ * needs its default browser margins zeroed. Wraps cleanly at 320 px by
+ * inheriting the card's natural width. */
+.plan-revision-panel__summary-subline {
+  margin: 0;
+  color: var(--pels-text-supporting-color);
+}
+
 /* Per-revision log card on the smart-task history detail page (v2.7.2 PR 5).
  * One row per replan; the producer (`formatPlanHistoryRevisionEntry`) resolves
  * the visible strings so the view layer only positions them. Rows stack
  * vertically; on the 320–480 px target widths the time/reason/diff segments
  * sit on one line whenever they fit and wrap onto the next line otherwise. */
-.plan-history-detail__revision-log {
+.plan-revision-log {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1853,9 +1941,16 @@ md-filled-button.is-busy {
   gap: var(--spacing-1);
 }
 
-.plan-history-detail__revision-row {
-  display: flex;
-  flex-wrap: wrap;
+.plan-revision-row {
+  /* Three columns: time (5ch tabular), reason (absorbs), diff (auto).
+   * Switched from flex+wrap to grid so on 320 px viewports the reason can
+   * wrap onto multiple lines without dragging the diff chip with it — the
+   * diff column stays glued to the right and the reason just gets taller.
+   * Replaces the earlier flex layout where a long reason pushed the chip
+   * to the bottom-right of the wrapped row and read like it belonged to
+   * the next row. */
+  display: grid;
+  grid-template-columns: 5ch 1fr auto;
   align-items: baseline;
   gap: var(--spacing-1) var(--spacing-2);
   padding: var(--spacing-1) var(--spacing-2);
@@ -1863,28 +1958,25 @@ md-filled-button.is-busy {
   border-radius: var(--radius-sm);
 }
 
-.plan-history-detail__revision-time {
+.plan-revision-time {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
-  /* Keep the leading time slot a stable width so reasons line up across rows.
-   * `5ch` covers `HH:MM` (4 digits + colon) at any tabular font; the column
-   * narrows naturally if the user shrinks the font size via OS controls. */
-  min-width: 5ch;
 }
 
-.plan-history-detail__revision-reason {
+.plan-revision-reason {
   color: var(--pels-text-primary);
-  /* Allow the reason to absorb remaining row width so the hour-diff chip
-   * lands flush-right on wide rows; on narrow widths the diff still wraps
-   * cleanly underneath the reason. */
-  flex: 1 1 auto;
+  /* min-width: 0 lets the grid track shrink below the reason's intrinsic
+   * width so long labels wrap inside the column instead of expanding it. */
   min-width: 0;
 }
 
-.plan-history-detail__revision-diff {
+.plan-revision-diff {
   color: var(--pels-text-supporting-color);
   font-variant-numeric: tabular-nums;
   font-size: var(--font-size-sm);
+  /* Hint to the user that the chip carries an aria-label tooltip when they
+   * hover. No-op visually but matches the m3 disclosure pattern for chips. */
+  cursor: default;
 }
 
 /* v2.7.3 — Succeeded "receipt" timeline rendered below the outcome headline.
@@ -4945,13 +5037,29 @@ details[open] > summary .disclosure-chevron {
   min-width: 0;
 }
 
-.budget-card-header h3,
-.budget-card-header .section-title {
-  margin-top: 0;
+/* The flex-grow on title side. `> h2` matches DeadlinePlan / DeadlinePlanHistoryDetail
+ * where the title is a direct child; `> div:first-child` matches BudgetOverview where
+ * the h3 + subtitle pair is wrapped in a div (the wrapping div is the flex item, so
+ * targeting the h3 directly is dead code — caught in PR #1241 gemini review). */
+.budget-card-header > h2,
+.budget-card-header > div:first-child,
+.budget-card-header > .section-title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .budget-toggle-mount {
   min-width: 0;
+}
+
+.budget-card-header > button,
+.budget-card-header > .budget-toggle-mount {
+  flex-shrink: 0;
+}
+
+.budget-card-header h3,
+.budget-card-header .section-title {
+  margin-top: 0;
 }
 
 .budget-chart-card {
@@ -6330,12 +6438,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* Hero subline affordance: when the subline names a specific card, the
  * subline wraps in this button so the user can scroll the named card into
- * view. Styled as a quiet inline affordance — no chrome that competes with
- * the headline; just a hover/focus underline and a chevron suffix that
- * signals tappability. The negative-margin / padding pattern keeps the
- * visual line tight while expanding the touch target to the shared
- * Android Material touch-target floor. */
+ * view. Flat dark-theme treatment — the subline reads as ordinary
+ * de-emphasised hero body copy (`color: inherit` picks up the
+ * `.plan-hero__subline` supporting tone), with a trailing chevron as the only
+ * tappability cue. Press feedback comes from the nested `md-ripple`, so there
+ * is no permanent light/inverted container competing with the headline. The
+ * negative-margin / padding pattern keeps the visual line tight while the
+ * `min-height` token expands the hit area to the shared Android Material
+ * 48 dp touch-target floor; `position: relative` anchors the ripple overlay. */
 .deadlines-list-hero__nav-target {
+  /* Neutral, text-toned ripple — a quiet subline affordance, not the green
+     accent the surface cards use. Opacities match `.pels-surface-card` so the
+     press feel is consistent across interactive surfaces. */
+  --md-ripple-hover-color: var(--pels-text-supporting-color);
+  --md-ripple-pressed-color: var(--pels-text-supporting-color);
+  --md-ripple-hover-opacity: 0.06;
+  --md-ripple-pressed-opacity: 0.1;
+  position: relative;
   display: inline-flex;
   align-items: baseline;
   gap: var(--spacing-1);
@@ -6349,24 +6468,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: background-color var(--transition-fast);
-}
-
-.deadlines-list-hero__nav-target:hover,
-.deadlines-list-hero__nav-target:focus-visible {
-  background: var(--color-surface-3);
+  overflow: hidden;
 }
 
 .deadlines-list-hero__nav-target:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-}
-
-.deadlines-list-hero__nav-target-text {
-  text-decoration: underline;
-  text-decoration-color: var(--muted);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
 }
 
 .deadlines-list-hero__nav-target-chevron {
@@ -6386,11 +6493,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
    tightens the inline gap, and carries the link-anchor reset (`color:
    inherit`, `text-decoration: none`) so the `<a>` host inherits text
    styling. Hover/focus elevation lift + outline ride the canonical
-   `data-interactive` hook; only the accent border swap is local. */
+   `data-interactive` hook; only the accent border swap is local.
+
+   Surface tier is bumped to `--pels-surface-container-high` (one step above
+   the base `.pels-surface-card` `--color-surface-1`) so the live "happening
+   now" deadlines read as the primary content tier — mirroring the hero-above-
+   cards rhythm on Overview / Budget. The past-task `.plan-history-card` rows
+   below intentionally stay on the base surface, so the active-vs-history split
+   is a class-level tier distinction (no per-card "active" flag). The hero
+   directly above shares this tier but keeps its inset highlight + larger
+   padding / toned gradients as its own differentiator, so an active card never
+   reads as identical to the hero. The tonal `--warn` / `--alert` treatments
+   live on `__when-row` text only (never a card background), so this surface
+   bump layers cleanly beneath them. */
 .deadline-list-card {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--spacing-2) var(--spacing-3);
   align-items: start;
+  background: var(--pels-surface-container-high);
   color: var(--text);
   text-decoration: none;
 }
@@ -6415,8 +6535,23 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-bold);
   line-height: var(--font-line-height-snug);
   color: var(--text);
+  flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Chips sit as one wrapping group. `flex: 0 1 auto` lets the whole block drop
+   below the title when the kind + status (+ confidence) chips can't share its
+   row, instead of a lone chip dangling at the title's edge at 320 px. The
+   inner wrap keeps the chips legible (no shrink) and aligned to the title
+   start once they own their row. */
+.deadline-list-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .deadline-list-card__chevron {
@@ -6514,6 +6649,38 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-medium);
 }
 
+/* Extra-permissions strip below the timestamp `<dl>`. Pulled out of the
+ * grid because the joined value ("May go over daily budget · May limit
+ * lower-priority devices") is much longer than the timestamp `dd`s and
+ * previously wrapped into a narrow ragged column, reading as overflow
+ * rather than deliberate metadata. The strip spans the card width so the
+ * value gets the full content column and wraps at the natural separator. */
+.deadline-list-card__extras {
+  grid-column: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  font-size: var(--font-size-sm);
+}
+
+.deadline-list-card__extras-label {
+  /* Mirrors `.eyebrow` typography. Inlined here rather than swapping the
+   * BEM-friendly class for the primitive so the strip's structure stays
+   * symmetric with `__extras-value` and a future tone modifier can hang
+   * off the same element. */
+  color: var(--muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--font-line-height-tight);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.deadline-list-card__extras-value {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
 .deadlines-history {
   margin-top: var(--spacing-5);
   display: flex;
@@ -6549,6 +6716,62 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
 }
+
+/* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
+ * list of "Device — N of last M runs missed" rows so the recovering-from-
+ * mistake user gets a pattern-at-a-glance signal without rescanning the
+ * card stack. Plain block rows (no flex) because the row content includes
+ * a literal em-dash text node between the two spans; the dash needs to flow
+ * inline with the surrounding text. */
+.deadlines-history__miss-streaks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.deadlines-history__miss-streak {
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+}
+
+.deadlines-history__miss-streak-device {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.deadlines-history__miss-streak-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.7.4 — 7-day hit-rate strip above the past-tasks list (PR-10). Quiet,
+ * single-line pill that gives the recovering-from-mistake user a first-
+ * impression "how have my deadlines been doing this week?" signal without
+ * scanning the per-row chips. Producer composes the text (`shared-domain/
+ * deferredPlanHistoryReceipt.ts`); the view only paints it. Wraps on narrow
+ * viewports — at 320 px the producer's `·`-joined string flows onto two
+ * lines rather than truncating. */
+.deadlines-history__summary-strip {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+/* v2.7.4 — past-tasks device-filter chip row (PR-19). Sits above the weekly
+ * archive so the user can collapse the list to one device. Wraps at the 320
+ * px floor when many devices have history — each `.plan-chip--link` already
+ * enforces the 48 dp tap-target minimum, so the row only owns spacing here. */
+.deadlines-history__filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
 
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
@@ -6929,7 +7152,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
-  #price-aware-devices-panel
+  #price-aware-devices-panel,
+  #deadlines-panel
 ) {
   display: grid;
   gap: var(--spacing-3);
@@ -6948,7 +7172,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #usage-panel,
   #advanced-panel,
   #electricity-prices-panel,
-  #price-aware-devices-panel
+  #price-aware-devices-panel,
+  #deadlines-panel
 ).hidden {
   display: none;
 }
@@ -7315,14 +7540,20 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 @media (max-width: 430px) {
-  :where(
+  /* Match the base `.card.panel:where(...)` reset specificity (0,2,0) so this
+     narrow-viewport override actually wins. A bare `:where()` (0,0,0) loses to
+     the earlier base rule regardless of source order; with equal specificity
+     the later-in-source rule wins. */
+  .card.panel:where(
     #devices-panel,
     #modes-panel,
     #limits-panel,
     #simulation-panel,
+    #usage-panel,
     #advanced-panel,
     #electricity-prices-panel,
-    #price-aware-devices-panel
+    #price-aware-devices-panel,
+    #deadlines-panel
   ) {
     gap: var(--spacing-2);
   }
@@ -7552,13 +7783,22 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     color: var(--color-state-negative-text);
   }
 
-  /* Smart-tasks list — `.deadline-list-card` and `.plan-history-card` no
-     longer redeclare their surface here. After the card-primitive rebind
-     they walk the canonical `.pels-surface-card` shell, which already
-     paints the neutral white surface + hairline border (same values this
-     desktop block used to set) and never carries a `box-shadow` (the
-     active-card "elevated" pop is now an opt-in `<md-elevation>` mount,
-     so dropping the per-page shadow override is a no-op). */
+  /* Smart-tasks list — `.plan-history-card` walks the canonical
+     `.pels-surface-card` shell (neutral white surface + hairline border)
+     and needs no override here.
+
+     `.deadline-list-card` carries a dark-canvas surface bump to
+     `--pels-surface-container-high` so the live deadlines read as the
+     primary tier above the history rows. On the desktop light palette that
+     token resolves to `--color-surface-4` (`#dddee2`, mono-10) — a heavy
+     gray slab against the white page, the same inversion the hero-idle
+     override above neutralises. So on desktop we keep the active card on the
+     white component surface and carry the active-vs-history distinction with
+     the same `--shadow-card` lift the hero uses, instead of a coloured tier. */
+  .deadline-list-card {
+    background: var(--color-surface-1);
+    box-shadow: var(--shadow-card);
+  }
 }
 
 /* Tonal hero gradient restoration that previously lived here

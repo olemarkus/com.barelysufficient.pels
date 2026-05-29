@@ -231,6 +231,16 @@ export type DecisionSentenceInput = {
   overHardLimit: boolean;
   projectedOverBudget: boolean;
   safePaceKw: number | null;
+  // Subset of `limitedCount` whose hold is attributed to a smart task waiting
+  // for cheaper hours (reason code `deferredObjectiveAvoid`). When the whole
+  // limited set falls into this bucket, the decision sentence frames the
+  // hold as the user's price-aware plan instead of a capacity defense.
+  deferredObjectiveAvoidCount?: number;
+  // Subset of `limitedCount` whose hold is attributed to today's daily budget
+  // pacing (reason code `dailyBudget`). When the whole limited set falls into
+  // this bucket and no smart-task waiting is in play, frame the hold as
+  // budget pacing instead of generic capacity defense.
+  dailyBudgetLimitedCount?: number;
 };
 
 export type DecisionSentenceResult = {
@@ -239,6 +249,44 @@ export type DecisionSentenceResult = {
 };
 
 const formatDevices = (n: number): string => `${n} ${n === 1 ? 'device' : 'devices'}`;
+
+// Pick the most-specific "actively limiting" decision sentence for rule 4 of
+// `buildDecisionSentence`. Extracted so the rule ladder stays under the
+// SonarJS / ESLint cognitive-complexity caps.
+//
+// Precedence (highest first):
+//   - All limited devices are smart-task waiting → calm "Waiting for cheaper
+//     hours" framing. positive: true.
+//   - Some limited devices are smart-task waiting → blended comma-join.
+//   - All limited devices are daily-budget pacing → "to stay within today's
+//     budget" framing.
+//   - Otherwise → existing capacity-defense wording (safe-pace clause when
+//     `safePaceKw !== null`).
+const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): DecisionSentenceResult => {
+  const avoidCount = input.deferredObjectiveAvoidCount ?? 0;
+  const dailyCount = input.dailyBudgetLimitedCount ?? 0;
+  const devicesText = formatDevices(input.limitedCount);
+
+  if (avoidCount > 0 && avoidCount === input.limitedCount) {
+    return { text: `Waiting for cheaper hours before running ${devicesText}.`, positive: true };
+  }
+
+  if (avoidCount > 0) {
+    return {
+      text: `Holding back ${devicesText}, ${avoidCount} waiting for cheaper hours.`,
+      positive: false,
+    };
+  }
+
+  if (dailyCount > 0 && dailyCount === input.limitedCount) {
+    return { text: `Holding back ${devicesText} to stay within today’s budget.`, positive: false };
+  }
+
+  const safePaceText = input.safePaceKw !== null
+    ? ` so the house stays under ${formatKw(input.safePaceKw)}`
+    : '';
+  return { text: `Holding back ${devicesText}${safePaceText}.`, positive: false };
+};
 
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
@@ -267,16 +315,9 @@ export const buildDecisionSentence = (
     };
   }
 
-  // 4. Actively limiting.
-  if (input.limitedCount > 0) {
-    const safePaceText = input.safePaceKw !== null
-      ? ` so the house stays under ${formatKw(input.safePaceKw)}`
-      : '';
-    return {
-      text: `Holding back ${formatDevices(input.limitedCount)}${safePaceText}.`,
-      positive: false,
-    };
-  }
+  // 4. Actively limiting. Pick the most-specific framing that honestly
+  // describes why the limited devices are being held.
+  if (input.limitedCount > 0) return resolveLimitingDecisionSentence(input);
 
   // 5. Resuming.
   if (input.resumingCount > 0) {

@@ -48,6 +48,15 @@ The Smart task plan chooses hours before the ready-by time. If prices are availa
 ![Smart task plan showing selected hours before a ready-by time](screenshots/deadline-plan/480.png)
 *Figure 1. A Smart task plan shows the selected price horizon, expected device work, background usage, and target progress.*
 
+## Why the Plan Changed
+
+PELS shows what triggered each replan:
+
+- On the **active task** page, the **Recent plan changes** panel lists the reasons in order, most recent first — for example *Tomorrow’s prices published*, *Rate estimate refined*, or *Schedule revised — daily budget shifted*.
+- On a **past task**, the **What changed** card on the history-detail page tells the same story for the finished run.
+
+The panel collapses itself when every revision came from a Flow card (the user already knows what they did).
+
 ## Power-Limit Control and Tasks
 
 Power-limit control changes what happens outside the task's planned hours.

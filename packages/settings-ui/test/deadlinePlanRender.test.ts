@@ -211,6 +211,7 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     extraPermissionsValue: null,
     provenanceRows: [],
   },
+  revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
 });
 
 describe('DeadlinePlan loading skeleton', () => {
@@ -250,5 +251,124 @@ describe('DeadlinePlan live-hero recourse button', () => {
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
     expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
+  });
+});
+
+describe('DeadlinePlan revision history panel', () => {
+  it('suppresses the panel when every revision was a user-fired Flow card (no system narrative)', () => {
+    // The gate is reason-based, not count-based: a brand-new task whose only
+    // revisions are user-fired Flow cards has nothing the user doesn't
+    // already know, so the panel is suppressed regardless of count.
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', isFallback: false, hourDiff: null, hourDiffAriaLabel: null },
+    ];
+    payload.revisionSummary = { text: null, count: 1, shouldShowPanel: false };
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    expect(mount.querySelector('.plan-revision-panel')).toBeNull();
+  });
+
+  it('renders a collapsed `<details>` panel with most-recent-first rows when at least one revision is system-initiated', () => {
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      { revision: 3, timeLabel: '15:42', reason: 'Schedule revised', isFallback: false, hourDiff: '+1h', hourDiffAriaLabel: '1 hour added' },
+      { revision: 2, timeLabel: '15:00', reason: 'Prices arrived', isFallback: false, hourDiff: '−1h', hourDiffAriaLabel: '1 hour dropped' },
+      { revision: 1, timeLabel: '14:00', reason: 'Updated by a Flow card', isFallback: false, hourDiff: null, hourDiffAriaLabel: null },
+    ];
+    payload.revisionSummary = {
+      text: 'Schedule revised · 15:42 · +1h',
+      count: 3,
+      shouldShowPanel: true,
+    };
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+
+    const panel = mount.querySelector<HTMLDetailsElement>('.plan-revision-panel');
+    expect(panel).not.toBeNull();
+    // Default-collapsed per the m3 design call.
+    expect(panel?.open).toBe(false);
+    // Summary line surfaces the latest system revision's reason/time/diff so
+    // users can decide whether to expand without committing to a tap. The
+    // pre-formatted string comes from `revisionSummary.text` (producer
+    // resolved). Interpunct U+00B7 separates the clauses so reason labels
+    // whose last words form verb phrases don't parse into the time clause.
+    //
+    // Lives OUTSIDE the `<details>` so it's visible while the panel is
+    // collapsed (HTML hides every child of `<details>` except `<summary>`
+    // when closed) — the at-rest "why?" answer is the discoverability
+    // gain for users who don't bother expanding the panel.
+    const subline = mount.querySelector('.plan-revision-panel__summary-subline');
+    expect(subline?.textContent).toBe('Schedule revised · 15:42 · +1h');
+    expect(panel?.contains(subline)).toBe(false);
+    // Eyebrow distinguishes this live-task panel from the post-finalization
+    // history-detail card (which uses "After this task ran"). Scope the
+    // query to the panel's containing section — the page hero also renders
+    // an `.eyebrow` (`section label`) so a `mount`-wide query would pick
+    // that one up instead of the revision-panel's "Live" tag.
+    const eyebrow = panel?.parentElement?.querySelector('.eyebrow');
+    expect(eyebrow?.textContent).toBe('Live');
+    // The `<summary>` row carries only the heading + chevron now; the
+    // subline was lifted out so it stays visible at-rest.
+    expect(panel?.querySelector('summary .section-hint')).toBeNull();
+    // Most-recent first; head row carries the latest reason and its hour-diff.
+    const rows = Array.from(mount.querySelectorAll<HTMLElement>('.plan-revision-row'));
+    expect(rows.map((r) => r.querySelector('.plan-revision-reason')?.textContent)).toEqual([
+      'Schedule revised',
+      'Prices arrived',
+      'Updated by a Flow card',
+    ]);
+    expect(rows[0]?.querySelector('.plan-revision-diff')?.textContent).toBe('+1h');
+    // The diff chip carries an aria-label / title so screen readers don't
+    // pronounce `+1h` as "plus one h".
+    expect(rows[0]?.querySelector('.plan-revision-diff')?.getAttribute('aria-label')).toBe('1 hour added');
+    expect(rows[0]?.querySelector('.plan-revision-diff')?.getAttribute('title')).toBe('1 hour added');
+    // The oldest row (no prior to diff against) suppresses the diff chip.
+    expect(rows[2]?.querySelector('.plan-revision-diff')).toBeNull();
+  });
+
+  it('renders the longer fallback reason copy and suppresses the diff chip when isFallback === true', () => {
+    // Regression for the "Plan refreshed" row reading as an empty-handed
+    // narration: when the resolver fell back (unknown recorder code), the
+    // row template now reads `Plan refreshed (details unavailable)` so the
+    // absent `+/−Nh` chip is self-explanatory. Producer summary copy stays
+    // on the bare `Plan refreshed` (see activePlanRevisionLog summary test).
+    const mount = mountIntoBody();
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.revisionLog = [
+      {
+        revision: 2,
+        timeLabel: '15:42',
+        reason: 'Plan refreshed',
+        isFallback: true,
+        // Producer would happily compute a diff; the view suppresses it on
+        // fallback rows because the longer reason copy alone explains the
+        // gap and the chip would mis-attribute to a vague label.
+        hourDiff: '+1h',
+        hourDiffAriaLabel: '1 hour added',
+      },
+      {
+        revision: 1,
+        timeLabel: '14:00',
+        reason: 'Prices arrived',
+        isFallback: false,
+        hourDiff: null,
+        hourDiffAriaLabel: null,
+      },
+    ];
+    payload.revisionSummary = {
+      text: 'Plan refreshed · 15:42',
+      count: 2,
+      shouldShowPanel: true,
+    };
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+
+    const rows = Array.from(mount.querySelectorAll<HTMLElement>('.plan-revision-row'));
+    expect(rows[0]?.querySelector('.plan-revision-reason')?.textContent).toBe(
+      'Plan refreshed (details unavailable)',
+    );
+    expect(rows[0]?.querySelector('.plan-revision-diff')).toBeNull();
+    // Non-fallback row keeps the producer-resolved short label.
+    expect(rows[1]?.querySelector('.plan-revision-reason')?.textContent).toBe('Prices arrived');
   });
 });

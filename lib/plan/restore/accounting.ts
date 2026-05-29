@@ -1,21 +1,23 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../../utils/deviceControlProfiles';
+import { isFiniteNumber } from '../../utils/appTypeGuards';
 import {
   PENDING_RESTORE_CONFIRMED_FRACTION,
   PENDING_RESTORE_WINDOW_MS,
 } from '../planConstants';
 import { buildRestoreHeadroomReason } from '../planReasonStrings';
-import {
-  getRestoreDrawKw,
-  type ExpectedPowerSource,
-} from '../../observer/observedPower';
+import { getRestoreDrawKw } from '../../observer/observedPower';
 import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
 } from '../planSteppedRestorePending';
+import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
-export type RestorePowerSource = ExpectedPowerSource;
+// Re-exported for plan-layer consumers (planReasons, restore/index, tests)
+// that read `RestorePowerSource` from this module. The canonical declaration
+// lives in `packages/contracts/src/types.ts`.
+export type { RestorePowerSource };
 
 export function buildInsufficientHeadroomUpdate(params: {
   neededKw: number;
@@ -50,6 +52,14 @@ export function estimateRestorePower(dev: DevicePlanDevice): number {
 function resolveRestorePower(
   dev: DevicePlanDevice,
 ): { kw: number; source: RestorePowerSource } {
+  // Producer-resolved path (chunk 4 of the planner-detype refactor). When the
+  // device snapshot carries `residualKw.restore`, the
+  // `isSteppedLoadDevice + getSteppedLoadRestoreStep` chain has already been
+  // collapsed at the producer seam (`lib/device/deviceResidualKw.ts`), so the
+  // consumer just reads the resolved `{ kw, source }`. The legacy fallback
+  // below covers fixtures built without the producer-resolved field; chunk 6
+  // removes it.
+  if (dev.residualKw?.restore) return dev.residualKw.restore;
   const stepped = resolveSteppedRestorePower(dev);
   if (stepped !== null) return stepped;
   return getRestoreDrawKw(dev);
@@ -60,7 +70,7 @@ function resolveSteppedRestorePower(
 ): { kw: number; source: RestorePowerSource } | null {
   if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
 
-  if (dev.currentState !== 'off' && typeof dev.planningPowerKw === 'number' && dev.planningPowerKw > 0) {
+  if (dev.currentState !== 'off' && isFiniteNumber(dev.planningPowerKw) && dev.planningPowerKw > 0) {
     return { kw: dev.planningPowerKw, source: 'planning' };
   }
 

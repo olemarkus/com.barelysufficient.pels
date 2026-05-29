@@ -32,6 +32,7 @@ import type {
   ExecutablePlan,
   ExecutableReleaseIntent,
   ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadIntent,
   ExecutableTargetIntent,
   ExecutableTargetUpdate,
 } from './executablePlan';
@@ -244,8 +245,15 @@ export class PlanExecutor {
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {
     this.state.lastInstabilityMs = now;
-    this.recordControlTimestamp(deviceId, now);
     this.state.lastDeviceShedMs[deviceId] = now;
+    this.recordReleaseShedActuation(deviceId, name, now);
+  }
+
+  // Lifecycle-end release variant: skips the shed-cooldown / instability clocks because a
+  // release is the smart task handing the device back to its configured shed posture, not a
+  // capacity-driven shed. Property form so it can be passed as a dep without a bound wrapper.
+  private readonly recordReleaseShedActuation = (deviceId: string, name: string, now: number): void => {
+    this.recordControlTimestamp(deviceId, now);
     recordDiagnosticsShed({
       diagnostics: this.deps.deviceDiagnostics,
       deviceId,
@@ -259,7 +267,7 @@ export class PlanExecutor {
       name,
       nowTs: now,
     });
-  }
+  };
 
   private recordRestoreActuation(deviceId: string, name: string, now: number): void {
     this.state.lastRestoreMs = now;
@@ -433,6 +441,7 @@ export class PlanExecutor {
 
   private async applyShedReleaseIntent(params: {
     intent: ExecutableReleaseIntent;
+    steppedLoadIntent: ExecutableSteppedLoadIntent | null;
     observed: ExecutableObservedDeviceState | undefined;
     snapshot: TargetDeviceSnapshot | undefined;
     mode: PlanActuationMode;
@@ -443,6 +452,8 @@ export class PlanExecutor {
         getShedBehavior: this.boundGetShedBehavior,
         buildBinaryExecutorContext: () => this.buildBinaryExecutorContext(),
         buildTargetExecutorContext: () => this.buildTargetExecutorContext(),
+        buildSteppedExecutorContext: () => this.buildSteppedExecutorContext(),
+        recordReleaseShedActuation: this.recordReleaseShedActuation,
       },
     });
   }
@@ -705,6 +716,7 @@ export class PlanExecutor {
             if (intent.release?.kind === 'shed_release') {
               if (await this.applyShedReleaseIntent({
                 intent: intent.release,
+                steppedLoadIntent: intent.steppedLoad,
                 observed,
                 snapshot,
                 mode,

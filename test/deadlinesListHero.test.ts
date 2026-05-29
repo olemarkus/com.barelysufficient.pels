@@ -185,17 +185,77 @@ describe('resolveDeadlinesListHero', () => {
     expect(hero?.subline).toBe('Boiler due 06:30 — cannot finish in time.');
   });
 
-  // `paused_unplugged` deserves its own hero-reason clause because the chip
-  // label ("Paused — unplugged") contains an em-dash that would collide with
-  // the subline's connecting em-dash when inlined verbatim. The hero map
-  // renders the clause "car unplugged" so the line stays single-clause.
-  it('renders "car unplugged" as the reason for paused_unplugged cards', () => {
+  // `paused_unplugged` is its own warn-tone bucket: the user must act
+  // (plug back in) before the plan can deliver, so the hero must not
+  // collapse paused cards into the healthy-tone "Planning N deadlines."
+  // branch. A lone paused card surfaces under the bare "N deadlines paused."
+  // headline with `tone: 'warn'`, and the subline uses the at-risk-shaped
+  // "due HH:MM — car unplugged." framing so the hero never claims a
+  // delivery the device can't make.
+  it('classifies a lone paused_unplugged card as paused (warn tone), not pending', () => {
     const hero = resolveDeadlinesListHero({
       cards: [buildCard({ deviceName: 'Tesla', statusId: 'paused_unplugged', deadlineAtMs: T0 })],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 deadline at risk.');
+    expect(hero?.headline).toBe('1 deadline paused.');
+    expect(hero?.tone).toBe('warn');
     expect(hero?.subline).toBe('Tesla due 06:30 — car unplugged.');
+  });
+
+  // Paused outranks pending / on-track / satisfied so a mixed list with one
+  // paused card and healthy siblings reads "1 of N deadlines paused." under
+  // a warn-tone hero — surfacing the user-actionable card instead of
+  // claiming "Planning N deadlines." while the EV sits unplugged.
+  it('uses the N-of-M paused framing when paused is mixed with pending / on-track', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({
+          deviceId: 'dev_paused',
+          deviceName: 'Tesla',
+          statusId: 'paused_unplugged',
+          deadlineAtMs: T0,
+        }),
+        buildCard({
+          deviceId: 'dev_plan',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'building_plan',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 of 2 deadlines paused.');
+    expect(hero?.tone).toBe('warn');
+    expect(hero?.subline).toBe('Tesla due 06:30 — car unplugged.');
+    expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_paused' });
+  });
+
+  // At-risk still wins over paused (worst-wins). When both exist the hero
+  // reports the at-risk count and tone, not the paused one — the failing
+  // plan is the more urgent answer than the unplugged car.
+  it('keeps at-risk precedence over paused (worst-wins)', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({
+          deviceId: 'dev_paused',
+          deviceName: 'Tesla',
+          statusId: 'paused_unplugged',
+          deadlineAtMs: T0,
+        }),
+        buildCard({
+          deviceId: 'dev_risk',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'at_risk',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.tone).toBe('warn');
+    expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_risk' });
   });
 
   it('falls back to a kind-based label when the device name is empty', () => {
@@ -232,5 +292,180 @@ describe('resolveDeadlinesListHero', () => {
       formatTime,
     });
     expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_at_risk' });
+  });
+
+  // ── Mixed-state classification (PR-20) ──────────────────────────────────
+  // Pre-PR-20, every non-at-risk card collapsed to "on track" — a
+  // `building_plan` + `cannot_meet` pair claimed "2 deadlines on track"
+  // under a red banner. These cases exercise the four-bucket split-clause
+  // headlines so a future "everything not at-risk is on-track" lump can't
+  // grow back unnoticed.
+
+  it('renders the split-clause headline for mixed pending + on_track cards', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_a', statusId: 'on_track', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_b',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'building_plan',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 on track, 1 planning.');
+    expect(hero?.tone).toBe('good');
+    // Subline names the soonest deadline across the whole list (the on-track
+    // Tesla here), not just the soonest of any one bucket — keeps one
+    // subline shape across pure on-track / pure pending / pure satisfied /
+    // mixed.
+    expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_a' });
+  });
+
+  it('escalates to the at-risk headline when at_risk is mixed with pending', () => {
+    // Mixed pending + at_risk: the at-risk branch wins (worst-wins). The
+    // `N of M` mixed-cohort framing fires because not every card is at-risk.
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_pending', statusId: 'building_plan', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_risk',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'at_risk',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.tone).toBe('warn');
+    expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_risk' });
+  });
+
+  it('escalates to alert when cannot_meet is mixed with pending', () => {
+    // This is the worst-case PR-20 fixes: pre-fix, the hero said
+    // "2 deadlines on track." while a cannot_meet card sat below in red.
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_pending', statusId: 'building_plan', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_cannot',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'cannot_meet',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.tone).toBe('alert');
+    expect(hero?.subline).toBe('Boiler due 07:30 — cannot finish in time.');
+    expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_cannot' });
+  });
+
+  it('renders the split-clause headline for satisfied + on_track cards', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_done', statusId: 'satisfied', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_live',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'on_track',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    // Clause order is fixed: on-track → pending → satisfied, regardless of
+    // input order.
+    expect(hero?.headline).toBe('1 on track, 1 complete.');
+    expect(hero?.tone).toBe('good');
+  });
+
+  it('renders "Planning N deadlines." when every card is pending', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_a', statusId: 'building_plan', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_b',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'queued',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('Planning 2 deadlines.');
+    expect(hero?.tone).toBe('good');
+  });
+
+  it('renders "N deadlines complete." when every card is satisfied', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_a', statusId: 'satisfied', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_b',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'satisfied',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('2 deadlines complete.');
+    expect(hero?.tone).toBe('good');
+  });
+
+  it('renders the split-clause headline for satisfied + pending cards', () => {
+    // Mixed satisfied + pending — neither bucket has an on-track member, so
+    // the clause set elides `X on track` cleanly and reads `Y planning,
+    // Z complete.` in the fixed pending → satisfied order.
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_done', statusId: 'satisfied', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_plan',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'building_plan',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 planning, 1 complete.');
+    expect(hero?.tone).toBe('good');
+  });
+
+  it('renders the three-clause headline for on_track + pending + satisfied', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_done', statusId: 'satisfied', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_live',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'on_track',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+        buildCard({
+          deviceId: 'dev_plan',
+          deviceName: 'Floor',
+          kind: 'temperature',
+          statusId: 'building_plan',
+          deadlineAtMs: T0 + 2 * HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 on track, 1 planning, 1 complete.');
+    expect(hero?.tone).toBe('good');
   });
 });

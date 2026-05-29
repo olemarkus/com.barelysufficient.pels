@@ -180,6 +180,18 @@ const isRevisionOrNull = (value: unknown): value is DeferredObjectiveActivePlanR
   value === null || isRevision(value)
 );
 
+// `history` is optional for backward compatibility (legacy persisted plans
+// don't carry it). When present must be an array of valid revisions — a
+// tampered or downgraded payload that smuggles non-revision entries would
+// otherwise leak into the UI's revision-log render. The recorder caps the
+// array at `MAX_HISTORY_REVISIONS` on write; this validator only checks
+// shape, not length, so a future cap change doesn't break load.
+const isOptionalRevisionHistory = (
+  value: unknown,
+): value is DeferredObjectiveActivePlanRevisionV1[] | undefined => (
+  value === undefined || (Array.isArray(value) && value.every(isRevision))
+);
+
 const isCommitment = (value: unknown): value is DeferredObjectiveActivePlanCommitmentV1 | undefined => {
   if (value === undefined) return true;
   if (!value || typeof value !== 'object') return false;
@@ -222,7 +234,8 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && isRevisionOrNull(v.latest)
     && isKwhPerUnitProvenance(v.kwhPerUnitProvenance)
     && hasValidPlanLevelDurationSnapshot(v)
-    && isCommitment(v.commitment);
+    && isCommitment(v.commitment)
+    && isOptionalRevisionHistory(v.history);
 };
 
 export const normalizeDeferredObjectiveActivePlans = (

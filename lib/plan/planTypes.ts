@@ -6,6 +6,7 @@ import type {
   BinaryControlObservation,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  RestorePowerSource,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -99,19 +100,42 @@ export type DevicePlanDevice = {
   temperatureBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
+  /**
+   * Producer-resolved aggregate boost flag: `true` when either
+   * `temperatureBoostActive` or `evBoostActive` fires this cycle. Resolved
+   * once in `buildBoostPlanDeviceFields` so restore-side consumers read a
+   * single bit instead of recomputing the OR per call.
+   */
+  boostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
   shedAction?: ShedAction;
   shedTemperature?: number | null;
-  shedStepId?: string | null;
+  releaseShedStepId?: string | null;
   available?: boolean;
   lastFreshDataMs?: number;
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
   hasRecentObservedDrawAtSelectedStep?: boolean;
+  /**
+   * Producer-resolved residual-kW projection propagated from
+   * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the
+   * planner-detype refactor). Consumers in
+   * `lib/plan/planRemainingSheddableLoad.ts` (chunk 3) and
+   * `lib/plan/restore/accounting.ts` (chunk 4) read this after the flat
+   * plan-cycle gates. See the corresponding doc-block on `PlanInputDevice`
+   * for field semantics.
+   */
+  residualKw?: {
+    shed: number;
+    restore?: {
+      kw: number;
+      source: RestorePowerSource;
+    };
+  };
 };
 
 export type DevicePlan = {
@@ -221,10 +245,50 @@ export type PlanInputDevice = {
   /** Opaque diagnostic string; UI / diagnostics consumers only. */
   commandableNowReason?: string | null;
   /**
+   * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
+   * true when the device's binary control capability can be written this
+   * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback
+   * for the `onoff` capability). Consumers MUST go through
+   * `lib/device/deviceActionProjection.isCanSetControl` so the dual-read
+   * fallback applies to raw-snapshot call sites uniformly.
+   */
+  canSetControlResolved?: boolean;
+  /**
    * Producer-resolved aggregate boost flag (chunk 2): true if either the
    * temperature-boost or EV-boost policy is active this cycle.
    */
   boostActive?: boolean;
+  /**
+   * Producer-resolved residual-kW projection (chunks 3-4 of the planner-
+   * detype refactor).
+   *
+   * - `shed` (chunk 3): the observable kW the configured shed behavior would
+   *   remove if applied right now (post-kind-switch). Consumers in
+   *   `lib/plan/planRemainingSheddableLoad.ts` read this directly after the
+   *   flat plan-cycle gates instead of branching on the device's
+   *   discriminated-union kind.
+   * - `restore` (chunk 4): the kW the consumer would add by restoring this
+   *   device. Collapses the `isSteppedLoadDevice + getSteppedLoadRestoreStep`
+   *   chain in `lib/plan/restore/accounting.ts` into a single `{ kw, source }`
+   *   pair. The `source` label preserves the legacy debug-log vocabulary
+   *   (`'measured' | 'expected' | 'planning' | 'configured' | 'stepped' |
+   *   'fallback'`). The producer keeps the stepped-vs-binary asymmetry
+   *   intact: stepped+on uses live `planningPowerKw` (source `'planning'`),
+   *   stepped+off uses the lowest-active step from the profile (source
+   *   `'stepped'`), everything else falls back to the observer's
+   *   `getRestoreDrawKw` (sources `'measured'` / `'expected'` / `'planning'`
+   *   / `'configured'` / `'fallback'`).
+   *
+   * Both fields are optional for the duration of the dual-read transition;
+   * chunk 6 makes them required.
+   */
+  residualKw?: {
+    shed: number;
+    restore?: {
+      kw: number;
+      source: RestorePowerSource;
+    };
+  };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
   currentOn: boolean;
   currentState?: string;
@@ -242,6 +306,16 @@ export type PlanInputDevice = {
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
   // from lower-priority devices.
   forceBoostActive?: boolean;
+  /**
+   * Producer-resolved deadline floor for the thermostat setpoint, °C — the
+   * deadline-target plus learned over-command. Stamped by
+   * `applyDeferredAdmissionToInput` for temperature objectives whose current
+   * bucket has planned energy. `resolvePlannedTarget` lifts the commanded
+   * setpoint to `max(modeTarget + priceOptDelta, deadlineFloorTargetC)` so the
+   * device's local thermostat can actually reach the deadline target; outside
+   * planned hours the field is absent and the override drops out.
+   */
+  deadlineFloorTargetC?: number;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
   controllable?: boolean;
   managed?: boolean;

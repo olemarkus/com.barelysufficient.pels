@@ -5,18 +5,17 @@
  * draw (for restore admission) — instead of branching on which raw source
  * carried the value.
  */
-import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlModel,
+  RestorePowerSource,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
-export type ExpectedPowerSource =
-  | 'measured'
-  | 'expected'
-  | 'planning'
-  | 'configured'
-  | 'stepped'
-  | 'fallback';
+// Re-export the canonical type so existing observer importers keep working.
+export type { RestorePowerSource } from '../../packages/contracts/src/types';
 
-type KnownPowerSource = Exclude<ExpectedPowerSource, 'fallback' | 'stepped'>;
+type KnownPowerSource = Exclude<RestorePowerSource, 'fallback' | 'stepped'>;
 
 export type ObservedPowerInput = {
   measuredPowerKw?: number;
@@ -122,7 +121,7 @@ export function getCurrentDrawKw(
  */
 export function getRestoreDrawKw(
   device: ObservedPowerInput,
-): { kw: number; source: ExpectedPowerSource } {
+): { kw: number; source: RestorePowerSource } {
   const highest = getHighestKnownPowerKw(device);
   if (highest !== null) return { kw: highest.kw, source: highest.source };
   if (device.controlCapabilityId === 'evcharger_charging') {

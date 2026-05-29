@@ -20,6 +20,7 @@ export const PLAN_REASON_CODES = {
   sheddingActive: 'shedding_active',
   inactive: 'inactive',
   capacity: 'capacity',
+  deferredObjectiveAvoid: 'deferred_objective_avoid',
   neutralStartupHold: 'neutral_startup_hold',
   startupStabilization: 'startup_stabilization',
   capacityControlOff: 'capacity_control_off',
@@ -78,6 +79,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.sheddingActive; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.capacity; detail: string | null }
+  | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
@@ -112,6 +114,7 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.sheddingActive]: 'shedding active',
   [PLAN_REASON_CODES.inactive]: 'inactive',
   [PLAN_REASON_CODES.capacity]: 'capacity',
+  [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
   [PLAN_REASON_CODES.neutralStartupHold]: 'left off',
   [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',

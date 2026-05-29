@@ -12,6 +12,16 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
+import {
+  resolveResidualKwShed,
+  type ResidualKwShedBehavior,
+  type ResidualKwShedSteppedDevice,
+  type ResidualKwShedTemperatureTarget,
+} from '../device/deviceResidualKw';
+import {
+  normalizeSteppedLoadStepStateFromLegacyFields,
+  resolveKnownEffectiveStepId,
+} from './planSteppedLoadState';
 
 type RemainingSheddablePowerFields = {
   measuredPowerKw?: number;
@@ -20,7 +30,11 @@ type RemainingSheddablePowerFields = {
   powerKw?: number;
 };
 
-type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & {
+type RemainingSheddableResidualFields = {
+  residualKw?: { shed: number };
+};
+
+type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable: boolean;
   currentOn: boolean;
@@ -51,27 +65,24 @@ type RemainingSheddableSteppedFields = {
   stepCommandStatus?: SteppedLoadCommandStatus;
 };
 
-export type SimpleRemainingSheddableDevice = RemainingSheddableBaseDevice & {
-  kind: 'simple';
-};
+type SimpleRemainingSheddableDevice = RemainingSheddableBaseDevice;
 
-export type TemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
-  & RemainingSheddableTemperatureFields
-  & {
-    kind: 'temperature';
-  };
+type TemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
+  & RemainingSheddableTemperatureFields;
 
-export type SteppedRemainingSheddableDevice = RemainingSheddableBaseDevice & RemainingSheddableSteppedFields & {
-  kind: 'stepped';
-};
+type SteppedRemainingSheddableDevice = RemainingSheddableBaseDevice & RemainingSheddableSteppedFields;
 
-export type SteppedTemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
+type SteppedTemperatureRemainingSheddableDevice = RemainingSheddableBaseDevice
   & RemainingSheddableSteppedFields
-  & RemainingSheddableTemperatureFields
-  & {
-    kind: 'stepped_temperature';
-  };
+  & RemainingSheddableTemperatureFields;
 
+/**
+ * Structural superset covering every shape the legacy dual-read fallback needs
+ * to inspect (simple / temperature / stepped / stepped+temperature). The
+ * post-chunk-3 producer-resolved path collapses the kind switch into
+ * `residualKw.shed`; this type stays as a transitional fallback container
+ * until chunk 6 removes the dual-read path entirely.
+ */
 export type RemainingSheddableDevice =
   | SimpleRemainingSheddableDevice
   | TemperatureRemainingSheddableDevice
@@ -96,7 +107,7 @@ export type RemainingSheddableLoadParams = {
   capacityBreached: boolean;
 };
 
-type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & {
+type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable?: boolean;
   currentOn: boolean;
@@ -131,7 +142,10 @@ export function toInputRemainingSheddableDevice(device: PlanInputDevice): Remain
 }
 
 export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): RemainingSheddableDevice {
-  const base = toRemainingSheddableBaseDevice(device);
+  const base = toRemainingSheddableBaseDevice({
+    ...device,
+    residualKw: { shed: residualKwAfterSnapshot(device) },
+  });
   const temperatureTarget = device.shedAction === 'set_temperature'
     ? toPlanRemainingTemperatureTarget(device)
     : undefined;
@@ -140,6 +154,72 @@ export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): Remain
     steppedSource: device,
     temperatureTarget,
   });
+}
+
+/**
+ * Output-side residualKw.shed re-resolution (chunk 3 of the planner-detype
+ * refactor). Mirrors the input-side `toPlanDevice` wiring in
+ * `lib/app/appInit.ts`, but reads from a post-plan `DevicePlanDevice` whose
+ * shed action / setpoint / step state are already materialised by the
+ * planner. Lets `sumRemainingSheddableLoadKw` collapse to the producer-
+ * resolved number for the output recompute path too.
+ *
+ * Mirrors the caller-side `resolvePlanDeviceShedBehavior` default in
+ * `planLogging.ts`: when there is no resolved shed action, treat it as
+ * `turn_off` (the legacy default) so non-shed devices still get an honest
+ * residual instead of a structural 0.
+ */
+export function residualKwAfterSnapshot(device: DevicePlanDevice): number {
+  const shedBehavior = toPlanResidualShedBehavior(device);
+  const drawKw = getCurrentDrawKw(device);
+  const steppedLoad = toPlanResidualSteppedLoad(device);
+  const temperatureTarget = toPlanResidualTemperatureTarget(device);
+  return resolveResidualKwShed({
+    device: {
+      currentDrawKw: drawKw,
+      temperatureTarget,
+      steppedLoad,
+    },
+    shedBehavior,
+  });
+}
+
+function toPlanResidualShedBehavior(device: DevicePlanDevice): ResidualKwShedBehavior {
+  if (device.shedAction === 'set_temperature' && typeof device.shedTemperature === 'number'
+    && Number.isFinite(device.shedTemperature)) {
+    return { action: 'set_temperature', temperature: device.shedTemperature };
+  }
+  if (device.shedAction === 'set_step') return { action: 'set_step' };
+  return { action: 'turn_off' };
+}
+
+function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedSteppedDevice | undefined {
+  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
+    || device.steppedLoadProfile.model !== 'stepped_load') {
+    return undefined;
+  }
+  const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
+    fields: device,
+    selectedStepFallbackIsPlanningAssumption: true,
+  });
+  return {
+    profile: device.steppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+    hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
+    measuredPowerKw: device.measuredPowerKw,
+    hasBinaryControl: device.hasBinaryControl,
+  };
+}
+
+function toPlanResidualTemperatureTarget(
+  device: DevicePlanDevice,
+): ResidualKwShedTemperatureTarget | undefined {
+  if (device.shedAction !== 'set_temperature') return undefined;
+  return {
+    ...(typeof device.currentTarget === 'number' && Number.isFinite(device.currentTarget)
+      ? { currentValue: device.currentTarget }
+      : {}),
+  };
 }
 
 export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadParams): number {
@@ -155,8 +235,17 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   if (isObservedOff(device)) return 0;
   if (alreadyShed) return 0;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
-  if (!canStillShedDevice({ device, shedBehavior })) return 0;
 
+  // Producer-resolved path (chunk 3 of the planner-detype refactor). When the
+  // device snapshot carries `residualKw.shed`, the kind-switch decision has
+  // already happened at the producer seam (`lib/device/deviceResidualKw.ts`),
+  // so the consumer just reads the number. Dual-read fallback below covers
+  // legacy/test fixtures built without the producer; chunk 6 removes it.
+  if (device.residualKw) {
+    return Math.max(0, device.residualKw.shed);
+  }
+
+  if (!canStillShedDevice({ device, shedBehavior })) return 0;
   const power = getCurrentDrawKw(device);
   return power > 0 ? power : 0;
 }
@@ -201,6 +290,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
     powerKw: device.powerKw,
+    ...(device.residualKw ? { residualKw: device.residualKw } : {}),
   };
 }
 
@@ -223,27 +313,21 @@ function toRemainingSheddableDeviceFromParts(params: {
       return {
         ...base,
         ...steppedFields,
-        kind: 'stepped_temperature',
         temperatureTarget,
       };
     }
     return {
       ...base,
       ...steppedFields,
-      kind: 'stepped',
     };
   }
   if (temperatureTarget) {
     return {
       ...base,
-      kind: 'temperature',
       temperatureTarget,
     };
   }
-  return {
-    ...base,
-    kind: 'simple',
-  };
+  return base;
 }
 
 function toRemainingTemperatureTarget(target: {
@@ -272,6 +356,12 @@ function toPlanRemainingTemperatureTarget(device: DevicePlanDevice): RemainingSh
   };
 }
 
+// =============================================================================
+// Dual-read fallback: legacy kind-switch logic, retained for the chunk-3
+// transition. Removed in chunk 6 once all PlanInputDevice / DevicePlanDevice
+// inputs carry `residualKw.shed` from the producer. Behavior preserved exactly.
+// =============================================================================
+
 function canStillShedDevice(params: {
   device: RemainingSheddableDevice;
   shedBehavior: RemainingShedBehavior;
@@ -280,7 +370,7 @@ function canStillShedDevice(params: {
   if (shedBehavior.action === 'set_temperature') {
     return canStillShedTemperatureDevice({ device, shedTemperature: shedBehavior.temperature });
   }
-  if (device.kind === 'simple' || device.kind === 'temperature') return true;
+  if (!isSteppedRemainingSheddableDevice(device)) return true;
   return canStillShedSteppedLoad({
     device,
     shedAction: shedBehavior.action === 'set_step' ? 'set_step' : 'turn_off',
@@ -342,8 +432,15 @@ function canStillShedTemperatureDevice(params: {
   return temperatureTarget.currentValue !== normalizedShedTemperature;
 }
 
+function isSteppedRemainingSheddableDevice(
+  device: RemainingSheddableDevice,
+): device is SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice {
+  return 'controlModel' in device && device.controlModel === 'stepped_load'
+    && 'steppedLoadProfile' in device;
+}
+
 function isTemperatureRemainingSheddableDevice(
   device: RemainingSheddableDevice,
 ): device is TemperatureRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice {
-  return device.kind === 'temperature' || device.kind === 'stepped_temperature';
+  return 'temperatureTarget' in device;
 }

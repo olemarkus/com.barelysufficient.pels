@@ -41,17 +41,30 @@
 //     would be fabricated. See `formatPlanHistoryAbandonedDetails`.
 //
 //   - Weekly archive (DeadlinesHistoryList): ISO-week section headings
-//     ("Week 20 · 4 deadlines met · ≈ 41 kr"). Grouping + heading copy live
-//     here so the view layer never inspects per-week aggregates.
+//     ("This week · 3 succeeded · 1 missed · ≈ 41 kr"). Grouping + heading
+//     copy live here so the view layer never inspects per-week aggregates.
+//     The lead label uses relative phrasing ("This week" / "Last week" /
+//     "Week of 12 May") rather than the engineer-facing "Week 22" ISO number.
+//     Outcome counts use the chip vocabulary (`succeeded` / `missed` /
+//     `abandoned`) and surface non-zero counts only, so misses and abandons
+//     don't vanish from the strip while still showing up in the per-row
+//     chips. See notes/ui-terminology.md "Chip adjectives vs divider verbs".
 
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH } from './deadlineLabels.js';
 import {
+  APPROX_GLYPH,
+  SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
+  SMART_TASK_LIST_HIT_RATE_NOUN,
+} from './deadlineLabels.js';
+import {
+  formatDateInTimeZone,
   formatTimeInTimeZone,
+  getPreviousLocalDayStartUtcMs,
+  getStartOfDayInTimeZone,
   getWeekStartInTimeZone,
   getZonedParts,
 } from './utils/dateUtils.js';
@@ -507,21 +520,91 @@ const sumEntryCost = (entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>)
   return total;
 };
 
+// Resolves the relative lead label for a week's section heading. The
+// past-tasks archive is a consumer surface — ISO week numbers ("Week 22")
+// read as engineer-speak. Anchor on the user's current week instead.
+//   - Current week → "This week"
+//   - Previous week → "Last week"
+//   - Older         → "Week of 12 May" (the week's Monday formatted)
+//
+// `weekStartMs` and `nowMs` are anchored to the supplied time zone so the
+// comparison is purely calendar-bucket (which Monday does each fall on?),
+// not wall-clock arithmetic — this side-steps DST cliffs where a 23h or 25h
+// week would otherwise flip a boundary unexpectedly.
+const formatRelativeWeekLabel = (
+  weekStartMs: number,
+  nowMs: number,
+  timeZone: string,
+): string => {
+  const currentWeekStartMs = getWeekStartInTimeZone(new Date(nowMs), timeZone);
+  if (weekStartMs === currentWeekStartMs) return 'This week';
+  // Step one calendar week back via local-day arithmetic, never a fixed
+  // 7×24h millisecond offset. `currentWeekStartMs` is local Monday 00:00;
+  // stepping one local day earlier lands on the previous Sunday 00:00,
+  // which is unambiguously inside the prior calendar week regardless of any
+  // DST transition that week (a spring-forward 23h week or a fall-back 25h
+  // week). Re-bucketing that instant through `getWeekStartInTimeZone`
+  // resolves it to the previous week's Monday anchor — the same week-start
+  // an entry's deadline in that week would land on. A 7×24h subtraction
+  // would miss this: on a 23h week it stays inside the current week, and on
+  // a 25h week it overshoots two weeks back, skipping "Last week" entirely.
+  const previousWeekStartMs = getWeekStartInTimeZone(
+    new Date(getPreviousLocalDayStartUtcMs(currentWeekStartMs, timeZone)),
+    timeZone,
+  );
+  if (weekStartMs === previousWeekStartMs) return 'Last week';
+  // Older weeks render as "Week of 12 May" — the Monday formatted day +
+  // short month, in the user's time zone.
+  const monthDay = formatDateInTimeZone(
+    new Date(weekStartMs),
+    { day: 'numeric', month: 'short' },
+    timeZone,
+  );
+  return `Week of ${monthDay}`;
+};
+
+type OutcomeCounts = {
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+};
+
+// `replaced` collapses into `abandoned` for the chip strip per
+// notes/ui-terminology.md — both render the same `Abandoned` chip on each
+// row, and the divider summary speaks the chip language.
+const countOutcomes = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+): OutcomeCounts => {
+  const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0 };
+  for (const entry of entries) {
+    if (entry.outcome === 'met') counts.succeeded += 1;
+    else if (entry.outcome === 'missed') counts.missed += 1;
+    else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
+      counts.abandoned += 1;
+    }
+  }
+  return counts;
+};
+
 const formatWeekHeading = (
-  week: number,
+  weekStartMs: number,
+  nowMs: number,
+  timeZone: string,
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   costUnit: string,
 ): string => {
-  const metCount = entries.filter((entry) => entry.outcome === 'met').length;
-  const lead = `Week ${week}`;
-  // v2.7.3 P2 — zero-met weeks no longer surface a "N tasks" cold fallback.
-  // The week heading reads as a quiet stripe ("Week 19") when nothing was
-  // met; the per-row chips still carry the missed/abandoned outcome. Surfacing
-  // "1 task" in the header reads as a cold audit count, not an anchor.
-  const metFragment = metCount > 0
-    ? `${metCount} ${metCount === 1 ? 'deadline' : 'deadlines'} met`
-    : null;
-  const parts = [metFragment === null ? lead : `${lead} · ${metFragment}`];
+  const lead = formatRelativeWeekLabel(weekStartMs, nowMs, timeZone);
+  const counts = countOutcomes(entries);
+  const outcomeFragments: string[] = [];
+  // Chip vocabulary on the divider — see notes/ui-terminology.md
+  // "Chip adjectives vs divider verbs". Non-zero counts only so a quiet
+  // all-succeeded week doesn't carry a noisy "0 missed · 0 abandoned" tail,
+  // and a zero-succeeded week still surfaces the misses/abandons that the
+  // previous "N deadlines met" wording dropped on the floor.
+  if (counts.succeeded > 0) outcomeFragments.push(`${counts.succeeded} succeeded`);
+  if (counts.missed > 0) outcomeFragments.push(`${counts.missed} missed`);
+  if (counts.abandoned > 0) outcomeFragments.push(`${counts.abandoned} abandoned`);
+  const parts = [lead, ...outcomeFragments];
   const unit = costUnit.trim();
   const cost = sumEntryCost(entries);
   // Nordpool prices can briefly go negative; preserve the sign so a credit
@@ -544,11 +627,16 @@ const formatWeekHeading = (
  * `costUnit` is threaded through to the per-group heading so the rolled-up
  * cost ("≈ 41 kr") reads in the user's display currency. Empty unit drops
  * the cost half of the heading cleanly.
+ *
+ * `nowMs` anchors the relative-week phrasing ("This week" / "Last week" /
+ * "Week of 12 May"). The view layer threads its real wall-clock time in so
+ * the helper stays pure and snapshot-testable.
  */
 export const groupPlanHistoryByIsoWeek = (
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   timeZone: string,
   costUnit: string,
+  nowMs: number,
 ): PlanHistoryWeekGroup[] => {
   const groups: PlanHistoryWeekGroup[] = [];
   const indexByKey = new Map<string, number>();
@@ -575,10 +663,199 @@ export const groupPlanHistoryByIsoWeek = (
   // are populated. Keeps the helper O(n) and avoids the temptation to
   // recompute the heading on every push.
   return groups.map((group) => {
-    const iso = computeIsoWeekKey(group.entries[0]!.deadlineAtMs, timeZone);
-    const heading = iso === null
+    const weekStartMs = computeWeekStart(group.entries[0]!.deadlineAtMs, timeZone);
+    const heading = weekStartMs === null
       ? `Other tasks · ${group.entries.length} ${group.entries.length === 1 ? 'task' : 'tasks'}`
-      : formatWeekHeading(iso.week, group.entries, costUnit);
+      : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries, costUnit);
     return { ...group, heading };
   });
+};
+
+// Local wrapper over `getWeekStartInTimeZone` that preserves the
+// "unparseable deadline" branch the heading formatter relies on. Returning
+// `null` keeps the synthetic "Other tasks" bucket from accidentally
+// claiming a relative-week label.
+const computeWeekStart = (ms: number, timeZone: string): number | null => {
+  if (!Number.isFinite(ms)) return null;
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return getWeekStartInTimeZone(date, timeZone);
+};
+
+// ─── 7-day hit-rate strip (PR-10) ────────────────────────────────────────────
+//
+// The past-tasks surface had no single "how have my deadlines been doing this
+// week?" signal — the user had to scan miss-streak chips per device + week-
+// divider headings to piece together a mental aggregate. The 7-day strip is
+// the first-impression number the recovering-from-mistake persona needs at a
+// glance, anchored at the top of the past-tasks list.
+//
+// Hit-rate definition: `succeeded ÷ (succeeded + missed)`. Abandoned/replaced
+// entries are excluded from the denominator on purpose — the user clearing a
+// run (or the diagnostic stream going stale) isn't a planner success or
+// failure, and folding it into the rate would penalise blameless aborts. The
+// abandoned count still surfaces in the strip so the run isn't invisible.
+//
+// `replaced` collapses into `abandoned` in the strip totals, mirroring
+// `countOutcomes` above and the chip-vocabulary divider headings. Other
+// outcomes (`unknown` — backfill / pre-schema entries) are not counted in any
+// bucket; they don't represent a meaningful planner result.
+
+const SEVEN_DAY_WINDOW_DAYS = 7;
+// Today's local date is the 7th (most recent) bucket, so the cutoff steps back
+// one fewer local midnight than the bucket count.
+const SEVEN_DAY_WINDOW_STEPS_BACK = SEVEN_DAY_WINDOW_DAYS - 1;
+
+// Resolves the inclusive lower bound of the "Last 7 days" window: the window
+// covers exactly `SEVEN_DAY_WINDOW_DAYS` (7) local date buckets — today's local
+// date plus the 6 preceding ones — so the cutoff is today's local day-start
+// stepped back `SEVEN_DAY_WINDOW_STEPS_BACK` (6) local midnights, never a fixed
+// `7×24h` millisecond offset.
+//
+// Stepping back 7 midnights (the bucket count) would over-include: anchoring at
+// today's midnight and going back 7 days spans today's partial date PLUS 7
+// earlier dates — up to ~8 date buckets, an extra day's early results bleeding
+// into the rate. Stepping back 6 keeps the span to exactly 7 local dates.
+//
+// A fixed-ms subtraction would also drift by the DST hour at week boundaries (a
+// 23h spring-forward week pulls the cutoff an hour later; a 25h fall-back week
+// an hour earlier), silently flipping an entry near the edge in or out of the
+// window. Stepping by local days — same approach PR #1259 used for the "Last
+// week" boundary — keeps the cutoff anchored to local midnight regardless of
+// any DST transition in the window.
+const resolveSevenDayCutoffMs = (nowMs: number, timeZone: string): number => {
+  let dayStartMs = getStartOfDayInTimeZone(new Date(nowMs), timeZone);
+  for (let step = 0; step < SEVEN_DAY_WINDOW_STEPS_BACK; step += 1) {
+    dayStartMs = getPreviousLocalDayStartUtcMs(dayStartMs, timeZone);
+  }
+  return dayStartMs;
+};
+
+type SevenDayCounts = {
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+  inWindow: number;
+};
+
+// Anchors an entry against the 7-day window. Prefers `finalizedAtMs` (the
+// moment the run wrapped up — the right anchor for "last 7 days") and falls
+// back to `deadlineAtMs` for older schema rows that persisted without a
+// finalisation timestamp, so the strip doesn't silently lose legacy entries.
+const resolveWindowAnchorMs = (
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
+): number => (
+  Number.isFinite(entry.finalizedAtMs) ? entry.finalizedAtMs : entry.deadlineAtMs
+);
+
+// Tallies a single entry against the 7-day counts. Returns the counts
+// unchanged when the entry falls outside the window or is unparseable;
+// `unknown` outcomes are counted toward `inWindow` (so the strip still
+// renders when only backfill rows survive) but not toward any bucket.
+const tallySevenDayEntry = (
+  counts: SevenDayCounts,
+  entry: DeferredObjectivePlanHistoryEntry,
+  cutoffMs: number,
+  nowMs: number,
+): SevenDayCounts => {
+  const stampMs = resolveWindowAnchorMs(entry);
+  if (!Number.isFinite(stampMs)) return counts;
+  if (stampMs < cutoffMs || stampMs > nowMs) return counts;
+  const next: SevenDayCounts = {
+    succeeded: counts.succeeded,
+    missed: counts.missed,
+    abandoned: counts.abandoned,
+    inWindow: counts.inWindow + 1,
+  };
+  if (entry.outcome === 'met') next.succeeded += 1;
+  else if (entry.outcome === 'missed') next.missed += 1;
+  else if (entry.outcome === 'abandoned' || entry.outcome === 'replaced') {
+    next.abandoned += 1;
+  }
+  return next;
+};
+
+export type PlanHistory7DayHitRateStrip = {
+  // Pre-formatted strip copy, joined with " · ". Example:
+  // `Last 7 days · 8 succeeded · 3 missed · 1 abandoned · 67% hit rate`.
+  // Renders verbatim; the view never branches on the counts.
+  text: string;
+  // Raw aggregate so callers (telemetry, future surfaces, tests) can read
+  // the numbers without re-parsing the formatted string. The producer is
+  // the only place that decides what counts; consumers stay flat.
+  succeeded: number;
+  missed: number;
+  abandoned: number;
+  // Hit rate as an integer percent rounded to the nearest whole number.
+  // `null` when no Succeeded + Missed entries landed in the window — a
+  // strip that read "0% hit rate" off only abandoned entries would
+  // misrepresent the user's experience.
+  hitRatePercent: number | null;
+};
+
+/**
+ * Resolves the 7-day hit-rate strip rendered above the weekly archive on
+ * the past-tasks surface. Returns `null` when no history entries fall in
+ * the `[cutoff, nowMs]` window — the view hides the strip entirely in
+ * that case so brand-new users (or week-long quiet patches) don't see an
+ * empty-looking pill.
+ *
+ * Window selection uses `finalizedAtMs` when present (most entries) and
+ * falls back to `deadlineAtMs` for entries that finalised before the
+ * `finalizedAtMs` field was persisted (older schemas, malformed records) so
+ * the strip doesn't silently lose legacy rows. Both timestamps are wall-
+ * clock instants. The window covers exactly 7 local date buckets — today's
+ * local date plus the 6 preceding ones — so its lower bound is 6 local
+ * midnights before `nowMs`'s local day-start, stepped one local day at a time
+ * (never a fixed `7×24h` millisecond offset) so a 23h spring-forward or 25h
+ * fall-back week inside the window doesn't drift the cutoff by an hour — the
+ * same local-day stepping PR #1259 applied to the "Last week" divider boundary.
+ *
+ * Hit rate: `succeeded ÷ (succeeded + missed) × 100`, rounded to the
+ * nearest whole percent. Abandoned/replaced and `unknown` entries are
+ * excluded from the denominator — see the file-block comment above for
+ * the rationale. The abandoned count still appears in the strip so the
+ * runs aren't hidden from the user.
+ *
+ * Per `feedback_layering_resolution_in_producer.md` the producer composes
+ * the visible string; the view only renders. Per
+ * `feedback_ui_text_shared_with_logs.md` the same helper feeds runtime
+ * log breadcrumbs so structured logs and the UI never drift.
+ */
+export const resolvePlanHistory7DayHitRateStrip = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  nowMs: number,
+  // Anchors the 7-day window's lower bound: the cutoff is 6 local midnights
+  // before `nowMs`'s local day-start (7 local date buckets total — today plus
+  // the 6 preceding ones), stepped one local day at a time so a 23h/25h DST
+  // week doesn't drift the boundary by an hour.
+  timeZone: string,
+): PlanHistory7DayHitRateStrip | null => {
+  if (!Number.isFinite(nowMs)) return null;
+  const cutoffMs = resolveSevenDayCutoffMs(nowMs, timeZone);
+  const counts = entries.reduce<SevenDayCounts>(
+    (acc, entry) => tallySevenDayEntry(acc, entry, cutoffMs, nowMs),
+    { succeeded: 0, missed: 0, abandoned: 0, inWindow: 0 },
+  );
+  if (counts.inWindow === 0) return null;
+  const decisive = counts.succeeded + counts.missed;
+  const hitRatePercent = decisive === 0
+    ? null
+    : Math.round((counts.succeeded / decisive) * 100);
+  const parts: string[] = [SMART_TASK_LIST_7DAY_HIT_RATE_LABEL];
+  // Chip vocabulary, non-zero counts only — mirrors the week-divider headings
+  // above so the two surfaces speak the same language.
+  if (counts.succeeded > 0) parts.push(`${counts.succeeded} succeeded`);
+  if (counts.missed > 0) parts.push(`${counts.missed} missed`);
+  if (counts.abandoned > 0) parts.push(`${counts.abandoned} abandoned`);
+  if (hitRatePercent !== null) {
+    parts.push(`${hitRatePercent}% ${SMART_TASK_LIST_HIT_RATE_NOUN}`);
+  }
+  return {
+    text: parts.join(' · '),
+    succeeded: counts.succeeded,
+    missed: counts.missed,
+    abandoned: counts.abandoned,
+    hitRatePercent,
+  };
 };

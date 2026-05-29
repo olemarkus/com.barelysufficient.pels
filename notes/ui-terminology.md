@@ -164,6 +164,40 @@ Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
 (used in chip-tone resolvers and the list status id) so log schemas and JSON
 contracts remain stable — only the user-visible chip label changed.
 
+### Past-task outcome chips
+
+The smart-task history surface (past-tasks archive, history-detail hero) uses a
+closed adjective set to label how a finished run ended. Source: `OUTCOME_LABELS` in
+`packages/shared-domain/src/deferredPlanHistory.ts`.
+
+| Outcome (`entry.outcome`) | Chip | Tone |
+|---|---|---|
+| `met` | `Succeeded` | ok |
+| `missed` | `Missed` | warn |
+| `abandoned` | `Abandoned` | muted |
+| `replaced` | `Abandoned` | muted |
+| `unknown` | `Unknown` | muted |
+
+`Abandoned` is the canonical word for a run that stopped before the deadline
+without succeeding or missing — e.g. the user cleared the smart task, replaced
+it with a fresh one, or the diagnostic stream stopped (EV unplugged) before the
+deadline. Both the `abandoned` and `replaced` underlying outcomes render the
+same `Abandoned` chip; the distinction lives in the postmortem body, not the
+chip. Do **not** drift to `Cancelled`, `Aborted`, `Skipped`, `Ended`, or
+`Stopped` in user-facing copy — the chip word is `Abandoned`.
+
+#### Chip adjectives vs divider verbs
+
+The chip set is adjective-shaped (`Succeeded` / `Missed` / `Abandoned`). The
+past-tasks week-divider heading previously used a verb form — `Week 20 · 4
+deadlines met · ≈ 41 kr` — which didn't line up with the chip vocabulary the
+rows underneath it carry. The chip set is the canonical one, and summary copy
+now aligns to the chip adjectives (`3 succeeded`, not `3 met`) so the divider
+and the rows speak the same language. Shipped in PR #1243: the divider lead
+label is now relative (`This week` / `Last week` / `Week of 12 May`) and the
+outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned`,
+non-zero counts only).
+
 ### Recourse labels
 
 Smart-task heroes render at most one recourse button. The label is action-oriented and names what the user should do *now*, not where the click lands. The **live "cannot finish"** hero and the **history-detail "missed"** card use *different* label sets — keep them distinct. Source: `CANNOT_MEET_RECOURSE` (live) and `resolveMissedHistoryRecourse` (history) in `deadlineLabels.ts`.
@@ -192,9 +226,57 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
 
+The smart-task detail and list surfaces render the granted permissions on a
+single row whose canonical label is **`Extra permissions (set via Flow)`**
+(source: `SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL` in
+`packages/shared-domain/src/deadlineLabels.ts`). The label hoists `(set via
+Flow)` onto the row owner — what kind of setting this is — so it doesn't read
+as a qualifier on the last joined permission clause. Value clauses are
+`May go over daily budget` and `May limit lower-priority devices`, optionally
+suffixed with ` if at risk` when the mode is `at_risk`.
+
+In user-facing copy this scope is `Extra permissions`. It is **not**
+`Allowances`, `Overrides`, `Rescue`, `Rescue scope`, `Rescue permissions`, or
+`Smart-task rescue` — even though the code uses `rescue` internally (Flow
+action id `allow_smart_task_rescue`, type `DeferredObjectiveRescuePermissions`,
+field `objective.rescue`). The internal name predates the user-facing one and
+stays as-is for log schema and JSON contract stability; UI copy uses
+`Extra permissions`.
+
 Use `while the smart task is scheduled to run` / `while it's scheduled to run` for the shipped `always` mode. Avoid `planned to run` in user-facing error text. Permission changes take effect on the next plan refresh, not immediately; copy should say so when it states the timing at all.
 
 Visible Flow labels and hints use full words for time units: `hours`, not `h`.
+
+### Revision-log row vocabulary
+
+The smart-task detail page renders a `Recent plan changes` panel (live runs) and a `What changed` card (post-finalization). Both surfaces read the same row helpers and the same `revisionReason` resolver in `packages/shared-domain/src/deadlineLabels.ts`, so the canonical short labels for each recorder reason are pinned here and must not drift between surfaces or between user-facing copy and runtime log breadcrumbs.
+
+| Recorder reason | Label | Notes |
+|---|---|---|
+| `flow_card` | `Updated by a Flow card` | A user-authored Flow card fired and updated the task. |
+| `prices_arrived` | `Prices arrived` | First time the planner saw prices for the task's window. |
+| `prices_revised` | `Tomorrow’s prices published` | Nordpool publication — reserved for fresher horizons, not internal replans. Typographic apostrophe (U+2019) per the smart-task UI's typography convention. |
+| `schedule_revised` | `Schedule revised` (live-task surface may render one of three disambiguated variants — see below) | Internal replan changed which hours run (budget/risk/expansion). |
+| `rate_refined` | `Rate estimate refined` | Learned delivery rate adjusted the plan length. |
+| `objective_changed` | `Smart task settings changed` | User edited target / deadline / device. |
+| `device_unavailable` | `Device was unreachable` | Names the *event the recorder saw* — a single SDK read miss per `feedback_homey_sdk_unreliable`, not a sustained offline state. |
+| `measured_deviation` | `Measured rate differed from plan` | Names the cause-effect; "rate updated" was rejected as ambiguous. |
+| `flow_permission_changed` | `Flow changed what this smart task may do` | Rescue permission toggle (e.g. exempt-from-budget). |
+
+Fallback for an unmapped reason code: `Plan refreshed (details unavailable)`. Used only when the recorder ships a code the resolver hasn't learned about — treat its appearance in prod as a copy-update prompt, not a user-facing default state. The producer label stays the bare `Plan refreshed` (consumed by the live panel's summary subline + runtime log breadcrumbs, where the terser variant reads better); the row templates on both the live-task panel and the post-finalization history-detail card swap in the longer `Plan refreshed (details unavailable)` variant so the absent diff chip is self-explained. Fallback rows on both surfaces suppress the hour-diff chip (the chip would otherwise misattribute the diff to a vague "Plan refreshed" line that says nothing about why hours changed); the live-task panel additionally emits a one-shot `console.warn` so the gap doesn't go unnoticed.
+
+`schedule_revised` disambiguation (live-task panel only — history-detail rows always render the bare label because the recorder-summarised history entry shape doesn't carry the signals):
+
+| Variant label | Trigger signal | Notes |
+|---|---|---|
+| `Schedule revised — daily budget shifted` | `dailyBudgetExhaustedBucketCount > 0` OR `floorShortfallCause === 'budget'` | Strongest signal; the most actionable explanation for the user. Wins ties against the other two. |
+| `Schedule revised — risk changed` | Prior revision's `planStatus` differed from this revision's (and no budget signal) | E.g. `on_track` → `at_risk` or the reverse. |
+| `Schedule revised — cheaper hour opened` | Hours grew vs the prior revision (`hoursAdded > 0 && hoursRemoved === 0`) with no budget or risk signal | Optimizer found new affordable space. |
+| `Schedule revised` (bare) | None of the above conclusive | Under-promise rather than mislabel. Mixed-diff swaps (`hoursAdded > 0 && hoursRemoved > 0`) also fall through. |
+
+Em-dash separator (U+2014) per the existing typography convention.
+
+Hour-diff chip wording: `+Nh` (added), `−Nh` (dropped, U+2212 MINUS SIGN to match the typographic minus used by post-finalization rows and cost-meta lines). Both omitted when a revision only redistributed kWh across the same hours.
 
 ## Mode label
 

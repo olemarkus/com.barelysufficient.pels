@@ -440,6 +440,76 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.latest?.reason).toBe('prices_arrived');
   });
 
+  it('logs each replan into a most-recent-first history capped at 20 entries', () => {
+    // Persistence contract for batch 4's smart-task revision history panel:
+    // every revision write prepends the prior `latest` onto the `history`
+    // array (so head === "previous-to-latest"). 20 covers any realistic
+    // task lifecycle (single-digit replans typical); we slice past the cap
+    // to keep the persisted blob bounded. Legacy persisted plans without
+    // a `history` field load as undefined and start populating on next
+    // replan — tested separately in `accepts legacy persisted plans
+    // without a history field` below.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First revision — no history yet.
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.history).toBeUndefined();
+
+    // Drive 25 schedule-growth replans by extending the horizon each cycle.
+    // The seeded plan committed 3 buckets on the initial observe above, so
+    // the live schedule must exceed 3 to trigger `mergeHoursPreservingCommitment`'s
+    // grow branch and emit `schedule_revised`. Start the loop with `cycle + 3`
+    // buckets (cycle 1 = 4 buckets, > 3 committed) so every iteration actually
+    // grows the schedule and writes a revision. Objective signature stays
+    // stable — we want to exercise the history-cap mechanism in isolation,
+    // not the `objective_changed` reset path (which clears history by design).
+    for (let cycle = 1; cycle <= 25; cycle += 1) {
+      const buckets = [];
+      for (let i = 0; i <= cycle + 2; i += 1) {
+        buckets.push(makeBucket((2 + i) * HOUR_MS, 1.5));
+      }
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 30 * HOUR_MS,
+        horizonPlan: makeHorizon(buckets),
+      })], (1 + cycle) * HOUR_MS);
+    }
+
+    const plan = recorder.getPlanForTests('dev');
+    // History is capped at 20 entries, most-recent first.
+    expect(plan?.history).toHaveLength(20);
+    // Head of history is the revision immediately before `latest`.
+    expect(plan?.history?.[0]?.revision).toBe((plan?.latest?.revision ?? 0) - 1);
+    // Tail of history is the oldest preserved revision (FIFO prune of older).
+    expect(plan?.history?.at(-1)?.revision)
+      .toBe((plan?.latest?.revision ?? 0) - 20);
+    // Order is strictly descending by revision number.
+    const revisions = plan?.history?.map((h) => h.revision) ?? [];
+    for (let i = 0; i < revisions.length - 1; i += 1) {
+      expect(revisions[i]).toBeGreaterThan(revisions[i + 1]!);
+    }
+  });
+
+  it('does not grow history when a cycle produces no new revision', () => {
+    // The history log advances only when `maybeWriteReplanRevision`
+    // actually writes a new revision. Cycles that produce identical
+    // diagnostics (or sub-threshold drift) must not push duplicate entries
+    // — the per-cycle 30 s cadence would otherwise blow through the cap
+    // in under 11 minutes on a stable task.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
+    // Drive 10 identical observations — none should produce a revision write.
+    for (let cycle = 1; cycle <= 10; cycle += 1) {
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], (1 + cycle) * HOUR_MS);
+    }
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.revision).toBe(1);
+    expect(plan?.history).toBeUndefined();
+  });
+
   it('does not write a new revision when subsequent cycles produce identical hours', () => {
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -451,6 +521,183 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     expect(firstRevision).toBe(1);
     expect(secondRevision).toBe(1);
+  });
+
+  it('extends the commitment when expansion adds hours to a previously satisfied (empty-commitment) plan', () => {
+    // Morning-shower scenario: task created with current temp already above
+    // target gets `commitment.hours = []` because there was nothing to plan.
+    // Then a hot-water draw crashes the tank → energyNeeded recomputes
+    // upward, phase-2 expansion fires, live horizon now contains future
+    // buckets. The recorder must persist those buckets into both
+    // `revision.hours` and `commitment.hours` so UI / notifications /
+    // history consumers see the recovery — not just the runtime executor.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First cycle: target already met, zero planned hours.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], HOUR_MS);
+    const initial = recorder.getPlanForTests('dev');
+    expect(initial?.commitment?.hours).toEqual([]);
+    expect(initial?.latest?.hours).toEqual([]);
+
+    // Second cycle: drift triggered expansion; live plan now contains two
+    // future buckets the planner has decided to claim.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'on_track',
+      reasonCode: 'planned_with_margin',
+      energyNeededKWh: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1),
+        makeBucket(5 * HOUR_MS, 1),
+      ]),
+    })], 2 * HOUR_MS);
+    const expanded = recorder.getPlanForTests('dev');
+
+    expect(expanded?.latest?.revision).toBe(2);
+    expect(expanded?.latest?.reason).toBe('schedule_revised');
+    expect(expanded?.latest?.hours.map((h) => h.startsAtMs)).toEqual([4 * HOUR_MS, 5 * HOUR_MS]);
+    // Single source of truth: commitment now contains the expansion hours.
+    expect(expanded?.commitment?.hours.map((h) => h.startsAtMs)).toEqual([4 * HOUR_MS, 5 * HOUR_MS]);
+    expect(expanded?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
+  });
+
+  it('grows an existing commitment with expansion-added hours while preserving committed plannedKWh as a floor on overlap', () => {
+    // Drift case where the original commitment is non-empty: hour 2 was
+    // committed at 1.5 kWh. Later cycle's live plan still includes hour 2
+    // (now down to 1.0 kWh because some energy was already delivered) and
+    // adds hour 5 via expansion. The commitment grows to include hour 5;
+    // hour 2's plannedKWh stays at the committed 1.5 kWh because the
+    // committed value is the contract floor — letting a shrinking live
+    // value rewrite it downward would shrink the persisted floor and
+    // weaken the guarantee for the remaining hours of the plan.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)]),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.commitment?.hours.map((h) => h.startsAtMs)).toEqual([2 * HOUR_MS]);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.0),
+        makeBucket(5 * HOUR_MS, 0.5),
+      ]),
+    })], 2 * HOUR_MS);
+    const expanded = recorder.getPlanForTests('dev');
+
+    expect(expanded?.latest?.revision).toBe(2);
+    expect(expanded?.commitment?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 5 * HOUR_MS, plannedKWh: 0.5 },
+    ]);
+  });
+
+  it('preserves committed hours when the live plan drops them mid-task (commitment cannot shrink)', () => {
+    // After expansion has committed multiple hours, an intervening cycle
+    // where energy need transiently goes to zero must not erase those
+    // committed hours. The commitment is the historical contract for
+    // those hours; energy may already have been delivered against them.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+      ]),
+    })], HOUR_MS);
+    const initial = recorder.getPlanForTests('dev');
+    const initialHours = initial?.commitment?.hours.map((h) => h.startsAtMs);
+    const initialRevision = initial?.latest?.revision;
+
+    // Second cycle: tank reached target, planner has nothing to add.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], 2 * HOUR_MS);
+    const preserved = recorder.getPlanForTests('dev');
+
+    // Commitment hours unchanged. A revision may be written for the
+    // planStatus drift (satisfied), but `commitment.hours` must hold.
+    expect(preserved?.commitment?.hours.map((h) => h.startsAtMs)).toEqual(initialHours);
+    expect(preserved?.commitment?.committedAtMs).toBe(initial?.commitment?.committedAtMs);
+    // Schedule itself did not shrink — `latest.hours` mirrors the preserved commitment.
+    expect(preserved?.latest?.hours.map((h) => h.startsAtMs)).toEqual(initialHours);
+    expect(initialRevision).toBe(1);
+  });
+
+  it('does not write a new revision when within-hour drift grows primary kWh inside step capacity', () => {
+    // Production scenario (Connected 300, 2026-05-27 20:00-21:00 local):
+    // primary bucket committed at 0.71 kWh on rev 1, then 9 subsequent
+    // plan cycles drove energyNeededKWh up by 0.03 kWh each as natural
+    // cooling accumulated. Pre-floor-not-ceiling-fix the committed cap
+    // bound phase-1 at 0.71 and each cycle spilled the residual into a
+    // new uncommitted hour via phase-2, writing 9 `schedule_revised`
+    // revisions in one clock hour. Post-fix, primary absorbs the drift
+    // up to step capacity, the hour set never changes, and
+    // `sameHourSchedule` suppresses the revision writes entirely. Pin
+    // this at the recorder layer so the user-visible "noise stays gone"
+    // contract is guarded against either phase-1 regressions OR a recorder
+    // diff-gate that becomes kWh-sensitive.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Rev 1: single planned hour at 0.71 kWh.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      energyNeededKWh: 0.71,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 0.71)]),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+    ]);
+
+    // Subsequent cycles: drift grows primary's plannedKWh inside the same
+    // committed hour, well inside step capacity (1.5 kWh per hour for the
+    // default 1.5 kW useful step in this test fixture). Hour set never
+    // changes; the recorder must keep rev=1.
+    for (const kWh of [0.82, 0.95, 1.08, 1.20, 1.30, 1.40]) {
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        energyNeededKWh: kWh,
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, kWh)]),
+      })], 2 * HOUR_MS);
+    }
+
+    const stable = recorder.getPlanForTests('dev');
+    expect(stable?.latest?.revision).toBe(1);
+    expect(stable?.history ?? []).toEqual([]);
+    // Commitment kWh floor is preserved at the original 0.71 even though
+    // the live cycles ran with up to 1.40 kWh — that's intentional. The
+    // commitment is the minimum guarantee; the executor's step-climb
+    // (and within-hour delivery) absorbs the extra demand against the
+    // remaining bucket capacity without rewriting the commitment.
+    expect(stable?.commitment?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
+    ]);
   });
 
   it('emits an objective_changed revision when the target temperature changes mid-flight', () => {
@@ -481,6 +728,103 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 2 },
     ]);
     expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
+  });
+
+  it('clears the revision history when the smart-task settings change (objective_changed)', () => {
+    // Regression: the smart-task detail page revision panel reads
+    // `latest` + `history`. Pre-change history belongs to a *different*
+    // objective (target, deadline, or device), so carrying it forward
+    // interleaves two objectives' revisions in the user-visible panel until
+    // 20 fresh entries roll over. When the resolved reason is
+    // `objective_changed` ("Smart task settings changed") the history must
+    // start empty; the new `latest` with that reason is itself the natural
+    // separator the user sees. Rescue-permission-only toggles route to
+    // `flow_permission_changed` and intentionally preserve prior history
+    // (covered by the negative test under `rescue-permission-only replan
+    // routing`).
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Build up three prior revisions (revisions 1, 2, 3) under the original
+    // objective (target 65). Each cycle extends the schedule by one new
+    // hour so `live ⊇ committed` — that drives `schedule_revised` writes
+    // and prepends each prior `latest` onto `history`.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ]),
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+        makeBucket(6 * HOUR_MS, 1.5),
+      ]),
+    })], 3 * HOUR_MS);
+
+    const beforeChange = recorder.getPlanForTests('dev');
+    expect(beforeChange?.latest?.revision).toBe(3);
+    expect(beforeChange?.history?.length).toBe(2);
+
+    // Objective signature now changes: target shifts 65 → 70.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      targetTemperatureC: 70,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2.0),
+        makeBucket(3 * HOUR_MS, 2.0),
+        makeBucket(4 * HOUR_MS, 2.0),
+      ]),
+    })], 4 * HOUR_MS);
+
+    const afterChange = recorder.getPlanForTests('dev');
+    expect(afterChange?.latest?.reason).toBe('objective_changed');
+    expect(afterChange?.latest?.revision).toBe(4);
+    // The prior 2 history entries (revisions 1 and 2) are gone — the new
+    // pending plan starts with an empty revision log.
+    expect(afterChange?.history).toEqual([]);
+
+    // Subsequent revisions append from empty: the next `schedule_revised`
+    // pushes the just-written `objective_changed` revision onto history,
+    // so the panel shows exactly one prior entry (the objective change)
+    // plus the new latest — no pre-change rows leak through. Drive a
+    // schedule grow under the new objective to force `schedule_revised`.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      targetTemperatureC: 70,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2.0),
+        makeBucket(3 * HOUR_MS, 2.0),
+        makeBucket(4 * HOUR_MS, 2.0),
+        makeBucket(5 * HOUR_MS, 2.0),
+      ]),
+    })], 5 * HOUR_MS);
+
+    const afterNext = recorder.getPlanForTests('dev');
+    expect(afterNext?.latest?.revision).toBe(5);
+    expect(afterNext?.history?.length).toBe(1);
+    expect(afterNext?.history?.[0]?.revision).toBe(4);
+    expect(afterNext?.history?.[0]?.reason).toBe('objective_changed');
   });
 
   // Regression for the rescue-only branch of the replan-reason cascade. Toggling
@@ -519,6 +863,67 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // The new schedule is committed under the new permission set; the next
       // cycle should treat the re-balanced hours as the committed envelope.
       expect(plan?.commitment?.hours).toEqual(plan?.latest?.hours);
+    });
+
+    it('preserves prior revision history across a rescue-permission-only toggle', () => {
+      // Negative case for the objective_changed history reset: the signature
+      // changed (sigDiff.changed === true) but the resolved reason is
+      // `flow_permission_changed`, NOT `objective_changed`. The target /
+      // deadline / device are unchanged, so the prior schedule's revision
+      // log must continue across the permission toggle — only the
+      // smart-task settings edit clears the panel.
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Build two revisions under the original (no-rescue) objective by
+      // growing the schedule one hour. The second observe writes revision 2
+      // with reason `schedule_revised` and prepends revision 1 onto history.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+        ]),
+      })], HOUR_MS);
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const beforeToggle = recorder.getPlanForTests('dev');
+      expect(beforeToggle?.latest?.revision).toBe(2);
+      expect(beforeToggle?.history?.length).toBe(1);
+
+      // Toggle rescue permission on — signature changes via the rescue tail
+      // only. Reason resolves to `flow_permission_changed`.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        rescue: { exemptFromBudget: 'at_risk' },
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 3 * HOUR_MS);
+
+      const afterToggle = recorder.getPlanForTests('dev');
+      expect(afterToggle?.latest?.reason).toBe('flow_permission_changed');
+      expect(afterToggle?.latest?.revision).toBe(3);
+      // The prior 1-entry history is preserved with the just-written
+      // schedule_revised revision prepended — not cleared.
+      expect(afterToggle?.history?.length).toBe(2);
+      expect(afterToggle?.history?.[0]?.revision).toBe(2);
+      expect(afterToggle?.history?.[1]?.revision).toBe(1);
     });
 
     it('emits flow_permission_changed when a granted rescue permission is revoked', () => {
@@ -1176,6 +1581,81 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(0);
   });
 
+  it('emits onRevisionWritten exactly once when phase-2 expansion grows the schedule from empty', () => {
+    // Pins the flow-trigger contract for the satisfied-then-drifted recovery
+    // path (e.g. tonight's 2026-05-27 morning-shower scenario from
+    // production). Sequence:
+    //   1. Task created with target already met → revision 1 has empty hours
+    //      and no notification fires (seed revision is silent).
+    //   2. Drift triggers expansion → revision 2 grows the schedule by N
+    //      hours → `shouldFireNotification(0, N, 'on_track')` fires the
+    //      `deadline_plan_changed` flow trigger once.
+    //   3. Subsequent stable cycle with unchanged schedule → no additional
+    //      notification (no token storm per cycle).
+    // The trigger tokens (`planned_hours`, `remaining_kwh`) come straight
+    // off the revision, so the recorder writing the expansion into
+    // `revision.hours` is what makes the user-visible notification correct.
+    const events: Array<{
+      reason: string; hours: number; planStatus: string; energyNeededKWh: number;
+    }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          reason: event.reason,
+          hours: event.revision.hours.length,
+          planStatus: event.revision.planStatus,
+          energyNeededKWh: event.revision.energyNeededKWh,
+        });
+      },
+    });
+
+    // Seed: task created with target already met (no hours, no notification).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      energyNeededKWh: 0,
+      horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
+    })], HOUR_MS);
+    expect(events).toEqual([]);
+
+    // Drift causes phase-2 expansion: 2 future buckets added, hour count
+    // grows from 0 → 2. Trigger fires once.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'on_track',
+      energyNeededKWh: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1),
+        makeBucket(5 * HOUR_MS, 1),
+      ]),
+    })], 2 * HOUR_MS);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      reason: 'schedule_revised',
+      hours: 2,
+      planStatus: 'on_track',
+      energyNeededKWh: 2,
+    });
+
+    // Subsequent stable cycle with identical schedule → no further trigger.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'on_track',
+      energyNeededKWh: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1),
+        makeBucket(5 * HOUR_MS, 1),
+      ]),
+    })], 3 * HOUR_MS);
+    expect(events).toHaveLength(1);
+  });
+
   it('emits onRevisionWritten when the schedule collapses to empty because the plan cannot meet the deadline', () => {
     // Regression for the gap Codex flagged on PR #730: a planner transition
     // like `cannot_meet/target_cannot_be_met` (with partial buckets) →
@@ -1795,11 +2275,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.original?.revision).toBe(1);
     });
 
-    it('does not backfill commitment when the latest schedule is empty', () => {
-      // An empty `latest.hours` means the planner accepted zero hours
-      // (target already satisfied). Committing to an empty envelope would
-      // freeze the plan against ever scheduling more hours, which is not
-      // what the user agreed to.
+    it('does not backfill commitment from an empty latest, but writes one when the next revision picks up live hours', () => {
+      // The backfill path explicitly skips empty `latest.hours` — a legacy
+      // plan with no allocation can't seed a meaningful committed envelope.
+      // After the expansion-extends-commitment change, the next revision
+      // write path is what lays down the commitment whenever the live
+      // diagnostic carries hours the previous revision did not — same
+      // mechanism that handles the satisfied-then-drift case on fresh
+      // plans. So a legacy plan whose latest was empty gets a fresh
+      // commitment from the first observe cycle that actually allocates.
       const persisted = buildLegacyPersisted({
         original: {
           revision: 1,
@@ -1823,7 +2307,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       recorder.observe([diag], 2 * HOUR_MS);
 
       const plan = recorder.getPlanForTests('dev');
-      expect(plan?.commitment).toBeUndefined();
+      // Commitment hours come from the live diagnostic (the default 3-bucket
+      // horizon), committedAtMs is the observe timestamp.
+      expect(plan?.commitment?.hours.map((h) => h.startsAtMs)).toEqual([
+        2 * HOUR_MS, 3 * HOUR_MS, 4 * HOUR_MS,
+      ]);
+      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
     });
 
     it('writes a fresh commitment when the persisted signature mismatches the current diagnostic', () => {
@@ -1910,6 +2399,53 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);
       expect(normalized.plansByDeviceId.dev?.latest?.reason).toBe('rate_refined');
       expect(normalized.plansByDeviceId.dev?.latest?.kwhPerUnitSource).toBe('learned');
+    });
+
+    it('accepts a persisted plan with a non-empty revision history', () => {
+      const historyEntry = {
+        ...baseRevision,
+        revision: 2,
+        revisedAtMs: 2 * HOUR_MS,
+        reason: 'schedule_revised',
+      };
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: { ...basePlan({ revision: 3, reason: 'schedule_revised' }), history: [historyEntry] },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.history).toHaveLength(1);
+      expect(normalized.plansByDeviceId.dev?.history?.[0]?.revision).toBe(2);
+    });
+
+    it('accepts legacy persisted plans without a history field (treated as absent)', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card' }), // no `history` key
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeDefined();
+      expect(normalized.plansByDeviceId.dev?.history).toBeUndefined();
+    });
+
+    it('rejects a persisted plan whose history contains a malformed revision', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            history: [
+              { ...baseRevision, reason: 'schedule_revised' }, // valid
+              { foo: 'bar' }, // garbage — must drop the whole plan
+            ],
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
     });
 
     it('preserves a schedule_revised revision through the validator', () => {

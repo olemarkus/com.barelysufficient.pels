@@ -1,4 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import { resolveShedIntent } from '../device/deviceActionProjection';
+import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
@@ -73,7 +75,6 @@ export function buildInitialPlanDevices(params: {
   shedSet: Set<string>;
   shedReasons: Map<string, DeviceReason>;
   guardInShortfall: boolean;
-  deferredTargetTempByDeviceId?: Record<string, number>;
   deps: PlanDevicesDeps;
 }): DevicePlanDevice[] {
   const {
@@ -82,7 +83,6 @@ export function buildInitialPlanDevices(params: {
     shedSet,
     shedReasons,
     guardInShortfall,
-    deferredTargetTempByDeviceId = {},
     deps,
   } = params;
   // Filter the executor-side phantom set_step shed entries that hasExecutableShedDevices
@@ -107,7 +107,6 @@ export function buildInitialPlanDevices(params: {
     const plannedTarget = resolvePlannedTarget({
       dev,
       desiredForMode: context.desiredForMode,
-      deferredTargetTempByDeviceId,
       supportsTemperature,
       state,
       deps,
@@ -177,7 +176,6 @@ export function buildInitialPlanDevices(params: {
 function resolvePlannedTarget(params: {
   dev: PlanInputDevice;
   desiredForMode: Record<string, number>;
-  deferredTargetTempByDeviceId: Record<string, number>;
   supportsTemperature: boolean;
   state: PlanEngineState;
   deps: PlanDevicesDeps;
@@ -185,14 +183,13 @@ function resolvePlannedTarget(params: {
   const {
     dev,
     desiredForMode,
-    deferredTargetTempByDeviceId,
     supportsTemperature,
     state,
     deps,
   } = params;
   if (!supportsTemperature) return undefined;
   const target = getPrimaryTargetCapability(dev.targets);
-  const deferredC = deferredTargetTempByDeviceId[dev.id];
+  const deferredC = dev.deadlineFloorTargetC;
   const hasDeferred = typeof deferredC === 'number';
   const seed = resolveTemperatureSeed(dev, desiredForMode[dev.id], target, state, deps);
   if (seed.kind === 'skip') {
@@ -403,7 +400,7 @@ function buildBasePlanDevice(params: {
   const baseReason: DeviceReason = controllable
     ? shedReasons.get(dev.id) ?? { code: PLAN_REASON_CODES.keep, detail: recentlyRestored ? 'recently restored' : null }
     : { code: PLAN_REASON_CODES.capacityControlOff };
-  const { shedAction, shedTemperature, shedStepId } = resolveShedAction({
+  const { shedAction, shedTemperature, releaseShedStepId } = resolveShedAction({
     dev,
     controllable,
     shouldShed: shedSet.has(dev.id),
@@ -459,19 +456,26 @@ function buildBasePlanDevice(params: {
     binaryCommandPending: binaryCommandPending || undefined,
     shedAction,
     shedTemperature,
-    shedStepId,
-    ...pickStepCalibrationFields(dev),
+    releaseShedStepId,
+    ...pickPropagatedPlanFields(dev),
   };
 }
 
-function pickStepCalibrationFields(
-  dev: Pick<PlanInputDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>,
-): Partial<Pick<DevicePlanDevice, 'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep'>> {
+function pickPropagatedPlanFields(
+  dev: Pick<
+    PlanInputDevice,
+    'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+  >,
+): Partial<Pick<
+  DevicePlanDevice,
+  'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+>> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
     ...(dev.hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep: dev.hasRecentObservedDrawAtSelectedStep }
       : {}),
+    ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
   };
 }
 function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
@@ -508,34 +512,22 @@ function resolveShedAction(params: {
   controllable: boolean;
   shouldShed: boolean;
   shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
+}): { shedAction: ShedAction; shedTemperature: number | null; releaseShedStepId: string | null } {
   const { dev, controllable, shouldShed, shedBehavior } = params;
-  if (controllable && shouldShed
-    && shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
-    const target = getPrimaryTargetCapability(dev.targets);
-    return {
-      shedAction: 'set_temperature',
-      shedTemperature: normalizeTargetCapabilityValue({ target, value: shedBehavior.temperature }),
-      shedStepId: null,
-    };
-  }
-  if (isSteppedLoadDevice(dev)) {
-    return resolveSteppedShedAction({ controllable, hasBinaryControl: dev.hasBinaryControl, shedBehavior });
-  }
-  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
-}
-function resolveSteppedShedAction(params: {
-  controllable: boolean;
-  hasBinaryControl: boolean | undefined;
-  shedBehavior: { action: ShedAction; temperature: number | null; stepId: string | null };
-}): { shedAction: ShedAction; shedTemperature: number | null; shedStepId: string | null } {
-  const { controllable, hasBinaryControl, shedBehavior } = params;
-  if (controllable && shedBehavior.action === 'set_step') {
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
-  }
-  // turn_off requires binary control; normalize to set_step when missing
-  if (hasBinaryControl === false) {
-    return { shedAction: 'set_step', shedTemperature: null, shedStepId: null };
-  }
-  return { shedAction: 'turn_off', shedTemperature: null, shedStepId: null };
+  // Single resolution site for the shed-action intent. Called once here with
+  // the post-admission `controllable` so the deferred-objective rescue lane
+  // (`applyDeferredAdmissionToInput`) is honoured. The materialiser then only
+  // gates on the per-cycle `shouldShed` decision (no producer equivalent).
+  const intent = resolveShedIntent({
+    shedBehavior,
+    controllable,
+    hasBinaryControl: dev.hasBinaryControl,
+    controlModel: dev.controlModel,
+    steppedLoadProfile: dev.steppedLoadProfile,
+    primaryTarget: getPrimaryTargetCapability(dev.targets),
+  });
+  return materializeShedSnapshotFields({
+    intent,
+    shouldShed,
+  });
 }

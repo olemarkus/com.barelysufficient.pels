@@ -130,6 +130,125 @@ describe('normalizeShedReasons', () => {
 
     expect(device?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
   });
+
+  it('re-attributes carry-forward capacity to dailyBudget when softLimitSource is daily', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-stale-capacity',
+        plannedState: 'shed',
+        reason: 'shed due to capacity',
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+    });
+
+    expect(reasonText(device?.reason)).toBe('shed due to daily budget');
+  });
+
+  it('leaves capacity reasons alone when softLimitSource is capacity', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-fresh-capacity',
+        plannedState: 'shed',
+        reason: 'shed due to capacity',
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'capacity',
+    });
+
+    expect(reasonText(device?.reason)).toBe('shed due to capacity');
+  });
+
+  it('leaves a fresh-this-cycle capacity shed reason alone even when softLimitSource is daily', () => {
+    // The shedReasons map is the shedding selector's authoritative output for
+    // the current cycle; if it set `capacity` despite daily binding, the
+    // selector knows something the normalizer doesn't, and we should not
+    // override it.
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-fresh',
+        plannedState: 'shed',
+        reason: 'keep',
+      })],
+      shedReasons: new Map([['dev-fresh', { code: 'capacity', detail: null }]]),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+    });
+
+    expect(reasonText(device?.reason)).toBe('shed due to capacity');
+  });
+
+  it('overrides capacity with deferredObjectiveAvoid when the device is in an avoid bucket', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-smart-task',
+        plannedState: 'shed',
+        reason: 'shed due to capacity',
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task']),
+    });
+
+    expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
+  });
+
+  it('prefers deferredObjectiveAvoid over dailyBudget when both apply', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-smart-task-on-daily',
+        plannedState: 'shed',
+        reason: 'shed due to capacity',
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      deferredObjectiveAvoidDeviceIds: new Set(['dev-smart-task-on-daily']),
+    });
+
+    expect(reasonText(device?.reason)).toBe('waiting for cheaper hours');
+  });
+
+  it('does not override shortfall or swap with the deferred-avoid framing', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-swap',
+        plannedState: 'shed',
+        reason: 'swapped out for Water Heater',
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      deferredObjectiveAvoidDeviceIds: new Set(['dev-swap']),
+    });
+
+    expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');
+  });
 });
 
 describe('finalizePlanDevices', () => {

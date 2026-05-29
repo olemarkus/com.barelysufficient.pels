@@ -214,7 +214,6 @@ describe('DeadlinesList header consumes the shared hero primitive', () => {
         kind: 'temperature',
         targetTemperatureC: 65,
         targetPercent: null,
-        createdAtMs: T0 - 3_600_000,
         firstActionAtMs: T0,
         deadlineAtMs: T0 + 6 * 3_600_000,
         href: './?page=deadline-plan&deviceId=dev_water_heater',
@@ -267,6 +266,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     extraPermissionsValue: null,
     provenanceRows: [],
   },
+  revisionLog: [], revisionSummary: { text: null, count: 0, shouldShowPanel: false },
 });
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({

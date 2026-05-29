@@ -146,12 +146,23 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
   });
 
-  it('treats committed=true with empty hours as a commitment to zero hours (not a re-optimization request)', () => {
-    // Models a previously stored `cannot_meet` plan that allocated zero hours.
-    // The producer (diagnosticsBridge) still reports `committed: true` so the
-    // planner stays on the committed-replan path and reports the full
-    // energyNeededKWh as unplanned — it does not silently rerun the fresh
-    // optimizer against the same horizon and "recover".
+  it('recovers via expansion when committed plan is empty and feasible uncommitted buckets remain', () => {
+    // Prod scenario (Connected 300, 2026-05-27 morning shower): a smart task
+    // created with current temp already above target gets `committed: true,
+    // committedHours: []` because there was nothing to plan. Then a hot-water
+    // draw crashes the tank below target mid-task → status flips cannot_meet
+    // with a now-positive energyNeededKWh. The previous behaviour treated the
+    // empty commitment as a "stale cannot_meet decision must not silently
+    // recover" signal and left the task to fail. New behaviour: expansion
+    // fires against the remaining horizon and books backup hours.
+    //
+    // Stability against transient flips comes from two existing layers:
+    // (1) the current-bucket commitment is locked (see `!bucket.current` skip
+    //     in `expandCommittedAllocation`), so brief sheds within the current
+    //     hour never claim its budget;
+    // (2) the executor's within-hour step climbing delivers the committed
+    //     kWh integral even if a single snapshot looks short — so status
+    //     flutter from stepped-load oscillation never causes lasting churn.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -168,10 +179,243 @@ describe('planDeferredObjectiveHorizon', () => {
       committedHours: [],
     });
 
+    // Current bucket (h0) is locked by `!bucket.current`; expansion fills h1
+    // and h2 (both preferred, ascending order from sort).
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
+  it('stays cannot_meet when expansion has no future buckets to claim', () => {
+    // Replacement regression for the old "no silent recovery" invariant: the
+    // genuinely unrecoverable case is "no eligible future bucket in the
+    // horizon", not "empty commitment". With only the current bucket left,
+    // the `!bucket.current` filter blocks expansion and the task honestly
+    // reports cannot_meet.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [],
+    });
+
     expect(plan.status).toBe('cannot_meet');
-    expect(plan.statusDetail).toBe('target_cannot_be_met');
     expect(plan.plannedUsefulEnergyKWh).toBe(0);
     expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
+  });
+
+  it('expansion never claims the current bucket even when it is the cheapest preferred', () => {
+    // The current bucket's commitment is the contract for the hour: settled
+    // budget cap, partial consumption already in flight, and within-hour
+    // delivery is the executor's job via step climbing. Expansion must add
+    // *future* hours only — claiming the current bucket via the expansion
+    // path would re-claim against a settled cap.
+    //
+    // Setup: current bucket (h0) is the cheapest preferred and uncommitted,
+    // making it the comparator's first pick by price. Committed hour is h2.
+    // Need exceeds the committed allocation. Without the filter, expansion
+    // would book h0; with the filter, h0 is skipped and h1 absorbs the
+    // residual.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS + (2 * HOUR_MS), plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
+  it('expands a committed plan when residual energy is needed and uncommitted preferred buckets remain', () => {
+    // Prod scenario (Connected 300, 2026-05-26): a smart task reached `satisfied`
+    // at 22:58 with the original commitment fully delivered, then drifted below
+    // target through the night as standby loss accumulated. `energyNeededKWh`
+    // recomputed on each cycle, but the committed-replan path could only fill
+    // *within* the original committed hours — never adding the still-available
+    // cheap preferred buckets remaining in the horizon. Result: status stayed
+    // `cannot_meet` for 7 hours and the tank reached the deadline ~8 °C below
+    // target despite a wide selection of unused preferred buckets.
+    //
+    // Modelled here as a non-empty commitment (hour 0 = 1 kWh) facing a
+    // refreshed need of 2 kWh: the committed hour delivers 1 kWh; the residual
+    // 1 kWh must spill into an uncommitted preferred bucket. Hour 1 wins the
+    // sort (preferred + earliest among ties), so it gets the expansion. Hour 2
+    // stays unallocated because the need is already met.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
+  });
+
+  it('does not double-allocate when phase-2 expansion follows phase-1 within a committed hour', () => {
+    // Phase-2 expansion still fills *uncommitted* hours only; it must not
+    // claim a committed hour a second time after phase-1 already filled it
+    // up to step capacity. With 2 kWh need, low-step useful = 1 kW, and a
+    // single committed hour h0 (floor: 0.5 kWh), phase-1 fills h0 to bucket
+    // step capacity (1 kWh) and phase-2 spills the remaining 1 kWh into
+    // h1 — h0 is never visited twice.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+      ],
+    });
+
+    // h0 fills to step capacity (1 kWh at low step), not its prior 0.5 floor.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    // h1 absorbs the remaining 1 kWh via phase-2 expansion.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+  });
+
+  it('absorbs slow drift into the committed hour up to step capacity without expanding', () => {
+    // Production scenario (Connected 300, 2026-05-27 evening task): primary
+    // bucket was committed at 0.71 kWh on rev 1; energyNeededKWh climbed to
+    // 1.22 kWh over 50 min of natural cooling. Pre-fix, phase-1 capped at
+    // 0.71 and phase-2 spilled 0.51 kWh of slivers into 8 future hours,
+    // writing 9 schedule_revised revisions in one clock hour. Post-fix,
+    // phase-1 fills the committed hour up to step capacity (1 kWh at low
+    // step in this test, 1.25 kWh at floor `low` in prod, 2.75 kWh at
+    // promoted `max` for fully-reserved tasks). No phase-2 expansion fires;
+    // the hour set is unchanged, so the recorder's `sameHourSchedule` gate
+    // suppresses revision writes for the drift entirely.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 0.9,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 0.5 },
+      ],
+    });
+
+    expect(plan.status).toBe('on_track');
+    // h0 absorbs all 0.9 kWh (well below the 1 kWh step capacity); no spill.
+    // h0 is the current bucket — phase-1 deliberately fills it because
+    // the `!bucket.current` skip lives only in phase-2 expansion. The
+    // committed kWh is the contract for the hour; phase-1 honouring the
+    // current bucket is what lets drift absorb into primary instead of
+    // forking into new uncommitted hours.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.9);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(0.9);
+  });
+
+  it('caps the per-hour fill at reservedHeadroomKw × duration when below step capacity', () => {
+    // Per-hour ceiling stacks three caps: step capacity, daily-budget
+    // pacing slice, and forecast hard-cap headroom. With the floor step
+    // at min (low = 1 kW useful) and bucket reservedHeadroomKw at 0.4 kW,
+    // the allocator must place at most 0.4 kWh in that hour — committing
+    // a full 1 kWh would over-promise against the physical headroom
+    // forecast and the executor would hit the hard cap.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 1.5,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred', { reservedHeadroomKw: 0.4 }),
+        bucket(1, 'preferred', { reservedHeadroomKw: 4 }),
+        bucket(2, 'preferred', { reservedHeadroomKw: 4 }),
+      ],
+    });
+
+    // h0 capped at headroom (0.4); h1 fills the residual (1.1) up to its
+    // step capacity (1 kWh); h2 absorbs the remainder (0.1).
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.4);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.1);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1.5);
+  });
+
+  it('treats missing reservedHeadroomKw as no headroom cap (back-compat)', () => {
+    // Buckets without a `reservedHeadroomKw` forecast (e.g. hardCapKw or
+    // backgroundKWh unavailable) must not collapse the per-hour cap to
+    // zero. The allocator falls back to step capacity ∧ daily-budget,
+    // identical to pre-headroom-cap behavior.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (3 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+        bucket(2, 'preferred'),
+      ],
+    });
+
+    // No headroom cap → each bucket fills to step capacity (1 kWh at low).
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
   it('runs the fresh optimizer when committed is false regardless of committedHours', () => {
@@ -272,22 +516,53 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.statusDetail).toBe('target_cannot_be_met');
   });
 
-  it('keeps cannot_meet for a committed plan that is short, since the climbed probe respects committed caps', () => {
-    // Committed to 1 kWh in the first hour only, but 2 kWh is needed. The climbed
-    // probe mirrors the committed mode, so the per-hour committed cap (1 kWh)
-    // still binds even at the top step — climbing within committed hours cannot
-    // manufacture feasibility, so the verdict stays cannot_meet rather than
-    // silently recovering to feasible_above_floor.
+  it('climbs a committed plan up to step capacity when the floor is short', () => {
+    // 2 kWh needed in a single 1-hour committed bucket. Floor step `low`
+    // (1 kW useful) can only deliver 1 kWh — short by 1 kWh. The climb
+    // probe at top step `max` (3 kW useful) fills the same committed hour
+    // up to step capacity (3 kWh available) so the energy fits at climb
+    // step → verdict softens from cannot_meet to at_risk
+    // (feasible_above_floor). Committed kWh is the floor (preserved by the
+    // recorder's merge), not a per-hour ceiling on phase-1/climb fills.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
         energyNeededKWh: 2,
-        deadlineAtMs: NOW_MS + (2 * HOUR_MS),
+        deadlineAtMs: NOW_MS + HOUR_MS,
       }),
       steps: defaultSteps,
       buckets: [
         bucket(0, 'preferred'),
-        bucket(1, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('at_risk');
+    expect(plan.statusDetail).toBe('feasible_above_floor');
+    // Floor still allocates 1 kWh of useful energy in the committed bucket;
+    // the remaining 1 kWh is what the climb step would need to deliver.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('keeps cannot_meet when even the climb step cannot fit the need into the committed horizon', () => {
+    // 4 kWh needed in a single 1-hour committed bucket. Floor `low` (1 kWh
+    // capacity) delivers 1 kWh; climb step `max` (3 kWh capacity) still
+    // leaves 1 kWh unplanned — no future hours to expand into. Verdict
+    // stays cannot_meet. The single-bucket horizon isolates this from the
+    // committed-plan-expansion path.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 4,
+        deadlineAtMs: NOW_MS + HOUR_MS,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
       ],
       committed: true,
       committedHours: [
@@ -297,7 +572,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.status).toBe('cannot_meet');
     expect(plan.statusDetail).toBe('target_cannot_be_met');
-    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(1);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(3);
   });
 
   it('reports at_risk (limited_by_daily_budget) when the floor is short only because of the per-bucket budget cap', () => {
@@ -472,10 +747,14 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(16);
   });
 
-  it('keeps the floor at min step when even the minimum headroom does not fit a higher step', () => {
+  it('caps each bucket at reservedHeadroomKw × duration when forecast headroom is below the floor step', () => {
     // headroom = 0.5 — less than min step (1 kW). Promotion picks the
     // rightmost step that fits, defaulting to the min step when even it
-    // doesn't. Need 4 kWh in 4h → at min step 4 kWh fits exactly.
+    // doesn't. With the per-hour cap honouring reservedHeadroomKw, each
+    // bucket can place only 0.5 kWh — the executor would breach the hard
+    // cap if we committed a full 1 kWh and reality only had 0.5 kW of
+    // hard-cap headroom. Need 4 kWh in 4h → 4 × 0.5 = 2 kWh placed, 2 kWh
+    // unplanned; even climb at max=3 stays capped at 0.5 → cannot_meet.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -487,19 +766,23 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: Array.from({ length: 4 }, (_, i) => bucket(i, 'neutral', { reservedHeadroomKw: 0.5 })),
     });
 
-    expect(plan.status).toBe('on_track');
-    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(4);
-    // The per-bucket placed kWh shows the floor stayed at min step (1 kW × 1h = 1).
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    expect(plan.status).toBe('cannot_meet');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(0.5);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
   });
 
-  it('uses the minimum across buckets (per-horizon v1) — a single tight bucket holds the whole horizon to min step', () => {
-    // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). The v1
-    // per-horizon model uses the *minimum* so the chosen floor is safe in
-    // every bucket. → floor stays at min step → 1 kWh/h × 8h = 8 kWh placed
-    // out of 18 needed. The shortfall is still climbable (Slice-1 catches it)
-    // so the verdict softens to `at_risk`/`feasible_above_floor`, not a flat
-    // miss — which is the correct composition of Slices 1 + 2.
+  it('promotes generous-headroom buckets to higher steps while tight-headroom buckets stay at min step', () => {
+    // 7 generous buckets (headroom 4) + 1 tight (headroom 0.5). Per-bucket
+    // promotion: generous buckets commit at the highest active step that
+    // fits 4 kW = `max` (3 kW); the tight bucket has no step that fits 0.5
+    // kW (even low = 1 kW exceeds it), so it falls back to `activeSteps[0]`
+    // = low. Per-hour cap then enforces the actual per-bucket headroom on
+    // top: generous buckets place min(3, ∞, 4) = 3 kWh; tight bucket places
+    // min(1, ∞, 0.5) = 0.5 kWh. 7 × 3 + 0.5 = 21.5 kWh capacity against 18
+    // kWh need → on_track. (Pre-per-bucket behaviour: a single tight bucket
+    // held the whole horizon to min step and the task degraded to at_risk;
+    // per-bucket promotion eliminates that pessimism.)
     const headrooms = [4, 4, 0.5, 4, 4, 4, 4, 4];
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
@@ -512,19 +795,21 @@ describe('planDeferredObjectiveHorizon', () => {
       buckets: headrooms.map((h, i) => bucket(i, 'neutral', { reservedHeadroomKw: h })),
     });
 
-    expect(plan.status).toBe('at_risk');
-    expect(plan.statusDetail).toBe('feasible_above_floor');
-    // Floor stayed at min step → max ~1 kWh placed per bucket.
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
-    // 8 buckets × 1 kWh — confirms the floor did not promote.
-    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(8);
+    expect(plan.status).toBe('on_track');
+    // Tight bucket (h2) capped at headroom = 0.5 kWh.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.5);
+    // Generous bucket (h0) gets the full max-step capacity = 3 kWh.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(3);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(18);
   });
 
-  it('falls back to min step when any bucket lacks a reservedHeadroomKw forecast — we cannot promise more than we can verify', () => {
-    // Two buckets carry headroom = 4; one is missing the forecast field. The
-    // resolver fails closed (returns min step) — Slice 2 only promotes when
-    // the producer has resolved a forecast for every horizon bucket. The
-    // shortfall remains classified by Slice-1's climbed-band probe.
+  it('promotes per bucket independently — buckets without a forecast stay at min step, others promote', () => {
+    // Two buckets carry headroom = 4; one is missing the forecast field.
+    // Per-bucket promotion: forecasted buckets land at `max` (3 kW useful,
+    // capped to headroom 4 kW = 3 kWh/h); the bucket without a forecast
+    // falls back to `activeSteps[0]` = low (1 kWh/h). 3 + 1 + 3 = 7 kWh
+    // floor capacity against 8 kWh need → 1 kWh shortfall. Climb probe
+    // (uniform max=3) gets 3 × 3 = 9 kWh, fits → at_risk/feasible_above_floor.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -535,17 +820,17 @@ describe('planDeferredObjectiveHorizon', () => {
       steps: defaultSteps,
       buckets: [
         bucket(0, 'neutral', { reservedHeadroomKw: 4 }),
-        bucket(1, 'neutral'), // no reservedHeadroomKw
+        bucket(1, 'neutral'), // no reservedHeadroomKw — stays at min step
         bucket(2, 'neutral', { reservedHeadroomKw: 4 }),
       ],
     });
 
-    // Climbed-band probe (top step) DOES fit 8 kWh in 3 h (3 × 3 = 9), so the
-    // verdict softens to at_risk. Slice-2's job is only "verify we can promote
-    // the *floor*"; classification correctness still belongs to Slice 1.
     expect(plan.status).toBe('at_risk');
     expect(plan.statusDetail).toBe('feasible_above_floor');
-    expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    // Forecasted bucket promoted to max-step capacity.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(3);
+    // Bucket without forecast holds at min step.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
   it('does not promote the floor when the objective is not fully reserved (even with ample headroom)', () => {
@@ -569,6 +854,36 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.statusDetail).toBe('feasible_above_floor');
     // Floor itself stayed at min step.
     expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
+  });
+
+  it('current-bucket requestedMinimumStepId reflects planned kWh, not the promoted floor-step ceiling', () => {
+    // Per-bucket promotion can put a generous bucket at `max` step capacity
+    // (e.g. 3 kWh available in 1 h), but the planner may only NEED to fill
+    // a small slice of that capacity (e.g. 0.3 kWh in the current hour to
+    // hit the target on time). The executor's `requestedMinimumStepId`
+    // must reflect what the executor actually needs to run NOW — the
+    // smallest step that fits the planned kWh — not the promoted ceiling.
+    // Otherwise the executor would over-climb and trip the hard cap.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 0.3,
+        deadlineAtMs: NOW_MS + (2 * HOUR_MS),
+        fullyReserved: true,
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred', { reservedHeadroomKw: 4 }),
+        bucket(1, 'preferred', { reservedHeadroomKw: 4 }),
+      ],
+    });
+
+    // Current bucket has 0.3 kWh of work — low step (1 kW × 1 h = 1 kWh)
+    // covers that comfortably, so the executor only needs to run at low.
+    // The PER-BUCKET PROMOTION (max @ 3 kW useful) is a CEILING for the
+    // commitment, not a floor for the executor's setpoint.
+    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.currentBucket?.requestedMinimumStepId).toBe('low');
   });
 
   it('is a no-op for single-step devices (the only available step is already the floor)', () => {

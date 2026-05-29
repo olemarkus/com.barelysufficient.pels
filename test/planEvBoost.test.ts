@@ -1,5 +1,5 @@
 import { normalizeEvBoostSettings } from '../packages/contracts/src/evBoost';
-import { resolveEvBoostActive } from '../lib/plan/planEvBoost';
+import { buildBoostPlanDeviceFields, resolveEvBoostActive } from '../lib/plan/planEvBoost';
 import { buildPlanInputDevice, steppedInputDevice } from './utils/planTestUtils';
 
 describe('normalizeEvBoostSettings', () => {
@@ -79,5 +79,41 @@ describe('resolveEvBoostActive', () => {
       }),
       previousActive: false,
     })).toBe(false);
+  });
+});
+
+describe('buildBoostPlanDeviceFields — boostActive aggregate', () => {
+  const dev = buildPlanInputDevice({});
+
+  it('is true when only temperature boost fires', () => {
+    expect(buildBoostPlanDeviceFields({
+      dev,
+      temperatureBoostActive: true,
+      evBoostActive: false,
+    }).boostActive).toBe(true);
+  });
+
+  it('is true when only EV boost fires', () => {
+    expect(buildBoostPlanDeviceFields({
+      dev,
+      temperatureBoostActive: false,
+      evBoostActive: true,
+    }).boostActive).toBe(true);
+  });
+
+  it('is true when both fire', () => {
+    expect(buildBoostPlanDeviceFields({
+      dev,
+      temperatureBoostActive: true,
+      evBoostActive: true,
+    }).boostActive).toBe(true);
+  });
+
+  it('is false when neither fires', () => {
+    expect(buildBoostPlanDeviceFields({
+      dev,
+      temperatureBoostActive: false,
+      evBoostActive: false,
+    }).boostActive).toBe(false);
   });
 });

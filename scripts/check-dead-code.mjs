@@ -118,32 +118,18 @@ const allowedUnusedExportPatterns = [
   /^lib\/device\/targetPowerContractWarn\.ts:\d+ - resetTargetPowerContractLogStateForTests$/,
   /^lib\/app\/appDeviceSupport\.ts:\d+ - __resetSeedSkipDedupeForTests$/,
   /^lib\/objectives\/noPowerSourceDiagnostic\.ts:\d+ - resetNoPowerSourceDiagnosticForTests$/,
-  // Chunk 1 of the planner-detype refactor moved the only runtime consumers
-  // of these trust gates (the boost resolvers) into
-  // `lib/device/deviceActionProjection.ts`, which inlines equivalent local
-  // helpers because `lib/device/` may not import `lib/observer/` per the
-  // `no-device-to-peer-except-power` layering rule. The originals stay
-  // exported here for the existing test suite and for `isDeviceObservationTrusted`
-  // (still consumed by plan); a later refactor chunk may consolidate the
-  // trust-gate home and remove these allowlist entries.
-  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedCurrentTemperatureC$/,
-  /^lib\/observer\/observationTrust\.ts:\d+ - getTrustedStateOfCharge$/,
-  // Chunk 2 of the planner-detype refactor adds these producer-side
-  // helpers ahead of their full consumer set: `resolveBoostActive` (chunk
-  // 5 aggregator), `getCommandableNowReason` (chunk 6 UI routing), and
-  // `isCommandableNow` (the dual-read consumer helper that chunk 6
-  // routes executors through once they consume `PlanInputDevice`).
-  // chunk 2's only in-tree consumer of the producer seam is
-  // `planOffStateReason.isEvPhysicallyUnplugged`; the executor gate stays
-  // on its original `getEvRestoreBlockReason` branch for behaviour
-  // preservation (broader EV detection via the capabilities array). All
-  // three symbols are covered by
-  // `test/deviceActionProjectionCommandableNow.test.ts`.
-  /^lib\/device\/deviceActionProjection\.ts:\d+ - resolveBoostActive$/,
+  // Chunk 2 of the planner-detype refactor added these producer-side
+  // helpers ahead of their full consumer set. `isCommandableNow`
+  // graduated via `planExecutorSupport.canTurnOnDevice` (chunk 6).
+  // `resolveBoostActive` graduated via `buildBoostPlanDeviceFields`
+  // (chunk 5). `getCommandableNowReason` stays parked until the chunk-6
+  // UI routing reroutes off-state reason strings onto it.
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
-  /^lib\/device\/deviceActionProjection\.ts:\d+ - isCommandableNow$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
   new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
+  // Consumed by packages/settings-ui/src/ui/deviceDetail/evBoost.ts via cross-package relative import; ts-prune ignores cross-package edges.
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EV_BOOST_BLOCK_REASONS$/,
+  /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EvBoostBlockReasonKey$/,
   // Consumed by packages/settings-ui/src/ui/planDeviceCard.ts via cross-package relative import; ts-prune doesn't follow these.
   /^packages\/shared-domain\/src\/planStateLabels\.ts:\d+ - PLAN_STATE_LABEL$/,
   // Consumed by packages/settings-ui/src/ui/views/PlanSteppedCard.tsx via cross-package relative import; ts-prune ignores cross-package edges.
@@ -158,9 +144,15 @@ const allowedUnusedExportPatterns = [
   // ts-prune (running against the runtime tsconfig that excludes `widgets/`)
   // doesn't see.
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_STATUS_LABELS$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetDetailCopy$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_EMPTY_HINT$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetEtaVerb$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetTargetActionVerb$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_TARGET_NOUN$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByTone$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByStatusWord$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - DeadlinePlanCompletedReason$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - deadlineLabels$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveEvCardStateLine$/,
@@ -168,6 +160,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveChipConfidence$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskLearning$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatEnergyEstimateKWh$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - REVISION_REASON_FALLBACK_WITH_DETAIL$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskListConfidenceChipLabel$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL$/,
@@ -176,6 +169,11 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskCurrentValueLine$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_7DAY_HIT_RATE_LABEL$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_HIT_RATE_NOUN$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_ROW_LABELS$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_EMPTY_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_LOAD_ERROR_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_BANNER_LOAD_ERROR_PREFIX$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_BANNER_UNAVAILABLE_TITLE$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE$/,

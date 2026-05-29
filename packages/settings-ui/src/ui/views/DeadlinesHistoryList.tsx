@@ -2,7 +2,17 @@ import { render } from 'preact';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { SMART_TASK_PAST_EMPTY_COPY } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { groupPlanHistoryByIsoWeek } from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
+import {
+  filterPlanHistoryByDevice,
+  resolveSmartTaskHistoryFilterDevices,
+  SMART_TASK_HISTORY_FILTER_ALL_LABEL,
+  SMART_TASK_HISTORY_FILTER_GROUP_LABEL,
+  type SmartTaskHistoryFilterDevice,
+} from '../../../../shared-domain/src/deferredPlanHistoryDeviceFilter.ts';
+import {
+  groupPlanHistoryByIsoWeek,
+  resolvePlanHistory7DayHitRateStrip,
+} from '../../../../shared-domain/src/deferredPlanHistoryReceipt.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { PlanHistoryCard } from './DeadlinePlanHistory.tsx';
 
@@ -17,10 +27,22 @@ export type DeadlinesHistoryListState =
       status: 'ready';
       entries: DeferredObjectivePlanHistoryEntry[];
       timeZone: string;
-      // Cost unit suffix for the weekly section roll-ups (e.g. `kr`). Empty
-      // / null drops the cost half of the heading; the section break still
-      // renders. v2.7.3.
+      // Cost unit suffix for the weekly section roll-ups (e.g. `kr`). An
+      // empty string or omitted prop drops the cost half of the heading;
+      // the section break still renders. v2.7.3.
       costUnit?: string;
+      // Wall-clock anchor for the relative week-divider phrasing ("This
+      // week" / "Last week" / "Week of 12 May"). Optional so legacy callers
+      // and tests can default to `Date.now()` — the production renderer
+      // threads it explicitly so the section copy is snapshot-stable.
+      nowMs?: number;
+      // Active device filter id, or `null` for the default "All" view. The
+      // owning controller (`deadlinesList.ts`) persists this in localStorage
+      // and forwards it on every render — the view stays a pure projection.
+      selectedDeviceId?: string | null;
+      // Click handler for a chip. The controller is responsible for updating
+      // `selectedDeviceId` and re-rendering. `null` means "All".
+      onSelectDevice?: (deviceId: string | null) => void;
     };
 
 type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
@@ -51,6 +73,68 @@ const resolveMissStreakBadges = (
   return badges;
 };
 
+// Chip row above the weekly archive. Hidden when the unfiltered list contains
+// fewer than two devices — filtering by the only device that has history is a
+// no-op and adds visual noise. Each chip is a `<button>` with `aria-pressed`
+// so screen readers announce the selection state; the `--link` chip variant
+// already enforces the 48 dp tap target (see `.plan-chip--link` in
+// `public/style.css`).
+const DeviceFilterChipRow = ({
+  devices,
+  selectedDeviceId,
+  onSelectDevice,
+}: {
+  devices: ReadonlyArray<SmartTaskHistoryFilterDevice>;
+  selectedDeviceId: string | null;
+  onSelectDevice: (deviceId: string | null) => void;
+}) => {
+  if (devices.length < 2) return null;
+  // Treat a stale persisted filter (pointing at a device no longer in history)
+  // as the "All" selection so the chip-row state matches what the list
+  // actually renders. Without this, the row would render with no chip pressed
+  // — confusing both screen readers and sighted users.
+  const knownSelected = devices.some((device) => device.deviceId === selectedDeviceId);
+  const allActive = selectedDeviceId === null || !knownSelected;
+  return (
+    <div
+      class="deadlines-history__filter-row"
+      role="group"
+      aria-label={SMART_TASK_HISTORY_FILTER_GROUP_LABEL}
+    >
+      <button
+        type="button"
+        // Selection is carried by `aria-pressed` alone — the
+        // `.plan-chip--link[aria-pressed="true"]` rule paints the accent/outline
+        // pressed treatment. We deliberately avoid the `--info` tone here: blue
+        // is the informational-status pill elsewhere, so reusing it for "this
+        // filter is active" muddied the chip vocabulary (PR-29).
+        class="plan-chip plan-chip--link"
+        aria-pressed={allActive}
+        onClick={() => onSelectDevice(null)}
+      >
+        {SMART_TASK_HISTORY_FILTER_ALL_LABEL}
+      </button>
+      {devices.map((device) => {
+        const active = device.deviceId === selectedDeviceId;
+        return (
+          <button
+            key={device.deviceId}
+            type="button"
+            class="plan-chip plan-chip--link"
+            aria-pressed={active}
+            // Tapping the active chip clears the filter; tapping an inactive
+            // chip switches to that device. Matches the spec's "tap selected
+            // chip again to return to All" affordance.
+            onClick={() => onSelectDevice(active ? null : device.deviceId)}
+          >
+            {formatDisplayDeviceName(device.deviceName)}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
 export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryListState }) => {
   if (state.status === 'hidden') return null;
   if (state.status === 'loading') {
@@ -77,15 +161,41 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
       </section>
     );
   }
-  const badges = resolveMissStreakBadges(state.entries);
+  // 7-day hit-rate strip — first-impression aggregate for the recovering-
+  // from-mistake persona ("how have my deadlines been doing this week?").
+  // Threaded with the same `nowMs` anchor as the week dividers so the strip
+  // is snapshot-stable. Resolved from the *unfiltered* entry list so the
+  // strip stays stable while the user toggles the device filter — toggling
+  // the chips should narrow the per-row list, not redefine "the week".
+  const hitRateStrip = resolvePlanHistory7DayHitRateStrip(
+    state.entries,
+    state.nowMs ?? Date.now(),
+    state.timeZone,
+  );
+  const devices = resolveSmartTaskHistoryFilterDevices(state.entries);
+  const selectedDeviceId = state.selectedDeviceId ?? null;
+  const onSelectDevice = state.onSelectDevice ?? (() => {});
+  // Filter the entries that will be rendered. `filterPlanHistoryByDevice`
+  // collapses a stale filter (device id no longer in history) back to the
+  // unfiltered list, which the chip-row removal handles on the same render.
+  const filteredEntries = filterPlanHistoryByDevice(state.entries, selectedDeviceId);
+  // Miss-streak badges derive from the *filtered* entries so the badge list
+  // narrows in lockstep with the device filter (PR-29). When the user collapses
+  // the archive to one device, surfacing other devices' badges contradicted the
+  // "show me just this device" promise. Resolving from `filteredEntries` (which
+  // self-heals a stale filter back to the full list) means the "All" view still
+  // shows every device's badge, while a single-device view shows at most that
+  // one device's badge.
+  const badges = resolveMissStreakBadges(filteredEntries);
   // v2.7.3 — ISO-week section breaks. Producer-resolved grouping + heading copy
   // so the view layer never inspects per-week aggregates. The weekly stripe is
   // the emotional anchor for the archive shape; per-row content stays exactly
   // as the existing `PlanHistoryCard` renders it.
   const weekGroups = groupPlanHistoryByIsoWeek(
-    state.entries,
+    filteredEntries,
     state.timeZone,
     state.costUnit ?? '',
+    state.nowMs ?? Date.now(),
   );
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">
@@ -101,6 +211,14 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
           ))}
         </ul>
       )}
+      {hitRateStrip !== null && (
+        <p class="deadlines-history__summary-strip">{hitRateStrip.text}</p>
+      )}
+      <DeviceFilterChipRow
+        devices={devices}
+        selectedDeviceId={selectedDeviceId}
+        onSelectDevice={onSelectDevice}
+      />
       {weekGroups.map((group) => (
         <div key={group.weekKey} class="deadlines-history__week-group">
           <h4 class="deadlines-history__week">{group.heading}</h4>

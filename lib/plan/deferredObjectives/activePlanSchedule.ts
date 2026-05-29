@@ -88,3 +88,39 @@ export const sameHourSchedule = (
   }
   return true;
 };
+
+// Merge live horizon hours into the existing commitment. Two branches,
+// distinguished by the set-inclusion test `committed.every(h => live has h)`:
+//
+// **live ⊇ committed**: adopt the live hour set; for each overlapping
+// hour take `Math.max(committed.plannedKWh, live.plannedKWh)` so the
+// historical kWh is preserved as a contract floor. A shrinking live kWh
+// (per-cycle re-fill against a smaller current need) must not rewrite a
+// committed hour downward — otherwise the persisted floor would weaken
+// the guarantee against future optimizer churn. When committed is empty
+// the inclusion check is vacuously true → live becomes the first real
+// commitment.
+//
+// **live ⊉ committed**: preserve the commitment as-is. A committed hour
+// has fallen out of the live allocation; the commitment is the contract,
+// and "committed schedule cannot shrink mid-task and cannot churn from
+// optimizer thrash" is the long-standing invariant.
+export const mergeHoursPreservingCommitment = (
+  committed: readonly DeferredObjectiveActivePlanHourV1[],
+  live: readonly DeferredObjectiveActivePlanHourV1[],
+): DeferredObjectiveActivePlanHourV1[] => {
+  if (committed.length === 0) return [...live];
+  const liveByStart = new Map(live.map((h) => [h.startsAtMs, h] as const));
+  const liveCoversCommitment = committed.every((h) => liveByStart.has(h.startsAtMs));
+  if (!liveCoversCommitment) return [...committed];
+  const committedByStart = new Map(committed.map((h) => [h.startsAtMs, h] as const));
+  return [...live]
+    .map((liveHour) => {
+      const c = committedByStart.get(liveHour.startsAtMs);
+      if (!c) return liveHour;
+      return c.plannedKWh > liveHour.plannedKWh
+        ? { ...liveHour, plannedKWh: c.plannedKWh }
+        : liveHour;
+    })
+    .sort((left, right) => left.startsAtMs - right.startsAtMs);
+};

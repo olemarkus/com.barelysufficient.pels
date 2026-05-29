@@ -1,8 +1,10 @@
 import { isDeviceObservationStale } from '../observer/observationFreshness';
 import {
+  resolveCanSetControl,
   resolveCommandableNow,
   type CommandableNowGraceEntry,
 } from '../device/deviceActionProjection';
+import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
 import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
 import { PlanService } from '../plan/planService';
 import { PriceCoordinator } from '../price/priceCoordinator';
@@ -197,9 +199,13 @@ export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
     homey: ctx.homey,
     planEngine: requirePlanEngine(ctx),
-    getPlanDevices: () => ctx.latestTargetSnapshot
-      .map((device) => toPlanDevice(ctx, device))
-      .filter((device) => device.managed !== false),
+    getPlanDevices: () => {
+      const snapshot = ctx.latestTargetSnapshot;
+      evictMissingDeviceCacheEntries(ctx, snapshot);
+      return snapshot
+        .map((device) => toPlanDevice(ctx, device))
+        .filter((device) => device.managed !== false);
+    },
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
@@ -355,12 +361,26 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
       observedAtMs: nowMs,
     });
   }
+  const hasBinaryControl = resolveHasBinaryControl(device);
+  const canSetControlResolved = resolveCanSetControl({
+    controlCapabilityId: device.controlCapabilityId,
+    capabilities: device.capabilities,
+    canSetControl: device.canSetControl,
+    canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
+  });
+  const shedBehavior = ctx.getShedBehavior(device.id);
+  const controllable = ctx.isCapacityControlEnabled(device.id);
+  const residualKw = buildResidualKwForPlanDevice({
+    device,
+    hasBinaryControl,
+    shedBehavior,
+  });
   return {
     ...device,
-    hasBinaryControl: resolveHasBinaryControl(device),
+    hasBinaryControl,
     observationStale: isDeviceObservationStale(device),
     managed: ctx.resolveManagedState(device.id),
-    controllable: ctx.isCapacityControlEnabled(device.id),
+    controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),
@@ -368,12 +388,15 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
     binaryCommandPendingDesired: pendingBinaryCommand?.desired,
     commandableNow: commandable.commandableNow,
     commandableNowReason: commandable.reason,
+    canSetControlResolved,
+    residualKw,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
   };
 }
+
 
 /**
  * An EV snapshot with no `evChargingState` is "uncertain" — the SDK didn't
@@ -403,4 +426,48 @@ function recordCommandableObservation(
 ): void {
   // eslint-disable-next-line functional/immutable-data, no-param-reassign
   record[deviceId] = entry;
+}
+
+/**
+ * Drop entries from `map` whose keys aren't present in `presentIds`. Used to
+ * keep producer-side per-device caches bounded: without eviction, removing a
+ * device from Homey at runtime would leak the entry forever. Practical
+ * impact is small (~50 bytes/entry, hundreds of devices across the app's
+ * lifetime), but the unbounded growth was flagged in the chunk-2 producer
+ * review and is straightforward to fix.
+ *
+ * Callers must pass the *full* snapshot's device IDs — a filtered/partial
+ * list would delete entries for devices that still exist, defeating the
+ * abandon-grace window.
+ */
+function evictMissingFromRecord<V>(
+  map: Record<string, V>,
+  presentIds: ReadonlySet<string>,
+): void {
+  for (const id of Object.keys(map)) {
+    if (!presentIds.has(id)) {
+      // eslint-disable-next-line functional/immutable-data, no-param-reassign
+      delete map[id];
+    }
+  }
+}
+
+/**
+ * Per-plan-cycle sweep: evict orphan entries from the producer-owned
+ * per-device caches (`lastKnownCommandableByDevice`,
+ * `lastKnownPowerKw`) whose device IDs are no longer present in the
+ * latest snapshot. Pass the *full* snapshot here — not a filtered view —
+ * otherwise active devices would lose their grace-window observations.
+ *
+ * Source: chunk-2 producer review flagged unbounded growth on device
+ * deletion; this sweep closes that gap without changing any in-cycle
+ * behaviour for devices that still exist.
+ */
+export function evictMissingDeviceCacheEntries(
+  ctx: AppContext,
+  snapshot: ReadonlyArray<TargetDeviceSnapshot>,
+): void {
+  const presentIds = new Set<string>(snapshot.map((device) => device.id));
+  evictMissingFromRecord(ctx.lastKnownCommandableByDevice, presentIds);
+  evictMissingFromRecord(ctx.lastKnownPowerKw, presentIds);
 }

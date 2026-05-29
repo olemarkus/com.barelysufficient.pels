@@ -229,6 +229,51 @@ describe('buildDecisionSentence', () => {
       projectedOverBudget: true,
     })).text).toBe('On pace to overshoot this hour’s energy budget.');
   });
+
+  it('frames every-device-waiting as the smart-task calm signal', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+      deferredObjectiveAvoidCount: 1,
+    }))).toEqual({
+      text: 'Waiting for cheaper hours before running 1 device.',
+      positive: true,
+    });
+  });
+
+  it('blends the smart-task subset into the wider holding-back sentence', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 3,
+      deferredObjectiveAvoidCount: 1,
+    })).text).toBe('Holding back 3 devices, 1 waiting for cheaper hours.');
+  });
+
+  it('names today’s budget when every held device is on daily-budget pacing', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 2,
+      dailyBudgetLimitedCount: 2,
+    })).text).toBe('Holding back 2 devices to stay within today’s budget.');
+  });
+
+  it('falls through to capacity defense when no smart-task / daily-budget signal is present', () => {
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 2,
+      deferredObjectiveAvoidCount: 0,
+      dailyBudgetLimitedCount: 0,
+    })).text).toBe('Holding back 2 devices so the house stays under 12.0 kW.');
+  });
+
+  it('prefers the smart-task framing over the daily-budget framing when both subsets fully overlap', () => {
+    // Both `deferredObjectiveAvoidCount` and `dailyBudgetLimitedCount` can be
+    // equal to `limitedCount` if a device's reason flipped between the two
+    // mid-cycle in some future change. The smart-task framing wins because
+    // it reflects the user's opt-in price-aware plan; daily-budget pacing is
+    // the mechanism, not the intent.
+    expect(buildDecisionSentence(baseline({
+      limitedCount: 1,
+      deferredObjectiveAvoidCount: 1,
+      dailyBudgetLimitedCount: 1,
+    })).text).toBe('Waiting for cheaper hours before running 1 device.');
+  });
 });
 
 describe('formatCheapestUpcomingHour', () => {

@@ -353,9 +353,9 @@ describe('DeadlinePlanHistoryDetail', () => {
     }));
     const reason = root.querySelector('.plan-history-detail__missed-reason');
     expect(reason).not.toBeNull();
-    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "PELS
-    // couldn't reserve enough cheap hours before the deadline." with no
-    // recourse copy (the recourse button carries that signal).
+    // v2.7.3 — blameless rewrite. The cannot_meet branch reads "Couldn't
+    // reserve enough cheap hours in time." with no recourse copy (the recourse
+    // button carries that signal).
     expect(reason?.textContent).toMatch(/couldn.t reserve enough cheap hours/i);
     // Recourse copy must not duplicate the recourse button.
     expect(reason?.textContent?.toLowerCase()).not.toContain('try lowering');
@@ -1121,6 +1121,78 @@ describe('DeadlinePlanHistoryDetail', () => {
       for (const chip of chips) {
         expect(chip.classList.contains('plan-chip')).toBe(true);
       }
+    });
+  });
+
+  // Post-finalization "What changed" card on the history-detail page. The
+  // RevisionsCard renders when a v4 entry carries one or more `revisions`
+  // entries and the chart is expanded; it shares `.plan-revision-row`
+  // markup with the live-task panel per `pels-m3-critic`'s contract.
+  describe('What changed (RevisionsCard)', () => {
+    it('renders an "After this task ran" eyebrow that distinguishes the post-finalization surface from the live-task panel', async () => {
+      // Missed outcome forces `chartCollapsedByDefault: false`, so the
+      // RevisionsCard renders without the user clicking the chart toggle.
+      const revisionFixture = buildRevision({ planStatus: 'cannot_meet' });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        originalPlan: revisionFixture,
+        finalPlan: revisionFixture,
+        revisions: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, reasonId: 'prices_revised', hoursAdded: 1, hoursRemoved: 0 },
+        ],
+      }));
+      const card = root.querySelector('.plan-history-detail__revisions-card');
+      expect(card).not.toBeNull();
+      const eyebrow = card!.querySelector('.eyebrow');
+      expect(eyebrow?.textContent).toBe('After this task ran');
+      // Heading stays the same — the eyebrow adds context, it doesn't
+      // replace the title.
+      expect(card!.querySelector('.plan-card__title')?.textContent).toBe('What changed');
+    });
+
+    it('renders the longer "Plan refreshed (details unavailable)" reason copy and suppresses the diff chip on fallback rows', async () => {
+      // Same shape as the live-panel fallback test: when the recorder ships
+      // a reason code the resolver hasn't learned about, the row template
+      // swaps in the longer copy so the absent `+/−Nh` chip is
+      // self-explained.
+      const revisionFixture = buildRevision({ planStatus: 'cannot_meet' });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        originalPlan: revisionFixture,
+        finalPlan: revisionFixture,
+        revisions: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, reasonId: 'some_future_reason', hoursAdded: 1, hoursRemoved: 0 },
+        ],
+      }));
+      const rows = Array.from(root.querySelectorAll<HTMLElement>('.plan-revision-row'));
+      expect(rows.length).toBe(1);
+      expect(rows[0].querySelector('.plan-revision-reason')?.textContent).toBe(
+        'Plan refreshed (details unavailable)',
+      );
+      // Diff chip suppressed on fallback rows, matching the live-panel
+      // behaviour — vague reason + concrete diff would mis-attribute.
+      expect(rows[0].querySelector('.plan-revision-diff')).toBeNull();
+    });
+
+    it('keeps the producer-resolved short label on known reason codes', async () => {
+      const revisionFixture = buildRevision({ planStatus: 'cannot_meet' });
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        originalPlan: revisionFixture,
+        finalPlan: revisionFixture,
+        revisions: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, reasonId: 'prices_revised', hoursAdded: 1, hoursRemoved: 0 },
+        ],
+      }));
+      const row = root.querySelector<HTMLElement>('.plan-revision-row');
+      expect(row?.querySelector('.plan-revision-reason')?.textContent).toBe(
+        'Tomorrow’s prices published',
+      );
+      // Known-reason rows keep their diff chip.
+      expect(row?.querySelector('.plan-revision-diff')?.textContent).toBe('+1h');
     });
   });
 });

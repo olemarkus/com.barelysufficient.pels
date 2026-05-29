@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinesList.ts';
 import type {
   DeferredObjectiveActivePlansV1,
@@ -154,7 +154,6 @@ describe('resolveDeadlinesListCards', () => {
       deviceName: 'Living-room heater',
       kind: 'temperature',
       targetTemperatureC: 21,
-      createdAtMs: T0,
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './?page=deadline-plan&deviceId=dev_a',
@@ -544,5 +543,121 @@ describe('resolveDeadlinesHistoryEntries', () => {
       T0 + 2 * HOUR_MS,
       T0 + 1 * HOUR_MS,
     ]);
+  });
+});
+
+// v2.7.4 — past-tasks device-filter persistence integration (PR-19). Exercises
+// the controller round-trip: chip click → localStorage write → next render
+// reads the persisted selection. Storage is shared across the suite; each
+// test resets both the cache (via `resetDeviceFilterCacheForTests`) and the
+// storage key so a stale write from one test can't bleed into another.
+describe('history device-filter persistence', () => {
+  const {
+    HISTORY_DEVICE_FILTER_STORAGE_KEY,
+    resetDeviceFilterCacheForTests,
+    renderHistorySurface,
+  } = testExports;
+
+  const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => ({
+    id: `${deviceId}-${finalizedAtMs}`,
+    deviceId,
+    deviceName,
+    objectiveKind: 'temperature' as const,
+    targetTemperatureC: 21,
+    targetPercent: null,
+    deadlineAtMs: finalizedAtMs,
+    startedAtMs: finalizedAtMs - HOUR_MS,
+    finalizedAtMs,
+    startProgressC: 18,
+    startProgressPercent: null,
+    finalProgressC: 21,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 2,
+    outcome: 'met' as const,
+    metAtMs: finalizedAtMs,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation' as const,
+    originalPlan: null,
+    finalPlan: null,
+  });
+
+  const buildPayload = () => ({
+    version: 1 as const,
+    entriesByDeviceId: {
+      dev_a: [buildHistoryPayloadEntry('dev_a', T0 + 1 * HOUR_MS, 'Boiler')],
+      dev_b: [buildHistoryPayloadEntry('dev_b', T0 + 2 * HOUR_MS, 'Connected 300')],
+    },
+  });
+
+  beforeEach(() => {
+    window.localStorage.removeItem(HISTORY_DEVICE_FILTER_STORAGE_KEY);
+    resetDeviceFilterCacheForTests();
+    document.body.replaceChildren();
+  });
+
+  afterEach(() => {
+    window.localStorage.removeItem(HISTORY_DEVICE_FILTER_STORAGE_KEY);
+    resetDeviceFilterCacheForTests();
+    document.body.replaceChildren();
+  });
+
+  const mount = (): HTMLElement => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    return el;
+  };
+
+  const findChip = (root: HTMLElement, label: string): HTMLButtonElement | null => (
+    Array.from(root.querySelectorAll<HTMLButtonElement>('.deadlines-history__filter-row .plan-chip'))
+      .find((chip) => (chip.textContent ?? '').trim() === label) ?? null
+  );
+
+  it('persists the selected device id to localStorage when a chip is clicked', () => {
+    const surface = mount();
+    renderHistorySurface(surface, buildPayload());
+    findChip(surface, 'Connected 300')?.click();
+    expect(window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY)).toBe('dev_b');
+  });
+
+  it('clears the persisted filter when the active chip is tapped again', () => {
+    const surface = mount();
+    renderHistorySurface(surface, buildPayload());
+    findChip(surface, 'Connected 300')?.click();
+    expect(window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY)).toBe('dev_b');
+    // Re-resolve the chip after the re-render so we click the current element.
+    findChip(surface, 'Connected 300')?.click();
+    expect(window.localStorage.getItem(HISTORY_DEVICE_FILTER_STORAGE_KEY)).toBeNull();
+  });
+
+  it('reads the persisted filter on the next render (simulates a reload)', () => {
+    window.localStorage.setItem(HISTORY_DEVICE_FILTER_STORAGE_KEY, 'dev_b');
+    resetDeviceFilterCacheForTests();
+    const surface = mount();
+    renderHistorySurface(surface, buildPayload());
+    expect(findChip(surface, 'Connected 300')?.getAttribute('aria-pressed')).toBe('true');
+    expect(findChip(surface, 'All')?.getAttribute('aria-pressed')).toBe('false');
+    // Only Connected 300 rows render — Boiler entries are filtered out.
+    const deviceCells = Array.from(
+      surface.querySelectorAll<HTMLElement>('.plan-history-card__device'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(deviceCells.every((name) => name === 'Connected 300')).toBe(true);
+  });
+
+  it('self-heals when the persisted filter points at a removed device', () => {
+    window.localStorage.setItem(HISTORY_DEVICE_FILTER_STORAGE_KEY, 'dev_removed');
+    resetDeviceFilterCacheForTests();
+    const surface = mount();
+    renderHistorySurface(surface, buildPayload());
+    // No empty-state copy — the helper falls back to the unfiltered list when
+    // the persisted target no longer exists; the chip row drops the dead
+    // chip naturally because `resolveSmartTaskHistoryFilterDevices` only
+    // enumerates devices that actually have entries.
+    const deviceCells = Array.from(
+      surface.querySelectorAll<HTMLElement>('.plan-history-card__device'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(deviceCells).toContain('Boiler');
+    expect(deviceCells).toContain('Connected 300');
   });
 });

@@ -94,8 +94,10 @@ import {
   createPlanService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
+  evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
+  toPlanDevice,
 } from './lib/app/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import {
@@ -1248,7 +1250,11 @@ class PelsApp extends Homey.App {
       state: this.realtimeDeviceReconcileState,
       hasPendingTimer: this.timers.has('realtimeDeviceReconcile'),
       getLatestPlanSnapshot: () => this.planService?.getLatestReconcilePlanSnapshot() ?? null,
-      getLiveDevices: () => this.latestTargetSnapshot,
+      getLiveDevices: () => {
+        const snapshot = this.latestTargetSnapshot;
+        evictMissingDeviceCacheEntries(this.ctx, snapshot);
+        return snapshot.map((device) => toPlanDevice(this.ctx, device));
+      },
       structuredLog,
       debugStructured,
       reconcile: () => this.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),

@@ -1,6 +1,7 @@
 import type { TargetDeviceSnapshot, EvBoostSettings } from '../../../../contracts/src/types.ts';
 import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
+import { EV_BOOST_BLOCK_REASONS } from '../../../../shared-domain/src/commandableNowReason.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import {
   deviceDetailEvBoost,
@@ -75,8 +76,8 @@ function buildEvBoostStatusText(params: {
 }): string {
   const { device, enabled, boostBelowPercent } = params;
   if (!enabled) return 'Disabled.';
-  if (device.evChargingState === 'plugged_out') return 'Car not connected. Boost will not activate.';
-  if (device.evChargingState === 'plugged_in_discharging') return 'Car is discharging. Boost will not activate.';
+  if (device.evChargingState === 'plugged_out') return EV_BOOST_BLOCK_REASONS.plugged_out;
+  if (device.evChargingState === 'plugged_in_discharging') return EV_BOOST_BLOCK_REASONS.plugged_in_discharging;
   const stateOfCharge = device.stateOfCharge;
   if (!stateOfCharge || stateOfCharge.status === 'unknown') {
     return 'Battery level not reported. Boost will not activate.';

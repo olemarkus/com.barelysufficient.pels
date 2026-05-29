@@ -47,34 +47,16 @@ patch releases, not release blockers; each item carries its own source/date.
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
 
-- [ ] **Smart-task rescue lane leaves stepped device stuck at peak step after the deadline.**
-      Connected 300 (water heater, deviceId `632c4190-168c-407b-bd83-dae6ddd3366e`) was
-      shed toward off at 2026-05-23T12:50:52Z (`stepped_load_command_requested`,
-      `effectiveTransition: "full_shed_to_off"`, `plannedDesiredStepId: "off"`).
-      A `cannot_meet` deferred-objective with `rescueExemptMode: "always"` +
-      `rescueLimitMode: "always"` then activated (Sat 23 May 16:00 deadline,
-      `budgetExemptApplied: true`, `limitLowerPriorityApplied: true`) and stepped the
-      device back up: 12:52:38Z low → medium, 12:53:12Z medium → max. After the
-      deadline missed at 16:00Z, **no further `stepped_load_command_requested` events
-      have been issued for this device for 2.5+ days** (logs confirm: last command at
-      12:53:12Z 2026-05-23; current process still observes `reportedStepId: "max"`,
-      2.87 kW measured, `reasonCode: "capacity_control_off"`, `plannedState: "keep"` on
-      every overview tick). Net effect: rescue lane stepped up but the smart-task
-      lifecycle never stepped the device back down when the objective ended; combined
-      with the per-device `capacity_control_off` setting, the planner cannot revert it
-      either. Real-prod impact is severe — Past tasks history shows the same device
-      overshooting target 65 °C → 77.7 / 79.4 °C on multiple succeeded runs and missing
-      4 of last 4 Week-21 deadlines, all consistent with a device locked at peak step.
-      Acceptance: when a deferred-objective transitions out of `planned` (deadline
-      passed, succeeded, abandoned, finalized) AND the rescue lane previously engaged
-      boost, the planner must emit a step-down command to the device's non-rescue floor
-      step regardless of `capacity_control_off` (the user opted out of *capacity*
-      control, not out of smart-task lifecycle commands they explicitly enrolled in).
-      Files: `lib/plan/admission/deferredObjective.ts`,
-      `lib/plan/planEvBoost.ts`, `lib/plan/planTemperatureBoost.ts`,
-      `lib/plan/deferredObjectives/`, `lib/plan/steppedLoadCommands.ts` (or wherever
-      `stepped_load_command_requested` originates), associated regression test under
-      `test/plan/`. Source: v2.9.1 RC release-review prod log audit, 2026-05-25.
+*Status (2026-05-28 release-review): the rescue-lane stuck-at-peak bullet
+was resolved by commit `61807892 fix(admission): generalise smart-task
+lifecycle-end release beyond EV` + new integration coverage at
+`test/lifecycleEndReleaseNonEv.integration.test.ts`. The fix generalised
+`shouldEmitSatisfiedPause` → `shouldEmitTerminalRelease` so non-EV cap-off
+devices (thermostats, water heaters) now receive a `shed_release` intent
+on lifecycle end and the executor routes it through `getShedBehavior`
+(`set_temperature` for thermostats, binary off otherwise). One residual
+gap — stepped-only devices without `onoff`/`evcharger_charging` — is
+listed below in the P2 release-review 2026-05-28 subsection.*
 
 *v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -96,11 +78,9 @@ release-review pass, 2026-05-26 — the original entry committed as
       `drivers/pels_insights/device.ts:140-152`. Source: release-review
       pels-runtime-reality, 2026-05-26.
 
-- [ ] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
-      to `var(--homey-font-size-small, 14px)` (or
-      `calc(var(--homey-font-size-small, 14px) - 2px)` if a distinctly
-      smaller secondary is required). Only raw `px` in the new widget CSS;
-      breaks the widget's host-token scaling. Source: release-review
+- [x] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
+      to `var(--homey-font-size-small, 14px)`. Done in the interactive-widget
+      PR — `.row__values` now uses the host token. Source: release-review
       pels-m3-critic, 2026-05-26.
 
 - [ ] Rename capability `mode_indicator` title from "Mode" to "PELS mode"
@@ -392,19 +372,268 @@ release, not v2.7.1 merge-blockers.*
       `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
       `packages/settings-ui/tests/e2e/`.
 
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Lift `revisionSummary.text` out of the collapsed `<details>`/`<summary>` on
+      `DeadlinePlan.tsx` so the live "why?" answer is visible at rest on the
+      smart-task detail page. Render as a standalone subline beneath the panel
+      heading. Today the producer already returns a one-line summary (e.g.
+      `Schedule revised — daily budget shifted · 15:42 · +1h`) but the view
+      buries it inside the `<summary>` row, which means the user has to spot
+      the disclosure chevron and tap it to read the headline answer.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `settings/style.css`. Source: release-review pels-ux-fit, 2026-05-28.
+
+- [ ] Distinguish the live "Recent plan changes" panel from the post-finalization
+      "What changed" card with an eyebrow (`Live` vs `After this task ran`).
+      `pels-m3-critic` confirmed the `.plan-revision-*` row markup is correctly
+      shared by both surfaces, so keep the row contract; only the panel/card
+      heading needs a tone cue. Today a user with both surfaces open in
+      adjacent tabs has no quick visual cue that one is live narration and the
+      other is post-mortem.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
+      release-review pels-ux-fit, 2026-05-28.
+
+- [ ] On revision-log fallback rows (`isFallback === true`), render
+      `Plan refreshed (details unavailable)` so the absent diff chip is
+      self-explained. Today the row shows the `Plan refreshed` label with no
+      chip and no explanation — the producer correctly suppresses the chip to
+      avoid mis-attributing a hour-diff to a vague label, but the suppression
+      is visually mysterious to the user. The `isFallback` boolean already
+      lives on the row shape.
+      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
+      release-review pels-ux-fit, 2026-05-28.
+
 ## P2 Product, Observability, and Maintainability
 
-- [ ] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
-      `lib/plan/planExecutorSupport.ts:31` stays on `getBinaryControlPlan` +
-      `getEvRestoreBlockReason` because the producer-resolved `commandableNow`
-      bit does not replicate the `canSet` check (`canSetControl !== false`
-      with the legacy `canSetOnOff` fallback in `getBinaryControlPlan`).
-      Chunk 6: extend `lib/device/deviceActionProjection.ts` to resolve
-      `canSet` into the producer bit (or surface it as a sibling resolved
-      flag), then migrate `canTurnOnDevice` to consume `commandableNow`.
+- [ ] **Non-divisible per-task headroom share for single-step devices.**
+      `lib/plan/deferredObjectives/policyHorizon.ts:313`
+      `resolveReservedHeadroomKw` divides `(hardCapKw − backgroundKWh/duration)`
+      equally across concurrent fully-reserved tasks. Works correctly for
+      stepped thermostats / water heaters where the device can throttle to
+      sub-kW resolution, but single-step devices (EV chargers) draw either 0
+      or `activeSteps[0].usefulPowerKw`. With PR #1214's per-hour headroom
+      cap now active, a 7.4 kW EV sharing the hour with a thermostat gets a
+      ~2.5 kW share → commitment under-promises (planner says 2.5 kWh; EV
+      actually runs 7.4 kW for ~24 min or full hour subject to capacity
+      guard). Conservative under-promising is correct for `hard cap is
+      physical`, but the optimum is to give single-step devices their full
+      step capacity as their share and other tasks the remainder.
+      Touching points: `policyHorizon.resolveReservedHeadroomKw` (introduce a
+      non-divisible share variant aware of `activeSteps[]` granularity),
+      `concurrentEligibleTasks.ts` (per-bucket eligibility already exists,
+      may need per-device step granularity). Source: pels-runtime-reality
+      review of PR #1214, 2026-05-28.
+
+- [x] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
+      `packages/settings-ui/src/ui/deviceDetail/evBoost.ts:78-79` carries two
+      EV-state-gated strings — `'Car not connected. Boost will not activate.'`
+      and `'Car is discharging. Boost will not activate.'` — keyed off the
+      same `evChargingState` discriminator as `EV_COMMANDABLE_NOW_REASONS`.
+      They predate PR #1212 and stayed inline; same logs-reuse principle
+      (`feedback_ui_text_shared_with_logs`) applies. Co-locate them in
+      `packages/shared-domain/` so settings-ui imports the strings rather
+      than carrying its own literals. Source: pels-copy-and-terminology
+      review of PR #1212, 2026-05-27. Resolved in the p2-polish-batch PR —
+      strings moved to `EV_BOOST_BLOCK_REASONS` in
+      `packages/shared-domain/src/commandableNowReason.ts`.
+
+- [x] **Split `recordShedActuation` for lifecycle-end release writes.** The
+      release-shed paths in `lib/executor/shedReleaseActuation.ts` call
+      `recordShedActuation` so the per-device `pels_shed` diagnostic event
+      fires for forensic traces. But the same call also writes
+      `lastDeviceShedMs` and `lastInstabilityMs`, which feed the
+      `isShedThrottled` 5 s gate and the system-wide instability marker.
+      For a lifecycle-end release this is mostly benign — the released
+      device is already in its shed posture so no real capacity shed
+      should follow within the throttle window — but the conflation
+      inverts the semantic. Introduce a `recordReleaseShedActuation`
+      that records only the diagnostic event and leaves the shed-cooldown
+      clock alone, then route both release sites through it. Source:
+      pels-runtime-reality review of PR #1199, 2026-05-27. Resolved in
+      the p2-polish-batch PR — `PlanExecutor.recordReleaseShedActuation`
+      skips `lastInstabilityMs` / `lastDeviceShedMs` while still firing the
+      per-device `pels_shed` event and closing any open activation attempt.
+
+- [x] **Resolve `set_step` target step at the producer instead of at apply
+      time.** `ShedActionIntent` carries only `{ kind: 'set_step' }` with
+      no `targetStepId`. The release path in
+      `lib/executor/shedReleaseActuation.ts` resolves the target step via
+      a cascade (configured `shedBehavior.stepId` → lowest active step →
+      off step); the cap-driven shed path in
+      `lib/plan/planSteppedLoad.ts` only ever picks lowest-active and
+      ignores the configured stepId. Same logical question ("what step
+      is `set_step` for this device") answered two ways. Extend the
+      producer to emit `{ kind: 'set_step'; targetStepId: string }`,
+      apply the cascade once, and have both consumers consume the flat
+      value. Source: pels-layering-guardian review of PR #1199,
+      2026-05-27. Resolved (narrowly) in the p2-polish-batch PR — the
+      producer now resolves the release cascade onto
+      `ShedActionIntent.set_step.targetStepId`; `shedReleaseActuation`
+      reads it via `intent.shedStepId` on `ExecutableReleaseIntent`. The
+      cap-driven shed path in `planSteppedLoad.ts` keeps its
+      lowest-active-step pick (intentional semantic divergence — cap-shed
+      maximises load drop, release honours the user-configured shed
+      posture).
+
+- [x] **Rename snapshot `shedStepId` to `releaseShedStepId` (or document the
+      asymmetric read).** After the p2-polish-batch PR, `DevicePlanDevice.shedStepId`
+      carried the producer-resolved release-cascade target step. The release
+      executor reads it; the cap-driven shed path in `planSteppedLoad.ts`
+      ignores it (cap-shed re-derives lowest-active itself). Any new consumer
+      that reads `shedStepId` to predict cap-shed behaviour would be wrong.
+      Either rename to `releaseShedStepId` (clearer intent) or add a producer-
+      side comment block on the snapshot triple explicitly naming the
+      asymmetric read. Source: pels-runtime-reality review of the
+      p2-polish-batch PR, 2026-05-28. Resolved in the rename-shedstepid PR —
+      both: the field is renamed to `releaseShedStepId` across runtime + tests,
+      and `ShedSnapshotTriple` carries a doc-block naming the asymmetric
+      cap-shed-ignores / release-reads contract.
+
+- [x] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
+      `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`
+      directly when revising a `DevicePlanDevice` after the initial plan
+      materialisation. It bypasses the chunk-6 adapter, leaving a second
+      materialisation site for revision-semantics. Extending the adapter
+      to cover post-plan revisions (or routing this call through it)
+      closes the last gap in the single-materialisation-site contract.
+      Source: pels-layering-guardian review of PR #1196, 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — the revision
+      site now calls `materializeShedSnapshotFields` with a `set_step`
+      intent and overrides `shedStepId` to the specific step (the adapter
+      is intentionally agnostic to step-id selection).
+
+- [x] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
+      `lib/device/deviceActionProjection.ts:resolveShedIntent` (chunk 5)
+      emits `{ kind: 'set_temperature', temperature }` whenever
+      `shedBehavior.action === 'set_temperature'` and a primary target
+      exists — regardless of plan-cycle controllability. The consumer at
+      `lib/plan/planDevices.ts:resolveShedActionFromIntent` then downgrades
+      that intent to `turn_off` when `controllable === false`. This is the
+      "producer leaks, consumer overrides" hedge — works (parity-tested)
+      but creates two cap-off downgrade paths (no-primary-target in
+      producer; controllable=false in consumer) that both land at
+      `turn_off`. Chunk 6: accept `controllable` as a producer input (or
+      add a `{ kind: 'no_op' }` variant) so the consumer never overrides.
+      Source: pels-layering-guardian review of chunk 5 (PR #1193),
+      2026-05-27. Resolved in PR A of the post-detype cleanup batch —
+      `ShedIntentResolveInput` now takes `controllable`, and
+      `planDevices.resolveShedAction` re-resolves the intent with the
+      post-admission controllable so the deferred-objective rescue lane is
+      honoured.
+
+- [x] **Chunk 6 — collapse `resolveShedActionFromIntent` re-dispatch into
+      a materialisation adapter.** The chunk-5 consumer dispatches the
+      `set_step` intent back into the legacy `resolveSteppedShedAction`,
+      which re-derives the same conditions the producer already evaluated.
+      Chunk 6 retires the legacy fallback, removes the `controllable &&
+      shouldShed` consumer-side gate (once it moves to the producer per
+      the previous TODO), and folds `{ shedAction, shedTemperature,
+      shedStepId }` materialisation into a dedicated adapter — likely
+      `lib/plan/planActionMaterialization.ts`. Source: pels-layering-guardian
+      + pels-runtime-reality reviews of chunk 5 (PR #1193), 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — the dual-read
+      fallback (`deriveFallbackShedIntent`) is retired; `shedIntent` is
+      required on `PlanInputDevice`; the consumer re-resolves the intent
+      with the post-admission controllable and feeds the materialiser,
+      which now only applies the `shouldShed` gate.
+
+- [x] **Chunk 6 — consolidate restore-power source-label union into a shared
+      type.** `RestorePowerSource` now lives canonically in
+      `packages/contracts/src/types.ts`. The observer (`lib/observer/observedPower.ts`),
+      producer (`lib/device/deviceResidualKw.ts`), and plan layer
+      (`lib/plan/planTypes.ts`, `lib/plan/restore/accounting.ts`) all import
+      from the contracts package. The wiring adapter
+      `lib/app/appInit/residualKwForPlanDevice.ts` also reads the canonical
+      type. A seventh source label is now a one-line edit. PR B2 (2026-05-27).
+
+- [x] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
+      strictness delta.** `lib/device/deviceResidualKw.ts` (`resolveResidualKwRestore`)
+      uses `isFiniteNumber(planningPowerKw)` where the legacy
+      `lib/plan/restore/accounting.ts:resolveSteppedRestorePower` uses
+      `typeof dev.planningPowerKw === 'number'`. The only delta is `±Infinity`
+      (legacy: accept; producer: reject). Snapshots never produce `Infinity`,
+      so the cascade-parity test still passes, but the chunk-4a doc-block
+      claims "byte-for-byte" preservation. Chunk 6: tighten the legacy guard
+      to `isFiniteNumber` so both paths agree, or remove the "byte-for-byte"
+      claim. Source: pels-layering-guardian review of PR #1191, 2026-05-27.
+      Resolved in PR A of the post-detype cleanup batch — tightened the
+      legacy guard to `isFiniteNumber`, byte-for-byte parity restored.
+
+- [x] **Before chunk 6 — expand restore-accounting cascade-parity test
+      coverage.** `test/restoreAccountingParity.test.ts` exercises path-1
+      (stepped+on, source `'planning'`) and path-3 (binary off, fallback to
+      `getRestoreDrawKw`). It does not cover the path-2 → path-3 fall-through
+      where a stepped device is observed-off AND
+      `getSteppedLoadRestoreStep` returns a step with `planningPowerW === 0`
+      (or `null`), nor the stepped-with-`selectedStepId`-absent case. Both
+      producer and legacy return the fallback for these cases, but adding
+      fixtures hardens the test against future producer drift before chunk 6
+      removes the legacy fallback. Source: pels-runtime-reality + pels-layering-guardian
+      reviews of PR #1191, 2026-05-27.
+
+- [x] **Chunk 6 — rename `pickStepCalibrationFields` →
+      `pickPropagatedPlanFields`.** `lib/plan/planDevices.ts:467` now
+      propagates `residualKw` in addition to step-calibration fields; the
+      helper's original name is misleading. Either rename, or split the
+      spread inline. Source: pels-layering-guardian review of PR #1191,
+      2026-05-27. Resolved in PR A of the post-detype cleanup batch.
+
+- [x] **Before chunk 6 — expand cascade-parity test in
+      `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test
+      covers a happy-path 3-device mix (simple-on, stepped-max with binary,
+      stepped-low with binary). It does not cascade-test the four
+      edge cases the producer-resolved and legacy-fallback paths must agree
+      on: (1) stepped, `hasBinaryControl: false`, already at lowest active
+      step; (2) stepped with `selectedStepId` absent and
+      `hasKnownEffectiveStep === false` (measured-power fallback);
+      (3) stepped with `selectedStepId` absent and
+      `hasKnownEffectiveStep === true` (one of reportedStepId / actualStepId
+      / assumedStepId set); (4) temperature device with
+      `currentValue == normalized shedTemperature`. Unit tests in
+      `test/deviceResidualKwShed.test.ts` cover each branch in isolation,
+      but the load-bearing invariant is `sumRemainingSheddableLoadKw`
+      watt-equality. Harden the cascade test before chunk 6 removes the
+      legacy fallback. Source: pels-runtime-reality review of PR #1190,
+      2026-05-27. Resolved 2026-05-27: cascade-parity covers cases (a), (b),
+      (d); case (c) is pinned as a KNOWN DIVERGENCE because
+      `RemainingSheddableSteppedFields` strips `reportedStepId` from the
+      legacy fallback path while the producer (wired upstream) sees it. In
+      production the producer is always wired, so the divergence is benign;
+      chunk 6 should either propagate `reportedStepId` through the fallback
+      type or document the asymmetry.
+
+- [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
+      `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
+      `appContext.ts` as the long-term inhabitant, but new wiring continues
+      to land under `lib/app/appInit/` (chunk 3 added
+      `residualKwForPlanDevice.ts` next to the pre-existing
+      `calibrationViews.ts` + `deferredRecorders.ts`). The blocker for the
+      proper migration is `no-lib-to-setup` (dep-cruiser): `lib/app/appInit.ts`
+      cannot import from `setup/**`. Real fix: either move `appInit.ts`
+      itself to `setup/` (then its wiring siblings follow), or relax the
+      dep-cruiser rule with a narrow `pathNot` exception for `lib/app/**`
+      while the migration completes. Source: pels-layering-guardian review
+      of PR #1190 flagged chunk 3's new file as misplaced; root cause is
+      the un-finished sunsetting, not chunk 3.
+
+- [x] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
+      `lib/device/deviceActionProjection.ts` now exports `resolveCanSetControl`
+      / `isCanSetControl` as a sibling producer bit to `commandableNow`
+      (`canSetControl !== false` plus the legacy `canSetOnOff` fallback),
+      `toPlanDevice` populates `PlanInputDevice.canSetControlResolved`, and
+      `planExecutorSupport.canTurnOnDevice` now reads
+      `isCommandableNow(snapshot) && isCanSetControl(snapshot)` instead of
+      round-tripping through `getBinaryControlPlan` + `getEvRestoreBlockReason`.
+      `getBinaryControlPlan`'s own `canSet` is rewritten on top of the new
+      producer so the legacy view stays bit-exact.
       Source: pels-layering-guardian review of PR #1189, 2026-05-27.
 
-- [ ] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
+- [x] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
       `lib/device/deviceActionProjection.ts` produces reason strings
       ("charger is unplugged", "charger state unknown", etc.) that today
       live runtime-internal. Chunk 6 routes UI consumers to
@@ -415,18 +644,19 @@ release, not v2.7.1 merge-blockers.*
       — both should consolidate to one shared-domain helper.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
 
-- [ ] **Chunk 5/6 — populate and consume `boostActive`.**
-      `lib/plan/planTypes.ts` declares `boostActive?: boolean` and
-      `lib/device/deviceActionProjection.ts` exports `resolveBoostActive`,
-      but `toPlanDevice` does not populate the field and no consumer reads
-      it. Producer/consumer wiring deferred until chunk 5 (opaque shedIntent)
-      or chunk 6 (cleanup). When wiring lands, prune the three dead-code
-      allowlist entries (`resolveBoostActive`, `getCommandableNowReason`,
-      `isCommandableNow`) in `scripts/check-dead-code.mjs`.
+- [x] **Chunk 5/6 — populate and consume `boostActive`.**
+      `buildBoostPlanDeviceFields` now resolves `boostActive` via
+      `resolveBoostActive({ temperatureBoostActive, evBoostActive })` and
+      writes it onto `DevicePlanDevice`. `restore/helpers.ts`
+      `isBoostEffectiveForEscalation` reads `dev.boostActive === true`
+      instead of recomputing the OR. `resolveBoostActive` and
+      `isCommandableNow` allowlist entries dropped in
+      `scripts/check-dead-code.mjs`; `getCommandableNowReason` stays
+      parked until the chunk-6 UI off-state-reason routing lands.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
 
-- [ ] **Chunk 6 — normalize EV-detection across producer helpers.**
+- [x] **Chunk 6 — normalize EV-detection across producer helpers.**
       `lib/device/deviceActionProjection.ts` mixes `controlCapabilityId ===
       'evcharger_charging'` (new helpers) and `deviceClass === 'evcharger'`
       (older `resolveEvBoostActive`). Pre-existing asymmetry that propagated
@@ -434,8 +664,12 @@ release, not v2.7.1 merge-blockers.*
       and route all producer EV gates through it.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-c3-ev-predicate — introduced module-private `isEvDevice`
+      union helper, migrated `resolveEvBoostActive`, `resolveEvCommandableBlock`,
+      `getEvRestoreBlockReason`, and `isEvPhysicallyUnplugged`. No test
+      fixture set only one of the two fields; full suite still green.
 
-- [ ] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
+- [x] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
       device deletion.** Both producer-side caches grow unboundedly when
       devices are removed from Homey at runtime. Each entry is ~50 bytes;
       practical bound is a few KB well inside the 160 MB RSS ceiling, but
@@ -443,8 +677,13 @@ release, not v2.7.1 merge-blockers.*
       longer present in the latest snapshot" for both records.
       Source: pels-runtime-reality + pels-layering-guardian reviews of
       PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — added `evictMissingDeviceCacheEntries`
+      in `lib/app/appInit.ts`, called from both batch sites
+      (`createPlanService.getPlanDevices`, `app.ts:getLiveDevices`) on the
+      full snapshot before mapping. Focused unit tests cover present /
+      orphan / no-op / empty-snapshot.
 
-- [ ] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
+- [x] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
       devices.** A fresh EV device with `evChargingState === undefined` and
       no prior observation in `lastKnownCommandableByDevice` currently
       resolves to `commandableNow: false, reason: 'charger state unknown'`.
@@ -453,8 +692,15 @@ release, not v2.7.1 merge-blockers.*
       (matches "don't write to a device whose state we've never confirmed").
       Lock that semantics in when executors come online.
       Source: pels-runtime-reality review of PR #1189, 2026-05-27.
+      DONE: PR p2-d-cache-eviction — documented the first-cycle contract
+      in the `resolveCommandableNow` doc-comment ("pessimistic-on-first-
+      cycle, load-bearing once executors consume the bit"); added a
+      focused unit test in `test/deviceActionProjectionCommandableNow.test.ts`
+      pinning the case (never-seen EV, `evChargingState === undefined`,
+      no `previousObservation` → `commandableNow: false`,
+      reason `'charger state unknown'`).
 
-- [ ] **Smart-task lifecycle-end release for stepped devices without binary
+- [x] **Smart-task lifecycle-end release for stepped devices without binary
       control.** `lib/executor/shedReleaseActuation.ts` materialises the
       configured shedBehavior for a cap-off device when its deferred objective
       transitions to a terminal status: `turn_off`/`set_step` route through
@@ -469,16 +715,21 @@ release, not v2.7.1 merge-blockers.*
       receives a shed-ready action for this case. Source: smart-task
       lifecycle-end generalisation, 2026-05-27.
 
-- [ ] **Integration test: thermostat + binary device lifecycle-end release.**
+- [x] **Integration test: thermostat + binary device lifecycle-end release.**
       `test/evDevices.integration.test.ts` covers the EV pause regression in
       depth; the new non-EV shed_release path only has the unit tests in
       `test/shedReleaseActuation.test.ts`. Mirror the EaseeMockCharger
       pattern for a mock thermostat and a mock binary heater so the full
       smart-task → satisfied → release → idempotent-re-emission flow has
       end-to-end coverage. Source: smart-task lifecycle-end generalisation,
-      2026-05-27.
+      2026-05-27. Resolved by `test/lifecycleEndReleaseNonEv.integration.test.ts`
+      which exercises the real `applyShedReleaseIntent` dispatch against the
+      real binary/target executors with minimal inline mock heater/thermostat
+      scaffolding (the full deferred-objective wiring through `createApp` is
+      EV-shaped; the integration test focuses on the executor end of the
+      pipeline where the per-cycle re-emission idempotency lives).
 
-- [ ] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
+- [x] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
       `lib/executor/shedReleaseActuation.ts:99` skips the binary write only
       when `snapshot.currentOn === false`. Under a transient Homey SDK miss
       the field can default to `undefined`, falling through to a redundant
@@ -489,7 +740,7 @@ release, not v2.7.1 merge-blockers.*
       "no trusted observation yet, skip the write". Source: pels-runtime-reality
       review of PR #1185, 2026-05-27.
 
-- [ ] **Record shed_release target writes in per-device diagnostics.**
+- [x] **Record shed_release target writes in per-device diagnostics.**
       `applyShedReleaseTemperature` in `lib/executor/shedReleaseActuation.ts`
       routes through `applyTargetUpdate` with `isRestoring: false`.
       `applyTargetUpdatePlan` only records `recordRestoreActuation` when
@@ -501,7 +752,7 @@ release, not v2.7.1 merge-blockers.*
       undercounts per-device actuations and weakens forensic traces.
       Source: pels-runtime-reality review of PR #1185, 2026-05-27.
 
-- [ ] **Consolidate `observationTrust.ts` into a shared layer.**
+- [x] **Consolidate `observationTrust.ts` into a shared layer.**
       The detype-chunk-1 producer extraction (PR #1187) inlined
       `getTrustedCurrentTemperatureC` and `getTrustedStateOfCharge` into
       `lib/device/deviceActionProjection.ts` because the originals live in
@@ -586,6 +837,45 @@ release-review pass, 2026-05-26 — the original entry committed as
       `notes/ui-terminology.md` (add the new subtitle variant). Source:
       v2.9.1 RC release-review walk, 2026-05-25.
 
+*Prod walk persona expansions, 2026-05-27. Personas 4–6 in
+`notes/personas.md` are the highest-emotional-intensity visitors and the
+least served across PELS surfaces today. Both items below are product
+surface expansions (not defect fixes) and need an API field added before
+the renderer can land.*
+
+- [ ] **Miss-streak rollup on Overview (persona 5 — recovering-from-
+      mistake).** `packages/shared-domain/src/deferredPlanHistory.ts:213`
+      already exports `formatMissStreakAggregateLine`, used today only on
+      the Smart-tasks list (`DeadlinesHistoryList.tsx`) as e.g.
+      "Connected 300 — 2 of last 4 runs missed". Persona-5 owners reach
+      Overview from notifications, not via Smart-tasks. Surface the same
+      data as a single chip / rail on Overview ("3 misses this week" or
+      a per-device chip cluster). Needs an Overview API field carrying
+      the per-device aggregate strings — `PlanOverview` doesn't fetch
+      smart-task history today. Files:
+      `packages/contracts/src/settingsUiApi.ts` (new field),
+      `lib/app/**` (populate from history store),
+      `packages/settings-ui/src/ui/views/PlanOverview.tsx`,
+      `packages/settings-ui/src/ui/views/PlanHero.tsx` (decide
+      placement: above the device list vs hero chip rail). Source:
+      2026-05-27 prod walk persona-5 gap.
+
+- [ ] **Per-device kWh + money column on Usage (persona 4 — skeptical
+      optimiser).** `packages/settings-ui/src/ui/usageHero.ts` and
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts` emit
+      total kWh only. The live smart-task hero (`Cost ≈ 0.79 kr`) and
+      Budget projection (`57.22 kr today`) already render kr — Usage
+      is the gap that prevents persona 4 from answering "what did this
+      device cost last week?". Add a per-device kWh field to the Usage
+      API and a per-day kr column / annotation on the daily chart
+      (`Σ priceValue × deviceKwh` is derivable today). Files:
+      `packages/contracts/src/settingsUiApi.ts` (new field),
+      `lib/app/**` (populate from per-device kWh store),
+      `packages/settings-ui/src/ui/usageHero.ts`,
+      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
+      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`. Source:
+      2026-05-27 prod walk persona-4 gap.
+
 *v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
@@ -612,20 +902,35 @@ release-review pass, 2026-05-26 — the original entry committed as
       available kW (e.g. `5 kW free · 7 of 12 used`). Source: release-review
       pels-ux-fit, 2026-05-26.
 
-- [ ] **Smart-tasks widget — on `cannot_meet` rows, replace
+- [x] **Smart-tasks widget — on `cannot_meet` rows, replace
       `Ready by HH:MM` with `Due HH:MM` so the time half doesn't contradict
-      the chip.** "Ready by 07:30" plus a `Cannot finish` chip on the same
-      row reads as internally contradictory. Files:
-      `widgets/smart_tasks/src/public/render.ts:~47`. Source:
-      release-review pels-ux-fit, 2026-05-26.
+      the chip.** Done in the interactive-widget PR — the ETA verb is now
+      producer-resolved (`resolveSmartTaskWidgetEtaVerb`, "Due" on failing
+      tasks else "Ready by"), shared between the list row and the detail
+      panel. Source: release-review pels-ux-fit, 2026-05-26.
 
-- [ ] **Smart-tasks widget — add a one-sentence pointer in the empty
-      state** (e.g. "Add one from a Flow → PELS action."). A first-time
-      widget user who hasn't created a Smart task yet sees only
-      "No active smart tasks" with no breadcrumb to action. Files:
-      `widgets/smart_tasks/src/smartTasksWidgetPayload.ts:19` (where
-      `EMPTY_SUBTITLE_DEFAULT` lives). Source: release-review pels-ux-fit,
-      2026-05-26.
+- [x] **Smart-tasks widget — add a one-sentence pointer in the empty
+      state.** Done in the interactive-widget PR — `SMART_TASK_WIDGET_EMPTY_HINT`
+      ("Add a smart task from a Flow card to see it here.") renders under the
+      empty subtitle. Source: release-review pels-ux-fit, 2026-05-26.
+
+- [ ] **Smart-tasks widget — detail-panel polish follow-ups (interactive-widget
+      PR P2/P3).** Carry the lower-priority findings from the four review
+      subagents on the interactive widget:
+      (1) `formatDeadlineLong` weekday window (`dayDiff -6..6`) can label a
+      6-day-out deadline with a bare weekday that collides with today's
+      weekday name — tighten the window to the remaining days of the current
+      week or update the comment (`widgets/smart_tasks/src/smartTasksWidgetPayload.ts`,
+      pels-ux-fit P3).
+      (2) `rehydrateView` collapses an open detail to the list on a single
+      payload where the device is transiently absent/satisfied mid-cycle —
+      consider a one-cycle grace mirroring the load-failure grace window
+      (`widgets/smart_tasks/src/public/widgetApp.ts`, pels-runtime-reality P2).
+      (3) Low-contrast 6% hover tint on `.row__btn` / `.back-btn` is near-
+      invisible under Homey's desktop invert — non-essential on touch
+      (`widgets/smart_tasks/public/index.css`, pels-m3-critic P3).
+      Source: review subagents on the interactive smart_tasks widget,
+      2026-05-28.
 
 - [ ] **Learned-deadband store — soft cap or GC entries for devices not
       seen in N days.** The persisted map has no per-device cap and no GC
@@ -1805,6 +2110,44 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       Files: `packages/settings-ui/public/style.css`,
       `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
 
+*Prod walk follow-ups, 2026-05-27. Six review lenses (live prod state,
+prod logs, pels-copy-and-terminology, pels-m3-critic, internal UX
+critique, and pels-ux-fit walkthrough) on the Marie Michelets household
+flagged ten findings; eight landed as the train PRs #1207–#1211, #1220,
+and #1222. Remaining: the persona expansions below.*
+
+- [ ] **Walk history-detail hero on prod after the primitive migration.**
+      PR #1222 moved `DeadlinePlanHistoryDetail`'s hero root onto the
+      shared `plan-hero pels-hero` primitive (`--pels-surface-container-high`
+      tier, `--radius-lg`, inset highlight). The `pels-m3-critic` review
+      called the visual shift a judgment call rather than a violation
+      (receipts conventionally sit at surface-1; the live smart-task
+      hero sits at container-high). Walk a Succeeded and a Missed
+      entry on the production Homey alongside the live PlanHero. If
+      the receipt feels "still live" / too loud at the new tier, the
+      correct fix is a dedicated `--pels-surface-receipt` token
+      between `--color-surface-1` and `--pels-surface-container-high`,
+      not reverting to `pels-surface-card` (which would re-introduce
+      the primitive duplication PR #1222 closed). Files:
+      `settings/tokens.css` (new token if needed), `settings/style.css`
+      (re-point `.plan-hero` / `.plan-history-detail__hero` if needed),
+      `notes/overview-hero-spec.md` (document the tier ladder). Source:
+      `pels-m3-critic` follow-up on PR #1222, 2026-05-28.
+
+- [ ] **Move BudgetOverview confidence strings to shared-domain.**
+      PR #1211 renamed "Plan confidence" → "Budget confidence"
+      inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      but the strings stay in the view rather than in
+      `packages/shared-domain/**`. Per memory
+      `feedback_ui_text_shared_with_logs`, UI text shared with logs
+      should come from shared-domain helpers. These specific strings
+      aren't currently logged so this is a P3 follow-up, not a parity
+      bug; if budget-confidence logging is added later, promote to P2
+      and land alongside the logger call. Files:
+      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
+      new `packages/shared-domain/src/budgetConfidenceStrings.ts`.
+      Source: 2026-05-27 prod walk, scoped out of PR-4.
+
 
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
 release-review pass (2026-05-17). All three depend on the history schema
@@ -1925,15 +2268,19 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 
-- [ ] Show a real revision log on the History detail page.
+- [x] Show a real revision log on the History detail page.
       Today the entire revision surface is the single line "Replanned N times." — no timestamps,
       no per-revision reasons, no diff of which hours changed. The page's whole mission of
       "did PELS change the plan and why?" goes unanswered. Render a chronological list of
       revisions with: revision time, plain-English reason (from a kind-aware helper), and an
       optional inline mini-diff showing hours added / removed.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/shared-domain/src/deadlineLabels.ts` (revision-reason copy),
-      contract additions for per-revision metadata.
+      Shipped — `DeadlinePlanHistoryDetail.tsx` now renders a `What changed` card
+      with `<li class="plan-revision-row">` rows fed by `PlanHistoryRevisionLogRow`
+      (`packages/shared-domain/src/deferredPlanHistory.ts`); the kind-aware
+      `revisionReason` resolver in `deadlineLabels.ts` supplies the per-row copy.
+      Contract carries `revisions[]` on `DeferredObjectivePlanHistoryEntry`. The
+      live-task counterpart shipped alongside as the `Recent plan changes` panel
+      on `DeadlinePlan.tsx` (PR #1197).
 
 - [ ] v2.7.1: Switch `report_evcharger_battery_level.json` `battery_percent` argument from
       `type: "number"` to `type: "range"` for a slider-style picker. The card shipped in
@@ -3249,6 +3596,102 @@ consolidation + a11y polish (8 P2)`.*
       wording was already correct).
       Files: `docs/plan-states.md`.
 
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Snapshot-empty guard before `commitRefreshedSnapshot` in
+      `lib/device/deviceTransport.ts` (~1683-1720). If
+      `previousSnapshot.length > 0 && snapshot.length === 0`, log warn + skip
+      the commit. Mirror the `planHistory.ts` abandon-grace pattern. Practical
+      exposure is small (no devices planned in that cycle anyway) but on
+      recovery one cycle is lost to first-cycle pessimism via the new
+      producer-cache eviction. Source: release-review pels-runtime-reality,
+      2026-05-28.
+
+- [ ] Split `recordReleaseShedActuation` so release intents don't write
+      `lastInstabilityMs`/`lastDeviceShedMs`. The shed-purpose release path
+      (`lib/executor/shedReleaseActuation.ts` at the temperature and binary
+      apply sites) reuses `recordShedActuation`, which writes the
+      system-wide instability marker. For a *release* (device going into
+      shed posture intentionally) this is incorrect — the marker should
+      reflect capacity-driven instability only. Inline TODO noted at
+      `lib/executor/shedReleaseActuation.ts:121`. Source: release-review
+      adversarial-review, 2026-05-28.
+
+- [ ] Clear `history[]` (or insert a separator row) on smart-task signature
+      change in `lib/plan/deferredObjectives/activePlanRecorder.ts:670-697`.
+      When the objective signature changes mid-task, the persisted record is
+      rebuilt with `...currentWithoutSnapshot` which preserves
+      `current.history`, then a fresh `latest` is written and the prior
+      `latest` is prepended. So the user sees pre-target-change revisions
+      interleaved with the new objective's revisions in the panel until 20
+      new entries roll over. A new objective should arguably start an empty
+      history, OR insert a synthetic `objective_changed` separator row (the
+      recorder already emits this reason — verify the path). Source:
+      release-review adversarial-review, 2026-05-28.
+
+- [ ] Fold `capabilities.includes('evcharger_charging')` into `isEvDevice`
+      (`lib/device/deviceActionProjection.ts`). Post-detype refactor the
+      predicate checks `deviceClass === 'evcharger'` or
+      `controlCapabilityId === 'evcharger_charging'` only; if
+      `controlCapabilityId` ever fails to resolve but caps include
+      `evcharger_charging`, the device is mistakenly non-EV. Practical risk
+      low because `managerParseSnapshot.ts` derives `controlCapabilityId`
+      from caps directly, but the asymmetry with pre-refactor logic is real.
+      Source: release-review adversarial-review, 2026-05-28.
+
+- [ ] Stepped-only devices (no `onoff`/`evcharger_charging` handle) skip
+      lifecycle release with a debug log in
+      `lib/executor/shedReleaseActuation.ts`. Re-project a shed-purpose
+      stepped intent at lifecycle end so they wind down at deadline. This is
+      the residual gap from commit `61807892 fix(admission): generalise
+      smart-task lifecycle-end release beyond EV` — the binary and target
+      release paths landed; the stepped-only re-projection path is still
+      open. Source: release-review pels-runtime-reality, 2026-05-28.
+
+*Bot-review audit follow-ups (2026-05-28). Items surfaced by
+chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
+follow-up train that were missed at merge time; filed here for the next
+wave.*
+
+- [ ] **Binary `shed_release` path still bumps the capacity-instability
+      marker.** Commit `5d44846b polish: shared EV-boost copy, release-only
+      actuation recorder, producer-side set_step target` introduced
+      `recordReleaseShedActuation` but only wired it into the temperature
+      and stepped release branches of `lib/executor/planExecutor.ts`. The
+      default binary `shed_release` path still calls
+      `applyBinarySheddingToDevice(deps.buildBinaryExecutorContext())`,
+      whose context is built with `boundRecordShedActuation`. For non-flow-
+      backed `turn_off` release actions that means `lastInstabilityMs` and
+      `lastDeviceShedMs` are still bumped, so the new diagnostic-only
+      release marker does not apply to the common binary release case.
+      Acceptance: route the binary `shed_release` path through
+      `recordReleaseShedActuation` (the helper is already an arrow-function
+      field on `PlanExecutor` and auto-bound to `this`, so no separate
+      `bound*` wrapper is needed); add a regression test in
+      `test/shedReleaseActuation.test.ts` pinning that a binary release
+      intent does not bump `lastInstabilityMs`. Files:
+      `lib/executor/planExecutor.ts` (around the binary-release-intent
+      branch), `test/shedReleaseActuation.test.ts`. Source: codex review
+      of closed PR #1233, 2026-05-28.
+
+- [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
+      selectors.** Source CSS (`packages/settings-ui/public/style.css`) has
+      muted-only with a comment claiming other tones flow through from
+      `.plan-hero` / `.pels-hero`; generated `settings/style.css` has
+      explicit `.plan-history-detail__hero[data-tone="good"]` and
+      `[data-tone="warn"]` selectors grouped with the shared primitives.
+      The markup audit (gemini review of PR #1242): the root element in
+      `DeadlinePlanHistoryDetail.tsx:753-756` carries
+      `class="plan-hero pels-hero plan-history-detail__hero"`, so the
+      tone selectors DO flow through from `.plan-hero` / `.pels-hero`
+      and source is correct. Fix direction: remove the redundant explicit
+      `.plan-history-detail__hero[data-tone="good"]` and `[data-tone="warn"]`
+      selectors from generated `settings/style.css` and regenerate via
+      `npm run build:settings`. Files: `settings/style.css`. Source:
+      bot-review audit + gemini confirmation on PR #1242, 2026-05-28.
+
 ## P2 M3 alignment pass (post desktop-light-mode-fix)
 
 Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
@@ -3391,6 +3834,34 @@ should not be folded into the same PR.
       `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
+
+*Prod walk follow-ups, 2026-05-27. Two small UI items raised by the
+prod walk that didn't warrant a P2 slot.*
+
+- [ ] **Smart-task live detail energy-band reads as a typo at a glance.**
+      Cold-start energy estimates render as a hyphenated range, e.g.
+      `Needs 0.9–11 kWh` (visible in `smart-task-live-v2-480.png` from
+      the 2026-05-27 prod walk). At a glance the en-dash looks like
+      either a typo or a single weird number. Either render with the
+      word `to` (`0.9 to 11 kWh`), spacing the dash, or fold the band
+      into a single number once `displayConfidence !== 'low'`. Files:
+      `packages/shared-domain/src/deadlineLabels.ts` (banded estimate
+      formatter), `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      Source: 2026-05-27 prod walk.
+
+- [ ] **Overview's held device should stand out at 14-card density.**
+      The Marie Michelets prod state renders 14 device cards uniformly
+      on Overview. The single held device (Connected 300) has the
+      correct warning-tone background per the M3 device-card state
+      tokens, but at this list length the eye still has to scan to
+      find it. Two cheap options: pin the held device above the
+      running cards (sort by `stateKind === 'held'`), or render a
+      single-line "1 device limited" rail between the hero and the
+      device stack with a link to the held card. Files:
+      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
+      `packages/settings-ui/src/ui/views/PlanOverview.tsx`,
+      `notes/overview-hero-spec.md` (document the chosen behaviour).
+      Source: 2026-05-27 prod walk first-glance-time observation.
 
 - [x] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
       Pre-existing condition (predates the `SettingsRepository` chip
@@ -4013,3 +4484,71 @@ should not be folded into the same PR.
         test alongside.
       - Files: `lib/observer/idleClassifier.ts`, `lib/observer/idleDetector.ts`,
         `packages/contracts/src/types.ts`, `test/idleClassifier.test.ts`.
+
+- [ ] Smart-task revision-history panel — follow-ups from PR #1197 subagent
+      review (UX / copy / vocabulary):
+      - **Wire `RevisionReasonDisambiguation` through any future runtime
+        log breadcrumb path for `schedule_revised` events** (P2, from
+        pels-runtime-reality review of batch 2 / PR #1203). Today no
+        runtime breadcrumb logs the reason at all, but if one lands and
+        uses the bare `revisionReason()` 2-arg wrapper, support flow
+        becomes "log says `Schedule revised`, screenshot says
+        `Schedule revised — daily budget shifted`" for the same revision.
+        Pass the disambiguation bag through so log/UI parity holds.
+      - **`warnedFallbackRevisions` Set keying / eviction** (P3, from
+        pels-runtime-reality + pels-layering-guardian reviews of batch 2 /
+        PR #1203). Current key is `r${revision}@${timeLabel}` — fine for
+        the current devtools-only use, but if the warning ever escalates
+        to telemetry, (a) prefix with `${objectiveId}` so two panels with
+        the same revision index in the same session don't dedup each
+        other, and (b) cap the Set size or rotate on session boundary so
+        long-lived settings UIs can't grow it unbounded. Files:
+        `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
+      - **Card chrome density.** At 320 px the panel adds a full card shell
+        even when collapsed (~80–96 px). Consider folding inside
+        `PlanInputsCard` ("What PELS has learned") — natural home for
+        "...and what changed since the plan was first written".
+      - Source: pels-m3-critic / pels-ux-fit / pels-runtime-reality reviews
+        on PR #1197, 2026-05-27. Vocabulary subsection and recorder size
+        comment shipped in the follow-up batch 1 train (notes/ui-terminology.md
+        § Revision-log row vocabulary; activePlanRecorder.ts comment fix).
+        Schedule-revised disambiguation + Plan refreshed fallback handling
+        (incl. isFallback flag, hour-diff chip suppression, one-shot
+        console.warn) shipped in batch 2 (PR #1203). Summary line replaces
+        bare count, reason-based panel-visibility threshold, hour-diff chip
+        aria-label / title, and `.plan-revision-row` CSS-grid layout
+        (320 px wrap-safe) shipped in batch 3.
+
+*v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
+
+- [ ] Gate `DeadlinePlan.tsx` `console.warn` (around line 1173, fires when
+      an unmapped recorder reason arrives) behind
+      `process.env.NODE_ENV !== 'production'` OR convert to a silent
+      logging breadcrumb. Defensive instrumentation is fine but the message
+      ("Update REVISION_REASON_LABEL in deadlineLabels.ts.") talks to a
+      developer in a user's devtools. Source: release-review pels-ux-fit,
+      2026-05-28.
+
+- [ ] Extract the `5ch` revision-time column width in `settings/style.css`
+      (lines ~1893/1898/1906) to a `--pels-revision-time-col` token, only
+      if a future change touches the file. Not a self-standing PR — pick
+      this up the next time the file is edited. Source: release-review
+      pels-m3-critic, 2026-05-28.
+
+- [ ] **25-cycle revision-history FIFO test under-exercises by 2 cycles.**
+      In `test/deferredObjectiveActivePlan.test.ts` (around line 460), the
+      loop builds `cycle + 1` buckets per iteration on a plan that was
+      seeded with 3 buckets. Cycles 1–2 don't actually grow the schedule
+      (their `live` ⊊ `committed`, so `mergeHoursPreservingCommitment`
+      keeps the commitment as-is and no revision is written); only cycle
+      3+ triggers `schedule_revised`. The 20-entry FIFO cap is still
+      validated (23 revisions ≥ 20), but the test name and comments
+      overstate what's exercised. Fix: start the loop with `cycle + 3`
+      buckets so all 25 cycles fire revisions (`cycle + 2` still produces
+      a 3-bucket live schedule on cycle 1, which doesn't exceed the
+      3-bucket commitment, per gemini math on PR #1242). Pick up the next
+      time the file is touched — cosmetic-only. Source: gemini reviews
+      of PRs #1227 + #1242, 2026-05-28.
+

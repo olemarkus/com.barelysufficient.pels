@@ -413,6 +413,16 @@ export default tseslint.config(
     },
   },
   {
+    // planDevices is the main materialiser for `DevicePlanDevice` from `PlanInputDevice`; every
+    // chunk of the planner-detype refactor touches it. Chunk 5 added a producer-resolved
+    // `shedIntent` dual-read path alongside the legacy `resolveShedAction` branches; chunk 6
+    // removes the legacy fallback (and shrinks the file back to <500). Bump the cap until then.
+    files: ['lib/plan/planDevices.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // The compatibility wrapper still keeps power-sample state and promise plumbing local while
     // PlanRebuildScheduler owns the cross-intent queue. `schedulePlanRebuildFromPowerSample`
     // remains a long orchestration function — keep `max-lines-per-function` raised until
@@ -431,10 +441,12 @@ export default tseslint.config(
     // chart-data resolver (`deferredPlanHistoryChartData.ts`) out from the
     // postmortem/list-shape helpers. Bumped in v2.9.x for the
     // `met-by-device-cap` postmortem variant + resolver, then again for the
-    // `unknown`-with-plan postmortem branch (PR #1074 follow-up).
+    // `unknown`-with-plan postmortem branch (PR #1074 follow-up). Bumped
+    // again for the revision-log `hourDiffAriaLabel` formatter + normalize
+    // helper (PR #1197 follow-up batch 3).
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 615, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 635, skipBlankLines: true, skipComments: true }],
     },
   },
 );

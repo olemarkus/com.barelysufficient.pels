@@ -5,7 +5,7 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory.js';
-import { APPROX_GLYPH, revisionReason } from './deadlineLabels.js';
+import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels.js';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution.js';
 import { formatTimeInTimeZone } from './utils/dateUtils.js';
 
@@ -55,10 +55,21 @@ const formatPercent = (value: number | null): string | null => (
   value === null ? null : `${value.toFixed(0)} %`
 );
 
+// `'abandoned'` and `'replaced'` runs are finalized before the device ever
+// reached (or even attempted) the target — the persisted `finalProgressC` /
+// `finalProgressPercent` is the reading at the moment the user cleared the
+// smart task (or the diagnostic stream went stale), not the result of any
+// PELS-driven heating/charging. Rendering `start → final` for those outcomes
+// reads as "we moved the needle from X to Y", which is the opposite of what
+// happened — the run was abandoned and no progress is attributable to PELS.
+// Producer-resolves the suppression so the view layer never branches on
+// outcome; mirrors the same rule used by `formatPlanHistoryReachedAtLine`
+// (suppressed on every outcome except `'met'`).
 export const formatPlanHistoryProgressLine = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
     'objectiveKind'
+    | 'outcome'
     | 'targetTemperatureC'
     | 'targetPercent'
     | 'startProgressC'
@@ -67,17 +78,20 @@ export const formatPlanHistoryProgressLine = (
     | 'finalProgressPercent'
   >,
 ): string | null => {
+  const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
   if (entry.objectiveKind === 'temperature') {
     const start = formatTemperature(entry.startProgressC);
     const end = formatTemperature(entry.finalProgressC);
     const target = formatTemperature(entry.targetTemperatureC);
     if (!start || !target) return null;
+    if (suppressArrow) return `${start}  ·  target ${target}`;
     return `${start} → ${end ?? '—'}  ·  target ${target}`;
   }
   const start = formatPercent(entry.startProgressPercent);
   const end = formatPercent(entry.finalProgressPercent);
   const target = formatPercent(entry.targetPercent);
   if (!start || !target) return null;
+  if (suppressArrow) return `${start}  ·  target ${target}`;
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
 };
 
@@ -190,11 +204,11 @@ export const formatPlanHistoryUsageDayLinkLabel = (
 // miss in an otherwise-healthy device never trips the aggregate.
 const MISS_STREAK_WINDOW = 4;
 // Half the window is the threshold — keeps the resolver kind-agnostic and matches the
-// notes' "3 of last 4 missed" framing (3/4 ≥ 0.5).
+// notes' "3 of last 4 runs missed" framing (3/4 ≥ 0.5).
 const MISS_STREAK_THRESHOLD = 0.5;
 
 /**
- * Composes the "Past tasks (N of last M missed)" subhead string when a device's most-recent
+ * Composes the "Past tasks (N of last M runs missed)" subhead string when a device's most-recent
  * history entries show a meaningful miss streak. Returns `null` when the streak is below the
  * threshold (or the window is too short to be meaningful) so the caller can render the plain
  * "Past tasks" heading instead.
@@ -224,7 +238,7 @@ export const formatMissStreakAggregateLine = (
   if (recent.length < 2) return null;
   const missed = recent.filter((entry) => entry.outcome === 'missed').length;
   if (missed / recent.length < MISS_STREAK_THRESHOLD) return null;
-  return `${missed} of last ${recent.length} missed`;
+  return `${missed} of last ${recent.length} runs missed`;
 };
 
 const MINUTE_MS = 60 * 1000;
@@ -273,17 +287,16 @@ const pickLastPlan = (
  * without inferring from chart bars alone.
  *
  * Branches resolve in priority order (most specific first):
- *  1. Daily budget exhausted on the last revision → "Today's daily budget filled before
- *     the deadline could be reached." (blameless; recourse copy lives on the recourse
- *     button per v2.7.3 history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
- *  2. Final plan status `cannot_meet` → "PELS couldn't reserve enough cheap hours
- *     before the deadline."
- *  3. Final plan status `at_risk`     → "The smart task fell behind and didn't catch up
- *                                       before the deadline."
- *  4. Discovered from backfill        → "PELS was restarted during this smart task —
- *                                       outcome reconstructed from settings."
- *  5. Otherwise                       → "The device did not reach the target before the
- *                                       deadline."
+ *  1. Daily budget exhausted on the last revision → "Daily budget filled before the
+ *     deadline." (blameless; recourse copy lives on the recourse button per v2.7.3
+ *     history-loveable rewrite — `pels-ux-fit` P1 #2 fold-in).
+ *  2. Final plan status `cannot_meet` → "Couldn't reserve enough cheap hours in time."
+ *  3. Final plan status `at_risk`     → "Fell behind and didn't catch up in time."
+ *  4. Discovered from backfill        → "PELS restarted mid-task; outcome estimated."
+ *  5. Otherwise                       → "Didn't reach the target before the deadline."
+ *
+ * Sentences are kept tight (≤ ~45 chars) so the list-card reason line fits on one
+ * row at 320px; the consumer prefixes "Why:" to set it apart from the coverage line.
  *
  * Returns `null` only when the entry is not `outcome === 'missed'`; the missed-history page
  * always renders something so the user is never left with a chip and no explanation.
@@ -312,7 +325,7 @@ export const formatPlanHistoryMissedReason = (
   // button's job.
   const lastPlan = pickLastPlan(entry);
   if (snapshotShowsBudgetExhausted(lastPlan)) {
-    return "Today's daily budget filled before the deadline could be reached.";
+    return 'Daily budget filled before the deadline.';
   }
   // v2.7.4 — plan-time miss attribution (Session A). Inserted ahead of the
   // `planStatus` branches so a `cannot_meet` that rested on a low-confidence
@@ -323,15 +336,15 @@ export const formatPlanHistoryMissedReason = (
   const refinedCause = formatRefinedMissCause(entry);
   if (refinedCause !== null) return refinedCause;
   if (lastPlan?.planStatus === 'cannot_meet') {
-    return "PELS couldn't reserve enough cheap hours before the deadline.";
+    return "Couldn't reserve enough cheap hours in time.";
   }
   if (lastPlan?.planStatus === 'at_risk') {
-    return "The smart task fell behind and didn't catch up before the deadline.";
+    return "Fell behind and didn't catch up in time.";
   }
   if (entry.discoveredFrom === 'backfill') {
-    return 'PELS was restarted during this smart task — outcome reconstructed from settings.';
+    return 'PELS restarted mid-task; outcome estimated.';
   }
-  return 'The device did not reach the target before the deadline.';
+  return "Didn't reach the target before the deadline.";
 };
 
 // Outcome variant the postmortem resolver picks for a finalized entry.
@@ -585,9 +598,15 @@ const resolveMetPostmortem = (
     entry.targetPercent,
   );
   if (overshot && timing !== null) {
+    // The `Overshoot N °C` muted subline (rendered separately by
+    // `DeadlinePlanHistoryDetail.tsx`) already carries the magnitude — folding
+    // an em-dash "— overshot." tail into the headline made the `Succeeded`
+    // chip + the headline read as a contradiction. Keep the headline shape
+    // identical to `met-with-margin` so the chip is the only signal that
+    // distinguishes "clean met" from "met-with-overshoot".
     return {
       variant: 'met-with-overshoot',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel} — overshot.`,
+      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel}.`,
     };
   }
   // Met-at-buzzer: reached the target inside the last planned hour of the
@@ -856,33 +875,54 @@ export const formatPlanHistoryAbandonedSecondary = (
 // page. The producer formats every visible field — the view layer only renders
 // strings and never branches on `reasonId` / hour-diff signs.
 //
-//   `timeLabel`   pre-formatted local time (e.g. `14:32`) of the revision.
-//   `reason`      short "what changed" copy from `revisionReason`.
-//   `hourDiff`    e.g. `+2h −1h` or `+2h` / `−1h`; `null` when both counts
-//                 are zero (the revision touched the same hours the previous
-//                 revision already covered, so the diff is silent).
+// Pre-resolved row for the smart-task history-detail revision log. Every
+// visible field is producer-formatted so the view never branches on reason
+// ID or hour-diff signs. `hourDiffAriaLabel` is the long-form pronouncing
+// of `hourDiff` for screen readers (e.g. `1 hour added` for `+1h`), bound
+// to the chip's `title` + `aria-label`. `null` when `hourDiff === null`.
 export type PlanHistoryRevisionLogRow = {
   timeLabel: string;
   reason: string;
+  // True when the recorder emitted a reason code the resolver hasn't learned
+  // about and the row fell back to the producer label `Plan refreshed`. The
+  // view layer reads this to swap in the longer `Plan refreshed (details
+  // unavailable)` row copy and to suppress the hour-diff chip (otherwise the
+  // chip would misattribute the diff to a vague reason). Mirrors the same
+  // field on `ActivePlanRevisionLogRow` so both surfaces handle fallback
+  // rows identically.
+  isFallback: boolean;
   hourDiff: string | null;
+  hourDiffAriaLabel: string | null;
 };
 
+// Normalize raw bucket-count signals (can be Infinity / NaN on corrupt
+// persistence) into clean non-negative integers. Shared by the glyph + aria
+// formatters so both surfaces agree on the "zero" threshold.
+const normalizeHourCounts = (hoursAdded: number, hoursRemoved: number): { added: number; removed: number } => ({
+  added: Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0,
+  removed: Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0,
+});
+
 const formatHourDiff = (hoursAdded: number, hoursRemoved: number): string | null => {
-  // Both counts are non-negative integer counts of bucket starts in the
-  // symmetric difference between consecutive revisions, so a zero on either
-  // side means "no change in that direction". Producer-side suppression of
-  // the all-zero case keeps the row visually quiet when a revision only
-  // moved per-hour kWh (without adding or removing hours).
-  const added = Number.isFinite(hoursAdded) && hoursAdded > 0 ? Math.floor(hoursAdded) : 0;
-  const removed = Number.isFinite(hoursRemoved) && hoursRemoved > 0 ? Math.floor(hoursRemoved) : 0;
+  const { added, removed } = normalizeHourCounts(hoursAdded, hoursRemoved);
   if (added === 0 && removed === 0) return null;
   const parts: string[] = [];
   if (added > 0) parts.push(`+${added}h`);
-  // U+2212 MINUS SIGN — matches the typographic minus used elsewhere in the
-  // smart-task UI (cost meta line, postmortem sentences) so the revision log
-  // doesn't drift to ASCII hyphen and read as a range separator.
+  // U+2212 MINUS SIGN matches the typographic minus elsewhere in the
+  // smart-task UI; ASCII hyphen would read as a range separator.
   if (removed > 0) parts.push(`−${removed}h`);
   return parts.join(' ');
+};
+
+const pluralHour = (n: number): string => (n === 1 ? 'hour' : 'hours');
+
+const formatHourDiffAriaLabel = (hoursAdded: number, hoursRemoved: number): string | null => {
+  const { added, removed } = normalizeHourCounts(hoursAdded, hoursRemoved);
+  if (added === 0 && removed === 0) return null;
+  const parts: string[] = [];
+  if (added > 0) parts.push(`${added} ${pluralHour(added)} added`);
+  if (removed > 0) parts.push(`${removed} ${pluralHour(removed)} dropped`);
+  return parts.join(', ');
 };
 
 /**
@@ -902,17 +942,26 @@ export const formatPlanHistoryRevisionEntry = (
   kind: DeferredObjectiveSettingsKind,
 ): PlanHistoryRevisionLogRow => {
   const timeLabel = formatClockTime(entry.atMs, timeZone) ?? '—';
-  const reason = revisionReason(entry.reasonId, kind);
+  // Use the structural resolver so the row carries `isFallback`. History-detail
+  // entries never pass disambiguation signals — the recorder-summarised entry
+  // shape doesn't carry them — so `schedule_revised` rows stay on the bare
+  // label, matching the live panel's behaviour when the disambiguation signals
+  // are absent.
+  const { label: reason, isFallback } = resolveRevisionReason(entry.reasonId, kind);
   const hourDiff = formatHourDiff(entry.hoursAdded, entry.hoursRemoved);
-  return { timeLabel, reason, hourDiff };
+  const hourDiffAriaLabel = formatHourDiffAriaLabel(entry.hoursAdded, entry.hoursRemoved);
+  return { timeLabel, reason, isFallback, hourDiff, hourDiffAriaLabel };
 };
 
 /**
  * Returns a short human-readable note about how many of the planner's allocated hours we
- * actually observed the device drawing power during. Resolves to `"Observed N of M planned
+ * actually observed the device drawing power during. Resolves to `"Observed N of M scheduled
  * hours"` whenever the recorded plan carries at least one active hour (`plannedKWh > 0`) so
  * the N=0-of-M>0 case — the planner thought the device was active but it never drew power —
- * surfaces as a visible, actionable signal rather than silently disappearing.
+ * surfaces as a visible, actionable signal rather than silently disappearing. User-facing
+ * copy says "scheduled" (not "planned") to keep planner-layer vocabulary out of UI/log strings
+ * per `feedback_terminology_plan_vs_deadline.md`; the internal field stays `plannedKWh`
+ * because that's the schema name.
  *
  * Returns `"No observations recorded — smart task reconstructed from settings"` for backfill
  * entries (no live observation stream to count against) and `null` when no active plan hours
@@ -955,12 +1004,14 @@ export const formatPlanHistoryObservedCoverage = (
     const hourEndMs = hour.startsAtMs + HOUR_MS;
     return intervals.some((interval) => interval.fromMs < hourEndMs && interval.toMs > hour.startsAtMs);
   }).length;
-  // Singularize the noun for the M === 1 case ("…of 1 planned hour") — matches the
+  // Singularize the noun for the M === 1 case ("…of 1 scheduled hour") — matches the
   // `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}` pattern elsewhere in this
-  // file. M === 0 is short-circuited above so the helper never has to render "0 planned
-  // hours" as the denominator.
+  // file. M === 0 is short-circuited above so the helper never has to render "0 scheduled
+  // hours" as the denominator. "Scheduled" aligns with `SMART_TASK_LIST_STATUS_LABELS.queued`
+  // and keeps planner-layer vocabulary ("planned") out of user copy
+  // (feedback_terminology_plan_vs_deadline).
   const noun = plannedBuckets.length === 1 ? 'hour' : 'hours';
-  return `Observed ${observedBuckets} of ${plannedBuckets.length} planned ${noun}`;
+  return `Observed ${observedBuckets} of ${plannedBuckets.length} scheduled ${noun}`;
 };
 
 // ─── Actual-vs-plan trajectory chart data (v2.7.2 PR 4) ───────────────────────

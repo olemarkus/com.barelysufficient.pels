@@ -65,6 +65,52 @@ describe('DeadlinePlanHistory', () => {
     expect(mount.textContent).toContain('50.0 °C → 58.0 °C');
   });
 
+  // Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
+  // line on Missed cards so the scanning user sees the cause without tap-through.
+  // The full branch matrix of `formatPlanHistoryMissedReason` is pinned in
+  // `test/deferredPlanHistoryPostmortem.test.ts`; this test only confirms the
+  // helper's output reaches `.plan-history-card__reason` in the rendered list
+  // card and stays hidden on Succeeded / Abandoned rows.
+  it('renders the muted reason line on Missed list cards', () => {
+    const entry = buildEntry({ outcome: 'missed', metAtMs: null, finalProgressC: 58 });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const reason = mount.querySelector('.plan-history-card__reason');
+    expect(reason?.textContent).toBe("Why: Didn't reach the target before the deadline.");
+  });
+
+  it('renders the budget-exhausted reason line on Missed list cards when the snapshot recorded the cap', () => {
+    const start = Date.UTC(2026, 4, 6, 0, 0, 0);
+    const finalPlan = {
+      hours: [{ startsAtMs: start, plannedKWh: 2 }],
+      energyNeededKWh: 10,
+      planStatus: 'cannot_meet' as const,
+      revisedAtMs: start,
+      dailyBudgetExhaustedBucketCount: 3,
+    };
+    const entry = buildEntry({
+      outcome: 'missed',
+      metAtMs: null,
+      finalProgressC: 58,
+      finalPlan,
+      originalPlan: finalPlan,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const reason = mount.querySelector('.plan-history-card__reason');
+    expect(reason?.textContent)
+      .toBe('Why: Daily budget filled before the deadline.');
+  });
+
+  it('does not render the reason line on Succeeded list cards', () => {
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [buildEntry()], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
+  });
+
+  it('does not render the reason line on Abandoned list cards', () => {
+    const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
+  });
+
   it('does not show the stale backup-hours pill when the run leaned on avoid buckets', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [buildEntry({ usedPolicyAvoid: true })],
@@ -121,7 +167,7 @@ describe('DeadlinePlanHistory', () => {
     });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__coverage')?.textContent)
-      .toBe('Observed 0 of 5 planned hours');
+      .toBe('Observed 0 of 5 scheduled hours');
   });
 
   it('does not crash when observedIntervals is missing from an entry payload', () => {
@@ -148,6 +194,27 @@ describe('DeadlinePlanHistory', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     const chip = mount.querySelector('.plan-chip--muted');
     expect(chip?.textContent).toBe('Abandoned');
+  });
+
+  // PR-8 — Abandoned (and Replaced) runs never had PELS-driven progress: the
+  // persisted final reading is the temperature at the moment the user cleared
+  // the smart task (or the diagnostic stream went stale), not a result the
+  // planner produced. Suppress the `→ final` segment so the row reads as
+  // "start, target" rather than implying we moved the needle.
+  it('suppresses the → final progress arrow on Abandoned past-list rows', () => {
+    const entry = buildEntry({
+      outcome: 'abandoned',
+      metAtMs: null,
+      startProgressC: 57.6,
+      finalProgressC: 26.0,
+      targetTemperatureC: 40,
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
+    const progress = mount.querySelector('.plan-history-card__progress');
+    expect(progress?.textContent).toContain('57.6 °C');
+    expect(progress?.textContent).toContain('target 40.0 °C');
+    expect(progress?.textContent).not.toContain('→');
+    expect(progress?.textContent).not.toContain('26.0 °C');
   });
 
   // v2.9.x batch 47 — past-list card variant of the muted Overshoot line.

@@ -10,6 +10,7 @@ import type {
 } from '../../contracts/src/deferredObjectiveSettings.js';
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
+  DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
   DeferredObjectiveKwhPerUnitProvenanceV1,
@@ -92,6 +93,117 @@ export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, stri
   paused_unplugged: 'Unplugged',
 };
 
+// Widget detail-panel "why" + recourse copy. Composed from producer-resolved
+// fields so the browser-side renderer never branches on statusId /
+// pendingReason / floor shortfall cause (per
+// `feedback_layering_resolution_in_producer.md`). Strings stay short — the
+// widget surface is 320–480 px wide and the detail panel must fit in 220 px
+// of vertical space alongside the device name, deadline, target, and back
+// chevron. Lifted into shared-domain per
+// `feedback_ui_text_shared_with_logs.md` so runtime structured logs can
+// surface the same one-line reasons when the detail surface fires.
+
+const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | null> = {
+  building_plan: null, // resolved by pendingReason
+  queued: null, // composed from firstPlannedTimeLabel when present
+  paused_unplugged: 'EV is unplugged — plug in to resume.',
+  on_track: null, // affirmative line resolved from firstPlannedTimeLabel
+  at_risk: null, // disambiguated by budget vs time below
+  cannot_meet: null, // resolved by floor cause / budget bucket count
+  satisfied: null,
+};
+
+const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
+Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
+  awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
+  device_data_missing: 'Waiting for a reading from this device.',
+  invalid_session: 'EV is unplugged — plug in to start.',
+  missing_capacity: 'Learning energy use from this device.',
+  price_feature_disabled: 'Price-aware planning is off.',
+};
+
+const WHY_CANNOT_MEET_BUDGET = 'Today’s daily budget runs out before the deadline.';
+const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
+// At-risk is the same two causes as cannot-finish, hedged to "may" because the
+// task can still land. Disambiguated so the detail panel never shows the
+// "time OR budget" guess the user would otherwise have to resolve themselves.
+const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
+const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
+
+const RECOURSE_CANNOT_MEET_BUDGET = 'Lower the daily budget so future days reserve power earlier.';
+const RECOURSE_CANNOT_MEET_DEVICE = 'Open this device’s settings in the PELS app to see what’s holding it back.';
+const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
+
+export type SmartTaskWidgetDetailCopy = {
+  whyLabel: string | null;
+  recourseHint: string | null;
+};
+
+export type SmartTaskWidgetDetailInput = {
+  statusId: SmartTaskListStatusId;
+  pendingReason?: DeferredObjectiveActivePlanPendingReason;
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  dailyBudgetExhaustedBucketCount?: number;
+  // Pre-formatted local time of the first planned hour (e.g. "16:00") for the
+  // `queued` "Cheaper hours start at HH:MM" line. Locale formatting lives in the
+  // caller so shared-domain stays free of Intl.
+  firstPlannedTimeLabel?: string | null;
+};
+
+// Budget vs device cause. The producer-resolved `floorShortfallCause` is
+// authoritative (per `feedback_layering_resolution_in_producer`): when present,
+// it alone decides. The `dailyBudgetExhaustedBucketCount` fallback is gated on
+// `floorShortfallCause === undefined` (legacy pre-producer-field revisions) AND
+// `at_risk` only — mirroring the settings UI (`deadlinePlan.ts`). The producer
+// never returns `cannot_meet` with a budget cause, so a non-budget cause that
+// merely brushed the budget cap in the run-up (bucket count > 0) must not be
+// misclassified as budget-driven.
+const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => {
+  if (input.floorShortfallCause !== undefined) return input.floorShortfallCause === 'budget';
+  return input.statusId === 'at_risk' && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+};
+
+export const resolveSmartTaskWidgetDetailCopy = (
+  input: SmartTaskWidgetDetailInput,
+): SmartTaskWidgetDetailCopy => {
+  if (input.statusId === 'cannot_meet') {
+    return isBudgetDriven(input)
+      ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
+      : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
+  }
+  if (input.statusId === 'at_risk') {
+    return isBudgetDriven(input)
+      ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
+      : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+  }
+  if (input.statusId === 'building_plan') {
+    const reason = input.pendingReason ?? 'awaiting_horizon_plan';
+    const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason]
+      ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan
+      ?? null;
+    return {
+      whyLabel: why,
+      recourseHint: reason === 'invalid_session' ? RECOURSE_INVALID_SESSION : null,
+    };
+  }
+  if (input.statusId === 'queued' && input.firstPlannedTimeLabel) {
+    return {
+      whyLabel: `Cheaper hours start at ${input.firstPlannedTimeLabel}.`,
+      recourseHint: null,
+    };
+  }
+  return {
+    whyLabel: SMART_TASK_WIDGET_WHY_BY_STATUS[input.statusId],
+    recourseHint: null,
+  };
+};
+
+// Compressed empty-state pointer for the widget. The settings-UI variant
+// (`SMART_TASK_LIST_EMPTY_COPY`) wraps Flow-action names in rich markup the
+// widget can't render at 320–480 px; this is the one-sentence form.
+export const SMART_TASK_WIDGET_EMPTY_HINT
+  = 'Add a smart task from a Flow card to see it here.';
+
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone
@@ -133,21 +245,76 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // Tone slug for the smart-task list card's "Ready by" accent row. The default
 // `accent` (green) tone reads as "healthy" alongside an on-track chip; on
 // at-risk / cannot-meet cards the accent green semantically contradicts the
-// status pill. This resolver mirrors the chip tone so the two signals agree.
+// status pill.
 //
-// Returns 'accent' (default green) for healthy / pending / queued / satisfied
-// states; 'warn' for at-risk / paused; 'alert' for cannot-meet. The view layer
-// renders `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per
-// the resolved slug — never branches on status itself.
+// On `cannot_meet` the hero gradient and the status chip both go red; if the
+// timestamp also went red, three red surfaces would stack on one card
+// (alarming and redundant). Demote the timestamp to `warn` so the hero
+// broadcasts context, the chip carries the definitive status, and the
+// timestamp drops one tone without echoing the alert. `at_risk` and
+// `cannot_meet` collapse to the same timestamp tone here — the chip
+// preserves the distinction.
+//
+// Maps to 'accent' (default green) for healthy / pending / queued / satisfied
+// states; 'warn' for at-risk / paused / cannot-meet. The view layer renders
+// `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per the
+// resolved slug — never branches on status itself. The `--alert` CSS variant
+// is currently unused by this resolver but kept in place for future status
+// codes that may legitimately warrant the strongest tone on the timestamp.
 export type SmartTaskListReadyByTone = 'accent' | 'warn' | 'alert';
+
+// Total mapping (mirrors `SMART_TASK_LIST_STATUS_CHIP_VARIANT` above) so a new
+// `SmartTaskListStatusId` member produces a TypeScript error here rather than
+// silently falling through to the default tone.
+const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskListReadyByTone> = {
+  building_plan: 'accent',
+  queued: 'accent',
+  paused_unplugged: 'warn',
+  on_track: 'accent',
+  at_risk: 'warn',
+  cannot_meet: 'warn',
+  satisfied: 'accent',
+};
 
 export const resolveSmartTaskListReadyByTone = (
   status: SmartTaskListStatusId,
-): SmartTaskListReadyByTone => {
-  if (status === 'cannot_meet') return 'alert';
-  if (status === 'at_risk' || status === 'paused_unplugged') return 'warn';
-  return 'accent';
+): SmartTaskListReadyByTone => SMART_TASK_LIST_READY_BY_TONE[status];
+
+// Inline status word appended to the smart-task list card's "Ready by" line so
+// the at-risk / cannot-finish / paused signal isn't carried by colour alone
+// (`.deadline-list-card__when-row--warn/--alert` were the sole differentiator,
+// which a red-green-deficient user can't read off the timestamp). Returns null
+// for healthy / pending / queued / satisfied states: green is the default-
+// positive case and the status chip already names it ("On track"), so no extra
+// word is warranted — only the non-healthy states need the redundant text cue.
+//
+// The word reuses the canonical `SMART_TASK_LIST_STATUS_LABELS` strings so the
+// inline word and the status chip can never disagree (per
+// `feedback_ui_text_shared_with_logs.md`). Producer-resolved keyed off status
+// so the view never branches on `statusId` itself (per
+// `feedback_layering_resolution_in_producer.md`). The total mapping mirrors
+// `SMART_TASK_LIST_READY_BY_TONE` so a new status id is a compile error here
+// rather than a silent fall-through.
+const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string | null> = {
+  building_plan: null,
+  queued: null,
+  // The inline word is joined to the timestamp with an em-dash separator
+  // ("Ready by … — <word>"). For paused we use the compressed widget label
+  // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
+  // latter carries its own em-dash, which would render a confusing double-dash
+  // ("… — Paused — unplugged") on the Ready-by line. The chip still shows the
+  // full label; this is the same sanctioned shared-domain string, not a new
+  // variant.
+  paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+  on_track: null,
+  at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
+  cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
+  satisfied: null,
 };
+
+export const resolveSmartTaskListReadyByStatusWord = (
+  status: SmartTaskListStatusId,
+): string | null => SMART_TASK_LIST_READY_BY_STATUS_WORD[status];
 
 // Confidence chip label shown on the live hero and the Smart-tasks list card.
 // Centralised so the two surfaces stay phrased identically. High confidence is
@@ -258,6 +425,87 @@ export const formatSmartTaskCurrentValueLine = (params: {
 export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
+
+// Lead label for the past-tasks 7-day hit-rate strip (PR-10). Sits above the
+// weekly archive so the recovering-from-mistake user gets a single-glance
+// "how did this week go?" signal without rescanning the per-row chips.
+// Kept here so runtime log breadcrumbs and the UI render identical strings
+// (per `feedback_ui_text_shared_with_logs.md`); the window length (7 days)
+// is part of the user-facing copy on purpose — naming the horizon makes the
+// strip stand on its own without a tooltip.
+export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days';
+// Trailing fragment for the hit-rate value (`67% hit rate`). Held as a
+// constant so the producer can compose the strip via `join(' · ')` without
+// the noun ever drifting between the UI and the log breadcrumb that mirrors
+// it. The hit-rate definition (succeeded ÷ (succeeded + missed), excluding
+// abandoned/replaced) is documented on `resolvePlanHistory7DayHitRateStrip`.
+export const SMART_TASK_LIST_HIT_RATE_NOUN = 'hit rate';
+
+// Row labels for the Smart-tasks list card's `<dl>` block (Target / Starts /
+// Ready by). Lifted to shared-domain so runtime log breadcrumbs and the UI
+// render identical labels (per `feedback_ui_text_shared_with_logs.md`). The
+// three labels stay grouped so the list-card surface reads them from a single
+// record rather than three loose imports. The `Created` row was dropped from
+// the list card because it duplicated `Starts` in nearly every case (a task
+// starts on creation); the detail page still shows the created timestamp for
+// its audit-trail use case, but reads it directly off the plan-history entry.
+export const SMART_TASK_LIST_ROW_LABELS = {
+  target: 'Target',
+  starts: 'Starts',
+  readyBy: 'Ready by',
+} as const;
+
+// Word sources for the dashboard widget so its renderer never hardcodes
+// user-facing copy (per `feedback_ui_text_shared_with_logs`). Declared after
+// `SMART_TASK_LIST_ROW_LABELS` because they reuse it.
+//
+// The ETA verb pairs the canonical `Ready by` with a `Due` variant for failing
+// tasks, where `Ready by HH:MM` next to a `Cannot finish` chip reads as
+// contradictory.
+export const SMART_TASK_WIDGET_DUE_VERB = 'Due';
+
+export const resolveSmartTaskWidgetEtaVerb = (isFailing: boolean): string => (
+  isFailing ? SMART_TASK_WIDGET_DUE_VERB : SMART_TASK_LIST_ROW_LABELS.readyBy
+);
+
+// Kind-aware target action verb ("Heat to 65 °C" / "Charge to 80 %"). Kept
+// beside the other kind-aware smart-task vocabulary so the heat/charge split
+// can't drift; the "temperature never says charge" rule
+// (`notes/ui-terminology.md`) is enforced by the kind key.
+const SMART_TASK_WIDGET_TARGET_ACTION_VERB: Record<'temperature' | 'ev_soc', string> = {
+  temperature: 'Heat to',
+  ev_soc: 'Charge to',
+};
+
+export const resolveSmartTaskWidgetTargetActionVerb = (
+  kind: 'temperature' | 'ev_soc',
+): string => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
+
+// "Target" noun for the list values line when no current reading is available.
+// Re-exported from the canonical list-row label so the widget and the
+// settings-UI list card share one source.
+export const SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
+
+// Empty-state copy for the Smart-tasks list when no smart tasks have been
+// scheduled yet. Split into discrete fragments so the JSX renderer can wrap
+// the action names in `<strong>` and the example sentences in `<em>` without
+// the strings drifting from this canonical source. Runtime log breadcrumbs
+// join the fragments with single spaces to recover the full sentence.
+export const SMART_TASK_LIST_EMPTY_COPY = {
+  intro: 'No smart tasks yet. Open the Flow editor and add the',
+  heatingAction: 'Add heating task',
+  actionWord: 'action',
+  heatingExample: '(Heat … to … °C by Ready by)',
+  conjunction: 'or the',
+  chargingAction: 'Add charging task',
+  chargingExample: '(Charge … to … % by Ready by)',
+  outro: 'to schedule a device for a specific ready-by time.',
+} as const;
+
+// Banner copy for the Smart-tasks list when the bootstrap fetch fails. Lifted
+// to shared-domain so runtime log breadcrumbs and the UI render the same
+// sentence (per `feedback_ui_text_shared_with_logs.md`).
+export const SMART_TASK_LIST_LOAD_ERROR_COPY = 'Could not load smart tasks. Try again later.';
 
 // Error/loading banner copy for the deadline-plan SPA route. Lifted to
 // shared-domain so runtime log breadcrumbs and the UI render identical
@@ -575,25 +823,131 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
 
 const REVISION_REASON_FALLBACK = 'Plan refreshed';
 
-// Resolves a single short label for a revision-reason code. `_kind` is
-// accepted so callers (heating vs EV) can pass it without branching at the
-// call site — the underlying copy is kind-agnostic today because revision
-// causes are recorder-level events (a price publish is a price publish
-// regardless of device category). The parameter name is prefixed `_` to
-// reserve the slot for future kind-aware copy without churning every caller.
+// View-facing fallback variant used when a row template wants to make the
+// absent diff chip self-explanatory. `REVISION_REASON_FALLBACK` is the
+// producer label (used for the live-panel summary line + runtime log
+// breadcrumbs so those surfaces stay terse); the row templates on both the
+// live-task panel and the post-finalization history-detail card render this
+// longer variant when `isFallback === true` so the user understands why the
+// row carries no `+/−Nh` chip. Per `feedback_ui_text_shared_with_logs.md`,
+// view layers consume it from shared-domain rather than inlining the copy.
+export const REVISION_REASON_FALLBACK_WITH_DETAIL = 'Plan refreshed (details unavailable)';
+
+// Optional disambiguation signals for `schedule_revised`. When the live-task
+// surface passes these in, `revisionReason` returns a more specific label
+// instead of the bare `Schedule revised`. History detail and runtime log
+// breadcrumbs don't carry these signals on their entry shape (see
+// `DeferredObjectivePlanHistoryRevisionLogEntry`) so they continue to render
+// the bare label — and that's fine; the active panel is the surface where
+// "why now?" matters most.
 //
-// Unknown / falsy / unmapped codes resolve to `Plan refreshed` so the log
-// always renders a label rather than swallowing an entry.
-export const revisionReason = (
+// All fields optional individually so callers can supply only what they have.
+// The producer resolves precedence; consumers never branch on which signal
+// drove the variant.
+export type RevisionReasonDisambiguation = {
+  // True when the prior revision's planStatus differed from this revision's.
+  // Drives the `risk changed` variant when no budget / hour-add signal applies.
+  planStatusChanged?: boolean;
+  // Any positive value means the daily budget cap squeezed at least one bucket
+  // on this revision. Drives the `daily budget shifted` variant.
+  dailyBudgetExhaustedBucketCount?: number;
+  // Producer-resolved verdict on what bound the floor schedule. Treated as the
+  // strongest budget signal — overrides count-of-exhausted-buckets which can
+  // stay at zero on the per-bucket background squeeze case.
+  floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
+  // Hour-diff symmetric-difference counts vs the prior revision. Drives the
+  // `cheaper hour opened` variant when hours grew without budget pressure.
+  hoursAdded?: number;
+  hoursRemoved?: number;
+};
+
+const SCHEDULE_REVISED_BASE = 'Schedule revised';
+// Em-dash separator (U+2014) to match the typographic dash used elsewhere in
+// the smart-task UI for `…—…` clauses.
+const SCHEDULE_REVISED_BUDGET = `${SCHEDULE_REVISED_BASE} — daily budget shifted`;
+const SCHEDULE_REVISED_RISK = `${SCHEDULE_REVISED_BASE} — risk changed`;
+const SCHEDULE_REVISED_OPENED = `${SCHEDULE_REVISED_BASE} — cheaper hour opened`;
+
+// Precedence for `schedule_revised` disambiguation. Budget is the strongest
+// signal (the most actionable explanation for the user — "your daily budget
+// caused the shift, here's how to relieve it"), then planStatus transition
+// (risk story), then hour-add (optimizer found new affordable space). Falls
+// through to the bare label when none of the signals are conclusive — better
+// to under-promise than to mislabel.
+const resolveScheduleRevisedLabel = (
+  d: RevisionReasonDisambiguation,
+): string => {
+  const budgetExhausted = typeof d.dailyBudgetExhaustedBucketCount === 'number'
+    && d.dailyBudgetExhaustedBucketCount > 0;
+  const budgetCause = d.floorShortfallCause === 'budget';
+  if (budgetExhausted || budgetCause) return SCHEDULE_REVISED_BUDGET;
+  if (d.planStatusChanged === true) return SCHEDULE_REVISED_RISK;
+  const added = typeof d.hoursAdded === 'number' ? d.hoursAdded : 0;
+  const removed = typeof d.hoursRemoved === 'number' ? d.hoursRemoved : 0;
+  if (added > 0 && removed === 0) return SCHEDULE_REVISED_OPENED;
+  return SCHEDULE_REVISED_BASE;
+};
+
+// Resolved short-label record for a revision-reason code.
+//
+//   `label`        the short "what changed" copy. Always a non-empty string;
+//                  unknown / falsy reason codes fall through to
+//                  `REVISION_REASON_FALLBACK` so the view never has to invent
+//                  copy for a recorder code it hasn't learned about.
+//   `isFallback`   true when the reason code was unknown / falsy and the
+//                  fallback label was used. Consumers can use this to suppress
+//                  the hour-diff chip (the chip would otherwise misattribute
+//                  the diff to a "Plan refreshed" line that says nothing about
+//                  why hours changed), or to emit a one-shot logging
+//                  breadcrumb so the gap gets noticed.
+export type ResolvedRevisionReason = {
+  label: string;
+  isFallback: boolean;
+};
+
+// Resolves the per-revision label plus a structural `isFallback` flag for
+// consumers that want to treat unknown-code rows differently. See the
+// `ResolvedRevisionReason` doc for the contract.
+//
+// `kind` is accepted so callers (heating vs EV) can pass it without branching
+// at the call site — the underlying copy is kind-agnostic today because
+// revision causes are recorder-level events (a price publish is a price
+// publish regardless of device category). The parameter name is prefixed `_`
+// to reserve the slot for future kind-aware copy without churning every
+// caller.
+//
+// `disambiguation` is honored only when `reasonId === 'schedule_revised'`;
+// other reason codes already carry enough signal in the code itself. Callers
+// that don't have the disambiguation signals (history detail entries,
+// runtime log breadcrumbs) omit the third arg and get the bare
+// `Schedule revised` — the same string they got before this resolver
+// learned to disambiguate.
+export const resolveRevisionReason = (
   reasonId: string | null | undefined,
   _kind: DeferredObjectiveSettingsKind,
-): string => {
-  if (!reasonId) return REVISION_REASON_FALLBACK;
+  disambiguation?: RevisionReasonDisambiguation,
+): ResolvedRevisionReason => {
+  if (!reasonId) return { label: REVISION_REASON_FALLBACK, isFallback: true };
   if (Object.prototype.hasOwnProperty.call(REVISION_REASON_LABEL, reasonId)) {
-    return REVISION_REASON_LABEL[reasonId as DeferredObjectiveActivePlanRevisionReason];
+    if (reasonId === 'schedule_revised' && disambiguation) {
+      return { label: resolveScheduleRevisedLabel(disambiguation), isFallback: false };
+    }
+    return {
+      label: REVISION_REASON_LABEL[reasonId as DeferredObjectiveActivePlanRevisionReason],
+      isFallback: false,
+    };
   }
-  return REVISION_REASON_FALLBACK;
+  return { label: REVISION_REASON_FALLBACK, isFallback: true };
 };
+
+// Thin wrapper preserving the original `revisionReason` signature for callers
+// that don't need the `isFallback` flag (history detail rows, runtime log
+// breadcrumbs). Live-task surfaces should prefer `resolveRevisionReason`.
+export const revisionReason = (
+  reasonId: string | null | undefined,
+  kind: DeferredObjectiveSettingsKind,
+  disambiguation?: RevisionReasonDisambiguation,
+): string => resolveRevisionReason(reasonId, kind, disambiguation).label;
 
 const withLastFetched = (base: string, lastFetchedShort: string | null): string => (
   lastFetchedShort ? `${base} Last price update: ${lastFetchedShort}.` : base

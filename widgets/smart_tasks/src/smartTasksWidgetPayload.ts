@@ -1,11 +1,20 @@
 import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanV1,
+  DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import {
+  formatSmartTaskListConfidenceChipLabel,
+  resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
+  resolveSmartTaskWidgetDetailCopy,
+  resolveSmartTaskWidgetEtaVerb,
+  resolveSmartTaskWidgetTargetActionVerb,
+  SMART_TASK_WIDGET_EMPTY_HINT,
   SMART_TASK_WIDGET_STATUS_LABELS,
+  SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
 } from '../../../packages/shared-domain/src/deadlineLabels';
 import type {
@@ -18,9 +27,6 @@ import type {
 export const ROW_CAP = 3;
 export const EMPTY_SUBTITLE_DEFAULT = 'No active smart tasks';
 
-// Sort tier per status. Lower number = higher priority (rendered first).
-// Satisfied is excluded from the widget before sorting; the entry is kept here
-// only so the map is total over the union.
 const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   cannot_meet: 0,
   at_risk: 1,
@@ -64,8 +70,6 @@ const resolveTargetValue = (plan: DeferredObjectiveActivePlanV1): number | null 
   return isFiniteNumber(plan.targetPercent) ? plan.targetPercent : null;
 };
 
-// Planner ETA = end of the last scheduled hour (`startsAtMs + 1h`). Returns
-// null when no hours are scheduled — the caller falls back to the deadline.
 const resolvePlannerEtaMs = (plan: DeferredObjectiveActivePlanV1): number | null => {
   const hours = plan.latest?.hours;
   if (!hours || hours.length === 0) return null;
@@ -92,6 +96,133 @@ const formatLocalHHMM = (ms: number, timeZone: string | null): string => {
   }
 };
 
+// Calendar-day index (days since the Unix epoch) for `ms` in the given
+// timeZone. Resolving Y/M/D through Intl in the *same* zone the time half is
+// formatted in keeps the day word ("Today"/"Tomorrow") consistent with the
+// "HH:MM" — otherwise a host in one zone and a widget timeZone in another can
+// disagree (e.g. 23:30Z shown as 01:30 Oslo but still labelled "Today").
+// Using en-CA gives an ISO-like `YYYY-MM-DD`, and comparing calendar dates
+// (not durations) is inherently DST-safe.
+const calendarDayIndex = (ms: number, timeZone: string | null): number => {
+  try {
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: timeZone ?? undefined,
+    }).format(new Date(ms));
+    const [y, m, d] = ymd.split('-').map(Number);
+    return Math.round(Date.UTC(y, m - 1, d) / (24 * 60 * 60 * 1000));
+  } catch {
+    const date = new Date(ms);
+    return Math.round(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / (24 * 60 * 60 * 1000),
+    );
+  }
+};
+
+// Calendar-day difference in the widget timeZone. Returns days(deadline) - days(now).
+const localDayDiff = (deadlineMs: number, nowMs: number, timeZone: string | null): number => (
+  calendarDayIndex(deadlineMs, timeZone) - calendarDayIndex(nowMs, timeZone)
+);
+
+// Long deadline label for the detail panel: "Today 16:00", "Tomorrow 07:00",
+// "Sat 16:00" for the rest of this week, "16 May 16:00" past that.
+const formatDeadlineLong = (
+  ms: number,
+  nowMs: number,
+  timeZone: string | null,
+): string => {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return '';
+  const timePart = formatLocalHHMM(ms, timeZone);
+  const dayDiff = localDayDiff(ms, nowMs, timeZone);
+  if (dayDiff === 0) return `Today ${timePart}`;
+  if (dayDiff === 1) return `Tomorrow ${timePart}`;
+  try {
+    if (dayDiff >= -6 && dayDiff <= 6) {
+      const weekday = new Intl.DateTimeFormat('en-GB', {
+        weekday: 'short',
+        timeZone: timeZone ?? undefined,
+      }).format(date);
+      return `${weekday} ${timePart}`;
+    }
+    const dayMonth = new Intl.DateTimeFormat('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: timeZone ?? undefined,
+    }).format(date);
+    return `${dayMonth} ${timePart}`;
+  } catch {
+    return formatLocalHHMMFallback(date);
+  }
+};
+
+const formatDurationFromHours = (hours: number): string => {
+  if (!Number.isFinite(hours) || hours <= 0) return '';
+  const totalMinutes = Math.max(1, Math.round(hours * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+};
+
+const formatKwh = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const rounded = Math.round(value * 10) / 10;
+  return `${rounded.toFixed(1)} kWh`;
+};
+
+const resolveDurationPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
+  if (revision.estimatedDurationText) return `≈${revision.estimatedDurationText}`;
+  const speed = revision.planningSpeedKw;
+  if (speed && speed > 0 && revision.energyNeededKWh > 0) {
+    const dur = formatDurationFromHours(revision.energyNeededKWh / speed);
+    return dur ? `≈${dur}` : null;
+  }
+  return null;
+};
+
+const resolveSpeedPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
+  const speed = revision.planningSpeedKw;
+  if (!speed || speed <= 0) return null;
+  return `${(Math.round(speed * 10) / 10).toFixed(1)} kW`;
+};
+
+const resolveEnergyPart = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
+  const expected = revision.energyExpectedKWh;
+  const needed = revision.energyNeededKWh;
+  if (isFiniteNumber(expected) && expected > 0 && needed > 0 && Math.abs(expected - needed) > 0.05) {
+    const low = Math.round(Math.min(expected, needed) * 10) / 10;
+    const high = Math.round(Math.max(expected, needed) * 10) / 10;
+    return `≈${low.toFixed(1)}–${high.toFixed(1)} kWh`;
+  }
+  if (needed > 0) return `≈${formatKwh(needed)}`;
+  return null;
+};
+
+const formatPlanMetaLabel = (revision: DeferredObjectiveActivePlanRevisionV1): string | null => {
+  const parts = [
+    resolveDurationPart(revision),
+    resolveSpeedPart(revision),
+    resolveEnergyPart(revision),
+  ].filter((part): part is string => part !== null && part !== '');
+  if (parts.length === 0) return null;
+  return parts.join(' · ');
+};
+
+const resolveConfidenceLabel = (
+  provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined,
+  statusId: SmartTaskListStatusId,
+): string | null => (
+  formatSmartTaskListConfidenceChipLabel({
+    confidence: provenance?.displayConfidence ?? provenance?.confidence ?? null,
+    statusId,
+    learning: resolveSmartTaskLearning(provenance),
+  })
+);
+
 export type SmartTasksWidgetInput = {
   activePlans: DeferredObjectiveActivePlansV1 | null;
   devices: ReadonlyArray<TargetDeviceSnapshot>;
@@ -99,9 +230,10 @@ export type SmartTasksWidgetInput = {
   timeZone?: string | null;
 };
 
-const emptyPayload = (subtitle: string): SmartTasksWidgetEmptyPayload => ({
+const emptyPayload = (subtitle: string, hint: string | null): SmartTasksWidgetEmptyPayload => ({
   state: 'empty',
   subtitle,
+  hint,
 });
 
 type Candidate = {
@@ -113,16 +245,17 @@ type Candidate = {
 
 const compareCandidates = (a: Candidate, b: Candidate): number => {
   if (a.tier !== b.tier) return a.tier - b.tier;
-  // Tie-break 1: ETA ascending (null sorts last within a tier).
   const aEta = a.etaMs ?? Number.POSITIVE_INFINITY;
   const bEta = b.etaMs ?? Number.POSITIVE_INFINITY;
   if (aEta !== bEta) return aEta - bEta;
-  // Tie-break 2: deadline ascending.
   if (a.deadlineMs !== b.deadlineMs) return a.deadlineMs - b.deadlineMs;
   return 0;
 };
 
-const resolveStatusId = (plan: DeferredObjectiveActivePlanV1, nowMs: number): SmartTaskListStatusId => (
+const resolveStatusId = (
+  plan: DeferredObjectiveActivePlanV1,
+  nowMs: number,
+): SmartTaskListStatusId => (
   resolveSmartTaskListStatus({
     pending: plan.pending || plan.latest === null,
     pendingReason: plan.pendingReason,
@@ -133,6 +266,46 @@ const resolveStatusId = (plan: DeferredObjectiveActivePlanV1, nowMs: number): Sm
   })
 );
 
+// The producer-resolved copy/visibility decisions for one row, split out of
+// `buildRow` so that function stays under the complexity bar.
+type RowCopy = {
+  planMetaLabel: string | null;
+  confidenceLabel: string | null;
+  whyLabel: string | null;
+  recourseHint: string | null;
+};
+
+const resolveRowCopy = (
+  plan: DeferredObjectiveActivePlanV1,
+  statusId: SmartTaskListStatusId,
+  firstPlannedTimeLabel: string | null,
+): RowCopy => {
+  const detail = resolveSmartTaskWidgetDetailCopy({
+    statusId,
+    pendingReason: plan.pendingReason,
+    floorShortfallCause: plan.latest?.floorShortfallCause,
+    dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
+    firstPlannedTimeLabel,
+  });
+  // Suppress the receipt-flavoured plan-meta line on a failing task: the
+  // diagnosis ("why" + recourse) is what the distressed visitor came for, and
+  // dropping the meta keeps the 220 px detail panel from pushing the recourse
+  // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
+  const suppressPlanMeta = statusId === 'cannot_meet' || !plan.latest;
+  // "Estimating" alongside "Waiting for tomorrow's prices" reads as two
+  // conflicting blocked states; the price-wait reason owns the row here.
+  const suppressConfidence = statusId === 'building_plan'
+    && plan.pendingReason === 'awaiting_horizon_plan';
+  return {
+    planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
+    confidenceLabel: suppressConfidence
+      ? null
+      : resolveConfidenceLabel(plan.kwhPerUnitProvenance, statusId),
+    whyLabel: detail.whyLabel,
+    recourseHint: detail.recourseHint,
+  };
+};
+
 const buildRow = (params: {
   deviceId: string;
   plan: DeferredObjectiveActivePlanV1;
@@ -140,10 +313,16 @@ const buildRow = (params: {
   targetValue: number;
   statusId: SmartTaskListStatusId;
   finishMs: number | null;
+  nowMs: number;
   timeZone: string | null;
 }): SmartTasksWidgetRow => {
-  const { deviceId, plan, device, targetValue, statusId, finishMs, timeZone } = params;
+  const { deviceId, plan, device, targetValue, statusId, finishMs, nowMs, timeZone } = params;
   const finiteFinish = isFiniteNumber(finishMs) ? finishMs : null;
+  const firstHourMs = plan.latest?.hours[0]?.startsAtMs ?? null;
+  const firstPlannedTimeLabel = isFiniteNumber(firstHourMs)
+    ? formatLocalHHMM(firstHourMs, timeZone)
+    : null;
+  const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
@@ -154,6 +333,14 @@ const buildRow = (params: {
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
+    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet'),
+    targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
+    targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
+    deadlineLongLabel: finiteFinish !== null ? formatDeadlineLong(finiteFinish, nowMs, timeZone) : null,
+    planMetaLabel: copy.planMetaLabel,
+    confidenceLabel: copy.confidenceLabel,
+    whyLabel: copy.whyLabel,
+    recourseHint: copy.recourseHint,
   };
 };
 
@@ -170,11 +357,6 @@ const buildCandidate = (params: {
   if (statusId === 'satisfied') return null;
   const targetValue = resolveTargetValue(plan);
   if (targetValue === null) return null;
-  // Sort still uses the planner's ETA (last scheduled hour + 1h) as the first
-  // tie-break — closer-to-finishing first. The displayed time, however, is
-  // always the user's deadline so the row's meaning matches the settings UI
-  // "Ready by" label (DeadlinesList.tsx) and never silently flips between
-  // "planner projects" and "deadline" depending on whether hours are scheduled.
   const etaMs = resolvePlannerEtaMs(plan);
   const row = buildRow({
     deviceId,
@@ -183,6 +365,7 @@ const buildCandidate = (params: {
     targetValue,
     statusId,
     finishMs: plan.deadlineAtMs,
+    nowMs,
     timeZone,
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
@@ -190,7 +373,7 @@ const buildCandidate = (params: {
 
 export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): SmartTasksWidgetPayload => {
   const plans = input.activePlans?.plansByDeviceId;
-  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
 
   const devicesById = new Map<string, TargetDeviceSnapshot>(
     input.devices.map((device) => [device.id, device]),
@@ -202,7 +385,7 @@ export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): Smar
       : null))
     .filter((candidate): candidate is Candidate => candidate !== null);
 
-  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
 
   const sorted = [...candidates].sort(compareCandidates);
   const top = sorted.slice(0, ROW_CAP);

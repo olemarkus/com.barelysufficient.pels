@@ -28,6 +28,7 @@ import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
 import type { DeferredObjectiveRescuePermissions } from './settings';
 import {
   buildHoursFromHorizonPlan,
+  mergeHoursPreservingCommitment,
   resolveProjectedFinishAtMs,
   sameHourSchedule,
   shouldFireNotification,
@@ -319,6 +320,42 @@ const shouldWriteReplanRevision = (params: {
     || params.metadataDriftedWithinSchedule || params.sourceChanged
 );
 
+// Bounded most-recent-first log of past revisions kept on the active plan
+// record so the smart-task detail page can render a revision-history panel
+// without re-fetching anything. Each replan prepends the previous `latest`
+// onto the array and slices to this cap (FIFO prune). 20 covers any
+// realistic smart-task lifecycle — schedule-changing replans are typically
+// single-digit per task.
+//
+// Worst-case size per device: ~48-bucket horizon × 20 revisions × ~50 B JSON
+// per bucket ≈ 48 KB of buckets, plus per-revision metadata (~1 KB total)
+// pushes the upper bound to ~60 KB. Even with ten chatty devices that's 600 KB
+// against the 30 MB Homey RSS headroom (`project_homey_rss_limit`); the cap
+// is comfortable, not tight.
+const MAX_HISTORY_REVISIONS = 20;
+
+// `objectiveChanged` discards the previous commitment entirely and seeds a
+// fresh one from the live `hours`. `scheduleChanged` (e.g. phase-2
+// expansion grew the commitment) advances `committedAtMs` and persists the
+// merged `effectiveHours`. Otherwise the existing commitment is preserved
+// so within-schedule metadata drift doesn't visibly reshape the timestamp.
+const resolveCommitment = (params: {
+  objectiveChanged: boolean;
+  scheduleChanged: boolean;
+  hours: DeferredObjectiveActivePlanHourV1[];
+  effectiveHours: DeferredObjectiveActivePlanHourV1[];
+  previous: DeferredObjectiveActivePlanV1['commitment'];
+  nowMs: number;
+}): DeferredObjectiveActivePlanV1['commitment'] => {
+  if (params.objectiveChanged) {
+    return { committedAtMs: params.nowMs, hours: params.hours };
+  }
+  if (params.scheduleChanged) {
+    return { committedAtMs: params.nowMs, hours: params.effectiveHours };
+  }
+  return params.previous;
+};
+
 export class DeferredObjectiveActivePlanRecorder {
   private plans: Record<string, DeferredObjectiveActivePlanV1>;
 
@@ -557,7 +594,15 @@ export class DeferredObjectiveActivePlanRecorder {
     // names the Flow permission change, not a generic objective edit.
     const sigDiff = compareObjectiveSignatures(current.objectiveSignature, signature);
     const objectiveChanged = sigDiff.changed;
-    const effectiveHours = objectiveChanged ? hours : (current.commitment?.hours ?? hours);
+    // When the objective signature changes, the previous commitment is
+    // discarded and the live `hours` become the new commitment. Otherwise
+    // we merge live into commitment so per-cycle growth (within-hour drift
+    // or phase-2 expansion) extends the commitment while the existing
+    // committed kWh is preserved as a floor against transient shrinkage —
+    // see `mergeHoursPreservingCommitment` for the merge rules.
+    const effectiveHours = objectiveChanged
+      ? hours
+      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
@@ -628,12 +673,44 @@ export class DeferredObjectiveActivePlanRecorder {
       targetTemperatureC: diagTargetTemperatureC(diag),
       targetPercent: diag.targetPercent,
       objectiveSignature: signature,
-      commitment: objectiveChanged
-        ? { committedAtMs: nowMs, hours }
-        : current.commitment,
+      // Persist the merged `effectiveHours` as the commitment when the
+      // schedule has changed (i.e. expansion added one or more new hours).
+      // `committedAtMs` advances to nowMs on each grow so consumers can
+      // reason about "when did this hour join the plan". When the schedule
+      // is unchanged, preserve the existing commitment (including its
+      // original `committedAtMs`) so within-schedule metadata drift doesn't
+      // visibly reshape the commitment timestamp.
+      commitment: resolveCommitment({
+        objectiveChanged,
+        scheduleChanged,
+        hours,
+        effectiveHours,
+        previous: current.commitment,
+        nowMs,
+      }),
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       ...toPersistedPlanLevelDurationFields(snapshot),
       latest: revision,
+      // Prepend the prior `latest` onto the history log, FIFO-pruned to the
+      // cap so the persisted blob stays bounded. The head of the array is
+      // always "the revision immediately before the current `latest`."
+      //
+      // Exception: when the smart-task settings themselves changed
+      // (`reason === 'objective_changed'`), the prior history belongs to a
+      // different objective (target, deadline, or device). Carrying it
+      // forward would interleave pre-change revisions with the new
+      // objective's revisions in the smart-task detail page revision panel
+      // until 20 fresh entries rolled over. Clear instead — the new `latest`
+      // revision carries reason `'objective_changed'` ("Smart task settings
+      // changed"), which is itself the natural separator the user sees.
+      //
+      // Rescue-permission-only toggles (`reason === 'flow_permission_changed'`)
+      // intentionally do NOT clear history: the target / deadline / device
+      // are unchanged, and the user benefits from continuity of the prior
+      // schedule's revisions across a permission edit.
+      history: reason === 'objective_changed'
+        ? []
+        : [latest, ...(current.history ?? [])].slice(0, MAX_HISTORY_REVISIONS),
     };
     this.dirty = true;
     this.emit({
