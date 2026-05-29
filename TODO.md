@@ -3617,7 +3617,7 @@ consolidation + a11y polish (8 P2)`.*
       producer-cache eviction. Source: release-review pels-runtime-reality,
       2026-05-28.
 
-- [ ] Split `recordReleaseShedActuation` so release intents don't write
+- [x] Split `recordReleaseShedActuation` so release intents don't write
       `lastInstabilityMs`/`lastDeviceShedMs`. The shed-purpose release path
       (`lib/executor/shedReleaseActuation.ts` at the temperature and binary
       apply sites) reuses `recordShedActuation`, which writes the
@@ -3626,6 +3626,10 @@ consolidation + a11y polish (8 P2)`.*
       reflect capacity-driven instability only. Inline TODO noted at
       `lib/executor/shedReleaseActuation.ts:121`. Source: release-review
       adversarial-review, 2026-05-28.
+      Resolved: the binary lifecycle-release now routes through the diagnostic-only
+      recorder for both direct and flow-backed devices via a
+      `pendingBinaryCommands.lifecycleRelease` discriminator (the temperature and
+      stepped axes were already diagnostic-only).
 
 - [ ] Clear `history[]` (or insert a separator row) on smart-task signature
       change in `lib/plan/deferredObjectives/activePlanRecorder.ts:670-697`.
@@ -3663,7 +3667,7 @@ chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
 follow-up train that were missed at merge time; filed here for the next
 wave.*
 
-- [ ] **Binary `shed_release` path still bumps the capacity-instability
+- [x] **Binary `shed_release` path still bumps the capacity-instability
       marker.** Commit `5d44846b polish: shared EV-boost copy, release-only
       actuation recorder, producer-side set_step target` introduced
       `recordReleaseShedActuation` but only wired it into the temperature
@@ -3683,6 +3687,21 @@ wave.*
       `lib/executor/planExecutor.ts` (around the binary-release-intent
       branch), `test/shedReleaseActuation.test.ts`. Source: codex review
       of closed PR #1233, 2026-05-28.
+      Resolved: routed via a `pendingBinaryCommands.lifecycleRelease` discriminator
+      threaded from `applyShedReleaseBinaryOff` — the direct write records through
+      `recordReleaseShedActuation`, and the deferred flow-backed confirmation
+      branches in `handleConfirmedBinaryCommand`, so neither `lastInstabilityMs` nor
+      `lastDeviceShedMs` is stamped. Regression tests: `test/planExecutor.test.ts`
+      (flow-backed) + `test/shedReleaseActuation.test.ts`.
+
+- [ ] P3: collapse the `lifecycleRelease → recorder` selection into one helper. The
+      "a lifecycle disable records via the diagnostic-only recorder" rule now lives in
+      three places — `recordDirectBinaryShedActuation` + the no-controlPlan guard
+      (`lib/executor/binaryExecutor.ts`), `handleConfirmedBinaryCommand`
+      (`lib/executor/planExecutor.ts`), and `resolveConfirmedBinaryCommandReasonCode`
+      (`lib/executor/planExecutorPredicates.ts`). A single mapper would stop the
+      direct/deferred paths drifting. Source: pels-layering-guardian on
+      fix/shed-marker-ownership, 2026-05-29.
 
 - [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
       selectors.** Source CSS (`packages/settings-ui/public/style.css`) has

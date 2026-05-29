@@ -334,6 +334,11 @@ export class PlanExecutor {
         });
       }
 
+    } else if (pending.lifecycleRelease) {
+      // Smart-task lifecycle-end disable confirmed (flow-backed): record diagnostics
+      // only via the release recorder — do NOT stamp the capacity cooldown markers,
+      // because a lifecycle disable is a planning decision, not capacity pressure.
+      this.recordReleaseShedActuation(deviceId, liveDevice.name, now);
     } else {
       this.recordShedActuation(deviceId, liveDevice.name, now);
     }
@@ -412,6 +417,7 @@ export class PlanExecutor {
         buildBinaryControlTransport: this.boundBuildBinaryControlTransport,
         getRestoreLogSource: this.boundGetRestoreLogSource,
         recordShedActuation: this.boundRecordShedActuation,
+        recordReleaseShedActuation: this.recordReleaseShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };

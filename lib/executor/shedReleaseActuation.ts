@@ -156,6 +156,11 @@ const applyShedReleaseBinaryOff = async (params: {
   return applyBinarySheddingToDevice(deps.buildBinaryExecutorContext(), {
     deviceId: intent.deviceId,
     deviceName: intent.name,
+    // Lifecycle-end disable, not a capacity shed: lifecycleRelease records via the
+    // diagnostic-only recorder and (by default) bypasses the capacity precheck /
+    // pendingSheds bookkeeping, for both the direct write here and any deferred
+    // flow-backed confirmation in handleConfirmedBinaryCommand.
+    lifecycleRelease: true,
   });
 };
 

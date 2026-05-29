@@ -150,6 +150,7 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     }),
     getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},
+    recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},
   };
 
@@ -207,6 +208,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     }),
     getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},
+    recordReleaseShedActuation: () => {},
     recordRestoreActuation: () => {},
   };
 

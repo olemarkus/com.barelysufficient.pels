@@ -41,6 +41,10 @@ export type PlanExecutorBinaryContext = {
   buildBinaryControlTransport: () => BinaryControlTransport;
   getRestoreLogSource: (deviceId: string) => 'shed_state' | 'current_plan';
   recordShedActuation: (deviceId: string, name: string, now: number) => void;
+  // Diagnostic-only recorder for the smart-task lifecycle-end disable path: records
+  // the pels_shed diagnostic + closes the activation attempt WITHOUT stamping the
+  // capacity cooldown markers (a lifecycle disable is not capacity pressure).
+  recordReleaseShedActuation: (deviceId: string, name: string, now: number) => void;
   recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
 };
@@ -55,9 +59,11 @@ const runBinaryControl = async (params: {
   restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;
   actuationMode?: PlanActuationMode;
+  lifecycleRelease?: boolean;
 }): Promise<boolean> => {
   const {
     ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
+    lifecycleRelease,
   } = params;
   return decideAndDispatchBinaryControl({
     state: ctx.state,
@@ -70,6 +76,7 @@ const runBinaryControl = async (params: {
     restoreSource,
     reason,
     actuationMode,
+    lifecycleRelease,
   });
 };
 
@@ -168,15 +175,24 @@ export const applyBinarySheddingToDevice = async (
     reason?: string;
     skipPrecheck?: boolean;
     trackPendingShed?: boolean;
+    // Set by the smart-task lifecycle-end disable path. Routes recording through the
+    // diagnostic-only recorder (no capacity cooldown markers) and, by default, bypasses
+    // the capacity precheck (shouldSkipShedding) and the pendingSheds bookkeeping:
+    // skipPrecheck / trackPendingShed default from this flag, so lifecycle callers pass
+    // only `lifecycleRelease: true`. An explicit skipPrecheck / trackPendingShed still wins.
+    lifecycleRelease?: boolean;
   },
 ): Promise<boolean> => {
   const {
     deviceId,
     deviceName,
     reason,
-    skipPrecheck = false,
-    trackPendingShed = true,
+    lifecycleRelease,
   } = params;
+  // A lifecycle disable is off the capacity path: skip the capacity precheck and don't
+  // track it as a pending capacity shed, unless the caller explicitly overrides.
+  const skipPrecheck = params.skipPrecheck ?? Boolean(lifecycleRelease);
+  const trackPendingShed = params.trackPendingShed ?? !lifecycleRelease;
   if (ctx.capacityDryRun) return false;
   const snapshotState = ctx.observation.getSnapshotByDeviceId(deviceId);
   if (!skipPrecheck && shouldSkipShedding({
@@ -193,6 +209,7 @@ export const applyBinarySheddingToDevice = async (
       name: deviceName,
       reason,
       snapshot: snapshotState,
+      lifecycleRelease,
     });
   }
   ctx.state.pendingSheds.add(deviceId);
@@ -202,6 +219,7 @@ export const applyBinarySheddingToDevice = async (
       name: deviceName,
       reason,
       snapshot: snapshotState,
+      lifecycleRelease,
     });
   } finally {
     ctx.state.pendingSheds.delete(deviceId);
@@ -221,9 +239,14 @@ export const applyDeferredEvCommand = async (
 
   if (intent.kind === 'ev_pause') {
     if (snapshot.evChargingState !== 'plugged_in_charging') return false;
+    // Lifecycle-end EV pause (smart task satisfied/idle), not a capacity shed: lifecycleRelease
+    // routes through the diagnostic-only recorder and (by default) bypasses the capacity precheck
+    // / pendingSheds path so it does not stamp the cooldown markers. The evChargingState check
+    // above is the EV-axis trusted-evidence gate, mirroring applyShedReleaseBinaryOff's gate.
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
+      lifecycleRelease: true,
     });
   }
 
@@ -464,6 +487,45 @@ const clearPendingSwapTarget = (ctx: PlanExecutorBinaryContext, deviceId: string
   }
 };
 
+const resolveDirectShedReasonCode = (
+  reason: string | undefined,
+  lifecycleRelease: boolean | undefined,
+): 'lifecycle_release' | 'shed_with_reason' | 'shedding' => {
+  if (lifecycleRelease) return 'lifecycle_release';
+  return reason ? 'shed_with_reason' : 'shedding';
+};
+
+// Records a directly-applied (non-flow-backed) binary off. A smart-task lifecycle-end
+// disable routes through the diagnostic-only release recorder so it does NOT stamp the
+// capacity cooldown markers; a capacity shed stamps them via recordShedActuation.
+const recordDirectBinaryShedActuation = (
+  ctx: PlanExecutorBinaryContext,
+  params: {
+    deviceId: string;
+    name: string;
+    capabilityId: 'onoff' | 'evcharger_charging';
+    reason?: string;
+    lifecycleRelease?: boolean;
+    now: number;
+  },
+): void => {
+  const { deviceId, name, capabilityId, reason, lifecycleRelease, now } = params;
+  logger.info({
+    event: 'binary_command_applied',
+    deviceId,
+    deviceName: name,
+    capabilityId,
+    desired: false,
+    mode: 'plan',
+    reasonCode: resolveDirectShedReasonCode(reason, lifecycleRelease),
+  });
+  if (lifecycleRelease) {
+    ctx.recordReleaseShedActuation(deviceId, name, now);
+    return;
+  }
+  ctx.recordShedActuation(deviceId, name, now);
+};
+
 /* eslint-disable complexity --
  * Binary shed command preserves legacy control capability branches.
  */
@@ -474,6 +536,7 @@ const turnOffDevice = async (
     name: string;
     reason?: string;
     snapshot?: TargetDeviceSnapshot;
+    lifecycleRelease?: boolean;
   },
 ): Promise<boolean> => {
   const {
@@ -481,6 +544,7 @@ const turnOffDevice = async (
     name,
     reason,
     snapshot,
+    lifecycleRelease,
   } = params;
   const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
@@ -493,9 +557,11 @@ const turnOffDevice = async (
   }
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
-    const now = Date.now();
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-    ctx.state.lastDeviceShedMs[deviceId] = now;
+    if (!lifecycleRelease) {
+      const now = Date.now();
+      // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
+      ctx.state.lastDeviceShedMs[deviceId] = now;
+    }
     logger.debug({
       event: 'binary_command_skipped',
       reasonCode: hasTarget ? 'missing_onoff_capability' : 'missing_control_targets',
@@ -523,6 +589,7 @@ const turnOffDevice = async (
       logContext: 'capacity',
       reason,
       actuationMode: 'plan',
+      lifecycleRelease,
     });
     if (!applied) return false;
     const flowBackedControl = isFlowBackedBinaryControl(
@@ -530,16 +597,14 @@ const turnOffDevice = async (
       snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
     );
     if (!flowBackedControl) {
-      logger.info({
-        event: 'binary_command_applied',
+      recordDirectBinaryShedActuation(ctx, {
         deviceId,
-        deviceName: name,
+        name,
         capabilityId: snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-        desired: false,
-        mode: 'plan',
-        reasonCode: reason ? 'shed_with_reason' : 'shedding',
+        reason,
+        lifecycleRelease,
+        now,
       });
-      ctx.recordShedActuation(deviceId, name, now);
     }
     return true;
   } catch (error) {

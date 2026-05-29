@@ -39,6 +39,13 @@ export type BinaryControlDecision = {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   isEv: boolean;
+  /**
+   * True when this decision comes from the smart-task lifecycle-end disable path
+   * rather than a capacity shed. Carried onto the pending entry so the executor's
+   * direct and deferred (flow-backed) confirmation paths both record via the
+   * diagnostic-only release recorder and never stamp the capacity cooldown markers.
+   */
+  lifecycleRelease?: boolean;
 };
 
 export function shouldSkipBinaryControl(params: {

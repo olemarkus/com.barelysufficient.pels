@@ -81,10 +81,11 @@ export async function decideAndDispatchBinaryControl(params: {
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
   actuationMode?: BinaryControlActuationMode;
+  lifecycleRelease?: boolean;
 }): Promise<boolean> {
   const {
     state, transport, deviceId, name, desired, snapshot, logContext,
-    restoreSource, reason, actuationMode,
+    restoreSource, reason, actuationMode, lifecycleRelease,
   } = params;
   const decision = decideBinaryControl({
     state,
@@ -97,6 +98,7 @@ export async function decideAndDispatchBinaryControl(params: {
     restoreSource,
     reason,
     actuationMode,
+    lifecycleRelease,
   });
   if (!decision) return false;
   const result = await dispatchBinaryControlDecision({ decision, transport, snapshot });
@@ -167,6 +169,7 @@ function recordPendingForDispatch(params: {
     restoreSource: decision.restoreSource,
     actuationMode: decision.actuationMode,
     ...(decision.reason ? { reason: decision.reason } : {}),
+    ...(decision.lifecycleRelease ? { lifecycleRelease: true } : {}),
   });
 }
 
