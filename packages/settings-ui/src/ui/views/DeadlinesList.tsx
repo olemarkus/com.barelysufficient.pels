@@ -1,4 +1,4 @@
-import { render } from 'preact';
+import { render, type ComponentChildren } from 'preact';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { ChevronRightIcon } from './icons.tsx';
 import {
@@ -286,7 +286,20 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
 // the default neutral `.pels-hero` styling (the tone enum is
 // `good | warn | alert | info` — see `style.css` `.pels-hero[data-tone="…"]`
 // rules — and the baseline intentionally renders no tonal accent).
-const BaselineHeader = ({ state }: { state: DeadlinesListBaselineState }) => (
+//
+// `children` is the optional in-hero body slot. The empty / between-runs
+// states render their instructional copy INSIDE the hero card (PR2 surface
+// ladder, spec §5) rather than as a bare `<p class="muted">` floating on the
+// page background — the instructions are the most legible block on a first
+// run, so they belong on the hero surface at a supporting tone, not the
+// dimmest tier on bare canvas.
+const BaselineHeader = ({
+  state,
+  children,
+}: {
+  state: DeadlinesListBaselineState;
+  children?: ComponentChildren;
+}) => (
   <header
     class="plan-hero pels-hero deadlines-list-hero"
     aria-labelledby="deadlines-list-baseline-headline"
@@ -296,6 +309,7 @@ const BaselineHeader = ({ state }: { state: DeadlinesListBaselineState }) => (
       <h2 class="plan-hero__headline" id="deadlines-list-baseline-headline">
         {DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE[state]}
       </h2>
+      {children}
     </div>
   </header>
 );
@@ -314,8 +328,16 @@ const ErrorBody = ({ message }: { message: string }) => (
   <p class="muted deadlines-list-body" data-state="error">{message}</p>
 );
 
+// First-run instructional copy. Rendered INSIDE the hero `__section` (PR2
+// surface ladder, spec §5/§6) so it sits on the hero card, not bare on the
+// page background. The tone is `--action` (primary on-surface, the most
+// legible body tier) rather than the dimmest `--muted` — on a first run these
+// Flow-setup instructions are the single most important block on the surface,
+// so they must read as the loudest copy. Mirrors the pending-hero `metaLine`
+// precedent (`.plan-hero__subline--action`) in DeadlinePlan.tsx, which already
+// promotes the most-actionable string out of the muted tier.
 const EmptyBody = () => (
-  <p class="muted deadlines-list-body" data-state="empty">
+  <p class="plan-hero__subline plan-hero__subline--action deadlines-list-body" data-state="empty">
     {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
     <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
     {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
@@ -333,9 +355,11 @@ const EmptyBody = () => (
 // setup instructions would be condescending and the "first" / "yet" framing
 // would erase their history. A single calm sentence points them at the archive
 // instead. Copy is sourced from shared-domain so runtime log breadcrumbs and
-// the UI render the same string (Rule 4 — UI text shared with logs).
+// the UI render the same string (Rule 4 — UI text shared with logs). Rendered
+// in the hero `__section` at the supporting tone (PR2 surface ladder) so it
+// reads as ordinary hero body copy rather than bare muted text on the canvas.
 const BetweenRunsBody = () => (
-  <p class="muted deadlines-list-body" data-state="empty-between-runs">
+  <p class="plan-hero__subline deadlines-list-body" data-state="empty-between-runs">
     {DEADLINES_LIST_BETWEEN_RUNS_BODY}
   </p>
 );
@@ -367,17 +391,15 @@ const DeadlinesListRoot = ({ state }: { state: DeadlinesListState }) => {
     // first-run copy shows until the controller re-renders with the flag.
     if (state.historyPresent === true) {
       return (
-        <>
-          <BaselineHeader state="empty_between_runs" />
+        <BaselineHeader state="empty_between_runs">
           <BetweenRunsBody />
-        </>
+        </BaselineHeader>
       );
     }
     return (
-      <>
-        <BaselineHeader state="empty" />
+      <BaselineHeader state="empty">
         <EmptyBody />
-      </>
+      </BaselineHeader>
     );
   }
   const heroCopy = resolveDeadlinesListHero({

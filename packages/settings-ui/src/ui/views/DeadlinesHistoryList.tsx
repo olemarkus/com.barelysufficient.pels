@@ -104,10 +104,12 @@ const DeviceFilterChipRow = ({
       <button
         type="button"
         // Selection is carried by `aria-pressed` alone — the
-        // `.plan-chip--link[aria-pressed="true"]` rule paints the accent/outline
-        // pressed treatment. We deliberately avoid the `--info` tone here: blue
-        // is the informational-status pill elsewhere, so reusing it for "this
-        // filter is active" muddied the chip vocabulary (PR-29).
+        // `.plan-chip--link[aria-pressed="true"]` rule paints the tonal
+        // selected-container (accent-tint fill + neutral outline border, the
+        // same language the top nav uses — PR2 §8/§9). We deliberately avoid
+        // the `--info` tone here: blue is the informational-status pill
+        // elsewhere, so reusing it for "this filter is active" muddied the chip
+        // vocabulary (PR-29).
         class="plan-chip plan-chip--link"
         aria-pressed={allActive}
         onClick={() => onSelectDevice(null)}
@@ -206,7 +208,21 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
           drill-down beneath it, so they follow rather than sit above the
           headline number. */}
       {hitRateStrip !== null && (
-        <p class="deadlines-history__summary-strip">{hitRateStrip.text}</p>
+        // Aggregate "how have my deadlines been doing this week?" strip. The
+        // counts are coloured to match the history-row badges (PR2 §7): the
+        // producer emits per-fragment tones, the view maps each to a flat
+        // colour class. `aria-label` carries the full single-string form so
+        // assistive tech reads it as one sentence, not a sequence of pills.
+        <p class="deadlines-history__summary-strip" aria-label={hitRateStrip.text}>
+          {hitRateStrip.segments.map((segment, index) => (
+            <span key={segment.text}>
+              {index > 0 && <span class="deadlines-history__summary-sep" aria-hidden="true"> · </span>}
+              <span class={`deadlines-history__summary-count deadlines-history__summary-count--${segment.tone}`}>
+                {segment.text}
+              </span>
+            </span>
+          ))}
+        </p>
       )}
       {badges.length > 0 && (
         <ul class="deadlines-history__miss-streaks" aria-label="Miss streaks">

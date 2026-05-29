@@ -782,8 +782,23 @@ export type PlanHistory7DayHitRateStrip = {
   // doesn't read as a contradiction against the calendar-week dividers below;
   // the percent names its denominator (succeeded + missed = the finished runs)
   // so it reconciles with the counts beside it. Renders verbatim; the view
-  // never branches on the counts.
+  // never branches on the counts. Retained as the canonical single-string form
+  // for runtime log breadcrumbs and the strip's `aria-label`
+  // (`feedback_ui_text_shared_with_logs.md`).
   text: string;
+  // Per-fragment breakdown so the view can COLOUR each count to match the
+  // history-row badges (PR2 spec §7) without re-parsing `text` or deciding
+  // tones itself. Same fragments, same order, same vocabulary as `text`; the
+  // producer owns which tone each fragment carries (layering: resolution in
+  // the producer, `feedback_layering_resolution_in_producer.md`). The view
+  // maps `tone` → a presentational colour class via a flat lookup. `neutral`
+  // is the lead/scope label and the hit-rate fragment (they carry no outcome
+  // colour); `positive` / `warning` / `muted` mirror the Succeeded / Missed /
+  // Abandoned chip tones.
+  segments: ReadonlyArray<{
+    readonly text: string;
+    readonly tone: 'neutral' | 'positive' | 'warning' | 'muted';
+  }>;
   // Raw aggregate so callers (telemetry, future surfaces, tests) can read
   // the numbers without re-parsing the formatted string. The producer is
   // the only place that decides what counts; consumers stay flat.
@@ -792,8 +807,8 @@ export type PlanHistory7DayHitRateStrip = {
   abandoned: number;
   // Hit rate as an integer percent rounded to the nearest whole number.
   // `null` when no Succeeded + Missed entries landed in the window — a
-  // strip that read "0% hit rate" off only abandoned entries would
-  // misrepresent the user's experience.
+  // strip that rendered the shipped "0% of 0 finished" fragment off only
+  // abandoned entries would misrepresent the user's experience.
   hitRatePercent: number | null;
 };
 
@@ -851,17 +866,22 @@ export const resolvePlanHistory7DayHitRateStrip = (
   const hitRatePercent = decisive === 0
     ? null
     : Math.round((counts.succeeded / decisive) * 100);
-  const parts: string[] = [SMART_TASK_LIST_7DAY_HIT_RATE_LABEL];
   // Chip vocabulary, non-zero counts only — mirrors the week-divider headings
-  // above so the two surfaces speak the same language.
-  if (counts.succeeded > 0) parts.push(`${counts.succeeded} succeeded`);
-  if (counts.missed > 0) parts.push(`${counts.missed} missed`);
-  if (counts.abandoned > 0) parts.push(`${counts.abandoned} abandoned`);
+  // above so the two surfaces speak the same language. Each fragment carries
+  // the tone the matching history-row badge uses (PR2 §7) so the view can
+  // colour the counts; the lead label and hit-rate fragment stay neutral.
+  const segments: { text: string; tone: 'neutral' | 'positive' | 'warning' | 'muted' }[] = [
+    { text: SMART_TASK_LIST_7DAY_HIT_RATE_LABEL, tone: 'neutral' },
+  ];
+  if (counts.succeeded > 0) segments.push({ text: `${counts.succeeded} succeeded`, tone: 'positive' });
+  if (counts.missed > 0) segments.push({ text: `${counts.missed} missed`, tone: 'warning' });
+  if (counts.abandoned > 0) segments.push({ text: `${counts.abandoned} abandoned`, tone: 'muted' });
   if (hitRatePercent !== null) {
-    parts.push(formatSmartTaskHitRateFragment(hitRatePercent, decisive));
+    segments.push({ text: formatSmartTaskHitRateFragment(hitRatePercent, decisive), tone: 'neutral' });
   }
   return {
-    text: parts.join(' · '),
+    text: segments.map((segment) => segment.text).join(' · '),
+    segments,
     succeeded: counts.succeeded,
     missed: counts.missed,
     abandoned: counts.abandoned,

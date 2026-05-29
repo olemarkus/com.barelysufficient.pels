@@ -179,9 +179,15 @@
         "label-size": { "value": "{font.size.sm}" },
         "label-size-compact": { "value": "{font.size.xs}" },
         "label-weight": { "value": "{font.weight.semibold}" },
-        "selected-background": { "value": "{color.semantic.accent}" },
-        "selected-hover-background": { "value": "{color.semantic.accent-strong}" },
-        "selected-text": { "value": "{color.semantic.text.inverse}" }
+        "selected-background": {
+          "value": "rgba({color.base.accent.default-rgb}, 0.28)",
+          "comment": "PR2 colour policy: the selected nav tab is a TONAL selected-container, not a full-saturated brand-green fill. `primary` (brand green) is reserved for actions and strong-positive state; the nav tab is page chrome, so it shares the segmented control's tonal-accent selected language (`component.segmented.selected.background`) rather than a third green meaning. Keep this value equal to that token."
+        },
+        "selected-hover-background": {
+          "value": "rgba({color.base.accent.default-rgb}, 0.38)",
+          "comment": "Hover bump for the tonal selected-container — a deeper tint of the same accent fill, not the saturated `accent-strong` block."
+        },
+        "selected-text": { "value": "{pels.text.primary}" }
       }
     },
     "control-track-3x": {

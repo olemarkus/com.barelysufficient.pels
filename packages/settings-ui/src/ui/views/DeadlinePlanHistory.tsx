@@ -1,4 +1,5 @@
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
+import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
   formatPlanHistoryDeadlineLine,
   formatPlanHistoryMissedReason,
@@ -6,6 +7,7 @@ import {
   formatPlanHistoryOvershootLine,
   formatPlanHistoryProgressLine,
   formatPlanHistoryReachedAtLine,
+  getPlanHistoryOutcomeCardTone,
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
@@ -22,6 +24,11 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   timeZone: string;
 }) => {
   const tone = getPlanHistoryOutcomeTone(entry.outcome);
+  // Whole-row tonal container (PR2 spec §7) — the outcome paints the card
+  // surface via the canonical `.pels-surface-card[data-tone="…"]` API, not just
+  // the corner chip. Resolved producer-side so the view never maps outcome →
+  // tone (`feedback_layering_resolution_in_producer.md`).
+  const cardTone = getPlanHistoryOutcomeCardTone(entry.outcome);
   const outcomeLabel = getPlanHistoryOutcomeLabel(entry.outcome);
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   const progressLine = formatPlanHistoryProgressLine(entry);
@@ -47,6 +54,7 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
   return (
     <a
       class="pels-surface-card plan-history-card plan-history-card--link"
+      data-tone={cardTone}
       aria-label={
         missedReasonLine
           ? `Past smart task ${deadlineLine}. Why: ${missedReasonLine}`
@@ -55,6 +63,15 @@ export const PlanHistoryCard = ({ entry, timeZone }: {
       href={buildDeadlineHistoryHref(entry.deviceId, entry.id)}
       data-interactive
     >
+      {/* Canonical M3 hover-elevation + press-ripple, matching the active-list
+          card (DeadlinesList.tsx). Each row now carries an outcome tonal
+          container (`data-tone`), so the old `--link:hover` background swap was
+          dropped (it would flatten the tone); the elevation lift + ripple are
+          the interactivity affordance that keeps the tone intact. Without the
+          `md-elevation` element the `--md-elevation-level: 3` hover rule has
+          nothing to render. */}
+      <MdElevation aria-hidden="true" />
+      <MdRipple aria-hidden="true" />
       <header class="plan-history-card__header">
         <span class="plan-history-card__deadline">{deadlineLine}</span>
         <span class={`plan-chip plan-chip--${tone}`}>{outcomeLabel}</span>

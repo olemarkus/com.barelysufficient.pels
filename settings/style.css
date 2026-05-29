@@ -1466,6 +1466,16 @@ md-filled-button.is-busy {
 .plan-chip {
   display: inline-flex;
   align-items: center;
+  /* Defensive native-control reset. Many chips render as `<button>` (the
+     past-tasks device-filter row, future tappable chips). The real Homey
+     webview leaked native light-mode button chrome (light fill + default
+     text colour) onto those button-backed chips — chromium's dark emulation
+     doesn't reproduce it, but the device does — so explicitly strip the UA
+     appearance and pin the text colour to the theme's `--text`. Tonal
+     modifiers below override `color` where they need a state tone. */
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--text);
   padding: var(--chip-padding-block) var(--chip-padding-inline);
   border-radius: var(--chip-radius);
   border: var(--chip-border-width) solid var(--pels-surface-outline);
@@ -1543,7 +1553,18 @@ md-filled-button.is-busy {
      default ~22 px pill height; consumers shouldn't need to wrap their
      own touch target. */
   min-block-size: var(--pels-touch-target-min);
-  min-inline-size: var(--pels-touch-target-min);
+  /* The inline minimum must exceed the 48px block minimum so a SHORT label —
+     most acutely the "All" filter chip — can't clamp to a 48×48 square, which
+     at the chip's full `--chip-radius` (9999px) renders as a CIRCLE and reads
+     as a brand-green selection dot once the tonal selected-state lands (PR2
+     §9, m3-critic P0). 80px (48px touch target + `--spacing-8`) makes "All" a
+     clear horizontal pill (80×48); every device-name chip already exceeds it,
+     so the floor only ever fires for the shortest labels. */
+  min-inline-size: calc(var(--pels-touch-target-min) + var(--spacing-8));
+  /* Inline padding wider than the base chip (`--chip-padding-inline` = 10px)
+     so medium labels keep breathing room inside the pill rather than crowding
+     the rounded ends. */
+  padding-inline: var(--spacing-4);
   cursor: pointer;
   text-decoration: none;
   transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
@@ -1566,19 +1587,29 @@ md-filled-button.is-busy {
 /* Selected/pressed link chip (e.g. the past-tasks device-filter row, PR-29).
    `aria-pressed="true"` is the single source of selection truth — the markup
    no longer layers a `--info` tone, which collided with the informational
-   blue pill used elsewhere. The pressed treatment leans on the accent +
-   outline pairing instead: a faint accent-tinted fill plus an accent border,
-   matching the segmented-control selected look so "this filter is active"
-   reads as a control state rather than a status tone. */
+   blue pill used elsewhere.
+
+   PR2 colour policy (spec §8/§9, m3-critic P0): the pressed treatment is the
+   SAME tonal selected-container the top nav uses — the `rgba(accent, 0.28)`
+   tint fill (`--pels-segmented-selected-background`) plus a NEUTRAL
+   outline-variant border. The earlier full-saturation `--accent` border made
+   the short circular "All" chip read as a solid brand-green selection dot,
+   recreating the green-overload the nav demotion just removed and forking a
+   second selected-state language. Binding the border to the neutral
+   `--pels-surface-outline` (the chip's own resting edge) keeps "selected" a
+   control state — a tonal container, not a brand-green marker — at any chip
+   width, so the nav and the filter chips speak ONE selected-state vocabulary.
+   The `min-inline-size` floor on `.plan-chip--link` above keeps a short "All"
+   label from collapsing into a circle that would re-read as a dot. */
 .plan-chip--link[aria-pressed="true"] {
   background: var(--pels-segmented-selected-background);
-  border-color: var(--accent);
+  border-color: var(--pels-surface-outline);
   color: var(--pels-segmented-selected-text);
 }
 
 .plan-chip--link[aria-pressed="true"]:hover {
-  background: var(--pels-segmented-selected-background);
-  border-color: var(--accent-strong);
+  background: var(--pels-shell-nav-tab-selected-hover-background);
+  border-color: var(--color-border-medium);
 }
 
 /* `strong` inside a chip inherits the chip's colour + the chip's own
@@ -1694,22 +1725,30 @@ md-filled-button.is-busy {
   color: var(--pels-text-supporting-color);
 }
 
-/* Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
- * line on Missed list cards. Mirrors the blameless single-sentence "Why:" the
- * detail hero renders (sourced from `formatPlanHistoryMissedReason`) so the
- * scanning user sees the cause without tapping through. Producer resolves
- * `null` on non-missed outcomes; the view never branches on `outcome`. */
+/* Smart-tasks polish PR-7 — "why" reason line under the progress/target line on
+ * Missed list cards. Mirrors the blameless single-sentence "Why:" the detail
+ * hero renders (sourced from `formatPlanHistoryMissedReason`) so the scanning
+ * user sees the cause without tapping through. Producer resolves `null` on
+ * non-missed outcomes; the view never branches on `outcome`.
+ *
+ * PR2 surface/colour system (spec §7): the reason is the single most useful
+ * line on a Missed row, so it must OUT-RANK the row metadata (coverage /
+ * overshoot) rather than dissolve into it. Promoted to the primary on-surface
+ * tone at the supporting size — a small but legible block, brighter than the
+ * secondary-tone coverage/overshoot lines below it. The warn-tone container the
+ * Missed row now carries (`data-tone="warn"`) supplies the emotional colour;
+ * this line carries the legibility. */
 .plan-history-card__reason {
-  font-size: var(--font-size-xs);
-  color: var(--pels-text-supporting-color);
+  font-size: var(--font-size-sm);
+  color: var(--pels-text-primary);
 }
 
-/* "Why:" prefix on the reason line — a medium-weight, slightly brighter lead-in
- * so the reason reads distinctly from the same-tone/same-size coverage line that
- * can sit directly below it. Mirrors the detail hero's "Why:" framing. */
+/* "Why:" prefix on the reason line — a semibold lead-in so the reason reads
+ * distinctly from the same-size coverage line that can sit below it. Mirrors
+ * the detail hero's "Why:" framing; inherits the line's primary tone. */
 .plan-history-card__reason-label {
-  font-weight: var(--font-weight-medium);
-  color: var(--pels-text-secondary);
+  font-weight: var(--font-weight-semibold);
+  color: var(--pels-text-primary);
 }
 
 .plan-history-card__pills {
@@ -1721,19 +1760,17 @@ md-filled-button.is-busy {
 
 /* `.plan-history-card--link` — link-role decorator on `.plan-history-card`
    (see canonical-primitives preamble above `.pels-surface-card`). Anchor-
-   reset (no underline / inherit colour) + a hover background tint mark the
-   past-plan link as actionable. Focus ring + elevation lift ride the
-   canonical `.pels-surface-card[data-interactive]` hook the host sets. */
+   reset (no underline / inherit colour) marks the past-plan link as
+   actionable. Focus ring + elevation lift ride the canonical
+   `.pels-surface-card[data-interactive]` hook the host sets.
+   PR2: the hover/focus background swap is dropped — each row now carries an
+   outcome tonal container (`data-tone`, spec §7), and a flat hover fill would
+   erase that colour on pointer-over. The canonical M3 elevation lift already
+   signals interactivity, so the row keeps its tone while hovered. */
 .plan-history-card--link {
   text-decoration: none;
   color: inherit;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
-}
-
-.plan-history-card--link:hover,
-.plan-history-card--link:focus-visible {
-  background: var(--pels-surface-container);
 }
 
 .plan-history-detail {
@@ -2780,9 +2817,19 @@ md-filled-button.is-busy {
   border-color: var(--color-state-info-border);
 }
 
+/* Deliberate NEUTRAL tonal container — Abandoned / Replaced / Unknown history
+   outcomes (resolved to `muted` by `getPlanHistoryOutcomeCardTone`). The
+   positive/warning tones above lift the base card surface with a faint chroma
+   wash; the neutral tone is the same *family* of toned container (one step up
+   from the base `--color-surface-1` card onto `--pels-surface-container-low`,
+   with a slightly stronger neutral edge) but carries NO chroma, so an Abandoned
+   row reads as the most muted member of the tonal-card set rather than an
+   unstyled base card sitting bare among styled siblings (PR2 spec §7,
+   m3-critic P0). Must stay distinct from BOTH the page background and the base
+   `.pels-surface-card` tier above. */
 .pels-surface-card[data-tone="muted"] {
-  background: var(--color-surface-1);
-  border-color: var(--pels-surface-outline);
+  background: var(--pels-surface-container-low);
+  border-color: var(--color-border-medium);
 }
 
 .plan-card {
@@ -6688,33 +6735,49 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-3);
 }
 
+/* "Past tasks" archive entry point. PR2 spec §10: the archive needs a clear
+ * entry point, so the heading reads as a real section header — primary text
+ * tone at the section-headline role, not the previous muted title that blended
+ * into the cards below. The top divider sits on the outline-variant role so the
+ * separator reads as structure, not a hairline lost on the canvas. */
 .deadlines-history__heading {
   margin: 0;
-  font-size: var(--pels-text-title-font-size);
-  font-weight: var(--pels-text-title-font-weight);
-  line-height: var(--pels-text-title-font-line-height);
-  color: var(--muted);
-  border-top: 1px solid var(--panel-border);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
+  color: var(--pels-text-primary);
+  border-top: 1px solid var(--pels-surface-outline);
   padding-top: var(--spacing-4);
 }
 
 /* v2.7.3 — weekly archive section breaks in the past-tasks list. The group
- * wraps a quiet heading + the existing card list so the weekly stripe does
- * the emotional work without changing per-row content. The heading uses the
- * empty-copy muted weight on purpose — section breaks should land like
- * margin notes, not section dividers. */
+ * wraps the week heading + the card list for that week. */
 .deadlines-history__week-group {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
 }
 
+/* PR2 spec §10: the week divider must OUT-RANK the rows beneath it, so it reads
+ * as a section break rather than a margin note. Promoted from the prior muted /
+ * regular-weight treatment to the primary text tone at the title role
+ * (semibold), and given an outline-variant rule above it so the eye lands on
+ * the week boundary before scanning the rows. The first group's rule is
+ * suppressed so it doesn't double the "Past tasks" heading's own top border. */
 .deadlines-history__week {
   margin: 0;
-  color: var(--muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  color: var(--pels-text-primary);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
   font-variant-numeric: tabular-nums;
+  padding-top: var(--spacing-3);
+  border-top: 1px solid color-mix(in srgb, var(--pels-surface-outline) 70%, transparent);
+}
+
+.deadlines-history__week-group:first-of-type .deadlines-history__week {
+  padding-top: 0;
+  border-top: none;
 }
 
 /* v2.7.3 — per-device miss-streak summary above the weekly archive. Quiet
@@ -6760,6 +6823,37 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: var(--font-size-sm);
   line-height: var(--font-line-height-normal);
   font-variant-numeric: tabular-nums;
+}
+
+/* PR2 spec §7 — colour the recap counts to match the history-row badges so
+ * the at-a-glance strip and the rows below speak the same colour language.
+ * Tones bind to the same `--color-state-*-text` tokens the chips/containers
+ * use. Counts read semibold against the muted strip base so the numbers pop;
+ * the neutral lead label + hit-rate fragment stay in the strip's base tone. */
+.deadlines-history__summary-count {
+  font-weight: var(--font-weight-semibold);
+}
+
+.deadlines-history__summary-count--neutral {
+  font-weight: inherit;
+  color: var(--muted);
+}
+
+.deadlines-history__summary-count--positive {
+  color: var(--color-state-positive-text);
+}
+
+.deadlines-history__summary-count--warning {
+  color: var(--color-state-warning-text);
+}
+
+.deadlines-history__summary-count--muted {
+  color: var(--pels-text-secondary);
+}
+
+.deadlines-history__summary-sep {
+  color: var(--muted);
+  font-weight: var(--font-weight-normal);
 }
 
 /* v2.7.4 — past-tasks device-filter chip row (PR-19). Sits above the weekly
