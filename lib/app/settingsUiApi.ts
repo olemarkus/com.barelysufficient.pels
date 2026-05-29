@@ -7,6 +7,10 @@ import type {
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectivePlanPreviewCandidate,
+  DeferredObjectivePlanPreviewEstimate,
+} from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import type {
@@ -41,6 +45,10 @@ type SettingsUiApiApp = Homey.App & {
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  previewDeferredObjectivePlan?: (
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ) => DeferredObjectivePlanPreviewEstimate;
 };
 
 type ApiContext = {

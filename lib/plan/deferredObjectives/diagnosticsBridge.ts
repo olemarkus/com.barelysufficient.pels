@@ -277,7 +277,13 @@ const buildPolicyGatedKnownInputs = (
   };
 };
 
-const buildDeferredObjectiveDiagnostic = (params: {
+// Exported so the plan-preview composition (`previewDeferredObjectivePlan`)
+// can build a diagnostic for a single CANDIDATE objective through the exact
+// same pipeline the live cycle uses — guaranteeing the preview's horizon plan
+// matches what the planner would produce. Preview callers omit `activePlans`
+// (a candidate has no committed schedule) and `concurrentEligibleCount` (it is
+// projected in isolation, so it sees the single-task share).
+export const buildDeferredObjectiveDiagnostic = (params: {
   nowMs: number;
   timeZone: string;
   deviceId: string;

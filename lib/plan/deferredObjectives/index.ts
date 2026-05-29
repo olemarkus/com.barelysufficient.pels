@@ -39,6 +39,10 @@ export {
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
+export { previewDeferredObjectivePlan } from './planPreview';
+export type {
+  DeferredObjectivePlanPreviewCandidate,
+} from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 export {
   ConcurrentEligibleTaskTracker,
   ELIGIBILITY_ABANDON_GRACE_MS,

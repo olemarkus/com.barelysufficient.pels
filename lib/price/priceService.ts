@@ -98,7 +98,9 @@ export default class PriceService {
     return 'norway';
   }
 
-  private getPriceUnitLabel(): string {
+  // Public so app-level callers (e.g. the deferred-objective plan-preview cost
+  // estimate) can label a currency without re-deriving the scheme→unit mapping.
+  getPriceUnitLabel(): string {
     const scheme = this.getPriceScheme();
     if (scheme === 'norway') return 'øre/kWh';
     if (scheme === 'homey') {

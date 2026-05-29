@@ -397,6 +397,41 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
   };
 }
 
+/**
+ * Project a snapshot device for the STRICTLY READ-ONLY plan-preview path.
+ *
+ * `toPlanDevice` is not a pure projection: on a confident commandable read it
+ * calls `recordCommandableObservation` to re-anchor the device's abandon-grace
+ * timestamp in `ctx.lastKnownCommandableByDevice`, so the next live plan cycle
+ * keeps the grace window alive. A preview must NOT do that — a user opening a
+ * preview repeatedly under flaky SDK reads would otherwise keep a
+ * no-longer-commandable device's grace window alive across plan cycles,
+ * violating the "never let abandon-grace go effectively infinite" invariant.
+ *
+ * Isolation: run `toPlanDevice` against a context whose
+ * `lastKnownCommandableByDevice` getter returns a SHALLOW COPY of the live
+ * record. Existing grace observations are still READ (so `commandableNow`
+ * resolves identically to the live cycle — preview fidelity is preserved), but
+ * the producer's write lands on the throwaway copy and is discarded. An audit
+ * of `toPlanDevice` and its callees (`buildStepPowerCalibrationView`,
+ * `resolveHasRecentObservedDrawAtSelectedStep`, `buildResidualKwForPlanDevice`,
+ * `getPendingBinaryCommandForDevice`) found this grace-window write to be its
+ * only mutation of live ctx/app state; everything else is a pure read, so
+ * copying this one field fully isolates the preview.
+ */
+export function projectPreviewPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+  const lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {
+    ...ctx.lastKnownCommandableByDevice,
+  };
+  const previewCtx: AppContext = Object.create(ctx, {
+    lastKnownCommandableByDevice: {
+      get: () => lastKnownCommandableByDevice,
+      enumerable: true,
+    },
+  }) as AppContext;
+  return toPlanDevice(previewCtx, device);
+}
+
 
 /**
  * An EV snapshot with no `evChargingState` is "uncertain" — the SDK didn't

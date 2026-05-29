@@ -96,6 +96,7 @@ import {
   createPriceFlowTagPublisher,
   evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
+  projectPreviewPlanDevice,
   registerAppFlowCards,
   toPlanDevice,
 } from './lib/app/appInit';
@@ -106,9 +107,11 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
+  previewDeferredObjectivePlan,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
+  type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveStatusBus,
 } from './lib/plan/deferredObjectives';
@@ -148,6 +151,9 @@ import type {
 import type {
   DeferredObjectiveActivePlansV1,
 } from './packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectivePlanPreviewEstimate,
+} from './packages/contracts/src/deferredObjectivePlanPreview';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
@@ -1665,6 +1671,59 @@ class PelsApp extends Homey.App {
   }
   public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
     return this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
+  }
+  // Instant, in-isolation estimate of the plan the planner WOULD produce for a
+  // candidate deferred objective that is not persisted. Gathers the same plan-
+  // cycle context the live recorder runs against (device snapshot, power
+  // tracker, daily-budget snapshot, hard cap, prices) so the projection stays
+  // faithful — see `previewDeferredObjectivePlan`.
+  //
+  // STRICTLY READ-ONLY: this never mutates live planner state. The candidate
+  // device is projected through `projectPreviewPlanDevice`, which runs
+  // `toPlanDevice` against a preview-scoped context whose commandable
+  // grace-window record is a throwaway shallow copy, so the projection's
+  // `recordCommandableObservation` write cannot re-anchor the live
+  // abandon-grace timestamps.
+  //
+  // NOT A GUARANTEE — and specifically OPTIMISTIC about headroom: the
+  // projection assumes the candidate has the price bucket's reserved headroom
+  // to ITSELF (it passes `activePlans: null` and lets `concurrentEligibleCount`
+  // default to 1). When other reserved sibling tasks are competing for the same
+  // buckets, the live plan may schedule fewer or later hours than this estimate
+  // shows, so the divergence is toward overstating availability / understating
+  // `cannot_meet` risk. A UI must present this as an estimate, never a
+  // commitment.
+  public previewDeferredObjectivePlan(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): DeferredObjectivePlanPreviewEstimate {
+    // The settings-UI device list spans managed devices AND unmanaged-but-
+    // eligible picker devices (see `getSettingsUiDevices`). A preview is most
+    // useful precisely for a candidate that is not managed yet, so fall back to
+    // the picker snapshot before treating the device as missing — otherwise
+    // every new-smart-task preview would come back `unavailable`.
+    const snapshotDevice = this.latestTargetSnapshot.find((device) => device.id === deviceId)
+      ?? this.getUiPickerDevices().find((device) => device.id === deviceId);
+    return previewDeferredObjectivePlan({
+      nowMs: this.getNow().getTime(),
+      timeZone: this.getTimeZone(),
+      deviceId,
+      candidate,
+      // Convert through the same `toPlanDevice` producer the plan cycle uses so
+      // the projected steps/power match the live planner — but via
+      // `projectPreviewPlanDevice`, which isolates the producer's grace-window
+      // write onto a throwaway copy so the preview stays read-only. Undefined
+      // when the device is in neither snapshot → projection comes back
+      // `unavailable`.
+      device: snapshotDevice ? projectPreviewPlanDevice(this.ctx, snapshotDevice) : undefined,
+      powerTracker: this.powerTracker,
+      dailyBudgetSnapshot: this.dailyBudgetService?.getSnapshot() ?? null,
+      priceOptimizationEnabled: this.priceOptimizationEnabled,
+      hardCapKw: this.capacitySettings.limitKw,
+      // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`
+      // converts it to a money unit for the total `costEstimate`.
+      priceRateLabel: this.priceCoordinator.getPriceUnitLabel(),
+    });
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();

@@ -1,0 +1,481 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildDeferredObjectiveDiagnostics,
+  DeferredObjectiveActivePlanRecorder,
+  previewDeferredObjectivePlan,
+  resolveDeferredObjectiveDeadline,
+  type DeferredObjectivePlanPreviewCandidate,
+} from '../lib/plan/deferredObjectives';
+import {
+  buildHoursFromHorizonPlan,
+  resolveProjectedFinishAtMs,
+} from '../lib/plan/deferredObjectives/activePlanSchedule';
+import type { ActivePlanPersistDeps } from '../lib/plan/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectiveSettingsV1 } from '../lib/plan/deferredObjectives/settings';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
+import type { PowerTrackerState } from '../lib/power/tracker';
+import type { PlanInputDevice } from '../lib/plan/planTypes';
+import type {
+  DeferredObjectiveActivePlansV1,
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
+
+const HOUR_MS = 60 * 60 * 1000;
+const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
+
+// ── Fixtures (mirroring test/deferredObjectiveDiagnostics.test.ts so the
+// preview is exercised against the same device/profile/snapshot shapes the
+// live diagnostic path uses) ────────────────────────────────────────────────
+
+const buildEvDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+  id: 'ev-1',
+  name: 'Driveway EV',
+  targets: [],
+  currentOn: false,
+  deviceClass: 'evcharger',
+  controlCapabilityId: 'evcharger_charging',
+  evChargingState: 'plugged_in_paused',
+  stateOfCharge: { percent: 40, status: 'fresh', observedAtMs: NOW_MS },
+  steppedLoadProfile: {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1000 },
+      { id: 'high', planningPowerW: 2000 },
+    ],
+  },
+  ...overrides,
+});
+
+const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+  id: 'heater-1',
+  name: 'Connected 300',
+  targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
+  currentOn: false,
+  deviceType: 'temperature',
+  controlModel: 'stepped_load',
+  currentTemperature: 55,
+  lastFreshDataMs: NOW_MS,
+  steppedLoadProfile: {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'heat', planningPowerW: 3000 },
+    ],
+  },
+  ...overrides,
+});
+
+const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
+  const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });
+  if (resolution.deadlineAtMs === null) throw new Error('Failed to resolve test deadline');
+  return resolution.deadlineAtMs;
+};
+
+const buildEvPowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
+  objectiveProfiles: {
+    'ev-1': {
+      kind: 'ev_soc',
+      updatedAtMs: NOW_MS,
+      lastSample: { observedAtMs: NOW_MS, value: 40, unit: 'percent' },
+      kwhPerUnit: {
+        sampleCount: 4, mean: 0.2, m2: 0, min: 0.2, max: 0.2, confidence: 'medium', lastUpdatedMs: NOW_MS,
+      },
+      acceptedSamples: 4,
+      rejectedSamples: 0,
+    },
+  },
+  ...overrides,
+} as PowerTrackerState);
+
+const buildTemperaturePowerTracker = (overrides: Partial<PowerTrackerState> = {}): PowerTrackerState => ({
+  objectiveProfiles: {
+    'heater-1': {
+      kind: 'temperature',
+      updatedAtMs: NOW_MS,
+      lastSample: { observedAtMs: NOW_MS, value: 55, unit: 'degree_c' },
+      kwhPerUnit: {
+        sampleCount: 6, mean: 0.8, m2: 0, min: 0.7, max: 0.9, confidence: 'high', lastUpdatedMs: NOW_MS,
+      },
+      acceptedSamples: 6,
+      rejectedSamples: 0,
+    },
+  },
+  ...overrides,
+} as PowerTrackerState);
+
+const buildDay = (params: {
+  dateKey: string;
+  startMs: number;
+  currentBucketIndex: number;
+  prices?: number[];
+}): DailyBudgetDayPayload => {
+  const startUtc = Array.from({ length: 24 }, (_, index) => new Date(params.startMs + index * HOUR_MS).toISOString());
+  const prices = params.prices ?? Array.from({ length: 24 }, (_, index) => index);
+  return {
+    dateKey: params.dateKey,
+    timeZone: 'UTC',
+    nowUtc: new Date(NOW_MS).toISOString(),
+    dayStartUtc: new Date(params.startMs).toISOString(),
+    currentBucketIndex: params.currentBucketIndex,
+    budget: { enabled: true, dailyBudgetKWh: 20, priceShapingEnabled: true },
+    state: {
+      usedNowKWh: 0, allowedNowKWh: 0, remainingKWh: 20, deviationKWh: 0,
+      exceeded: false, frozen: false, confidence: 1, priceShapingActive: true,
+    },
+    buckets: {
+      startUtc,
+      startLocalLabels: startUtc.map((_, index) => `${String(index).padStart(2, '0')}:00`),
+      plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
+      plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0),
+      actualKWh: Array.from({ length: 24 }, () => 0),
+      actualControlledKWh: Array.from({ length: 24 }, () => null),
+      actualUncontrolledKWh: Array.from({ length: 24 }, () => null),
+      allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 2),
+      price: prices,
+      priceFactor: prices.map((price) => (price <= 10 ? 1.2 : 0.8)),
+    },
+  };
+};
+
+const buildSnapshot = (params: { prices?: number[] } = {}): DailyBudgetUiPayload => {
+  const today = buildDay({
+    dateKey: '2026-01-01',
+    startMs: Date.UTC(2026, 0, 1, 0),
+    currentBucketIndex: new Date(NOW_MS).getUTCHours(),
+    prices: params.prices,
+  });
+  const tomorrow = buildDay({
+    dateKey: '2026-01-02',
+    startMs: Date.UTC(2026, 0, 2, 0),
+    currentBucketIndex: 0,
+    prices: params.prices,
+  });
+  return {
+    days: { [today.dateKey]: today, [tomorrow.dateKey]: tomorrow },
+    todayKey: '2026-01-01',
+    tomorrowKey: '2026-01-02',
+  };
+};
+
+const buildRecorder = (): {
+  recorder: DeferredObjectiveActivePlanRecorder;
+  saved: () => DeferredObjectiveActivePlansV1 | null;
+} => {
+  let saved: DeferredObjectiveActivePlansV1 | null = null;
+  const deps: ActivePlanPersistDeps = {
+    load: () => null,
+    save: (next) => { saved = next; },
+  };
+  return { recorder: new DeferredObjectiveActivePlanRecorder(deps), saved: () => saved };
+};
+
+// Builds a one-objective settings object for the live diagnostic path.
+const buildSettings = (params: {
+  deviceId: string;
+  candidate: DeferredObjectivePlanPreviewCandidate;
+}): DeferredObjectiveSettingsV1 => ({
+  version: 1,
+  objectivesByDeviceId: {
+    [params.deviceId]: { ...params.candidate, enabled: true },
+  },
+});
+
+type PreviewContext = {
+  device: PlanInputDevice | undefined;
+  powerTracker: PowerTrackerState;
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  priceOptimizationEnabled: boolean;
+  hardCapKw: number | null;
+  // Optional override for the price-RATE label fed into the preview. Defaults
+  // to "øre/kWh" (the Norway scheme) so most cases exercise the rate→amount
+  // conversion (costUnit must come back "øre").
+  priceRateLabel?: string;
+};
+
+const runPreview = (params: {
+  deviceId: string;
+  candidate: DeferredObjectivePlanPreviewCandidate;
+  ctx: PreviewContext;
+}) => previewDeferredObjectivePlan({
+  nowMs: NOW_MS,
+  timeZone: 'UTC',
+  deviceId: params.deviceId,
+  candidate: params.candidate,
+  device: params.ctx.device,
+  powerTracker: params.ctx.powerTracker,
+  dailyBudgetSnapshot: params.ctx.dailyBudgetSnapshot,
+  priceOptimizationEnabled: params.ctx.priceOptimizationEnabled,
+  hardCapKw: params.ctx.hardCapKw,
+  priceRateLabel: params.ctx.priceRateLabel ?? 'øre/kWh',
+});
+
+// Deadlines chosen against NOW_MS (2026-01-01 17:00 UTC) to land each planner
+// verdict deterministically — verified via the diagnostic path:
+//   FAR  (tomorrow 23:00) → plenty of slack → on_track
+//   NEAR (today 21:00)    → inside the 1h deadline reserve → at_risk
+//   TIGHT(today 18:30)    → not enough time/capacity for the energy → cannot_meet
+const DEADLINE_FAR_MS = Date.UTC(2026, 0, 2, 23, 0, 0);
+const DEADLINE_NEAR_MS = resolveDeadlineAtMsFor('21:00');
+const DEADLINE_TIGHT_MS = resolveDeadlineAtMsFor('18:30');
+
+const evCandidate = (overrides: Partial<DeferredObjectivePlanPreviewCandidate> = {}): DeferredObjectivePlanPreviewCandidate => ({
+  kind: 'ev_soc',
+  enforcement: 'soft',
+  targetPercent: 60,
+  deadlineAtMs: DEADLINE_FAR_MS,
+  ...overrides,
+} as DeferredObjectivePlanPreviewCandidate);
+
+const temperatureCandidate = (
+  overrides: Partial<DeferredObjectivePlanPreviewCandidate> = {},
+): DeferredObjectivePlanPreviewCandidate => ({
+  kind: 'temperature',
+  enforcement: 'soft',
+  targetTemperatureC: 65,
+  deadlineAtMs: DEADLINE_FAR_MS,
+  ...overrides,
+} as DeferredObjectivePlanPreviewCandidate);
+
+describe('previewDeferredObjectivePlan', () => {
+  it('projects an on-track EV candidate with scheduled hours, finish, energy, and cost', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('on_track');
+    expect(estimate.scheduledHours.length).toBeGreaterThan(0);
+    expect(estimate.scheduledHours).toEqual(
+      [...estimate.scheduledHours].sort((a, b) => a.startsAtMs - b.startsAtMs),
+    );
+    expect(estimate.projectedFinishAtMs).not.toBeNull();
+    // 20% remaining × 0.2 kWh/% = 4 kWh expected.
+    expect(estimate.energyEstimateKWh).toBeCloseTo(4, 3);
+    expect(estimate.costEstimate).not.toBeNull();
+    expect(estimate.costEstimate).toBeGreaterThan(0);
+    // `costEstimate` is a TOTAL amount, so its unit must be a money unit, never
+    // a per-kWh rate: the "øre/kWh" rate label is converted down to "øre".
+    expect(estimate.costUnit).toBe('øre');
+    expect(estimate.costUnit).not.toMatch(/\/kwh/i);
+  });
+
+  it('projects an on-track temperature candidate as an estimate', () => {
+    const ctx: PreviewContext = {
+      device: buildTemperatureDevice(),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
+
+    expect(estimate.status).toBe('on_track');
+    expect(estimate.scheduledHours.length).toBeGreaterThan(0);
+    // 10°C remaining × 0.8 kWh/°C = 8 kWh.
+    expect(estimate.energyEstimateKWh).toBeCloseTo(8, 3);
+    expect(estimate.projectedFinishAtMs).not.toBeNull();
+  });
+
+  it('returns at_risk when the deadline forces the plan into its safety reserve', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_NEAR_MS }), ctx });
+
+    expect(estimate.status).toBe('at_risk');
+    expect(estimate.scheduledHours.length).toBeGreaterThan(0);
+    expect(estimate.energyEstimateKWh).toBeCloseTo(4, 3);
+  });
+
+  it('returns cannot_meet when there is not enough time/capacity before the deadline', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx });
+
+    expect(estimate.status).toBe('cannot_meet');
+    // The floor cannot fit the full target, but the planner still books the
+    // hours it can — energy needed is surfaced regardless.
+    expect(estimate.energyEstimateKWh).toBeCloseTo(4, 3);
+  });
+
+  it('returns satisfied with no scheduled hours when the target is already met', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice({ stateOfCharge: { percent: 80, status: 'fresh', observedAtMs: NOW_MS } }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('satisfied');
+    expect(estimate.scheduledHours).toEqual([]);
+    expect(estimate.energyEstimateKWh).toBe(0);
+    expect(estimate.projectedFinishAtMs).toBeNull();
+    expect(estimate.costEstimate).toBeNull();
+  });
+
+  it('returns unavailable when the device is not in the snapshot', () => {
+    const ctx: PreviewContext = {
+      device: undefined,
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.scheduledHours).toEqual([]);
+    expect(estimate.projectedFinishAtMs).toBeNull();
+    expect(estimate.energyEstimateKWh).toBeNull();
+    expect(estimate.energyExpectedKWh).toBeNull();
+    expect(estimate.costEstimate).toBeNull();
+  });
+
+  it('returns unavailable when price-aware optimisation is disabled', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: false,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.energyEstimateKWh).toBeNull();
+  });
+
+  it('omits the cost unit when no price is available for the scheduled buckets', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      // No snapshot → policy horizon unavailable → projection unavailable, so
+      // there is no schedule to price.
+      dailyBudgetSnapshot: null,
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.costEstimate).toBeNull();
+    expect(estimate.costUnit).toBeUndefined();
+  });
+
+  it('passes a bare-currency rate label (Homey scheme) through to the cost unit unchanged', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+      // Homey Energy / Flow schemes expose an already-amount-shaped label
+      // (a bare currency or the neutral fallback) — no "/kWh" to strip.
+      priceRateLabel: 'NOK',
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.costEstimate).not.toBeNull();
+    expect(estimate.costUnit).toBe('NOK');
+    expect(estimate.costUnit).not.toMatch(/\/kwh/i);
+  });
+});
+
+// ── Fidelity regression: the preview's projection must match what the active-
+// plan recorder persists for the SAME inputs, since both paths reuse the same
+// diagnostic pipeline and schedule helpers. ─────────────────────────────────
+
+describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
+  const fidelityCases: ReadonlyArray<{
+    name: string;
+    deviceId: string;
+    device: PlanInputDevice;
+    powerTracker: PowerTrackerState;
+    candidate: DeferredObjectivePlanPreviewCandidate;
+  }> = [
+    {
+      name: 'EV SoC',
+      deviceId: 'ev-1',
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      candidate: evCandidate(),
+    },
+    {
+      name: 'temperature',
+      deviceId: 'heater-1',
+      device: buildTemperatureDevice(),
+      powerTracker: buildTemperaturePowerTracker(),
+      candidate: temperatureCandidate(),
+    },
+  ];
+
+  it.each(fidelityCases)(
+    'matches recorder hours, energy, and finish for a $name objective',
+    ({ deviceId, device, powerTracker, candidate }) => {
+      const dailyBudgetSnapshot = buildSnapshot();
+      const hardCapKw = 10;
+
+      // Live path: build the diagnostic exactly as the plan cycle does, feed it
+      // to the recorder, and read what it persists.
+      const settings = buildSettings({ deviceId, candidate });
+      const diagnostics = buildDeferredObjectiveDiagnostics({
+        nowMs: NOW_MS,
+        timeZone: 'UTC',
+        devices: [device],
+        settings,
+        powerTracker,
+        dailyBudgetSnapshot,
+        priceOptimizationEnabled: true,
+        activePlans: null,
+        hardCapKw,
+      });
+      expect(diagnostics).toHaveLength(1);
+      const diag = diagnostics[0]!;
+      expect(diag.horizonPlan).toBeDefined();
+
+      const { recorder } = buildRecorder();
+      recorder.observe(diagnostics, NOW_MS);
+      const persisted = recorder.getPlanForTests(deviceId);
+      const recorderHours = persisted?.latest?.hours ?? [];
+      const recorderEnergyKWh = persisted?.latest?.energyNeededKWh ?? null;
+      const recorderFinishAtMs = resolveProjectedFinishAtMs(diag);
+      // Sanity-check the recorder produced a non-trivial schedule from the
+      // shared helper so the comparison below is meaningful.
+      expect(recorderHours).toEqual(buildHoursFromHorizonPlan(diag));
+      expect(recorderHours.length).toBeGreaterThan(0);
+
+      // Preview path: same inputs, no persisted state.
+      const estimate = runPreview({
+        deviceId,
+        candidate,
+        ctx: { device, powerTracker, dailyBudgetSnapshot, priceOptimizationEnabled: true, hardCapKw },
+      });
+
+      // Scheduled hours must match exactly (same shared `buildHoursFromHorizonPlan`).
+      expect(estimate.scheduledHours).toEqual(recorderHours);
+      // Energy must match the persisted buffered figure exactly (same rounding).
+      expect(estimate.energyEstimateKWh).toBe(recorderEnergyKWh);
+      // Finish must match within a small tolerance.
+      expect(estimate.projectedFinishAtMs).not.toBeNull();
+      expect(Math.abs((estimate.projectedFinishAtMs ?? 0) - (recorderFinishAtMs ?? 0)))
+        .toBeLessThanOrEqual(1000);
+    },
+  );
+});
