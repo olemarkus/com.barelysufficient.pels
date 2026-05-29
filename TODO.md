@@ -108,6 +108,26 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       `SMART_TASK_WIDGET_EMPTY_SUBTITLE` / `formatSmartTaskWidgetOverflow` in
       `deadlineLabels.ts`.)*
 
+- [ ] Revisit the **check-dead-code allowlist exception** for
+      `StarvationRescueDevicesPayload`
+      (`packages/contracts/src/starvationRescue.ts`, allowlisted in
+      `scripts/check-dead-code.mjs`). It is needed only because madge runs
+      against the runtime tsconfig that excludes `widgets/`, so the widget
+      bundle's consumption of the type is invisible. If widget bundling/tsconfig
+      coverage changes so `widgets/**` is traversed, drop the exception. Source:
+      starvation-rescue widget PR (#1281).
+
+- [ ] **Starvation rescue preview should reflect the existing objective +
+      exemption when one already exists (preview ≡ persist), instead of always
+      previewing a fresh rescue objective.** When a budget-starved device
+      already has an objective, the rescue PREVIEW shows a fresh rescue plan
+      (normal target / +3h) while the persisted result preserves the existing
+      objective + adds the budget exemption (merge-not-replace, which is the
+      correct persisted behaviour — runtime-reality confirmed). The preview can
+      therefore over-show vs. what is actually persisted in that edge case. Make
+      the preview path mirror the merge so preview equals persist. Source:
+      Codex P2 (FxDST) on starvation-rescue widget PR (#1281).
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*

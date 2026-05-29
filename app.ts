@@ -117,6 +117,7 @@ import {
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
   upsertObjectiveForDevice,
+  addBudgetExemptionRescueForDevice,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
@@ -165,6 +166,9 @@ import type {
 import type {
   DeferredObjectivePlanPreviewEstimate,
 } from './packages/contracts/src/deferredObjectivePlanPreview';
+import type {
+  StarvationRescueDevice,
+} from './packages/contracts/src/starvationRescue';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
 } from './packages/contracts/src/settingsUiApi';
@@ -1757,6 +1761,35 @@ class PelsApp extends Homey.App {
   getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[] {
     return this.latestTargetSnapshot.filter(isRuntimePlannedDevice);
   }
+  // Currently-starved devices for the starvation-rescue widget. Sourced from the
+  // diagnostics service's live starvation state (`getStarvedRescueEntries`,
+  // which mirrors the overview `getOverviewStarvation` freshness/eligibility
+  // gate) and joined against the runtime-planned snapshot for the device name —
+  // a starved device is by definition managed + capacity-controlled, so it is in
+  // `latestTargetSnapshot`. The `cause` is the producer-resolved flat value; the
+  // widget never re-derives it. Entries whose device is no longer in the snapshot
+  // (e.g. removed mid-cycle) are dropped rather than shown with a stale name.
+  getStarvedRescueDevices(): StarvationRescueDevice[] {
+    const entries = this.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
+    // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
+    // entry — the live snapshot can be sizeable on busy installs.
+    const snapshotById = new Map<string, TargetDeviceSnapshot>(
+      this.latestTargetSnapshot.map((device) => [device.id, device]),
+    );
+    const devices: StarvationRescueDevice[] = [];
+    for (const entry of entries) {
+      const device = snapshotById.get(entry.deviceId);
+      if (!device) continue;
+      devices.push({
+        deviceId: entry.deviceId,
+        deviceName: device.name,
+        cause: entry.starvation.cause,
+        accumulatedMs: entry.starvation.accumulatedMs,
+        intendedNormalTargetC: entry.intendedNormalTargetC,
+      });
+    }
+    return devices;
+  }
   setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
     this.deviceManager.setSnapshotForTests(snapshot);
   }
@@ -1905,12 +1938,19 @@ class PelsApp extends Homey.App {
   //
   // Returns `{ ok: false }` with a stable reason code on rejection so the
   // widget can surface an honest error without leaking internal detail.
-  public createDeferredObjective(
+  // Shared validation for both objective-write lanes (`createDeferredObjective`
+  // and `rescueDeviceWithBudgetExemption`): resolve the candidate against the
+  // runtime-planned snapshot, the device's goal kind, and the device's actual
+  // setpoint range, then normalise it through the canonical normalizer. Returns
+  // the validated device + normalised entry, or a stable rejection reason. Both
+  // callers share this so the device honesty / kind / bounds / normalizer gates
+  // never diverge between the two lanes.
+  private resolveValidatedObjectiveEntry(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
-  ): { ok: true } | {
+  ): { ok: true; device: TargetDeviceSnapshot; entry: DeferredObjectiveSettingsEntry } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
   } {
     // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
     // HONESTY above. A device that exists in the picker but not here, OR that is
@@ -1934,7 +1974,7 @@ class PelsApp extends Homey.App {
     // Validate the target against the DEVICE's actual setpoint range, not just
     // the generic normalizer's -50..100 °C / 1..100 % envelope. This mirrors the
     // Flow-card `validateTargetTemperature` (which reads the device capability
-    // min/max) and the picker bounds the widget itself offered, so the create
+    // min/max) and the picker bounds the widget itself offered, so the write
     // rejects an impossible target (e.g. 90 °C on a 30..75 °C heater) instead of
     // persisting one the device can never reach.
     const bounds = resolveSmartTaskGoalBounds(device, kind);
@@ -1949,6 +1989,18 @@ class PelsApp extends Homey.App {
       { ...candidate, enabled: true } as DeferredObjectiveSettingsEntry,
     );
     if (!entry) return { ok: false, reason: 'invalid_candidate' };
+    return { ok: true, device, entry };
+  }
+  public createDeferredObjective(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): { ok: true } | {
+    ok: false;
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+  } {
+    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
+    if (!validated.ok) return validated;
+    const { device, entry } = validated;
 
     if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
       return { ok: false, reason: 'invalid_candidate' };
@@ -1958,12 +2010,69 @@ class PelsApp extends Homey.App {
     // clobber (a transient-empty settings read while sibling tasks are live).
     // Report it as a transient conflict so the widget shows a retry-able error
     // rather than a false "created" flash for a task that never persisted.
+    // The create-smart-task widget never carries a rescue permission (the
+    // budget-exempt rescue has its own merge-not-replace lane,
+    // `rescueDeviceWithBudgetExemption`), so the default `preserve` policy keeps
+    // a standing permission set elsewhere intact rather than wiping it.
     const persisted = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:create_smart_task_widget',
       }),
       { deviceId, deviceName: device.name ?? null, entry },
+    );
+    if (!persisted) return { ok: false, reason: 'write_conflict' };
+    return { ok: true };
+  }
+  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue,
+  // with MERGE-not-replace semantics so an existing smart task is never
+  // clobbered:
+  //
+  //  - if the device ALREADY has an objective (its own deadline/target, or a
+  //    standing rescue permission such as `limitLowerPriorityDevices`), only
+  //    `rescue.exemptFromBudget: 'always'` is added — target, deadline, and any
+  //    other rescue permission are preserved verbatim;
+  //  - if the device has NO objective, the rescue objective is created (the
+  //    device's intended normal target, the caller's near-term deadline,
+  //    `rescue.exemptFromBudget: 'always'`).
+  //
+  // Shares the SAME eligibility/kind/bounds validation + hardened write
+  // primitive as `createDeferredObjective`; only the merge op differs. The
+  // caller (the rescue widget API) is responsible for the budget-cause guardrail
+  // — this method only emancipates from the DAILY BUDGET, never capacity (the
+  // hard cap is physical), so a non-budget device gaining the exemption would be
+  // a no-op against capacity, but we assert the candidate is exemption-shaped as
+  // defence-in-depth so the invariant doesn't rest solely on the widget API
+  // being the only caller.
+  public rescueDeviceWithBudgetExemption(
+    deviceId: string,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): { ok: true } | {
+    ok: false;
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+  } {
+    // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
+    // grant a budget exemption; reject any candidate that does not carry one so
+    // the exemption can never be smuggled in through a generic create.
+    if (candidate.rescue?.exemptFromBudget !== 'always') {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
+    if (!validated.ok) return validated;
+    const { device, entry: rescueEntry } = validated;
+
+    if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
+      return { ok: false, reason: 'invalid_candidate' };
+    }
+
+    // The merge op uses `rescueEntry` only when no objective exists yet; when one
+    // does, it preserves that objective and just adds the budget exemption.
+    const persisted = addBudgetExemptionRescueForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
+        nowMs: this.getNow().getTime(),
+        rebuildReason: 'flow_card:starvation_rescue_widget',
+      }),
+      { deviceId, deviceName: device.name ?? null, rescueEntry },
     );
     if (!persisted) return { ok: false, reason: 'write_conflict' };
     return { ok: true };

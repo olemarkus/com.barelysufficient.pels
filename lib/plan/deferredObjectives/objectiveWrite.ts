@@ -218,6 +218,75 @@ export const upsertObjectiveForDevice = (
 };
 
 /**
+ * Grant a device a budget-exempt rescue (the starvation-rescue widget's lane),
+ * with MERGE-not-replace semantics:
+ *
+ * - When the device ALREADY has an objective, only `rescue.exemptFromBudget:
+ *   'always'` is added to it (and `enabled: true` is ensured — see below). Its
+ *   target, deadline, enforcement, and any OTHER rescue permission (e.g. a
+ *   standing `limitLowerPriorityDevices`) are preserved verbatim — the rescue
+ *   grants a budget exemption, it does not overwrite the user's objective. Note
+ *   this unconditionally sets `exemptFromBudget: 'always'`, so an existing
+ *   `exemptFromBudget: 'at_risk'` is PROMOTED to `'always'` (the user explicitly
+ *   asked for power now on an already-starved device — there is no "wait until at
+ *   risk" left to defer to). A
+ *   device already carrying the exemption AND enabled is a no-op write (the same
+ *   entry), so the run is not finalized/re-seeded.
+ *
+ *   `enabled: true` is forced because the budget exemption is ignored by the
+ *   planner on a DISABLED objective (`concurrentEligibleTasks`: `if
+ *   (!objective.enabled) return false` runs before the exemption check). Merging
+ *   the exemption into a disabled task while leaving it disabled would silently
+ *   no-op the whole rescue — the user explicitly asked for power now, so the
+ *   objective must be live. Re-enabling a previously-disabled task is treated as
+ *   the START of a run (a pending active plan is seeded), which is correct.
+ * - When the device has NO objective, `rescueEntry` (built by the caller: the
+ *   device's intended normal target, a near-term deadline, and
+ *   `rescue.exemptFromBudget: 'always'`) is created.
+ *
+ * Routes through the SAME hardened write primitive + notify/rebuild chokepoint
+ * as `upsertObjectiveForDevice`, so the clobber guard and recorder consistency
+ * are identical. Returns `false` when the primitive refused the write as a
+ * suspected clobber (recorder notification + rebuild skipped on refusal).
+ */
+export const addBudgetExemptionRescueForDevice = (
+  deps: DeferredObjectiveDeviceWriteDeps,
+  params: {
+    deviceId: string;
+    deviceName: string | null;
+    // The rescue objective to CREATE when the device has no existing objective.
+    // Ignored (except for kind/target/deadline validation done by the caller)
+    // when an objective already exists — that path only adds the exemption.
+    rescueEntry: DeferredObjectiveSettingsEntry;
+  },
+): boolean => {
+  const { deviceId, deviceName } = params;
+  let prevEntry: DeferredObjectiveSettingsEntry | undefined;
+  let nextEntry: DeferredObjectiveSettingsEntry = params.rescueEntry;
+
+  const persisted = mutateDeferredObjectiveSettings(deps, (current) => {
+    prevEntry = current.objectivesByDeviceId[deviceId];
+    nextEntry = prevEntry === undefined
+      ? params.rescueEntry
+      // Preserve the existing objective; ensure it is enabled (a disabled task's
+      // exemption is ignored by the planner) and the budget exemption is on.
+      : { ...prevEntry, enabled: true, rescue: { ...prevEntry.rescue, exemptFromBudget: 'always' } };
+    return {
+      next: {
+        version: current.version,
+        objectivesByDeviceId: { ...current.objectivesByDeviceId, [deviceId]: nextEntry },
+      },
+      touchedDeviceId: deviceId,
+    };
+  });
+
+  if (persisted) {
+    notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
+  }
+  return persisted;
+};
+
+/**
  * Clear a device's deferred objective.
  *
  * Returns `false` when the hardened primitive refused the write as a suspected
