@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  addBudgetExemptionRescueForDevice,
   clearObjectiveForDevice,
   mutateDeferredObjectiveSettings,
   upsertObjectiveForDevice,
@@ -22,6 +23,18 @@ const evEntry: DeferredObjectiveSettingsEntry = {
   enforcement: 'soft',
   targetPercent: 80,
   deadlineAtMs: DEADLINE_MS,
+};
+
+// The rescue objective the widget would CREATE when no objective exists: the
+// device's intended normal target + a near-term deadline + the budget exemption.
+const RESCUE_DEADLINE_MS = NOW_MS + 3 * 60 * 60 * 1000;
+const rescueTempEntry: DeferredObjectiveSettingsEntry = {
+  enabled: true,
+  kind: 'temperature',
+  enforcement: 'soft',
+  targetTemperatureC: 65,
+  deadlineAtMs: RESCUE_DEADLINE_MS,
+  rescue: { exemptFromBudget: 'always' },
 };
 
 const emptySettings = (): DeferredObjectiveSettingsV1 => ({ version: 1, objectivesByDeviceId: {} });
@@ -311,5 +324,130 @@ describe('device-scoped objective ops', () => {
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned');
     expect(h.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('ev-1');
     expect(h.rebuildPlan).toHaveBeenCalledOnce();
+  });
+
+  // ── MERGE-not-replace rescue (the starvation-rescue widget's lane) ──────────
+
+  it('rescue CREATES the objective when the device has none', () => {
+    const h = buildDeviceDeps(emptySettings());
+    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(true);
+    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual(rescueTempEntry);
+    // A fresh objective seeds a pending active plan; nothing to finalize.
+    expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
+    expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
+    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+  });
+
+  it('rescue PRESERVES an existing objective\'s target/deadline and only adds the exemption', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 70, // the user's own target — must be kept
+      deadlineAtMs: DEADLINE_MS, // the user's own (later) deadline — must be kept
+    };
+    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
+    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(true);
+    // Target + deadline preserved; ONLY the budget exemption added. The rescue
+    // entry's 65°/+3h target/deadline are NOT applied.
+    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual({
+      ...existing,
+      rescue: { exemptFromBudget: 'always' },
+    });
+    // Same target+deadline+enforcement ⇒ objectivesMatch ⇒ not a replace; the run
+    // is not finalized/re-seeded (granting an exemption isn't a new run).
+    expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
+    expect(h.activePlanRecorder.clearForDevice).not.toHaveBeenCalled();
+  });
+
+  it('rescue PRESERVES a standing limitLowerPriorityDevices permission, adding the exemption beside it', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      ...evEntry,
+      rescue: { limitLowerPriorityDevices: 'at_risk' },
+    };
+    const h = buildDeviceDeps(settingsWith({ 'ev-1': existing }));
+    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(true);
+    // The other rescue permission survives; the budget exemption is added beside it.
+    expect(h.stored.objectivesByDeviceId['ev-1']!.rescue).toEqual({
+      limitLowerPriorityDevices: 'at_risk',
+      exemptFromBudget: 'always',
+    });
+    // EV target/deadline untouched (the rescue entry's temperature shape is ignored).
+    expect(h.stored.objectivesByDeviceId['ev-1']).toMatchObject({
+      kind: 'ev_soc', targetPercent: 80, deadlineAtMs: DEADLINE_MS,
+    });
+  });
+
+  it('rescue ENABLES a previously-disabled objective (a disabled exemption is ignored by the planner)', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: false,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 70,
+      deadlineAtMs: DEADLINE_MS,
+    };
+    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
+    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(true);
+    // Enabled + exemption added; target/deadline preserved.
+    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual({
+      ...existing,
+      enabled: true,
+      rescue: { exemptFromBudget: 'always' },
+    });
+    // prev disabled ⇒ inactive, next enabled ⇒ active: a fresh run is seeded.
+    expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
+  });
+
+  it('rescue is a no-op write when the device already carries the exemption', () => {
+    const existing: DeferredObjectiveSettingsEntry = {
+      ...evEntry,
+      rescue: { exemptFromBudget: 'always' },
+    };
+    const h = buildDeviceDeps(settingsWith({ 'ev-1': existing }));
+    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(true);
+    expect(h.stored.objectivesByDeviceId['ev-1']).toEqual(existing);
+    expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
+  });
+
+  it('rescue REFUSES to clobber a sibling on a transient-empty read', () => {
+    let stored: DeferredObjectiveSettingsV1 = emptySettings();
+    const activePlanRecorder = {
+      markPending: vi.fn(), clearForDevice: vi.fn(), flushIfDirty: vi.fn(),
+    } as unknown as DeferredObjectiveActivePlanRecorder;
+    const planHistoryRecorder = {
+      finalizeForUserChange: vi.fn(), finalizeElapsedDeadline: vi.fn(), flushIfDirty: vi.fn(),
+    } as unknown as DeferredObjectivePlanHistoryRecorder;
+    const rebuildPlan = vi.fn();
+    const deps: DeferredObjectiveDeviceWriteDeps = {
+      read: () => stored,
+      write: (next) => { stored = next; },
+      knownLiveDeviceIds: () => ['other-1'],
+      activePlanRecorder,
+      planHistoryRecorder,
+      rebuildPlan,
+      nowMs: NOW_MS,
+    };
+    const persisted = addBudgetExemptionRescueForDevice(deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(persisted).toBe(false);
+    expect(stored.objectivesByDeviceId).toEqual({});
+    expect(activePlanRecorder.markPending).not.toHaveBeenCalled();
+    expect(rebuildPlan).not.toHaveBeenCalled();
   });
 });

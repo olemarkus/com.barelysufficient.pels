@@ -1,0 +1,20 @@
+{
+  "name": {
+    "en": "Get power now"
+  },
+  "height": 240,
+  "api": {
+    "getStarvationRescueDevices": {
+      "method": "GET",
+      "path": "/devices"
+    },
+    "previewStarvationRescue": {
+      "method": "POST",
+      "path": "/preview"
+    },
+    "createStarvationRescue": {
+      "method": "POST",
+      "path": "/rescue"
+    }
+  }
+}

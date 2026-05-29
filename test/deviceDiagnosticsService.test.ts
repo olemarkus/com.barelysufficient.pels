@@ -477,6 +477,40 @@ describe('DeviceDiagnosticsService', () => {
       });
   });
 
+  it('lists currently-starved devices with their cause + intended target for the rescue widget', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    // A budget-starved device (offers a rescue) and a capacity-starved device
+    // (informational only). Both enter starvation after the 15-minute latency.
+    const budget = buildObservation({ deviceId: 'heater-1', countingCause: 'daily_budget', intendedNormalTargetC: 65 });
+    const capacity = buildObservation({ deviceId: 'rad-1', name: 'Radiator', countingCause: 'capacity', intendedNormalTargetC: 21 });
+
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [budget, capacity] });
+    }
+
+    const entries = service.getStarvedRescueEntries();
+    expect(entries).toHaveLength(2);
+    const byId = new Map(entries.map((entry) => [entry.deviceId, entry]));
+    expect(byId.get('heater-1')).toMatchObject({
+      starvation: { isStarved: true, cause: 'budget' },
+      intendedNormalTargetC: 65,
+    });
+    expect(byId.get('rad-1')).toMatchObject({
+      starvation: { isStarved: true, cause: 'capacity' },
+      intendedNormalTargetC: 21,
+    });
+  });
+
+  it('excludes non-starved devices from the rescue entries', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    // Only nine minutes of suppression — below the 15-minute entry latency.
+    service.observePlanSample({ nowTs: start, observations: [buildObservation()] });
+    service.observePlanSample({ nowTs: start + 9 * 60 * 1000, observations: [buildObservation()] });
+    expect(service.getStarvedRescueEntries()).toHaveLength(0);
+  });
+
   it('maps shortfall starvation to the compact capacity cause', () => {
     const { service } = createDeps();
     const start = Date.now();

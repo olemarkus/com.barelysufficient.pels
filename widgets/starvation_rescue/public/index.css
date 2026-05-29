@@ -1,0 +1,294 @@
+/* The renderer switches views and individual controls by toggling the `hidden`
+   attribute. Any author `display` rule on a hidden-toggled element would beat
+   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
+   regardless of specificity), so a hidden view/button/list would still render.
+   This blanket author-origin reset re-asserts the UA semantics for every
+   hidden-toggled element in one place — views (.list-view/.confirm-view/
+   .done-view), the per-row rescue button (.rescue-btn), the device list
+   (.rows), and any future hidden-toggled element — so no `display` rule below
+   needs a per-rule `:not([hidden])` guard. */
+[hidden] {
+  display: none !important;
+}
+
+.widget-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  gap: var(--homey-su-2, 8px);
+  box-sizing: border-box;
+}
+
+.list-view,
+.confirm-view,
+.done-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--homey-su-2, 8px);
+}
+
+/* ----- Starved-device list ----- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  padding: var(--homey-su-2, 8px);
+  margin: 0;
+  border-radius: var(--homey-border-radius-small, 6px);
+  border-left: 3px solid var(--homey-color-warning, #f5a623);
+  background: color-mix(in srgb, var(--homey-color-warning, #f5a623) 8%, transparent);
+}
+
+/* Tone escalates with starvation duration: a long-held device reads as danger. */
+.row[data-tone="danger"] {
+  border-left-color: var(--homey-color-danger, #f0696c);
+  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 10%, transparent);
+}
+
+.row__main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--homey-su-2, 8px);
+}
+
+.row__name {
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.row__chip {
+  flex: none;
+  font-size: var(--homey-font-size-small, 14px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+  color: var(--homey-text-color-warning, #b9770e);
+  white-space: nowrap;
+}
+
+.row[data-tone="danger"] .row__chip {
+  color: var(--homey-text-color-danger, #f0696c);
+}
+
+.row__subtext {
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.row__note {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.rescue-btn {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: var(--homey-su-1, 4px) var(--homey-su-3, 12px);
+  border: none;
+  border-radius: var(--homey-border-radius-default, 10px);
+  background: var(--homey-color-success, #58c56a);
+  color: var(--homey-color-white, #ffffff);
+  font: inherit;
+  font-size: var(--homey-font-size-small, 14px);
+  font-weight: var(--homey-font-weight-bold, 700);
+  cursor: pointer;
+  transition: opacity 200ms ease-out;
+}
+
+.rescue-btn:hover {
+  opacity: 0.9;
+}
+
+.rescue-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+/* "+N more" overflow cue under the scrolling list. */
+.list-more {
+  margin: 0;
+  flex: none;
+  text-align: center;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.empty {
+  margin: auto 0;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  color: var(--homey-text-color-light, #6d7680);
+  text-align: center;
+}
+
+/* ----- Step header / back ----- */
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: var(--homey-su-2, 8px);
+  min-height: 48px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--homey-su-1, 4px);
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  padding: var(--homey-su-1, 4px) var(--homey-su-2, 8px) var(--homey-su-1, 4px) 0;
+  border-radius: var(--homey-border-radius-small, 6px);
+  cursor: pointer;
+  text-align: left;
+  min-height: 48px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.back-btn:hover {
+  background-color: color-mix(in srgb, var(--homey-text-color, currentColor) 6%, transparent);
+}
+
+.back-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.back-btn__chevron {
+  font-size: var(--homey-font-size-large, 20px);
+  line-height: 1;
+  flex: none;
+}
+
+.back-btn__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ----- Confirm (consequence + preview) ----- */
+
+.consequence {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color, inherit);
+}
+
+.preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.preview-line {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color, inherit);
+}
+
+.preview-line--cost {
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-bold, 700);
+}
+
+.preview-line--when {
+  font-weight: var(--homey-font-weight-medium, 500);
+}
+
+.preview-line--energy,
+.preview-line--caveat,
+.preview-line--unavailable {
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.preview-line--error {
+  color: var(--homey-text-color-danger, #f0696c);
+  font-weight: var(--homey-font-weight-medium, 500);
+}
+
+/* ----- Primary action ----- */
+
+.primary-btn {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: none;
+  border-radius: var(--homey-border-radius-default, 10px);
+  background: var(--homey-color-success, #58c56a);
+  color: var(--homey-color-white, #ffffff);
+  font: inherit;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-bold, 700);
+  cursor: pointer;
+  transition: opacity 200ms ease-out;
+}
+
+.primary-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* ----- Done flash ----- */
+
+.done-view {
+  align-items: center;
+  justify-content: center;
+}
+
+.done-msg {
+  margin: 0;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color-success, #2f8f47);
+  text-align: center;
+}
