@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../packages/shared-domain/src/planStarvation';
 import { installWidget } from '../widgets/starvation_rescue/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../widgets/starvation_rescue/src/public/widgetApp';
 import type { StarvationRescueDevicesPayload } from '../widgets/starvation_rescue/src/starvationRescueWidgetTypes';
+import { registerHiddenGuardSuite } from './cssTestUtils';
 
 // Mirrors the production index.html markup the renderer queries against.
 const WIDGET_MARKUP = `
@@ -237,76 +236,22 @@ describe('starvation rescue widget browser', () => {
   });
 });
 
-describe('starvation rescue widget hidden-element CSS', () => {
-  // The renderer hides views (.list-view/.confirm-view/.done-view), the per-row
-  // rescue button (.rescue-btn), the device list (.rows) and several preview
-  // lines by toggling the `hidden` attribute. Any author-origin `display` rule
-  // on such an element would beat the user-agent `[hidden] { display: none }`
-  // rule on cascade origin (regardless of specificity), so the hidden element
-  // would still render — a hidden view shows flex, or a non-rescuable row's
-  // rescue button appears (breaking the budget-only guardrail). The fix is a
-  // single blanket author-origin reset, `[hidden] { display: none !important }`,
-  // which re-asserts the UA semantics for EVERY hidden-toggled element at once.
-  // jsdom does not model author-over-UA origin precedence, so a
-  // getComputedStyle assertion cannot distinguish the bug from the fix; we
-  // instead pin the source guard that prevents it.
-  // Resolve from the repo root (vitest cwd); import.meta.url is an http URL
-  // under jsdom, so fileURLToPath is unavailable here.
-  const cssPath = resolve(process.cwd(), 'widgets/starvation_rescue/public/index.css');
-  // Strip `/* … */` comments first: the explanatory comments contain literal
-  // `[hidden] { display: none }` examples whose braces would otherwise corrupt
-  // the naive rule-block split below.
-  const css = readFileSync(cssPath, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-
-  // Split into `selector { declarations }` rule blocks.
-  const ruleBlocks = Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g)).map((m) => ({
-    selectors: m[1].trim(),
-    body: m[2],
-  }));
-
-  const setsDisplay = (body: string): boolean => /(^|;|\{|\s)display\s*:/.test(body);
-
+// The renderer hides views (.list-view/.confirm-view/.done-view), the per-row
+// rescue button (.rescue-btn), the device list (.rows) and several preview
+// lines by toggling the `hidden` attribute, so a hidden view would show flex or
+// a non-rescuable row's rescue button would appear (breaking the budget-only
+// guardrail) without the blanket reset. See test/cssTestUtils.ts for the shared
+// parsing + guard assertions.
+registerHiddenGuardSuite({
+  name: 'starvation rescue widget hidden-element CSS',
+  cssRelativePath: 'widgets/starvation_rescue/public/index.css',
   // Every element the renderer toggles `.hidden` on (render.ts), keyed by the
   // class CSS targets it with. Each must end up `display:none` while hidden.
-  const hiddenToggledSelectors = [
+  hiddenToggledSelectors: [
     '.list-view', '.confirm-view', '.done-view', // views
     '.rescue-btn', // per-row rescue button (the missed element this PR fixes)
     '.rows', // device list (hidden when the payload is empty)
     '.list-more', '.empty', // list affordances
     '.consequence', '.preview-line', '.done-msg', '.row__note', // toggled text lines
-  ];
-
-  const targetsSelector = (selectors: string, sel: string): boolean => (
-    // The class appears as a complete token, not as a substring of another class.
-    new RegExp(`(^|[\\s,>+~])${sel.replace('.', '\\.')}(?![\\w-])`).test(selectors)
-  );
-
-  const blanketReset = ruleBlocks.find(
-    (b) => b.selectors === '[hidden]' && setsDisplay(b.body),
-  );
-
-  test('a blanket [hidden] reset re-asserts display:none for every hidden-toggled element', () => {
-    // The single guard that covers the views, the rescue button, the list, and
-    // any future hidden-toggled element in one place. Must be `!important` to
-    // win against author `display` rules on the same element regardless of
-    // source order — author-vs-author ties break on specificity/order, and
-    // `[hidden]` is lower-specificity than the class rules it must override.
-    expect(blanketReset).toBeDefined();
-    expect(blanketReset!.body).toMatch(/display\s*:\s*none\s*!important/);
-  });
-
-  test('every hidden-toggled element is kept inert while hidden', () => {
-    // Belt-and-suspenders: even if the blanket reset above were ever removed,
-    // any `display` rule on a hidden-toggled selector must self-guard with
-    // `:not([hidden])`. With the blanket reset present, this passes trivially
-    // (the reset covers everything); without it, an unguarded `display` rule on
-    // a hidden-toggled selector — like the original .rescue-btn bug — fails.
-    if (blanketReset) return; // covered by the reset; nothing more to prove
-    const unguarded = ruleBlocks
-      .filter((b) => setsDisplay(b.body))
-      .filter((b) => hiddenToggledSelectors.some((sel) => (
-        targetsSelector(b.selectors, sel) && !b.selectors.includes(`${sel}:not([hidden])`)
-      )));
-    expect(unguarded).toEqual([]);
-  });
+  ],
 });
