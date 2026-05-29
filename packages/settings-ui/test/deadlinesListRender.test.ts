@@ -856,4 +856,42 @@ describe('DeadlinesHistoryList 7-day hit-rate strip', () => {
     });
     expect(mount.querySelector('.deadlines-history__summary-strip')).toBeNull();
   });
+
+  it('renders the hit-rate strip above the per-device miss-streak list', () => {
+    // Three recent misses for one device populate both surfaces at once: the
+    // 7-day window (hit-rate strip) and the device's miss streak (badge list).
+    // The aggregate "how am I doing this week?" strip must lead; the
+    // per-device drill-down follows beneath it.
+    const mount = mountIntoBody();
+    renderDeadlinesHistoryList(mount, {
+      status: 'ready',
+      entries: [
+        buildHistoryEntry({ id: 'a', outcome: 'missed', metAtMs: null }),
+        buildHistoryEntry({
+          id: 'b',
+          outcome: 'missed',
+          metAtMs: null,
+          deadlineAtMs: DEADLINE_BASE - HOUR_MS,
+          finalizedAtMs: DEADLINE_BASE - HOUR_MS,
+        }),
+        buildHistoryEntry({
+          id: 'c',
+          outcome: 'missed',
+          metAtMs: null,
+          deadlineAtMs: DEADLINE_BASE - 2 * HOUR_MS,
+          finalizedAtMs: DEADLINE_BASE - 2 * HOUR_MS,
+        }),
+      ],
+      timeZone: 'UTC',
+      nowMs: DEADLINE_BASE + HOUR_MS,
+    });
+    const strip = mount.querySelector('.deadlines-history__summary-strip');
+    const streakList = mount.querySelector('.deadlines-history__miss-streaks');
+    expect(strip).not.toBeNull();
+    expect(streakList).not.toBeNull();
+    // DOCUMENT_POSITION_FOLLOWING set ⇒ the streak list comes after the strip.
+    expect(
+      strip!.compareDocumentPosition(streakList!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });
