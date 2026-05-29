@@ -40,6 +40,7 @@ export {
   mutateDeferredObjectiveSettings,
   upsertObjectiveForDevice,
   addBudgetExemptionRescueForDevice,
+  resolveBudgetExemptionRescueEntry,
   clearObjectiveForDevice,
   type DeferredObjectiveSettingsMutationDeps,
   type DeferredObjectiveSettingsMutator,

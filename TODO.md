@@ -117,17 +117,6 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       coverage changes so `widgets/**` is traversed, drop the exception. Source:
       starvation-rescue widget PR (#1281).
 
-- [ ] **Starvation rescue preview should reflect the existing objective +
-      exemption when one already exists (preview ≡ persist), instead of always
-      previewing a fresh rescue objective.** When a budget-starved device
-      already has an objective, the rescue PREVIEW shows a fresh rescue plan
-      (normal target / +3h) while the persisted result preserves the existing
-      objective + adds the budget exemption (merge-not-replace, which is the
-      correct persisted behaviour — runtime-reality confirmed). The preview can
-      therefore over-show vs. what is actually persisted in that edge case. Make
-      the preview path mirror the merge so preview equals persist. Source:
-      Codex P2 (FxDST) on starvation-rescue widget PR (#1281).
-
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
@@ -4674,3 +4663,19 @@ prod walk that didn't warrant a P2 slot.*
       out of the node builders into a shared browser-safe module, then add a rule
       forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`. Source:
       codex review of PR #1286, 2026-05-29.
+
+
+- [ ] **Fold the starvation-rescue deadline-horizon guard into the producer.**
+      `widgets/starvation_rescue/src/api.ts` (create path) calls
+      `App.hasDeferredObjectiveForDevice` to decide whether its now+3h horizon
+      guard applies — a resolution-in-producer smell (the consumer reconstructs
+      the merge policy "does the candidate deadline matter?"). Fold the horizon
+      validation into `App.rescueDeviceWithBudgetExemption`, which already reads
+      the existing entry and owns the merge: reject past deadlines always, apply
+      the upper now+3h bound only on the fresh (no-existing-objective) branch,
+      returning a stable reject reason. Then delete `App.hasDeferredObjectiveForDevice`
+      and the widget's existence branch, and relocate `RESCUE_DEADLINE_HORIZON_MS`
+      to a browser-safe shared-domain module (both the widget candidate-builder and
+      the producer validator need it). The past-deadline correctness half is
+      already fixed (codex P2 on #1288); this is the layering cleanup.
+      Source: pels-layering-guardian + codex review of PR #1288, 2026-05-29.
