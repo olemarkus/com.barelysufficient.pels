@@ -41,7 +41,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: ['test/planPriceWidgetBrowser.test.ts'],
+    include: [
+      'test/planPriceWidgetBrowser.test.ts',
+      'test/createSmartTaskWidgetBrowser.test.ts',
+    ],
     setupFiles: ['test/setup.ts'],
     clearMocks: true,
     testTimeout: 10_000,

@@ -43,6 +43,25 @@ export function isManagedFilterActive(managedDevices: BooleanMap): boolean {
   return Object.values(managedDevices).some((value) => value === true);
 }
 
+// The SINGLE definition of "is this device in the runtime-planned set" — the
+// set the plan cycle actually evaluates. The plan service builds its device
+// list as `snapshot.map(toPlanDevice).filter(isRuntimePlannedDevice)` (see
+// `createPlanService` in `appInit.ts`), so any consumer that needs to know
+// whether a device will be planned (the create-smart-task candidate list AND
+// create-time validation) MUST use this exact predicate. Otherwise a
+// `managed: false` device can slip into the runtime snapshot when the managed
+// filter is inactive (no device explicitly opted-in) yet be dropped by the
+// planner — it would be offered/persisted but never planned or controlled.
+//
+// Encoded as `managed !== false` (not `managed === true`): an implicitly-managed
+// device whose `managed` flag is `undefined`/absent (e.g. the managed-filter is
+// inactive and the device was never explicitly toggled) IS planned, matching
+// the planner's own filter. Only an explicit opt-out (`managed === false`) is
+// excluded.
+export function isRuntimePlannedDevice(device: { managed?: boolean }): boolean {
+  return device.managed !== false;
+}
+
 function parsePriceSettings(value: unknown): PriceSettings | null {
   return value && typeof value === 'object' ? value as PriceSettings : null;
 }

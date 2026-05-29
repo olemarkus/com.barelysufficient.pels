@@ -1,20 +1,26 @@
 import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
 import {
+  clearObjectiveForDevice,
   createDeferredObjectiveEndedBus,
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   createEmptyDeferredObjectiveSettings,
+  normalizeDeferredObjectiveSettings,
+  upsertObjectiveForDevice,
+  type DeferredObjectiveActivePlanRecorder,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
+  type DeferredObjectivePlanHistoryRecorder,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives/diagnosticsBridge';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
@@ -115,6 +121,27 @@ const buildHoursRemainingDiagnostic = (
   ...overrides,
 });
 
+type MockRecorders = {
+  activePlanRecorder: DeferredObjectiveActivePlanRecorder;
+  planHistoryRecorder: DeferredObjectivePlanHistoryRecorder;
+};
+
+// Spyable stand-ins for the two recorders the device-scoped write ops notify.
+// Only the methods `applyDeferredObjectiveChange` + the ops touch are stubbed.
+const buildMockRecorders = (): MockRecorders => ({
+  activePlanRecorder: {
+    markPending: vi.fn(),
+    clearForDevice: vi.fn(),
+    flushIfDirty: vi.fn(),
+    getActivePlansSnapshot: vi.fn(() => ({ version: 1, plansByDeviceId: {} })),
+  } as unknown as DeferredObjectiveActivePlanRecorder,
+  planHistoryRecorder: {
+    finalizeForUserChange: vi.fn(),
+    finalizeElapsedDeadline: vi.fn(),
+    flushIfDirty: vi.fn(),
+  } as unknown as DeferredObjectivePlanHistoryRecorder,
+});
+
 const buildDeps = (overrides: {
   snapshot: TargetDeviceSnapshot[];
   bus?: DeferredObjectiveStatusBus;
@@ -123,8 +150,27 @@ const buildDeps = (overrides: {
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
   rebuildPlan?: ReturnType<typeof vi.fn>;
-}): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey> } => {
+  recorders?: MockRecorders;
+}): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey>; recorders: MockRecorders } => {
   const mock = createMockHomey();
+  const recorders = overrides.recorders ?? buildMockRecorders();
+  const rebuildPlan = overrides.rebuildPlan ?? vi.fn();
+  // Wire the device-scoped write ops over the mock homey settings + recorders,
+  // exactly as appInit does in production — so the cards exercise the real
+  // hardened mutation primitive + notify/flush/rebuild chokepoint.
+  const buildWriteDeps = (rebuildReason: string) => ({
+    read: () => normalizeDeferredObjectiveSettings(mock.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
+    write: (next: DeferredObjectiveSettingsV1) => {
+      mock.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
+    },
+    knownLiveDeviceIds: () => Object.keys(
+      recorders.activePlanRecorder.getActivePlansSnapshot().plansByDeviceId,
+    ),
+    activePlanRecorder: recorders.activePlanRecorder,
+    planHistoryRecorder: recorders.planHistoryRecorder,
+    rebuildPlan: () => rebuildPlan(rebuildReason),
+    nowMs: MOCK_NOW_MS,
+  });
   const deps = {
     homey: mock.homey,
     structuredLog: undefined,
@@ -145,7 +191,13 @@ const buildDeps = (overrides: {
     getDeviceLoadSetting: async () => null,
     setExpectedOverride: () => false,
     storeFlowPriceData: () => ({ dateKey: '', storedCount: 0, missingHours: [] }),
-    rebuildPlan: overrides.rebuildPlan ?? vi.fn(),
+    rebuildPlan,
+    upsertDeferredObjectiveForDevice: (params: Parameters<typeof upsertObjectiveForDevice>[1]) => (
+      upsertObjectiveForDevice(buildWriteDeps('deadline_objective_card_set'), params)
+    ),
+    clearDeferredObjectiveForDevice: (params: Parameters<typeof clearObjectiveForDevice>[1]) => (
+      clearObjectiveForDevice(buildWriteDeps('deadline_objective_card_clear'), params)
+    ),
     evaluateHeadroomForDevice: () => null,
     loadDailyBudgetSettings: () => {},
     updateDailyBudgetState: () => {},
@@ -162,7 +214,7 @@ const buildDeps = (overrides: {
     getDeferredObjectiveHoursRemainingBus: () => overrides.hoursRemainingBus,
     getDeferredObjectiveHoursRemainingTracker: () => overrides.hoursRemainingTracker,
   } as unknown as FlowCardDeps;
-  return { deps, mock };
+  return { deps, mock, recorders };
 };
 
 describe('deadline objective flow cards', () => {
@@ -286,11 +338,9 @@ describe('deadline objective flow cards', () => {
     })).rejects.toThrow(/not an EV charger/);
   });
 
-  it('clear_deadline forgets the bus snapshot before rebuilding the plan', async () => {
+  it('clear_deadline forgets the bus snapshot after the clear persists', async () => {
     const bus = createDeferredObjectiveStatusBus();
-    const rebuildPlan = vi.fn(() => {
-      expect(bus.hasActive('heater-1')).toBe(false);
-    });
+    const rebuildPlan = vi.fn();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       bus,
@@ -327,8 +377,7 @@ describe('deadline objective flow cards', () => {
     expect(bus.hasActive('heater-1')).toBe(false);
   });
 
-  it('calls applyDeferredObjectiveChange with prev/next entries on set_temperature_deadline', async () => {
-    const applyChange = vi.fn();
+  it('notifies the recorders (replace + reseed) on a set_temperature_deadline update', async () => {
     const initial: DeferredObjectiveSettingsV1 = {
       version: 1,
       objectivesByDeviceId: {
@@ -341,22 +390,25 @@ describe('deadline objective flow cards', () => {
         },
       },
     };
-    const { deps, mock } = buildDeps({
+    const { deps, mock, recorders } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    (deps as { applyDeferredObjectiveChange?: unknown }).applyDeferredObjectiveChange = applyChange;
     mock.settings.set('deferred_objectives', initial);
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('set_temperature_deadline')!.run!({
       device: 'heater-1', target_c: 60, ready_by: '08:00',
     });
-    expect(applyChange).toHaveBeenCalledTimes(1);
-    const call = applyChange.mock.calls[0]![0];
-    expect(call.deviceId).toBe('heater-1');
-    expect(call.prevEntry?.targetTemperatureC).toBe(55);
-    expect(call.nextEntry?.targetTemperatureC).toBe(60);
-    expect(call.nextEntry?.deadlineAtMs).toBe(HH_MM_TO_UTC_MS(8, 0));
+    // The prior future-deadline run is finalized as replaced and a fresh
+    // pending plan is seeded — the device-scoped op runs applyDeferredObjectiveChange.
+    expect(recorders.planHistoryRecorder.finalizeForUserChange)
+      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'replaced');
+    expect(recorders.activePlanRecorder.markPending).toHaveBeenCalledTimes(1);
+    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    expect(stored.objectivesByDeviceId['heater-1']).toMatchObject({
+      targetTemperatureC: 60,
+      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
+    });
   });
 
   it('preserves a granted rescue permission when the deadline is updated', async () => {
@@ -394,8 +446,7 @@ describe('deadline objective flow cards', () => {
     });
   });
 
-  it('calls applyDeferredObjectiveChange with cleared next entry on clear_deadline', async () => {
-    const applyChange = vi.fn();
+  it('notifies the recorders (abandon + drop) on clear_deadline', async () => {
     const initial: DeferredObjectiveSettingsV1 = {
       version: 1,
       objectivesByDeviceId: {
@@ -408,19 +459,67 @@ describe('deadline objective flow cards', () => {
         },
       },
     };
-    const { deps, mock } = buildDeps({
+    const { deps, mock, recorders } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    (deps as { applyDeferredObjectiveChange?: unknown }).applyDeferredObjectiveChange = applyChange;
     mock.settings.set('deferred_objectives', initial);
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
-    expect(applyChange).toHaveBeenCalledTimes(1);
-    const call = applyChange.mock.calls[0]![0];
-    expect(call.deviceId).toBe('heater-1');
-    expect(call.prevEntry?.targetTemperatureC).toBe(55);
-    expect(call.nextEntry).toBeUndefined();
+    // The prior future-deadline run is finalized as abandoned and the active
+    // plan dropped — the device-scoped op runs applyDeferredObjectiveChange.
+    expect(recorders.planHistoryRecorder.finalizeForUserChange)
+      .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'abandoned');
+    expect(recorders.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('heater-1');
+  });
+
+  it('set_temperature_deadline THROWS (not silent success) when the write is refused as a clobber', async () => {
+    // Force the hardened primitive to refuse: settings read is empty but the
+    // recorder still believes a sibling (other-1) is live, so persisting a map
+    // holding only the new entry would clobber it.
+    const recorders = buildMockRecorders();
+    (recorders.activePlanRecorder.getActivePlansSnapshot as ReturnType<typeof vi.fn>)
+      .mockReturnValue({ version: 1, plansByDeviceId: { 'other-1': {} } });
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+      recorders,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' }))
+      .rejects.toThrow(/try again/i);
+    // Nothing persisted, no rebuild, no recorder seed for the refused write.
+    expect(mock.settings.get('deferred_objectives')).toBeUndefined();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    expect(recorders.activePlanRecorder.markPending).not.toHaveBeenCalled();
+  });
+
+  it('clear_deadline THROWS and KEEPS the bus / tracker caches intact when the write is refused', async () => {
+    const recorders = buildMockRecorders();
+    (recorders.activePlanRecorder.getActivePlansSnapshot as ReturnType<typeof vi.fn>)
+      .mockReturnValue({ version: 1, plansByDeviceId: { 'other-1': {} } });
+    const bus = createDeferredObjectiveStatusBus();
+    const hoursRemainingTracker = createDeferredObjectiveHoursRemainingTracker();
+    const forgetBus = vi.spyOn(bus, 'forgetDevice');
+    const forgetTracker = vi.spyOn(hoursRemainingTracker, 'forgetDevice');
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      bus,
+      hoursRemainingTracker,
+      rebuildPlan: vi.fn(),
+      recorders,
+    });
+    // The objectives read is empty (transient), so the clear is a no-op for
+    // heater-1 but the recorder-known sibling forces a refusal.
+    registerDeadlineObjectiveCards(deps);
+    await expect(mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' }))
+      .rejects.toThrow(/try again/i);
+    // Caches must NOT be forgotten on a refusal — the objective may still be
+    // persisted (the read transiently lost it).
+    expect(forgetBus).not.toHaveBeenCalled();
+    expect(forgetTracker).not.toHaveBeenCalled();
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
   });
 
   it('removes the entry on clear_deadline', async () => {

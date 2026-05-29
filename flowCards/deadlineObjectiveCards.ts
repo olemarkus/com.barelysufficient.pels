@@ -20,6 +20,18 @@ import type { FlowCardDeps } from './registerFlowCards';
 
 const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
+// Thrown when the hardened settings-mutation primitive REFUSES a write as a
+// suspected transient-empty/clobber (returns `false`). The Flow must NOT report
+// success in that case — the objective never persisted. Surfacing a thrown
+// error makes Homey mark the Flow action failed so the user/automation can
+// retry; the next clean cycle reconciles the recorder and the retry lands.
+const SMART_TASK_WRITE_CONFLICT_MESSAGE
+  = 'Could not save the smart task right now (settings were temporarily unavailable). Please try again.';
+
+export const throwIfWriteRefused = (persisted: boolean): void => {
+  if (!persisted) throw new Error(SMART_TASK_WRITE_CONFLICT_MESSAGE);
+};
+
 type SmartTaskActiveFlowStatus = SmartTaskStatusId;
 
 type LastSmartTaskFlowStatus = {
@@ -44,16 +56,15 @@ export const getDropdownId = (raw: DropdownArg | undefined): string => (
   (typeof raw === 'object' && raw !== null ? raw.id : raw) ?? ''
 ).trim();
 
-export const requireSettingsAccessors = (deps: FlowCardDeps): {
-  read: () => DeferredObjectiveSettingsV1;
-  write: (next: DeferredObjectiveSettingsV1) => void;
-} => {
-  const read = deps.getDeferredObjectiveSettings
-    ?? (() => normalizeDeferredObjectiveSettings(deps.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)));
-  const write = deps.setDeferredObjectiveSettings
-    ?? ((next: DeferredObjectiveSettingsV1) => deps.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next));
-  return { read, write };
-};
+// Read-only accessor for the persisted objectives map. The condition/trigger/
+// autocomplete cards and the create/rescue cards' pre-write checks read through
+// this; ALL writes go through the device-scoped ops on `deps`
+// (`upsertDeferredObjectiveForDevice` / `clearDeferredObjectiveForDevice`),
+// which route the read-modify-write through the hardened mutation primitive.
+export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjectiveSettingsV1 => (
+  deps.getDeferredObjectiveSettings
+    ?? (() => normalizeDeferredObjectiveSettings(deps.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)))
+);
 
 const validateReadyBy = (raw: unknown): string => {
   const value = typeof raw === 'string' ? raw.trim() : '';
@@ -77,24 +88,6 @@ const validateNumberInRange = (
     throw new Error(`${fieldLabel} must be between ${min} and ${max}.`);
   }
   return value;
-};
-
-export const upsertObjective = (
-  settings: DeferredObjectiveSettingsV1,
-  deviceId: string,
-  entry: DeferredObjectiveSettingsEntry,
-): DeferredObjectiveSettingsV1 => ({
-  version: settings.version,
-  objectivesByDeviceId: { ...settings.objectivesByDeviceId, [deviceId]: entry },
-});
-
-const removeObjective = (
-  settings: DeferredObjectiveSettingsV1,
-  deviceId: string,
-): DeferredObjectiveSettingsV1 => {
-  if (!(deviceId in settings.objectivesByDeviceId)) return settings;
-  const { [deviceId]: _removed, ...rest } = settings.objectivesByDeviceId;
-  return { version: settings.version, objectivesByDeviceId: rest };
 };
 
 // Maps a raw dropdown arg to the canonical SmartTaskActiveFlowStatus used
@@ -227,23 +220,21 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
     const targetTemperatureC = validateTargetTemperature(payload?.target_c, device);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const accessors = requireSettingsAccessors(deps);
-    const settings = accessors.read();
-    const prevEntry = settings.objectivesByDeviceId[deviceId];
-    const nextEntry: DeferredObjectiveSettingsEntry = {
+    const entry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC,
       deadlineAtMs,
-      // Preserve any standing rescue permission across a deadline update — the rescue
-      // card promises it sticks until changed or the task is cleared, and upsertObjective
-      // replaces the entry wholesale.
-      ...(prevEntry?.rescue ? { rescue: prevEntry.rescue } : {}),
     };
-    accessors.write(upsertObjective(settings, deviceId, nextEntry));
-    notifyObjectiveChange(deps, { device, prevEntry, nextEntry });
-    deps.rebuildPlan('deadline_objective_card_set');
+    // Device-scoped op owns the hardened read-modify-write + notify/flush/rebuild
+    // chokepoint. It preserves any standing rescue permission across this update
+    // by default (the rescue card promises it sticks until changed/cleared). A
+    // `false` return means the primitive refused the write as a suspected
+    // transient-empty clobber — surface it as a retryable error, never success.
+    throwIfWriteRefused(
+      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -278,23 +269,20 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     const targetPercent = validateNumberInRange(payload?.target_percent, 'Target battery (%)', 1, 100);
     const deadlineLocalTime = validateReadyBy(payload?.ready_by);
     const deadlineAtMs = resolveReadyByToDeadlineAtMs(deps, deadlineLocalTime);
-    const accessors = requireSettingsAccessors(deps);
-    const settings = accessors.read();
-    const prevEntry = settings.objectivesByDeviceId[deviceId];
-    const nextEntry: DeferredObjectiveSettingsEntry = {
+    const entry: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'ev_soc',
       enforcement: 'soft',
       targetPercent,
       deadlineAtMs,
-      // Preserve any standing rescue permission across a deadline update — the rescue
-      // card promises it sticks until changed or the task is cleared, and upsertObjective
-      // replaces the entry wholesale.
-      ...(prevEntry?.rescue ? { rescue: prevEntry.rescue } : {}),
     };
-    accessors.write(upsertObjective(settings, deviceId, nextEntry));
-    notifyObjectiveChange(deps, { device, prevEntry, nextEntry });
-    deps.rebuildPlan('deadline_objective_card_set');
+    // Device-scoped op owns the hardened read-modify-write + notify/flush/rebuild
+    // chokepoint, preserving any standing rescue permission by default. A `false`
+    // return is a refused (suspected transient-empty) write — surface it as a
+    // retryable error rather than falsely reporting the task was saved.
+    throwIfWriteRefused(
+      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -325,22 +313,6 @@ const resolveDeviceName = async (deps: FlowCardDeps, deviceId: string): Promise<
   }
 };
 
-const notifyObjectiveChange = (deps: FlowCardDeps, params: {
-  device: TargetDeviceSnapshot;
-  prevEntry: DeferredObjectiveSettingsEntry | undefined;
-  nextEntry: DeferredObjectiveSettingsEntry | undefined;
-}): void => {
-  const apply = deps.applyDeferredObjectiveChange;
-  if (!apply) return;
-  apply({
-    deviceId: params.device.id,
-    deviceName: params.device.name ?? null,
-    prevEntry: params.prevEntry,
-    nextEntry: params.nextEntry,
-    nowMs: deps.getNow().getTime(),
-  });
-};
-
 function registerClearDeadlineCard(
   deps: FlowCardDeps,
   lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
@@ -350,29 +322,29 @@ function registerClearDeadlineCard(
     const payload = args as { device?: RawFlowDeviceArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) throw new Error('Device must be provided.');
-    const accessors = requireSettingsAccessors(deps);
-    const settings = accessors.read();
-    const prevEntry = settings.objectivesByDeviceId[deviceId];
-    accessors.write(removeObjective(settings, deviceId));
+    const hadEntry = Boolean(requireSettingsRead(deps)().objectivesByDeviceId[deviceId]);
+    // Device-scoped op owns the hardened read-modify-write of settings plus the
+    // shared notify/flush/rebuild chokepoint. A `false` return is a refused
+    // (suspected transient-empty) write — the objective is still persisted, so
+    // we must NOT forget the bus / tracker / suppression caches (that would
+    // desync in-memory state from disk) and must surface a retryable error.
+    const persisted = deps.clearDeferredObjectiveForDevice({
+      deviceId,
+      deviceName: hadEntry ? await resolveDeviceName(deps, deviceId) : null,
+    });
+    throwIfWriteRefused(persisted);
+    // Flow-card-only side effects of forgetting a task, applied only AFTER the
+    // clear actually persisted: drop the bus / hours tracker memory and the
+    // trigger's per-device suppression cache so a later re-added task is a fresh
+    // observation, not a continuation of stale state.
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
     deps.getDeferredObjectiveHoursRemainingTracker?.()?.forgetDevice(deviceId);
-    // Drop the trigger's per-device suppression cache so a later re-added task
-    // is treated as a fresh observation rather than continuing stale prior
-    // status or hours-remaining comparisons.
     lastFlowStatusByDeviceId.delete(deviceId);
-    deps.applyDeferredObjectiveChange?.({
-      deviceId,
-      deviceName: prevEntry ? await resolveDeviceName(deps, deviceId) : null,
-      prevEntry,
-      nextEntry: undefined,
-      nowMs: deps.getNow().getTime(),
-    });
-    deps.rebuildPlan('deadline_objective_card_clear');
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    const settings = requireSettingsAccessors(deps).read();
+    const settings = requireSettingsRead(deps)();
     const activeIds = new Set(Object.keys(settings.objectivesByDeviceId));
     const candidates = activeIds.size > 0
       ? snapshot.filter((device) => activeIds.has(device.id))
@@ -570,7 +542,7 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) return false;
     const rawStatus = getDropdownId(payload?.status);
-    const settings = requireSettingsAccessors(deps).read();
+    const settings = requireSettingsRead(deps)();
     const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
     const legacyNoneMatch = isLegacyNoneStatusMatch(rawStatus, hasEntry);
     if (legacyNoneMatch !== null) return legacyNoneMatch;
@@ -614,7 +586,7 @@ function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {
     const payload = args as { device?: RawFlowDeviceArg } | null;
     const deviceId = getDeviceIdFromFlowArg(payload?.device);
     if (!deviceId) return false;
-    const settings = requireSettingsAccessors(deps).read();
+    const settings = requireSettingsRead(deps)();
     return Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

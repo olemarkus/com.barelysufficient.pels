@@ -44,6 +44,10 @@ const allowedOrphans = new Set([
   // Runtime wiring lands in the follow-up PR that resolves each device's owned
   // native-write capabilities and feeds them in.
   'lib/flowApi/flowConflict.ts',
+  // Consumed by `widgets/create_smart_task/src/api.ts` via the esbuild widget
+  // bundle, which madge (run against the runtime tsconfig that excludes
+  // `widgets/`) doesn't traverse.
+  'packages/shared-domain/src/smartTaskDeadlineFormat.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [
@@ -76,6 +80,16 @@ const deferredObjectiveBarrelExports = [
   'DeferredObjectivePlannedBucket',
   'resolveDeferredObjectiveDeadline',
   'DeferredObjectiveStep',
+  // Write-path barrel exports. The device-scoped ops + their shared deps type
+  // are consumed by app.ts and appInit; the hardened primitive
+  // `mutateDeferredObjectiveSettings` and `applyDeferredObjectiveChange` are
+  // re-exported from the barrel for direct unit testing (the ops call them
+  // intra-module), so ts-prune sees the barrel re-export as unused.
+  'applyDeferredObjectiveChange',
+  'DeferredObjectiveChangeInput',
+  'mutateDeferredObjectiveSettings',
+  'DeferredObjectiveSettingsMutationDeps',
+  'DeferredObjectiveSettingsMutator',
 ].join('|');
 
 const allowedUnusedExportPatterns = [
@@ -157,6 +171,28 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetEtaVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetTargetActionVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_TARGET_NOUN$/,
+  // Consumed by `widgets/create_smart_task/` (payload builder + browser
+  // render) via the esbuild widget bundle, which ts-prune (running against the
+  // runtime tsconfig that excludes `widgets/`) doesn't see.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_WIDGET_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_READY_BY_PRESETS$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_READY_BY_DEFAULT_ID$/,
+  // Create-smart-task widget create-error copy resolver: maps a create reject
+  // reason (incl. `deadline_passed`) to the widget error line; called only from
+  // the widget browser bundle, invisible to ts-prune's runtime tsconfig.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveCreateSmartTaskRejectCopy$/,
+  // Create-smart-task widget compose-step copy helpers: the picker "Now <value>"
+  // hint and the "Goal … · now …" goal anchor render only in the widget browser
+  // bundle, which ts-prune (runtime tsconfig excludes `widgets/`) doesn't see.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskNowValueLine$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskGoalContextLine$/,
+  // smartTaskDeviceKind helpers: `resolveSmartTaskDeviceKind` is reached from
+  // app.ts (create-objective validation); the bounds/current-value helpers are
+  // consumed only by the create_smart_task widget payload builder via the
+  // esbuild bundle ts-prune doesn't follow.
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskGoalBounds$/,
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskCurrentValue$/,
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskDefaultGoal$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByTone$/,
