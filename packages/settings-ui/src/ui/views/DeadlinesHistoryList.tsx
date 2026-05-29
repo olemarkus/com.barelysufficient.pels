@@ -200,6 +200,14 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">
       <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
+      {/* The 7-day hit-rate strip leads: it's the aggregate "how have my
+          deadlines been doing this week?" answer the recovering-from-mistake
+          persona lands for. The per-device miss-streak badges are the
+          drill-down beneath it, so they follow rather than sit above the
+          headline number. */}
+      {hitRateStrip !== null && (
+        <p class="deadlines-history__summary-strip">{hitRateStrip.text}</p>
+      )}
       {badges.length > 0 && (
         <ul class="deadlines-history__miss-streaks" aria-label="Miss streaks">
           {badges.map((badge) => (
@@ -210,9 +218,6 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
             </li>
           ))}
         </ul>
-      )}
-      {hitRateStrip !== null && (
-        <p class="deadlines-history__summary-strip">{hitRateStrip.text}</p>
       )}
       <DeviceFilterChipRow
         devices={devices}
