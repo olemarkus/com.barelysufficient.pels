@@ -452,7 +452,7 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip!.missed).toBe(0);
     expect(strip!.abandoned).toBe(0);
     expect(strip!.hitRatePercent).toBe(100);
-    expect(strip!.text).toBe('Last 7 days · 3 succeeded · 100% hit rate');
+    expect(strip!.text).toBe('Last 7 days, all devices · 3 succeeded · 100% of 3 finished');
   });
 
   it('renders 0% hit rate when every in-window entry missed', () => {
@@ -468,13 +468,14 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip!.succeeded).toBe(0);
     expect(strip!.missed).toBe(2);
     expect(strip!.hitRatePercent).toBe(0);
-    expect(strip!.text).toBe('Last 7 days · 2 missed · 0% hit rate');
+    expect(strip!.text).toBe('Last 7 days, all devices · 2 missed · 0% of 2 finished');
   });
 
   it('mixes succeeded/missed/abandoned with chip vocabulary and rounded percent', () => {
     // 8 succeeded + 3 missed + 1 abandoned: hit rate = 8 / 11 ≈ 72.7% → 73%.
     // The abandoned entry surfaces in the strip but is excluded from the
-    // denominator so blameless aborts don't move the rate.
+    // denominator so blameless aborts don't move the rate — the "of 11
+    // finished" fragment makes that denominator legible (11 = 8 + 3, not 12).
     const entries = [
       ...Array.from({ length: 8 }, (_, i) => buildEntry({ id: `m${i}`, outcome: 'met' as const })),
       ...Array.from({ length: 3 }, (_, i) => buildEntry({ id: `x${i}`, outcome: 'missed' as const })),
@@ -486,7 +487,7 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     expect(strip!.missed).toBe(3);
     expect(strip!.abandoned).toBe(1);
     expect(strip!.hitRatePercent).toBe(73);
-    expect(strip!.text).toBe('Last 7 days · 8 succeeded · 3 missed · 1 abandoned · 73% hit rate');
+    expect(strip!.text).toBe('Last 7 days, all devices · 8 succeeded · 3 missed · 1 abandoned · 73% of 11 finished');
   });
 
   it('collapses replaced into abandoned for the chip count', () => {
@@ -520,7 +521,7 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
     );
     expect(strip).not.toBeNull();
     expect(strip!.hitRatePercent).toBeNull();
-    expect(strip!.text).toBe('Last 7 days · 2 abandoned');
+    expect(strip!.text).toBe('Last 7 days, all devices · 2 abandoned');
   });
 
   it('includes entries on the 7-day boundary and excludes those just outside it', () => {

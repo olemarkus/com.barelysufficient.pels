@@ -202,6 +202,19 @@ const ensureDeviceFilterInitialized = (): void => {
   activeDeviceFilterInitialized = true;
 };
 
+// Monotonic refresh generation. The active list and the (independently
+// fetched) history archive resolve on their own schedules, and the history
+// `.then` re-renders the active list to thread the resolved `historyPresent`
+// flag. If the user re-opens the Smart tasks tab — firing a fresh
+// `refreshDeadlinesList()` — before a prior history request settles, the older
+// callback would otherwise fire late and re-render the active surface with its
+// own (now stale) cards / empty-state, clobbering the newer loading/error/ready
+// paint. Each invocation captures the counter value at entry and the history
+// callback only re-renders the active list while its generation is still the
+// latest. The history SURFACE render is unaffected — only the active-list
+// re-render is gated.
+let refreshGeneration = 0;
+
 const renderHistorySurface = (
   surface: HTMLElement,
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
@@ -238,18 +251,58 @@ const renderHistorySurface = (
 export const refreshDeadlinesList = async (): Promise<void> => {
   const surface = getSurface();
   if (!surface) return;
+  // Claim a generation for this invocation. A later refresh bumps the counter,
+  // which stales any in-flight history callback from this invocation so it
+  // can't re-render the active surface over the newer paint.
+  refreshGeneration += 1;
+  const generation = refreshGeneration;
   const historySurface = getHistorySurface();
   renderDeadlinesList(surface, { status: 'loading' });
   if (historySurface) renderDeadlinesHistoryList(historySurface, { status: 'loading' });
+
+  // Coordinate the active list's empty state with the (independently fetched)
+  // history archive. The active list's zero-card branch must distinguish a
+  // true first run from a between-runs lull, which depends on whether the Past
+  // tasks archive has any finished runs. The two fetches resolve on their own
+  // schedules and the history fetch must not gate the active list's first
+  // paint, so we render the active `ready` state as soon as cards are known —
+  // with `historyPresent` left undefined (the view falls back to first-run
+  // copy) — and re-render once the history fetch lands and we know the flag.
+  // The combiner reads whichever of the two signals have arrived; either the
+  // bootstrap `.then` (cards) or the history `.then` (presence) can trigger it.
+  let latestCards: DeadlinesListCard[] | null = null;
+  let historyPresent: boolean | undefined;
+  const renderActiveReady = (): void => {
+    if (latestCards === null) return;
+    const state: DeadlinesListState = {
+      status: 'ready',
+      cards: latestCards,
+      historyPresent,
+    };
+    renderDeadlinesList(surface, state);
+  };
+
   // Fire history fetch in parallel but don't await it before rendering the
   // active list — history is optional and a slow/hanging endpoint must not
-  // gate first paint of the primary Smart tasks list.
-  if (historySurface) {
-    const targetSurface = historySurface;
-    void fetchPlanHistoryOrNull().then((payload) => {
-      renderHistorySurface(targetSurface, payload);
-    });
-  }
+  // gate first paint of the primary Smart tasks list. The same payload feeds
+  // both the history surface render and the active list's empty-state branch,
+  // so a single fetch resolves both (no second round-trip).
+  const historyTarget = historySurface;
+  void fetchPlanHistoryOrNull().then((payload) => {
+    if (historyTarget) renderHistorySurface(historyTarget, payload);
+    // `historyPresent` is the empty-state discriminator: true when at least
+    // one finished run exists in the archive. Resolved through the same
+    // entry-extraction helper the history surface uses so the active list and
+    // the archive agree on what "has history" means.
+    historyPresent = resolveDeadlinesHistoryEntries(payload).length > 0;
+    // Gate the active-list re-render: only the latest invocation may repaint
+    // the active surface. A stale (older-generation) callback that resolves
+    // after a newer refresh has started must not overwrite the newer paint.
+    // The history surface render above is unaffected — it always reflects this
+    // fetch's own payload.
+    if (generation === refreshGeneration) renderActiveReady();
+  });
+
   try {
     const [bootstrap, devicesPayload] = await Promise.all([
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
@@ -258,13 +311,12 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     const objectiveSettings = normalizeDeferredObjectiveSettings(
       bootstrap.settings.deferred_objectives,
     );
-    const cards = resolveDeadlinesListCards({
+    latestCards = resolveDeadlinesListCards({
       activePlans: bootstrap.deferredObjectiveActivePlans,
       objectiveSettings,
       devices: devicesPayload.devices,
     });
-    const state: DeadlinesListState = { status: 'ready', cards };
-    renderDeadlinesList(surface, state);
+    renderActiveReady();
   } catch (error) {
     await logSettingsError('Failed to load deadlines list', error, 'refreshDeadlinesList');
     renderDeadlinesList(surface, {
