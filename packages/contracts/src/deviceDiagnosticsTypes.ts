@@ -21,6 +21,7 @@ export type DeviceDiagnosticsStarvationPauseReason =
   | 'suppression_none'
   | 'invalid_observation'
   | 'sample_gap'
+  | 'deferred_objective_avoid'
   | 'unknown_suppression_reason';
 
 export type DeviceDiagnosticsWindowSummary = {

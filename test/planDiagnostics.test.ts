@@ -3,6 +3,7 @@ import type { PlanContext } from '../lib/plan/planContext';
 import type { RestorePlanResult } from '../lib/plan/restore';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
 
 const r = legacyDeviceReason;
 
@@ -386,6 +387,43 @@ describe('plan diagnostics observations', () => {
       suppressionState: 'paused',
       countingCause: null,
       pauseReason: 'unknown_suppression_reason',
+    });
+  });
+
+  it('attributes a deferred-objective avoid hold as a paused starvation state', () => {
+    const observation = buildObservation({
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        currentOn: false,
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'not_applicable',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 21,
+        reason: { code: PLAN_REASON_CODES.deferredObjectiveAvoid, detail: null },
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation).toMatchObject({
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'deferred_objective_avoid',
     });
   });
 
