@@ -376,39 +376,38 @@ release, not v2.7.1 merge-blockers.*
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
 
-- [ ] Lift `revisionSummary.text` out of the collapsed `<details>`/`<summary>` on
-      `DeadlinePlan.tsx` so the live "why?" answer is visible at rest on the
-      smart-task detail page. Render as a standalone subline beneath the panel
-      heading. Today the producer already returns a one-line summary (e.g.
-      `Schedule revised — daily budget shifted · 15:42 · +1h`) but the view
-      buries it inside the `<summary>` row, which means the user has to spot
-      the disclosure chevron and tap it to read the headline answer.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `settings/style.css`. Source: release-review pels-ux-fit, 2026-05-28.
-
-- [ ] Distinguish the live "Recent plan changes" panel from the post-finalization
-      "What changed" card with an eyebrow (`Live` vs `After this task ran`).
-      `pels-m3-critic` confirmed the `.plan-revision-*` row markup is correctly
-      shared by both surfaces, so keep the row contract; only the panel/card
-      heading needs a tone cue. Today a user with both surfaces open in
-      adjacent tabs has no quick visual cue that one is live narration and the
-      other is post-mortem.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
-      release-review pels-ux-fit, 2026-05-28.
-
-- [ ] On revision-log fallback rows (`isFallback === true`), render
-      `Plan refreshed (details unavailable)` so the absent diff chip is
-      self-explained. Today the row shows the `Plan refreshed` label with no
-      chip and no explanation — the producer correctly suppresses the chip to
-      avoid mis-attributing a hour-diff to a vague label, but the suppression
-      is visually mysterious to the user. The `isFallback` boolean already
-      lives on the row shape.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`. Source:
-      release-review pels-ux-fit, 2026-05-28.
+*Status (2026-05-29 release-review): the three revision-panel items from
+this pass — lift `revisionSummary.text` out of the collapsed `<details>`,
+distinguish the live "Recent plan changes" panel from the post-finalization
+"What changed" card with a `Live` / `After this task ran` eyebrow, and render
+`Plan refreshed (details unavailable)` on `isFallback` rows — all shipped in
+commit `24ec99ee feat(settings-ui): revision-panel discoverability + fallback
+row clarity` (`DeadlinePlan.tsx`, `DeadlinePlanHistoryDetail.tsx`,
+`REVISION_REASON_FALLBACK_WITH_DETAIL` in `deadlineLabels.ts`). No open work
+remains from this subsection.*
 
 ## P2 Product, Observability, and Maintainability
+
+*v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
+`pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
+reorder and the remaining widget-copy hoist shipped as their own follow-up
+PRs. Items below are later polish.*
+
+- [ ] **Smart-tasks widget — `at_risk` dark-theme contrast + cannot_meet
+      recourse copy.** The `data-tone="warn"` row paints a 12%-mixed warning
+      wash (`widgets/smart_tasks/public/index.css:72-74`, eta recolor
+      `:104-112`); over the dark Homey host theme that wash is very
+      low-contrast, so the "at risk" signal leans almost entirely on the status
+      chip. Audit the warn fill against the dark host palette and bump it to a
+      legible state-layer. Separately, the cannot_meet recourse string
+      (`RECOURSE_CANNOT_MEET_DEVICE` in `deadlineLabels.ts:134`) is an
+      imperative ("Open this device's settings…") the widget can't fulfill — it
+      renders as plain muted text with no tap affordance. Consider softening to
+      a statement of cause, or routing the detail row to open the app. Both are
+      honest constraints (the chip still carries status), so polish not
+      correctness. Source: release-review pels-ux-fit + pels-m3-critic,
+      2026-05-29.
 
 - [ ] **Non-divisible per-task headroom share for single-step devices.**
       `lib/plan/deferredObjectives/policyHorizon.ts:313`
@@ -3834,6 +3833,23 @@ should not be folded into the same PR.
       `feedback_layering_resolution_in_producer`.
 
 ## P3 Future and Exploratory Work
+
+*v2.10.0..HEAD release-review cleanup (2026-05-29).*
+
+- [ ] **Chunk-6 detype dual-read removal + widget transition tokenization.**
+      Now that the producer populates `commandableNow` / `residualKw` /
+      `shedIntent` on `PlanInputDevice`, the transitional field-presence
+      fallbacks can collapse to unconditional flat reads:
+      `lib/device/deviceActionProjection.ts` (the `dev.field !== undefined`
+      gates), `lib/plan/planRemainingSheddableLoad.ts:244`, and
+      `lib/plan/restore/accounting.ts:52-66` (legacy fixture fallback). Both
+      `pels-runtime-reality` and `pels-layering-guardian` flagged these as the
+      only remaining structures that resemble consumer re-resolution; removing
+      them retires the smell. Separately, the smart-tasks widget `.row__btn`
+      hover uses a raw `transition: background-color 200ms ease-out`
+      (`widgets/smart_tasks/public/index.css`) — bind it to a Homey host
+      transition token if the host exposes one. Source: release-review
+      pels-runtime-reality + pels-layering-guardian, 2026-05-29.
 
 *Prod walk follow-ups, 2026-05-27. Two small UI items raised by the
 prod walk that didn't warrant a P2 slot.*
