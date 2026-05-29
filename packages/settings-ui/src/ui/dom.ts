@@ -159,6 +159,9 @@ export const deviceDetailSetupDisclosure = document.querySelector(
   '#device-detail-setup-disclosure',
 ) as HTMLDetailsElement | null;
 export const deviceDetailNativeWiringNotice = qs('#device-detail-native-wiring-notice');
+export const deviceDetailFlowConflictNotice = qs('#device-detail-flow-conflict-notice');
+export const deviceDetailFlowConflictTitle = qs('#device-detail-flow-conflict-title');
+export const deviceDetailFlowConflictBody = qs('#device-detail-flow-conflict-body');
 export const deviceDetailNativeWiringNoticeAction = document.querySelector(
   '#device-detail-native-wiring-notice-action',
 ) as MdButtonElement;

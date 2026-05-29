@@ -51,7 +51,7 @@ import {
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
-    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
+    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
 >;
 
 export type DeviceTransportParseProviders = {
@@ -63,6 +63,7 @@ export type DeviceTransportParseProviders = {
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
+    getFlowConflict?: (deviceId: string) => TargetDeviceSnapshot['flowConflict'];
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getDeviceTargetPowerConfig?: (deviceId: string) => TargetDeviceSnapshot['targetPowerConfig'];
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
@@ -484,6 +485,7 @@ function resolveParsedDeviceSettings(
         controllable: providers.getControllable?.(deviceId),
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),
+        flowConflict: providers.getFlowConflict?.(deviceId),
     };
 }
 

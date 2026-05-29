@@ -36,16 +36,20 @@ describe('detectNativeWiringConflicts', () => {
       structuredLog: logger,
     });
 
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId] });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
     expect(events[0]).toMatchObject({ outcome: 'ok', candidateCount: 1, conflictCount: 0, autoEnableCount: 1 });
   });
 
-  it('excludes a Hoiax device whose owned capability a Flow writes', async () => {
+  it('excludes a Hoiax device whose owned capability a Flow writes, and reports the conflict', async () => {
     const result = await detectNativeWiringConflicts({
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(hoiaxId, 'max_power_3000') }),
       getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
+    expect(result).toEqual({
+      status: 'ok',
+      autoEnableDeviceIds: [],
+      conflicts: [{ deviceId: hoiaxId, conflictingCapabilities: ['max_power_3000'] }],
+    });
   });
 
   it('keeps auto-enabling when the Flow only writes a non-owned capability (bridge pattern)', async () => {
@@ -56,7 +60,7 @@ describe('detectNativeWiringConflicts', () => {
       }),
       getSnapshot: () => [candidateDevice(hoiaxId, ['max_power_3000', 'onoff'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId] });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [hoiaxId], conflicts: [] });
   });
 
   it('does not auto-enable target_power steppers (already default-on, out of scope)', async () => {
@@ -64,7 +68,18 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getSnapshot: () => [candidateDevice(targetPowerId, ['target_power'])],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
+  });
+
+  it('does not surface a conflict for an always-on target_power device (no false banner)', async () => {
+    // target_power is default-on with its toggle hidden, so a conflict there
+    // must not be surfaced — the banner would otherwise claim control was
+    // "left off" with a switch that does not exist.
+    const result = await detectNativeWiringConflicts({
+      get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: advancedWrite(targetPowerId, 'target_power') }),
+      getSnapshot: () => [candidateDevice(targetPowerId, ['target_power'])],
+    });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
 
   it('returns unknown and no decisions when the flow read fails closed', async () => {
@@ -83,6 +98,6 @@ describe('detectNativeWiringConflicts', () => {
       get: getReturning({ [FLOW_API_PATH]: {}, [ADVANCED_FLOW_API_PATH]: {} }),
       getSnapshot: () => [],
     });
-    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [] });
+    expect(result).toEqual({ status: 'ok', autoEnableDeviceIds: [], conflicts: [] });
   });
 });

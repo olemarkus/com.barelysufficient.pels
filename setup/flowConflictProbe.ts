@@ -23,8 +23,10 @@ import { classifyFlowConflicts } from '../lib/flowApi/flowConflict';
 import { NATIVE_STEPPED_LOAD_CAPABILITY_IDS } from '../lib/device/nativeSteppedLoadWiring';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
+export type NativeWiringFlowConflict = { deviceId: string; conflictingCapabilities: string[] };
+
 export type NativeWiringConflictDetection =
-  | { status: 'ok'; autoEnableDeviceIds: string[] }
+  | { status: 'ok'; autoEnableDeviceIds: string[]; conflicts: NativeWiringFlowConflict[] }
   | { status: 'unknown' };
 
 /**
@@ -69,19 +71,25 @@ export async function detectNativeWiringConflicts(deps: {
   }
 
   const candidates = resolveStepCandidates(deps.getSnapshot());
-  const conflicts = classifyFlowConflicts(result.writes, candidates);
+  // Scope conflicts AND auto-enable to the Hoiax/max_power_* population the
+  // gate governs. target_power steppers are always default-on with their
+  // toggle hidden, so surfacing a conflict for them would render a banner
+  // claiming control was "left off" with a switch that does not exist.
+  const gatedCandidates = candidates.filter(
+    (candidate) => isHoiaxAutoEnableCandidate(candidate.ownedCapabilities),
+  );
+  const conflicts = classifyFlowConflicts(result.writes, gatedCandidates);
   const conflictedIds = new Set(conflicts.map((conflict) => conflict.deviceId));
 
-  const autoEnableDeviceIds = candidates
-    .filter((candidate) => (
-      isHoiaxAutoEnableCandidate(candidate.ownedCapabilities) && !conflictedIds.has(candidate.deviceId)
-    ))
+  const autoEnableDeviceIds = gatedCandidates
+    .filter((candidate) => !conflictedIds.has(candidate.deviceId))
     .map((candidate) => candidate.deviceId);
 
   deps.structuredLog?.info({
     event: 'flow_conflict_detection',
     outcome: 'ok',
     candidateCount: candidates.length,
+    gatedCandidateCount: gatedCandidates.length,
     conflictCount: conflicts.length,
     autoEnableCount: autoEnableDeviceIds.length,
     conflicts: conflicts.map((conflict) => ({
@@ -90,5 +98,12 @@ export async function detectNativeWiringConflicts(deps: {
     })),
   });
 
-  return { status: 'ok', autoEnableDeviceIds };
+  return {
+    status: 'ok',
+    autoEnableDeviceIds,
+    conflicts: conflicts.map((conflict) => ({
+      deviceId: conflict.deviceId,
+      conflictingCapabilities: conflict.conflictingCapabilities,
+    })),
+  };
 }
