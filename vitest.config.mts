@@ -46,6 +46,7 @@ export default defineConfig({
       'test/settings-ui.test.ts',
       'test/planPriceWidgetBrowser.test.ts',
       'test/createSmartTaskWidgetBrowser.test.ts',
+      'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
       'test/**/*.perf.test.ts',
     ],
