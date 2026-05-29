@@ -100,6 +100,33 @@ export function hasTargetPowerCapability(capabilities: readonly string[]): boole
   return capabilities.includes(TARGET_POWER_CAPABILITY_ID);
 }
 
+/**
+ * The capabilities PELS writes when it natively drives a stepped-load device,
+ * mirroring `resolveNativeSteppedLoadCommand`'s write targets:
+ *   - target_power steppers  → `target_power` (off step writes 0, same cap)
+ *   - max_power_* steppers    → the present `max_power_*` cap, plus `onoff`
+ *     when the device exposes it (the off step writes `onoff:false`)
+ *
+ * Operates on the capability-id list alone (no `capabilityObj`): callers pass
+ * the capabilities of a device already classified as a stepped-load candidate
+ * (`controlModel === 'stepped_load'`), so target_power setability is already
+ * resolved upstream. Returns `[]` when no native-write capability is present.
+ *
+ * This is the canonical owned-native-write set used by the flow-conflict
+ * detection (notes/native-wiring/): a user Flow writing any of these for the
+ * same device conflicts with PELS taking the device over natively.
+ */
+export function resolveNativeSteppedLoadWriteCapabilities(
+  capabilities: readonly string[],
+): string[] {
+  if (capabilities.includes(TARGET_POWER_CAPABILITY_ID)) return [TARGET_POWER_CAPABILITY_ID];
+
+  const nativeCapabilityId = resolveNativeSteppedLoadCapabilityId(capabilities);
+  if (!nativeCapabilityId) return [];
+
+  return capabilities.includes('onoff') ? [nativeCapabilityId, 'onoff'] : [nativeCapabilityId];
+}
+
 export function resolveNativeSteppedLoadProfileSuggestion(params: {
   device: HomeyDeviceLike;
   capabilities: readonly string[];
