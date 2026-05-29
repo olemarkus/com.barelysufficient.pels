@@ -387,7 +387,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
     });
     const result = formatPlanHistoryMissedReason(entry);
     expect(result).not.toBeNull();
-    expect(result).toContain('daily budget');
+    expect(result).toContain('Daily budget');
   });
 
   it('blameless rewrite — does not recommend lowering the target or moving the deadline', () => {
@@ -426,7 +426,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
       }),
     });
     const result = formatPlanHistoryMissedReason(entry);
-    expect(result).toContain("couldn't reserve enough cheap hours");
+    expect(result).toBe("Couldn't reserve enough cheap hours in time.");
   });
 
   it('returns null for non-missed outcomes', () => {
@@ -447,7 +447,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
       }),
     });
     expect(formatPlanHistoryMissedReason(entry)).toBe(
-      "PELS was still learning this device's energy use (3 readings) when it planned this run.",
+      "Still learning this device's energy use (3 readings).",
     );
   });
 
@@ -462,7 +462,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
       }),
     });
     expect(formatPlanHistoryMissedReason(entry)).toBe(
-      'Power was available, but the target needed more energy than estimated.',
+      'Target needed more energy than estimated.',
     );
   });
 
@@ -477,7 +477,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
         acceptedSamples: 3,
       }),
     });
-    expect(formatPlanHistoryMissedReason(entry)).toContain('daily budget');
+    expect(formatPlanHistoryMissedReason(entry)).toContain('Daily budget');
   });
 });
 
