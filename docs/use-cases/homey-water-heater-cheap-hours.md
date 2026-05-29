@@ -55,6 +55,8 @@ A water heater is a good candidate for cheap-hour shifting because it stores hea
 
 PELS can prefer cheaper hours when there is enough room under the hard cap. If the house load gets too high, PELS can lower, pause or turn off lower-priority devices first. When power becomes available again, PELS resumes devices in priority order.
 
+For a compatible water heater, **built-in device control** is on by default, so PELS adjusts the heater directly without you wiring up Homey Flows. If you already run a Flow that controls the heater, PELS leaves built-in control off and shows a notice on the device so the two never fight — remove that Flow to let PELS take over, or turn the switch on under the device's **Setup** section to override.
+
 For one-off needs, use a Smart task. For example:
 
 - hot water should be ready before morning
