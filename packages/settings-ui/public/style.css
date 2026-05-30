@@ -599,7 +599,7 @@ md-primary-tab.tab[active]:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-1);
-  color: var(--text-primary);
+  color: var(--text);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -646,7 +646,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .device-control-legend__item strong {
-  color: var(--text-primary);
+  color: var(--text);
   font-size: var(--font-size-sm);
 }
 
@@ -820,8 +820,8 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-icon-toggle:not(.is-disabled):hover {
-  border-color: var(--text-primary);
-  color: var(--text-primary);
+  border-color: var(--text);
+  color: var(--text);
 }
 
 .pels-icon-toggle.is-on:not(.is-disabled):hover {
@@ -836,7 +836,7 @@ md-primary-tab.tab[active]:hover {
 }
 
 .pels-device-card__detail-button:hover {
-  color: var(--text-primary);
+  color: var(--text);
   background: color-mix(in srgb, var(--pels-surface-container-high) 70%, transparent);
 }
 
@@ -1414,7 +1414,7 @@ md-filled-button.is-busy {
  * markup (DeadlinePlanHistoryDetail.tsx); see PR #1242 codex/gemini
  * audit. */
 .plan-history-detail__hero[data-tone="muted"] {
-  border-color: var(--color-border-subtle);
+  border-color: var(--color-border-default);
   background: var(--color-surface-3);
 }
 
@@ -2569,7 +2569,7 @@ md-filled-button.is-busy {
   background: var(--pels-surface-container-high);
   color: var(--pels-text-primary);
   font-family: inherit;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
@@ -2607,7 +2607,7 @@ md-filled-button.is-busy {
   background: var(--pels-surface-container-high);
   color: var(--pels-text-primary);
   font-family: inherit;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
@@ -2659,7 +2659,7 @@ md-filled-button.is-busy {
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
   align-self: flex-start;
   padding: var(--spacing-1) var(--spacing-3);
-  border-color: var(--color-border-subtle);
+  border-color: var(--color-border-default);
   background: transparent;
   font-weight: inherit;
 }
@@ -2667,7 +2667,7 @@ md-filled-button.is-busy {
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
   background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
-  border-color: var(--color-border-subtle);
+  border-color: var(--color-border-default);
 }
 
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
@@ -2678,7 +2678,7 @@ md-filled-button.is-busy {
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
   align-self: flex-start;
   padding: var(--spacing-1) var(--spacing-3);
-  border-color: var(--color-border-subtle);
+  border-color: var(--color-border-default);
   background: transparent;
   font-weight: inherit;
 }
@@ -2686,7 +2686,7 @@ md-filled-button.is-busy {
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
   background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
-  border-color: var(--color-border-subtle);
+  border-color: var(--color-border-default);
 }
 
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
@@ -6377,7 +6377,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
   .price-aware-grid__name {
     grid-column: 1 / -1;
-    font-size: var(--font-size-base);
+    font-size: var(--font-size-md);
     line-height: var(--font-line-height-tight);
   }
 
@@ -6529,7 +6529,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadlines-list-hero__nav-target-chevron {
   color: var(--muted);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   line-height: 1;
 }
 
@@ -6582,7 +6582,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadline-list-card__title {
   margin: 0;
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-bold);
   line-height: var(--font-line-height-snug);
   color: var(--text);
@@ -6629,7 +6629,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .deadline-list-card__target-value {
   color: var(--text);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -6733,7 +6733,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .deadlines-history {
-  margin-top: var(--spacing-5);
+  margin-top: var(--spacing-4);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
