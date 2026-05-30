@@ -2827,6 +2827,15 @@ md-filled-button.is-busy {
   font-weight: var(--pels-text-caption-font-weight);
   line-height: var(--pels-text-caption-font-line-height);
 }
+/* Semantic shared class: a metric / field / step / cell label. One role
+   (caption) for every "label" of this kind across pages — see
+   notes/settings-ui-semantic-map.md. Page blocks keep only structural props. */
+.metric-label {
+  color: var(--pels-text-caption-color);
+  font-size: var(--pels-text-caption-font-size);
+  font-weight: var(--pels-text-caption-font-weight);
+  line-height: var(--pels-text-caption-font-line-height);
+}
 .pels-text-settings-label {
   color: var(--pels-text-settings-label-color);
   font-weight: var(--pels-text-settings-label-font-weight);
@@ -3203,10 +3212,8 @@ md-filled-button.is-busy {
   text-align: right;
 }
 
+/* Typography from `.metric-label` (markup); structural props only. */
 .plan-card__metric-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-secondary);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -3531,10 +3538,10 @@ md-filled-button.is-busy {
   margin-inline: var(--spacing-2);
 }
 
+/* Typography from `.metric-label` (markup); structural + positioned-tick
+   overrides only. */
 .plan-card__step-label {
   position: absolute;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
   white-space: nowrap;
   line-height: var(--font-line-height-flat);
   transform: translateX(-50%);
@@ -7083,10 +7090,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
+/* Typography from `.metric-label` (markup). */
 .usage-metric__label {
-  font-size: var(--font-size-xs, 0.75rem);
   letter-spacing: 0;
-  color: var(--pels-text-secondary);
 }
 
 .usage-metric__value {
