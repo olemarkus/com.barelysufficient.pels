@@ -63,11 +63,11 @@
     --color-base-gray-300: #939496;    /* Homey mono-40 / text-light */
     --color-base-gray-900: #ffffff;
     /* Keep the designer-tuned dark on-accent text from the mobile palette —
-       `#ffffff` text on `#22c55e` accent green is only ~1.86 : 1 (fails
-       WCAG AA), while `#0c1610` on the same green is ~9.3 : 1 (AA pass for
-       both normal and large text). Saturated accent default stays identical
-       across mobile and desktop, so the dark on-accent reads correctly on
-       both canvases. */
+       `#ffffff` text on the `#16a34a` calm green-600 accent is only ~3.30 : 1
+       (fails WCAG AA for normal text), while `#0c1610` on the same green is
+       ~5.60 : 1 (AA pass for both normal and large text). Saturated accent
+       default stays identical across mobile and desktop, so the dark
+       on-accent reads correctly on both canvases. */
     --color-surface-1: #ffffff;        /* Homey mono-0 / component */
     --color-surface-2: #fafbfd;        /* Homey mono-01 */
     --color-surface-3: #f1f2f6;        /* Homey mono-02 */
@@ -5346,7 +5346,7 @@ details[open] > summary .disclosure-chevron {
      use `--color-base-accent-on` (a theme-invariant near-black) instead
      of `--color-base-black`, which the desktop palette flips to a near-
      white page wash and would otherwise produce near-white text on a
-     saturated green container (~1.86 : 1, fails AA). */
+     saturated green container (~3.30 : 1, fails AA for normal text). */
   --pels-md-on-primary: var(--color-base-accent-on);
   --pels-md-on-secondary: var(--color-base-accent-on);
   padding-bottom: var(--spacing-8);
