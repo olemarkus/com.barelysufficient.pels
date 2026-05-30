@@ -3703,6 +3703,39 @@ wave.*
       direct/deferred paths drifting. Source: pels-layering-guardian on
       fix/shed-marker-ownership, 2026-05-29.
 
+*Capacity-marker decomposition (2026-05-30, `fix/device-control-intent`).
+Increment 1 of the converged `lastDeviceShedMs` split: introduced a
+decision-time `shedDecidedMs` clock (planner-owned, edge-set at finalization
+for every device entering `lastPlannedShedIds`, cleared on restore alongside
+`lastDeviceShedMs`). The restore-eligibility readers — `isNonSteppedDevice
+Recovering` (×2), stepped-restore blocking (`coordination.ts` / `helpers.ts`),
+`resolveRestoreLogSource`, `hasStableUncontrolledRestoreActuation`, and the
+uncontrolled binary-restore gate — now read it, so a device the planner
+decided to shed but that was already off (executor write skipped) no longer
+under-stamps and restores early. `lastDeviceShedMs` stays the actuation clock
+for the 5 s throttle, cooldown-card countdown, reconcile window, and
+recent-shed restore backoff. See
+`notes/state-management/deferred-objective-lifecycle-carveout.md`.*
+
+- [ ] P2: dedup `isNonSteppedDeviceRecovering`. Byte-identical copies live in
+      `lib/plan/shedding/candidates.ts` and `lib/plan/planSteppedShedResolution.ts`
+      (both now read `shedDecidedMs`). Extract one canonical helper so the two
+      can't drift. Kept separate in increment 1 to hold the diff to the field
+      move; the only friction is the upward `planSteppedShedResolution →
+      shedding/candidates` import direction — pick a neutral home (e.g. a small
+      `planShedRecovery.ts`). Source: pels-layering-guardian, 2026-05-30.
+
+- [ ] P2: feed the recent-shed restore backoff off the decision-time clock.
+      `restore/support.ts:67` (`RECENT_SHED_RESTORE_BACKOFF_MS`) still reads the
+      actuation-time `lastDeviceShedMs`, so a decided-but-write-skipped shed is
+      not backed off on the *very next* restore evaluation (the recovering /
+      blocking gates already cover it; this is the residual timing-window edge).
+      It is a true elapsed-time window, not an existence check, so it needs the
+      `shedDecidedMs` timestamp threaded with the same care as the throttle —
+      defer to the increment that introduces the explicit `shedActuatedMs`
+      rename so the two clocks are named at the same time. Source:
+      pels-runtime-reality decomposition matrix, 2026-05-30.
+
 - [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
       selectors.** Source CSS (`packages/settings-ui/public/style.css`) has
       muted-only with a comment claiming other tones flow through from

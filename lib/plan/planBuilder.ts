@@ -310,6 +310,18 @@ export class PlanBuilder {
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
+    // Decision-time shed clock: stamp the moment the planner decides a device
+    // enters capacity-shed posture (edge-set on the transition into the shed
+    // set), independent of whether the executor actually issues a write this
+    // cycle. A device that is already off still gets stamped here, so the
+    // restore-eligibility readers no longer under-stamp it. Cleared on restore
+    // alongside `lastDeviceShedMs`. Edge-set (not refreshed while held) so a
+    // re-shed after a restore re-stamps a fresh decision time.
+    for (const id of finalized.lastPlannedShedIds) {
+      if (!this.state.lastPlannedShedIds.has(id)) {
+        this.state.shedDecidedMs[id] = nowTs;
+      }
+    }
     this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
     this.trackDuration('plan_overshoot_ms', () => this.updateOvershootState({
       context,

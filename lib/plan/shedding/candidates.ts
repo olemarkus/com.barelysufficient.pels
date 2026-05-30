@@ -421,7 +421,7 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
 function resolveSteppedShedTargetStep(params: {
   device: PlanInputDevice;
   devices: PlanInputDevice[];
-  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
+  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>;
   shedBehaviorAction: ShedAction;
   effectiveCurrentStepId?: string;
 }) {
@@ -441,7 +441,7 @@ function resolveSteppedShedTargetStep(params: {
 
 function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
-  state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
+  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
   if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !isObservedOff(candidate)) {
     return false;
@@ -449,10 +449,10 @@ function isNonSteppedDeviceRecovering(
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
     return true;
   }
-  const lastShedMs = state.lastDeviceShedMs[candidate.id];
-  if (lastShedMs == null) return false;
+  const shedDecidedMs = state.shedDecidedMs[candidate.id];
+  if (shedDecidedMs == null) return false;
   const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
-  return lastRestoreMs == null || lastRestoreMs < lastShedMs;
+  return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;
 }
 
 export function isNotAtShedTemperature(device: ShedCandidate): boolean {

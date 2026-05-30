@@ -80,7 +80,33 @@ export type OvershootTrackedPlanDevice = Pick<
 export type PlanEngineState = {
   appStartedAtMs: number;
   lastDeviceControlledMs: Record<string, number>;
+  /**
+   * Actuation-time clock: the timestamp the executor last actually turned a
+   * device off for capacity. Written by the executor — `recordShedActuation`
+   * on a real turn-off, plus the degenerate no-onoff shed path in
+   * `binaryExecutor`. Drives the actuation-recency readers —
+   * the 5s shed throttle, the cooldown countdown card, the reconcile window,
+   * and the recent-shed restore backoff. Do NOT use it to answer "is this
+   * device in shed posture?": a device the plan decided to shed but that was
+   * already off (write skipped) has no entry here. That decision-time
+   * question is `shedDecidedMs`.
+   */
   lastDeviceShedMs: Record<string, number>;
+  /**
+   * Decision-time clock: the timestamp the planner decided a device should be
+   * held in capacity-shed posture. Owned by the planner — edge-set at plan
+   * finalization for every device entering `lastPlannedShedIds` (so a
+   * decided-but-already-off device is recorded even when the executor skips
+   * the write), and cleared on restore exactly where `lastDeviceShedMs` is
+   * (controlled restores age it out via the `lastDeviceRestoreMs` comparison;
+   * uncontrolled `capacity_control_off` restores delete it). This is the
+   * intent/existence fact the restore-eligibility readers consult —
+   * recovering, stepped-restore blocking, restore-log source, and the
+   * uncontrolled-restore stability gate — so a write-skipped shed no longer
+   * under-stamps and lets a device restore early. See
+   * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+   */
+  shedDecidedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
   activationAttemptByDevice: Record<string, ActivationAttemptState>;
   headroomCardByDevice: Record<string, HeadroomCardState>;
@@ -171,6 +197,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     appStartedAtMs: nowTs,
     lastDeviceControlledMs: {},
     lastDeviceShedMs: {},
+    shedDecidedMs: {},
     lastDeviceRestoreMs: {},
     activationAttemptByDevice: {},
     headroomCardByDevice: {},
