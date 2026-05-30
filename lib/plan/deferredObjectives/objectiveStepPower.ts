@@ -7,10 +7,10 @@
  * making horizon plans optimistic; flooring at zero keeps malformed input
  * from corrupting the allocator.
  */
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 
 export function resolveStepDeliveryUsefulKw(
-  device: PlanInputDevice,
+  device: ObjectiveDeviceInput,
   stepId: string,
   nameplateKw: number,
 ): number {

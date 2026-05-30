@@ -12,7 +12,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import { resolveObjectiveSteps } from './objectiveSteps';
@@ -134,7 +134,7 @@ export type DeferredObjectiveDiagnostic =
 export const buildDeferredObjectiveDiagnostics = (params: {
   nowMs: number;
   timeZone: string;
-  devices: PlanInputDevice[];
+  devices: ObjectiveDeviceInput[];
   settings: DeferredObjectiveSettingsV1;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -288,7 +288,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   timeZone: string;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
-  device?: PlanInputDevice;
+  device?: ObjectiveDeviceInput;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;
@@ -392,7 +392,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   nowMs: number;
   deviceId: string;
   objective: DeferredObjectiveSettingsEntry;
-  device: PlanInputDevice;
+  device: ObjectiveDeviceInput;
   powerTracker: PowerTrackerState;
   base: DeferredObjectiveDiagnostic;
   progress: DeferredObjectiveProgressResolution;
@@ -505,7 +505,7 @@ const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): bool
 
 const buildDiagnosticBase = (params: {
   deviceId: string;
-  device?: PlanInputDevice;
+  device?: ObjectiveDeviceInput;
   objective: DeferredObjectiveSettingsEntry;
   timeZone: string;
   powerTracker: PowerTrackerState;

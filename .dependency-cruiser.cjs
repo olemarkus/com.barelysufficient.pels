@@ -176,6 +176,28 @@ module.exports = {
       to: { path: '^lib/executor/' },
     },
     {
+      name: 'no-plan-to-smarttasks',
+      comment:
+        'GOAL / definition-of-done for the smart-task controller extraction (see '
+        + 'notes/state-management/deferred-objective-lifecycle-carveout.md): the planner must know '
+        + 'nothing about smart tasks. lib/plan/** must not import the deferred-objective '
+        + '(smart-task) lifecycle. The controller still physically lives at '
+        + 'lib/plan/deferredObjectives/ pre-relocation, so this tracks the plan -> deferredObjectives '
+        + 'subsystem-import debt. CAVEAT: this config runs in post-compilation mode '
+        + '(tsPreCompilationDeps is unset), so `import type` edges are INVISIBLE to dependency-cruiser '
+        + '— this rule (and the no-objectives-to-peer-except-power relocation gate) count only VALUE '
+        + 'imports. Today that is the lone planBuilder value edge; the planEngine + admission '
+        + 'type-only edges are real but uncounted. So this meter is a coarse value-edge guard, NOT a '
+        + 'sound finish line: do NOT flip it to error, and do NOT trust the relocation gate to prove '
+        + 'decoupling, without a type-edge audit (grep, or a scoped tsPreCompilationDeps run — which '
+        + 'currently surfaces ~18 pre-existing repo-wide violations, a separate prerequisite tracked '
+        + 'in TODO.md and the carve-out note). Kept `warn` so arch:check stays green while the '
+        + 'value-edge debt shrinks visibly.',
+      severity: 'warn',
+      from: { path: '^lib/plan/', pathNot: '^lib/plan/deferredObjectives/' },
+      to: { path: '^lib/plan/deferredObjectives/' },
+    },
+    {
       name: 'no-plan-to-device',
       comment: 'Plan must consume the DeviceObservation interface, not the concrete DeviceTransport class or device internals. PR #1b of the observer/transport split (see notes/state-management/observer-transport-split.md). Allowed exceptions: the DeviceObservation interface itself, the deviceActionProjection producer seam (chunk 1 of the planner-detype refactor — pure resolvers physically owned by the device layer, consumed by plan-side shims), and the deviceResidualKw producer seam (chunk 3). PR #2 removed the remaining type-only DeviceManager surface from lib/plan/ and lib/executor/; PR #3 renamed the class to DeviceTransport.',
       severity: 'error',

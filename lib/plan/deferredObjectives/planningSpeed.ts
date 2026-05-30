@@ -10,7 +10,7 @@
  * we don't duplicate the nameplate fallback.
  */
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 
 const positiveOrNull = (value: number): number | null => (
@@ -31,8 +31,8 @@ export const firstPositiveFinite = (values: readonly unknown[]): number | null =
 };
 
 const resolveSteppedPlanningSpeedKw = (
-  device: PlanInputDevice,
-  steps: NonNullable<PlanInputDevice['steppedLoadProfile']>['steps'],
+  device: ObjectiveDeviceInput,
+  steps: NonNullable<ObjectiveDeviceInput['steppedLoadProfile']>['steps'],
 ): number | null => {
   const stepKws = sortSteppedLoadSteps(steps)
     .map((step) => resolveStepDeliveryUsefulKw(device, step.id, step.planningPowerW / 1000))
@@ -45,7 +45,7 @@ const resolveSteppedPlanningSpeedKw = (
  * The per-active-hour useful power the planner will commit. Returns null
  * when no usable step exists so the hero falls back to "Learning…" copy.
  */
-export const resolvePlanningSpeedKw = (device: PlanInputDevice | undefined): number | null => {
+export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined): number | null => {
   if (!device) return null;
   const profile = device.steppedLoadProfile;
   if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {

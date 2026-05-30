@@ -3776,6 +3776,36 @@ recent-shed restore backoff. See
       rename so the two clocks are named at the same time. Source:
       pels-runtime-reality decomposition matrix, 2026-05-30.
 
+*Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
+Program to make the planner know nothing about smart tasks (deferred objectives):
+relocate the lifecycle out of `lib/plan` into a clock-driven controller that
+mutates `PlanInputDevice`s and owns ending + terminal actuation; planner stays
+smart-task-agnostic. Finish line = `no-plan-to-smarttasks` dep-cruiser rule green.
+See `notes/state-management/deferred-objective-lifecycle-carveout.md`. PR-A
+(`ObjectiveDeviceInput` narrow read contract) shipped the device-input decoupling.*
+
+- [ ] **P1 (program prerequisite): enforcement is type-edge-blind.** `.dependency-cruiser.cjs`
+      runs post-compilation (`tsPreCompilationDeps` unset), so `import type` edges are invisible
+      to every rule — including the new `no-plan-to-smarttasks` burn-down meter and the
+      `no-objectives-to-peer-except-power` relocation gate. The meter currently counts only the
+      lone `planBuilder` value edge; the `planEngine` + `admission/deferredObjective` type-only
+      edges into the controller are real but uncounted. Flipping `tsPreCompilationDeps: true`
+      globally surfaces **~18 pre-existing repo-wide violations** (mostly `no-circular`, plus
+      `no-domain-to-app`, `no-device-to-peer`), so it cannot just be enabled. Until that cleanup
+      lands, **every relocation/finish-line PR must prove decoupling with a manual type-edge audit**
+      (grep the moved module for `from '..plan'`), not dep-cruiser green; and `no-plan-to-smarttasks`
+      must not be flipped to `error` on dep-cruiser evidence alone. Options: (a) burn down the 18
+      pre-existing violations then enable the flag globally; (b) add a small custom grep-based
+      decoupling check script as the real meter. Source: pels-layering-guardian on
+      `feat/smarttask-lifecycle-producer`, 2026-05-30.
+
+- [ ] P3: `ObjectiveDeviceInput.stepPowerCalibration` is narrowed to `{ deliveryPowerKw: number }`
+      (`lib/objectives/types.ts`) — the one field the controller reads. It is the only field
+      structurally narrowed rather than copied whole. If the controller ever takes on
+      admission/feasibility sizing that needs `admissionPowerKw`, restore it here (the failure mode
+      is a clean compile error at the read site, so it is self-announcing). Source:
+      pels-layering-guardian, 2026-05-30.
+
 - [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
       selectors.** Source CSS (`packages/settings-ui/public/style.css`) has
       muted-only with a comment claiming other tones flow through from

@@ -1,5 +1,5 @@
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { firstPositiveFinite } from './planningSpeed';
 import type { DeferredObjectiveStep } from './types';
@@ -12,7 +12,7 @@ import type { DeferredObjectiveStep } from './types';
 // would let the allocator over-promise delivery while the hero shows a slower
 // speed). Returns an empty list when the device has neither a stepped profile
 // nor a usable planning/expected/measured power.
-export const resolveObjectiveSteps = (device: PlanInputDevice): DeferredObjectiveStep[] => {
+export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObjectiveStep[] => {
   const profile = device.steppedLoadProfile;
   if (profile) {
     return sortSteppedLoadSteps(profile.steps).map((step) => ({
