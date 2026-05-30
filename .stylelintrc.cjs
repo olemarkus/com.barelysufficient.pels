@@ -26,7 +26,7 @@ module.exports = {
     // `color-mix()` with no semantic role, like a number.
     'declaration-property-value-disallowed-list': [
       {
-        '/^(color|background|background-color|border|border-color|border-(top|right|bottom|left)-color|outline|outline-color|fill|stroke|box-shadow|caret-color|text-decoration-color|column-rule-color)$/': [
+        '/^(color|background|background-color|background-image|border(-(top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))?(-color)?|outline|outline-color|fill|stroke|box-shadow|caret-color|text-decoration|text-decoration-color|text-emphasis-color|column-rule|column-rule-color)$/': [
           '/var\\(\\s*--color-base-(?!white|black)/',
           '/var\\(\\s*--color-surface-/',
         ],
