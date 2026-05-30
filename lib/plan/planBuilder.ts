@@ -20,7 +20,6 @@ import {
   normalizeShedReasons,
 } from './planReasons';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
@@ -43,19 +42,11 @@ import {
 import { isObservedOff } from '../observer/observedState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
-import {
-  applyDeferredAdmissionToInput,
-  applyDeferredObjectiveAdmission,
-  buildDeferredReleaseIntents,
-  buildDeferredTargetOverrides,
-} from './admission';
-import type { DeferredReleaseIntent } from './admission';
-import {
-  buildDeferredObjectiveDiagnostics,
-  ConcurrentEligibleTaskTracker,
-  type DeferredObjectiveDiagnostic,
-  type DeferredObjectiveSettingsV1,
-} from '../objectives/deferredObjectives';
+import type {
+  DeferredDecorationBundle,
+  DeferredDecorationInput,
+  DeferredReleaseIntent,
+} from '../../packages/planner-types/src/deferredDecoration';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],
@@ -78,31 +69,19 @@ export type PlanBuilderDeps = {
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
-  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
-  getTimeZone?: () => string;
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  // Reader for the per-device learned thermostat deadband (°C). Added to the
-  // raw user target by `buildDeferredTargetOverrides` so the planner commands
-  // the device a little above the user's deadline target — compensating for
-  // the device's local-control deadband. Defaults to 0 per device when the
-  // reader is absent or the device has no learned value yet (fresh install /
-  // setting purge). Self-healing: a lost store just relearns from the next
-  // met/stalled run. See `lib/utils/learnedThermostatDeadbandStore.ts`.
-  getLearnedThermostatDeadbandC?: (deviceId: string) => number;
-  // Commits the active-plan recorder (pending -> committed) each plan cycle.
-  // Stays on the plan path (not the lifecycle clock) because the planner reads
-  // committed plans via resolveCommittedHours for its decoration — the
-  // commitment must be synchronous with planning, not lag up to a clock tick.
-  observeDeferredObjectiveActivePlans?: (
-    diagnostics: DeferredObjectiveDiagnostic[],
-    nowMs: number,
-  ) => void;
+  // Smart-task (deferred-objective) decoration seam. The smart-task controller
+  // (lib/objectives) evaluates objectives, commits active plans synchronously,
+  // and applies admission / target-overrides / release-intents, returning a
+  // `DeferredDecorationBundle`. When absent (no smart tasks wired, e.g. tests),
+  // the planner uses the identity bundle and stays entirely smart-task-agnostic.
+  // This is the dependency inversion that keeps lib/plan free of lib/objectives.
+  decorateDeferredObjectives?: (input: DeferredDecorationInput) => DeferredDecorationBundle;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -111,17 +90,6 @@ const OVERSHOOT_DELTA_EPSILON_KW = 0.05;
 const OVERSHOOT_TOP_CONTRIBUTOR_LIMIT = 3;
 
 export class PlanBuilder {
-  // Stateful tracker for the priority-1 fully-reserved smart-task count. Held
-  // at the builder so its grace-window state (devices observed within the
-  // last `ELIGIBILITY_ABANDON_GRACE_MS`) survives across plan cycles —
-  // without that, a transient SDK-side device-snapshot eviction flickers the
-  // count down for one cycle and survivor diagnostics oscillate
-  // `on_track` ↔ `at_risk: feasible_above_floor`. Not persisted across PELS
-  // restarts; on restart the first cycle rebuilds the map, accepting one
-  // potential flicker window in exchange for keeping the eligibility model
-  // off the settings contract.
-  private concurrentEligibleTracker = new ConcurrentEligibleTaskTracker();
-
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) { }
   private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
@@ -212,55 +180,20 @@ export class PlanBuilder {
     // admitted, the shedding and restore lanes act on the device with their normal logic and
     // produce their normal reasons.
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
-    const deferredEvaluations = this.trackDuration('evaluate_deferred_objectives_ms', () => (
-      this.evaluateDeferredObjectives(devices, dailyBudgetSnapshot, nowTs)
-    ));
+    // Hand the device list to the smart-task controller for decoration. The
+    // controller evaluates objectives, commits active plans synchronously, and
+    // applies admission / target-overrides / release-intents, returning a
+    // smart-task-agnostic bundle. When no controller is wired the planner uses
+    // the identity bundle and ignores smart tasks entirely.
     const {
       admittedDevices,
       forceShedSet,
       deferredAvoidDeviceIds,
       deferredReleaseIntentByDeviceId,
-    } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
-      // Commit the active-plan recorder synchronously with planning: the planner
-      // reads committed plans (resolveCommittedHours) for its decoration, so this
-      // promotion must not lag a clock tick. Pure emission (status transitions,
-      // hours-remaining, diagnostics, plan history, deadline-passed) is owned by
-      // the clock-driven DeferredObjectiveLifecycleEmitter instead.
-      this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
-      const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
-      const deferredTargetOverrides = buildDeferredTargetOverrides(
-        deferredEvaluations,
-        this.deps.getLearnedThermostatDeadbandC,
-      );
-      const admission = applyDeferredAdmissionToInput(devices, deferredAdmission, deferredTargetOverrides);
-      // Devices whose smart task is on track AND has no allocated energy
-      // this hour (current bucket is `preference: 'avoid'`, or the task is
-      // between planned hours). Used downstream by `normalizeShedReasons`
-      // to render the `deferredObjectiveAvoid` reason ("Waiting for cheaper
-      // hours") instead of the misleading capacity/dailyBudget fallback
-      // when the device ends up held this cycle.
-      //
-      // Gating on `status === 'on_track'` is intentional: the calm
-      // "Waiting for cheaper hours" framing is honest only while PELS still
-      // believes the deadline will be met. `at_risk` / `cannot_meet` tasks
-      // must fall through to the physical-constraint framing so the
-      // Overview doesn't mask a failure the user already got notified
-      // about. `inactive` / `satisfied` / `invalid` never reach this
-      // branch because they don't co-occur with a current-bucket avoid.
-      const deferredAvoidIds = new Set<string>();
-      for (const diag of deferredEvaluations) {
-        if (diag.status !== 'on_track') continue;
-        const currentBucket = diag.horizonPlan?.currentBucket;
-        const isAvoidBucket = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
-        if (isAvoidBucket) deferredAvoidIds.add(diag.deviceId);
-      }
-      return {
-        admittedDevices: admission.devices,
-        forceShedSet: admission.forceShedSet,
-        deferredAvoidDeviceIds: deferredAvoidIds,
-        deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(deferredAdmission),
-      };
-    });
+    } = this.trackDuration('plan_deferred_objective_observe_ms', () => (
+      this.deps.decorateDeferredObjectives?.({ devices, dailyBudgetSnapshot, nowTs })
+      ?? buildIdentityDecorationBundle(devices)
+    ));
 
     const {
       context,
@@ -688,27 +621,6 @@ export class PlanBuilder {
     this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
   }
 
-  private evaluateDeferredObjectives(
-    devices: PlanInputDevice[],
-    dailyBudgetSnapshot: DailyBudgetUiPayload | null,
-    nowTs: number,
-  ): DeferredObjectiveDiagnostic[] {
-    const settings = this.deps.getDeferredObjectiveSettings?.();
-    if (!settings) return [];
-    return buildDeferredObjectiveDiagnostics({
-      nowMs: nowTs,
-      timeZone: this.deps.getTimeZone?.() ?? 'UTC',
-      devices,
-      settings,
-      powerTracker: this.powerTracker,
-      dailyBudgetSnapshot,
-      priceOptimizationEnabled: this.priceOptimizationEnabled,
-      activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
-      hardCapKw: this.capacitySettings.limitKw,
-      concurrentEligibleTracker: this.concurrentEligibleTracker,
-    });
-  }
-
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
     if (dailySoftLimit === null) return 'capacity';
     if (Math.abs(dailySoftLimit - capacitySoftLimit) <= SOFT_LIMIT_EPSILON) return 'capacity';
@@ -1104,6 +1016,18 @@ function shouldExposePendingTargetCommand(
     && device.plannedTarget !== device.currentTarget
     && device.plannedTarget === pending.desired,
   );
+}
+
+// No-smart-task fallback: pass the device list through untouched. Used when no
+// decoration controller is wired (e.g. unit tests), keeping the planner free of
+// any lib/objectives dependency.
+function buildIdentityDecorationBundle(devices: PlanInputDevice[]): DeferredDecorationBundle {
+  return {
+    admittedDevices: devices,
+    forceShedSet: new Set<string>(),
+    deferredAvoidDeviceIds: new Set<string>(),
+    deferredReleaseIntentByDeviceId: {},
+  };
 }
 
 function attachDeferredReleaseIntents(

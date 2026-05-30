@@ -5,7 +5,11 @@ import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSeman
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveSettingsV1, DeferredObjectiveRescuePermissions } from '../lib/objectives/deferredObjectives';
+import {
+  DeferredObjectiveDecorationController,
+  type DeferredObjectiveSettingsV1,
+  type DeferredObjectiveRescuePermissions,
+} from '../lib/objectives/deferredObjectives';
 
 // GATE TRACE (PR3 step 0): prove that a smart task carrying `rescue.exemptFromBudget`
 // on a CAP-ON (controllable=true), daily-budget-starved temperature device actually
@@ -142,6 +146,13 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
   // only soft constraint and any shed is a daily-budget shed.
   const capacityGuard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
   capacityGuard.reportTotalPower(1.5);
+  const deferredController = new DeferredObjectiveDecorationController({
+    getDeferredObjectiveSettings: () => buildSettings(rescue),
+    getTimeZone: () => 'UTC',
+    getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
+    getPriceOptimizationEnabled: () => true,
+    getHardCapKw: () => 100,
+  });
   return new PlanBuilder({
     homey: { settings: { set: vi.fn() } } as never,
     getCapacityGuard: () => capacityGuard,
@@ -154,8 +165,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     isCurrentHourExpensive: () => false,
     getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(hoursInDay),
-    getDeferredObjectiveSettings: () => buildSettings(rescue),
-    getTimeZone: () => 'UTC',
+    decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: () => 1,
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     log: vi.fn(),

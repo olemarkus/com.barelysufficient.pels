@@ -20,13 +20,10 @@ export {
 } from './activationBackoff';
 export type { ActivationAttemptSource } from './activationBackoff';
 
-export {
-  applyDeferredAdmissionToInput,
-  applyDeferredObjectiveAdmission,
-  buildDeferredReleaseIntents,
-  buildDeferredTargetOverrides,
-} from './deferredObjective';
-export type { DeferredReleaseIntent } from './deferredObjective';
+// The deferred-objective (smart-task) admission appliers moved to the smart-task
+// controller in lib/objectives/deferredObjectives (PR-D2 of the controller
+// extraction); the planner no longer owns them. The release-intent union lives
+// in @pels/planner-types.
 
 export {
   buildRestoreAdmissionLogFields,

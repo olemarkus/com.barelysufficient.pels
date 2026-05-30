@@ -2,7 +2,7 @@ import {
   applyDeferredAdmissionToInput,
   applyDeferredObjectiveAdmission,
   buildDeferredTargetOverrides,
-} from '../lib/plan/admission';
+} from '../lib/objectives/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../lib/plan/planTypes';

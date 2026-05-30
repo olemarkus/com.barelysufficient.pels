@@ -4,7 +4,10 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives';
+import {
+  DeferredObjectiveDecorationController,
+  type DeferredObjectiveSettingsV1,
+} from '../lib/objectives/deferredObjectives';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';
@@ -149,6 +152,13 @@ const buildBuilder = (
   const capacityGuard = overrides.capacityGuard ?? new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
   if (!overrides.capacityGuard) capacityGuard.reportTotalPower(0);
   const capacitySettings = overrides.capacitySettings ?? { limitKw: 100, marginKw: 0 };
+  const deferredController = new DeferredObjectiveDecorationController({
+    getDeferredObjectiveSettings: () => buildSettings(),
+    getTimeZone: () => 'UTC',
+    getPowerTracker: () => powerTrackerRef.current,
+    getPriceOptimizationEnabled: () => true,
+    getHardCapKw: () => capacitySettings.limitKw,
+  });
   return new PlanBuilder({
     homey: { settings: { set: vi.fn() } } as never,
     getCapacityGuard: () => capacityGuard,
@@ -161,8 +171,7 @@ const buildBuilder = (
     isCurrentHourExpensive: () => false,
     getPowerTracker: () => powerTrackerRef.current,
     getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-    getDeferredObjectiveSettings: () => buildSettings(),
-    getTimeZone: () => 'UTC',
+    decorateDeferredObjectives: (input) => deferredController.decorate(input),
     getPriorityForDevice: (deviceId) => {
       const mode = overrides.modeRef?.current ?? 'Home';
       return overrides.priorityByModeRef?.current?.[mode]?.[deviceId] ?? 1;
@@ -274,6 +283,13 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
   it('commands the deadline target when the operating mode target is below it', async () => {
     const powerTrackerRef = { current: buildPowerTracker(DAY_START_UTC) };
     const modeRef = { current: 'Home' };
+    const deferredController = new DeferredObjectiveDecorationController({
+      getDeferredObjectiveSettings: () => buildSettings(),
+      getTimeZone: () => 'UTC',
+      getPowerTracker: () => powerTrackerRef.current,
+      getPriceOptimizationEnabled: () => true,
+      getHardCapKw: () => 100,
+    });
     const builder = new PlanBuilder({
       homey: { settings: { set: vi.fn() } } as never,
       getCapacityGuard: () => {
@@ -291,8 +307,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       isCurrentHourExpensive: () => false,
       getPowerTracker: () => powerTrackerRef.current,
       getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
-      getDeferredObjectiveSettings: () => buildSettings(),
-      getTimeZone: () => 'UTC',
+      decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getPriorityForDevice: () => 1,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       log: vi.fn(),
@@ -501,18 +516,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
 
     const capacityGuard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
     capacityGuard.reportTotalPower(0);
-    const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
-      getCapacityGuard: () => capacityGuard,
-      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
-      getOperatingMode: () => 'Home',
-      getModeDeviceTargets: () => ({}),
-      getPriceOptimizationEnabled: () => true,
-      getPriceOptimizationSettings: () => ({}),
-      isCurrentHourCheap: () => false,
-      isCurrentHourExpensive: () => false,
-      getPowerTracker: () => powerTracker,
-      getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
+    const deferredController = new DeferredObjectiveDecorationController({
       getDeferredObjectiveSettings: () => ({
         version: 1,
         objectivesByDeviceId: {
@@ -526,6 +530,23 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
         },
       }),
       getTimeZone: () => 'UTC',
+      getPowerTracker: () => powerTracker,
+      getPriceOptimizationEnabled: () => true,
+      getHardCapKw: () => 100,
+    });
+    const builder = new PlanBuilder({
+      homey: { settings: { set: vi.fn() } } as never,
+      getCapacityGuard: () => capacityGuard,
+      getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
+      getOperatingMode: () => 'Home',
+      getModeDeviceTargets: () => ({}),
+      getPriceOptimizationEnabled: () => true,
+      getPriceOptimizationSettings: () => ({}),
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getPowerTracker: () => powerTracker,
+      getDailyBudgetSnapshot: () => buildDailyBudgetSnapshot(),
+      decorateDeferredObjectives: (input) => deferredController.decorate(input),
       getPriorityForDevice: () => 1,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       log: vi.fn(),

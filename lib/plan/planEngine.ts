@@ -16,7 +16,6 @@ import {
   type HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
   decoratePlanWithPendingTargetCommands,
@@ -30,7 +29,6 @@ import {
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type { DeferredObjectiveSettingsV1 } from '../objectives/deferredObjectives';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -46,9 +44,12 @@ export type PlanEngineDeps = {
   isCurrentHourExpensive: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
-  getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
-  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
-  getTimeZone: () => string;
+  // Pre-built smart-task decoration function (the app wiring constructs the
+  // DeferredObjectiveDecorationController and passes its `decorate` here). The
+  // engine forwards it straight to the builder — lib/plan never imports
+  // lib/objectives, so neither the planner nor the executor knows about smart
+  // tasks directly.
+  decorateDeferredObjectives?: PlanBuilderDeps['decorateDeferredObjectives'];
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getPriorityForDevice: (deviceId: string) => number;
   getDynamicSoftLimitOverride?: () => number | null;
@@ -66,8 +67,6 @@ export type PlanEngineDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  getLearnedThermostatDeadbandC?: PlanBuilderDeps['getLearnedThermostatDeadbandC'];
-  observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -115,17 +114,13 @@ export class PlanEngine {
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
-      getDeferredObjectiveSettings: deps.getDeferredObjectiveSettings,
-      getDeferredObjectiveActivePlans: deps.getDeferredObjectiveActivePlans,
-      getTimeZone: deps.getTimeZone,
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
-      getLearnedThermostatDeadbandC: deps.getLearnedThermostatDeadbandC,
-      observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
+      decorateDeferredObjectives: deps.decorateDeferredObjectives,
       log: deps.log,
       logDebug: deps.logDebug,
     };

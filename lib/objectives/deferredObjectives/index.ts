@@ -95,3 +95,9 @@ export type {
   DeferredObjectivePlannedBucket,
   DeferredObjectiveStep,
 } from './types';
+// Smart-task controller: the input-decoration stage the app wiring constructs
+// and injects into the planner as `decorateDeferredObjectives`. The planner
+// consumes the flat `DeferredDecorationBundle` it produces (see
+// @pels/planner-types) and imports none of this subsystem. The admission
+// appliers it owns stay internal (reached via ./admission directly).
+export { DeferredObjectiveDecorationController } from './decorationController';
