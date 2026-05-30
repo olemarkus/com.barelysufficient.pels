@@ -63,11 +63,11 @@
     --color-base-gray-300: #939496;    /* Homey mono-40 / text-light */
     --color-base-gray-900: #ffffff;
     /* Keep the designer-tuned dark on-accent text from the mobile palette —
-       `#ffffff` text on `#22c55e` accent green is only ~1.86 : 1 (fails
-       WCAG AA), while `#0c1610` on the same green is ~9.3 : 1 (AA pass for
-       both normal and large text). Saturated accent default stays identical
-       across mobile and desktop, so the dark on-accent reads correctly on
-       both canvases. */
+       `#ffffff` text on the `#16a34a` calm green-600 accent is only ~3.30 : 1
+       (fails WCAG AA for normal text), while `#0c1610` on the same green is
+       ~5.60 : 1 (AA pass for both normal and large text). Saturated accent
+       default stays identical across mobile and desktop, so the dark
+       on-accent reads correctly on both canvases. */
     --color-surface-1: #ffffff;        /* Homey mono-0 / component */
     --color-surface-2: #fafbfd;        /* Homey mono-01 */
     --color-surface-3: #f1f2f6;        /* Homey mono-02 */
@@ -903,26 +903,29 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
 }
 
+/* Homey-native grouped Settings nav: one outer surface, rows separated by
+   internal 1px dividers (no per-row border or shadow), each row paired with a
+   flat outline icon. */
 .settings-nav-list {
   display: grid;
-  gap: var(--spacing-2);
+  gap: 0;
   padding: 0;
-  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
 }
 
 .settings-nav-card {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: var(--spacing-8);
+  min-height: var(--pels-touch-target-min);
   padding: 0;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: var(--radius-md) !important;
-  background: var(--pels-surface-container-low) !important;
-  box-shadow: var(--shadow-md);
+  background: transparent;
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
   --md-list-item-label-text-color: var(--text);
   --md-list-item-label-text-font: var(--font-sans);
   --md-list-item-label-text-weight: var(--font-weight-bold);
@@ -931,25 +934,36 @@ md-primary-tab.tab[active]:hover {
   --md-list-item-supporting-text-font: var(--font-sans);
   --md-list-item-supporting-text-size: var(--font-size-sm);
   --md-list-item-two-line-container-height: var(--spacing-8);
-  --md-list-item-leading-space: var(--spacing-4);
+  --md-list-item-leading-space: var(--spacing-3);
   --md-list-item-trailing-space: var(--spacing-3);
   --md-list-item-top-space: var(--spacing-3);
   --md-list-item-bottom-space: var(--spacing-3);
 }
 
+/* Internal dividers between rows; the first row has none. */
+.settings-nav-card + .settings-nav-card {
+  border-top: 1px solid var(--panel-border);
+}
+
 .settings-nav-card:hover,
 .settings-nav-card:focus-visible {
-  border-color: var(--accent) !important;
   background: var(--pels-surface-container) !important;
 }
 
 .settings-nav-card:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: calc(-1 * var(--spacing-1));
 }
 
 .settings-nav-card--quiet {
   opacity: 0.86;
+}
+
+.settings-nav-card__icon {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  color: var(--muted);
 }
 
 .settings-nav-card__content {
@@ -1379,24 +1393,28 @@ md-filled-button.is-busy {
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-base-white) 10%, transparent);
 }
 
+/* M3 status pattern (TODO M3 alignment items #3/#7 "reduce orange weight"):
+   instead of a saturated tint behind a full 4-sided role-coloured border —
+   which makes a viewport with several attention surfaces read as
+   "everything is on fire" — the tonal hero keeps a calm neutral surface and
+   a neutral hairline on three sides, and carries its semantic on a single
+   4px left state-rail (the role colour) plus a role-toned headline. The rail
+   stays legible on both the mobile dark and desktop light canvases because
+   the role border tokens are tuned for each. */
 .plan-hero[data-tone="good"],
 .pels-hero[data-tone="good"] {
-  border-color: var(--color-state-positive-border);
-  background: linear-gradient(
-    180deg,
-    var(--color-state-positive-bg),
-    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
-  );
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-positive-border);
+  border-left-width: var(--spacing-1);
+  background: var(--pels-surface-container-high);
 }
 
 .plan-hero[data-tone="warn"],
 .pels-hero[data-tone="warn"] {
-  border-color: var(--color-state-warning-border);
-  background: linear-gradient(
-    180deg,
-    var(--color-state-warning-bg),
-    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
-  );
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-warning-border);
+  border-left-width: var(--spacing-1);
+  background: var(--pels-surface-container-high);
 }
 
 /* History-detail-only tone for the Abandoned shape — a log entry, not a
@@ -1414,22 +1432,18 @@ md-filled-button.is-busy {
 
 .plan-hero[data-tone="alert"],
 .pels-hero[data-tone="alert"] {
-  border-color: var(--color-state-negative-border);
-  background: linear-gradient(
-    180deg,
-    var(--color-state-negative-bg),
-    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
-  );
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-negative-border);
+  border-left-width: var(--spacing-1);
+  background: var(--pels-surface-container-high);
 }
 
 .plan-hero[data-tone="info"],
 .pels-hero[data-tone="info"] {
-  border-color: var(--color-state-info-border);
-  background: linear-gradient(
-    180deg,
-    var(--color-state-info-bg),
-    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
-  );
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-info-border);
+  border-left-width: var(--spacing-1);
+  background: var(--pels-surface-container-high);
 }
 
 /* Canonical chip primitive. `.plan-chip` is the single source of truth for
@@ -2416,10 +2430,19 @@ md-filled-button.is-busy {
   padding-top: calc(var(--spacing-4) + var(--spacing-1));
 }
 
-/* Hero section eyebrow. The element also carries `.eyebrow` so it shares
-   font-size, weight, letter-spacing, and text-transform with every other page
-   header. This rule only sets the colour token used inside the hero card. */
+/* Hero section label. Historically this carried the all-caps `.eyebrow`
+   marketing overline above every hero heading. The M3 alignment pass (TODO #5)
+   drops that idiom in favour of Homey-native single-weight sentence-case
+   section labels so the display heading leads. The element keeps the `.eyebrow`
+   class in markup (a11y `aria-labelledby` targets + the hero-rebind contract
+   depend on it), but this rule overrides the eyebrow's uppercase transform and
+   letter-spacing so it renders as a quiet, sentence-case label. */
 .plan-hero__section-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
   color: var(--pels-text-section-label-color);
 }
 
@@ -2446,6 +2469,43 @@ md-filled-button.is-busy {
   font-weight: var(--pels-text-display-font-weight);
   line-height: var(--pels-text-display-font-line-height);
   letter-spacing: 0;
+  /* Tabular numerals so metric headlines don't reflow/jitter as digits change
+     between render cycles (e.g. "0.3" → "0.4" → "12.0"). */
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numeric-first metric headline: the value leads as the dominant element, the
+   unit/qualifier trails smaller and quieter beneath it. Used by the Overview
+   "Power now" + "Energy used this hour" heroes. */
+.plan-hero__metric {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1);
+}
+
+.plan-hero__metric-value {
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
+}
+
+.plan-hero__metric-qualifier {
+  font-size: var(--pels-text-supporting-font-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--pels-text-supporting-font-line-height);
+  color: var(--pels-text-supporting-color);
+}
+
+/* Scale the hero display type down on the narrowest viewports (≤360px, the
+   320px floor included) so long display headings ("Diagnostics & maintenance",
+   "Configure PELS") and metric values never overflow the hero card. */
+@media (max-width: 360px) {
+  .plan-hero__headline,
+  .plan-hero__metric-value {
+    font-size: var(--font-size-headline-md);
+  }
 }
 
 .plan-hero__subline {
@@ -2899,28 +2959,35 @@ md-filled-button.is-busy {
 }
 
 /* Canonical tonal API — shared with `.plan-hero[data-tone=…]` and
-   `.plan-chip[data-tone=…]`. Uses the same `--color-state-*-bg/-border`
-   tokens the legacy `.plan-card[data-state-kind=…]` aliases below resolve
-   onto, so new consumers can pick the data-tone form without forcing a
-   mass migration. */
+   `.plan-chip[data-tone=…]`. M3 status pattern (TODO M3 alignment items
+   #3/#7 "reduce orange weight"): the tonal card keeps the neutral base card
+   surface + a neutral hairline on three sides and carries its semantic on a
+   4px role-coloured left state-rail. The role is reinforced inline by the
+   consumer's tone chip (`.plan-chip--{tone}` in the card header), so the
+   card edge no longer needs a full 4-sided role border or a saturated tint
+   that, multiplied across a list, reads as "everything is on fire". */
 .pels-surface-card[data-tone="good"] {
-  background: var(--color-state-positive-bg);
-  border-color: var(--color-state-positive-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-positive-border);
+  border-left-width: var(--spacing-1);
 }
 
 .pels-surface-card[data-tone="warn"] {
-  background: var(--color-state-warning-bg);
-  border-color: var(--color-state-warning-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-warning-border);
+  border-left-width: var(--spacing-1);
 }
 
 .pels-surface-card[data-tone="alert"] {
-  background: var(--color-state-negative-bg);
-  border-color: var(--color-state-negative-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-negative-border);
+  border-left-width: var(--spacing-1);
 }
 
 .pels-surface-card[data-tone="info"] {
-  background: var(--color-state-info-bg);
-  border-color: var(--color-state-info-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-info-border);
+  border-left-width: var(--spacing-1);
 }
 
 /* Deliberate NEUTRAL tonal container — Abandoned / Replaced / Unknown history
@@ -2974,26 +3041,34 @@ md-filled-button.is-busy {
 
 /* Legacy `.plan-card[data-state-kind="…"]` aliases for the canonical
    tonal API above. Kept so the device-row cards (which already wire
-   `data-state-kind` from the plan presentation) inherit the same tonal
-   bg/border without a forced markup migration. The `unavailable` opacity
-   shading + the `unknown` opacity-only fade are plan-card-specific
-   device-state semantics, not a tone — kept separate.
+   `data-state-kind` from the plan presentation) inherit the same M3 status
+   treatment without a forced markup migration. M3 status pattern (TODO M3
+   alignment items #3/#7 "reduce orange weight"): the device card keeps the
+   neutral base card surface + a neutral hairline on three sides and carries
+   its state on a 4px role-coloured left state-rail plus role-toned status
+   text (reason / status-line / output-state) — not a full 4-sided amber edge
+   that, multiplied across the device stack, reads as "everything is on
+   fire". The `unavailable` opacity shading + the `unknown` opacity-only fade
+   are plan-card-specific device-state semantics, not a tone — kept separate.
    Do NOT co-set `data-tone` and `data-state-kind` on the same host —
    both attributes carry equal specificity, so source order decides
    which paints the surface, which is fragile. Pick one axis. */
 .plan-card[data-state-kind="held"] {
-  background: var(--color-state-warning-bg);
-  border-color: var(--color-state-warning-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-warning-border);
+  border-left-width: var(--spacing-1);
 }
 
 .plan-card[data-state-kind="resuming"] {
-  background: var(--color-state-positive-bg);
-  border-color: var(--color-state-positive-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-positive-border);
+  border-left-width: var(--spacing-1);
 }
 
 .plan-card[data-state-kind="unavailable"] {
-  background: var(--color-state-negative-bg);
-  border-color: var(--color-state-negative-border);
+  border-color: var(--pels-surface-outline) var(--pels-surface-outline)
+    var(--pels-surface-outline) var(--color-state-negative-border);
+  border-left-width: var(--spacing-1);
   opacity: 0.78;
 }
 
@@ -4327,14 +4402,22 @@ md-filled-button.is-busy {
   font-style: italic;
 }
 
+/* Inline contextual notices — same M3 status pattern as the tonal cards /
+   heroes (TODO M3 alignment items #3/#7 "reduce orange weight"): a calm
+   neutral surface + neutral hairline on three sides + a 4px role-coloured
+   left state-rail. The notice text itself is already role-toned, so the rail
+   completes the status read without a full role-coloured edge or tint. */
 .price-notice-info {
   color: var(--color-state-info-text);
   font-style: normal;
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
   margin-bottom: var(--spacing-3);
-  background: var(--color-state-info-bg);
-  border: 1px solid var(--color-state-info-border);
+  background: var(--pels-surface-container-low);
+  border-width: 1px 1px 1px var(--spacing-1);
+  border-style: solid;
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-info-border);
   border-radius: var(--radius-md);
 }
 
@@ -4344,8 +4427,11 @@ md-filled-button.is-busy {
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
   margin-top: var(--spacing-3);
-  background: var(--color-state-warning-bg);
-  border: 1px solid var(--color-state-warning-border);
+  background: var(--pels-surface-container-low);
+  border-width: 1px 1px 1px var(--spacing-1);
+  border-style: solid;
+  border-color: var(--color-border-default) var(--color-border-default)
+    var(--color-border-default) var(--color-state-warning-border);
   border-radius: var(--radius-md);
 }
 
@@ -5343,7 +5429,7 @@ details[open] > summary .disclosure-chevron {
      use `--color-base-accent-on` (a theme-invariant near-black) instead
      of `--color-base-black`, which the desktop palette flips to a near-
      white page wash and would otherwise produce near-white text on a
-     saturated green container (~1.86 : 1, fails AA). */
+     saturated green container (~3.30 : 1, fails AA for normal text). */
   --pels-md-on-primary: var(--color-base-accent-on);
   --pels-md-on-secondary: var(--color-base-accent-on);
   padding-bottom: var(--spacing-8);
@@ -6759,16 +6845,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
-.deadline-list-card__when-row--accent dd {
-  color: var(--accent);
+/* Healthy / pending / queued / satisfied: the "Ready by" answer stays NEUTRAL
+ * (primary text, no colour) and leans on weight alone for emphasis. Colour on
+ * this line is reserved to signal a problem (see `--warn` / `--alert` below),
+ * so the brand green isn't overloaded onto a passive timestamp the user can't
+ * act on — it already carries nav-selection and primary actions. */
+.deadline-list-card__when-row--neutral dd {
+  color: var(--text);
   font-weight: var(--font-weight-semibold);
 }
 
-/* On at-risk / cannot-meet cards the "Ready by" line must mirror the status
- * chip tone so the deadline row doesn't paint success-green next to a red or
- * amber pill. `--warn` matches the chip's warning token; `--alert` matches
- * the critical token. Resolved producer-side via `resolveSmartTaskListReadyByTone`
- * so the view dispatches on a stable slug. */
+/* On at-risk / cannot-meet cards the "Ready by" line carries a PROBLEM tone so
+ * the deadline row signals trouble without relying on the chip alone.
+ * `--warn` matches the chip's warning token; `--alert` matches the critical
+ * token. Resolved producer-side via `resolveSmartTaskListReadyByTone` so the
+ * view dispatches on a stable slug. */
 .deadline-list-card__when-row--warn dd {
   color: var(--pels-status-on-warning);
   font-weight: var(--font-weight-semibold);
@@ -7053,6 +7144,36 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Role-toned status text for the M3 device-card surfaces (TODO M3 alignment
+   items #3/#7 "reduce orange weight"). The tonal device cards carry their
+   semantic on a 4px left state-rail (see the `[data-state-kind=…]` surface
+   rules) plus this role-toned status text — the card header has no tone chip,
+   so the inline status line is what reads the state. Heroes deliberately do
+   NOT tone their headline: per the "one tonal story per surface" rule the hero
+   rim/rail + status chip carry the signal and the metric value stays neutral
+   (`--pels-text-display-color`) so the biggest number on the screen is also
+   the most legible. Declared here — after the plain
+   `.plan-card__reason|__status-line|__output-state` rules — so the cascade
+   stays specificity-ascending (stylelint `no-descending-specificity`). Applies
+   to both the mobile dark and desktop light canvases. */
+.plan-card[data-state-kind="held"] .plan-card__reason,
+.plan-card[data-state-kind="held"] .plan-card__status-line,
+.plan-card[data-state-kind="held"] .plan-card__output-state {
+  color: var(--color-state-warning-text);
+}
+
+.plan-card[data-state-kind="resuming"] .plan-card__reason,
+.plan-card[data-state-kind="resuming"] .plan-card__status-line,
+.plan-card[data-state-kind="resuming"] .plan-card__output-state {
+  color: var(--color-state-positive-text);
+}
+
+.plan-card[data-state-kind="unavailable"] .plan-card__reason,
+.plan-card[data-state-kind="unavailable"] .plan-card__status-line,
+.plan-card[data-state-kind="unavailable"] .plan-card__output-state {
+  color: var(--color-state-negative-text);
 }
 
 .usage-card {
@@ -7876,16 +7997,16 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     box-shadow: var(--shadow-card);
   }
 
-  /* Hero — tone states. M3 status pattern: neutral surface + neutral
-     hairline border. The semantic comes from the inline chips (e.g.
-     "Above safe pace", "Simulation mode") + role-coloured meter overflow
-     segments + role-coloured status text, not from a coloured card edge.
-     Mobile keeps the original tone-coloured edge (different aesthetic
-     for the dark canvas), so this neutralisation is gated to wider
-     viewports — at ≤480 px we let the default `.pels-hero[data-tone=…]`
-     gradients carry the tonal story for every surface (Overview, Budget,
-     Usage, Smart tasks, Deadline plan), removing the second per-tone
-     declaration site that used to live in `@media (max-width: 480px)`. */
+  /* Hero — tone states (desktop light). The base rules already supply the
+     M3 status treatment for every canvas: neutral surface + neutral hairline
+     on three sides + a 4px role-coloured left state-rail + a role-toned
+     headline (the semantic also rides the inline chips / meter overflow
+     segments / status text). On the desktop light canvas the only deviation
+     from the mobile-dark base is the surface tier: the base
+     `--pels-surface-container-high` (= mono-10 `#dddee2`) reads as a heavy
+     gray slab against the ice-white page, so lift the toned hero onto white
+     like the idle hero above. The per-side `border-color` (and therefore the
+     left rail) flows through from the base `[data-tone=…]` rules unchanged. */
   @media (min-width: 481px) {
     .plan-hero[data-tone="good"],
     .pels-hero[data-tone="good"],
@@ -7896,7 +8017,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     .plan-hero[data-tone="info"],
     .pels-hero[data-tone="info"] {
       background: var(--pels-surface-container-lowest);
-      border-color: var(--color-border-default);
     }
   }
 
@@ -7936,36 +8056,17 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     border-radius: var(--radius-md);
   }
 
-  /* Device cards — M3 status pattern. The card surface stays neutral white
-     with a neutral hairline border (NOT a coloured edge rail — that's an
-     M2/iOS pattern). Status semantic moves inline: the reason / status
-     text inside the card is role-toned, which is the M3 way to convey
-     state without decorating the card edge. */
+  /* Device cards — M3 status pattern (desktop light). The base
+     `[data-state-kind=…]` rules already supply the full treatment for every
+     canvas: neutral base surface + neutral hairline on three sides + a 4px
+     role-coloured left state-rail + role-toned status text. On the desktop
+     light canvas the only deviation is to reset the `unavailable` opacity so
+     the role-coloured status text reads at full contrast on white; the rail
+     and the per-side border flow through from the base rules unchanged. */
   .plan-card[data-state-kind="held"],
   .plan-card[data-state-kind="resuming"],
   .plan-card[data-state-kind="unavailable"] {
-    background: var(--pels-surface-container-lowest);
-    border: 1px solid var(--color-border-default);
-    /* Reset the base `opacity: 0.78` on the `unavailable` rule so the new
-       role-coloured status text inside the card reads at full contrast on
-       the light canvas. Held + resuming were never opacity-faded, so this
-       is a no-op for those — kept on the shared selector for symmetry. */
     opacity: 1;
-  }
-  .plan-card[data-state-kind="held"] .plan-card__reason,
-  .plan-card[data-state-kind="held"] .plan-card__status-line,
-  .plan-card[data-state-kind="held"] .plan-card__output-state {
-    color: var(--color-state-warning-text);
-  }
-  .plan-card[data-state-kind="resuming"] .plan-card__reason,
-  .plan-card[data-state-kind="resuming"] .plan-card__status-line,
-  .plan-card[data-state-kind="resuming"] .plan-card__output-state {
-    color: var(--color-state-positive-text);
-  }
-  .plan-card[data-state-kind="unavailable"] .plan-card__reason,
-  .plan-card[data-state-kind="unavailable"] .plan-card__status-line,
-  .plan-card[data-state-kind="unavailable"] .plan-card__output-state {
-    color: var(--color-state-negative-text);
   }
 
   /* Smart-tasks list — `.plan-history-card` walks the canonical

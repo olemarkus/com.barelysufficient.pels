@@ -120,6 +120,29 @@ export const formatEnergyUsedOfBudget = (usedKWh: number, budgetKWh: number): st
   `${usedKWh.toFixed(1)} of ${budgetKWh.toFixed(1)} kWh used`;
 
 /**
+ * Presentation-only split of {@link formatEnergyUsedOfBudget} for the Overview
+ * hero's numeric-first layout: the used value leads as the dominant number and
+ * the budget context trails as a quiet qualifier. This is a PURE-PRESENTATION
+ * helper — it exists so the UI can stack number + qualifier without mutating
+ * the log-shared `formatEnergyUsedOfBudget` string.
+ *
+ * The parts are derived from the SAME `toFixed(1)` values as
+ * `formatEnergyUsedOfBudget`, and joining them with a single space
+ * (`"<lead> <qualifier>"`) reproduces that wording VERBATIM — so the headline's
+ * `textContent` stays byte-identical to the canonical `formatEnergyUsedOfBudget`
+ * helper (pinned by a test). `formatEnergyUsedOfBudget` remains the single-string
+ * helper for any log breadcrumb that needs it, so the on-screen and logged
+ * wording can never drift (see `feedback_ui_text_shared_with_logs.md`).
+ */
+export const formatEnergyUsedOfBudgetParts = (
+  usedKWh: number,
+  budgetKWh: number,
+): { lead: string; qualifier: string } => ({
+  lead: usedKWh.toFixed(1),
+  qualifier: `of ${budgetKWh.toFixed(1)} kWh used`,
+});
+
+/**
  * Formats the "projected this hour" subline that sits beneath the energy-used
  * headline on the Overview hero. Two-decimal precision matches the energy-bar
  * projection-marker tooltip so the printed numbers line up. Returns `null`
