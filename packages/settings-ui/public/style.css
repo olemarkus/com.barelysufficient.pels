@@ -2267,8 +2267,12 @@ md-filled-button.is-busy {
   gap: var(--spacing-1);
 }
 
+/* Legend swatch geometry mirrors the matching marker rule so the key reads as
+   a faithful 1:1 of the bar. The default tone is the neutral secondary-text
+   reference used by the target/safe-pace marker; the projected swatch overrides
+   it per status tone below. */
 .plan-hero__legend-swatch {
-  --legend-tone: color-mix(in srgb, var(--text) 82%, transparent);
+  --legend-tone: var(--pels-text-secondary);
   display: inline-block;
   flex: 0 0 auto;
 }
@@ -2350,13 +2354,20 @@ md-filled-button.is-busy {
    sub-pixel rendering does not leave a hairline gap between the marker body
    and the trailing edge of the colored fill when the bar reaches (or just
    crosses) the marker position. The shadow inherits the marker tone so it
-   reads as a continuation of the marker, not a halo. */
+   reads as a continuation of the marker, not a halo.
+
+   The target (safe-pace / budget-this-hour) marker is a neutral "stay under
+   here" reference line, NOT a status. It uses the semantic secondary-text tone
+   so it reads as a calm guideline that stays legible on both the filled and
+   empty portions of the track in dark and light themes — and stays visually
+   distinct from the warning-toned hard-cap marker. The legend swatch and
+   per-marker aria-label/tooltip name it explicitly. */
 .pels-meter-track__marker--target {
   width: 3px;
   height: 14px;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--text) 82%, transparent);
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--text) 82%, transparent);
+  background: var(--pels-text-secondary);
+  box-shadow: 0 0 0 0.5px var(--pels-text-secondary);
 }
 
 .pels-meter-track__marker--cap {
