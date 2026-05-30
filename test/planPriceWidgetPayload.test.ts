@@ -72,6 +72,198 @@ describe('plan price widget payload', () => {
     expect(payload.priceSeries[0]).toBe(75);
   });
 
+  test('projects day totals, cost in kr, and an over-budget tone', () => {
+    const day = buildDay(24);
+    day.budget.dailyBudgetKWh = 1; // tiny budget → over.
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+
+    // Actual-to-date + planned-remainder basis (currentIndex 10):
+    //   i < 10  → actual  (0.2 + i*0.01)
+    //   i == 10 → max(actual 0.30, planned 0.35) = 0.35
+    //   i > 10  → planned (0.25 + i*0.01)
+    const expectedKwh = Array.from({ length: 24 }, (_v, i) => {
+      const planned = 0.25 + (i * 0.01);
+      if (i < 10) return 0.2 + (i * 0.01);
+      if (i === 10) return Math.max(0.2 + (i * 0.01), planned);
+      return planned;
+    }).reduce((sum, v) => sum + v, 0);
+    expect(payload.projectedKwh).toBeCloseTo(expectedKwh, 5);
+    // Default Norwegian scheme: øre → kr (divide by 100).
+    expect(payload.costUnit).toBe('kr');
+    expect(payload.priceAxisUnit).toBe('øre/kWh');
+    expect(payload.projectedCost).not.toBeNull();
+    expect(payload.summaryTone).toBe('over');
+  });
+
+  test('projects actual usage to date plus planned remainder, flipping to over-budget on an overrun', () => {
+    const day = buildDay(24);
+    // 12 kWh budget; elapsed buckets 0–9 already burned 2 kWh each (20 kWh),
+    // far past the budget, while the planned series alone stays under it.
+    day.budget.dailyBudgetKWh = 12;
+    day.currentBucketIndex = 10;
+    day.buckets.plannedKWh = Array.from({ length: 24 }, () => 0.25);
+    day.buckets.actualKWh = Array.from(
+      { length: 24 },
+      (_value, index) => (index < 10 ? 2 : 0),
+    );
+
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+
+    // 10 elapsed buckets × 2 kWh actual = 20, plus 14 remaining buckets
+    // (current bucket 10 + future 11–23) × 0.25 planned = 3.5 → 23.5 kWh.
+    expect(payload.projectedKwh).toBeCloseTo(20 + (14 * 0.25), 5);
+    // Pure planned would be 24 × 0.25 = 6 kWh (under budget) — the actual basis
+    // must dominate, so the tone is "over", never "on_track".
+    expect(payload.summaryTone).toBe('over');
+  });
+
+  test('costs the projection on the actual-to-date basis, not pure planned', () => {
+    const day = buildDay(24);
+    day.budget.dailyBudgetKWh = 100;
+    day.currentBucketIndex = 2;
+    day.buckets.plannedKWh = Array.from({ length: 24 }, () => 1);
+    // Elapsed buckets 0–1 used 5 kWh each (10 kWh actual) vs 1 kWh planned.
+    day.buckets.actualKWh = Array.from(
+      { length: 24 },
+      (_value, index) => (index < 2 ? 5 : 0),
+    );
+    day.buckets.price = Array.from({ length: 24 }, () => 100); // 100 øre/kWh flat.
+
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+
+    // Projection kWh: 2 elapsed × 5 + 22 remaining × 1 = 32 kWh.
+    expect(payload.projectedKwh).toBeCloseTo(32, 5);
+    // Cost = Σ price × kWh = 32 × 100 øre = 3200 øre → 32.00 kr.
+    // Pure planned would have been 24 kWh → 24.00 kr, so the actual basis shows.
+    expect(payload.projectedCost).toBeCloseTo(32, 5);
+  });
+
+  test('suppresses the projected cost on a partial price horizon (an energy bucket has no price)', () => {
+    const day = buildDay(24);
+    day.budget.dailyBudgetKWh = 100;
+    day.currentBucketIndex = 0;
+    day.buckets.plannedKWh = Array.from({ length: 24 }, () => 1);
+    day.buckets.actualKWh = Array.from({ length: 24 }, () => 0);
+    // Fully priced except one future energy-bearing bucket whose price is missing.
+    day.buckets.price = Array.from({ length: 24 }, (_value, index) => (index === 12 ? null : 100));
+
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+
+    // The kWh projection still stands (it does not depend on prices)...
+    expect(payload.projectedKwh).toBeCloseTo(24, 5);
+    // ...but a partial price horizon can't honestly read as a full-day total.
+    expect(payload.projectedCost).toBeNull();
+  });
+
+  test('does not understate an in-progress bucket that has already overrun its allocation', () => {
+    const day = buildDay(24);
+    day.budget.dailyBudgetKWh = 100;
+    day.currentBucketIndex = 0; // only the in-progress bucket so far.
+    day.buckets.plannedKWh = Array.from({ length: 24 }, () => 1);
+    // Current bucket already drew 9 kWh (vs 1 planned); rest future/zero.
+    day.buckets.actualKWh = Array.from(
+      { length: 24 },
+      (_value, index) => (index === 0 ? 9 : 0),
+    );
+
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+
+    // Current bucket uses max(actual 9, planned 1) = 9, plus 23 future × 1.
+    expect(payload.projectedKwh).toBeCloseTo(9 + 23, 5);
+  });
+
+  test('reports on-track tone when projected stays within budget', () => {
+    const day = buildDay(24);
+    day.budget.dailyBudgetKWh = 1000;
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: null,
+      target: 'today',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+    expect(payload.summaryTone).toBe('on_track');
+  });
+
+  test('uses the flow scheme price unit and divisor 1 for cost', () => {
+    const day = buildDay(24);
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [day.dateKey]: day },
+      todayKey: day.dateKey,
+    };
+
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: { prices: [], priceUnit: 'EUR' },
+      target: 'today',
+      priceScheme: 'flow',
+    });
+
+    if (payload.state !== 'ready') throw new Error('expected ready payload');
+    expect(payload.costUnit).toBe('EUR');
+    expect(payload.priceAxisUnit).toBe('EUR/kWh');
+  });
+
   test('returns tomorrow empty state when no tomorrow plan exists', () => {
     const day = buildDay(24);
     const snapshot: DailyBudgetUiPayload = {

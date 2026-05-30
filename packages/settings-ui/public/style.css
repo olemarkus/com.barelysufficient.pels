@@ -3507,11 +3507,9 @@ md-filled-button.is-busy {
   line-height: var(--font-line-height-cozy);
 }
 
+/* Typography from `.pels-text-status-line` (markup); structural props only. */
 .plan-card__status-line {
   margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  line-height: var(--font-line-height-cozy);
 }
 
 .plan-card__step-rail {

@@ -1,17 +1,23 @@
 import type { CombinedPriceData } from '../../../lib/dailyBudget/dailyBudgetPrices';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../lib/dailyBudget/dailyBudgetTypes';
+import {
+  PLAN_PRICE_WIDGET_EMPTY,
+  PLAN_PRICE_WIDGET_TITLE,
+  resolvePlanPriceCostDisplay,
+  type PlanPriceSummaryTone,
+} from '../../../packages/shared-domain/src/planPriceWidgetCopy';
 import type {
   PlanPriceWidgetEmptyPayload,
   PlanPriceWidgetPayload,
   WidgetTarget,
 } from './planPriceWidgetTypes';
 
-const WIDGET_TITLE = 'Budget and Price';
+const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
 
 const EMPTY_STATE_SUBTITLES = {
-  budget_disabled: 'Daily budget disabled',
-  no_data: 'No plan data available',
-  tomorrow_pending: 'Tomorrow plan not available yet',
+  budget_disabled: PLAN_PRICE_WIDGET_EMPTY.budgetDisabled,
+  no_data: PLAN_PRICE_WIDGET_EMPTY.noData,
+  tomorrow_pending: PLAN_PRICE_WIDGET_EMPTY.tomorrowPending,
 } as const;
 
 type EmptyStateReason = keyof typeof EMPTY_STATE_SUBTITLES;
@@ -85,6 +91,82 @@ export const resolvePriceSeries = (params: {
     if (!Number.isFinite(timestamp)) return null;
     return priceByStart.get(timestamp) ?? null;
   });
+};
+
+// The per-bucket kWh basis for projecting the day total: actual usage already
+// incurred for elapsed buckets, planned usage for the remainder. Built only for
+// today (where actuals exist); tomorrow keeps the pure planned series.
+//
+//   index <  currentIndex → elapsed: use actual (planned only if actual absent)
+//   index == currentIndex → in progress: max(actual, planned) so a bucket that
+//                            has already overrun its allocation isn't understated
+//   index >  currentIndex → future: use planned
+//
+// This guarantees the projected total reflects what the user has actually spent
+// to date, so an overrun can't be hidden behind shrinking future allocations.
+const resolveProjectionKwh = (params: {
+  plannedKwh: ReadonlyArray<number>;
+  actualKwh: ReadonlyArray<number | null>;
+  currentIndex: number;
+  useActual: boolean;
+}): number[] => {
+  if (!params.useActual) return params.plannedKwh.map((value) => value);
+
+  return params.plannedKwh.map((planned, index) => {
+    const actual = params.actualKwh[index];
+    if (index < params.currentIndex) {
+      return isFiniteNumber(actual) ? actual : planned;
+    }
+    if (index === params.currentIndex && isFiniteNumber(actual)) {
+      return Math.max(actual, planned);
+    }
+    return planned;
+  });
+};
+
+// Project the day's total cost as Σ (price × projectedKwh) over every bucket,
+// scaled into the display currency by the resolved cost divisor. Uses the same
+// actual-to-date + planned-remainder basis as the kWh projection. Returns null
+// — so the renderer suppresses the cost half honestly rather than showing a
+// misleading total — when: no usable cost unit exists, no energy-bearing bucket
+// is priced, OR any energy-bearing bucket lacks a price (a partial price horizon
+// can't be honestly presented as a full-day projected cost; the kWh projection
+// still stands since it doesn't depend on prices).
+const computeProjectedCost = (params: {
+  projectionKwh: ReadonlyArray<number>;
+  priceSeries: ReadonlyArray<number | null>;
+  costUnit: string;
+  costDivisor: number;
+}): number | null => {
+  if (params.costUnit.trim().length === 0) return null;
+
+  let rawTotal = 0;
+  let priced = false;
+  let missingPrice = false;
+  params.projectionKwh.forEach((kwh, index) => {
+    if (!isFiniteNumber(kwh) || kwh <= 0) return; // no energy ⇒ no cost contribution
+    const price = params.priceSeries[index];
+    if (!isFiniteNumber(price)) {
+      missingPrice = true; // a contributing bucket has no price
+      return;
+    }
+    rawTotal += price * kwh;
+    priced = true;
+  });
+
+  if (!priced || missingPrice) return null;
+  return rawTotal / Math.max(1, params.costDivisor);
+};
+
+const resolveSummaryTone = (
+  projectedKwh: number,
+  budgetKwh: number,
+  isToday: boolean,
+): PlanPriceSummaryTone | null => {
+  // Tomorrow has no live budget comparison to report against yet.
+  if (!isToday) return null;
+  if (!isFiniteNumber(budgetKwh) || budgetKwh <= 0) return null;
+  return projectedKwh > budgetKwh ? 'over' : 'on_track';
 };
 
 const buildPriceStats = (priceSeries: ReadonlyArray<number | null>) => {
@@ -168,6 +250,10 @@ export const buildPlanPriceWidgetPayload = (params: {
   snapshot: DailyBudgetUiPayload | null;
   combinedPrices: CombinedPriceData | null;
   target: unknown;
+  // Persisted price scheme (`norway` | `flow` | `homey`) from the price store.
+  // Drives øre→kr scaling and the axis-unit label; optional because legacy /
+  // test payloads may omit it (defaults to the Norwegian Nordpool scheme).
+  priceScheme?: string;
 }): PlanPriceWidgetPayload => {
   const resolvedTarget = resolveWidgetTarget(params.target);
   const { day, dayKey } = resolveDay(params.snapshot, resolvedTarget);
@@ -217,6 +303,30 @@ export const buildPlanPriceWidgetPayload = (params: {
   const { actualKwh, showActual } = resolveActualSeries(day, bucketCount, isToday);
   const { currentIndex, showNow } = resolveCurrentState(day, bucketCount, isToday);
 
+  const costDisplay = resolvePlanPriceCostDisplay({
+    priceScheme: params.priceScheme,
+    priceUnit: params.combinedPrices?.priceUnit,
+  });
+  // Base the projection on actual usage to date plus planned for the remainder,
+  // so an overrun already incurred is reflected (and can't read "On track").
+  // Only fold in actuals when we have a trustworthy elapsed boundary
+  // (`showNow` ⇒ a valid in-range currentIndex). Without it the future buckets
+  // can't be told from elapsed ones, so we keep the pure planned projection.
+  const projectionKwh = resolveProjectionKwh({
+    plannedKwh,
+    actualKwh,
+    currentIndex,
+    useActual: showActual && showNow,
+  });
+  const projectedKwh = projectionKwh.reduce((sum, value) => sum + value, 0);
+  const projectedCost = computeProjectedCost({
+    projectionKwh,
+    priceSeries,
+    costUnit: costDisplay.costUnit,
+    costDivisor: costDisplay.costDivisor,
+  });
+  const summaryTone = resolveSummaryTone(projectedKwh, day.budget.dailyBudgetKWh, isToday);
+
   return {
     state: 'ready',
     target: resolvedTarget,
@@ -233,6 +343,11 @@ export const buildPlanPriceWidgetPayload = (params: {
     maxPlan: Math.max(1, ...plannedKwh),
     priceMin: priceStats.priceMin,
     priceMax: priceStats.priceMax,
+    priceAxisUnit: costDisplay.priceAxisUnit,
+    projectedKwh,
+    projectedCost,
+    costUnit: costDisplay.costUnit,
+    summaryTone,
   };
 };
 

@@ -164,7 +164,7 @@ export const PlanSteppedCard = ({
           <span class="plan-card__secondary-line">{secondaryText}</span>
         )}
         {statusText !== null && (
-          <p class="plan-card__status-line">{statusText}</p>
+          <p class="plan-card__status-line pels-text-status-line">{statusText}</p>
         )}
 
         {profile && <StepRail dev={displayDev} profile={profile} />}
