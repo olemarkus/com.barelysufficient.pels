@@ -315,6 +315,23 @@ export default tseslint.config(
     },
   },
   {
+    // The redesigned views render exclusively through Preact JSX (views/AGENTS.md).
+    // Forbid imperative DOM *construction/mutation* so that policy is enforced, not
+    // just documented — locking in the JSX surface and preventing regressions to the
+    // old createElement builders. DOM *reads* (e.g. querySelector for layout
+    // measurement) and the sanctioned `useRef`/`useLayoutEffect` Material-Web property
+    // interop set JS properties, not DOM structure, so they are unaffected.
+    files: ['packages/settings-ui/src/ui/views/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "CallExpression[callee.object.name='document'][callee.property.name=/^createElement(NS)?$/]", message: 'No imperative DOM in views — render via Preact JSX.' },
+        { selector: "CallExpression[callee.property.name=/^(appendChild|insertBefore|replaceChild|removeChild|prepend|replaceChildren)$/]", message: 'No imperative DOM mutation in views — render via Preact JSX.' },
+        { selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]", message: 'No innerHTML in views — render via Preact JSX.' },
+      ],
+    },
+  },
+  {
     files: ['widgets/*/src/public/**/*.ts'],
     plugins: {
       functional,
