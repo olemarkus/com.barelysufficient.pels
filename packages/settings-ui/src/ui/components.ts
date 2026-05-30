@@ -532,13 +532,14 @@ export const createField = (options: FieldOptions): HTMLElement => {
 export const createDragHandle = (): HTMLElement => {
     const handle = document.createElement('span');
     handle.className = 'drag-handle';
-    handle.innerHTML = [
-        '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">',
-        '<circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>',
-        '<circle cx="3" cy="8" r="1.5"/><circle cx="9" cy="8" r="1.5"/>',
-        '<circle cx="3" cy="13" r="1.5"/><circle cx="9" cy="13" r="1.5"/>',
-        '</svg>',
-    ].join('');
+    // Static icon markup (no interpolation) — kept as a constant string so the
+    // `no-unsanitized/property` rule recognises it as safe, not a dynamic sink.
+    handle.innerHTML
+        = '<svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor">'
+        + '<circle cx="3" cy="3" r="1.5"/><circle cx="9" cy="3" r="1.5"/>'
+        + '<circle cx="3" cy="8" r="1.5"/><circle cx="9" cy="8" r="1.5"/>'
+        + '<circle cx="3" cy="13" r="1.5"/><circle cx="9" cy="13" r="1.5"/>'
+        + '</svg>';
     return handle;
 };
 
