@@ -2754,6 +2754,88 @@ md-filled-button.is-busy {
  * ===========================================================================
  */
 
+/* ── Canonical typography utilities ──────────────────────────────────────────
+ * One class per --pels-text-* role bundle so pages stop hand-rolling
+ * font-size/-weight/-line-height. Each class applies only the sub-tokens that
+ * exist for its role. See notes/settings-ui-consolidation.md. */
+.pels-text-display {
+  color: var(--pels-text-display-color);
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
+}
+.pels-text-headline {
+  color: var(--pels-text-headline-color);
+  font-size: var(--pels-text-headline-font-size);
+  font-weight: var(--pels-text-headline-font-weight);
+  line-height: var(--pels-text-headline-font-line-height);
+}
+.pels-text-section-headline {
+  color: var(--pels-text-section-headline-color);
+  font-size: var(--pels-text-section-headline-font-size);
+  font-weight: var(--pels-text-section-headline-font-weight);
+  line-height: var(--pels-text-section-headline-font-line-height);
+}
+.pels-text-title {
+  color: var(--pels-text-title-color);
+  font-size: var(--pels-text-title-font-size);
+  font-weight: var(--pels-text-title-font-weight);
+  line-height: var(--pels-text-title-font-line-height);
+}
+.pels-text-card-title {
+  color: var(--pels-text-card-title-color);
+  font-size: var(--pels-text-card-title-font-size);
+  font-weight: var(--pels-text-card-title-font-weight);
+  line-height: var(--pels-text-card-title-font-line-height);
+}
+.pels-text-section-label {
+  color: var(--pels-text-section-label-color);
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
+}
+.pels-text-answer {
+  color: var(--pels-text-answer-color);
+  font-size: var(--pels-text-answer-font-size);
+  font-weight: var(--pels-text-answer-font-weight);
+  line-height: var(--pels-text-answer-font-line-height);
+}
+.pels-text-body {
+  color: var(--pels-text-body-color);
+  font-size: var(--pels-text-body-font-size);
+  font-weight: var(--pels-text-body-font-weight);
+  line-height: var(--pels-text-body-font-line-height);
+}
+.pels-text-supporting {
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+.pels-text-card-supporting {
+  color: var(--pels-text-card-supporting-color);
+  font-size: var(--pels-text-card-supporting-font-size);
+  line-height: var(--pels-text-card-supporting-font-line-height);
+}
+.pels-text-status-line {
+  color: var(--pels-text-status-line-color);
+  font-size: var(--pels-text-status-line-font-size);
+  line-height: var(--pels-text-status-line-font-line-height);
+}
+.pels-text-caption {
+  color: var(--pels-text-caption-color);
+  font-size: var(--pels-text-caption-font-size);
+  font-weight: var(--pels-text-caption-font-weight);
+  line-height: var(--pels-text-caption-font-line-height);
+}
+.pels-text-settings-label {
+  color: var(--pels-text-settings-label-color);
+  font-weight: var(--pels-text-settings-label-font-weight);
+}
+.pels-text-settings-trailing {
+  color: var(--pels-text-settings-trailing-color);
+  font-weight: var(--pels-text-settings-trailing-font-weight);
+}
+
 /* `.pels-surface-card` is the canonical card primitive. Every card-shaped
    surface across the settings UI (device cards, smart-task list cards, past-
    plan history cards, device-detail diagnostics cards, budget redesign cards,
