@@ -18,6 +18,7 @@ import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../dia
 import type { AppContext } from './appContext';
 import {
   clearObjectiveForDevice,
+  DeferredObjectiveDecorationController,
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
   upsertObjectiveForDevice,
@@ -100,20 +101,11 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
 
 
 export function createPlanEngine(ctx: AppContext) {
-  return new PlanEngineClass({
-    homey: ctx.homey,
-    deviceManager: requireDeviceManager(ctx),
-    getCapacityGuard: () => ctx.capacityGuard,
-    getCapacitySettings: () => ctx.capacitySettings,
-    getCapacityDryRun: () => ctx.capacityDryRun,
-    getOperatingMode: () => ctx.operatingMode,
-    getModeDeviceTargets: () => ctx.modeDeviceTargets,
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
-    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
-    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
-    getPowerTracker: () => ctx.powerTracker,
-    getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+  // Smart-task controller: lives in the app-wiring layer so the planner engine
+  // (lib/plan) imports nothing from lib/objectives. The engine receives only the
+  // opaque `decorateDeferredObjectives` function below, keeping the planner — and
+  // the executor downstream — entirely smart-task-agnostic.
+  const deferredObjectiveController = new DeferredObjectiveDecorationController({
     getDeferredObjectiveSettings: () => {
       // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
       // migration: idempotent + marker-gated (a cheap single `get` once done), so
@@ -126,15 +118,9 @@ export function createPlanEngine(ctx: AppContext) {
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getTimeZone: () => ctx.getTimeZone(),
-    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
-    getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
-    getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
-    markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
-    logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
-    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
-    deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
-    structuredLog: ctx.getStructuredLogger('plan'),
-    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
+    getPowerTracker: () => ctx.powerTracker,
+    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
+    getHardCapKw: () => ctx.capacitySettings.limitKw,
     // Read-through into the persisted per-device learned deadband map. The
     // setting is updated on every met/stalled finalize by
     // `updateLearnedThermostatDeadbandFromEntry` in `deferredRecorders.ts`,
@@ -162,6 +148,32 @@ export function createPlanEngine(ctx: AppContext) {
       recorder.observe(diagnostics, nowMs);
       recorder.flushIfDirty();
     },
+  });
+
+  return new PlanEngineClass({
+    homey: ctx.homey,
+    deviceManager: requireDeviceManager(ctx),
+    getCapacityGuard: () => ctx.capacityGuard,
+    getCapacitySettings: () => ctx.capacitySettings,
+    getCapacityDryRun: () => ctx.capacityDryRun,
+    getOperatingMode: () => ctx.operatingMode,
+    getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
+    getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
+    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
+    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
+    getPowerTracker: () => ctx.powerTracker,
+    getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
+    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
+    getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
+    getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
+    markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
+    logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
+    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
+    deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
+    structuredLog: ctx.getStructuredLogger('plan'),
+    debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),

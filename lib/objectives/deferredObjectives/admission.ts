@@ -1,8 +1,9 @@
-import type { PlanInputDevice } from '../planTypes';
-import type { DeferredObjectiveDiagnostic } from '../../objectives/deferredObjectives/diagnosticsBridge';
+import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
+import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
+import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostatDeadbandStore';
 
-export type DeferredReleaseIntent = 'ev_resume' | 'ev_pause' | 'shed_release';
+export type { DeferredReleaseIntent };
 
 export type DeferredAdmissionDecision =
   | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' }

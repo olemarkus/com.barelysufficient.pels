@@ -1913,9 +1913,16 @@ recent-shed restore backoff. See
 Program to make the planner know nothing about smart tasks (deferred objectives):
 relocate the lifecycle out of `lib/plan` into a clock-driven controller that
 mutates `PlanInputDevice`s and owns ending + terminal actuation; planner stays
-smart-task-agnostic. Finish line = `no-plan-to-smarttasks` dep-cruiser rule green.
-See `notes/state-management/deferred-objective-lifecycle-carveout.md`. PR-A
-(`ObjectiveDeviceInput` narrow read contract) shipped the device-input decoupling.*
+smart-task-agnostic. **Finish line REACHED (PR-D2): `no-plan-to-smarttasks` is now
+`error` and green — `lib/plan` (and the executor) import zero `lib/objectives`,
+value AND type (grep-verified).** See
+`notes/state-management/deferred-objective-lifecycle-carveout.md`. Shipped: PR-A
+(`ObjectiveDeviceInput` read contract), PR-A2 (DailyBudget-payload hoist), PR-B
+(subsystem relocation to `lib/objectives`), PR-C (lifecycle emission on a 30 s
+clock), PR-D1 (`@pels/planner-types` + `PlanInputDevice` hoist), PR-D2 (decoration
+appliers + eval onto the `DeferredObjectiveDecorationController`, constructed in
+app-wiring; rule flipped to `error`). PR-D1b dropped (ExecutablePlan has no
+objectives consumer — see carve-out note step 5).*
 
 - [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
       `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
@@ -1926,31 +1933,28 @@ See `notes/state-management/deferred-objective-lifecycle-carveout.md`. PR-A
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] P3 (gate PR-D on this): single-writer + single-tracker invariant. After PR-C the
-      `DeferredObjectiveLifecycleEmitter` is the SOLE writer to the shared plan-history + active-plan
-      recorders, and owns its own `ConcurrentEligibleTaskTracker` (planBuilder keeps a separate one
-      for the decoration eval — intentional, transiently divergent during an SDK flicker, both
-      self-heal in the 60-min grace window). When PR-D relocates the decoration appliers, it must NOT
-      re-introduce a second recorder writer or a third tracker. Invariant noted in
-      `lib/app/appInit/deferredObjectiveLifecycle.ts`. Also a P3 tidy: that file reads
-      `getActivePlansSnapshot()` twice per tick (verbatim from the pre-PR code) — collapse to one
-      read. Source: pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`,
-      2026-05-30.
+- [x] single-writer + single-tracker invariant (gated PR-D, upheld in PR-D2). The
+      `DeferredObjectiveLifecycleEmitter` remains the SOLE writer to the shared plan-history +
+      active-plan recorders; the decoration eval's tracker moved verbatim from `planBuilder` onto the
+      `DeferredObjectiveDecorationController` (still exactly two trackers — emitter's + controller's —
+      both self-healing in the 60-min grace window; no third tracker, no second recorder writer).
+- [ ] P3 tidy: `lib/app/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
+      twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
+      pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] **P1 (program prerequisite): enforcement is type-edge-blind.** `.dependency-cruiser.cjs`
-      runs post-compilation (`tsPreCompilationDeps` unset), so `import type` edges are invisible
-      to every rule — including the new `no-plan-to-smarttasks` burn-down meter and the
-      `no-objectives-to-peer-except-power` relocation gate. The meter currently counts only the
-      lone `planBuilder` value edge; the `planEngine` + `admission/deferredObjective` type-only
-      edges into the controller are real but uncounted. Flipping `tsPreCompilationDeps: true`
-      globally surfaces **~18 pre-existing repo-wide violations** (mostly `no-circular`, plus
-      `no-domain-to-app`, `no-device-to-peer`), so it cannot just be enabled. Until that cleanup
-      lands, **every relocation/finish-line PR must prove decoupling with a manual type-edge audit**
-      (grep the moved module for `from '..plan'`), not dep-cruiser green; and `no-plan-to-smarttasks`
-      must not be flipped to `error` on dep-cruiser evidence alone. Options: (a) burn down the 18
-      pre-existing violations then enable the flag globally; (b) add a small custom grep-based
-      decoupling check script as the real meter. Source: pels-layering-guardian on
-      `feat/smarttask-lifecycle-producer`, 2026-05-30.
+- [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
+      value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`
+      unset), so `import type` edges are invisible to every rule. The PR-D2 flip of
+      `no-plan-to-smarttasks` to `error` was gated on a **manual grep audit**
+      (`grep -rn "from .*objectives" lib/plan/` → zero edges, value AND type), NOT cruiser-green
+      alone — and that grep, not the rule, is the real finish-line proof. Standing risk: a future
+      `lib/plan` `import type` from `lib/objectives` would compile and pass arch:check silently. The
+      `no-objectives-to-peer-except-power` gate has the same blind spot. Durable fix options:
+      (a) burn down the **~18 pre-existing repo-wide violations** that `tsPreCompilationDeps: true`
+      surfaces (mostly `no-circular`, plus `no-domain-to-app`, `no-device-to-peer`) then enable the
+      flag globally; (b) add a small custom grep-based decoupling check script to CI as the real
+      meter. Source: pels-layering-guardian on `feat/smarttask-lifecycle-producer`, 2026-05-30;
+      downgraded P1→P2 after PR-D2 reached the value-edge finish line.
 
 - [ ] P3: `ObjectiveDeviceInput.stepPowerCalibration` is narrowed to `{ deliveryPowerKw: number }`
       (`lib/objectives/types.ts`) — the one field the controller reads. It is the only field

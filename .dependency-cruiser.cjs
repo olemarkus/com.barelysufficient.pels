@@ -190,21 +190,20 @@ module.exports = {
     {
       name: 'no-plan-to-smarttasks',
       comment:
-        'GOAL / definition-of-done for the smart-task controller extraction (see '
-        + 'notes/state-management/deferred-objective-lifecycle-carveout.md): the planner must know '
-        + 'nothing about smart tasks. lib/plan/** must not import the deferred-objective '
-        + '(smart-task) lifecycle. The controller now lives at lib/objectives/deferredObjectives/ '
-        + '(relocated out of lib/plan in PR-B), so this tracks the remaining plan -> '
-        + 'objectives/deferredObjectives consumer debt (planBuilder/planEngine/admission, to be '
-        + 'removed as the lifecycle + input-decoration move onto the controller clock). CAVEAT: this '
-        + 'config runs in post-compilation mode (tsPreCompilationDeps is unset), so `import type` '
-        + 'edges are INVISIBLE to dependency-cruiser — this rule counts only VALUE imports. So this '
-        + 'meter is a coarse value-edge guard, NOT a sound finish line: do NOT flip it to error '
-        + 'without a type-edge audit (grep, or a scoped tsPreCompilationDeps run — which currently '
-        + 'surfaces ~18 pre-existing repo-wide violations, a separate prerequisite tracked in TODO.md '
-        + 'and the carve-out note). Kept `warn` so arch:check stays green while the value-edge debt '
-        + 'shrinks visibly.',
-      severity: 'warn',
+        'DEFINITION-OF-DONE for the smart-task controller extraction (see '
+        + 'notes/state-management/deferred-objective-lifecycle-carveout.md), now ENFORCED: the planner '
+        + 'knows nothing about smart tasks. lib/plan/** must not import the deferred-objective '
+        + '(smart-task) subsystem at lib/objectives/deferredObjectives/. The input-decoration '
+        + 'appliers + objective eval moved onto the DeferredObjectiveDecorationController in PR-D2; '
+        + 'lib/plan now consumes only the flat DeferredDecorationBundle (@pels/planner-types) through '
+        + 'the injected `decorateDeferredObjectives` seam, constructed in the app-wiring layer '
+        + '(lib/app/appInit.ts). CAVEAT (still true): this config runs post-compilation '
+        + '(tsPreCompilationDeps unset), so `import type` edges are INVISIBLE — this rule counts only '
+        + 'VALUE imports. The flip to `error` was gated on a manual type-edge audit '
+        + '(`grep -rn "from .*objectives" lib/plan/` → zero edges, value AND type), not dep-cruiser '
+        + 'green alone. Keep that audit in mind before adding any lib/plan import that the cruiser '
+        + 'might wave through as type-only.',
+      severity: 'error',
       from: { path: '^lib/plan/' },
       to: { path: '^lib/objectives/deferredObjectives/' },
     },

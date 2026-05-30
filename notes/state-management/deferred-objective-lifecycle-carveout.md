@@ -186,12 +186,35 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      `shared-packages-no-runtime` / `no-circular` / `no-runtime-to-tests` dep-cruiser guards
      (browser-safe, may import only sibling shared packages like `@pels/contracts`).
      Behavior-neutral.
-   - **PR-D1b:** move `ExecutablePlan` (+ `SteppedStepActuationState`) closure into the package.
-   - **PR-D2:** relocate the 4 decoration appliers + the eval into the controller; `planBuilder`
-     consumes the returned bundle and imports zero `lib/objectives`; delete
-     `admission/deferredObjective.ts`. Active-plan commitment stays synchronous (PR-C catch).
-6. **Controller owns ending + the direct disable actuator** (goal 2 completed end-to-end).
-7. **Flip `no-plan-to-smarttasks` to `error`.** Green = planner knows nothing about smart tasks.
+   - **PR-D1b — dropped.** Hoisting `ExecutablePlan` was scoped on a wrong premise: `lib/objectives`
+     references zero `Executable*` types, and `ExecutablePlan` is consumed only inside
+     `lib/executor/`. Neither the controller's input decoration (D2) nor its ending/disable path
+     (the disable is a settings write; the physical release rides the `deferredReleaseIntent` field
+     already on `PlanInputDevice`) needs it. The handoff's closure claim was also wrong —
+     `SteppedStepActuationState` belongs to `ExecutableSteppedLoadDevice` (an executor reconciliation
+     type that stays put), not to `ExecutablePlan`'s closure. So `ExecutablePlan` stays in
+     `lib/executor`.
+   - **PR-D2 (done):** the 4 admission appliers + the objective eval moved onto the
+     `DeferredObjectiveDecorationController` (`lib/objectives/deferredObjectives/`). It owns the
+     `ConcurrentEligibleTaskTracker` and exposes `decorate({devices, dailyBudgetSnapshot, nowTs})
+     → DeferredDecorationBundle` (bundle + `DeferredReleaseIntent` + the input type live in
+     `@pels/planner-types`). The controller is constructed in the **app-wiring layer**
+     (`lib/app/appInit.ts`) and injected into the engine as the opaque `decorateDeferredObjectives`
+     function — so **both** `planBuilder` AND `planEngine` import zero `lib/objectives` (the engine
+     forwards the function; it never constructs the controller). `admission/deferredObjective.ts`
+     deleted; active-plan commitment stays synchronous (PR-C catch); the
+     `evaluate_deferred_objectives_ms` / `plan_deferred_objective_observe_ms` perf split is
+     preserved (the controller times its own eval). Behavior-neutral: full suite green (4009).
+6. **Controller owns ending + the direct disable actuator.** Already outside the planner: the
+   deadline-passed disable (`disableDeferredObjectiveInSettings`) is owned by the clock-driven
+   `DeferredObjectiveLifecycleEmitter` (PR-C, app-wiring), and the per-cycle physical release is a
+   flat `deferredReleaseIntent` the controller stamps and the executor consumes blindly. No planner
+   or executor smart-task knowledge remains; any further tidy here is cleanup, not a decoupling gap.
+7. **Flip `no-plan-to-smarttasks` to `error` — DONE (PR-D2).** `lib/plan/**` imports zero
+   `lib/objectives` (value AND type, confirmed by `grep -rn "from .*objectives" lib/plan/` → none;
+   the rule is type-edge-blind so the grep audit, not cruiser-green alone, gated the flip). The
+   executor is independently objectives-free too. Planner and executor now know nothing about smart
+   tasks.
 
 ## Open questions / risks (reviewers, attack these)
 
