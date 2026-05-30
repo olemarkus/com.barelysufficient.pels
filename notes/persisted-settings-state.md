@@ -10,8 +10,8 @@ places today; consolidating them is the proposed fix.
 Three modules independently reimplement the same persistence state machine:
 
 - `lib/device/devicePowerCalibrationStore.ts` — calibration snapshot
-- `lib/plan/deferredObjectives/planHistory.ts` — deferred-objective plan-history recorder
-- `lib/plan/deferredObjectives/activePlanRecorder.ts` — deferred-objective active-plan recorder
+- `lib/objectives/deferredObjectives/planHistory.ts` — deferred-objective plan-history recorder
+- `lib/objectives/deferredObjectives/activePlanRecorder.ts` — deferred-objective active-plan recorder
 
 Each carries roughly the same shape:
 

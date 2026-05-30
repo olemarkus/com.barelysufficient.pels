@@ -5,15 +5,15 @@ import {
   resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
-} from '../lib/plan/deferredObjectives/objectiveWrite';
+} from '../lib/objectives/deferredObjectives/objectiveWrite';
 import {
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   readObjectiveForDevice,
   type ObjectiveSettingsStore,
-} from '../lib/plan/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveActivePlanRecorder } from '../lib/plan/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
-import type { DeferredObjectiveSettingsEntry } from '../lib/plan/deferredObjectives/settings';
+} from '../lib/objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveActivePlanRecorder } from '../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives/planHistory';
+import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives/settings';
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);

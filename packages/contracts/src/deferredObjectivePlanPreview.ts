@@ -2,7 +2,7 @@
 // Runtime backend produces it; the Settings UI (future PRs) consumes it. Per
 // the packaging boundary this file is type-only and imports nothing from
 // `lib/`; the status union below mirrors `DeferredObjectiveHorizonStatus` in
-// `lib/plan/deferredObjectives/types` and must stay in sync with it.
+// `lib/objectives/deferredObjectives/types` and must stay in sync with it.
 //
 // IMPORTANT: every numeric field here is an *estimate*. It is computed in
 // isolation for a single candidate objective at one instant — it ignores
@@ -34,7 +34,7 @@ export type DeferredObjectivePlanPreviewCandidate =
       : never
     : never;
 
-// Mirror of `DeferredObjectiveHorizonStatus` (lib/plan/deferredObjectives/types).
+// Mirror of `DeferredObjectiveHorizonStatus` (lib/objectives/deferredObjectives/types).
 // Duplicated because contracts must stay browser-safe and cannot import lib.
 export type DeferredObjectivePlanPreviewStatus =
   | 'at_risk'

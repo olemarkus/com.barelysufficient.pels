@@ -1,7 +1,7 @@
 import {
   DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION,
   normalizeDeferredObjectivePlanHistory,
-} from '../lib/plan/deferredObjectives/planHistorySettings';
+} from '../lib/objectives/deferredObjectives/planHistorySettings';
 
 const HOUR_MS = 60 * 60 * 1000;
 

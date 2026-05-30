@@ -2,15 +2,15 @@ import {
   DeferredObjectiveActivePlanRecorder,
   type ActivePlanFlowCardSeed,
   type ActivePlanPersistDeps,
-} from '../lib/plan/deferredObjectives/activePlanRecorder';
+} from '../lib/objectives/deferredObjectives/activePlanRecorder';
 import {
   normalizeDeferredObjectiveActivePlans,
-} from '../lib/plan/deferredObjectives/activePlanSettings';
+} from '../lib/objectives/deferredObjectives/activePlanSettings';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
   DeferredObjectivePlannedBucket,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';

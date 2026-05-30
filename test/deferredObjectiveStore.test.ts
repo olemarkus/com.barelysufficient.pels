@@ -7,7 +7,7 @@ import {
   readObjectiveForDevice,
   writeObjectiveForDevice,
   type ObjectiveSettingsStore,
-} from '../lib/plan/deferredObjectives/objectiveStore';
+} from '../lib/objectives/deferredObjectives/objectiveStore';
 import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   DEFERRED_OBJECTIVES_SETTINGS,
@@ -15,7 +15,7 @@ import {
 import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
-} from '../lib/plan/deferredObjectives/settings';
+} from '../lib/objectives/deferredObjectives/settings';
 
 const DEADLINE_MS = Date.UTC(2026, 0, 1, 18, 0, 0);
 

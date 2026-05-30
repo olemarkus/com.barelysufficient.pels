@@ -5,13 +5,13 @@ import {
   previewDeferredObjectivePlan,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import {
   buildHoursFromHorizonPlan,
   resolveProjectedFinishAtMs,
-} from '../lib/plan/deferredObjectives/activePlanSchedule';
-import type { ActivePlanPersistDeps } from '../lib/plan/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectiveSettingsV1 } from '../lib/plan/deferredObjectives/settings';
+} from '../lib/objectives/deferredObjectives/activePlanSchedule';
+import type { ActivePlanPersistDeps } from '../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';

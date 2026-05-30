@@ -67,7 +67,7 @@ const loadPlanHistoryRuntime = (): Promise<PlanHistoryRuntimeModule> => {
     await buildRuntimeBundle({
       stdin: {
         contents: [
-          "export { DeferredObjectivePlanHistoryRecorder } from './lib/plan/deferredObjectives/planHistory';",
+          "export { DeferredObjectivePlanHistoryRecorder } from './lib/objectives/deferredObjectives/planHistory';",
         ].join('\n'),
         resolveDir: repoRoot,
         sourcefile: path.join(repoRoot, 'plan-history-recorder.runtime.ts'),

@@ -225,7 +225,7 @@ function resolveBinaryCapabilityId(
  * than the deferred-objective ABANDON_GRACE_MS because commandability is a
  * per-cycle decision rather than a multi-hour planning bet.
  *
- * Pattern source: `lib/plan/deferredObjectives/planHistory.ts` —
+ * Pattern source: `lib/objectives/deferredObjectives/planHistory.ts` —
  * `ABANDON_GRACE_MS`. See `feedback_homey_sdk_unreliable.md` — never drop
  * persisted state on a single missing read.
  */

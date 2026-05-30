@@ -40,7 +40,7 @@ import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
-} from './lib/plan/deferredObjectives';
+} from './lib/objectives/deferredObjectives';
 import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetSettingsInput,
@@ -127,7 +127,7 @@ import {
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveStatusBus,
-} from './lib/plan/deferredObjectives';
+} from './lib/objectives/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
 import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
 import {

@@ -21,7 +21,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
   upsertObjectiveForDevice,
-} from '../plan/deferredObjectives';
+} from '../objectives/deferredObjectives';
 import { LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
 import {
   getLearnedThermostatDeadbandC,

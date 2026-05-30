@@ -129,6 +129,6 @@ If estimation regresses for a specific device shape, the relevant constants are:
 | `OBJECTIVE_PROFILE_MAX_BANDS` | `lib/objectives/bands.ts` | Upper cap on band count |
 | `MIN_SSE_REDUCTION_FRACTION` | `lib/objectives/bands.ts` | Minimum relative variance reduction to commit a split |
 | `EV_SOC_TAPER_ANCHOR` | `lib/objectives/bands.ts` | Forced band edge for EV profiles |
-| `MIN_BAND_SAMPLES_FOR_INTEGRATION` | `lib/plan/deferredObjectives/profileEnergyResolution.ts` | Below this, integrator uses the global mean for that portion |
+| `MIN_BAND_SAMPLES_FOR_INTEGRATION` | `lib/objectives/deferredObjectives/profileEnergyResolution.ts` | Below this, integrator uses the global mean for that portion |
 
 No settings UI surface yet — banded estimation is on by default with no gate.

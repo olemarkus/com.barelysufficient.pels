@@ -17,9 +17,9 @@ import {
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
-} from '../lib/plan/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives/diagnosticsBridge';
+} from '../lib/objectives/deferredObjectives';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 

@@ -11,7 +11,7 @@ export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
 // Marker set once the blob → per-device-key migration has run. Per-device
 // objectives live under `deferred_objective.<deviceId>` keys (see
-// `lib/plan/deferredObjectives/objectiveStore.ts`); the plural blob above is a
+// `lib/objectives/deferredObjectives/objectiveStore.ts`); the plural blob above is a
 // frozen fallback read only by that migration.
 export const DEFERRED_OBJECTIVES_PERKEY_MIGRATED = 'deferred_objectives_perkey_migrated';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history';

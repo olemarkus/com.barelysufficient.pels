@@ -7,7 +7,7 @@ export type DeferredObjectiveEnforcement = 'soft' | 'hard';
  * applies it to the whole plan from the start (the device is "emancipated" up
  * front); `'at_risk'` applies it only when the task would otherwise miss its
  * deadline. Absent = off (current behaviour). Mirrored in
- * `lib/plan/deferredObjectives/settings.ts` — keep both in sync.
+ * `lib/objectives/deferredObjectives/settings.ts` — keep both in sync.
  */
 export type DeferredObjectiveRescueMode = 'always' | 'at_risk';
 

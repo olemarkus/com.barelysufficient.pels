@@ -4,7 +4,7 @@ import { createPlanEngineState } from '../lib/plan/planState';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveSettingsV1 } from '../lib/plan/deferredObjectives';
+import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';

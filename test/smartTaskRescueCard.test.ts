@@ -1,5 +1,5 @@
-import type { DeferredObjectiveSettingsEntry } from '../lib/plan/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 

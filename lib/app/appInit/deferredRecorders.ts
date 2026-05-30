@@ -13,8 +13,8 @@ import {
   writeObjectiveForDevice,
   type DeferredObjectiveBackfillConfig,
   type DeferredObjectiveDeviceWriteDeps,
-} from '../../plan/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../../plan/deferredObjectives/settings';
+} from '../../objectives/deferredObjectives';
+import type { DeferredObjectiveSettingsEntry } from '../../objectives/deferredObjectives/settings';
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,

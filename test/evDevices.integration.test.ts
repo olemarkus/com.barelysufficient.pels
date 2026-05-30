@@ -6,7 +6,7 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../lib/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';

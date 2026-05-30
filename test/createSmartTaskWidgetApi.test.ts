@@ -6,7 +6,7 @@ import {
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectivePlanPreviewEstimate,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import {
   createCreateSmartTask,

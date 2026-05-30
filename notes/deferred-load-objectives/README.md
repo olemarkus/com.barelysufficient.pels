@@ -160,7 +160,7 @@ restoring an EV charger — the gate is one-way (pause is always safe and isn't 
 
 ### Active plan persistence and replan policy
 
-`lib/plan/deferredObjectives/activePlanRecorder.ts` stores the *current* deadline-plan
+`lib/objectives/deferredObjectives/activePlanRecorder.ts` stores the *current* deadline-plan
 allocation per device alongside the outcome history described below. Where the history
 recorder captures sealed outcomes (met/missed/abandoned), the active-plan recorder
 captures the plan that is *being executed right now* so the Settings UI and any
@@ -311,7 +311,7 @@ plus chart when `latest` is populated.
 
 ### Plan history capture
 
-`lib/plan/deferredObjectives/planHistory.ts` runs alongside the diagnostics evaluator to
+`lib/objectives/deferredObjectives/planHistory.ts` runs alongside the diagnostics evaluator to
 capture per-(device, deadline) outcomes for the Past tasks list on the Smart tasks tab and
 for the per-entry detail view at the `?page=deadline-plan&historyId=…` SPA route inside
 `index.html`. (The standalone `deadline-plan.html` sub-page was removed because the Homey
@@ -333,7 +333,7 @@ as an in-page route off `index.html`.):
   expose `met` as `Succeeded`, `missed` as `Missed`, and user-clear/replacement/disappear
   outcomes as `Abandoned`.
 - Flow card writes route through `applyDeferredObjectiveChange`
-  (`lib/plan/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
+  (`lib/objectives/deferredObjectives/objectiveChange.ts`) so a user-initiated replace or clear
   finalizes the prior in-progress run immediately rather than waiting for the abandon-grace
   window. The runtime auto-disable path (`statusTransitions.deadlineJustPassed`) stays on
   the `deadline_passed` classification — only user-initiated changes whose prior deadline is
@@ -429,7 +429,7 @@ be collapsed into one object.
 > **Note:** the types below are forward-design types capturing the eventual planner contract.
 > The shipped persisted shape is `DeferredObjectiveSettingsV1` (see §"Persisted Settings Slice")
 > and the shipped evaluation type is `DeferredObjectiveDiagnostic` in
-> `lib/plan/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
+> `lib/objectives/deferredObjectives/diagnosticsBridge.ts`. Fields below that don't appear on the
 > shipped types (e.g. `stableStatus`, `requiredAverageKw`, `conservativeNetGainKw`) are
 > aspirational and may never ship as named. **Shipped status enum is `cannot_meet`**, not the
 > aspirational `cannot_be_met` shown below; the Flow-card surface adds a third translation —
@@ -442,7 +442,7 @@ The original forward-design `DeviceObjectiveState` / `DeviceObjectiveEvaluation`
 named and were drifting from reality. The shipped equivalents are:
 
 - **Persisted state**: `DeferredObjectiveSettingsV1` (`packages/contracts/src/deferredObjectiveSettings.ts`).
-- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/plan/deferredObjectives/diagnosticsBridge.ts`),
+- **Evaluation**: `DeferredObjectiveDiagnostic` (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`),
   status enum `unknown | on_track | at_risk | cannot_meet`.
 - **Rate estimate**: the learned-profile model in `lib/objectives/` (see §"Learned Profiling First").
 
@@ -688,7 +688,7 @@ energyNeededKwh = Math.max(0, kWhPerUnit.mean * remainingUnits);
 where `remainingUnits` is `(targetTemperatureC - currentTemperatureC)` for thermal or
 `(targetPercent - currentPercent)` for EV. The `kWhPerUnit` value comes from the learned
 profile, or for EV from the conservative bootstrap (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT = 1.0`)
-until learning matures. Source: `lib/plan/deferredObjectives/profileEnergyResolution.ts`.
+until learning matures. Source: `lib/objectives/deferredObjectives/profileEnergyResolution.ts`.
 
 Available time:
 
@@ -750,7 +750,7 @@ Shipped v1 uses one rate source plus EV bootstrap fallback:
    step profile) status `unknown`; no optimistic planning.
 
 For stepped loads, per-step useful kW comes from `resolveStepDeliveryUsefulKw`
-(`lib/plan/deferredObjectives/objectiveStepPower.ts`), which prefers measured calibration
+(`lib/objectives/deferredObjectives/objectiveStepPower.ts`), which prefers measured calibration
 (`lib/device/devicePowerCalibration.ts`) over nameplate planning power. That governs how the
 horizon planner sizes bucket allocation, not the `energyNeededKwh` computation itself.
 
@@ -778,13 +778,13 @@ projectedCompletionAtMs =
 ## Status Semantics
 
 The shipped status values on the diagnostic
-(`lib/plan/deferredObjectives/diagnosticsBridge.ts`):
+(`lib/objectives/deferredObjectives/diagnosticsBridge.ts`):
 
 - `unknown` — required inputs are missing, invalid, or impossible to evaluate.
   Per-kind: EV SoC additionally treats stale or session-invalid progress as
   `unknown`; temperature credits aged-out readings as long as the device has
   ever produced a trusted observation (see
-  `lib/plan/deferredObjectives/diagnosticProgress.ts` and the freshness doctrine
+  `lib/objectives/deferredObjectives/diagnosticProgress.ts` and the freshness doctrine
   under §"Status and remaining scope").
 - `on_track` — the plan fits entirely before the deadline minus a 1-hour reserve (the
   planner's safety buffer); every earlier hour has enough headroom to land the required
@@ -942,7 +942,7 @@ Use structured logs with stable field names. Logs should make it possible to ans
 
 Log events:
 
-**Shipped today** (emitted from `lib/plan/deferredObjectives/diagnosticDebugPayload.ts`):
+**Shipped today** (emitted from `lib/objectives/deferredObjectives/diagnosticDebugPayload.ts`):
 
 - `deferred_objective_horizon_planned` — fired when the bridge can build a horizon plan.
 - `deferred_objective_unknown` — fired when required inputs are missing, stale, invalid, or
@@ -1088,7 +1088,7 @@ The richer-tokens slice originally drafted as `ev-ready-by/README.md` §P2.3
 ## Reason Codes
 
 Use structured reason codes rather than prose as planner contract. The live source-of-truth is
-the union in `lib/plan/deferredObjectives/types.ts` plus the per-module narrow types in
+the union in `lib/objectives/deferredObjectives/types.ts` plus the per-module narrow types in
 `diagnosticsBridge.ts`, `policyHorizon.ts`, and `horizonPlanner.ts`.
 
 ### Shipped today
@@ -1153,7 +1153,7 @@ overrides, the horizon scheduler (budget-friendly buckets with deadline margin),
 (`statusTransitions.ts`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit aged-out temperature (thermostats fall silent at
 setpoint) but require strictly-fresh EV SoC — lives in `lib/observer/observationFreshness.ts` and
-`lib/plan/deferredObjectives/diagnosticProgress.ts`.
+`lib/objectives/deferredObjectives/diagnosticProgress.ts`.
 
 **Deferred to dedicated notes:** hard admission, hard-boost rebalancing, and mode override
 ([`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)); confidence-adjusted status
