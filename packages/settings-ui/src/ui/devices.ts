@@ -157,7 +157,7 @@ const buildRedesignSwitchCell = (
 
 const buildRedesignNameCell = (device: TargetDeviceSnapshot): HTMLElement => {
   const nameWrap = document.createElement('div');
-  nameWrap.className = 'pels-device-card__name device-row__name';
+  nameWrap.className = 'pels-device-card__name device-row__name entity-name';
   const nameText = document.createElement('span');
   nameText.className = 'device-row__title';
   nameText.textContent = formatDisplayDeviceName(device.name);

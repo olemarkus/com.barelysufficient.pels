@@ -214,7 +214,7 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
   row.dataset.deviceId = device.id;
 
   const name = document.createElement('div');
-  name.className = 'device-row__name';
+  name.className = 'device-row__name entity-name';
   name.textContent = formatDisplayDeviceName(device.name);
 
   const desired = getDesiredTarget(device);

@@ -3753,12 +3753,12 @@ md-filled-button.is-busy {
   border-bottom: none;
 }
 
+/* Typography from `.entity-name` (markup); structural props only. */
 .device-row__name {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-2);
   min-width: 0;
-  font-weight: var(--font-weight-bold);
   margin-bottom: var(--spacing-1);
 }
 
@@ -4555,7 +4555,6 @@ details[open] > summary .disclosure-chevron {
   }
   
   .device-row.price-optimization-row .device-row__name {
-    font-weight: var(--font-weight-semibold);
     margin-bottom: var(--spacing-1);
   }
   
@@ -4682,7 +4681,6 @@ details[open] > summary .disclosure-chevron {
   align-items: start;
   min-width: 0;
   margin-bottom: 0;
-  font-weight: var(--font-weight-semibold);
 }
 
 .detail-mode-row__priority {
