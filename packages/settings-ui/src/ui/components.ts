@@ -121,7 +121,7 @@ export const createDeviceRow = (options: DeviceRowOptions): HTMLElement => {
     }
 
     const nameWrap = document.createElement('div');
-    nameWrap.className = ['device-row__name', nameClassName].filter(Boolean).join(' ');
+    nameWrap.className = ['device-row__name', 'entity-name', nameClassName].filter(Boolean).join(' ');
     nameWrap.textContent = name;
 
     if (controls.length > 0) {

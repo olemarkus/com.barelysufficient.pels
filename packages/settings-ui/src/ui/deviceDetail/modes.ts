@@ -102,7 +102,7 @@ const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) =>
   row.dataset.mode = mode;
 
   const nameWrap = document.createElement('div');
-  nameWrap.className = 'device-row__name detail-mode-row__name';
+  nameWrap.className = 'device-row__name entity-name detail-mode-row__name';
 
   const header = document.createElement('div');
   header.className = 'detail-mode-row__header';
