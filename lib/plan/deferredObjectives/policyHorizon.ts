@@ -1,4 +1,4 @@
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { DeferredObjectiveHorizonBucket } from './types';
 
 export type DeferredObjectivePolicyHorizonUnavailableReason =

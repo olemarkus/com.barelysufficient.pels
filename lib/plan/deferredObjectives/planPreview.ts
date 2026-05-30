@@ -1,4 +1,4 @@
-import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../power/tracker';
 import type {
   DeferredObjectivePlanPreviewCandidate,
