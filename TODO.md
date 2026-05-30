@@ -1950,6 +1950,22 @@ objectives consumer — see carve-out note step 5).*
       twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
       pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
+- [x] **PR-E — clock-driven terminal device disable (Goal 2 output side, the "disable a device
+      after the task ends" end-game).** Fixed the flow-mode bug where a cap-off device on a
+      missed/unsatisfied deadline was left running (the auto-disable removed the diagnostic before
+      the next sparse plan cycle could emit the terminal `shed_release`). The lifecycle clock now
+      fires `onDeadlineReached` at deadline-passed (any status), returns the cap-off device to its
+      shed posture via the thin `lib/device/shedBehaviorActuation.applyShedBehavior` (set-and-forget,
+      executor untouched), and **gates the disarm** on the device settling / a 5-min grace so the
+      release re-fires (no single-shot). Additive — the plan-path `deferredReleaseIntent` stays for
+      idle-bucket holds (Fork A). See carve-out note step 6.
+- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device
+      is skipped by the clock path (keeps its plan-path release) — needs executor-side current/power
+      resolution for a direct stepped command; (b) fully retire the *terminal* `deferredReleaseIntent`
+      from the plan path so it isn't double-covered (gated on (a)); (c) the same "task disabled →
+      cap-off device stranded" shape exists for a user/Flow disable mid-run, not just deadline-passed.
+      Source: investigation + Codex review on PR-E, 2026-05-30.
+
 - [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
       value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`
       unset), so `import type` edges are invisible to every rule. The PR-D2 flip of
