@@ -347,7 +347,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while another previously shed device is still restoring', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-off'] = Date.now() - 30_000;
+    state.shedDecidedMs['dev-off'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [
@@ -547,7 +547,7 @@ describe('restore cooldown backoff', () => {
 
   it('blocks stepped-load step-up while a shed-temperature device is still awaiting restore confirmation', () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-temp'] = Date.now() - 30_000;
+    state.shedDecidedMs['dev-temp'] = Date.now() - 30_000;
 
     const result = applyRestorePlan({
       planDevices: [

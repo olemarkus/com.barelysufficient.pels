@@ -224,6 +224,44 @@ describe('Device plan snapshot', () => {
     expect(reasonText(devPlan?.reason)).toContain('shed');
   });
 
+  it('stamps the decision-time shed clock at plan time even when actuation is skipped (dry-run)', async () => {
+    // Regression for the marker under-stamp: the restore-eligibility readers must
+    // see a device the planner decided to shed even when the executor issues no
+    // write. In dry-run the plan builds (decision facts run) but actuation is
+    // short-circuited (no `lastDeviceShedMs`). `shedDecidedMs` is the decision-time
+    // fact, so it must be stamped regardless.
+    const dev1 = new MockDevice('dev-1', 'Heater', ['measure_power', 'onoff']);
+    await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
+    await dev1.setCapabilityValue('onoff', true);
+
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [dev1]),
+    });
+
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 10 } });
+    mockHomeyInstance.settings.set('capacity_dry_run', true);
+
+    const app = createApp();
+    await app.onInit();
+
+    (app as any).computeDynamicSoftLimit = () => 1;
+    if ((app as any).capacityGuard?.setSoftLimitProvider) {
+      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
+    }
+
+    await (app as any).powerSamplePipeline.recordPowerSample(5000);
+
+    const plan = getLatestPlanSnapshotForTests();
+    const devPlan = plan.devices.find((d: any) => d.id === 'dev-1');
+    expect(devPlan?.plannedState).toBe('shed');
+
+    const state = (app as any).planEngine.state;
+    // Decision-time clock: stamped by the planner at finalization...
+    expect(state.shedDecidedMs['dev-1']).toEqual(expect.any(Number));
+    // ...actuation-time clock: unset because dry-run never issues the write.
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+  });
+
   it('tracks plan overshoot state transitions', async () => {
     const dev1 = new MockDevice('dev-1', 'Heater', ['target_temperature', 'measure_power', 'onoff']);
     await dev1.setCapabilityValue('measure_power', 5000); // 5 kW
@@ -1027,7 +1065,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+    (app as any).planEngine.state.shedDecidedMs['dev-1'] = Date.now();
 
     (app as any).deviceManager.setSnapshotForTests([
       {
@@ -1097,7 +1135,7 @@ describe('Device plan snapshot', () => {
 
     const app = createApp();
     await app.onInit();
-    (app as any).planEngine.state.lastDeviceShedMs['dev-1'] = Date.now();
+    (app as any).planEngine.state.shedDecidedMs['dev-1'] = Date.now();
 
     (app as any).deviceManager.setSnapshotForTests([
       {

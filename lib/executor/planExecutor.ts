@@ -92,6 +92,7 @@ import {
   isSteppedLoadRestoreFromOff,
   resolveConfirmedBinaryCommandReasonCode,
   resolveFlowBackedBinaryTriggerCardId,
+  resolveRestoreLogSource,
 } from './planExecutorPredicates';
 
 export type PlanExecutorDeps = {
@@ -181,7 +182,7 @@ export class PlanExecutor {
     });
   };
   private readonly boundGetRestoreLogSource = (deviceId: string): 'shed_state' | 'current_plan' => (
-    this.getRestoreLogSource(deviceId)
+    resolveRestoreLogSource(this.state, deviceId)
   );
   private targetExecutorContext?: PlanExecutorTargetContext;
   private steppedExecutorContext?: PlanExecutorSteppedContext;
@@ -323,6 +324,7 @@ export class PlanExecutor {
     if (pending.desired) {
       if (pending.logContext === 'capacity_control_off') {
         delete this.state.lastDeviceShedMs[deviceId];
+        delete this.state.shedDecidedMs[deviceId];
       } else if (pending.actuationMode !== 'reconcile') {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         recordActivationAttemptStarted({
@@ -801,13 +803,6 @@ export class PlanExecutor {
     }
   }
   /* eslint-enable complexity, sonarjs/cognitive-complexity, max-statements, max-depth */
-
-  private getRestoreLogSource(deviceId: string): 'shed_state' | 'current_plan' {
-    const lastShedMs = this.state.lastDeviceShedMs[deviceId];
-    if (!lastShedMs) return 'current_plan';
-    const lastRestoreMs = this.state.lastDeviceRestoreMs[deviceId];
-    return !lastRestoreMs || lastRestoreMs < lastShedMs ? 'shed_state' : 'current_plan';
-  }
 
   private logUnderspecifiedSteppedShedDevices(plan: DevicePlan, exec: ExecutablePlan, mode: PlanActuationMode): void {
     for (const dropped of findDroppedSteppedShedIntents(plan, exec)) {

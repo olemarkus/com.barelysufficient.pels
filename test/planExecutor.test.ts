@@ -432,7 +432,7 @@ describe('PlanExecutor restore logging', () => {
 
   it('logs restore from shed state when the device has not been restored since the last shed', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    state.shedDecidedMs['dev-1'] = Date.now() - 10_000;
     const { executor, deviceManager } = buildExecutor(state);
 
     await executor.applyPlanActions(buildPlan());
@@ -530,7 +530,7 @@ describe('PlanExecutor restore logging', () => {
 
   it('records flow-backed restore actuation only after confirmation and keeps pending swap protection until then', async () => {
     const state = createPlanEngineState();
-    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    state.shedDecidedMs['dev-1'] = Date.now() - 10_000;
     state.swapByDevice['dev-1'] = {
       pendingTarget: true,
       timestamp: Date.now() - 1_000,

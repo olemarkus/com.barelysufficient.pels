@@ -26,10 +26,10 @@ function isSteppedRestorePending(device: DevicePlanDevice): boolean {
 
 function isDeviceBlockingSteppedRestore(
   device: DevicePlanDevice,
-  lastDeviceShedMs: Record<string, number>,
+  shedDecidedMs: Record<string, number>,
 ): boolean {
   if (!isDeviceObservationTrusted(device)) return false;
-  if (!lastDeviceShedMs[device.id] || device.plannedState !== 'keep') return false;
+  if (!shedDecidedMs[device.id] || device.plannedState !== 'keep') return false;
   return device.currentState === 'off'
     || device.currentState === 'unknown'
     || isTargetRestorePending(device)
@@ -61,13 +61,13 @@ export function hasOtherDevicesWithUnconfirmedRecovery(
 export function hasOtherDevicesBlockingSteppedRestore(
   deviceMap: Map<string, DevicePlanDevice>,
   steppedDeviceId: string,
-  lastDeviceShedMs: Record<string, number>,
+  shedDecidedMs: Record<string, number>,
 ): boolean {
   for (const device of deviceMap.values()) {
     if (device.id === steppedDeviceId) continue;
     if (!isRestoreLiveEligibleDevice(device)) continue;
     if (getInactiveReason(device)) continue;
-    if (isDeviceBlockingSteppedRestore(device, lastDeviceShedMs)) return true;
+    if (isDeviceBlockingSteppedRestore(device, shedDecidedMs)) return true;
   }
   return false;
 }

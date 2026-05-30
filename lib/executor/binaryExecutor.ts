@@ -130,8 +130,8 @@ export const applyUncontrolledBinaryRestore = async (
   observed: ExecutableObservedDeviceState | undefined,
 ): Promise<boolean> => {
   if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
-  const lastShed = ctx.state.lastDeviceShedMs[intent.deviceId];
-  if (!lastShed) return false;
+  const shedDecided = ctx.state.shedDecidedMs[intent.deviceId];
+  if (!shedDecided) return false;
   const entry = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
     canApplyRestoreSnapshot(ctx, {
@@ -436,6 +436,8 @@ const applyCapacityControlOffRestoreWithSnapshot = async (
       });
       // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
       delete ctx.state.lastDeviceShedMs[deviceId];
+      // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
+      delete ctx.state.shedDecidedMs[deviceId];
     }
     return true;
   } catch (error) {
