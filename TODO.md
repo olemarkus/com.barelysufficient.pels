@@ -2470,17 +2470,42 @@ prod walk that didn't warrant a P2 slot.*
       time the file is touched — cosmetic-only. Source: gemini reviews
       of PRs #1227 + #1242, 2026-05-28.
 
-- [ ] **Per-device-key storage for deferred objectives.** Objectives are
-      persisted as one whole-map blob under `objectivesByDeviceId`
-      (`DEFERRED_OBJECTIVES_SETTINGS`), so every device-scoped create/clear is
-      a read-modify-write of the entire map. A transient or malformed settings
-      read of one device can therefore clobber sibling devices' tasks — the
-      class the hardened settings-mutation primitive currently guards against
-      with the active-plan-recorder reconcile + abandon-grace refusal.
-      Consider migrating to per-device-key storage (one settings key per
-      device) so a bad read of one device structurally cannot affect others,
-      eliminating the whole-map clobber class rather than guarding it at
-      runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.
+- [ ] **Retire the migration scaffolding once per-key has proven out.** Per-device-key
+      storage shipped (objectives now live under `deferred_objective.<deviceId>`
+      keys; `lib/plan/deferredObjectives/objectiveStore.ts`). The one-shot migration
+      CONSUMES the legacy `DEFERRED_OBJECTIVES_SETTINGS` blob (unsets it after copy)
+      so a marker-read flake can't resurrect a since-cleared task — but a
+      genuinely-empty-but-present legacy blob is left untouched (abandon-grace on
+      the blob read), so a stray empty blob key can linger. Once per-key has proven
+      out in production, drop `migrateBlobToPerKeyIfNeeded` + the
+      `deferred_objectives_perkey_migrated` marker, and add a tiny boot migration
+      that unsets any lingering empty `deferred_objectives` key. Source:
+      per-device-key cutover, 2026-05-30.
+
+- [ ] **Propagate refused per-key writes to callers.** The device-scoped write ops
+      (`upsertObjectiveForDevice` / `addBudgetExemptionRescueForDevice`) return
+      `void`, so when their flaky-read guard REFUSES (key present-but-unreadable, or
+      store-wide empty `getKeys()`), callers — the deadline Flow cards,
+      `createDeferredObjective`, the rescue widget path — can't tell a refusal from
+      a persisted update and report success. The DATA is safe (the guard prevents
+      overwriting the user's objective), but a transient read during an edit can
+      silently leave the old state while the caller reports success instead of a
+      retryable failure. Fix: return a persisted/refused result from the write ops
+      and have callers surface a retryable error on refusal. Source: codex (P2) on
+      PR #1294, 2026-05-30.
+
+- [ ] **Run the startup back-fill after an in-session migration retry.** The
+      one-shot `runStartupBackfill` is gated on the migration marker, so if a
+      boot-time empty `getKeys()` flake deferred the migration, back-fill exits with
+      the watermark untouched. The plan-cycle migration retry (in `appInit`'s
+      `getDeferredObjectiveSettings`) later completes the migration in the SAME
+      session, but back-fill is not re-run — so the first clean plan-history
+      observation can advance the watermark to `now`, permanently skipping the
+      offline window for migrated legacy tasks. Fix: trigger the back-fill when the
+      in-session retry completes (marker unset→set), OR keep the observation
+      watermark frozen until a back-fill has actually run that session. Narrow
+      (boot-flake + timing; affects history completeness, not the live tasks).
+      Source: codex (P2) on PR #1294, 2026-05-30.
 
 - [ ] **Close the transitive widget WebView import hole.** The
       `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT

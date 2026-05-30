@@ -32,7 +32,12 @@ export type FlowManagerLike = {
 
 export type FlowHomeyLike = {
     flow: FlowManagerLike;
-    settings: { get: (key: string) => unknown; set: (key: string, value: unknown) => void };
+    settings: {
+        get: (key: string) => unknown;
+        set: (key: string, value: unknown) => void;
+        unset: (key: string) => void;
+        getKeys: () => string[];
+    };
 };
 
 export type CapabilityValue<T> = {

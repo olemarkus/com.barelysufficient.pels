@@ -77,6 +77,12 @@ export const invalidateSettingCache = (key: string) => {
   settingsCache.delete(key);
 };
 
+// Whether a key is currently in the settings cache, WITHOUT falling through to a
+// Homey `get` on a miss (unlike `getSetting`). Lets callers tell "the bootstrap
+// primed this" from "not cached" so they can fetch a fresh assembled value instead
+// of reading a stale legacy blob via `get`.
+export const hasSettingCache = (key: string): boolean => settingsCache.has(key);
+
 export const primeApiCache = <T>(uri: string, value: T) => {
   apiCache.set(uri, value);
 };

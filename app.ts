@@ -64,7 +64,6 @@ import {
 } from './lib/utils/capacityHelpers';
 import {
   DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH,
-  DEFERRED_OBJECTIVES_SETTINGS,
   DEVICE_LAST_CONTROLLED_MS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
@@ -115,9 +114,9 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
-  normalizeDeferredObjectiveSettings,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
+  readObjectiveForDevice,
   resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
   addBudgetExemptionRescueForDevice,
@@ -1941,8 +1940,7 @@ class PelsApp extends Homey.App {
   // can resolve the SAME merge outcome `addBudgetExemptionRescueForDevice`
   // persists (see `resolveBudgetExemptionRescueEntry`).
   private readDeferredObjectiveEntry(deviceId: string): DeferredObjectiveSettingsEntry | undefined {
-    return normalizeDeferredObjectiveSettings(this.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS))
-      .objectivesByDeviceId[deviceId];
+    return readObjectiveForDevice(this.homey.settings, deviceId);
   }
   // Whether the device currently has a persisted deferred objective. The
   // starvation-rescue CREATE path uses this to decide deadline validation:
@@ -2034,8 +2032,8 @@ class PelsApp extends Homey.App {
   }
   // Persist a new smart task (deferred objective) for an eligible device,
   // routing through the SAME device-scoped write op the deadline Flow cards use
-  // (`upsertObjectiveForDevice` over the hardened settings-mutation primitive,
-  // built by `buildDeferredObjectiveDeviceWriteDeps`). There is no parallel
+  // (`upsertObjectiveForDevice` over the per-device-key store, built by
+  // `buildDeferredObjectiveDeviceWriteDeps`). There is no parallel
   // persistence path: the candidate is validated through the same
   // `normalizeDeferredObjectiveSettingsEntry` normalizer that gates Flow-card
   // and settings writes, and the device's eligibility/kind is checked against
@@ -2120,7 +2118,7 @@ class PelsApp extends Homey.App {
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): { ok: true } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
   } {
     const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
     if (!validated.ok) return validated;
@@ -2130,22 +2128,19 @@ class PelsApp extends Homey.App {
       return { ok: false, reason: 'invalid_candidate' };
     }
 
-    // `false` means the hardened primitive refused the write as a suspected
-    // clobber (a transient-empty settings read while sibling tasks are live).
-    // Report it as a transient conflict so the widget shows a retry-able error
-    // rather than a false "created" flash for a task that never persisted.
-    // The create-smart-task widget never carries a rescue permission (the
-    // budget-exempt rescue has its own merge-not-replace lane,
+    // Per-device-key write: touches only this device's settings key, so it
+    // cannot drop a sibling task and cannot fail-as-clobber (there is no
+    // refusal branch). The create-smart-task widget never carries a rescue
+    // permission (the budget-exempt rescue has its own merge-not-replace lane,
     // `rescueDeviceWithBudgetExemption`), so the default `preserve` policy keeps
     // a standing permission set elsewhere intact rather than wiping it.
-    const persisted = upsertObjectiveForDevice(
+    upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:create_smart_task_widget',
       }),
       { deviceId, deviceName: device.name ?? null, entry },
     );
-    if (!persisted) return { ok: false, reason: 'write_conflict' };
     return { ok: true };
   }
   // Grant a device the starvation-rescue widget's bounded budget-exempt rescue,
@@ -2173,7 +2168,7 @@ class PelsApp extends Homey.App {
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): { ok: true } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate' | 'write_conflict';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
   } {
     // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
     // grant a budget exemption; reject any candidate that does not carry one so
@@ -2191,14 +2186,14 @@ class PelsApp extends Homey.App {
 
     // The merge op uses `rescueEntry` only when no objective exists yet; when one
     // does, it preserves that objective and just adds the budget exemption.
-    const persisted = addBudgetExemptionRescueForDevice(
+    // Per-device-key write — touches only this device's key, no clobber risk.
+    addBudgetExemptionRescueForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:starvation_rescue_widget',
       }),
       { deviceId, deviceName: device.name ?? null, rescueEntry },
     );
-    if (!persisted) return { ok: false, reason: 'write_conflict' };
     return { ok: true };
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {

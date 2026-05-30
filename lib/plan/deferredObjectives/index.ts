@@ -37,15 +37,18 @@ export {
   type DeferredObjectiveChangeInput,
 } from './objectiveChange';
 export {
-  mutateDeferredObjectiveSettings,
   upsertObjectiveForDevice,
   addBudgetExemptionRescueForDevice,
   resolveBudgetExemptionRescueEntry,
   clearObjectiveForDevice,
-  type DeferredObjectiveSettingsMutationDeps,
-  type DeferredObjectiveSettingsMutator,
   type DeferredObjectiveDeviceWriteDeps,
 } from './objectiveWrite';
+export {
+  migrateBlobToPerKeyIfNeeded,
+  readAllObjectives,
+  readObjectiveForDevice,
+  writeObjectiveForDevice,
+} from './objectiveStore';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';

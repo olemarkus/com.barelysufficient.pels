@@ -57,6 +57,12 @@ export class MockSettings extends EventEmitter {
     this.emit('unset', key);
   }
 
+  // Mirror the real SDK's `ManagerSettings.getKeys()`. The live key list is
+  // derived from the backing store, so `set`/`unset` keep it consistent.
+  getKeys(): string[] {
+    return Array.from(this.store.keys());
+  }
+
   clear() {
     this.store.clear();
   }

@@ -3,10 +3,10 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CONTROLLABLE_DEVICES,
-  DEFERRED_OBJECTIVES_SETTINGS,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../lib/utils/settingsKeys';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../lib/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
@@ -695,17 +695,13 @@ function buildEvDeadlineDay(params: {
 }
 
 function configureEvDeadlineObjective(charger: EaseeMockCharger, targetPercent: number = 42): void {
-  mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, {
-    version: 1,
-    objectivesByDeviceId: {
-      [charger.idValue]: {
-        enabled: true,
-        kind: 'ev_soc',
-        enforcement: 'soft',
-        targetPercent,
-        deadlineAtMs: currentTimeMs + 3 * HOUR_MS,
-      },
-    },
+  // Per-device-key storage: the objective lives under the charger's own key.
+  mockHomeyInstance.settings.set(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${charger.idValue}`, {
+    enabled: true,
+    kind: 'ev_soc',
+    enforcement: 'soft',
+    targetPercent,
+    deadlineAtMs: currentTimeMs + 3 * HOUR_MS,
   });
 }
 

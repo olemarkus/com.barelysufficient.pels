@@ -5,6 +5,7 @@ import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from '.
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeferredObjectivePlanHistoryPayload,
+  getSettingsUiDeferredObjectiveSettingsPayload,
   getSettingsUiDeviceDiagnosticsPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
@@ -81,6 +82,9 @@ export = {
   )),
   ui_deferred_objective_history: withApiLogging('ui_deferred_objective_history', ({ homey }: ApiContext) => (
     getSettingsUiDeferredObjectivePlanHistoryPayload({ homey })
+  )),
+  ui_deferred_objective_settings: withApiLogging('ui_deferred_objective_settings', ({ homey }: ApiContext) => (
+    getSettingsUiDeferredObjectiveSettingsPayload({ homey })
   )),
   get_daily_budget: withApiLogging('get_daily_budget', ({ homey }: ApiContext): DailyBudgetUiPayload | null => {
     const app = getApp(homey);

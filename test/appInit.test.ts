@@ -47,6 +47,7 @@ import {
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
+  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   LEARNED_THERMOSTAT_DEADBAND_C,
 } from '../lib/utils/settingsKeys';
 import type { AppContext } from '../lib/app/appContext';
@@ -152,17 +153,13 @@ describe('app init plan service wiring', () => {
     // deadline_status_is would still match the stale snapshot in that window.
     capturedPlanEngineDeps.current = null;
     const settingsStore = new Map<string, unknown>();
-    settingsStore.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
-        'heater-1': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 55,
-          deadlineAtMs: Date.now() + 60_000,
-        },
-      },
+    // Per-device key: this device's objective lives under its own key.
+    settingsStore.set('deferred_objective.heater-1', {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 55,
+      deadlineAtMs: Date.now() + 60_000,
     });
     const forgetDevice = vi.fn();
     const clearForDevice = vi.fn();
@@ -175,6 +172,8 @@ describe('app init plan service wiring', () => {
       settings: {
         get: vi.fn((key: string) => settingsStore.get(key)),
         set: vi.fn((key: string, value: unknown) => { settingsStore.set(key, value); }),
+        unset: vi.fn((key: string) => { settingsStore.delete(key); }),
+        getKeys: vi.fn(() => [...settingsStore.keys()]),
         on: vi.fn(),
         off: vi.fn(),
       },
@@ -187,7 +186,6 @@ describe('app init plan service wiring', () => {
       deferredObjectiveActivePlanRecorder: {
         clearForDevice,
         getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
-        isLiveSetConfirmed: () => true,
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     }));
 
@@ -196,38 +194,33 @@ describe('app init plan service wiring', () => {
     }).disableDeferredObjective;
     disable('heater-1');
 
-    const stored = settingsStore.get('deferred_objectives') as {
-      objectivesByDeviceId: Record<string, { enabled: boolean }>;
-    };
-    expect(stored.objectivesByDeviceId['heater-1']?.enabled).toBe(false);
+    const stored = settingsStore.get('deferred_objective.heater-1') as { enabled: boolean };
+    expect(stored?.enabled).toBe(false);
     expect(forgetDevice).toHaveBeenCalledWith('heater-1');
     expect(clearForDevice).toHaveBeenCalledWith('heater-1');
   });
 
-  it('disableDeferredObjective routes through the hardened primitive: preserves a live sibling on a transient bad read', () => {
-    // FIX 3 regression: a partial/transient read that drops a live sibling must
-    // NOT let the auto-disable clobber it. The disable routes through
-    // `mutateDeferredObjectiveSettings`, whose clobber guard refuses the write
-    // when a recorder-known sibling would vanish. The elapsed objective is not
-    // left enabled in settings (the refusal preserves the on-disk state, which
-    // for a transient bad read is whatever truly persisted), and the sibling is
-    // never wiped.
+  it('disableDeferredObjective is per-device-key: never touches a sibling device\'s key', () => {
+    // Per-device-key storage: disabling heater-1 writes ONLY its own key. A
+    // sibling task under its own key is structurally untouchable — there is no
+    // shared map to clobber.
     capturedPlanEngineDeps.current = null;
     const settingsStore = new Map<string, unknown>();
-    // Transient bad read: settings momentarily report ONLY the elapsed device,
-    // having lost the live sibling `other-1` that is genuinely persisted.
-    settingsStore.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
-        'heater-1': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 55,
-          deadlineAtMs: Date.now() + 60_000,
-        },
-      },
+    settingsStore.set('deferred_objective.heater-1', {
+      enabled: true,
+      kind: 'temperature',
+      enforcement: 'soft',
+      targetTemperatureC: 55,
+      deadlineAtMs: Date.now() + 60_000,
     });
+    const siblingEntry = {
+      enabled: true,
+      kind: 'ev_soc',
+      enforcement: 'soft',
+      targetPercent: 80,
+      deadlineAtMs: Date.now() + 120_000,
+    };
+    settingsStore.set('deferred_objective.other-1', siblingEntry);
     const forgetDevice = vi.fn();
     const clearForDevice = vi.fn();
     const homey = {
@@ -239,6 +232,8 @@ describe('app init plan service wiring', () => {
       settings: {
         get: vi.fn((key: string) => settingsStore.get(key)),
         set: vi.fn((key: string, value: unknown) => { settingsStore.set(key, value); }),
+        unset: vi.fn((key: string) => { settingsStore.delete(key); }),
+        getKeys: vi.fn(() => [...settingsStore.keys()]),
         on: vi.fn(),
         off: vi.fn(),
       },
@@ -250,13 +245,10 @@ describe('app init plan service wiring', () => {
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
       deferredObjectiveActivePlanRecorder: {
         clearForDevice,
-        // Recorder still believes both heater-1 (being disabled) and the live
-        // sibling other-1 are active — so the guard catches the lost sibling.
         getActivePlansSnapshot: () => ({
           version: 1,
           plansByDeviceId: { 'heater-1': {}, 'other-1': {} } as never,
         }),
-        isLiveSetConfirmed: () => true,
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     }));
 
@@ -265,15 +257,11 @@ describe('app init plan service wiring', () => {
     }).disableDeferredObjective;
     disable('heater-1');
 
-    // Write refused → settings untouched, so the sibling is preserved (it was
-    // never in this transient read to begin with) and no in-memory cleanup ran
-    // for a disable that did not persist.
-    const stored = settingsStore.get('deferred_objectives') as {
-      objectivesByDeviceId: Record<string, unknown>;
-    };
-    expect(Object.keys(stored.objectivesByDeviceId)).toEqual(['heater-1']);
-    expect(forgetDevice).not.toHaveBeenCalled();
-    expect(clearForDevice).not.toHaveBeenCalled();
+    // heater-1 disabled in its own key; the sibling's key is byte-for-byte intact.
+    expect((settingsStore.get('deferred_objective.heater-1') as { enabled: boolean }).enabled).toBe(false);
+    expect(settingsStore.get('deferred_objective.other-1')).toEqual(siblingEntry);
+    expect(forgetDevice).toHaveBeenCalledWith('heater-1');
+    expect(clearForDevice).toHaveBeenCalledWith('heater-1');
   });
 
   it('seeds the deferred-objective observation watermark on first install', () => {
@@ -300,9 +288,11 @@ describe('app init plan service wiring', () => {
     const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     const oldWatermark = Date.now() - 24 * 60 * 60 * 1000;
-    getSpy.mockImplementation((key: string) => (
-      key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK ? oldWatermark : undefined
-    ));
+    getSpy.mockImplementation((key: string) => {
+      if (key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK) return oldWatermark;
+      if (key === DEFERRED_OBJECTIVES_PERKEY_MIGRATED) return true; // migration completed
+      return undefined;
+    });
     setSpy.mockClear();
 
     createDeferredObjectivePlanHistoryRecorder(ctx);
@@ -312,6 +302,29 @@ describe('app init plan service wiring', () => {
     );
     expect(watermarkSets).toHaveLength(1);
     expect((watermarkSets[0]![1] as number)).toBeGreaterThan(oldWatermark);
+  });
+
+  it('does NOT advance the watermark when the per-key migration has not completed', () => {
+    // A boot-time empty getKeys() flake can skip the one-shot migration AND make
+    // readAllObjectives empty. Advancing the watermark then would permanently skip
+    // the back-fill window for tasks that ARE persisted. With the marker unset, the
+    // back-fill must leave the watermark untouched and let a later (migrated) startup
+    // back-fill the full window.
+    const ctx = createAppContextMock();
+    const getSpy = ctx.homey.settings.get as unknown as ReturnType<typeof vi.fn>;
+    const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
+    const oldWatermark = Date.now() - 24 * 60 * 60 * 1000;
+    getSpy.mockImplementation((key: string) => (
+      key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK ? oldWatermark : undefined // marker undefined
+    ));
+    setSpy.mockClear();
+
+    createDeferredObjectivePlanHistoryRecorder(ctx);
+
+    const watermarkSets = setSpy.mock.calls.filter(
+      ([key]) => key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
+    );
+    expect(watermarkSets).toHaveLength(0); // back-fill skipped; watermark left for next startup
   });
 
   it('persistDeferredObjectiveObservationWatermark skips the write when the recorder is still dirty', () => {
@@ -488,24 +501,23 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     const oldWatermark = Date.now() - 48 * 60 * 60 * 1000;
     const passedDeadlineMs = Date.now() - 24 * 60 * 60 * 1000;
+    // Per-device-key storage: the enabled-but-elapsed objective lives under its
+    // own `deferred_objective.<id>` key, discovered via getKeys()/get().
     getSpy.mockImplementation((key: string) => {
       if (key === DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK) return oldWatermark;
-      if (key === 'deferred_objectives') {
+      if (key === 'deferred_objective.dev_a') {
         return {
-          version: 1,
-          objectivesByDeviceId: {
-            dev_a: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 65,
-              deadlineAtMs: passedDeadlineMs,
-            },
-          },
+          enabled: true,
+          kind: 'temperature',
+          enforcement: 'soft',
+          targetTemperatureC: 65,
+          deadlineAtMs: passedDeadlineMs,
         };
       }
       return undefined;
     });
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>)
+      .mockReturnValue(['deferred_objective.dev_a']);
     setSpy.mockImplementation((key: string) => {
       if (key === 'deferred_objective_plan_history') {
         throw new Error('disk full');

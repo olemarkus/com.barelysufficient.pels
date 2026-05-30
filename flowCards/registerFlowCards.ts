@@ -50,21 +50,21 @@ import type {
   DeferredObjectiveStatusBus,
 } from '../lib/plan/deferredObjectives';
 
-// Device-scoped objective writes the Flow cards delegate to. Both route through
-// the hardened settings-mutation primitive + shared notify/flush/rebuild
+// Device-scoped objective writes the Flow cards delegate to. Both write the
+// target device's OWN settings key + run the shared notify/flush/rebuild
 // chokepoint in `lib/plan/deferredObjectives/objectiveWrite.ts` (wired with the
-// app's recorders in appInit). Return `false` when the primitive refused the
-// write as a suspected clobber from a transient-empty settings read.
+// app's recorders in appInit). A per-key write touches only that one device, so
+// it cannot clobber a sibling task — there is no refusal/conflict to report.
 export type UpsertDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
   entry: DeferredObjectiveSettingsEntry;
   rescue?: 'preserve' | 'replace';
-}) => boolean;
+}) => void;
 export type ClearDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
-}) => boolean;
+}) => void;
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
@@ -107,10 +107,10 @@ export type FlowCardDeps = {
   };
   rebuildPlan: (source: string) => void;
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
-  // Required — the deadline / clear / rescue cards MUST be able to observe
-  // whether the hardened write primitive refused (returned `false`). Optional
-  // chaining here silently swallowed refusals: a Flow reported success while
-  // nothing persisted. Production always wires these via appInit.
+  // Required — the deadline / clear / rescue cards write each device's own
+  // settings key through these (a per-key write cannot clobber a sibling).
+  // Non-optional so a missing wiring is a build error, not a silent no-op.
+  // Production always wires these via appInit.
   upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;

@@ -11,6 +11,7 @@ import {
 import {
   SETTINGS_UI_BOOTSTRAP_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
+  SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_LOG_PATH,
@@ -55,6 +56,7 @@ export type MockHomeyUiState = {
   dailyBudget?: unknown;
   deferredObjectiveActivePlans?: DeferredObjectiveActivePlansV1 | null;
   deferredObjectiveHistory?: unknown;
+  deferredObjectiveSettings?: unknown;
   deviceDiagnostics?: unknown;
   // Explicit device list returned by the `/ui_devices` and
   // `/ui_refresh_devices` handlers. Mirrors production's
@@ -298,6 +300,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'deferredObjectiveHistory') ?? { version: 1, entriesByDeviceId: {} }
+  ),
+  [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'deferredObjectiveSettings') ?? { version: 1, objectivesByDeviceId: {} }
   ),
   [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getUiOverride(homey, 'dailyBudget') ?? null,
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
