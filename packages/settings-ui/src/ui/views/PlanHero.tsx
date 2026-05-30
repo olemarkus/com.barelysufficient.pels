@@ -6,7 +6,7 @@ import {
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
-  formatEnergyUsedOfBudget,
+  formatEnergyUsedOfBudgetParts,
   formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
@@ -461,7 +461,11 @@ const PowerSection = ({
   return (
     <div class="plan-hero__section">
       <p class="plan-hero__section-label eyebrow">Power now</p>
-      <div class="plan-hero__headline">{headline.totalKw.toFixed(1)} kW</div>
+      <div class="plan-hero__headline plan-hero__metric">
+        <span class="plan-hero__metric-value">{headline.totalKw.toFixed(1)}</span>
+        {' '}
+        <span class="plan-hero__metric-qualifier">kW</span>
+      </div>
       <div class="plan-hero__subline">{resolvePowerSubline(headline, meta)}</div>
       {scale && (
         <div class="plan-hero__bar-group">
@@ -529,7 +533,13 @@ const EnergySection = ({
 }) => {
   const scale = computeEnergyBarScale(meta);
   if (!scale) return null;
-  const usedText = formatEnergyUsedOfBudget(scale.usedKWh, scale.budgetKWh);
+  // Numeric-first hero stack: the used value leads as the dominant number, the
+  // budget context trails as a quiet qualifier. The split is presentation-only
+  // (`formatEnergyUsedOfBudgetParts`); `lead + " " + qualifier` reproduces the
+  // canonical `formatEnergyUsedOfBudget` string verbatim (pinned by a test), so
+  // the rendered text stays byte-identical to that shared-domain helper and can
+  // never drift from any log breadcrumb that uses it.
+  const usedParts = formatEnergyUsedOfBudgetParts(scale.usedKWh, scale.budgetKWh);
   const projectionTone = resolveProjectionTone(scale);
   // Subtraction (v2.7.3): the warning emoji was redundant — the projection
   // marker on the energy bar already carries the over-budget tone, and the
@@ -546,7 +556,11 @@ const EnergySection = ({
   return (
     <div class="plan-hero__section">
       <p class="plan-hero__section-label eyebrow">Energy used this hour</p>
-      <div class="plan-hero__headline">{usedText}</div>
+      <div class="plan-hero__headline plan-hero__metric">
+        <span class="plan-hero__metric-value">{usedParts.lead}</span>
+        {' '}
+        <span class="plan-hero__metric-qualifier">{usedParts.qualifier}</span>
+      </div>
       {projectedText !== null && (
         <div class="plan-hero__subline" data-tone={projectedTone}>{projectedText}</div>
       )}
