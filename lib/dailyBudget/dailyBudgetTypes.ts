@@ -39,71 +39,24 @@ export type DailyBudgetState = {
   profileObservedStatsConfigKey?: string;
 };
 
-export type ConfidenceDebug = {
-  confidenceRegularity: number;
-  confidenceAdaptability: number;
-  confidenceAdaptabilityInfluence: number;
-  confidenceWeightedControlledShare: number;
-  confidenceValidActualDays: number;
-  confidenceValidPlannedDays: number;
-  confidenceBootstrapLow: number;
-  confidenceBootstrapHigh: number;
-  profileBlendConfidence: number;
-};
+// The daily-budget UI payload contract is owned by packages/contracts (the
+// runtime→settings-UI seam already imports it from there). Re-export it here
+// from that single source of truth instead of re-declaring it, so the runtime
+// consumers and the smart-task controller resolve the same declaration the UI
+// does, with no `objectives → dailyBudget` peer edge (PR-A2). Imported for
+// local use by the response/update types below.
+import type {
+  ConfidenceDebug,
+  DailyBudgetAllocationPressure,
+  DailyBudgetDayPayload,
+  DailyBudgetUiPayload,
+} from '../../packages/contracts/src/dailyBudgetTypes';
 
-export type DailyBudgetAllocationPressure = {
-  requestedBudgetKWh: number;
-  plannedBudgetKWh: number;
-  unallocatedBudgetKWh: number;
-  saturationRatio: number;
-  constrained: boolean;
-  maxFittingDailyBudgetKWh: number;
-};
-
-export type DailyBudgetDayPayload = {
-  dateKey: string;
-  timeZone: string;
-  nowUtc: string;
-  dayStartUtc: string;
-  currentBucketIndex: number;
-  budget: {
-    enabled: boolean;
-    dailyBudgetKWh: number;
-    priceShapingEnabled: boolean;
-  };
-  state: {
-    usedNowKWh: number;
-    allowedNowKWh: number;
-    remainingKWh: number;
-    deviationKWh: number;
-    exceeded: boolean;
-    frozen: boolean;
-    confidence: number;
-    priceShapingActive: boolean;
-    allocationPressure?: DailyBudgetAllocationPressure;
-    confidenceDebug?: ConfidenceDebug;
-  };
-  buckets: {
-    startUtc: string[];
-    startLocalLabels: string[];
-    plannedWeight: number[];
-    plannedKWh: number[];
-    plannedUncontrolledKWh: number[];
-    plannedControlledKWh: number[];
-    actualKWh: number[];
-    actualControlledKWh: Array<number | null>;
-    actualUncontrolledKWh: Array<number | null>;
-    allowedCumKWh: number[];
-    price?: Array<number | null>;
-    priceFactor?: Array<number | null>;
-  };
-};
-
-export type DailyBudgetUiPayload = {
-  days: Record<string, DailyBudgetDayPayload>;
-  todayKey: string;
-  tomorrowKey?: string | null;
-  yesterdayKey?: string | null;
+export type {
+  ConfidenceDebug,
+  DailyBudgetAllocationPressure,
+  DailyBudgetDayPayload,
+  DailyBudgetUiPayload,
 };
 
 export type DailyBudgetModelPreviewResponse = {

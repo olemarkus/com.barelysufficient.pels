@@ -6,7 +6,7 @@ import {
   type DeferredObjectiveKwhPerUnitSource,
 } from './profileEnergyResolution';
 import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
-import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {

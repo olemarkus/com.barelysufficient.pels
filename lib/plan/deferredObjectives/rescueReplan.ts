@@ -1,4 +1,4 @@
-import type { DailyBudgetUiPayload } from '../../dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
 import { buildDeferredObjectivePolicyHorizon, type DeferredObjectivePolicyHorizonResult } from './policyHorizon';
 import { resolveCommittedHours } from './resolveCommittedHours';
