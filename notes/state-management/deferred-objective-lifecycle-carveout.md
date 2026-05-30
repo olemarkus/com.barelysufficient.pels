@@ -123,8 +123,19 @@ This is the first down-payment on goal 2 (disable off the capacity write path), 
 
 ## Increments
 
-1. **Now:** reason-blind binary-disable dispatch off the capacity path + marker-ownership
-   corrections. Supersedes #1249. Independent, shippable, fixes the live bug.
+1. **Shipped (PR #1278):** reason-blind binary-disable dispatch off the capacity path —
+   the lifecycle-release no longer stamps `lastInstabilityMs` / `lastDeviceShedMs` (direct
+   + flow-backed). Supersedes #1249's over-stamp half.
+1b. **Shipped (`fix/device-control-intent`):** the marker-ownership decomposition, increment 1.
+   Split the *reader* roles of `lastDeviceShedMs` by introducing a decision-time `shedDecidedMs`
+   clock (planner-owned, edge-set at finalization for devices entering `lastPlannedShedIds`,
+   cleared on restore alongside `lastDeviceShedMs`). The restore-eligibility readers (recovering
+   ×2, stepped-restore blocking, restore-log source, uncontrolled-restore gate) now read
+   `shedDecidedMs`; `lastDeviceShedMs` stays the actuation clock for the throttle / cooldown /
+   reconcile / recent-shed-backoff. Fixes the under-stamp (decided-but-already-off → restores
+   early) without touching the same-cycle throttle. Follow-ups (dedup the recovering helper;
+   move the recent-shed backoff onto the decision clock alongside a future `shedActuatedMs`
+   rename) are in `TODO.md`.
 2. **North-star program (separate, multi-PR):** relocate the lifecycle subsystem out of
    `lib/plan` onto its own clock loop (producer) + the clock-driven disable actuator (completes
    goals 1 & 2); untangle `concurrentEligibleCount` into a flat capacity input. ~40 files;
