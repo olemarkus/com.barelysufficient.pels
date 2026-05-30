@@ -28,8 +28,17 @@ describe('starvation-rescue shared helpers', () => {
   });
 
   describe('formatStarvationRowChip', () => {
-    it('renders "Starved · N min"', () => {
-      expect(formatStarvationRowChip(24 * 60_000)).toBe('Starved · 24 min');
+    it('says "Held back" only for the budget-releasable cause', () => {
+      expect(formatStarvationRowChip('budget', 24 * 60_000)).toBe('Held back · 24 min');
+    });
+    it('says "Waiting" for physically-held causes (capacity, external)', () => {
+      // The hard cap is not a tuning knob — a capacity row is never mislabeled
+      // as the budget-releasable "Held back" state.
+      expect(formatStarvationRowChip('capacity', 24 * 60_000)).toBe('Waiting · 24 min');
+      expect(formatStarvationRowChip('external', 5 * 60_000)).toBe('Waiting · 5 min');
+    });
+    it('says "On hold" for the manual cause', () => {
+      expect(formatStarvationRowChip('manual', 12 * 60_000)).toBe('On hold · 12 min');
     });
   });
 
