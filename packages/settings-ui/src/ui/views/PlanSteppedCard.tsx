@@ -60,7 +60,7 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
         {steps.map((step, i) => {
           const pct = n <= 1 ? 0 : (i / (n - 1)) * 100;
           return (
-            <span key={step.id} class="plan-card__step-label" style={{ left: `${pct}%` }}>
+            <span key={step.id} class="plan-card__step-label metric-label" style={{ left: `${pct}%` }}>
               {formatStepDisplayLabel(step.id)}
             </span>
           );
