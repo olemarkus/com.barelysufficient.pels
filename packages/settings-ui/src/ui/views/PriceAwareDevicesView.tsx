@@ -163,7 +163,7 @@ const DeviceRow = ({
 
   return (
     <div class="price-aware-grid__row">
-      <span class="price-aware-grid__name">{displayName}</span>
+      <span class="price-aware-grid__name entity-name">{displayName}</span>
       <div class="price-aware-grid__cell">
         <span class="price-aware-grid__cell-label eyebrow" aria-hidden="true">
           <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap"></span>
