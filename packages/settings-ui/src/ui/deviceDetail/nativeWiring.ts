@@ -52,7 +52,7 @@ const syncFlowConflictNotice = (
     deviceDetailFlowConflictNotice.hidden = !hasConflict;
   }
   if (!hasConflict) return false;
-  const notice = nativeWiringFlowConflictNotice();
+  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName);
   if (deviceDetailFlowConflictTitle) deviceDetailFlowConflictTitle.textContent = notice.title;
   if (deviceDetailFlowConflictBody) deviceDetailFlowConflictBody.textContent = notice.body;
   return true;

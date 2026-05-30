@@ -285,10 +285,18 @@ function nativeWiringDecisionKey(decisions: Record<string, boolean>): string {
   return Object.keys(decisions).filter((id) => decisions[id] === true).sort().join('|');
 }
 
-function flowConflictKey(conflicts: Record<string, { conflictingCapabilities: readonly string[] }>): string {
+function flowConflictKey(
+  conflicts: Record<string, { conflictingCapabilities: readonly string[]; flowName?: string }>,
+): string {
   return Object.keys(conflicts)
     .sort()
-    .map((id) => `${id}:${[...(conflicts[id]?.conflictingCapabilities ?? [])].sort().join(',')}`)
+    .map((id) => {
+      const conflict = conflicts[id];
+      const caps = [...(conflict?.conflictingCapabilities ?? [])].sort().join(',');
+      // Include the named Flow so renaming the conflicting Flow re-renders the
+      // banner even when the conflicting capability set is unchanged.
+      return `${id}:${caps}:${conflict?.flowName ?? ''}`;
+    })
     .join('|');
 }
 
@@ -338,7 +346,7 @@ class PelsApp extends Homey.App {
   private autoNativeWiringDecisions: Record<string, boolean> = {};
   // Per-device flow-conflict verdict (the native-write capabilities a user
   // Flow drives), surfaced on the snapshot for the device-detail banner.
-  private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[] }> = {};
+  private flowConflictsByDevice: Record<string, { conflictingCapabilities: readonly string[]; flowName?: string }> = {};
   private nativeWiringDecisionInFlight = false;
   // Flipped in onUninit. The native-wiring probe is fire-and-forget and can
   // still be parked on a slow flow read when the app tears down; this flag lets
@@ -1111,9 +1119,11 @@ class PelsApp extends Homey.App {
     for (const deviceId of detection.autoEnableDeviceIds) {
       nextDecisions[deviceId] = true;
     }
-    const nextConflicts: Record<string, { conflictingCapabilities: readonly string[] }> = {};
+    const nextConflicts: Record<string, { conflictingCapabilities: readonly string[]; flowName?: string }> = {};
     for (const conflict of detection.conflicts) {
-      nextConflicts[conflict.deviceId] = { conflictingCapabilities: conflict.conflictingCapabilities };
+      nextConflicts[conflict.deviceId] = conflict.flowName === undefined
+        ? { conflictingCapabilities: conflict.conflictingCapabilities }
+        : { conflictingCapabilities: conflict.conflictingCapabilities, flowName: conflict.flowName };
     }
     if (
       nativeWiringDecisionKey(this.autoNativeWiringDecisions) === nativeWiringDecisionKey(nextDecisions)

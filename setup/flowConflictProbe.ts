@@ -28,7 +28,13 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 // resolves after teardown does not log into a closing worker rpc.
 export type FlowConflictLog = { info: (obj: Record<string, unknown>) => void };
 
-export type NativeWiringFlowConflict = { deviceId: string; conflictingCapabilities: string[] };
+export type NativeWiringFlowConflict = {
+  deviceId: string;
+  conflictingCapabilities: string[];
+  // The single named Flow responsible for the conflict, when there is exactly
+  // one; undefined otherwise (UI falls back to generic copy).
+  flowName?: string;
+};
 
 export type NativeWiringConflictDetection =
   | { status: 'ok'; autoEnableDeviceIds: string[]; conflicts: NativeWiringFlowConflict[] }
@@ -100,15 +106,21 @@ export async function detectNativeWiringConflicts(deps: {
     conflicts: conflicts.map((conflict) => ({
       deviceId: conflict.deviceId,
       capabilities: conflict.conflictingCapabilities,
+      flowName: conflict.flowName,
     })),
   });
 
   return {
     status: 'ok',
     autoEnableDeviceIds,
-    conflicts: conflicts.map((conflict) => ({
-      deviceId: conflict.deviceId,
-      conflictingCapabilities: conflict.conflictingCapabilities,
-    })),
+    conflicts: conflicts.map((conflict) => (
+      conflict.flowName === undefined
+        ? { deviceId: conflict.deviceId, conflictingCapabilities: conflict.conflictingCapabilities }
+        : {
+          deviceId: conflict.deviceId,
+          conflictingCapabilities: conflict.conflictingCapabilities,
+          flowName: conflict.flowName,
+        }
+    )),
   };
 }
