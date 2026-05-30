@@ -55,7 +55,23 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
   getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
-  disableDeferredObjective?: (deviceId: string) => void;
+  /**
+   * Fired once a task's deadline has passed. App-wired (the emitter cannot import
+   * `lib/device`/`lib/executor`), it owns BOTH ends of "ending" a task: it returns
+   * the cap-off device the task was driving to its configured fallback posture
+   * directly via the transport (closing the `power_source = flow` gap where the
+   * next plan cycle — which used to emit the terminal `shed_release` — can be
+   * hours away), AND it disarms the task. The disarm is gated on the release being
+   * settled (device observed in the shed posture) or a grace window, so the
+   * diagnostic survives across ticks and the release re-fires until the device
+   * confirms off — never a single shot a transient `unknown` observation can miss.
+   */
+  onDeadlineReached?: (
+    deviceId: string,
+    objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
+    deadlineAtMs: number,
+    nowMs: number,
+  ) => void;
   observeDeferredObjectivePlanHistory?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
@@ -109,7 +125,7 @@ export class DeferredObjectiveLifecycleEmitter {
         diagnostics,
         statusBus,
         nowMs,
-        onDeadlinePassed: this.deps.disableDeferredObjective,
+        onDeadlineReached: this.deps.onDeadlineReached,
       });
     }
     const hoursRemainingBus = this.deps.getDeferredObjectiveHoursRemainingBus?.();

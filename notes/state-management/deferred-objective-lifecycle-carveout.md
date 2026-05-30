@@ -205,11 +205,36 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      deleted; active-plan commitment stays synchronous (PR-C catch); the
      `evaluate_deferred_objectives_ms` / `plan_deferred_objective_observe_ms` perf split is
      preserved (the controller times its own eval). Behavior-neutral: full suite green (4009).
-6. **Controller owns ending + the direct disable actuator.** Already outside the planner: the
-   deadline-passed disable (`disableDeferredObjectiveInSettings`) is owned by the clock-driven
-   `DeferredObjectiveLifecycleEmitter` (PR-C, app-wiring), and the per-cycle physical release is a
-   flat `deferredReleaseIntent` the controller stamps and the executor consumes blindly. No planner
-   or executor smart-task knowledge remains; any further tidy here is cleanup, not a decoupling gap.
+6. **Clock-driven terminal device disable (PR-E — done, additive).** Goal 2's *output* side had a
+   real flow-mode bug: a disabled task yields no diagnostic (`diagnosticsBridge` →
+   `if (!objective.enabled) return []`), and after PR-C the deadline auto-disable runs on the 30 s
+   lifecycle clock while the terminal `shed_release` rode the *plan* cycle — so in
+   `power_source = flow` mode (plan cycles hours apart) the clock disabled the task before the next
+   plan cycle could emit the release, leaving a cap-off device on a **missed/unsatisfied** deadline
+   running. PR-E fixes it on the lifecycle clock:
+   - A single app-wired `onDeadlineReached(deviceId, objectiveKind, deadlineAtMs, nowMs)` hook
+     (`statusTransitions` → `DeferredObjectiveLifecycleEmitter` →
+     `deferredObjectiveLifecycle.handleDeferredDeadlineReached`) fires at **deadline-passed,
+     regardless of status** — so missed/unsatisfied tasks are covered, not just `satisfied`.
+   - It returns the cap-off device to its configured fallback posture via a **thin, set-and-forget
+     device-layer primitive** (`lib/device/shedBehaviorActuation.applyShedBehavior`: one transport
+     write per `turn_off`/`set_temperature`/EV-pause, observed-state idempotency, no `ExecutablePlan`
+     types, no executor reconciliation). The executor is untouched.
+   - The **disarm is gated** (`planTerminalEnding`): disarm only once the device is observed in the
+     shed posture, or after a 5-min grace window — so the diagnostic survives and the release
+     re-fires across ticks (a transient `unknown` observation or a dropped write self-heals) instead
+     of being a single shot.
+   - **Additive, not a retirement.** The plan-path `deferredReleaseIntent` (`attachDeferredReleaseIntents`
+     + the executor release intent) **stays** as an idempotent backstop AND because the recurring
+     **idle-bucket holds still ride it** (Fork A keeps idle on the plan path — those need the shared
+     release-intent channel; only the *terminal* ending moved to the clock).
+
+   **Follow-ups (not blocking):** (a) the niche stepped-only `set_step` shed on a device with no
+   binary handle is skipped by the clock path (logged) and keeps its plan-path release — a direct
+   stepped command needs executor-side current/power resolution; (b) fully retiring the *terminal*
+   release from the plan path (so it isn't double-covered) is a later cleanup, gated on (a);
+   (c) the same "task disabled → device stranded" shape exists for a **user/Flow disable** mid-run,
+   not just deadline-passed — out of PR-E scope.
 7. **Flip `no-plan-to-smarttasks` to `error` — DONE (PR-D2).** `lib/plan/**` imports zero
    `lib/objectives` (value AND type, confirmed by `grep -rn "from .*objectives" lib/plan/` → none;
    the rule is type-edge-blind so the grep audit, not cruiser-green alone, gated the flip). The
