@@ -30,7 +30,19 @@
   gap: var(--homey-su-2, 8px);
 }
 
-/* ----- Starved-device list ----- */
+/* ----- Held-back-device list ----- */
+
+/* Header naming what the widget shows. Shown only when at least one device is
+   held back; hidden in the calm empty state so the steady-state line stands
+   alone. Compact so the fixed-height card still fits its visible rows. */
+.list-title {
+  margin: 0;
+  flex: none;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-bold, 700);
+  color: var(--homey-text-color, inherit);
+}
 
 .rows {
   list-style: none;

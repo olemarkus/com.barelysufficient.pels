@@ -3,18 +3,28 @@
 (() => {
   // packages/shared-domain/src/planStarvation.ts
   var STARVATION_RESCUE_WIDGET_COPY = {
-    // Empty (calm) state — nothing is starved. This is the steady, good state.
+    // List header — names what the widget SHOWS (the devices PELS is holding back
+    // via the daily budget), not an action the user takes. Shown only when at
+    // least one device is held back; the calm empty state stands alone.
+    headerTitle: "Held-back devices",
+    // Empty (calm) state — nothing is held back. This is the steady, good state.
     emptySubtitle: "No device is being held back right now.",
     // Transient "wiring up to Homey" state, distinct from a hard load failure.
     notReady: "Connecting to Homey\u2026",
     loadError: "Could not load devices. Try again later.",
-    // Row status chip prefix. The widget appends "· N min".
-    starvedChip: "Starved",
-    // Rescue affordance (budget-caused rows only). "Use budget now" is honest that
-    // the action spends today's budget rather than promising instant delivery —
-    // the rescue is a bounded near-term run, not an immediate power switch (the
-    // confirm sheet surfaces the "By {time}" timing prominently).
-    rescueButton: "Use budget now",
+    // Row status-chip word. The widget appends "· N min". Cause-specific so the
+    // chip never overclaims: only budget rows (the releasable "Let it run now"
+    // state) say "Held back"; capacity/external say "Waiting" (physically held —
+    // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
+    // says "On hold". User-facing register only — no "starvation" jargon.
+    starvedChip: "Held back",
+    waitingChip: "Waiting",
+    manualChip: "On hold",
+    // Rescue affordance (budget-caused rows only). "Let it run now" is device-
+    // scoped — it releases THIS device from the daily budget so it runs now,
+    // rather than promising house power. The rescue is a bounded near-term run
+    // (the confirm sheet surfaces the "By {time}" timing prominently).
+    rescueButton: "Let it run now",
     // Informational note on capacity / manual / external rows — they get NO rescue
     // affordance. Honest about why, without implying the user can raise the cap.
     // Matches the canonical "Waiting for available power" wording the overview and
@@ -48,7 +58,12 @@
     deadlinePassed: "That timing just passed. Try again."
   };
   var starvationDurationMinutes = (accumulatedMs) => Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? Math.floor(accumulatedMs / 6e4) : 0;
-  var formatStarvationRowChip = (accumulatedMs) => `${STARVATION_RESCUE_WIDGET_COPY.starvedChip} \xB7 ${starvationDurationMinutes(accumulatedMs)} min`;
+  var resolveStarvationRowChipWord = (cause) => {
+    if (cause === "budget") return STARVATION_RESCUE_WIDGET_COPY.starvedChip;
+    if (cause === "manual") return STARVATION_RESCUE_WIDGET_COPY.manualChip;
+    return STARVATION_RESCUE_WIDGET_COPY.waitingChip;
+  };
+  var formatStarvationRowChip = (cause, accumulatedMs) => `${resolveStarvationRowChipWord(cause)} \xB7 ${starvationDurationMinutes(accumulatedMs)} min`;
   var STARVATION_RESCUE_VISIBLE_ROWS = 2;
   var formatStarvationOverflowCue = (totalCount) => {
     if (!Number.isFinite(totalCount) || totalCount <= STARVATION_RESCUE_VISIBLE_ROWS) return null;
@@ -441,7 +456,7 @@
     const noteEl = li.querySelector("[data-device-note]");
     const rescueBtn = li.querySelector("[data-rescue-button]");
     if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
-    if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
+    if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
     if (subtextEl instanceof HTMLElement) {
       subtextEl.textContent = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
     }
@@ -461,15 +476,18 @@
     return li;
   };
   var renderList = (targets, payload) => {
-    const { listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
+    const { listTitleEl, listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
     clearChildren(listEl);
     if (!payload || payload.state === "empty") {
+      listTitleEl.hidden = true;
       listEl.hidden = true;
       listMoreEl.hidden = true;
       listEmptyEl.hidden = false;
       listEmptyEl.textContent = payload?.state === "empty" ? payload.subtitle : C.loadError;
       return;
     }
+    listTitleEl.textContent = C.headerTitle;
+    listTitleEl.hidden = false;
     listEl.hidden = false;
     listEmptyEl.hidden = true;
     for (const device of payload.devices) {
@@ -594,6 +612,7 @@
     const deviceTemplate = d.getElementById("device-template");
     const map = {
       listView: "[data-list-view]",
+      listTitleEl: "[data-list-title]",
       listEl: "[data-device-list]",
       listMoreEl: "[data-list-more]",
       listEmptyEl: "[data-list-empty]",

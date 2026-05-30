@@ -9,6 +9,7 @@ import { registerHiddenGuardSuite } from './cssTestUtils';
 const WIDGET_MARKUP = `
   <main id="widget-root" class="widget-root" data-view="list">
     <section class="list-view" data-list-view>
+      <h1 class="list-title" data-list-title hidden></h1>
       <ol class="rows" data-device-list></ol>
       <p class="list-more" data-list-more hidden></p>
       <p class="empty" data-list-empty hidden></p>
@@ -130,6 +131,9 @@ describe('starvation rescue widget browser', () => {
     const empty = document.querySelector('[data-list-empty]') as HTMLElement;
     expect(empty.hidden).toBe(false);
     expect(empty.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.emptySubtitle);
+    // The header names what the widget shows; with nothing held back it is hidden
+    // so the calm empty line stands alone.
+    expect((document.querySelector('[data-list-title]') as HTMLElement).hidden).toBe(true);
   });
 
   test('renders a list with tone-by-duration and the budget-only rescue guardrail', async () => {
@@ -137,13 +141,18 @@ describe('starvation rescue widget browser', () => {
     controller!.bootstrap(buildHomey());
     await flushPromises();
 
+    // The header names what the widget shows once a device is held back.
+    const title = document.querySelector('[data-list-title]') as HTMLElement;
+    expect(title.hidden).toBe(false);
+    expect(title.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.headerTitle);
+
     const rows = document.querySelectorAll('[data-device-list] .row');
     expect(rows).toHaveLength(2);
 
     const [budgetRow, capacityRow] = Array.from(rows) as HTMLElement[];
     // Budget row: 42 min ⇒ danger tone, offers a rescue button, no muted note.
     expect(budgetRow.dataset.tone).toBe('danger');
-    expect((budgetRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Starved · 42 min');
+    expect((budgetRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Held back · 42 min');
     expect((budgetRow.querySelector('[data-device-subtext]') as HTMLElement).textContent).toBe('Held below 65° by today’s budget');
     const budgetBtn = budgetRow.querySelector('[data-rescue-button]') as HTMLButtonElement;
     expect(budgetBtn.hidden).toBe(false);
@@ -151,7 +160,10 @@ describe('starvation rescue widget browser', () => {
     expect((budgetRow.querySelector('[data-device-note]') as HTMLElement).hidden).toBe(true);
 
     // Capacity row: 11 min ⇒ warn tone, NO rescue button (the guardrail), a note instead.
+    // Chip reads "Waiting", never the budget-releasable "Held back" (the hard cap
+    // is physical — a capacity row is not something the user can let run now).
     expect(capacityRow.dataset.tone).toBe('warn');
+    expect((capacityRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Waiting · 11 min');
     expect((capacityRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
     const note = capacityRow.querySelector('[data-device-note]') as HTMLElement;
     expect(note.hidden).toBe(false);
@@ -251,6 +263,7 @@ registerHiddenGuardSuite({
     '.list-view', '.confirm-view', '.done-view', // views
     '.rescue-btn', // per-row rescue button (the missed element this PR fixes)
     '.rows', // device list (hidden when the payload is empty)
+    '.list-title', // header (hidden in the calm empty state)
     '.list-more', '.empty', // list affordances
     '.consequence', '.preview-line', '.done-msg', '.row__note', // toggled text lines
   ],

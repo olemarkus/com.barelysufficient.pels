@@ -27,18 +27,28 @@ module.exports = __toCommonJS(starvationRescueWidgetPayload_exports);
 
 // packages/shared-domain/src/planStarvation.ts
 var STARVATION_RESCUE_WIDGET_COPY = {
-  // Empty (calm) state — nothing is starved. This is the steady, good state.
+  // List header — names what the widget SHOWS (the devices PELS is holding back
+  // via the daily budget), not an action the user takes. Shown only when at
+  // least one device is held back; the calm empty state stands alone.
+  headerTitle: "Held-back devices",
+  // Empty (calm) state — nothing is held back. This is the steady, good state.
   emptySubtitle: "No device is being held back right now.",
   // Transient "wiring up to Homey" state, distinct from a hard load failure.
   notReady: "Connecting to Homey\u2026",
   loadError: "Could not load devices. Try again later.",
-  // Row status chip prefix. The widget appends "· N min".
-  starvedChip: "Starved",
-  // Rescue affordance (budget-caused rows only). "Use budget now" is honest that
-  // the action spends today's budget rather than promising instant delivery —
-  // the rescue is a bounded near-term run, not an immediate power switch (the
-  // confirm sheet surfaces the "By {time}" timing prominently).
-  rescueButton: "Use budget now",
+  // Row status-chip word. The widget appends "· N min". Cause-specific so the
+  // chip never overclaims: only budget rows (the releasable "Let it run now"
+  // state) say "Held back"; capacity/external say "Waiting" (physically held —
+  // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
+  // says "On hold". User-facing register only — no "starvation" jargon.
+  starvedChip: "Held back",
+  waitingChip: "Waiting",
+  manualChip: "On hold",
+  // Rescue affordance (budget-caused rows only). "Let it run now" is device-
+  // scoped — it releases THIS device from the daily budget so it runs now,
+  // rather than promising house power. The rescue is a bounded near-term run
+  // (the confirm sheet surfaces the "By {time}" timing prominently).
+  rescueButton: "Let it run now",
   // Informational note on capacity / manual / external rows — they get NO rescue
   // affordance. Honest about why, without implying the user can raise the cap.
   // Matches the canonical "Waiting for available power" wording the overview and

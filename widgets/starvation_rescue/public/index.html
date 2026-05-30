@@ -3,14 +3,15 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Get power now</title>
+    <title>Held-back devices</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="./index.css">
   </head>
   <body class="homey-widget-small">
-    <main id="widget-root" class="widget-root" data-view="list" aria-label="Get power now">
-      <!-- List: starved devices -->
+    <main id="widget-root" class="widget-root" data-view="list" aria-label="Held-back devices">
+      <!-- List: devices PELS is holding back via the daily budget -->
       <section class="list-view" data-list-view aria-live="polite">
+        <h1 class="list-title" data-list-title hidden>Held-back devices</h1>
         <ol class="rows" data-device-list></ol>
         <p class="list-more" data-list-more hidden></p>
         <p class="empty" data-list-empty hidden></p>

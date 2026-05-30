@@ -99,6 +99,10 @@ Above hard cap of 5.0 kW · limiting 2 devices now
 
 Secondary text under a Limited chip names the action: **Turned off by PELS**, **Lowered by PELS**, or **Charging paused**. Stepped-load cards may add a step readout (`Off now`, `Level: Max`, `Level unknown`).
 
+### "Held back" — the Held-back-devices widget
+
+The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining because of the daily budget, with a per-device **Let it run now** action (a one-device budget exemption — never a hard-cap change). The duration chip word is cause-specific so it never overclaims: only **budget** rows (the releasable "Let it run now" state) read `Held back · N min`; **capacity** and **external** rows read `Waiting · N min` (physically held — the hard cap is not a tuning knob) and **manual** rows read `On hold · N min`. Both non-budget kinds get an informational note instead of a rescue button. This is a deliberate, widget-scoped synonym of the overview **Limited** chip: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The internal/advanced **device-detail diagnostics** surface still says **Starved** (the planner term) — an accepted advanced-surface holdout, tracked for alignment in TODO. Keep these three deliberate: **Limited** (overview chip), **Held back** (the widget), **Starved** (advanced diagnostics only).
+
 ## Smart task vocabulary
 
 Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
