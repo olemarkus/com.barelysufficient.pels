@@ -101,18 +101,27 @@
   transition: width 240ms ease-out, background-color 240ms ease-out;
 }
 
-.bar__fill[data-tone="warn"],
-.bar__fill[data-tone="at-pace"] {
+.bar__fill[data-tone="warn"] {
   background: var(--homey-color-warning, #f5a623);
+}
+
+/* At the safe pace = PELS holding you at the dynamic ceiling = in control →
+   green (managed), distinct from the amber "near"/warn drift state and the
+   red over-cap exceedance. */
+.bar__fill[data-tone="at-pace"] {
+  background: var(--homey-color-success, #58c56a);
 }
 
 .bar__fill[data-tone="danger"] {
   background: var(--homey-color-danger, #f0696c);
 }
 
-.widget-root[data-tone="warn"] .power__current,
-.widget-root[data-tone="at-pace"] .power__current {
+.widget-root[data-tone="warn"] .power__current {
   color: var(--homey-text-color-warning, #b9770e);
+}
+
+.widget-root[data-tone="at-pace"] .power__current {
+  color: var(--homey-text-color-success, #2f8f47);
 }
 
 .widget-root[data-tone="danger"] .power__current {
@@ -129,8 +138,8 @@
 }
 
 .widget-root[data-tone="at-pace"] .state-label {
-  background: color-mix(in srgb, var(--homey-color-warning, #f5a623) 18%, transparent);
-  color: var(--homey-text-color-warning, #b9770e);
+  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 18%, transparent);
+  color: var(--homey-text-color-success, #2f8f47);
 }
 
 .widget-root[data-tone="danger"] .state-label {
