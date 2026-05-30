@@ -40,6 +40,10 @@ const buildWidget = async ({ name, apiEntries, bundleApi = false }) => {
 await buildWidget({
   name: 'plan_budget',
   apiEntries: ['api.ts', 'planPriceWidgetPayload.ts'],
+  // bundleApi inlines the shared-domain copy/cost helpers the payload builder
+  // imports — required because the .homeybuild layout drops a nesting level and
+  // would otherwise fail Node's relative-path resolution at runtime.
+  bundleApi: true,
 });
 
 await buildWidget({

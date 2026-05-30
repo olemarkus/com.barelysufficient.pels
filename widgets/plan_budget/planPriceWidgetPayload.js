@@ -17,6 +17,8 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// widgets/plan_budget/src/planPriceWidgetPayload.ts
 var planPriceWidgetPayload_exports = {};
 __export(planPriceWidgetPayload_exports, {
   WIDGET_TITLE: () => WIDGET_TITLE,
@@ -27,17 +29,52 @@ __export(planPriceWidgetPayload_exports, {
   resolveWidgetTarget: () => resolveWidgetTarget
 });
 module.exports = __toCommonJS(planPriceWidgetPayload_exports);
-const WIDGET_TITLE = "Budget and Price";
-const EMPTY_STATE_SUBTITLES = {
-  budget_disabled: "Daily budget disabled",
-  no_data: "No plan data available",
-  tomorrow_pending: "Tomorrow plan not available yet"
+
+// packages/shared-domain/src/planPriceWidgetCopy.ts
+var PLAN_PRICE_WIDGET_TITLE = "Budget and Price";
+var PLAN_PRICE_WIDGET_EMPTY = {
+  budgetDisabled: "Daily budget disabled",
+  noData: "No plan data available",
+  tomorrowPending: "Tomorrow plan not available yet",
+  loadError: "Unable to load widget"
 };
-const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-const resolveWidgetTarget = (value) => value === "tomorrow" ? "tomorrow" : "today";
-const normalizeSeriesLength = (series, count) => Array.from({ length: count }, (_value, index) => series[index] ?? null);
-const resolveLabel = (labels, startUtc, index) => {
+var ORE_PER_KWH_LABEL = "\xF8re/kWh";
+var PLACEHOLDER_UNIT = "price units";
+var KWH_RATE_SUFFIX = /\s*\/\s*kwh\s*$/i;
+var normalizeUnitWithKwh = (unit) => KWH_RATE_SUFFIX.test(unit) ? unit : `${unit}/kWh`;
+var stripKwhRateSuffix = (unit) => unit.replace(KWH_RATE_SUFFIX, "").trim();
+var resolvePlanPriceCostDisplay = (params) => {
+  const { priceScheme, priceUnit } = params;
+  if (priceScheme === "flow" || priceScheme === "homey") {
+    const hasUnit = typeof priceUnit === "string" && priceUnit.trim() !== "" && priceUnit !== PLACEHOLDER_UNIT;
+    const unit = hasUnit ? priceUnit.trim() : "";
+    return {
+      // Strip a rate suffix so a total reads `kr`, not `kr/kWh`; the axis keeps
+      // the per-kWh rate shape.
+      costUnit: unit ? stripKwhRateSuffix(unit) : "",
+      costDivisor: 1,
+      priceAxisUnit: unit ? normalizeUnitWithKwh(unit) : ""
+    };
+  }
+  return {
+    costUnit: "kr",
+    costDivisor: 100,
+    priceAxisUnit: ORE_PER_KWH_LABEL
+  };
+};
+
+// widgets/plan_budget/src/planPriceWidgetPayload.ts
+var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
+var EMPTY_STATE_SUBTITLES = {
+  budget_disabled: PLAN_PRICE_WIDGET_EMPTY.budgetDisabled,
+  no_data: PLAN_PRICE_WIDGET_EMPTY.noData,
+  tomorrow_pending: PLAN_PRICE_WIDGET_EMPTY.tomorrowPending
+};
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+var resolveWidgetTarget = (value) => value === "tomorrow" ? "tomorrow" : "today";
+var normalizeSeriesLength = (series, count) => Array.from({ length: count }, (_value, index) => series[index] ?? null);
+var resolveLabel = (labels, startUtc, index) => {
   const label = labels[index];
   if (typeof label === "string" && label.trim()) {
     const separatorIndex = label.indexOf(":");
@@ -49,13 +86,13 @@ const resolveLabel = (labels, startUtc, index) => {
   if (!Number.isFinite(date.getTime())) return "";
   return String(date.getHours()).padStart(2, "0");
 };
-const resolveLabelEvery = (bucketCount) => {
+var resolveLabelEvery = (bucketCount) => {
   if (bucketCount <= 8) return 1;
   if (bucketCount <= 12) return 2;
   if (bucketCount <= 24) return 4;
   return Math.max(1, Math.round(bucketCount / 6));
 };
-const resolvePriceSeries = (params) => {
+var resolvePriceSeries = (params) => {
   const { bucketStartUtc, bucketPrices, combinedPrices } = params;
   if (bucketPrices.length === bucketStartUtc.length) {
     return bucketPrices.map((value) => isFiniteNumber(value) ? value : null);
@@ -76,7 +113,43 @@ const resolvePriceSeries = (params) => {
     return priceByStart.get(timestamp) ?? null;
   });
 };
-const buildPriceStats = (priceSeries) => {
+var resolveProjectionKwh = (params) => {
+  if (!params.useActual) return params.plannedKwh.map((value) => value);
+  return params.plannedKwh.map((planned, index) => {
+    const actual = params.actualKwh[index];
+    if (index < params.currentIndex) {
+      return isFiniteNumber(actual) ? actual : planned;
+    }
+    if (index === params.currentIndex && isFiniteNumber(actual)) {
+      return Math.max(actual, planned);
+    }
+    return planned;
+  });
+};
+var computeProjectedCost = (params) => {
+  if (params.costUnit.trim().length === 0) return null;
+  let rawTotal = 0;
+  let priced = false;
+  let missingPrice = false;
+  params.projectionKwh.forEach((kwh, index) => {
+    if (!isFiniteNumber(kwh) || kwh <= 0) return;
+    const price = params.priceSeries[index];
+    if (!isFiniteNumber(price)) {
+      missingPrice = true;
+      return;
+    }
+    rawTotal += price * kwh;
+    priced = true;
+  });
+  if (!priced || missingPrice) return null;
+  return rawTotal / Math.max(1, params.costDivisor);
+};
+var resolveSummaryTone = (projectedKwh, budgetKwh, isToday) => {
+  if (!isToday) return null;
+  if (!isFiniteNumber(budgetKwh) || budgetKwh <= 0) return null;
+  return projectedKwh > budgetKwh ? "over" : "on_track";
+};
+var buildPriceStats = (priceSeries) => {
   const priceValues = priceSeries.filter(isFiniteNumber);
   return {
     priceValues,
@@ -84,7 +157,7 @@ const buildPriceStats = (priceSeries) => {
     priceMax: priceValues.length > 0 ? Math.max(...priceValues) : 1
   };
 };
-const resolveActualSeries = (day, bucketCount, isToday) => {
+var resolveActualSeries = (day, bucketCount, isToday) => {
   const actualKwh = normalizeSeriesLength(
     Array.isArray(day?.buckets.actualKWh) ? day.buckets.actualKWh.map((value) => isFiniteNumber(value) ? Math.max(0, value) : null) : [],
     bucketCount
@@ -94,7 +167,7 @@ const resolveActualSeries = (day, bucketCount, isToday) => {
     showActual: isToday && actualKwh.some(isFiniteNumber)
   };
 };
-const resolveCurrentState = (day, bucketCount, isToday) => {
+var resolveCurrentState = (day, bucketCount, isToday) => {
   const rawIndex = day?.currentBucketIndex;
   const hasCurrentIndex = isFiniteNumber(rawIndex);
   const maxIndex = Math.max(0, bucketCount - 1);
@@ -104,18 +177,18 @@ const resolveCurrentState = (day, bucketCount, isToday) => {
   );
   return { currentIndex, showNow };
 };
-const buildEmptyPayload = (target, reason) => ({
+var buildEmptyPayload = (target, reason) => ({
   state: "empty",
   target,
   title: WIDGET_TITLE,
   subtitle: EMPTY_STATE_SUBTITLES[reason]
 });
-const resolveDayKey = (snapshot, target) => {
+var resolveDayKey = (snapshot, target) => {
   if (!snapshot || typeof snapshot !== "object") return null;
   const key = target === "tomorrow" ? snapshot.tomorrowKey : snapshot.todayKey;
   return typeof key === "string" && key.trim() ? key : null;
 };
-const resolveDay = (snapshot, target) => {
+var resolveDay = (snapshot, target) => {
   const dayKey = resolveDayKey(snapshot, target);
   if (!dayKey || !snapshot?.days || typeof snapshot.days !== "object") {
     return { day: null, dayKey };
@@ -125,7 +198,7 @@ const resolveDay = (snapshot, target) => {
     dayKey
   };
 };
-const buildPlanPriceWidgetPayload = (params) => {
+var buildPlanPriceWidgetPayload = (params) => {
   const resolvedTarget = resolveWidgetTarget(params.target);
   const { day, dayKey } = resolveDay(params.snapshot, resolvedTarget);
   if (!day || !dayKey) {
@@ -166,6 +239,24 @@ const buildPlanPriceWidgetPayload = (params) => {
   const isToday = resolvedTarget === "today";
   const { actualKwh, showActual } = resolveActualSeries(day, bucketCount, isToday);
   const { currentIndex, showNow } = resolveCurrentState(day, bucketCount, isToday);
+  const costDisplay = resolvePlanPriceCostDisplay({
+    priceScheme: params.priceScheme,
+    priceUnit: params.combinedPrices?.priceUnit
+  });
+  const projectionKwh = resolveProjectionKwh({
+    plannedKwh,
+    actualKwh,
+    currentIndex,
+    useActual: showActual && showNow
+  });
+  const projectedKwh = projectionKwh.reduce((sum, value) => sum + value, 0);
+  const projectedCost = computeProjectedCost({
+    projectionKwh,
+    priceSeries,
+    costUnit: costDisplay.costUnit,
+    costDivisor: costDisplay.costDivisor
+  });
+  const summaryTone = resolveSummaryTone(projectedKwh, day.budget.dailyBudgetKWh, isToday);
   return {
     state: "ready",
     target: resolvedTarget,
@@ -181,7 +272,12 @@ const buildPlanPriceWidgetPayload = (params) => {
     labelEvery: resolveLabelEvery(bucketCount),
     maxPlan: Math.max(1, ...plannedKwh),
     priceMin: priceStats.priceMin,
-    priceMax: priceStats.priceMax
+    priceMax: priceStats.priceMax,
+    priceAxisUnit: costDisplay.priceAxisUnit,
+    projectedKwh,
+    projectedCost,
+    costUnit: costDisplay.costUnit,
+    summaryTone
   };
 };
 // Annotate the CommonJS export names for ESM import in node:

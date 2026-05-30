@@ -1,3 +1,11 @@
+import {
+  PLAN_PRICE_WIDGET_AXIS,
+  PLAN_PRICE_WIDGET_LEGEND,
+  PLAN_PRICE_WIDGET_PRICE_MISSING,
+  PLAN_PRICE_WIDGET_TITLE,
+  formatPlanPriceSummary,
+  type PlanPriceWidgetHalf,
+} from '../../../../packages/shared-domain/src/planPriceWidgetCopy';
 import type {
   PlanPriceWidgetEmptyPayload,
   PlanPriceWidgetPayload,
@@ -5,24 +13,46 @@ import type {
 } from '../planPriceWidgetTypes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const VIEWPORT = { width: 480, height: 480 };
-const PANEL = { x: 12, y: 12, width: 456, height: 416, radius: 12 };
-const PLOT = { left: 46, right: 422, top: 30, bottom: 372 };
-const LEGEND_Y = 450;
-const X_LABEL_Y = 404;
+const VIEWPORT = { width: 480, height: 360 };
+const PANEL = { x: 12, y: 12, width: 456, height: 296, radius: 12 };
+const PLOT = { left: 52, right: 416, top: 26, bottom: 252 };
+const LEGEND_Y = 334;
+const X_LABEL_Y = 284;
+const AXIS_TITLE_Y = 20;
 const GRID_LINES = 4;
 const BAR_RADIUS = 3;
 const DOT_RADIUS = 4;
-const WIDGET_TITLE = 'Budget and Price';
+const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
 const DEFAULT_EMPTY_SUBTITLE = 'No plan data available';
+
+// The day splits at noon: morning = local hours 00–11, afternoon = 12–23.
+// Splitting by each bucket's LOCAL hour (not its array index) keeps the halves
+// correct on DST days, where buildLocalDayBuckets emits 23 or 25 buckets and a
+// raw index would land hours under the wrong tab.
+const HALF_SPLIT_HOUR = 12;
+
+// A bucket's local hour, parsed from its hour label (`startLocalLabels` sliced
+// to the leading hour, e.g. `"14:00"` → `14`). Returns null when the label can't
+// be parsed, so callers fall back to the array index rather than mis-bucketing.
+// Exported so the initial-tab pick (widgetApp) shares one parse with the split.
+export const parseBucketLocalHour = (label: string | undefined): number | null => {
+  if (typeof label !== 'string') return null;
+  const match = /^\s*(\d{1,2})/.exec(label);
+  if (!match) return null;
+  const hour = Number.parseInt(match[1], 10);
+  return Number.isFinite(hour) ? hour : null;
+};
 
 type SvgAttributeValue = number | string | null | undefined;
 type SvgAttributes = Record<string, SvgAttributeValue>;
 type Point = { x: number; y: number };
 type PriceBounds = { min: number; max: number };
+// A bucket index in the visible half, paired with its index in the full-day
+// arrays. `dayIndex` is needed for now/current lookups that are day-absolute.
+type VisibleBucket = { localIndex: number; dayIndex: number };
 type PlotMetrics = {
   barWidth: number;
-  bucketCount: number;
+  buckets: VisibleBucket[];
   maxPlan: number;
   plotHeight: number;
   plotWidth: number;
@@ -82,19 +112,46 @@ const resolvePriceBounds = (payload: PlanPriceWidgetReadyPayload): PriceBounds =
   };
 };
 
-const resolvePlotMetrics = (payload: PlanPriceWidgetReadyPayload): PlotMetrics => {
+// Buckets belonging to the requested half, decided by each bucket's LOCAL hour
+// (< 12 → morning, >= 12 → afternoon). This stays correct on DST days, where the
+// day has 23 or 25 buckets and the local hour — not the array index — is what
+// the `00–12` / `12–24` tab labels promise. When a bucket's hour can't be parsed
+// we fall back to its index so no bar is dropped or duplicated.
+const resolveVisibleBuckets = (
+  payload: PlanPriceWidgetReadyPayload,
+  half: PlanPriceWidgetHalf,
+): VisibleBucket[] => {
+  const buckets: VisibleBucket[] = [];
+  payload.plannedKwh.forEach((_value, dayIndex) => {
+    const localHour = parseBucketLocalHour(payload.bucketLabels[dayIndex]) ?? dayIndex;
+    const inMorning = localHour < HALF_SPLIT_HOUR;
+    if ((half === 'morning') === inMorning) {
+      buckets.push({ localIndex: buckets.length, dayIndex });
+    }
+  });
+  return buckets;
+};
+
+const resolvePlotMetrics = (
+  payload: PlanPriceWidgetReadyPayload,
+  half: PlanPriceWidgetHalf,
+): PlotMetrics => {
   const plotWidth = PLOT.right - PLOT.left;
   const plotHeight = PLOT.bottom - PLOT.top;
-  const bucketCount = payload.plannedKwh.length;
+  const buckets = resolveVisibleBuckets(payload, half);
+  // Scale the y-axis to the whole day's peak so the two halves stay visually
+  // comparable when the user toggles tabs.
   const maxPlan = Math.max(1, payload.maxPlan * 1.08);
   const priceBounds = resolvePriceBounds(payload);
   const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
-  const stepWidth = plotWidth / Math.max(1, bucketCount);
-  const barWidth = Math.max(6, stepWidth * 0.72);
+  const stepWidth = plotWidth / Math.max(1, buckets.length);
+  // Leave a visible inter-bar gap (0.62 of the step) so the bars read as
+  // discrete hours rather than a solid wall.
+  const barWidth = Math.max(6, stepWidth * 0.62);
 
   return {
     barWidth,
-    bucketCount,
+    buckets,
     maxPlan,
     plotHeight,
     plotWidth,
@@ -172,6 +229,28 @@ const appendPanel = (chartDocument: Document, panelGroup: SVGGElement): void => 
   }));
 };
 
+const appendAxisTitles = (
+  chartDocument: Document,
+  labelsGroup: SVGGElement,
+  payload: PlanPriceWidgetReadyPayload,
+): void => {
+  labelsGroup.appendChild(createSvg(chartDocument, 'text', {
+    class: 'chart__axis-title',
+    x: PLOT.left - 8,
+    y: AXIS_TITLE_Y,
+    'text-anchor': 'start',
+  }, PLAN_PRICE_WIDGET_AXIS.energy));
+
+  if (!payload.hasPriceData || !payload.priceAxisUnit) return;
+
+  labelsGroup.appendChild(createSvg(chartDocument, 'text', {
+    class: 'chart__axis-title',
+    x: PLOT.right + 8,
+    y: AXIS_TITLE_Y,
+    'text-anchor': 'end',
+  }, payload.priceAxisUnit));
+};
+
 const appendGridAndAxisLabels = (
   chartDocument: Document,
   groups: ChartGroups,
@@ -216,8 +295,10 @@ const appendNowMarker = (
   metrics: PlotMetrics,
 ): void => {
   if (!payload.showNow) return;
+  const visible = metrics.buckets.find((bucket) => bucket.dayIndex === payload.currentIndex);
+  if (!visible) return;
 
-  const currentX = PLOT.left + (metrics.stepWidth * (payload.currentIndex + 0.5));
+  const currentX = PLOT.left + (metrics.stepWidth * (visible.localIndex + 0.5));
   plotGroup.appendChild(createSvg(chartDocument, 'line', {
     class: 'chart__now',
     x1: currentX,
@@ -233,8 +314,9 @@ const appendPlanBars = (
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
 ): void => {
-  payload.plannedKwh.forEach((value, index) => {
-    const x = PLOT.left + (metrics.stepWidth * index) + ((metrics.stepWidth - metrics.barWidth) / 2);
+  metrics.buckets.forEach((bucket) => {
+    const value = payload.plannedKwh[bucket.dayIndex] ?? 0;
+    const x = PLOT.left + (metrics.stepWidth * bucket.localIndex) + ((metrics.stepWidth - metrics.barWidth) / 2);
     const height = metrics.plotHeight * (value / metrics.maxPlan);
     const y = PLOT.bottom - height;
 
@@ -251,10 +333,11 @@ const appendPriceSeries = (
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
 ): void => {
-  const pricePoints = payload.priceSeries.map((value, index) => {
+  const pricePoints = metrics.buckets.map((bucket) => {
+    const value = payload.priceSeries[bucket.dayIndex];
     if (typeof value !== 'number' || !Number.isFinite(value)) return null;
     return {
-      x: PLOT.left + (metrics.stepWidth * (index + 0.5)),
+      x: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
       y: PLOT.bottom - ((value - metrics.priceBounds.min) / metrics.priceSpan) * metrics.plotHeight,
     };
   });
@@ -267,9 +350,9 @@ const appendPriceSeries = (
     }));
   }
 
-  if (!payload.showNow || !Number.isFinite(payload.priceSeries[payload.currentIndex])) {
-    return;
-  }
+  if (!payload.showNow) return;
+  const visible = metrics.buckets.find((bucket) => bucket.dayIndex === payload.currentIndex);
+  if (!visible || !Number.isFinite(payload.priceSeries[payload.currentIndex])) return;
 
   const currentValue = payload.priceSeries[payload.currentIndex] as number;
   const currentPriceY = PLOT.bottom - (
@@ -278,7 +361,7 @@ const appendPriceSeries = (
 
   plotGroup.appendChild(createSvg(chartDocument, 'circle', {
     class: 'chart__price-dot',
-    cx: PLOT.left + (metrics.stepWidth * (payload.currentIndex + 0.5)),
+    cx: PLOT.left + (metrics.stepWidth * (visible.localIndex + 0.5)),
     cy: currentPriceY,
     r: DOT_RADIUS + 1,
   }));
@@ -292,12 +375,13 @@ const appendActualMarkers = (
 ): void => {
   if (!payload.showActual) return;
 
-  payload.actualKwh.forEach((value, index) => {
-    if (typeof value !== 'number' || !Number.isFinite(value) || index > payload.currentIndex) return;
+  metrics.buckets.forEach((bucket) => {
+    const value = payload.actualKwh[bucket.dayIndex];
+    if (typeof value !== 'number' || !Number.isFinite(value) || bucket.dayIndex > payload.currentIndex) return;
 
     plotGroup.appendChild(createSvg(chartDocument, 'circle', {
       class: 'chart__actual',
-      cx: PLOT.left + (metrics.stepWidth * (index + 0.5)),
+      cx: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
       cy: PLOT.bottom - (value / metrics.maxPlan) * metrics.plotHeight,
       r: DOT_RADIUS,
     }));
@@ -310,13 +394,16 @@ const appendBucketLabels = (
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
 ): void => {
-  payload.bucketLabels.forEach((label, index) => {
-    const isVisible = index % payload.labelEvery === 0 || index === payload.bucketLabels.length - 1;
-    if (!isVisible) return;
+  // ~12 bars per half stay legible with a label every other hour.
+  const labelEvery = 2;
+  metrics.buckets.forEach((bucket) => {
+    const label = payload.bucketLabels[bucket.dayIndex] ?? '';
+    const isVisible = bucket.localIndex % labelEvery === 0 || bucket.localIndex === metrics.buckets.length - 1;
+    if (!isVisible || !label) return;
 
     labelsGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__axis-label',
-      x: PLOT.left + (metrics.stepWidth * (index + 0.5)),
+      x: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
       y: X_LABEL_Y,
       'text-anchor': 'middle',
     }, label));
@@ -335,7 +422,7 @@ const appendMissingPriceBadge = (
     x: PANEL.x + PANEL.width - 12,
     y: PANEL.y + 22,
     'text-anchor': 'end',
-  }, 'Price data missing'));
+  }, PLAN_PRICE_WIDGET_PRICE_MISSING));
 };
 
 const renderLegend = (
@@ -344,9 +431,9 @@ const renderLegend = (
   payload: PlanPriceWidgetReadyPayload,
 ): void => {
   const legendItems = [
-    { type: 'plan', label: 'Plan', x: 92 },
-    ...(payload.showActual ? [{ type: 'actual', label: 'Actual', x: 214 }] : []),
-    { type: 'price', label: 'Price', x: payload.showActual ? 346 : 274 },
+    { type: 'plan', label: PLAN_PRICE_WIDGET_LEGEND.planned, x: 92 },
+    ...(payload.showActual ? [{ type: 'actual', label: PLAN_PRICE_WIDGET_LEGEND.used, x: 214 }] : []),
+    { type: 'price', label: PLAN_PRICE_WIDGET_LEGEND.price, x: payload.showActual ? 332 : 274 },
   ] as const;
 
   legendItems.forEach((item) => {
@@ -405,21 +492,25 @@ export const renderEmptyState = (
   chartEl.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__empty-title',
     x: VIEWPORT.width / 2,
-    y: 214,
+    y: PANEL.y + (PANEL.height / 2) - 10,
     'text-anchor': 'middle',
   }, payload.title || WIDGET_TITLE));
   chartEl.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__empty-subtitle',
     x: VIEWPORT.width / 2,
-    y: 244,
+    y: PANEL.y + (PANEL.height / 2) + 16,
     'text-anchor': 'middle',
   }, payload.subtitle || DEFAULT_EMPTY_SUBTITLE));
 };
 
-export const renderReadyState = (chartEl: SVGSVGElement, payload: PlanPriceWidgetReadyPayload): void => {
+export const renderReadyState = (
+  chartEl: SVGSVGElement,
+  payload: PlanPriceWidgetReadyPayload,
+  half: PlanPriceWidgetHalf,
+): void => {
   const chartDocument = chartEl.ownerDocument;
   const groups = createChartGroups(chartDocument);
-  const metrics = resolvePlotMetrics(payload);
+  const metrics = resolvePlotMetrics(payload, half);
 
   clearNode(chartEl);
   chartEl.setAttribute(
@@ -431,6 +522,7 @@ export const renderReadyState = (chartEl: SVGSVGElement, payload: PlanPriceWidge
 
   chartEl.appendChild(groups.chartGroup);
   appendPanel(chartDocument, groups.panelGroup);
+  appendAxisTitles(chartDocument, groups.labelsGroup, payload);
   appendGridAndAxisLabels(chartDocument, groups, payload, metrics);
   appendNowMarker(chartDocument, groups.plotGroup, payload, metrics);
   appendPlanBars(chartDocument, groups.plotGroup, payload, metrics);
@@ -441,7 +533,23 @@ export const renderReadyState = (chartEl: SVGSVGElement, payload: PlanPriceWidge
   renderLegend(chartDocument, groups.legendGroup, payload);
 };
 
-export const renderWidget = (chartEl: SVGSVGElement, payload: PlanPriceWidgetPayload | null): void => {
+// The projected summary line shown above the chart. Returns the text the
+// caller writes into the summary element (empty for non-ready payloads).
+export const resolveSummaryText = (payload: PlanPriceWidgetPayload | null): string => {
+  if (!payload || payload.state !== 'ready') return '';
+  return formatPlanPriceSummary({
+    projectedKwh: payload.projectedKwh,
+    projectedCost: payload.projectedCost,
+    costUnit: payload.costUnit,
+    tone: payload.summaryTone,
+  });
+};
+
+export const renderWidget = (
+  chartEl: SVGSVGElement,
+  payload: PlanPriceWidgetPayload | null,
+  half: PlanPriceWidgetHalf,
+): void => {
   if (!payload || payload.state !== 'ready') {
     renderEmptyState(chartEl, payload || {
       title: WIDGET_TITLE,
@@ -450,5 +558,5 @@ export const renderWidget = (chartEl: SVGSVGElement, payload: PlanPriceWidgetPay
     return;
   }
 
-  renderReadyState(chartEl, payload);
+  renderReadyState(chartEl, payload, half);
 };
