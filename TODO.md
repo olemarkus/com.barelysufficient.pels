@@ -1941,8 +1941,10 @@ value AND type (grep-verified).** See
 (subsystem relocation to `lib/objectives`), PR-C (lifecycle emission on a 30 s
 clock), PR-D1 (`@pels/planner-types` + `PlanInputDevice` hoist), PR-D2 (decoration
 appliers + eval onto the `DeferredObjectiveDecorationController`, constructed in
-app-wiring; rule flipped to `error`). PR-D1b dropped (ExecutablePlan has no
-objectives consumer — see carve-out note step 5).*
+app-wiring; rule flipped to `error`), **PR-E #1338 (clock-driven terminal device
+disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1b
+dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
+**PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
 
 - [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
       `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
@@ -1971,12 +1973,17 @@ objectives consumer — see carve-out note step 5).*
       executor untouched), and **gates the disarm** on the device settling / a 5-min grace so the
       release re-fires (no single-shot). Additive — the plan-path `deferredReleaseIntent` stays for
       idle-bucket holds (Fork A). See carve-out note step 6.
-- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device
-      is skipped by the clock path (keeps its plan-path release) — needs executor-side current/power
-      resolution for a direct stepped command; (b) fully retire the *terminal* `deferredReleaseIntent`
-      from the plan path so it isn't double-covered (gated on (a)); (c) the same "task disabled →
-      cap-off device stranded" shape exists for a user/Flow disable mid-run, not just deadline-passed.
-      Source: investigation + Codex review on PR-E, 2026-05-30.
+- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device:
+      the clock path returns `skip` and disarms immediately, so it gets **NO terminal release at all**
+      (disarm removes the diagnostic → the plan path won't re-emit `shed_release` either) — such a
+      device on a missed deadline can be **left running at a higher step**. Needs the executor-side
+      current/power resolution (`applyShedReleaseSteppedLoad`) for a direct stepped command on the
+      clock, or to gate the disarm until the plan path has shed it. (Codex flagged the inaccurate
+      earlier "keeps its plan-path release" framing — it does not.) (b) fully retire the *terminal*
+      `deferredReleaseIntent` from the plan path so it isn't double-covered (the path stays for
+      idle-bucket holds, Fork A); (c) the same "task disabled → cap-off device stranded" shape exists
+      for a user/Flow disable mid-run, not just deadline-passed. Source: investigation + Codex review
+      on PR-E, 2026-05-30.
 
 - [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
       value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`
