@@ -48,6 +48,10 @@ const allowedOrphans = new Set([
   // bundle, which madge (run against the runtime tsconfig that excludes
   // `widgets/`) doesn't traverse.
   'packages/shared-domain/src/smartTaskDeadlineFormat.ts',
+  // Consumed only by the `widgets/headroom/` bundle (payload builder + browser
+  // render/widgetApp), which madge (scan roots exclude `widgets/`) doesn't
+  // traverse, so the file reads as an orphan.
+  'packages/shared-domain/src/headroomWidgetCopy.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [

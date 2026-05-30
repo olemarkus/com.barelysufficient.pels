@@ -48,6 +48,7 @@ export default defineConfig({
       'test/createSmartTaskWidgetBrowser.test.ts',
       'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
+      'test/headroomWidgetBrowser.test.ts',
       'test/**/*.perf.test.ts',
     ],
     setupFiles: ['test/setup.ts'],

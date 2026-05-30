@@ -11,9 +11,15 @@
     <main id="widget-root" class="widget-root" role="img" aria-label="Available power">
         <div class="row row--top">
           <div class="power">
-            <span class="power__current" data-current>—</span>
-            <span class="power__sep">/</span>
-            <span class="power__budget" data-budget>— kW</span>
+            <span class="power__pair">
+              <span class="power__current" data-current>—</span>
+              <span class="power__sep">/</span>
+              <span class="power__budget" data-budget>— kW</span>
+            </span>
+            <span class="power__captions" aria-hidden="true">
+              <span class="power__caption power__caption--current" data-caption-current></span>
+              <span class="power__caption power__caption--budget" data-caption-budget></span>
+            </span>
           </div>
           <span class="chip chip--unknown" data-price>—</span>
         </div>
@@ -21,6 +27,7 @@
           <div class="bar__fill" data-bar></div>
         </div>
         <div class="row row--bottom">
+          <span class="state-label" data-state-label hidden></span>
           <span class="meta" data-meta>—</span>
         </div>
     </main>
