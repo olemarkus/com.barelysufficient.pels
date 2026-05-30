@@ -25,6 +25,11 @@ blob-report/
 .playwright-mcp/
 node_modules/.bin/
 node_modules/@pels/
+# WASM runtime for the oxc dev toolchain (knip/lint). Hoisted as extraneous
+# optional deps into the production tree; ~4 MB and never referenced at runtime.
+node_modules/@emnapi/
+node_modules/@tybys/
+node_modules/@napi-rs/wasm-runtime/
 node_modules/@napi-rs/canvas-linux-x64-gnu/
 node_modules/@napi-rs/canvas-linux-x64-musl/
 node_modules/@napi-rs/canvas-darwin-x64/
@@ -64,5 +69,25 @@ jest.config.cjs
 jest.config.fast.cjs
 jest.config.perf.cjs
 jest.config.ui.cjs
+vitest.config.dom.fast.mts
+vitest.config.dom.mts
+vitest.config.fast.mts
+vitest.config.mts
+vitest.config.perf.mts
+vitest-env.d.ts
 tsconfig.json
 tsconfig.runtime-unused.json
+tsconfig.widgets.json
+knip.json
+localscripts/
+
+# Dev-only loose files (also in .gitignore) that must not ship with the app
+pr-*-feedback.*
+CLAUDE.md
+README.no.txt
+
+# Build artifacts not needed at runtime: sourcemaps and type declarations.
+# Node never reads .d.ts at runtime, and sourcemaps are pure dead weight
+# (socket.io/engine.io/pino ship ~1.3 MB of .map files alone).
+**/*.map
+**/*.d.ts
