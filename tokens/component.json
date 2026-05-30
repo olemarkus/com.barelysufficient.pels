@@ -21,6 +21,7 @@
     "surface-container": { "value": "{color.surface.3}" },
     "surface-container-high": { "value": "{color.surface.4}" },
     "surface-container-highest": { "value": "{color.surface.5}" },
+    "surface-elevated": { "value": "{color.surface.elevated}" },
     "surface-outline": { "value": "{color.border.default}" },
     "text": {
       "primary": { "value": "{pels.on-surface}" },

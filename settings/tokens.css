@@ -123,6 +123,7 @@
   --pels-surface-container: var(--color-surface-3);
   --pels-surface-container-high: var(--color-surface-4);
   --pels-surface-container-highest: var(--color-surface-5);
+  --pels-surface-elevated: var(--color-surface-elevated);
   --pels-surface-outline: var(--color-border-default);
   --pels-text-section-label-font-size: var(--font-size-sm);
   --pels-text-section-label-font-weight: var(--font-weight-semibold);

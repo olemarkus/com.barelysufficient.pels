@@ -3896,7 +3896,7 @@ md-filled-button.is-busy {
 }
 
 .tippy-box[data-theme~='pels'] {
-  background: var(--color-surface-elevated);
+  background: var(--pels-surface-elevated);
   color: var(--text);
   border: 1px solid var(--color-border-medium);
   border-radius: var(--radius-md);
