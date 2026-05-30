@@ -463,7 +463,7 @@ md-text-button.md-text-button--destructive {
 .device-loading-notice {
   padding: var(--spacing-4);
   margin-bottom: var(--spacing-4);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
   border-radius: var(--radius-md);
   color: var(--muted);
   font-size: var(--font-size-sm);
@@ -873,7 +873,7 @@ md-primary-tab.tab[active]:hover {
 .settings-current-mode {
   display: grid;
   gap: var(--spacing-2);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
 }
 
@@ -918,7 +918,7 @@ md-primary-tab.tab[active]:hover {
   padding: 0;
   border: 1px solid var(--panel-border) !important;
   border-radius: var(--radius-md) !important;
-  background: var(--color-surface-2) !important;
+  background: var(--pels-surface-container-low) !important;
   box-shadow: var(--shadow-md);
   text-align: left;
   cursor: pointer;
@@ -940,7 +940,7 @@ md-primary-tab.tab[active]:hover {
 .settings-nav-card:hover,
 .settings-nav-card:focus-visible {
   border-color: var(--accent) !important;
-  background: var(--color-surface-3) !important;
+  background: var(--pels-surface-container) !important;
 }
 
 .settings-nav-card:focus-visible {
@@ -994,7 +994,7 @@ md-primary-tab.tab[active]:hover {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 .card h2,
@@ -1118,7 +1118,7 @@ md-filled-button.is-busy {
 .pill {
   padding: var(--spacing-2) var(--spacing-3);
   border-radius: var(--radius-full);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
   color: var(--muted);
   font-weight: var(--font-weight-bold);
   font-size: var(--font-size-sm);
@@ -1240,7 +1240,7 @@ md-filled-button.is-busy {
   padding: var(--spacing-1) var(--spacing-2);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
   user-select: none;
   touch-action: none;
   -webkit-user-select: none;
@@ -1253,7 +1253,7 @@ md-filled-button.is-busy {
 }
 
 .drag-handle:hover {
-  background: var(--color-surface-5);
+  background: var(--pels-surface-container-highest);
   color: var(--text);
 }
 
@@ -1391,7 +1391,7 @@ md-filled-button.is-busy {
   background: linear-gradient(
     180deg,
     var(--color-state-positive-bg),
-    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
   );
 }
 
@@ -1401,7 +1401,7 @@ md-filled-button.is-busy {
   background: linear-gradient(
     180deg,
     var(--color-state-warning-bg),
-    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
   );
 }
 
@@ -1415,7 +1415,7 @@ md-filled-button.is-busy {
  * audit. */
 .plan-history-detail__hero[data-tone="muted"] {
   border-color: var(--color-border-default);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 .plan-hero[data-tone="alert"],
@@ -1424,7 +1424,7 @@ md-filled-button.is-busy {
   background: linear-gradient(
     180deg,
     var(--color-state-negative-bg),
-    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
   );
 }
 
@@ -1434,7 +1434,7 @@ md-filled-button.is-busy {
   background: linear-gradient(
     180deg,
     var(--color-state-info-bg),
-    color-mix(in srgb, var(--color-surface-3) 98%, transparent)
+    color-mix(in srgb, var(--pels-surface-container) 98%, transparent)
   );
 }
 
@@ -1571,7 +1571,7 @@ md-filled-button.is-busy {
 }
 
 .plan-chip--link:hover {
-  background: color-mix(in srgb, var(--color-state-info-bg) 70%, var(--color-surface-5));
+  background: color-mix(in srgb, var(--color-state-info-bg) 70%, var(--pels-surface-container-highest));
   border-color: var(--accent);
 }
 
@@ -2164,7 +2164,7 @@ md-filled-button.is-busy {
   height: 14px;
   overflow: visible;
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--color-surface-5) 80%, transparent);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 80%, transparent);
 }
 
 /* Single-segment fill (energy meter). The width and tone are set inline by the
@@ -2335,7 +2335,7 @@ md-filled-button.is-busy {
   height: 8px;
   border: 2px solid var(--marker-tone);
   border-radius: var(--radius-full);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 /* Target / cap markers extend a half-pixel on each side via box-shadow so
@@ -2666,7 +2666,7 @@ md-filled-button.is-busy {
 
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
-  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
+  background: color-mix(in srgb, var(--pels-surface-container) 92%, var(--color-base-white) 8%);
   border-color: var(--color-border-default);
 }
 
@@ -2685,7 +2685,7 @@ md-filled-button.is-busy {
 
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:hover,
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle:focus-visible {
-  background: color-mix(in srgb, var(--color-surface-3) 92%, var(--color-base-white) 8%);
+  background: color-mix(in srgb, var(--pels-surface-container) 92%, var(--color-base-white) 8%);
   border-color: var(--color-border-default);
 }
 
@@ -2779,7 +2779,7 @@ md-filled-button.is-busy {
   isolation: isolate;
   border: 1px solid var(--pels-surface-outline);
   border-radius: var(--pels-card-radius);
-  background: var(--color-surface-1);
+  background: var(--pels-surface-container-lowest);
   transition: --md-elevation-level var(--transition-emphasized);
 }
 
@@ -2980,7 +2980,7 @@ md-filled-button.is-busy {
   overflow: hidden;
   border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
-  background: color-mix(in srgb, var(--color-surface-5) 84%, transparent);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 84%, transparent);
 }
 
 .plan-card__load-fill {
@@ -3027,7 +3027,7 @@ md-filled-button.is-busy {
   overflow: hidden;
   border-radius: var(--radius-full);
   border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
-  background: color-mix(in srgb, var(--color-surface-5) 84%, transparent);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 84%, transparent);
 }
 
 .plan-card__metric-track-wrap {
@@ -3205,7 +3205,7 @@ md-filled-button.is-busy {
 .plan-card__stepped-seg {
   flex: 1 1 auto;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-5) 70%, transparent);
+  background: color-mix(in srgb, var(--pels-surface-container-highest) 70%, transparent);
   border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
 }
 
@@ -3756,7 +3756,7 @@ md-filled-button.is-busy {
   display: block;
   width: 100%;
   height: 10px;
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
   border-radius: var(--radius-full);
   overflow: hidden;
   border: 1px solid var(--panel-border);
@@ -3810,7 +3810,7 @@ md-filled-button.is-busy {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast);
-  background: var(--color-surface-5);
+  background: var(--pels-surface-container-highest);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   white-space: nowrap;
@@ -4034,7 +4034,7 @@ md-filled-button.is-busy {
   margin-bottom: var(--spacing-4);
   padding: var(--spacing-3) var(--spacing-4);
   min-height: var(--pels-touch-target-min);
-  background: var(--color-surface-1);
+  background: var(--pels-surface-container-lowest);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
 }
@@ -4063,7 +4063,7 @@ md-filled-button.is-busy {
   margin-bottom: var(--spacing-4);
   padding: var(--spacing-3) var(--spacing-4);
   min-height: var(--pels-touch-target-min);
-  background: var(--color-surface-1);
+  background: var(--pels-surface-container-lowest);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -4356,7 +4356,7 @@ md-filled-button.is-busy {
   padding: var(--spacing-1) 28px var(--spacing-1) var(--spacing-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-strong);
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
   color: var(--text);
   font-size: var(--font-size-sm);
   text-align: center;
@@ -4961,17 +4961,17 @@ details[open] > summary .disclosure-chevron {
 }
 
 .device-row.clickable:hover {
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 .device-row.clickable:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 .device-row.clickable:active {
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
 }
 
 @media (max-width: 360px) {
@@ -5415,7 +5415,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3) var(--spacing-4);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   color: var(--text-secondary);
 }
 
@@ -5618,7 +5618,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 #deadline-plan-panel md-text-button.deadline-plan-back-button.deadline-plan-back-button {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   /* Route the text/label color through the MD Web component's CSS-custom-
    * property API (`--md-sys-color-primary`) rather than setting `color` on
    * the host. Mirrors the device-detail back button at the
@@ -6056,7 +6056,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-bar__segment--normal {
-  background: var(--day-view-color-normal, var(--color-surface-5));
+  background: var(--day-view-color-normal, var(--pels-surface-container-highest));
 }
 
 .day-view-bar__segment--expensive {
@@ -6078,7 +6078,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-chart.is-disabled .day-view-bar__segment {
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
   opacity: 0.6;
 }
 
@@ -6090,7 +6090,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--day-view-color-actual, var(--color-base-gray-50));
-  border: 2px solid var(--color-surface-1);
+  border: 2px solid var(--pels-surface-container-lowest);
   transform: translate(-50%, 50%);
   pointer-events: none;
 }
@@ -6172,7 +6172,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-legend__swatch--normal {
-  background: var(--day-view-color-normal, var(--color-surface-5));
+  background: var(--day-view-color-normal, var(--pels-surface-container-highest));
 }
 
 .day-view-legend__swatch--expensive {
@@ -6184,7 +6184,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   height: 8px;
   border-radius: var(--radius-full);
   background: var(--day-view-color-actual, var(--color-base-gray-50));
-  border: 2px solid var(--color-surface-1);
+  border: 2px solid var(--pels-surface-container-lowest);
 }
 
 .day-view-labels {
@@ -6247,7 +6247,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex-direction: column;
   gap: var(--spacing-1);
   padding: var(--spacing-2) var(--spacing-3);
-  background: var(--color-surface-1);
+  background: var(--pels-surface-container-lowest);
   border-radius: var(--radius-sm);
   border: 1px solid var(--panel-border);
 }
@@ -6394,7 +6394,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   width: 100%;
   max-width: calc(7 * var(--spacing-6));
   min-height: var(--pels-touch-target-min);
-  background: var(--color-surface-1);
+  background: var(--pels-surface-container-lowest);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-full);
   padding: 2px;
@@ -6434,12 +6434,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .value-adjuster__btn:hover:not(:disabled) {
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
   color: var(--pels-text-primary);
 }
 
 .value-adjuster__btn:active:not(:disabled) {
-  background: var(--color-surface-4);
+  background: var(--pels-surface-container-high);
 }
 
 .value-adjuster__btn svg {
@@ -6894,7 +6894,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   color: var(--text);
 }
 
@@ -7308,7 +7308,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-2) var(--spacing-3) !important;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md) !important;
-  background: var(--color-surface-2) !important;
+  background: var(--pels-surface-container-low) !important;
   color: var(--text) !important;
   box-shadow: none;
 }
@@ -7336,7 +7336,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-4);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
 }
 
@@ -7348,7 +7348,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin: 0;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
   overflow: hidden;
 }
@@ -7363,7 +7363,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 ) .settings-collapse-header {
   min-height: 58px;
   padding: var(--spacing-3) var(--spacing-4);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 :where(
@@ -7426,7 +7426,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 :where(
@@ -7470,7 +7470,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
 }
 
@@ -7497,11 +7497,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-height: var(--pels-touch-target-min);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 #devices-panel .device-row.clickable:hover {
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 #devices-panel .list__footer {
@@ -7510,7 +7510,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 /* Modes panel inline-actions: text field on its own row, the Add / Delete /
@@ -7551,7 +7551,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
   box-shadow: var(--shadow-sm);
 }
 
@@ -7600,7 +7600,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 #device-detail-panel .slide-panel__header {
   padding: var(--spacing-3);
-  background: var(--color-surface-2);
+  background: var(--pels-surface-container-low);
 }
 
 #device-detail-panel .slide-panel__content {
@@ -7631,7 +7631,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding: var(--spacing-3);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 #device-detail-panel .detail-mode-list,
@@ -7647,7 +7647,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 #price-aware-devices-panel .value-adjuster {
-  background: var(--color-surface-3);
+  background: var(--pels-surface-container);
 }
 
 @media (max-width: 430px) {
@@ -7797,7 +7797,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
      + Homey's standard card shadow — matches Homey's own panel pattern. */
   .plan-hero,
   .pels-hero {
-    background: var(--color-surface-1);
+    background: var(--pels-surface-container-lowest);
     border-color: var(--color-border-default);
     box-shadow: var(--shadow-card);
   }
@@ -7821,7 +7821,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
     .pels-hero[data-tone="alert"],
     .plan-hero[data-tone="info"],
     .pels-hero[data-tone="info"] {
-      background: var(--color-surface-1);
+      background: var(--pels-surface-container-lowest);
       border-color: var(--color-border-default);
     }
   }
@@ -7832,7 +7832,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
      at AA on the light canvas (~3.7 : 1 on track, ~7.5 : 1 on white card).
      Same swap for warning / critical so over-threshold stripes stay readable. */
   .pels-meter-track {
-    background: var(--color-surface-4);
+    background: var(--pels-surface-container-high);
   }
   .pels-meter-track__fill,
   .pels-meter-segments__seg--managed {
@@ -7870,7 +7870,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   .plan-card[data-state-kind="held"],
   .plan-card[data-state-kind="resuming"],
   .plan-card[data-state-kind="unavailable"] {
-    background: var(--color-surface-1);
+    background: var(--pels-surface-container-lowest);
     border: 1px solid var(--color-border-default);
     /* Reset the base `opacity: 0.78` on the `unavailable` rule so the new
        role-coloured status text inside the card reads at full contrast on
@@ -7907,7 +7907,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
      white component surface and carry the active-vs-history distinction with
      the same `--shadow-card` lift the hero uses, instead of a coloured tier. */
   .deadline-list-card {
-    background: var(--color-surface-1);
+    background: var(--pels-surface-container-lowest);
     box-shadow: var(--shadow-card);
   }
 }

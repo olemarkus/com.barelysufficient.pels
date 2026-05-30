@@ -98,7 +98,7 @@ describe('card primitive: canonical `.pels-surface-card` carries the visual cont
     expect(bareRule?.body).toMatch(/gap:\s*var\(--pels-card-gap\)/);
     expect(bareRule?.body).toMatch(/border:\s*1px\s+solid\s+var\(--pels-surface-outline\)/);
     expect(bareRule?.body).toMatch(/border-radius:\s*var\(--pels-card-radius\)/);
-    expect(bareRule?.body).toMatch(/background:\s*var\(--color-surface-1\)/);
+    expect(bareRule?.body).toMatch(/background:\s*var\(--pels-surface-container-lowest\)/);
     expect(bareRule?.body).toMatch(/--md-elevation-level:\s*1/);
   });
 
