@@ -1,5 +1,9 @@
 import { renderWidget, type RenderTargets } from '../widgets/headroom/src/public/render';
-import { PREVIEW_HEADROOM_PAYLOAD } from '../widgets/headroom/src/public/previewPayloads';
+import {
+  PREVIEW_HEADROOM_PAYLOAD,
+  PREVIEW_HEADROOM_PAYLOADS,
+  resolveHeadroomPreviewPayload,
+} from '../widgets/headroom/src/public/previewPayloads';
 import {
   createWidgetController,
   installWidget,
@@ -167,5 +171,18 @@ describe('headroom widget browser', () => {
 
     document.body.innerHTML = '<main></main>';
     expect(installWidget(window as WidgetWindow, document)).toBeNull();
+  });
+});
+
+describe('resolveHeadroomPreviewPayload', () => {
+  it('selects the preview payload for a known ?state= value', () => {
+    expect(resolveHeadroomPreviewPayload('at_pace')).toBe(PREVIEW_HEADROOM_PAYLOADS.at_pace);
+    expect(resolveHeadroomPreviewPayload('over_cap').limitState).toBe('over_cap');
+  });
+
+  it('falls back to the under-limit default for null/unknown states', () => {
+    expect(resolveHeadroomPreviewPayload(null)).toBe(PREVIEW_HEADROOM_PAYLOAD);
+    expect(resolveHeadroomPreviewPayload('bogus')).toBe(PREVIEW_HEADROOM_PAYLOAD);
+    expect(PREVIEW_HEADROOM_PAYLOAD.limitState).toBe('under');
   });
 });

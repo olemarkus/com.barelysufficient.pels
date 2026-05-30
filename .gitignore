@@ -43,3 +43,6 @@ node_modules/
 /docs/.vitepress/.temp/
 /docs/.vitepress/cache/
 pr-*-feedback.*
+
+# Widget screenshot harness output (artifacts)
+tests/widget-shots/out/
