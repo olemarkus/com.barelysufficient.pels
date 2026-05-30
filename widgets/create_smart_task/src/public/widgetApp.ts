@@ -82,6 +82,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
   const map = {
     pickerView: '[data-picker-view]',
     pickerPrompt: '[data-picker-prompt]',
+    pickerCaption: '[data-picker-caption]',
     pickerList: '[data-device-list]',
     pickerEmpty: '[data-picker-empty]',
     pickerEmptyHint: '[data-picker-empty-hint]',

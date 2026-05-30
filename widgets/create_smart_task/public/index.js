@@ -398,6 +398,7 @@
         deviceId: "preview-hot-water",
         deviceName: "Hot water",
         kind: "temperature",
+        group: "heating",
         unitSymbol: "\xB0C",
         goalMin: 5,
         goalMax: 85,
@@ -409,6 +410,7 @@
         deviceId: "preview-ev",
         deviceName: "Driveway charger",
         kind: "ev_soc",
+        group: "ev_charger",
         unitSymbol: "%",
         goalMin: 1,
         goalMax: 100,
@@ -491,6 +493,26 @@
     return `cheapest hours ${tail}`;
   };
 
+  // packages/shared-domain/src/smartTaskDevicePickerOrder.ts
+  var SMART_TASK_DEVICE_GROUP_ORDER = [
+    "heating",
+    "ev_charger"
+  ];
+  var SMART_TASK_DEVICE_PICKER_COPY = {
+    // One-line eligibility hint under "Choose a device" — a smart task is a goal
+    // on a device PELS manages, so only those appear here. Frames the subset as
+    // intentional rather than a mystery.
+    eligibilityCaption: "Only devices PELS manages can carry a smart task.",
+    groupIconLabels: {
+      heating: "Heating",
+      ev_charger: "EV charger"
+    }
+  };
+  var resolveSmartTaskDeviceGroupIconLabel = (group) => SMART_TASK_DEVICE_PICKER_COPY.groupIconLabels[group];
+  var GROUP_RANK = Object.fromEntries(
+    SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
+  );
+
   // widgets/create_smart_task/src/public/render.ts
   var C = CREATE_SMART_TASK_WIDGET_COPY;
   var clearChildren = (el) => {
@@ -516,6 +538,11 @@
       button.dataset.deviceId = device.deviceId;
       button.setAttribute("aria-label", `${device.deviceName}, ${C.pickDevicePrompt}`);
     }
+    const iconEl = li.querySelector("[data-device-icon]");
+    if (iconEl instanceof HTMLElement) {
+      iconEl.dataset.group = device.group;
+      iconEl.setAttribute("aria-label", resolveSmartTaskDeviceGroupIconLabel(device.group));
+    }
     const nameEl = li.querySelector("[data-device-name]");
     const metaEl = li.querySelector("[data-device-meta]");
     if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
@@ -528,10 +555,11 @@
     return li;
   };
   var renderPicker = (targets, payload) => {
-    const { pickerPrompt, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
+    const { pickerPrompt, pickerCaption, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
     pickerPrompt.textContent = C.pickDevicePrompt;
     clearChildren(pickerList);
     if (!payload || payload.state === "empty") {
+      setLine(pickerCaption, null);
       pickerList.hidden = true;
       pickerEmpty.hidden = false;
       pickerEmpty.textContent = payload?.state === "empty" ? payload.subtitle : C.loadError;
@@ -544,6 +572,7 @@
       }
       return;
     }
+    setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
     pickerList.hidden = false;
     pickerEmpty.hidden = true;
     pickerEmptyHint.hidden = true;
@@ -732,6 +761,7 @@
     const map = {
       pickerView: "[data-picker-view]",
       pickerPrompt: "[data-picker-prompt]",
+      pickerCaption: "[data-picker-caption]",
       pickerList: "[data-device-list]",
       pickerEmpty: "[data-picker-empty]",
       pickerEmptyHint: "[data-picker-empty-hint]",

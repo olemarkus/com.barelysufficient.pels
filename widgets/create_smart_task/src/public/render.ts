@@ -12,6 +12,10 @@ import {
   formatCheapestHoursSubtext,
   formatSmartTaskDeadlineLong,
 } from '../../../../packages/shared-domain/src/smartTaskDeadlineFormat';
+import {
+  SMART_TASK_DEVICE_PICKER_COPY,
+  resolveSmartTaskDeviceGroupIconLabel,
+} from '../../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 import type {
   CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
@@ -42,6 +46,7 @@ export type RenderTargets = {
   // Picker
   pickerView: HTMLElement;
   pickerPrompt: HTMLElement;
+  pickerCaption: HTMLElement;
   pickerList: HTMLElement;
   pickerEmpty: HTMLElement;
   pickerEmptyHint: HTMLElement;
@@ -112,6 +117,13 @@ const renderDeviceRow = (
     button.dataset.deviceId = device.deviceId;
     button.setAttribute('aria-label', `${device.deviceName}, ${C.pickDevicePrompt}`);
   }
+  const iconEl = li.querySelector('[data-device-icon]');
+  if (iconEl instanceof HTMLElement) {
+    // The CSS picks the glyph mask from `data-group`; the aria-label names the
+    // device family so the icon isn't an unlabelled image to a screen reader.
+    iconEl.dataset.group = device.group;
+    iconEl.setAttribute('aria-label', resolveSmartTaskDeviceGroupIconLabel(device.group));
+  }
   const nameEl = li.querySelector('[data-device-name]');
   const metaEl = li.querySelector('[data-device-meta]');
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
@@ -127,10 +139,13 @@ const renderDeviceRow = (
 };
 
 const renderPicker = (targets: RenderTargets, payload: CreateSmartTaskDevicesPayload | null): void => {
-  const { pickerPrompt, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
+  const { pickerPrompt, pickerCaption, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
   pickerPrompt.textContent = C.pickDevicePrompt;
   clearChildren(pickerList);
   if (!payload || payload.state === 'empty') {
+    // The empty state's own hint already explains eligibility — don't double up
+    // with the caption.
+    setLine(pickerCaption, null);
     pickerList.hidden = true;
     pickerEmpty.hidden = false;
     pickerEmpty.textContent = payload?.state === 'empty' ? payload.subtitle : C.loadError;
@@ -143,6 +158,7 @@ const renderPicker = (targets: RenderTargets, payload: CreateSmartTaskDevicesPay
     }
     return;
   }
+  setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
   pickerList.hidden = false;
   pickerEmpty.hidden = true;
   pickerEmptyHint.hidden = true;

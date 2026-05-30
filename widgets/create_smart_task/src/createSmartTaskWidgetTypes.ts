@@ -4,6 +4,9 @@ import type {
 import type {
   DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
+import type {
+  SmartTaskDeviceGroup,
+} from '../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 
 // One eligible device the user can set a smart task on. Kind sets the goal
 // unit (°C for temperature, % for EV charge level); the bounds drive the goal
@@ -13,6 +16,9 @@ export type CreateSmartTaskDevice = {
   deviceId: string;
   deviceName: string;
   kind: DeferredObjectiveSettingsKind;
+  // Display family for the picker: drives the intentional group order and the
+  // per-row type icon (thermostats, then water heaters, then EV chargers).
+  group: SmartTaskDeviceGroup;
   unitSymbol: '°C' | '%';
   goalMin: number;
   goalMax: number;
