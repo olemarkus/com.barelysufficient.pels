@@ -6379,12 +6379,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   align-items: center;
 }
 
+/* Typography from `.eyebrow` (markup); only structural row-header props here. */
 .price-aware-grid__head {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--pels-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   padding-bottom: var(--spacing-1);
   border-bottom: 1px solid var(--panel-border);
 }
@@ -6434,13 +6430,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-self: center;
 }
 
+/* Typography from `.eyebrow` (markup); hidden until the mobile stacked layout. */
 .price-aware-grid__cell-label {
   display: none;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--pels-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 @media (max-width: 560px) {
@@ -6796,18 +6788,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-size: var(--font-size-sm);
 }
 
-.deadline-list-card__extras-label {
-  /* Mirrors `.eyebrow` typography. Inlined here rather than swapping the
-   * BEM-friendly class for the primitive so the strip's structure stays
-   * symmetric with `__extras-value` and a future tone modifier can hang
-   * off the same element. */
-  color: var(--muted);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--font-line-height-tight);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
+/* `__extras-label` now composes the `.eyebrow` primitive in markup (it always
+   mirrored that typography); no per-block type needed. The block class stays as
+   the structural hook (symmetric with `__extras-value`, future tone modifier). */
 
 .deadline-list-card__extras-value {
   color: var(--text);

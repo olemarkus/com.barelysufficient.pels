@@ -165,7 +165,7 @@ const DeviceRow = ({
     <div class="price-aware-grid__row">
       <span class="price-aware-grid__name">{displayName}</span>
       <div class="price-aware-grid__cell">
-        <span class="price-aware-grid__cell-label" aria-hidden="true">
+        <span class="price-aware-grid__cell-label eyebrow" aria-hidden="true">
           <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap"></span>
           <span>Cheap</span>
         </span>
@@ -182,7 +182,7 @@ const DeviceRow = ({
         />
       </div>
       <div class="price-aware-grid__cell">
-        <span class="price-aware-grid__cell-label" aria-hidden="true">
+        <span class="price-aware-grid__cell-label eyebrow" aria-hidden="true">
           <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--expensive"></span>
           <span>Expensive</span>
         </span>
@@ -234,7 +234,7 @@ const DevicesSection = ({
         Adjusts the current mode&apos;s target temperature: higher in cheap hours, lower in expensive hours.
       </p>
       <div class="price-aware-grid" role="grid" aria-label="Device temperature adjustments">
-        <header class="price-aware-grid__head" role="row">
+        <header class="price-aware-grid__head eyebrow" role="row">
           <span role="columnheader">Device</span>
           <span role="columnheader" class="price-aware-grid__col-head">
             <span class="price-aware-grid__tone-dot price-aware-grid__tone-dot--cheap" aria-hidden="true"></span>

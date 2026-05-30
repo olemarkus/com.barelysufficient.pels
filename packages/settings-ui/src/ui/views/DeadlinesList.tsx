@@ -190,7 +190,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           fighting the dt/dd grid. */}
       {card.extraPermissionsValue !== null && (
         <div class="deadline-list-card__extras">
-          <span class="deadline-list-card__extras-label">
+          <span class="deadline-list-card__extras-label eyebrow">
             {SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL}
           </span>
           <span class="deadline-list-card__extras-value">
