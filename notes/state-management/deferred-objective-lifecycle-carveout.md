@@ -205,11 +205,62 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      deleted; active-plan commitment stays synchronous (PR-C catch); the
      `evaluate_deferred_objectives_ms` / `plan_deferred_objective_observe_ms` perf split is
      preserved (the controller times its own eval). Behavior-neutral: full suite green (4009).
-6. **Controller owns ending + the direct disable actuator.** Already outside the planner: the
-   deadline-passed disable (`disableDeferredObjectiveInSettings`) is owned by the clock-driven
-   `DeferredObjectiveLifecycleEmitter` (PR-C, app-wiring), and the per-cycle physical release is a
-   flat `deferredReleaseIntent` the controller stamps and the executor consumes blindly. No planner
-   or executor smart-task knowledge remains; any further tidy here is cleanup, not a decoupling gap.
+6. **Controller owns ending + the direct disable actuator — NOT DONE (this is PR-E, the real
+   end-game).** Goal 2's output side is *not* satisfied yet. Today the deadline-passed **task**
+   disable (`disableDeferredObjectiveInSettings`) runs on the clock-driven
+   `DeferredObjectiveLifecycleEmitter` (PR-C), but the **device** terminal turn-off still rides the
+   plan→executor path: the controller stamps a flat `deferredReleaseIntent` on the plan cycle, the
+   planner attaches it (`attachDeferredReleaseIntents`), the executor actuates it. The planner is
+   *agnostic* (flat intent, satisfies `no-plan-to-smarttasks`), but the terminal actuation has NOT
+   come off the plan→executor path.
+
+   **Concrete flow-mode bug this leaves open (high confidence by construction; repro pending).**
+   The task-disable (30 s lifecycle clock) and the terminal `shed_release` (plan cycle) are now on
+   **different clocks**. A disabled task yields **no diagnostic** (`diagnosticsBridge.ts` →
+   `if (!objective.enabled) return []`), so once disabled it produces no release intent. In
+   `power_source = flow` mode plan cycles can be hours apart, so the 30 s clock reliably disables
+   the task **before** the next plan cycle — and that cycle then emits no `shed_release`. A cap-off
+   device the task was driving (e.g. a water heater) is **left running** past a missed/unsatisfied
+   deadline. (Satisfied-before-deadline is fine: the release fires on the satisfying cycle and
+   re-emits idempotently. Pre-PR-C this was also fine — the disable ran *inside* the plan cycle,
+   after admission. PR-C's move of the disable to the clock opened the race.)
+
+   **PR-E fix — actuation belongs in the DEVICE layer, not the executor.** The executor's
+   `applyShedReleaseIntent` is *not* the actuation primitive — every input it takes is an
+   `ExecutablePlan` artifact (`ExecutableReleaseIntent`, `ExecutableSteppedLoadIntent`,
+   `ExecutableObservedDeviceState`, `TargetDeviceSnapshot`, `PlanActuationMode`); it is a
+   *plan-context wrapper* (cooldown-skip, observed-state idempotency, stepped re-projection) over
+   the real primitive, the **device transport** (`lib/device/deviceTransport`:
+   `setCapability` / `applyDeviceTargets` / `requestSteppedLoadStep`). A smart task is not a plan, so
+   it must not synthesize a fake `ExecutablePlan` to feed the executor.
+
+   **Design (extract-and-share, decided).** Extract a device-layer shed-actuation primitive —
+   `lib/device/<shedActuation>` — `applyShedBehavior({ deviceId, behavior, observed, transport })`
+   that issues the idempotent transport write for `turn_off` / `set_temperature` / `set_step` (+ the
+   EV pause/resume variant), parameterized by `getShedBehavior` (already an app resolver) and
+   observed state, with **no `ExecutablePlan` types**. **Both** consumers delegate to it:
+   - the executor's plan-driven `applyShedReleaseIntent` (its plan-context wrapper now calls the
+     shared primitive instead of writing the transport itself), and
+   - the smart-task terminal callback: the emitter decides the terminal release on its clock and
+     invokes an app-wired callback → the device-layer primitive → transport, never via the executor.
+
+   Then retire the *terminal* release from the plan path (`attachDeferredReleaseIntents` + the
+   `DevicePlanDevice.deferredReleaseIntent` field + the executor's plan-driven terminal handling).
+   Constraints found while scoping:
+   - `lib/objectives` **cannot** import `lib/device`/`lib/executor` (`no-objectives-to-peer-except-power`),
+     so the terminal actuation is an **app-wired callback** (the app layer may touch device/executor);
+     the emitter only *decides + triggers*, it never imports the actuator.
+   - The emitter sees only the **narrow `ObjectiveDeviceInput`** view; the terminal-release decision
+     (`shouldEmitTerminalRelease`: `satisfied && controllable === false` → `shed_release`/`ev_pause`)
+     needs `controllable` + the device's shed behavior, so either widen that input or compute the
+     decision app-side.
+   - **Idempotency** must hold on the clock (don't re-command an already-off device) — the shared
+     device-layer primitive carries the observed-state guard that the plan path re-emits with today.
+   - **Fork (decided: A).** Move only the **terminal** (satisfied/ended) actuation to the controller;
+     leave the recurring **idle-bucket holds** on the plan path (they are per-cycle planning, not
+     terminal). Revisit if the idle holds prove to want the same treatment.
+   - Regression test: flow-mode task, deadline passes unsatisfied → assert the cap-off device is
+     turned off via the lifecycle clock, not left running.
 7. **Flip `no-plan-to-smarttasks` to `error` — DONE (PR-D2).** `lib/plan/**` imports zero
    `lib/objectives` (value AND type, confirmed by `grep -rn "from .*objectives" lib/plan/` → none;
    the rule is type-edge-blind so the grep audit, not cruiser-green alone, gated the flip). The

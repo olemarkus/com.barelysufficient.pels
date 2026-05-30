@@ -1924,6 +1924,32 @@ appliers + eval onto the `DeferredObjectiveDecorationController`, constructed in
 app-wiring; rule flipped to `error`). PR-D1b dropped (ExecutablePlan has no
 objectives consumer — see carve-out note step 5).*
 
+- [ ] **P1 — PR-E (the real end-game): controller actuates the terminal disable directly, off the
+      plan→executor path.** Goal 2 of the carve-out is not done. The deadline-passed **task** disable
+      runs on the 30 s lifecycle clock (PR-C), but the **device** terminal turn-off still rides the
+      plan→executor path (`deferredReleaseIntent` stamped on the plan cycle, attached by
+      `attachDeferredReleaseIntents`, actuated by the executor). **Concrete flow-mode bug it leaves
+      open** (high confidence by construction; repro pending): a disabled task yields no diagnostic
+      (`diagnosticsBridge` → `if (!objective.enabled) return []`), and in `power_source = flow` mode
+      plan cycles can be hours apart, so the 30 s clock disables the task *before* the next plan
+      cycle — which then emits no `shed_release`. A cap-off device driven by a missed/unsatisfied
+      deadline is **left running**. (Pre-PR-C the disable ran inside the plan cycle after admission,
+      so the device got its terminal shed first; PR-C's move to the clock opened the race.) **Fix
+      (localized):** the emitter already computes diagnostics + calls `disableDeferredObjective` on
+      its clock — actuate the terminal device disable at that same point, then retire the *terminal*
+      release from the plan path. **Actuation lives in the DEVICE layer, not the executor:** the
+      executor's `applyShedReleaseIntent` is `ExecutablePlan`-shaped (a plan-context wrapper); the real
+      primitive is the device transport. **Extract-and-share (decided):** a device-layer
+      `applyShedBehavior({deviceId, behavior, observed, transport})` (no `ExecutablePlan` types) that
+      **both** the executor's plan path AND the smart-task terminal callback delegate to.
+      **Constraints:** `lib/objectives` cannot import `lib/device`/`lib/executor`
+      (`no-objectives-to-peer-except-power`) → the emitter only decides + triggers an app-wired
+      callback; the emitter sees only the narrow `ObjectiveDeviceInput` (needs `controllable` + shed
+      behavior for the terminal-release decision); the shared primitive carries the observed-state
+      idempotency guard. **Fork A (decided):** terminal actuation only; leave idle-bucket holds on the
+      plan path. Regression test: flow-mode missed deadline → cap-off device turned off via the clock.
+      See carve-out note step 6. Source: investigation 2026-05-30.
+
 - [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
       `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
       no-op; the emit side (status-transition publish, hours-remaining crossing, and especially the
