@@ -1,9 +1,15 @@
 # Settings UI Reorganization
 
-This note captures the target product direction for reorganizing the PELS Settings UI.
-It is a planning note, not a description of the current implementation.
+> **Status: partially shipped** (see `TODO.md` "settings UI" section). The nav
+> shell, Budget (Plan/Adjust), Smart tasks list, and the Settings card/list are
+> in place; remaining work is Usage cleanup, per-device price ownership, Material
+> consolidation, and polish. This note still governs the ownership boundaries for
+> the in-flight PRs — read it as the target model, not a wholly-future plan.
 
-The work should land as one cohesive redesign program split across multiple reviewable PRs.
+This note captures the target product direction for reorganizing the PELS Settings UI.
+It describes the target ownership model; large parts have shipped (see status above).
+
+The work lands as one cohesive redesign program split across multiple reviewable PRs.
 This note is the source of truth for ownership boundaries while those PRs are built.
 
 ## Goal

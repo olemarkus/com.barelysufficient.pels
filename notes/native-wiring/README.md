@@ -194,14 +194,15 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    control gate.
 
    *Follow-ups:*
-   - Re-run conflict detection after snapshot refreshes (settings-open /
-     device-list refresh / the next successful periodic refresh) so that (a) a
-     Flow added after startup is reflected without a restart and (b) a degraded
-     startup that left the snapshot empty recovers automatically once it
-     populates — closing the accepted limitation noted in PR4.
-   - Plumb the conflicting Flow's name through `detectNativeWiringConflicts`
-     so the banner can name which Flow to remove (today the remedy points at an
-     unnamed Flow). Requires the flow-list reader to carry flow names.
+   - ~~Re-run conflict detection after snapshot refreshes so a Flow added after
+     startup is reflected without a restart and a degraded empty-snapshot startup
+     recovers automatically.~~ **Shipped** (`0dd6dafe`): periodic conflict
+     re-query every 30 min, closing the accepted limitation noted in PR4.
+   - ~~Plumb the conflicting Flow's name through the conflict reader so the
+     banner can name which Flow to remove.~~ **Shipped** (`d9513dd7`):
+     `resolveConflictFlowName` in `lib/flowApi/flowConflict.ts` sets `flowName`
+     when a single named Flow is responsible, and the banner copy
+     (`packages/shared-domain/src/nativeWiringCopy.ts`) names it.
 
 ## Validation reference
 

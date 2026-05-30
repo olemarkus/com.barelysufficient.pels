@@ -26,48 +26,38 @@ No file should have both a blanket pragma and a config-level ceiling indefinitel
 
 ## Current State Snapshot
 
-Remeasured with `wc -l` on 2026-05-13. Effective ESLint line counts may differ because the rule
-skips blank lines and comments.
+The full list of oversized files churns constantly, so it is not frozen here. Regenerate the
+current set on demand:
 
-| File | LOC | Current direction |
+```bash
+find lib setup flowCards drivers widgets packages/*/src app.ts api.ts \
+  -type f \( -name '*.ts' -o -name '*.tsx' \) \
+  -not -name '*.test.ts' -not -name '*.spec.ts' \
+  -exec wc -l {} + | awk '$1>500 && $2!="total"' | sort -rn
+```
+
+As of 2026-05-30 roughly 50 source files exceed the 500-LOC rule. Most are Bucket A (accidental
+growth — shrink when next touched) and need no per-file note. Effective ESLint counts run lower
+than `wc -l` because the rule skips blank lines and comments.
+
+The rows worth tracking are the **Bucket B documented exceptions** — files intentionally over the
+limit because the concept is centralized. These are the entries that belong in `eslint.config.mjs`
+with a ceiling and rationale:
+
+| File | LOC (2026-05-30) | Why it stays a documented exception |
 |---|---:|---|
-| `lib/device/deviceTransport.ts` | 2299 | Bucket B for now; only split further on a clear subsystem boundary. (Renamed from `lib/device/manager.ts` in PR #1140 of the observer/transport split; grew because PR #1148/#1158 added the binarySettle ops + observedStateDispatcher wiring.) |
-| `app.ts` | 1635 | Bucket A: continue lifecycle/context shrink. |
-| `lib/diagnostics/deviceDiagnosticsService.ts` | 1294 | Bucket B until starvation flows/insights split naturally. |
-| `lib/plan/planRestore.ts` | 1287 | Bucket A: reduce repeated restore gates/wrappers. |
-| `flowCards/registerFlowCards.ts` | 1148 | Bucket B unless registration gains deeper behavior. |
-| `lib/plan/planBuilder.ts` | 1102 | Bucket A: keep extracting focused builder helpers as ownership clarifies. |
-| `lib/plan/planReasons.ts` | 1027 | Bucket A: continue decision/render boundary cleanup. |
-| `lib/device/transport/managerObservation.ts` | 979 | Bucket A: separate observation/freshness merge from debug-source capture if still useful. (Moved into `lib/device/transport/` in PR #1107.) |
-| `lib/plan/planService.ts` | 860 | Bucket A: extract rebuild metrics/tracing. |
-| `lib/executor/planExecutor.ts` | 833 | Bucket B for now: remaining dispatch is intentionally centralized. |
-| `packages/settings-ui/src/ui/views/BudgetOverview.tsx` | 808 | Bucket A: split per-surface view logic once Budget UI settles. |
-| `lib/executor/steppedLoadExecutor.ts` | 774 | Bucket B for now: stepped execution sequencing stays local. |
-| `lib/app/appDebugHelpers.ts` | 756 | Bucket A: inline single-caller debug dump helpers. |
-| `lib/plan/planRestoreHelpers.ts` | 736 | Bucket A: shrink alongside restore wrapper/gate cleanup. |
-| `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` | 682 | Bucket A: split chart/view helpers when adding usage-history follow-up. |
-| `lib/app/appPowerRebuildScheduler.ts` | 651 | Bucket A: finish post-unification scheduler cleanup. |
-| `lib/price/priceService.ts` | 607 | Bucket B while spot/grid orchestration remains local. |
-| `lib/plan/admission/activationBackoff.ts` | 576 | Bucket A: revisit after restore admission cleanup. |
-| `packages/settings-ui/src/ui/components.ts` | 570 | Bucket B for shared UI primitives unless it keeps growing. |
-| `packages/settings-ui/src/ui/power.ts` | 566 | Bucket B while the page remains one cohesive screen module. |
-| `packages/settings-ui/src/ui/budgetRedesign.ts` | 563 | Bucket A: move per-surface resolvers out. |
-| `lib/executor/targetExecutor.ts` | 555 | Bucket B for target-command sequencing. |
-| `packages/settings-ui/src/ui/deadlinePlan.ts` | 550 | Bucket A: split route/read-model helpers when deadline UI grows again. |
-| `lib/dailyBudget/dailyBudgetService.ts` | 549 | Bucket A: extract snapshot/seeding helpers. |
-| `lib/dailyBudget/dailyBudgetConfidence.ts` | 549 | Bucket A: audit whether the scoring affects decisions. |
-| `packages/settings-ui/src/ui/priceConfig.ts` | 537 | Bucket A: split price-source and threshold UI helpers if touched. |
-| `packages/settings-ui/src/ui/dailyBudgetChartEcharts.ts` | 533 | Bucket B while ECharts wiring stays isolated. |
-| `packages/settings-ui/src/ui/advanced.ts` | 529 | Bucket A: split advanced surfaces by destination. |
-| `packages/settings-ui/src/ui/dailyBudget.ts` | 526 | Bucket A: shrink after Budget redesign settles. |
-| `packages/settings-ui/src/ui/deviceDetail/index.ts` | 525 | Bucket A: continue device-detail ownership split. |
-| `lib/objectives/profiles.ts` | 519 | Bucket B while objective profiling remains one cohesive store. |
-| `packages/settings-ui/src/ui/budgetRedesignChart.ts` | 516 | Bucket A: split chart scale/series helpers if touched. |
-| `lib/app/appInit.ts` | 516 | Bucket A: delete or inline once remaining adapter value is gone. |
-| `lib/power/tracker.ts` | 512 | Bucket A: normalize persisted/runtime state boundaries. |
-| `lib/app/appDeviceControlHelpers.ts` | 510 | Bucket A: trim or split by control surface. |
-| `lib/device/managerParseDevice.ts` | 501 | Bucket A: keep under default after next helper extraction. |
-| `lib/app/appPowerHelpers.ts` | 15 | No longer a god file; old Phase 8 split has landed. |
+| `lib/device/deviceTransport.ts` | 2299 | Centralized device transport; only split on a clear subsystem boundary. (Renamed from `lib/device/manager.ts` in the observer/transport split; grew with binarySettle ops + observedStateDispatcher wiring.) |
+| `lib/diagnostics/deviceDiagnosticsService.ts` | 1270 | Holds until starvation flows/insights split out naturally. |
+| `flowCards/registerFlowCards.ts` | 1146 | Flat registration surface; only split if registration gains deeper behavior. |
+| `lib/executor/planExecutor.ts` | 822 | Remaining dispatch is intentionally centralized. |
+| `lib/executor/steppedLoadExecutor.ts` | 788 | Stepped execution sequencing stays local. |
+| `lib/objectives/profiles.ts` | 590 | One cohesive objective-profiling store. |
+| `lib/executor/targetExecutor.ts` | 575 | Target-command sequencing stays local. |
+| `packages/settings-ui/src/ui/components.ts` | 573 | Shared UI primitives unless it keeps growing. |
+| `lib/price/priceService.ts` | 531 | Spot/grid orchestration remains local. |
+
+Everything else over 500 is Bucket A: shrink and drop the file-level pragma when the file is next
+touched. Use the regen command above rather than maintaining a frozen Bucket A list here.
 
 ## Migration Sequence
 

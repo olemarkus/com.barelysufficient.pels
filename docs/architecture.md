@@ -124,7 +124,7 @@ A small number of modules still cross layers in ways the contract above forbids.
 
 - `lib/utils/**` still has a few imports from `lib/device`, `lib/power`, and `lib/plan`. The cruiser rule for this case is registered at warning severity (not error), so CI does not fail on it — but new code must not extend this set.
 - `lib/plan/**` imports the executor in two places (`planEngine.ts` instantiates `PlanExecutor`; `planReconcileState.ts` imports a drift predicate). The cruiser warns. Phase 3 of the architecture refactor moves these contracts into `lib/planContract/` so the executor↔plan boundary is symmetric.
-- `lib/plan/**` consumes only the `DeviceObservation` read interface from `lib/device/deviceObservation.ts`; the `no-plan-to-device` cruiser rule blocks every other `lib/device/` import at error level. Binary control writes are dispatched by executor (`lib/executor/binaryControlDispatch.ts`), not plan. The orchestrating class is now `DeviceTransport` at `lib/device/deviceTransport.ts` — see `notes/state-management/observer-transport-split.md` for the layering rationale and remaining steps.
+- `lib/plan/**` consumes only the `DeviceObservation` read interface from `lib/device/deviceObservation.ts`; the `no-plan-to-device` cruiser rule blocks every other `lib/device/` import at error level. Binary control writes are dispatched by executor (`lib/executor/binaryControlDispatch.ts`), not plan. The orchestrating class is now `DeviceTransport` at `lib/device/deviceTransport.ts` — see `notes/state-management/observer-transport-split.md` for the layering rationale and the per-PR split history.
 
 If you find a cross-layer import that isn't in the TODO list, treat it as a bug, not a precedent.
 

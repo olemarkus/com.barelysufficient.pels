@@ -1,5 +1,9 @@
 # Idle classification (near_target_idle / unresponsive / capped_idle)
 
+> **Status: shipped** (all three states, incl. `capped_idle` and the tight-gap
+> path). This note is the design-of-record for the live behaviour. File
+> references below are accurate as of 2026-05-30.
+
 Surfaces a per-device state for temperature devices that are commanded on but
 either drawing ~0 W (the existing two states) or cycling against the device's
 own internal setpoint cap (the third state). The intent is purely UI and
@@ -130,7 +134,7 @@ does).
 - `lib/plan/settingsOverviewReadModel.ts` — reads classification through a
   deps callback and writes the result onto `SettingsUiPlanDeviceSnapshot`.
 - `packages/contracts/src/settingsUiApi.ts` — adds
-  `idleClassification?: 'near_target_idle' | 'unresponsive'`.
+  `idleClassification?: 'near_target_idle' | 'unresponsive' | 'capped_idle'`.
 - `packages/shared-domain/src/idleClassificationCopy.ts` — the only source
   of UI status-line strings and the matching `detail` text. Used by both
   the temperature card and structured-log payloads so the two cannot drift.

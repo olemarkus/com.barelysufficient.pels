@@ -8,7 +8,7 @@ triggers plus any remaining insights/UI integration gaps — see `TODO.md` and
 
 **Scope:** managed temperature-driven devices only (room thermostats, water heaters). Not EV chargers or generic binary loads.
 
-**Core constraint:** starvation is orthogonal metadata — it must **never** change planner decisions (shed order, restore order, priority). It is detection only.
+**Core constraint:** starvation is orthogonal metadata — the *planner* must **never** read it to change its decisions (shed order, restore order, priority). Detection stays planner-orthogonal. The shipped v2 rescue widget (see `notes/starvation/README.md`) is a **separate, user-initiated lane**: the owner explicitly chooses to exempt a starved device from its budget, which is not the planner consuming starvation state. Do not collapse the two — automatic planner behaviour stays detection-only.
 
 ## Key Invariants
 

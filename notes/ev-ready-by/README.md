@@ -56,7 +56,7 @@ estimate trustworthy.
 The deferred-objective subsystem already ships enough infrastructure to deliver the temperature
 deadline feature end-to-end and to display EV deadline plans without actuating them:
 
-- EV SoC observation with session validity (`lib/device/stateOfCharge.ts`): fresh / stale
+- EV SoC observation with session validity (`lib/device/transport/stateOfCharge.ts`): fresh / stale
   status, session start on plug-in, invalidation on plug-out.
 - Per-device learned profile (`lib/objectives/profiles.ts`) storing `kwhPerUnit` (kWh per 1%)
   and `unitPerHour` (%/hour) with EMA confidence.
@@ -80,7 +80,7 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   `prices_revised`, `rate_refined`).
 - Plan history (`lib/plan/deferredObjectives/planHistory.ts`) capturing per-deadline outcomes
   (`met` / `missed` / `abandoned` / `replaced`).
-- Per-device-per-step power calibration (`lib/observer/devicePowerCalibration.ts`,
+- Per-device-per-step power calibration (`lib/device/devicePowerCalibration.ts`,
   `lib/plan/deferredObjectives/objectiveStepPower.ts`) with EMA learning, conservative-high and
   conservative-low query primitives, already wired into stepped-load deferred objectives.
 - Smart tasks UI surfaces: list and per-device deadline-plan and history pages
@@ -99,11 +99,12 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
 
 ## Where the trust gap is today
 
-EV admission to charger actuation has landed. The user-facing trust gap is now in
-the surfaces that explain whether the plan is trustworthy: the Smart tasks device
-card still shows only a chip and no plan state, and the deadline-plan page doesn't
-yet surface planning speed or estimated duration. Those are the trust-surface
-follow-ups described below.
+EV admission to charger actuation has landed, and the two trust-surface
+follow-ups that this note originally flagged have **shipped** (see below): the
+Smart tasks device card now explains charger plan state, and the deadline-plan
+hero surfaces planning speed and estimated duration. The remaining gaps are the
+feature extensions — kWh target mode, expanded observability — described further
+down.
 
 Feature extensions (kWh target, observability) are stand-alone work that broadens
 coverage and adds user agency. Hard enforcement is deferred — see
@@ -126,53 +127,32 @@ Files (for reference): `lib/plan/admission/deferredObjective.ts`,
 `lib/plan/planBuilder.ts`, `lib/executor/binaryExecutor.ts`,
 `lib/executor/planExecutor.ts`, `test/evDevices.integration.test.ts`.
 
-### Trust-surface follow-ups
+### Trust-surface follow-ups (shipped)
 
-These are the first support-facing clarity gaps once EV deadlines actually
-control charging.
+Both clarity gaps that this note flagged once EV deadlines actually control
+charging have shipped.
 
-#### Device-card visible state
+#### Device-card visible state — shipped
 
-`packages/settings-ui/src/ui/views/PlanDeviceCards.tsx:63` shows only the
-Smart task chip. The device card should explain what PELS thinks the
-charger is doing: a next-planned-start line ("Waiting · charging starts
-01:00"), an active-charging finish line ("Charging · planned finish
-05:30"), and a plug-out paused line ("Charging plan paused — car
-unplugged"). Pull start / finish from the active-plan recorder's
-`latest.hours`; pull the paused state from the `objective_invalid_session`
-reason emitted by `resolveEvObjectiveProgress`
-(`lib/plan/deferredObjectives/diagnosticsBridge.ts:380-402`), which fires
-when the observation layer reports `stateOfCharge.status === 'invalid'`.
+`PlanDeviceCards.tsx:62` now renders an EV plan-state line via
+`resolveEvCardStateLine` (`packages/shared-domain/src/deadlineLabels.ts`): a
+next-planned-start line, an active-charging finish line, and a plug-out paused
+line. Start/finish come from the active-plan recorder's `latest.hours`; the
+paused state comes from `isPlugOutPaused` (the `objective_invalid_session`
+reason emitted by `resolveEvObjectiveProgress` in
+`lib/plan/deferredObjectives/diagnosticsBridge.ts`, which fires when the
+observation layer reports `stateOfCharge.status === 'invalid'`).
 
-Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-`lib/plan/deferredObjectives/diagnosticsBridge.ts`,
-`packages/contracts/src/` (diagnostic reason additions if the reason needs
-to be public), device-card tests.
+#### Planning speed and estimated duration — shipped
 
-Tracked in `TODO.md` (smart task EV device-card state).
-
-#### Planning speed and estimated duration
-
-`packages/settings-ui/src/ui/deadlinePlan.ts:153,164` shows kWh and
-hours-until-deadline on the hero meta line, and a separate Plan inputs card
-(`packages/settings-ui/src/ui/deadlinePlanInputs.ts`) shows the per-unit
-rate (`kWh/°C` or `kWh/%`) plus max power per hour with an EV bootstrap
-note when applicable. The deadline-plan page should *also* surface
-"Planning speed: X.X kW" and "Estimated time: Yh Zm" on the hero — the
-Plan inputs card answers "what is PELS estimating with?" but the hero
-needs to answer "how fast and how long?" at top-line. Tag the new hero
-fields with a speed-mode badge ("Auto" / "Learning…" today; "Manual" /
-"Conservative" later). Compute kW via a new `resolvePlanningKw` selector
-that falls back to the calibration view built from
-`lib/observer/devicePowerCalibration.ts`. EVs need either a synthetic
-1-step profile or an EV-specific branch in `buildStepPowerCalibrationView`
-(`lib/app/appInit.ts:468-487`) so the existing `resolveStepDeliveryUsefulKw`
-helper serves Automatic mode without code duplication.
-
-Files: `packages/settings-ui/src/ui/deadlinePlan.ts`, `lib/app/appInit.ts`,
-`lib/plan/deferredObjectives/diagnosticsBridge.ts`, calibration view tests.
-
-Tracked in `TODO.md` (smart task planning speed / estimated duration).
+The deadline-plan hero surfaces "Planning speed: X.X kW" and an estimated
+duration via `planningSpeedKw` / `estimatedDurationText` in
+`packages/settings-ui/src/ui/deadlinePlan.ts:468-540` (commit `8720af37`),
+alongside the existing Plan inputs card (`deadlinePlanInputs.ts`) that shows the
+per-unit rate and max power per hour. The planning kW falls back to the
+calibration view built from `lib/device/devicePowerCalibration.ts` via
+`buildStepPowerCalibrationView` (`lib/app/appInit/calibrationViews.ts`), reusing
+`resolveStepDeliveryUsefulKw`.
 
 ### Feature extensions
 
@@ -252,7 +232,7 @@ objective for the same device; whether re-plug after a partial session
 re-fires.
 
 Files: new `packages/contracts/src/evChargerDefaults.ts`, new
-`lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`.
+`lib/app/evChargerDefaultsWiring.ts`, `lib/device/transport/stateOfCharge.ts`.
 
 #### Manual override actions and deadline-imminent urgency rule
 

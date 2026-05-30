@@ -1,5 +1,12 @@
 # Feasibility & learned-rate confidence (Cause #1)
 
+> **Status: all three fix steps shipped.** Step 1 (sub-interval energy
+> accumulation), Step 2 (within-band residual confidence, `lib/objectives/stats.ts`
+> + `profiles.ts:309`), and Step 3 (confidence-aware verdict via `mean + k·SE`
+> margin emitting `estimate_uncertain`, commit `abac42cd` / `horizonPlanner.ts:479`)
+> are all live. This note is kept as the design-of-record for *why* the model is
+> shaped this way; the step markers below record what landed.
+
 Why smart-task verdicts (`cannot_meet` / `on_track`) flip on a volatile learned
 rate, and what the fix actually is. This corrects the original P0 framing in
 `TODO.md` ("rate never converges / fix sample-rejection / make bands engage"),
@@ -89,6 +96,13 @@ reset the baseline and discard the partial accumulator rather than averaging it.
 
 ## The real gap: two coupled problems
 
+> This section is the **pre-fix diagnosis** that motivated the now-shipped
+> three-step fix below (see the status banner). It is preserved in its
+> original present-tense voice; the contradictions it identifies — the verdict
+> ignoring confidence, the planner not reading `displayConfidence` — were
+> resolved by Step 3 (`horizonPlanner` now consumes the `mean + k·SE` margin and
+> emits `estimate_uncertain`).
+
 **(i) The verdict ignores confidence.** `horizonPlanner` / `bucketAllocation` /
 `rescueReplan` consume **no confidence value** — grep is empty. The verdict is
 computed purely from whether the point-estimate `energyNeededKWh` fits the
@@ -110,69 +124,33 @@ over the bands overlapping `[current, target]`, falling back to the global
 `kWhPerUnit.confidence`. It's surfaced to diagnostics as `displayConfidence` and
 drives the UI chip — but the planner never reads it for the verdict.
 
-### Fix — three steps, in dependency order
+### The shipped fix — three coupled design decisions
 
-The end state is confidence-aware feasibility, but it cannot ship first.
+Confidence-aware feasibility shipped in three dependency-ordered steps. The
+*why* behind each (the part worth keeping) is:
 
-**Step 1 (prerequisite) — stop poisoning the estimate. ✅ SHIPPED.** Accumulate
-energy across sub-intervals (`Σ crediblePowerW_i × Δt_i`, persisted on the
-profile as `pendingEnergyKWh`/`subIntervalStartMs`/`subIntervalPowerW` per the
-poisoning section) and invalidate the window on a power-=0 sub-interval. The
-`rise_too_small` skips that used to be discarded now bank their sub-interval
-energy at their own left-edge power; the accept emits `pending + final
-sub-interval`; baseline resets (accept / value-fell / interval-too-long /
-recovery / contamination) clear the accumulator. No-skip windows stay
-byte-identical to the old single-baseline bill. This tightens the real
-`kwhPerUnit` dispersion so confidence can actually rise — Step 2's prerequisite.
+1. **Per-sub-interval energy accumulation** (`Σ crediblePowerW_i × Δt_i`, with the
+   running sum persisted on the profile and the window invalidated on a power-=0
+   sub-interval). This is the fix for the poisoning vector above: it stops billing a
+   whole variable-power rise at one baseline reading, which is what inflated the
+   `kwhPerUnit` spread. Tightening the real dispersion is the prerequisite for
+   confidence to ever rise. (`lib/objectives/energyAccumulator.ts`.)
+2. **Confidence judged by within-band residual**, not relative-std-dev of a single
+   global mean — because once bands exist, a well-fit U-curve reports high *global*
+   variance precisely *because* the bands captured real structure. The lever is split
+   *quality* (`MIN_SSE_REDUCTION_FRACTION`), not the band-count cap. (`lib/objectives/stats.ts`,
+   wired in `profiles.ts:309`.)
+3. **A continuous `± margin` (`k·SE`) over the 3-level enum.** The producer emits
+   `(energyNeededKWh, margin)`; the planner reads only that flat pair (never per-band
+   fields — `feedback_layering_resolution_in_producer`) and treats a shortfall inside
+   the margin as `at_risk` / `estimate_uncertain` rather than a confident verdict. The
+   continuous margin avoids the enum's all-or-nothing trap: a tight-but-"low" device
+   still reads `on_track`; only real dispersion widens to `at_risk`. This **reuses the
+   sizing-side `k·SE` buffer** rather than inventing a parallel verdict-side one — two
+   margins would double-count. (`profileEnergyResolution.ts:54`, `horizonPlanner.ts:479`.)
 
-**Step 2 (prerequisite) — make confidence escape `low`.** Even with clean
-samples, `resolveProfileConfidence` measures dispersion as relative-std-dev of a
-*single global mean*, which is structurally wrong once bands exist — a well-fit
-U-curve reports high global variance *because* the bands captured real
-structure. Judge confidence by **within-band residual**. (Note the band cap is
-not the constraint: `OBJECTIVE_PROFILE_MAX_BANDS` is already `4`; prod fits only
-`bandsCount:2`, so the lever is split *quality* — e.g. the
-`MIN_SSE_REDUCTION_FRACTION` split threshold — not raising the constant.) Without
-this, confidence stays `low` and Step 3 degenerates to permanent "At risk."
-
-**Step 3 (the lever) — confidence-aware verdict.** Prefer a **continuous margin**
-over the 3-level enum: have `profileEnergyResolution` emit `energyNeededKWh`
-*plus* a `± margin` derived from the in-use band's residual (`k·σ`). The planner
-treats a shortfall inside the margin as `at_risk` (new detail
-`estimate_uncertain`) rather than a confident `cannot_meet`/`on_track`. The
-continuous margin avoids the enum's all-or-nothing trap: a tight-but-"low"
-device gets a *narrow* band and can still read `on_track` or a genuine
-`cannot_meet`; only real dispersion widens to `at_risk`. Resolution stays in the
-producer — the planner consumes the flat `(energyNeededKWh, margin)` pair, never
-per-band fields (`feedback_layering_resolution_in_producer`). Composes with the
-Slice 1 floor-vs-climbed banding (same "don't assert a flat constant"
-philosophy, now on the rate axis), and needs the `pels-copy-and-terminology`
-gate so `at_risk` doesn't become an unactionable catch-all.
-
-Validation gate before building Step 3: ✅ plan-time instrumentation has
-**shipped** — `displayConfidence` and `energyExpectedKWh` are now emitted on
-every `deferred_objective_horizon_planned` event (PR #976), so the band-aware
-confidence and the integrated `k·SE` margin (`energyNeededKWh −
-energyExpectedKWh`) are derivable per plan cycle. The active-plan lifecycle
-events also carry `startedAtMs` / `deadlineAtMs` / target now (PR #979), and
-prod logs are retained across restarts with commit-stamped markers (PR #971),
-so the capture is self-contained. The gate is now **data-dependent**, not
-instrumentation-dependent: confirm a mature device reaches `medium`/`high`
-after Steps 1–2 *or* that the margin stays tight at `low` (in which case
-Step 2 may be less urgent than this design assumed). First observation
-(2026-05-23, "Connected 300", n≈540) is `displayConfidence: low` with margin
-≈10% of need — early signal that B's `k·SE` may already converge the practical
-margin tightly even when the label stays `low`. Needs a multi-day window + a
-fresh from-`n=0` baseline before deciding.
-
-If Step 3 is built, it must **reuse B's `k·SE` margin**, not invent a parallel
-one — the band-residual `k·σ` the design above describes IS the same uncertainty
-margin viewed verdict-side instead of sizing-side. Two parallel uncertainty
-margins (one in sizing, one in verdict) would double-count.
-
-Out of scope here: the P0's **missed-history** half (post-hoc classification of
-finalized runs) is a separate item; confidence-aware *live* verdicts don't
-re-label history.
+Out of scope here: the **missed-history** half (post-hoc classification of finalized
+runs) is a separate item; confidence-aware *live* verdicts don't re-label history.
 
 ## Secondary / deferred
 
