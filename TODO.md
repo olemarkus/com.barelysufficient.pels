@@ -55,6 +55,15 @@ listed below in the P2 release-review 2026-05-28 subsection.*
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
 
+- [ ] **Align (or deliberately keep) "Starved" in device-detail diagnostics.** The
+      Held-back-devices widget now says "Held back"; `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts`
+      still says "Starved" / "Starved for {duration}" / "Not starved" / "Starvation
+      details" / "Starved time" for the same condition. `notes/ui-terminology.md` now
+      documents this as a deliberate fork (Starved = advanced-diagnostics term), so
+      it's defensible — but decide explicitly: either align diagnostics to "Held back"
+      or keep "Starved" as the advanced term. Those strings are also inlined literals
+      (a pre-existing shared-domain-origin gap). Source: copy lens on PR #1313, 2026-05-30.
+
 - [ ] Insights mode picker — `await this.homey.settings.set(...)` on tile-tap;
       surface `device.error()` on rejection; revert the capability value on
       failure. Today the listener is fire-and-forget so a rejected settings

@@ -58,30 +58,46 @@ export const formatStarvationReason = (
   return resolveStarvationMessage(starvation.cause, { manualSubject: 'this device' });
 };
 
-// ─── Starvation-rescue widget vocabulary ─────────────────────────────────────
+// ─── Held-back-devices widget vocabulary ─────────────────────────────────────
 //
-// Strings for the standalone starvation-rescue dashboard widget. Housed beside
-// the rest of the starvation copy so runtime log breadcrumbs can reuse the same
-// wording (feedback_ui_text_shared_with_logs) and the widget never inlines
-// literals. "Starved" / "limited" vocabulary only — no shed/restore/headroom
-// jargon (notes/ui-terminology.md). Per feedback_hard_cap_is_physical, the
-// capacity-starved copy never suggests raising the hard cap.
+// Strings for the standalone "Held-back devices" dashboard widget. Housed in
+// shared-domain (single home, no widget-inlined literals) beside the rest of the
+// starvation copy so a future runtime log breadcrumb can reuse the wording
+// (feedback_ui_text_shared_with_logs). NOTE: no runtime/logging path consumes
+// these widget strings today — starvation logging uses its own vocabulary
+// (`starvedDeviceCount`, `starvationCause`); this is the single-home placement,
+// not actual log parity yet. The widget shows which devices PELS is holding back via the
+// daily budget; it does NOT conjure house power (the hard cap is physical), so
+// the framing is device-scoped ("held back") rather than "get power". "Held
+// back" / "limited" vocabulary only — no shed/restore/headroom jargon
+// (notes/ui-terminology.md). Per feedback_hard_cap_is_physical, the
+// capacity-held copy never suggests raising the hard cap.
 
 export type StarvationRescueRowTone = 'warn' | 'danger';
 
 export const STARVATION_RESCUE_WIDGET_COPY = {
-  // Empty (calm) state — nothing is starved. This is the steady, good state.
+  // List header — names what the widget SHOWS (the devices PELS is holding back
+  // via the daily budget), not an action the user takes. Shown only when at
+  // least one device is held back; the calm empty state stands alone.
+  headerTitle: 'Held-back devices',
+  // Empty (calm) state — nothing is held back. This is the steady, good state.
   emptySubtitle: 'No device is being held back right now.',
   // Transient "wiring up to Homey" state, distinct from a hard load failure.
   notReady: 'Connecting to Homey…',
   loadError: 'Could not load devices. Try again later.',
-  // Row status chip prefix. The widget appends "· N min".
-  starvedChip: 'Starved',
-  // Rescue affordance (budget-caused rows only). "Use budget now" is honest that
-  // the action spends today's budget rather than promising instant delivery —
-  // the rescue is a bounded near-term run, not an immediate power switch (the
-  // confirm sheet surfaces the "By {time}" timing prominently).
-  rescueButton: 'Use budget now',
+  // Row status-chip word. The widget appends "· N min". Cause-specific so the
+  // chip never overclaims: only budget rows (the releasable "Let it run now"
+  // state) say "Held back"; capacity/external say "Waiting" (physically held —
+  // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
+  // says "On hold". User-facing register only — no "starvation" jargon.
+  starvedChip: 'Held back',
+  waitingChip: 'Waiting',
+  manualChip: 'On hold',
+  // Rescue affordance (budget-caused rows only). "Let it run now" is device-
+  // scoped — it releases THIS device from the daily budget so it runs now,
+  // rather than promising house power. The rescue is a bounded near-term run
+  // (the confirm sheet surfaces the "By {time}" timing prominently).
+  rescueButton: 'Let it run now',
   // Informational note on capacity / manual / external rows — they get NO rescue
   // affordance. Honest about why, without implying the user can raise the cap.
   // Matches the canonical "Waiting for available power" wording the overview and
@@ -122,9 +138,25 @@ export const starvationDurationMinutes = (accumulatedMs: number): number => (
   Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? Math.floor(accumulatedMs / 60_000) : 0
 );
 
-// "Starved · 24 min" status label for a rescue row.
-export const formatStarvationRowChip = (accumulatedMs: number): string => (
-  `${STARVATION_RESCUE_WIDGET_COPY.starvedChip} · ${starvationDurationMinutes(accumulatedMs)} min`
+// Status-chip word per cause: only budget rows are the releasable "Held back"
+// state; capacity/external are "Waiting" (physically held — the hard cap is not
+// a tuning knob) and manual is "On hold". Keeps the chip honest per-cause so a
+// capacity row is never mislabeled as the budget-releasable "Held back" state.
+const resolveStarvationRowChipWord = (
+  cause: SettingsUiPlanDeviceStarvation['cause'],
+): string => {
+  if (cause === 'budget') return STARVATION_RESCUE_WIDGET_COPY.starvedChip;
+  if (cause === 'manual') return STARVATION_RESCUE_WIDGET_COPY.manualChip;
+  return STARVATION_RESCUE_WIDGET_COPY.waitingChip; // capacity + external
+};
+
+// "Held back · 24 min" (budget) / "Waiting · 24 min" (capacity, external) /
+// "On hold · 24 min" (manual) status label for a held-back row.
+export const formatStarvationRowChip = (
+  cause: SettingsUiPlanDeviceStarvation['cause'],
+  accumulatedMs: number,
+): string => (
+  `${resolveStarvationRowChipWord(cause)} · ${starvationDurationMinutes(accumulatedMs)} min`
 );
 
 // How many starved rows fit in the widget's fixed 240px height before the list

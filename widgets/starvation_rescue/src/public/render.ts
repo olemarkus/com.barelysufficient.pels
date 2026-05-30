@@ -40,6 +40,7 @@ export type RenderTargets = {
   root: HTMLElement;
   // List
   listView: HTMLElement;
+  listTitleEl: HTMLElement;
   listEl: HTMLElement;
   listMoreEl: HTMLElement;
   listEmptyEl: HTMLElement;
@@ -107,7 +108,7 @@ const renderDeviceRow = (
   const rescueBtn = li.querySelector('[data-rescue-button]');
 
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
-  if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.accumulatedMs);
+  if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
   if (subtextEl instanceof HTMLElement) {
     subtextEl.textContent = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
   }
@@ -132,9 +133,12 @@ const renderDeviceRow = (
 };
 
 const renderList = (targets: RenderTargets, payload: StarvationRescueDevicesPayload | null): void => {
-  const { listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
+  const { listTitleEl, listEl, listEmptyEl, listMoreEl, deviceTemplate } = targets;
   clearChildren(listEl);
   if (!payload || payload.state === 'empty') {
+    // The header names what the widget shows; with nothing held back the calm
+    // empty subtitle stands alone, so the header is hidden in that state.
+    listTitleEl.hidden = true;
     listEl.hidden = true;
     listMoreEl.hidden = true;
     listEmptyEl.hidden = false;
@@ -143,6 +147,8 @@ const renderList = (targets: RenderTargets, payload: StarvationRescueDevicesPayl
     listEmptyEl.textContent = payload?.state === 'empty' ? payload.subtitle : C.loadError;
     return;
   }
+  listTitleEl.textContent = C.headerTitle;
+  listTitleEl.hidden = false;
   listEl.hidden = false;
   listEmptyEl.hidden = true;
   for (const device of payload.devices) {

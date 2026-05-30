@@ -67,6 +67,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
   const deviceTemplate = d.getElementById('device-template');
   const map = {
     listView: '[data-list-view]',
+    listTitleEl: '[data-list-title]',
     listEl: '[data-device-list]',
     listMoreEl: '[data-list-more]',
     listEmptyEl: '[data-list-empty]',
