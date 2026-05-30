@@ -16,6 +16,7 @@
     "on-surface": { "value": "{color.semantic.text.primary}" },
     "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
     "on-surface-muted": { "value": "{color.semantic.text.muted}" },
+    "surface-container-lowest": { "value": "{color.surface.1}" },
     "surface-container-low": { "value": "{color.surface.2}" },
     "surface-container": { "value": "{color.surface.3}" },
     "surface-container-high": { "value": "{color.surface.4}" },
