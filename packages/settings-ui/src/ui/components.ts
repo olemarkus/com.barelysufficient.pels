@@ -199,7 +199,7 @@ export const createSwitchField = (options: SwitchFieldOptions): SwitchFieldResul
     content.className = 'md-switch-row__content';
 
     const labelSpan = document.createElement('span');
-    labelSpan.className = 'md-switch-row__label';
+    labelSpan.className = 'md-switch-row__label pels-text-settings-label';
     labelSpan.id = labelId;
     labelSpan.textContent = label;
     content.appendChild(labelSpan);

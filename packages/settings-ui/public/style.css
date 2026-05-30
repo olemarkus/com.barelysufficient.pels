@@ -7318,10 +7318,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex: 1;
 }
 
-.md-switch-row__label {
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-}
+/* `.md-switch-row__label` composes `.pels-text-settings-label` in markup. */
 
 /* Text-field row: M3 text field with a small caption underneath. */
 .md-field-row {
