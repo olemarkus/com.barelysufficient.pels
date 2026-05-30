@@ -57,19 +57,6 @@ export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
   expensiveDelta: -5,
 };
 
-// Deep-clone the price-optimization map so consumers can snapshot the
-// persisted state before an optimistic mutation and restore it if the Homey
-// write rejects (TODO 735). Lives in state.ts to avoid a circular import
-// chain between priceOptimization.ts and priceConfig.ts.
-export const clonePriceOptimizationSettings = (
-  source: Record<string, PriceOptimizationConfig>,
-): Record<string, PriceOptimizationConfig> => {
-  const next: Record<string, PriceOptimizationConfig> = {};
-  for (const [id, config] of Object.entries(source)) {
-    next[id] = { ...config };
-  }
-  return next;
-};
 
 export const state: UiState = {
   isBusy: false,

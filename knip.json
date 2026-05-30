@@ -13,16 +13,73 @@
         "test/**/*.test.ts",
         "test/**/*.integration.test.ts"
       ],
-      "project": ["**/*.{ts,mts,cts}", "!packages/**", "!widgets/**", "!docs/**"]
+      "project": [
+        "**/*.{ts,mts,cts}",
+        "!packages/**",
+        "!widgets/**",
+        "!docs/**"
+      ]
     },
-    "packages/contracts": { "entry": ["src/**/*.ts"], "project": ["src/**/*.ts"] },
-    "packages/shared-domain": { "entry": ["src/**/*.ts"], "project": ["src/**/*.ts"] },
+    "packages/contracts": {
+      "entry": [
+        "src/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/shared-domain": {
+      "entry": [
+        "src/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
     "packages/settings-ui": {
-      "entry": ["src/script.ts", "test/**/*.test.ts", "tests/**/*.spec.ts"],
-      "project": ["src/**/*.{ts,tsx}"]
+      "entry": [
+        "test/**/*.test.ts",
+        "tests/**/*.spec.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}"
+      ]
     },
-    "widgets/*": { "entry": ["src/**/*.ts"], "project": ["src/**/*.ts"] },
-    "docs": { "entry": [".vitepress/**/*.{ts,mts}"], "project": [".vitepress/**/*.{ts,mts}"] }
+    "widgets/*": {
+      "entry": [
+        "src/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "docs": {
+      "entry": [
+        ".vitepress/**/*.{ts,mts}"
+      ],
+      "project": [
+        ".vitepress/**/*.{ts,mts}"
+      ]
+    }
   },
-  "ignoreExportsUsedInFile": true
+  "ignore": [
+    "test/mocks/echarts-subpath-shim.ts",
+    "vitest-env.d.ts"
+  ],
+  "ignoreDependencies": [
+    "@types/homey",
+    "homey-api",
+    "playwright"
+  ],
+  "ignoreBinaries": [
+    "homey",
+    "zsh"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "duplicates": "off"
+  },
+  "ignoreUnresolved": [
+    "../../packages/contracts/src/types"
+  ]
 }

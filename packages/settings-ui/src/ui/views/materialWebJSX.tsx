@@ -18,9 +18,6 @@ export const MdSwitch = (props: MdBaseProps) => (
   h('md-switch', props as Record<string, unknown>)
 );
 
-export const MdCheckbox = (props: MdBaseProps) => (
-  h('md-checkbox', props as Record<string, unknown>)
-);
 
 export const MdFilledTextField = (props: MdBaseProps) => (
   h('md-filled-text-field', props as Record<string, unknown>)

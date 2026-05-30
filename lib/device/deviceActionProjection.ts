@@ -342,6 +342,7 @@ export function isCommandableNow(dev: CommandableNowConsumerInput, nowMs: number
   return resolveCommandableNow({ dev, nowMs }).commandableNow;
 }
 
+/** @public — intentionally retained (was in check-dead-code parked list). */
 export function getCommandableNowReason(
   dev: CommandableNowConsumerInput,
   nowMs: number = Date.now(),

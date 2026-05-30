@@ -362,13 +362,9 @@ export const emitMockSdkDeviceUpdate = (device: Record<string, any>): void => {
   mockSdkDevicesApiEmitter.emit('realtime', 'device.update', device);
 };
 
-export const clearMockSdkDeviceListeners = (): void => {
-  mockSdkDevicesApiEmitter.removeAllListeners();
-};
 
 // Legacy aliases
 export const emitMockHomeyApiDeviceUpdate = emitMockSdkDeviceUpdate;
-export const clearMockHomeyApiDeviceListeners = clearMockSdkDeviceListeners;
 
 const buildControllableDevices = (drivers: Record<string, MockDriver>): Record<string, boolean> => {
   const controllable: Record<string, boolean> = {};
@@ -393,7 +389,6 @@ const findMockDeviceById = (deviceId: string): MockDevice | null => {
   return null;
 };
 
-export const getMockDeviceById = (deviceId: string): MockDevice | null => findMockDeviceById(deviceId);
 
 export const mockHomeyInstance = {
   on(event: string, listener: (...args: any[]) => void) {

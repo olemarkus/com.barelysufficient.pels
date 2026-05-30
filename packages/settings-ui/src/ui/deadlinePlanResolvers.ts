@@ -10,24 +10,6 @@ import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/defer
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
 import { isFiniteNumber } from './deadlinePlanData.ts';
 
-export const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | null => {
-  const candidates = [
-    device.planningPowerKw,
-    device.expectedPowerKw,
-    device.powerKw,
-    device.loadKw,
-  ];
-  const value = candidates.find((candidate) => isFiniteNumber(candidate) && candidate > 0);
-  if (value) return value;
-  const steps = device.steppedLoadProfile?.steps ?? [];
-  const highestStepPowerW = Math.max(
-    0,
-    ...steps.map((step) => (
-      isFiniteNumber(step.planningPowerW) ? step.planningPowerW : 0
-    )),
-  );
-  return highestStepPowerW > 0 ? highestStepPowerW / 1000 : null;
-};
 
 // The planner commits to running this device at the lowest non-zero step for
 // the full hour (see `resolveAllocation` in `lib/objectives/deferredObjectives/

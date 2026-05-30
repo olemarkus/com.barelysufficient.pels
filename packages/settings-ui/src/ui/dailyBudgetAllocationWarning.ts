@@ -28,19 +28,3 @@ export const resolveAllocationWarning = (
   };
 };
 
-export const setDailyBudgetAllocationWarning = (
-  element: HTMLElement | null,
-  payload: DailyBudgetDayPayload | null,
-) => {
-  const target = element;
-  if (!target) return;
-  const textEl = target.querySelector('.banner__text') as HTMLElement | null;
-  const warning = resolveAllocationWarning(payload);
-  if (!warning) {
-    target.hidden = true;
-    if (textEl) textEl.textContent = '';
-    return;
-  }
-  if (textEl) textEl.textContent = `${warning.title}. ${warning.body}`;
-  target.hidden = false;
-};

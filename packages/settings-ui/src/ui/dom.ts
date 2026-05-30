@@ -21,10 +21,6 @@ export type MdFilledSelectElement = HTMLElement & {
   disabled: boolean;
 };
 
-export type MdCheckboxElement = HTMLElement & {
-  checked: boolean;
-  disabled: boolean;
-};
 
 export type MdButtonElement = HTMLElement & {
   disabled: boolean;
@@ -117,10 +113,6 @@ export const dryRunBanner = qs('#dry-run-banner');
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
-export const planHero = qs('#plan-hero');
-export const planHourStrip = qs('#plan-hour-strip');
-export const planCards = qs('#plan-cards');
-export const planEmpty = qs('#plan-empty');
 export const resetStatsButton = document.querySelector('#reset-stats-button') as MdButtonElement;
 export const modeSelect = document.querySelector('#mode-select') as MdFilledSelectElement;
 export const modeNewInput = document.querySelector('#mode-new') as MdFilledTextFieldElement;
@@ -232,9 +224,6 @@ export const deviceDetailEvBoostBelow = document.querySelector(
   '#device-detail-ev-boost-below',
 ) as MdFilledTextFieldElement;
 export const deviceDetailEvBoostStatus = qs('#device-detail-ev-boost-status');
-export const deviceDetailDeadlineObjectiveMount = document.querySelector(
-  '#device-detail-deadline-objective',
-) as HTMLElement | null;
 export const deviceDetailSteppedAddStep = document.querySelector(
   '#device-detail-stepped-add-step',
 ) as MdButtonElement;
