@@ -24,8 +24,9 @@ const formatKw = (value: number): string => {
 };
 
 // `over_cap` is the only genuine exceedance (red). Pacing at the dynamic safe
-// pace under the physical ceiling is correct operation → calmer `at-pace`
-// (amber) tone, kept distinct from the price chart's expensive-price red.
+// pace under the physical ceiling is correct operation → `at-pace` renders
+// green (PELS is in control), distinct from the amber `near`/warn drift state
+// and the red exceedance.
 const TONE_BY_LIMIT_STATE: Record<HeadroomWidgetLimitState, BarTone> = {
   under: 'neutral',
   near: 'warn',
