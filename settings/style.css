@@ -2419,10 +2419,19 @@ md-filled-button.is-busy {
   padding-top: calc(var(--spacing-4) + var(--spacing-1));
 }
 
-/* Hero section eyebrow. The element also carries `.eyebrow` so it shares
-   font-size, weight, letter-spacing, and text-transform with every other page
-   header. This rule only sets the colour token used inside the hero card. */
+/* Hero section label. Historically this carried the all-caps `.eyebrow`
+   marketing overline above every hero heading. The M3 alignment pass (TODO #5)
+   drops that idiom in favour of Homey-native single-weight sentence-case
+   section labels so the display heading leads. The element keeps the `.eyebrow`
+   class in markup (a11y `aria-labelledby` targets + the hero-rebind contract
+   depend on it), but this rule overrides the eyebrow's uppercase transform and
+   letter-spacing so it renders as a quiet, sentence-case label. */
 .plan-hero__section-label {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
   color: var(--pels-text-section-label-color);
 }
 
@@ -2449,6 +2458,43 @@ md-filled-button.is-busy {
   font-weight: var(--pels-text-display-font-weight);
   line-height: var(--pels-text-display-font-line-height);
   letter-spacing: 0;
+  /* Tabular numerals so metric headlines don't reflow/jitter as digits change
+     between render cycles (e.g. "0.3" → "0.4" → "12.0"). */
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numeric-first metric headline: the value leads as the dominant element, the
+   unit/qualifier trails smaller and quieter beneath it. Used by the Overview
+   "Power now" + "Energy used this hour" heroes. */
+.plan-hero__metric {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1);
+}
+
+.plan-hero__metric-value {
+  font-size: var(--pels-text-display-font-size);
+  font-weight: var(--pels-text-display-font-weight);
+  line-height: var(--pels-text-display-font-line-height);
+}
+
+.plan-hero__metric-qualifier {
+  font-size: var(--pels-text-supporting-font-size);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--pels-text-supporting-font-line-height);
+  color: var(--pels-text-supporting-color);
+}
+
+/* Scale the hero display type down on the narrowest viewports (≤360px, the
+   320px floor included) so long display headings ("Diagnostics & maintenance",
+   "Configure PELS") and metric values never overflow the hero card. */
+@media (max-width: 360px) {
+  .plan-hero__headline,
+  .plan-hero__metric-value {
+    font-size: var(--font-size-headline-md);
+  }
 }
 
 .plan-hero__subline {
@@ -6788,16 +6834,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   font-variant-numeric: tabular-nums;
 }
 
-.deadline-list-card__when-row--accent dd {
-  color: var(--accent);
+/* Healthy / pending / queued / satisfied: the "Ready by" answer stays NEUTRAL
+ * (primary text, no colour) and leans on weight alone for emphasis. Colour on
+ * this line is reserved to signal a problem (see `--warn` / `--alert` below),
+ * so the brand green isn't overloaded onto a passive timestamp the user can't
+ * act on — it already carries nav-selection and primary actions. */
+.deadline-list-card__when-row--neutral dd {
+  color: var(--text);
   font-weight: var(--font-weight-semibold);
 }
 
-/* On at-risk / cannot-meet cards the "Ready by" line must mirror the status
- * chip tone so the deadline row doesn't paint success-green next to a red or
- * amber pill. `--warn` matches the chip's warning token; `--alert` matches
- * the critical token. Resolved producer-side via `resolveSmartTaskListReadyByTone`
- * so the view dispatches on a stable slug. */
+/* On at-risk / cannot-meet cards the "Ready by" line carries a PROBLEM tone so
+ * the deadline row signals trouble without relying on the chip alone.
+ * `--warn` matches the chip's warning token; `--alert` matches the critical
+ * token. Resolved producer-side via `resolveSmartTaskListReadyByTone` so the
+ * view dispatches on a stable slug. */
 .deadline-list-card__when-row--warn dd {
   color: var(--pels-status-on-warning);
   font-weight: var(--font-weight-semibold);

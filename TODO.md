@@ -375,6 +375,18 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
+- [ ] **Smart-tasks surface — reserve the brand green to one meaning.** PR #1347
+      removed the accent green from the healthy "Ready by" timestamp (it now reads
+      neutral). The brand green still does three jobs on the same screen:
+      nav-tab selection, the hero card's accent border, and the "Succeeded"
+      past-task status chip. Selection, hero-emphasis, and success-status are
+      distinct axes; sharing one hue keeps a residual overload. Decide a single
+      reservation (e.g. tonal selected-container for nav per the existing
+      segmented pattern, a non-green hero treatment, or a distinct success token)
+      so green carries one role surface-wide. User-visible outcome: the green on
+      the smart-tasks screen stops reading as "several unrelated things are
+      highlighted." Source: PR #1347 m3-critic, 2026-05-30.
+
 - [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
       promoted cost to the headline and demoted the energy estimate
       ("Energy: 3.6–4.0 kWh") to a muted secondary line under the when-window
