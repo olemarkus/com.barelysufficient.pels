@@ -385,7 +385,7 @@ export const PlanGenericCard = ({
 
       {!reportedLoadConflict && powerReadout && (
         <div class="plan-card__metric plan-card__metric--power" data-variant={powerReadout.variant}>
-          <span class="plan-card__metric-label">{powerReadout.text}</span>
+          <span class="plan-card__metric-label metric-label">{powerReadout.text}</span>
         </div>
       )}
 
