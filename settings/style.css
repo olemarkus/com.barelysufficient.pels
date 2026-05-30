@@ -1024,9 +1024,7 @@ md-primary-tab.tab[active]:hover {
   gap: 6px;
 }
 
-.field__label {
-  font-weight: var(--font-weight-semibold);
-}
+/* `.field__label` composes `.pels-text-settings-label` in markup. */
 
 .field__hint {
   margin: 0;
@@ -7458,8 +7456,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #price-aware-devices-panel,
   #device-detail-panel
 ) .field__label {
-  color: var(--pels-text-settings-label-color);
-  font-weight: var(--pels-text-settings-label-font-weight);
+  /* Colour/weight now come from `.pels-text-settings-label` (markup); this
+     panel context only tightens the line-height. */
   line-height: var(--font-line-height-tight);
 }
 
