@@ -696,7 +696,7 @@ describe('Settings UI', () => {
       // uses, and the label now binds to `--pels-text-primary` (the on-surface
       // text role) rather than the dark-on-green inverse value, so it reads
       // against the tonal tint in whichever palette is active.
-      expect(activeTabTheme.container).toBe('rgba(34, 197, 94, 0.28)');
+      expect(activeTabTheme.container).toBe('rgba(22, 163, 74, 0.28)');
       // This Playwright page runs the DESKTOP palette (no touch emulation, so
       // the `(hover: hover) and (pointer: fine)` gate applies its light theme),
       // where `--pels-text-primary` resolves to Homey mono-90 `#181818`. On the
@@ -707,10 +707,10 @@ describe('Settings UI', () => {
       // `getPropertyValue` returns the COMPUTED custom-property value, so the
       // browser resolves the nested var() chains: the container token resolves
       // its inner `var(--color-base-accent-default-rgb)` to the literal channels
-      // (the original test relied on the same resolution to read `#22c55e`),
+      // (the original test relied on the same resolution to read `#16a34a`),
       // and the text token resolves its `var(--pels-text-primary)` chain to the
       // active palette's primary colour (desktop `#181818`).
-      expect(activeTabTheme.expectedContainer).toBe('rgba(34, 197, 94, 0.28)');
+      expect(activeTabTheme.expectedContainer).toBe('rgba(22, 163, 74, 0.28)');
       expect(activeTabTheme.expectedActiveText).toBe('#181818');
     });
 
