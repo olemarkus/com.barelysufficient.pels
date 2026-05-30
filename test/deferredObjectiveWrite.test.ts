@@ -2,18 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   addBudgetExemptionRescueForDevice,
   clearObjectiveForDevice,
-  mutateDeferredObjectiveSettings,
   resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
-  type DeferredObjectiveSettingsMutationDeps,
 } from '../lib/plan/deferredObjectives/objectiveWrite';
+import {
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
+  readObjectiveForDevice,
+  type ObjectiveSettingsStore,
+} from '../lib/plan/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveActivePlanRecorder } from '../lib/plan/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
-import type {
-  DeferredObjectiveSettingsEntry,
-  DeferredObjectiveSettingsV1,
-} from '../lib/plan/deferredObjectives/settings';
+import type { DeferredObjectiveSettingsEntry } from '../lib/plan/deferredObjectives/settings';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
 const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
@@ -38,179 +39,34 @@ const rescueTempEntry: DeferredObjectiveSettingsEntry = {
   rescue: { exemptFromBudget: 'always' },
 };
 
-const emptySettings = (): DeferredObjectiveSettingsV1 => ({ version: 1, objectivesByDeviceId: {} });
+const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
 
-const settingsWith = (
-  entries: Record<string, DeferredObjectiveSettingsEntry>,
-): DeferredObjectiveSettingsV1 => ({ version: 1, objectivesByDeviceId: entries });
-
-// ─── Hardened mutation primitive ─────────────────────────────────────────────
-
-describe('mutateDeferredObjectiveSettings', () => {
-  const buildDeps = (
-    read: () => DeferredObjectiveSettingsV1,
-    knownLive: string[],
-  ): { deps: DeferredObjectiveSettingsMutationDeps; written: DeferredObjectiveSettingsV1[] } => {
-    const written: DeferredObjectiveSettingsV1[] = [];
-    return {
-      written,
-      deps: {
-        read,
-        write: (next) => { written.push(next); },
-        knownLiveDeviceIds: () => knownLive,
-      },
-    };
+// In-memory store standing in for `homey.settings` (structurally an
+// ObjectiveSettingsStore). Per-key set/unset keep the live key list consistent.
+const buildStore = (
+  seed: Record<string, DeferredObjectiveSettingsEntry> = {},
+): ObjectiveSettingsStore & { raw: Map<string, unknown> } => {
+  const raw = new Map<string, unknown>();
+  // A real PELS store always carries non-objective settings keys, so getKeys() is
+  // never empty in production (the trustworthy-absence guard relies on this — an
+  // empty key list signals a transient store-wide flake, not a fresh create).
+  raw.set('capacity_limit_kw', 5);
+  for (const [deviceId, entry] of Object.entries(seed)) raw.set(keyFor(deviceId), entry);
+  return {
+    raw,
+    get: (key) => raw.get(key),
+    set: (key, value) => { raw.set(key, value); },
+    unset: (key) => { raw.delete(key); },
+    getKeys: () => [...raw.keys()],
   };
+};
 
-  it('persists a clean upsert that drops no other device', () => {
-    const { deps, written } = buildDeps(() => settingsWith({ 'ev-1': evEntry }), ['ev-1']);
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(true);
-    expect(Object.keys(written[0]!.objectivesByDeviceId).sort()).toEqual(['ev-1', 'ev-2']);
-  });
+// ─── Device-scoped operations (per-device-key) ───────────────────────────────
 
-  it('REFUSES a write that would drop another device the read still held', () => {
-    // A buggy mutator that returns only the touched device, dropping ev-1.
-    const { deps, written } = buildDeps(() => settingsWith({ 'ev-1': evEntry }), ['ev-1']);
-    const persisted = mutateDeferredObjectiveSettings(deps, () => ({
-      next: settingsWith({ 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(false);
-    expect(written).toHaveLength(0);
-  });
-
-  it('REFUSES a clobber from a transient-EMPTY read by reconciling against the recorder', () => {
-    // The settings read came back empty (a flaky SDK cycle), but the recorder
-    // still believes ev-1 is live. A naive upsert of ev-2 would persist a map
-    // holding only ev-2, wiping ev-1. The primitive must refuse.
-    const { deps, written } = buildDeps(() => emptySettings(), ['ev-1']);
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(false);
-    expect(written).toHaveLength(0);
-  });
-
-  it('persists when the empty read is reconciled and the recorder is also empty', () => {
-    const { deps, written } = buildDeps(() => emptySettings(), []);
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(true);
-    expect(Object.keys(written[0]!.objectivesByDeviceId)).toEqual(['ev-2']);
-  });
-
-  it('allows clearing the touched device even though it disappears from the map', () => {
-    const { deps, written } = buildDeps(() => settingsWith({ 'ev-1': evEntry }), ['ev-1']);
-    const persisted = mutateDeferredObjectiveSettings(deps, () => ({
-      next: emptySettings(),
-      touchedDeviceId: 'ev-1',
-    }));
-    expect(persisted).toBe(true);
-    expect(written[0]!.objectivesByDeviceId).toEqual({});
-  });
-
-  // ── Cold-start double-empty guard (FIX 1) ──────────────────────────────────
-  // The dangerous window: a restart whose active-plans boot read AND an early
-  // mutation's objectives read BOTH transiently return empty. Both guard arms
-  // (`dropsFromRead`, `dropsFromRecorder`) are then blind, so the recorder
-  // exposes `liveSetAuthoritative() === false` and the primitive refuses ANY
-  // write that would persist that empty/reduced map — not just entry-adding
-  // creates, but ALSO clear/disable/no-op writes whose `next` is empty because
-  // the touched device was absent from the bad read (P1-a). Persisting any of
-  // them would clobber siblings that exist on disk but the flaky read missed.
-
-  it('REFUSES an entry-adding write when the recorder live set is UNCONFIRMED and the read is empty', () => {
-    const { deps, written } = buildDeps(() => emptySettings(), []);
-    deps.liveSetAuthoritative = () => false;
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(false);
-    expect(written).toHaveLength(0);
-  });
-
-  it('REFUSES a clear/no-op write (next === current empty) while UNCONFIRMED and read empty (P1-a)', () => {
-    // A clear/disable whose touched device is ABSENT from the bad read returns
-    // `next: current` (empty). Persisting that empty map clobbers any sibling
-    // that the flaky read missed but is genuinely on disk. The old guard let
-    // this through because it added no entries; the categorical guard refuses.
-    const { deps, written } = buildDeps(() => emptySettings(), []);
-    deps.liveSetAuthoritative = () => false;
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: current, // empty — would clobber an on-disk sibling the read missed
-      touchedDeviceId: 'ev-1',
-    }));
-    expect(persisted).toBe(false);
-    expect(written).toHaveLength(0);
-  });
-
-  it('REFUSES a disable-style write that reduces an empty read while UNCONFIRMED (P1-a)', () => {
-    // Even a "flip enabled flag" mutator that returns an empty map (touched
-    // device absent from the bad read) must be refused in the cold-start window.
-    const { deps, written } = buildDeps(() => emptySettings(), []);
-    deps.liveSetAuthoritative = () => false;
-    const persisted = mutateDeferredObjectiveSettings(deps, () => ({
-      next: emptySettings(),
-      touchedDeviceId: 'ev-1',
-    }));
-    expect(persisted).toBe(false);
-    expect(written).toHaveLength(0);
-  });
-
-  it('ALLOWS the write once the recorder live set is authoritative again (self-heal)', () => {
-    const { deps, written } = buildDeps(() => emptySettings(), []);
-    deps.liveSetAuthoritative = () => true;
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(true);
-    expect(Object.keys(written[0]!.objectivesByDeviceId)).toEqual(['ev-2']);
-  });
-
-  it('ALLOWS a clear once the recorder live set is authoritative (genuinely-empty steady state)', () => {
-    // Post-confirmation, a legitimate clear that empties the map must still work
-    // — the cold-start window does not apply to steady-state writes.
-    const { deps, written } = buildDeps(() => settingsWith({ 'ev-1': evEntry }), ['ev-1']);
-    deps.liveSetAuthoritative = () => true;
-    const persisted = mutateDeferredObjectiveSettings(deps, () => ({
-      next: emptySettings(),
-      touchedDeviceId: 'ev-1',
-    }));
-    expect(persisted).toBe(true);
-    expect(written[0]!.objectivesByDeviceId).toEqual({});
-  });
-
-  it('ALLOWS the write when unconfirmed but the read still HELD entries (read arm is trustworthy)', () => {
-    // If the objectives read was NOT empty, the read arm already protects
-    // siblings; an unconfirmed recorder must not block a legitimate upsert.
-    const { deps, written } = buildDeps(() => settingsWith({ 'ev-1': evEntry }), []);
-    deps.liveSetAuthoritative = () => false;
-    const persisted = mutateDeferredObjectiveSettings(deps, (current) => ({
-      next: settingsWith({ ...current.objectivesByDeviceId, 'ev-2': evEntry }),
-      touchedDeviceId: 'ev-2',
-    }));
-    expect(persisted).toBe(true);
-    expect(Object.keys(written[0]!.objectivesByDeviceId).sort()).toEqual(['ev-1', 'ev-2']);
-  });
-});
-
-// ─── Device-scoped operations ────────────────────────────────────────────────
-
-describe('device-scoped objective ops', () => {
+describe('device-scoped objective ops (per-device-key)', () => {
   const buildDeviceDeps = (
-    initial: DeferredObjectiveSettingsV1,
-    knownLive: string[] = Object.keys(initial.objectivesByDeviceId),
+    store: ObjectiveSettingsStore,
   ) => {
-    let stored = initial;
     const activePlanRecorder = {
       markPending: vi.fn(),
       clearForDevice: vi.fn(),
@@ -223,30 +79,20 @@ describe('device-scoped objective ops', () => {
     } as unknown as DeferredObjectivePlanHistoryRecorder;
     const rebuildPlan = vi.fn();
     const deps: DeferredObjectiveDeviceWriteDeps = {
-      read: () => stored,
-      write: (next) => { stored = next; },
-      knownLiveDeviceIds: () => knownLive,
+      store,
       activePlanRecorder,
       planHistoryRecorder,
       rebuildPlan,
       nowMs: NOW_MS,
     };
-    return {
-      deps,
-      activePlanRecorder,
-      planHistoryRecorder,
-      rebuildPlan,
-      get stored() { return stored; },
-    };
+    return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan };
   };
 
-  it('upsert reuses the read→upsert→write→notify→rebuild path for a fresh create', () => {
-    const h = buildDeviceDeps(emptySettings());
-    const persisted = upsertObjectiveForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry,
-    });
-    expect(persisted).toBe(true);
-    expect(h.stored.objectivesByDeviceId['ev-1']).toEqual(evEntry);
+  it('upsert writes the device key and runs notify→flush→rebuild for a fresh create', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.activePlanRecorder.flushIfDirty).toHaveBeenCalledOnce();
@@ -254,89 +100,157 @@ describe('device-scoped objective ops', () => {
     expect(h.rebuildPlan).toHaveBeenCalledOnce();
   });
 
+  it('PER-KEY ISOLATION: writing device A never touches device B\'s key (clobber-immunity proof)', () => {
+    const store = buildStore({ 'ev-1': evEntry });
+    const h = buildDeviceDeps(store);
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-2', deviceName: 'Garage', entry: evEntry });
+    // Both keys present; ev-1's entry is byte-for-byte untouched.
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
+    expect(readObjectiveForDevice(store, 'ev-2')).toEqual(evEntry);
+    expect(store.getKeys().filter((k) => k.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)).sort())
+      .toEqual([keyFor('ev-1'), keyFor('ev-2')]);
+  });
+
+  it('clear unsets ONLY the target device\'s key, leaving siblings intact', () => {
+    const store = buildStore({ 'ev-1': evEntry, 'ev-2': { ...evEntry, targetPercent: 50 } });
+    const h = buildDeviceDeps(store);
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(readObjectiveForDevice(store, 'ev-1')).toBeUndefined();
+    // Sibling key survives the clear.
+    expect(readObjectiveForDevice(store, 'ev-2')).toEqual({ ...evEntry, targetPercent: 50 });
+    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned');
+    expect(h.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('ev-1');
+    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+  });
+
+  it('clear is a no-op (no rebuild) when the device has no key at all', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(h.activePlanRecorder.clearForDevice).not.toHaveBeenCalled();
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('clear STILL unsets the key when its value reads as undefined (flaky read must not no-op the clear)', () => {
+    const store = buildStore();
+    store.raw.set(keyFor('ev-1'), undefined); // key present in getKeys, value reads undefined
+    const h = buildDeviceDeps(store);
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(store.raw.has(keyFor('ev-1'))).toBe(false); // genuinely cleared
+    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+  });
+
+  it('clear REFUSES on a store-wide empty getKeys() flake (migration unconfirmable → retry, no wrong-place unset)', () => {
+    // On an empty getKeys() read the migration can't be confirmed complete, so the
+    // device's objective could still live only in an un-migrated blob. Acting (unset
+    // of the per-key) would be the wrong place AND a later migration could resurrect
+    // it. The write refuses instead; the per-key is left intact and the user retries.
+    const store = buildStore({ 'ev-1': evEntry });
+    const flaky = { ...store, getKeys: () => [] }; // store-wide getKeys flake
+    const h = buildDeviceDeps(flaky);
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(store.raw.has(keyFor('ev-1'))).toBe(true); // NOT unset — refused
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('upsert REFUSES (no write) when the key exists but its value reads as undefined — never clobber on a flaky read', () => {
+    const store = buildStore();
+    store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
+    const h = buildDeviceDeps(store);
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(store.raw.get(keyFor('ev-1'))).toBeUndefined(); // NOT overwritten
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('rescue REFUSES (no overwrite) when the key exists but its value reads as undefined', () => {
+    const store = buildStore();
+    store.raw.set(keyFor('heater-1'), undefined); // flaky read of an existing objective
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    // The fresh rescue was NOT written over the (flaky-read) existing objective.
+    expect(store.raw.get(keyFor('heater-1'))).toBeUndefined();
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('rescue REFUSES on a store-wide empty getKeys() flake, even when the entry exists', () => {
+    // The dangerous flake the per-key-presence check alone missed: getKeys() AND
+    // the value read both transiently return empty, so the absence looks "real".
+    // The trustworthy-absence guard treats an empty key list as unreadable and
+    // refuses, so the user's existing objective is not overwritten by a fresh rescue.
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: DEADLINE_MS,
+    };
+    const store = buildStore({ 'heater-1': existing });
+    const flaky = { ...store, getKeys: () => [], get: () => undefined };
+    const h = buildDeviceDeps(flaky);
+    addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(store.raw.get(keyFor('heater-1'))).toEqual(existing); // untouched
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('PRE-MIGRATION write completes the migration first, MERGING the legacy blob entry (no fork/loss)', () => {
+    // The device's objective exists ONLY in the un-migrated legacy blob (marker
+    // unset, no per-key). A rescue/upsert that trusted per-key absence here would
+    // fork a fresh per-key the absent-only migration then skips, losing the user's
+    // original target/deadline. The write must migrate first, then merge.
+    const store = buildStore(); // sentinel key, no per-keys, marker unset
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: DEADLINE_MS,
+    };
+    store.raw.set(DEFERRED_OBJECTIVES_SETTINGS, { version: 1, objectivesByDeviceId: { 'heater-1': existing } });
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    // Migrated from the blob, then the exemption merged in — original target/deadline kept.
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({ ...existing, rescue: { exemptFromBudget: 'always' } });
+    expect(store.raw.get(DEFERRED_OBJECTIVES_SETTINGS)).toBeUndefined(); // blob consumed by the migration
+  });
+
   it('upsert finalizes the prior run as replaced when overwriting an active objective', () => {
-    const h = buildDeviceDeps(settingsWith({ 'ev-1': { ...evEntry, targetPercent: 50 } }));
+    const store = buildStore({ 'ev-1': { ...evEntry, targetPercent: 50 } });
+    const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
     expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'replaced');
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
   });
 
-  it('upsert PRESERVES a standing rescue permission on re-create (Codex P2)', () => {
-    const h = buildDeviceDeps(settingsWith({
+  it('upsert PRESERVES a standing rescue permission on re-create (default preserve policy)', () => {
+    const store = buildStore({
       'ev-1': { ...evEntry, targetPercent: 50, rescue: { exemptFromBudget: 'always' } },
-    }));
-    // Widget-style re-create: a bare goal/deadline entry with no rescue field.
-    upsertObjectiveForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry,
     });
-    expect(h.stored.objectivesByDeviceId['ev-1']).toEqual({
+    const h = buildDeviceDeps(store);
+    // Widget-style re-create: a bare goal/deadline entry with no rescue field.
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual({
       ...evEntry,
       rescue: { exemptFromBudget: 'always' },
     });
   });
 
   it('upsert with rescue:"replace" writes the entry rescue verbatim (clearing it)', () => {
-    const h = buildDeviceDeps(settingsWith({
-      'ev-1': { ...evEntry, rescue: { exemptFromBudget: 'always' } },
-    }));
-    // Authoritative rescue write that clears the permission (rescue omitted).
+    const store = buildStore({ 'ev-1': { ...evEntry, rescue: { exemptFromBudget: 'always' } } });
+    const h = buildDeviceDeps(store);
     upsertObjectiveForDevice(h.deps, {
       deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry, rescue: 'replace',
     });
-    expect(h.stored.objectivesByDeviceId['ev-1']).toEqual(evEntry);
-    expect(h.stored.objectivesByDeviceId['ev-1']!.rescue).toBeUndefined();
-  });
-
-  it('upsert REFUSES to clobber a sibling task on a transient-empty read (P1 data-loss guard)', () => {
-    // Read comes back empty, but the recorder still knows about ev-1.
-    let stored: DeferredObjectiveSettingsV1 = emptySettings();
-    const activePlanRecorder = {
-      markPending: vi.fn(), clearForDevice: vi.fn(), flushIfDirty: vi.fn(),
-    } as unknown as DeferredObjectiveActivePlanRecorder;
-    const planHistoryRecorder = {
-      finalizeForUserChange: vi.fn(), finalizeElapsedDeadline: vi.fn(), flushIfDirty: vi.fn(),
-    } as unknown as DeferredObjectivePlanHistoryRecorder;
-    const deps: DeferredObjectiveDeviceWriteDeps = {
-      read: () => stored,
-      write: (next) => { stored = next; },
-      knownLiveDeviceIds: () => ['ev-1'],
-      activePlanRecorder,
-      planHistoryRecorder,
-      rebuildPlan: vi.fn(),
-      nowMs: NOW_MS,
-    };
-    const rebuildPlan = deps.rebuildPlan as ReturnType<typeof vi.fn>;
-    const persisted = upsertObjectiveForDevice(deps, {
-      deviceId: 'ev-2', deviceName: 'Other', entry: evEntry,
-    });
-    // Write refused — ev-1's task is NOT wiped, and no phantom hero/rebuild is
-    // seeded for the objective that never reached settings.
-    expect(persisted).toBe(false);
-    expect(stored.objectivesByDeviceId).toEqual({});
-    expect(activePlanRecorder.markPending).not.toHaveBeenCalled();
-    expect(rebuildPlan).not.toHaveBeenCalled();
-  });
-
-  it('clear removes the entry, finalizes the prior run as abandoned, and drops the active plan', () => {
-    const h = buildDeviceDeps(settingsWith({ 'ev-1': evEntry }));
-    const persisted = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
-    expect(persisted).toBe(true);
-    expect(h.stored.objectivesByDeviceId).toEqual({});
-    expect(h.planHistoryRecorder.finalizeForUserChange).toHaveBeenCalledWith('ev-1', NOW_MS, 'abandoned');
-    expect(h.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('ev-1');
-    expect(h.rebuildPlan).toHaveBeenCalledOnce();
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual(evEntry);
+    expect(readObjectiveForDevice(store, 'ev-1')!.rescue).toBeUndefined();
   });
 
   // ── MERGE-not-replace rescue (the starvation-rescue widget's lane) ──────────
 
   it('rescue CREATES the objective when the device has none', () => {
-    const h = buildDeviceDeps(emptySettings());
-    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
     });
-    expect(persisted).toBe(true);
-    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual(rescueTempEntry);
-    // A fresh objective seeds a pending active plan; nothing to finalize.
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual(rescueTempEntry);
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.rebuildPlan).toHaveBeenCalledOnce();
@@ -350,19 +264,15 @@ describe('device-scoped objective ops', () => {
       targetTemperatureC: 70, // the user's own target — must be kept
       deadlineAtMs: DEADLINE_MS, // the user's own (later) deadline — must be kept
     };
-    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
-    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+    const store = buildStore({ 'heater-1': existing });
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
     });
-    expect(persisted).toBe(true);
-    // Target + deadline preserved; ONLY the budget exemption added. The rescue
-    // entry's 65°/+3h target/deadline are NOT applied.
-    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual({
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({
       ...existing,
       rescue: { exemptFromBudget: 'always' },
     });
-    // Same target+deadline+enforcement ⇒ objectivesMatch ⇒ not a replace; the run
-    // is not finalized/re-seeded (granting an exemption isn't a new run).
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.activePlanRecorder.clearForDevice).not.toHaveBeenCalled();
   });
@@ -372,18 +282,16 @@ describe('device-scoped objective ops', () => {
       ...evEntry,
       rescue: { limitLowerPriorityDevices: 'at_risk' },
     };
-    const h = buildDeviceDeps(settingsWith({ 'ev-1': existing }));
-    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+    const store = buildStore({ 'ev-1': existing });
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
     });
-    expect(persisted).toBe(true);
-    // The other rescue permission survives; the budget exemption is added beside it.
-    expect(h.stored.objectivesByDeviceId['ev-1']!.rescue).toEqual({
+    expect(readObjectiveForDevice(store, 'ev-1')!.rescue).toEqual({
       limitLowerPriorityDevices: 'at_risk',
       exemptFromBudget: 'always',
     });
-    // EV target/deadline untouched (the rescue entry's temperature shape is ignored).
-    expect(h.stored.objectivesByDeviceId['ev-1']).toMatchObject({
+    expect(readObjectiveForDevice(store, 'ev-1')).toMatchObject({
       kind: 'ev_soc', targetPercent: 80, deadlineAtMs: DEADLINE_MS,
     });
   });
@@ -396,13 +304,12 @@ describe('device-scoped objective ops', () => {
       targetTemperatureC: 70,
       deadlineAtMs: DEADLINE_MS,
     };
-    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
-    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+    const store = buildStore({ 'heater-1': existing });
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
     });
-    expect(persisted).toBe(true);
-    // Enabled + exemption added; target/deadline preserved.
-    expect(h.stored.objectivesByDeviceId['heater-1']).toEqual({
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({
       ...existing,
       enabled: true,
       rescue: { exemptFromBudget: 'always' },
@@ -416,12 +323,12 @@ describe('device-scoped objective ops', () => {
       ...evEntry,
       rescue: { exemptFromBudget: 'always' },
     };
-    const h = buildDeviceDeps(settingsWith({ 'ev-1': existing }));
-    const persisted = addBudgetExemptionRescueForDevice(h.deps, {
+    const store = buildStore({ 'ev-1': existing });
+    const h = buildDeviceDeps(store);
+    addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
     });
-    expect(persisted).toBe(true);
-    expect(h.stored.objectivesByDeviceId['ev-1']).toEqual(existing);
+    expect(readObjectiveForDevice(store, 'ev-1')).toEqual(existing);
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
   });
 
@@ -433,41 +340,13 @@ describe('device-scoped objective ops', () => {
       targetTemperatureC: 70,
       deadlineAtMs: DEADLINE_MS,
     };
-    const h = buildDeviceDeps(settingsWith({ 'heater-1': existing }));
+    const store = buildStore({ 'heater-1': existing });
+    const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
     });
-    // What was persisted must equal what `resolveBudgetExemptionRescueEntry` (the
-    // SAME function the preview projects) computes — they cannot diverge.
-    expect(h.stored.objectivesByDeviceId['heater-1'])
+    expect(readObjectiveForDevice(store, 'heater-1'))
       .toEqual(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry));
-  });
-
-  it('rescue REFUSES to clobber a sibling on a transient-empty read', () => {
-    let stored: DeferredObjectiveSettingsV1 = emptySettings();
-    const activePlanRecorder = {
-      markPending: vi.fn(), clearForDevice: vi.fn(), flushIfDirty: vi.fn(),
-    } as unknown as DeferredObjectiveActivePlanRecorder;
-    const planHistoryRecorder = {
-      finalizeForUserChange: vi.fn(), finalizeElapsedDeadline: vi.fn(), flushIfDirty: vi.fn(),
-    } as unknown as DeferredObjectivePlanHistoryRecorder;
-    const rebuildPlan = vi.fn();
-    const deps: DeferredObjectiveDeviceWriteDeps = {
-      read: () => stored,
-      write: (next) => { stored = next; },
-      knownLiveDeviceIds: () => ['other-1'],
-      activePlanRecorder,
-      planHistoryRecorder,
-      rebuildPlan,
-      nowMs: NOW_MS,
-    };
-    const persisted = addBudgetExemptionRescueForDevice(deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
-    });
-    expect(persisted).toBe(false);
-    expect(stored.objectivesByDeviceId).toEqual({});
-    expect(activePlanRecorder.markPending).not.toHaveBeenCalled();
-    expect(rebuildPlan).not.toHaveBeenCalled();
   });
 });
 
@@ -490,7 +369,6 @@ describe('resolveBudgetExemptionRescueEntry', () => {
       targetTemperatureC: 70, // user's own target — kept, NOT the rescue's 65°
       deadlineAtMs: DEADLINE_MS, // user's own deadline — kept, NOT the rescue's +3h
     };
-    // The fresh rescue entry's target/deadline/rescue must NOT leak through.
     expect(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry)).toEqual({
       ...existing,
       enabled: true,
@@ -505,7 +383,6 @@ describe('resolveBudgetExemptionRescueEntry', () => {
     };
     const resolved = resolveBudgetExemptionRescueEntry(existing, rescueTempEntry);
     expect(resolved.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' });
-    // EV target/deadline untouched (the temperature-shaped rescue entry is ignored).
     expect(resolved).toMatchObject({ kind: 'ev_soc', targetPercent: 80, deadlineAtMs: DEADLINE_MS });
   });
 });

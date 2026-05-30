@@ -1018,6 +1018,13 @@
     'GET /ui_prices': () => buildPricesPayload(),
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
     'GET /ui_deferred_objective_history': () => resolveDeferredObjectiveHistoryPayload(),
+    // Objectives moved to per-device keys; the UI's loadDeferredObjectiveSettings
+    // now reads this endpoint (the legacy blob is consumed by the migration). The
+    // stub doesn't model per-key storage, so serve the same assembled map the
+    // bootstrap exposes.
+    'GET /ui_deferred_objective_settings': () => (
+      settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
+    ),
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({

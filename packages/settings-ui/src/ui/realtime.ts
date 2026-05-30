@@ -13,6 +13,8 @@ import {
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
   BUDGET_EXEMPT_DEVICES,
+  DEFERRED_OBJECTIVES_SETTINGS,
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
   DEVICE_DRIVER_OVERRIDES,
@@ -67,6 +69,7 @@ import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
+import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
@@ -278,8 +281,30 @@ const refreshPowerSettings = (key: string) => {
   refreshStaleDataStatus('settings.set');
 };
 
+// A per-device objective change (`deferred_objective.<id>`) — or a legacy-alias
+// change — feeds the assembled `deferred_objectives` alias the UI reads (primed by
+// the bootstrap). The exact changed key is invalidated by the caller, but the alias
+// must be dropped + reloaded too, or the deadline list + PlanDeviceCards chips keep
+// showing the pre-change state for the rest of the WebView session. Fires for BOTH
+// `settings.set` (create/change) and `settings.unset` (clear).
+const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
+  if (key !== DEFERRED_OBJECTIVES_SETTINGS && !key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
+  invalidateSettingCache(DEFERRED_OBJECTIVES_SETTINGS);
+  runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
+  runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
+};
+
+const createSettingsUnsetHandler = () => (key: string) => {
+  // Clears `unset` the per-device key; reload objectives so a cleared task drops out
+  // of an already-open WebView (Homey may deliver clears as an unset event).
+  invalidateSettingCache(key);
+  reloadObjectivesIfObjectiveKey(key, 'settings.unset');
+};
+
 const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
+
+  reloadObjectivesIfObjectiveKey(key, 'settings.set');
 
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
@@ -466,6 +491,7 @@ export const initRealtimeListeners = () => {
   homey.on('devices_updated', handleDevicesUpdated);
   homey.on('power_updated', handlePowerUpdated);
   homey.on('settings.set', createSettingsSetHandler());
+  homey.on('settings.unset', createSettingsUnsetHandler());
 
   document.addEventListener('request-load-devices', () => {
     if (!state.devicesLoaded && !state.devicesLoading) {

@@ -6,19 +6,20 @@ import {
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
-  mutateDeferredObjectiveSettings,
   normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
-  normalizeDeferredObjectiveSettings,
+  readAllObjectives,
+  readObjectiveForDevice,
+  writeObjectiveForDevice,
   type DeferredObjectiveBackfillConfig,
   type DeferredObjectiveDeviceWriteDeps,
 } from '../../plan/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../../plan/deferredObjectives/settings';
 import {
-  DEFERRED_OBJECTIVES_SETTINGS,
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
+  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   LEARNED_THERMOSTAT_DEADBAND_C,
 } from '../../utils/settingsKeys';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
@@ -221,9 +222,14 @@ function runStartupBackfill(
     writeWatermark(ctx, Date.now());
     return;
   }
-  const settings = normalizeDeferredObjectiveSettings(
-    ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
-  );
+  // Don't back-fill until the per-key migration has confirmed-completed. Until the
+  // marker is set, `readAllObjectives` may be empty/partial (a boot-time empty
+  // `getKeys()` flake that also skipped the migration), and advancing the watermark
+  // on that would PERMANENTLY skip the back-fill window for tasks that ARE persisted.
+  // Leave the watermark untouched and let a later startup (post-migration) back-fill
+  // the full window.
+  if (!ctx.homey.settings.get(DEFERRED_OBJECTIVES_PERKEY_MIGRATED)) return;
+  const settings = readAllObjectives(ctx.homey.settings);
   const configs = Object.entries(settings.objectivesByDeviceId)
     .map(([deviceId, entry]) => toBackfillConfig(deviceId, entry))
     .filter((c): c is DeferredObjectiveBackfillConfig => c !== null);
@@ -261,12 +267,9 @@ export function createDeferredObjectiveActivePlanRecorder(
 ): DeferredObjectiveActivePlanRecorder {
   return new DeferredObjectiveActivePlanRecorder({
     // Return `null` (not an empty payload) when the raw boot read is
-    // absent/non-object so the recorder seeds zero plans. NOTE: confirmation of
-    // the live-device set is no longer derived from this read's shape — the
-    // recorder starts UNCONFIRMED on EVERY boot (absent, non-object, empty,
-    // malformed, or wrong-version all reduce to a set the boot read cannot
-    // vouch for) and only the first plan-cycle `observe()` confirms it. See
-    // `DeferredObjectiveActivePlanRecorder.isLiveSetConfirmed`.
+    // absent/non-object so the recorder seeds zero plans. A transient-empty
+    // boot read self-heals on the next plan cycle's `observe()`, which
+    // re-derives the live plans from diagnostics.
     load: () => {
       const raw: unknown = ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
       if (!raw || typeof raw !== 'object') return null;
@@ -294,15 +297,12 @@ export function requireDeferredObjectiveActivePlanRecorder(
 }
 
 /**
- * Build the shared device-scoped write deps for the hardened objective write
- * primitive. Both the create-smart-task widget path (app.ts) and the deadline
+ * Build the shared device-scoped write deps for the per-device-key objective
+ * write ops. Both the create-smart-task widget path (app.ts) and the deadline
  * Flow cards (via appInit) route their settings writes through ops built on
- * this, so there is exactly one read-modify-write of `DEFERRED_OBJECTIVES_SETTINGS`.
- *
- * `knownLiveDeviceIds` reads the in-memory active-plan recorder's snapshot — the
- * recorder's belief about which devices hold a live objective — so the primitive
- * can refuse a write that would drop those entries after a transient-empty
- * settings read.
+ * this. Each op touches only the target device's own settings key, so there is
+ * no shared-map read-modify-write to clobber a sibling — the store is
+ * `homey.settings` directly (it structurally satisfies `ObjectiveSettingsStore`).
  */
 export const buildDeferredObjectiveDeviceWriteDeps = (
   ctx: AppContext,
@@ -311,13 +311,7 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
   const activePlanRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
   const planHistoryRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
   return {
-    read: () => normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
-    write: (next) => { ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next); },
-    knownLiveDeviceIds: () => Object.keys(activePlanRecorder.getActivePlansSnapshot().plansByDeviceId),
-    // While the recorder's live set is unconfirmed (transient-empty boot read,
-    // no cycle observed yet), `knownLiveDeviceIds` may be falsely empty — tell
-    // the clobber guard so it refuses a sibling-dropping create in that window.
-    liveSetAuthoritative: () => activePlanRecorder.isLiveSetConfirmed(),
+    store: ctx.homey.settings,
     activePlanRecorder,
     planHistoryRecorder,
     rebuildPlan: () => ctx.requestFlowPlanRebuild(params.rebuildReason),
@@ -326,47 +320,14 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
 };
 
 export const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
-  // Route the read-modify-write through the SAME hardened primitive the create
-  // / clear paths use, so a partial transient read can't drop sibling
-  // objectives here. The mutator flips just this device's `enabled` flag; the
-  // primitive's clobber guard refuses the write if it would lose a sibling the
-  // read transiently lost. `touchedDeviceId` is this device, so flipping its
-  // own entry is never treated as a drop.
-  const activePlanRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-  let wasEnabled = false;
-  const persisted = mutateDeferredObjectiveSettings(
-    {
-      read: () => normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
-      write: (next) => { ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next); },
-      knownLiveDeviceIds: () => Object.keys(activePlanRecorder.getActivePlansSnapshot().plansByDeviceId),
-      liveSetAuthoritative: () => activePlanRecorder.isLiveSetConfirmed(),
-    },
-    (current) => {
-      const entry = current.objectivesByDeviceId[deviceId];
-      wasEnabled = Boolean(entry?.enabled);
-      if (!entry || !entry.enabled) {
-        // Nothing to flip — return the map unchanged so the guard treats this
-        // as a no-op write rather than a drop.
-        return { next: current, touchedDeviceId: deviceId };
-      }
-      return {
-        next: {
-          ...current,
-          objectivesByDeviceId: {
-            ...current.objectivesByDeviceId,
-            [deviceId]: { ...entry, enabled: false },
-          },
-        },
-        touchedDeviceId: deviceId,
-      };
-    },
-  );
-  // Only run the in-memory cleanup when there was an enabled objective AND the
-  // disable actually persisted. A no-op (already disabled / absent) or a
-  // refused clobber leaves the bus / tracker / active-plan state for the next
-  // clean cycle to reconcile, so in-memory state never drifts ahead of what is
-  // on disk.
-  if (!wasEnabled || !persisted) return;
+  // Per-device key: read THIS device's entry, flip its `enabled` flag, and
+  // write it back under its own key. A transient-empty read of this one key
+  // can never drop a SIBLING device's objective (each lives under its own key),
+  // so there is no clobber risk and no refusal branch.
+  const entry = readObjectiveForDevice(ctx.homey.settings, deviceId);
+  if (!entry || !entry.enabled) return;
+  writeObjectiveForDevice(ctx.homey.settings, deviceId, { ...entry, enabled: false });
+  // Run the in-memory cleanup now that the disable persisted.
   // Drop in-memory status + active plan so flow conditions like
   // `deadline_status_is` and the deadline UI agree with the persisted state
   // immediately, instead of seeing the last published snapshot until the

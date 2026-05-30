@@ -6,8 +6,6 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
-  createEmptyDeferredObjectiveSettings,
-  normalizeDeferredObjectiveSettings,
   upsertObjectiveForDevice,
   type DeferredObjectiveActivePlanRecorder,
   type DeferredObjectiveEndedBus,
@@ -20,7 +18,7 @@ import {
   type DeferredObjectiveStatusBus,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/plan/deferredObjectives';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives/diagnosticsBridge';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
@@ -53,7 +51,10 @@ const buildCard = (registry: CardRegistry, id: string) => {
 };
 
 const createMockHomey = () => {
-  const settings = new Map<string, unknown>();
+  // Seed a non-objective key so getKeys() is non-empty, as a real PELS store
+  // always is: the per-key write guard treats an empty key list as a transient
+  // store-wide flake (not a fresh create) and refuses.
+  const settings = new Map<string, unknown>([['capacity_limit_kw', 5]]);
   const actions: CardRegistry = new Map();
   const triggers: CardRegistry = new Map();
   const conditions: CardRegistry = new Map();
@@ -66,9 +67,35 @@ const createMockHomey = () => {
     settings: {
       get: (key: string) => settings.get(key),
       set: (key: string, value: unknown) => { settings.set(key, value); },
+      unset: (key: string) => { settings.delete(key); },
+      getKeys: () => [...settings.keys()],
     },
   };
   return { homey, settings, actions, triggers, conditions };
+};
+
+// Per-device-key helpers. Objectives now live under `deferred_objective.<id>`.
+const seedObjectives = (
+  settings: Map<string, unknown>,
+  byDeviceId: DeferredObjectiveSettingsV1['objectivesByDeviceId'],
+): void => {
+  for (const [deviceId, entry] of Object.entries(byDeviceId)) {
+    settings.set(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`, entry);
+  }
+};
+const readObjective = (
+  settings: Map<string, unknown>,
+  deviceId: string,
+): unknown => settings.get(`${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`);
+const readObjectivesMap = (
+  settings: Map<string, unknown>,
+): DeferredObjectiveSettingsV1['objectivesByDeviceId'] => {
+  const out: DeferredObjectiveSettingsV1['objectivesByDeviceId'] = {};
+  for (const [key, value] of settings.entries()) {
+    if (!key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) continue;
+    out[key.slice(PER_DEVICE_OBJECTIVE_KEY_PREFIX.length)] = value as never;
+  }
+  return out;
 };
 
 const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; name: string }): TargetDeviceSnapshot => ({
@@ -157,15 +184,9 @@ const buildDeps = (overrides: {
   const rebuildPlan = overrides.rebuildPlan ?? vi.fn();
   // Wire the device-scoped write ops over the mock homey settings + recorders,
   // exactly as appInit does in production — so the cards exercise the real
-  // hardened mutation primitive + notify/flush/rebuild chokepoint.
+  // per-device-key write + notify/flush/rebuild chokepoint.
   const buildWriteDeps = (rebuildReason: string) => ({
-    read: () => normalizeDeferredObjectiveSettings(mock.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
-    write: (next: DeferredObjectiveSettingsV1) => {
-      mock.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
-    },
-    knownLiveDeviceIds: () => Object.keys(
-      recorders.activePlanRecorder.getActivePlansSnapshot().plansByDeviceId,
-    ),
+    store: mock.homey.settings,
     activePlanRecorder: recorders.activePlanRecorder,
     planHistoryRecorder: recorders.planHistoryRecorder,
     rebuildPlan: () => rebuildPlan(rebuildReason),
@@ -227,8 +248,8 @@ describe('deadline objective flow cards', () => {
     const card = mock.actions.get('set_temperature_deadline')!;
     await card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' });
 
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['heater-1']).toEqual({
+    const storedMap = readObjectivesMap(mock.settings);
+    expect(storedMap['heater-1']).toEqual({
       enabled: true,
       kind: 'temperature',
       enforcement: 'soft',
@@ -285,8 +306,8 @@ describe('deadline objective flow cards', () => {
       target_percent: 80,
       ready_by: '06:30',
     });
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['ev-1']).toEqual({
+    const storedMap = readObjectivesMap(mock.settings);
+    expect(storedMap['ev-1']).toEqual({
       enabled: true,
       kind: 'ev_soc',
       enforcement: 'soft',
@@ -310,8 +331,8 @@ describe('deadline objective flow cards', () => {
       ready_by: '06:30',
       enforcement: { id: 'hard' },
     });
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['ev-1']?.enforcement).toBe('soft');
+    const storedMap = readObjectivesMap(mock.settings);
+    expect(storedMap['ev-1']?.enforcement).toBe('soft');
   });
 
   it('rejects set_ev_charge_deadline when the device is not in the snapshot', async () => {
@@ -359,16 +380,13 @@ describe('deadline objective flow cards', () => {
       shortfallKwh: null,
       shortfallText: null,
     });
-    mock.settings.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
-        'heater-1': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 55,
-          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-        },
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       },
     });
     registerDeadlineObjectiveCards(deps);
@@ -394,7 +412,7 @@ describe('deadline objective flow cards', () => {
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    mock.settings.set('deferred_objectives', initial);
+    seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('set_temperature_deadline')!.run!({
       device: 'heater-1', target_c: 60, ready_by: '08:00',
@@ -404,8 +422,8 @@ describe('deadline objective flow cards', () => {
     expect(recorders.planHistoryRecorder.finalizeForUserChange)
       .toHaveBeenCalledWith('heater-1', MOCK_NOW_MS, 'replaced');
     expect(recorders.activePlanRecorder.markPending).toHaveBeenCalledTimes(1);
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId['heater-1']).toMatchObject({
+    const storedMap = readObjectivesMap(mock.settings);
+    expect(storedMap['heater-1']).toMatchObject({
       targetTemperatureC: 60,
       deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
     });
@@ -429,14 +447,14 @@ describe('deadline objective flow cards', () => {
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    mock.settings.set('deferred_objectives', initial);
+    seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('set_temperature_deadline')!.run!({
       device: 'heater-1', target_c: 60, ready_by: '08:00',
     });
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
+    const storedMap = readObjectivesMap(mock.settings);
     // The deadline/target update must not silently drop the standing rescue permission.
-    expect(stored.objectivesByDeviceId['heater-1']).toEqual({
+    expect(storedMap['heater-1']).toEqual({
       enabled: true,
       kind: 'temperature',
       enforcement: 'soft',
@@ -463,7 +481,7 @@ describe('deadline objective flow cards', () => {
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    mock.settings.set('deferred_objectives', initial);
+    seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
     await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
     // The prior future-deadline run is finalized as abandoned and the active
@@ -473,53 +491,28 @@ describe('deadline objective flow cards', () => {
     expect(recorders.activePlanRecorder.clearForDevice).toHaveBeenCalledWith('heater-1');
   });
 
-  it('set_temperature_deadline THROWS (not silent success) when the write is refused as a clobber', async () => {
-    // Force the hardened primitive to refuse: settings read is empty but the
-    // recorder still believes a sibling (other-1) is live, so persisting a map
-    // holding only the new entry would clobber it.
+  it('set_temperature_deadline is per-device-key: leaves a sibling device\'s key untouched', async () => {
+    // Per-device-key storage: creating a task on heater-1 writes ONLY its own
+    // key; a sibling task under its own key is structurally untouchable.
     const recorders = buildMockRecorders();
-    (recorders.activePlanRecorder.getActivePlansSnapshot as ReturnType<typeof vi.fn>)
-      .mockReturnValue({ version: 1, plansByDeviceId: { 'other-1': {} } });
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
       recorders,
     });
+    const sibling = {
+      enabled: true, kind: 'ev_soc', enforcement: 'soft', targetPercent: 80,
+      deadlineAtMs: MOCK_NOW_MS + 60_000,
+    };
+    seedObjectives(mock.settings, { 'other-1': sibling as never });
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('set_temperature_deadline')!;
-    await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' }))
-      .rejects.toThrow(/try again/i);
-    // Nothing persisted, no rebuild, no recorder seed for the refused write.
-    expect(mock.settings.get('deferred_objectives')).toBeUndefined();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
-    expect(recorders.activePlanRecorder.markPending).not.toHaveBeenCalled();
-  });
-
-  it('clear_deadline THROWS and KEEPS the bus / tracker caches intact when the write is refused', async () => {
-    const recorders = buildMockRecorders();
-    (recorders.activePlanRecorder.getActivePlansSnapshot as ReturnType<typeof vi.fn>)
-      .mockReturnValue({ version: 1, plansByDeviceId: { 'other-1': {} } });
-    const bus = createDeferredObjectiveStatusBus();
-    const hoursRemainingTracker = createDeferredObjectiveHoursRemainingTracker();
-    const forgetBus = vi.spyOn(bus, 'forgetDevice');
-    const forgetTracker = vi.spyOn(hoursRemainingTracker, 'forgetDevice');
-    const { deps, mock } = buildDeps({
-      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
-      hoursRemainingTracker,
-      rebuildPlan: vi.fn(),
-      recorders,
-    });
-    // The objectives read is empty (transient), so the clear is a no-op for
-    // heater-1 but the recorder-known sibling forces a refusal.
-    registerDeadlineObjectiveCards(deps);
-    await expect(mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' }))
-      .rejects.toThrow(/try again/i);
-    // Caches must NOT be forgotten on a refusal — the objective may still be
-    // persisted (the read transiently lost it).
-    expect(forgetBus).not.toHaveBeenCalled();
-    expect(forgetTracker).not.toHaveBeenCalled();
-    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+    await card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' });
+    // The new task is written; the sibling's key is byte-for-byte intact.
+    expect(readObjective(mock.settings, 'heater-1')).toBeDefined();
+    expect(readObjective(mock.settings, 'other-1')).toEqual(sibling);
+    expect(deps.rebuildPlan).toHaveBeenCalled();
+    expect(recorders.activePlanRecorder.markPending).toHaveBeenCalled();
   });
 
   it('removes the entry on clear_deadline', async () => {
@@ -539,12 +532,12 @@ describe('deadline objective flow cards', () => {
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       rebuildPlan: vi.fn(),
     });
-    mock.settings.set('deferred_objectives', initial);
+    seedObjectives(mock.settings, initial.objectivesByDeviceId);
     registerDeadlineObjectiveCards(deps);
     const card = mock.actions.get('clear_deadline')!;
     await card.run!({ device: 'heater-1' });
-    const stored = mock.settings.get('deferred_objectives') as DeferredObjectiveSettingsV1;
-    expect(stored.objectivesByDeviceId).toEqual({});
+    const storedMap = readObjectivesMap(mock.settings);
+    expect(storedMap).toEqual({});
   });
 
   it('temperature autocomplete excludes EV chargers', async () => {
@@ -594,9 +587,7 @@ describe('deadline objective flow cards', () => {
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
-    mock.settings.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
+    seedObjectives(mock.settings, {
         'heater-1': {
           enabled: true,
           kind: 'temperature',
@@ -604,8 +595,7 @@ describe('deadline objective flow cards', () => {
           targetTemperatureC: 55,
           deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
-      },
-    });
+      });
     expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'pending_prices' })).toBe(true);
   });
@@ -659,12 +649,9 @@ describe('deadline objective flow cards', () => {
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
 
-    mock.settings.set('deferred_objectives', createEmptyDeferredObjectiveSettings());
-    expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(true);
+        expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(true);
 
-    mock.settings.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
+    seedObjectives(mock.settings, {
         'heater-1': {
           enabled: true,
           kind: 'temperature',
@@ -672,8 +659,7 @@ describe('deadline objective flow cards', () => {
           targetTemperatureC: 55,
           deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
-      },
-    });
+      });
     expect(await condition.run!({ device: 'heater-1', status: 'none' })).toBe(false);
   });
 
@@ -861,9 +847,7 @@ describe('deadline objective flow cards', () => {
       bus,
       rebuildPlan: vi.fn(),
     });
-    mock.settings.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
+    seedObjectives(mock.settings, {
         'heater-1': {
           enabled: true,
           kind: 'temperature',
@@ -871,8 +855,7 @@ describe('deadline objective flow cards', () => {
           targetTemperatureC: 55,
           deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
-      },
-    });
+      });
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_status_changed')!;
 
@@ -1189,12 +1172,9 @@ describe('deadline objective flow cards', () => {
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('has_active_deadline')!;
 
-    mock.settings.set('deferred_objectives', createEmptyDeferredObjectiveSettings());
-    expect(await condition.run!({ device: 'heater-1' })).toBe(false);
+        expect(await condition.run!({ device: 'heater-1' })).toBe(false);
 
-    mock.settings.set('deferred_objectives', {
-      version: 1,
-      objectivesByDeviceId: {
+    seedObjectives(mock.settings, {
         'heater-1': {
           enabled: true,
           kind: 'temperature',
@@ -1202,8 +1182,7 @@ describe('deadline objective flow cards', () => {
           targetTemperatureC: 55,
           deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
         },
-      },
-    });
+      });
     expect(await condition.run!({ device: 'heater-1' })).toBe(true);
   });
 

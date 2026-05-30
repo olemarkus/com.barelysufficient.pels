@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import {
-  normalizeDeferredObjectiveSettings,
+  readAllObjectives,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsV1,
 } from '../lib/plan/deferredObjectives';
@@ -34,7 +33,7 @@ const rescueCandidate = (targetTemperatureC: number): DeferredObjectivePlanPrevi
 });
 
 const readStored = (): DeferredObjectiveSettingsV1 => (
-  normalizeDeferredObjectiveSettings(mockHomeyInstance.settings.get(DEFERRED_OBJECTIVES_SETTINGS))
+  readAllObjectives(mockHomeyInstance.settings)
 );
 
 describe('createDeferredObjective (app)', () => {

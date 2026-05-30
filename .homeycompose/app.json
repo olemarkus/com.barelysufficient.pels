@@ -108,6 +108,10 @@
       "method": "GET",
       "path": "/ui_deferred_objective_history"
     },
+    "ui_deferred_objective_settings": {
+      "method": "GET",
+      "path": "/ui_deferred_objective_settings"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"

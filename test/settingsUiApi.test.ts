@@ -161,6 +161,7 @@ describe('settingsUiApi', () => {
     return {
       settings: {
         get: (key: string) => store.get(key),
+        getKeys: () => [...store.keys()],
       },
       cloud: {
         getHomeyId: vi.fn().mockResolvedValue(options.cloudHomeyId ?? 'unlisted-homey-id'),
@@ -202,6 +203,27 @@ describe('settingsUiApi', () => {
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
+  });
+
+  it('serves the assembled per-device objectives under deferred_objectives (not the legacy blob)', async () => {
+    // The runtime moved objectives to per-device keys and the migration consumes
+    // the blob, so the bootstrap must assemble the V1 map from per-device keys —
+    // otherwise the deadline views + PlanDeviceCards (which read this slot, the
+    // latter via the settings-cache `applySettingsPatch` primes) would go empty.
+    const objective = { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 21, deadlineAtMs: 9_999_999_999_999 };
+    const homey = createHomey({
+      settings: {
+        deferred_objectives: { version: 1, objectivesByDeviceId: { 'stale-blob-device': objective } }, // legacy blob — must be ignored
+        'deferred_objective.heater-1': objective, // per-device key — the source of truth
+      },
+    });
+
+    const result = await buildSettingsUiBootstrap({ homey: homey as never });
+
+    expect(result.settings.deferred_objectives).toEqual({
+      version: 1,
+      objectivesByDeviceId: { 'heater-1': objective },
+    });
   });
 
   it('returns refreshed devices from the app wrapper', async () => {

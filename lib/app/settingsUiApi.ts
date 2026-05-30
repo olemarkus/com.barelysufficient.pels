@@ -13,6 +13,9 @@ import type {
 } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
+import { readAllObjectives } from '../plan/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveSettingsV1 } from '../plan/deferredObjectives/settings';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -155,7 +158,17 @@ const buildEmptyDeviceDiagnosticsPayload = (): SettingsUiDeviceDiagnosticsRespon
 export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<SettingsUiBootstrap> => {
   const app = getApp(homey);
   return {
-    settings: pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
+    settings: {
+      ...pickSettings(homey, SETTINGS_UI_BOOTSTRAP_KEYS),
+      // Objectives now live in per-device keys, so the raw `deferred_objectives`
+      // blob `pickSettings` reads above is no longer authoritative (the boot
+      // migration consumes it). Serve the assembled V1 map under the same key:
+      // the deadline views read `bootstrap.settings.deferred_objectives`, and
+      // `applySettingsPatch` primes the settings cache that
+      // `loadDeferredObjectiveSettings`'s `getSetting` then hits — so this one
+      // override fixes both UI read paths without a separate endpoint.
+      [DEFERRED_OBJECTIVES_SETTINGS]: readAllObjectives(homey.settings),
+    },
     dailyBudget: app?.getDailyBudgetUiPayload?.() ?? null,
     deferredObjectiveActivePlans: app?.getDeferredObjectiveActivePlansUiPayload?.() ?? null,
     plan: getSettingsUiPlan({ homey }),
@@ -204,6 +217,15 @@ export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
   // history tab as empty when the recorder threw, hiding the failure.
   return app.getDeferredObjectivePlanHistoryUiPayload();
 };
+
+// Serve the current objectives assembled from per-device keys. The settings UI's
+// `loadDeferredObjectiveSettings` reads this instead of the legacy
+// `deferred_objectives` blob — the blob is consumed by the boot migration, so
+// the direct-load (bootstrap-failure fallback) path would otherwise show empty
+// Smart tasks. Mirrors the assembled value `buildSettingsUiBootstrap` injects.
+export const getSettingsUiDeferredObjectiveSettingsPayload = (
+  { homey }: ApiContext,
+): DeferredObjectiveSettingsV1 => readAllObjectives(homey.settings);
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {
   await refreshSettingsUiDevicesForApp(homey);

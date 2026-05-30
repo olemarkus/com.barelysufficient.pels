@@ -18,10 +18,11 @@ import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../dia
 import type { AppContext } from './appContext';
 import {
   clearObjectiveForDevice,
-  normalizeDeferredObjectiveSettings,
+  migrateBlobToPerKeyIfNeeded,
+  readAllObjectives,
   upsertObjectiveForDevice,
 } from '../plan/deferredObjectives';
-import { DEFERRED_OBJECTIVES_SETTINGS, LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
+import { LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
 import {
   getLearnedThermostatDeadbandC,
   normaliseLearnedThermostatDeadbandMap,
@@ -117,9 +118,14 @@ export function createPlanEngine(ctx: AppContext) {
     isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
-    getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
-      ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
-    ),
+    getDeferredObjectiveSettings: () => {
+      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
+      // migration: idempotent + marker-gated (a cheap single `get` once done), so
+      // retrying on the plan cycle makes legacy objectives visible within seconds
+      // instead of staying invisible (planner + UI) until the next app restart.
+      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
+      return readAllObjectives(ctx.homey.settings);
+    },
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
@@ -267,9 +273,14 @@ export function registerAppFlowCards(ctx: AppContext): void {
     setExpectedOverride: (deviceId, kw) => ctx.setExpectedOverride(deviceId, kw),
     storeFlowPriceData: (kind, raw) => ctx.storeFlowPriceData(kind, raw),
     rebuildPlan: (source) => ctx.requestFlowPlanRebuild(source),
-    getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
-      ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
-    ),
+    getDeferredObjectiveSettings: () => {
+      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
+      // migration: idempotent + marker-gated (a cheap single `get` once done), so
+      // retrying on the plan cycle makes legacy objectives visible within seconds
+      // instead of staying invisible (planner + UI) until the next app restart.
+      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
+      return readAllObjectives(ctx.homey.settings);
+    },
     // Both writes route through the device-scoped ops over the hardened
     // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
     // so the Flow cards and the create-smart-task widget share one

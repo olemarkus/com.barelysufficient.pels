@@ -13,6 +13,11 @@ export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
+// Per-device objective key prefix (`deferred_objective.<deviceId>`). Mirror of
+// `PER_DEVICE_OBJECTIVE_KEY_PREFIX` in lib/plan/deferredObjectives/objectiveStore.ts —
+// keep both in sync. The settings UI can't import lib, so it detects per-device
+// objective changes via this shared constant.
+export const PER_DEVICE_OBJECTIVE_KEY_PREFIX = 'deferred_objective.';
 export const DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING = 'deferred_objective_plan_history';
 export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING = 'deferred_objective_active_plans';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';

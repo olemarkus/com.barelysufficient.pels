@@ -1,4 +1,5 @@
 import type Homey from 'homey';
+import { migrateBlobToPerKeyIfNeeded } from '../plan/deferredObjectives';
 
 type BootMigrationsParams = {
   homey: Homey.App['homey'];
@@ -40,4 +41,12 @@ export const runBootMigrations = (params: BootMigrationsParams): void => {
     homey.settings.set(migration.marker, true);
     log(`Boot migration applied: ${migration.describe}`);
   }
+  // Deferred-objective blob → per-device-key migration. Runs separately from
+  // BOOT_MIGRATIONS because it owns its own marker + abandon-grace logic (an
+  // empty `getKeys()` retries next boot rather than committing the marker — see
+  // `migrateBlobToPerKeyIfNeeded`). Idempotent: a no-op once the marker is set.
+  // Must run BEFORE the deferred recorders load their configs (they read the
+  // per-device keys), which holds: this runs in `runStartupSettingsMigrations`,
+  // ahead of `initPlanEngine`.
+  migrateBlobToPerKeyIfNeeded(homey.settings);
 };

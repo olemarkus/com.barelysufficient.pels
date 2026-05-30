@@ -1,28 +1,24 @@
-import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from '../lib/plan/deferredObjectives';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
+import type { DeferredObjectiveSettingsEntry } from '../lib/plan/deferredObjectives';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/plan/deferredObjectives/objectiveStore';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
 import { cleanupApps, createApp } from './utils/appTestUtils';
 
+const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
+
 const seedTemperatureTask = (deviceId: string): void => {
-  const settings: DeferredObjectiveSettingsV1 = {
-    version: 1,
-    objectivesByDeviceId: {
-      [deviceId]: {
-        enabled: true,
-        kind: 'temperature',
-        enforcement: 'soft',
-        targetTemperatureC: 65,
-        deadlineAtMs: Date.now() + 6 * 60 * 60 * 1000,
-      },
-    },
-  };
-  mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, settings);
+  // Per-device-key storage: the task lives under the device's own key.
+  mockHomeyInstance.settings.set(keyFor(deviceId), {
+    enabled: true,
+    kind: 'temperature',
+    enforcement: 'soft',
+    targetTemperatureC: 65,
+    deadlineAtMs: Date.now() + 6 * 60 * 60 * 1000,
+  });
 };
 
-const readEntry = (deviceId: string): DeferredObjectiveSettingsEntry | undefined => {
-  const settings = mockHomeyInstance.settings.get(DEFERRED_OBJECTIVES_SETTINGS) as DeferredObjectiveSettingsV1 | undefined;
-  return settings?.objectivesByDeviceId[deviceId];
-};
+const readEntry = (deviceId: string): DeferredObjectiveSettingsEntry | undefined => (
+  mockHomeyInstance.settings.get(keyFor(deviceId)) as DeferredObjectiveSettingsEntry | undefined
+);
 
 describe('allow_smart_task_rescue flow card', () => {
   beforeEach(() => {
@@ -99,9 +95,9 @@ describe('allow_smart_task_rescue flow card', () => {
     const app = await initApp();
 
     await listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' });
-    const before = JSON.stringify(mockHomeyInstance.settings.get(DEFERRED_OBJECTIVES_SETTINGS));
+    const before = JSON.stringify(mockHomeyInstance.settings.get(keyFor('dev-1')));
     await expect(listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' })).resolves.toBe(true);
-    expect(JSON.stringify(mockHomeyInstance.settings.get(DEFERRED_OBJECTIVES_SETTINGS))).toBe(before);
+    expect(JSON.stringify(mockHomeyInstance.settings.get(keyFor('dev-1')))).toBe(before);
 
     await app.onUninit?.();
   });

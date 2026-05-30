@@ -50,6 +50,8 @@ export function createHomeyMock(): { appHomey: AppContext['homey']; flowHomey: M
     settings: {
       get: vi.fn(),
       set: vi.fn(),
+      unset: vi.fn(),
+      getKeys: vi.fn(() => []),
       on: vi.fn(),
       off: vi.fn(),
     },
