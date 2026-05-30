@@ -417,8 +417,8 @@ md-text-button.md-text-button--destructive {
   --md-primary-tab-container-color: transparent;
   --md-primary-tab-container-height: var(--pels-shell-nav-tab-height);
   --md-primary-tab-container-shape: var(--pels-shell-nav-tab-radius);
-  --md-primary-tab-active-indicator-color: transparent;
-  --md-primary-tab-active-indicator-height: 0;
+  --md-primary-tab-active-indicator-color: var(--pels-shell-nav-tab-selected-indicator-color);
+  --md-primary-tab-active-indicator-height: var(--pels-shell-nav-tab-selected-indicator-height);
   --md-primary-tab-label-text-font: var(--font-sans);
   --md-primary-tab-label-text-size: var(--pels-shell-nav-tab-label-size);
   --md-primary-tab-label-text-line-height: var(--font-line-height-flat);
@@ -508,16 +508,15 @@ md-text-button.md-text-button--destructive {
   min-width: 0;
 }
 
+/* Selected nav tab: M3 underline indicator (accent bar via the .tabs
+   --md-primary-tab-active-indicator-* tokens) plus a primary-text label.
+   The container fill stays transparent (inherited from the base .tabs rule),
+   so the strip reads as a calm modern M3 tab strip rather than a loud solid
+   block — only the label colour lifts to the primary on-surface role. */
 md-primary-tab.tab.active,
 md-primary-tab.tab[active] {
-  --md-primary-tab-container-color: var(--pels-shell-nav-tab-selected-background);
   color: var(--pels-shell-nav-tab-selected-text);
   font-weight: var(--font-weight-semibold);
-}
-
-md-primary-tab.tab.active:hover,
-md-primary-tab.tab[active]:hover {
-  --md-primary-tab-container-color: var(--pels-shell-nav-tab-selected-hover-background);
 }
 
 #dry-run-banner {

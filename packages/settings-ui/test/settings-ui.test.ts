@@ -673,30 +673,41 @@ describe('Settings UI', () => {
         const probe = document.createElement('div');
         probe.style.backgroundColor = 'var(--md-primary-tab-container-color)';
         probe.style.color = 'var(--md-primary-tab-active-label-text-color)';
+        probe.style.borderBottomColor = 'var(--md-primary-tab-active-indicator-color)';
+        probe.style.borderBottomWidth = 'var(--md-primary-tab-active-indicator-height)';
+        probe.style.borderBottomStyle = 'solid';
         el.append(probe);
         const probeStyle = getComputedStyle(probe);
         const colors = {
           activeText: probeStyle.color,
           container: probeStyle.backgroundColor,
+          indicatorColor: probeStyle.borderBottomColor,
+          indicatorHeight: probeStyle.borderBottomWidth,
         };
         probe.remove();
         return {
           ...colors,
           expectedActiveText: style.getPropertyValue('--pels-shell-nav-tab-selected-text').trim(),
           expectedContainer: style.getPropertyValue('--pels-shell-nav-tab-selected-background').trim(),
+          expectedIndicatorColor: style
+            .getPropertyValue('--pels-shell-nav-tab-selected-indicator-color')
+            .trim(),
+          expectedIndicatorHeight: style
+            .getPropertyValue('--pels-shell-nav-tab-selected-indicator-height')
+            .trim(),
         };
       });
-      // PR2 colour policy: the selected nav tab is a TONAL selected-container
-      // (a faint accent tint), NOT the full-saturated brand-green block it used
-      // to be. `primary` (brand green) is reserved for actions and strong-
-      // positive state; the nav tab is page chrome, so it shares the segmented
-      // control's tonal-accent selected language rather than a third green
-      // meaning (one green, not three: nav + success + action). The container
-      // resolves to the same `rgba(accent, 0.28)` fill the segmented control
-      // uses, and the label now binds to `--pels-text-primary` (the on-surface
-      // text role) rather than the dark-on-green inverse value, so it reads
-      // against the tonal tint in whichever palette is active.
-      expect(activeTabTheme.container).toBe('rgba(22, 163, 74, 0.28)');
+      // M3 underline treatment: the selected nav tab is NOT a filled pill. The
+      // container stays transparent and the selected state is carried by an
+      // accent underline indicator (`--md-primary-tab-active-indicator-*`) plus
+      // a primary-text label. Accent (brand green) is the canonical M3 active-
+      // indicator colour; the tab container itself paints no fill.
+      expect(activeTabTheme.container).toBe('rgba(0, 0, 0, 0)');
+      // Underline indicator resolves to the accent role (desktop/light + mobile
+      // dark both bind `--color-role-accent` to brand green `#16a34a`) at the
+      // M3 3 px thickness.
+      expect(activeTabTheme.indicatorColor).toBe('rgb(22, 163, 74)');
+      expect(activeTabTheme.indicatorHeight).toBe('3px');
       // This Playwright page runs the DESKTOP palette (no touch emulation, so
       // the `(hover: hover) and (pointer: fine)` gate applies its light theme),
       // where `--pels-text-primary` resolves to Homey mono-90 `#181818`. On the
@@ -705,12 +716,12 @@ describe('Settings UI', () => {
       // text role, not a hard-coded inverse colour.
       expect(activeTabTheme.activeText).toBe('rgb(24, 24, 24)');
       // `getPropertyValue` returns the COMPUTED custom-property value, so the
-      // browser resolves the nested var() chains: the container token resolves
-      // its inner `var(--color-base-accent-default-rgb)` to the literal channels
-      // (the original test relied on the same resolution to read `#16a34a`),
-      // and the text token resolves its `var(--pels-text-primary)` chain to the
-      // active palette's primary colour (desktop `#181818`).
-      expect(activeTabTheme.expectedContainer).toBe('rgba(22, 163, 74, 0.28)');
+      // browser resolves the nested var() chains: the transparent container
+      // token, the accent indicator colour, and the text token's
+      // `var(--pels-text-primary)` chain (desktop `#181818`).
+      expect(activeTabTheme.expectedContainer).toBe('transparent');
+      expect(activeTabTheme.expectedIndicatorColor).toBe('#16a34a');
+      expect(activeTabTheme.expectedIndicatorHeight).toBe('3px');
       expect(activeTabTheme.expectedActiveText).toBe('#181818');
     });
 
