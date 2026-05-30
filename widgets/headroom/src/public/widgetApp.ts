@@ -1,5 +1,5 @@
 import { HEADROOM_WIDGET_COPY } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
-import { PREVIEW_HEADROOM_PAYLOAD } from './previewPayloads';
+import { resolveHeadroomPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets } from './render';
 import type { HeadroomWidgetPayload } from '../headroomWidgetTypes';
 
@@ -79,7 +79,7 @@ export const createWidgetController = (params: {
       const preview = searchParams.get('preview') === '1';
       maybeApplyPreviewTheme(widgetDocument, searchParams);
       const payload: HeadroomWidgetPayload = preview || !homeyRef
-        ? PREVIEW_HEADROOM_PAYLOAD
+        ? resolveHeadroomPreviewPayload(searchParams.get('state'))
         : await homeyRef.api('GET', '/headroom') as HeadroomWidgetPayload;
       if (loadId !== loadSequence) return;
       renderWidget(targets, payload);

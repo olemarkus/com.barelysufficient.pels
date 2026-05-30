@@ -36,16 +36,51 @@
   var headroomPausedLabel = (shedCount) => shedCount === 1 ? "1 paused" : `${shedCount} paused`;
 
   // widgets/headroom/src/public/previewPayloads.ts
-  var PREVIEW_HEADROOM_PAYLOAD = {
-    state: "ready",
-    currentKw: 3.2,
-    hourBudgetKw: 7,
-    headroomKw: 3.8,
-    shedCount: 2,
-    priceLevel: "cheap",
-    limitState: "under",
-    stale: false
+  var PREVIEW_HEADROOM_PAYLOADS = {
+    under: {
+      state: "ready",
+      currentKw: 3.2,
+      hourBudgetKw: 7,
+      headroomKw: 3.8,
+      shedCount: 2,
+      priceLevel: "cheap",
+      limitState: "under",
+      stale: false
+    },
+    near: {
+      state: "ready",
+      currentKw: 6.3,
+      hourBudgetKw: 7,
+      headroomKw: 0.7,
+      shedCount: 2,
+      priceLevel: "normal",
+      limitState: "near",
+      stale: false
+    },
+    at_pace: {
+      state: "ready",
+      currentKw: 7,
+      hourBudgetKw: 7,
+      headroomKw: 0,
+      shedCount: 3,
+      priceLevel: "expensive",
+      limitState: "at_pace",
+      stale: false
+    },
+    over_cap: {
+      state: "ready",
+      currentKw: 8.4,
+      hourBudgetKw: 7,
+      headroomKw: 0,
+      shedCount: 4,
+      priceLevel: "expensive",
+      limitState: "over_cap",
+      stale: false
+    }
   };
+  var PREVIEW_HEADROOM_PAYLOAD = PREVIEW_HEADROOM_PAYLOADS.under;
+  var isPreviewLimitState = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_HEADROOM_PAYLOADS, state);
+  var resolveHeadroomPreviewPayload = (state) => isPreviewLimitState(state) ? PREVIEW_HEADROOM_PAYLOADS[state] : PREVIEW_HEADROOM_PAYLOAD;
 
   // widgets/headroom/src/headroomWidgetPayload.ts
   var STALE_AFTER_MS = 90 * 1e3;
@@ -203,7 +238,7 @@
         const searchParams = new URLSearchParams(widgetWindow.location.search);
         const preview = searchParams.get("preview") === "1";
         maybeApplyPreviewTheme(widgetDocument, searchParams);
-        const payload = preview || !homeyRef ? PREVIEW_HEADROOM_PAYLOAD : await homeyRef.api("GET", "/headroom");
+        const payload = preview || !homeyRef ? resolveHeadroomPreviewPayload(searchParams.get("state")) : await homeyRef.api("GET", "/headroom");
         if (loadId !== loadSequence) return;
         renderWidget(targets, payload);
       } catch (error) {
