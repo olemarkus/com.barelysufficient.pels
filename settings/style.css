@@ -2830,6 +2830,16 @@ md-filled-button.is-busy {
   font-weight: var(--pels-text-caption-font-weight);
   line-height: var(--pels-text-caption-font-line-height);
 }
+/* Semantic shared class: a device / entity name as the primary identifier in a
+   list row. Section-label's size + weight, but PRIMARY colour — it is the row's
+   main label, not a secondary one. (Device names used as a secondary reference,
+   e.g. plan-history, stay on their muted role.) See settings-ui-semantic-map. */
+.entity-name {
+  color: var(--pels-text-primary);
+  font-size: var(--pels-text-section-label-font-size);
+  font-weight: var(--pels-text-section-label-font-weight);
+  line-height: var(--pels-text-section-label-font-line-height);
+}
 .pels-text-settings-label {
   color: var(--pels-text-settings-label-color);
   font-weight: var(--pels-text-settings-label-font-weight);
@@ -6395,11 +6405,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding-bottom: var(--spacing-1);
 }
 
+/* Typography from `.entity-name` (markup); structural only. */
 .price-aware-grid__name {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--pels-text-primary);
-  line-height: var(--font-line-height-snug);
   overflow-wrap: anywhere;
 }
 
