@@ -23,12 +23,18 @@ body,
   --pels-actual: var(--homey-color-blue, #3f9fff);
   --pels-price: var(--homey-color-red, #f0696c);
   --pels-now: var(--homey-color-blue, #3f9fff);
+  --pels-success: var(--homey-text-color-success, #58c56a);
+  --pels-danger: var(--homey-text-color-danger, #f0696c);
 }
 
 .widget-root {
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-2, 8px);
   width: 100%;
   height: 100%;
+  padding: var(--homey-su-2, 8px);
 }
 
 .homey-dark-mode,
@@ -42,10 +48,77 @@ body.homey-dark-mode,
   --pels-muted: var(--homey-text-color-light, #97a2ab);
 }
 
+/* ----- Projected summary line ----- */
+
+.summary {
+  margin: 0;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--pels-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary:empty {
+  display: none;
+}
+
+/* ----- AM/PM segmented control ----- */
+
+.tabs {
+  display: flex;
+  gap: var(--homey-su-1, 4px);
+  padding: var(--homey-su-1, 4px);
+  border-radius: var(--homey-border-radius-default, 10px);
+  background: var(--pels-panel);
+  border: 1px solid var(--pels-panel-border);
+}
+
+.tabs[hidden] {
+  display: none;
+}
+
+.tab {
+  flex: 1 1 0;
+  min-height: 48px;
+  padding: 0 var(--homey-su-2, 8px);
+  border: none;
+  border-radius: var(--homey-border-radius-small, 6px);
+  background: transparent;
+  color: var(--pels-muted);
+  font: inherit;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 200ms ease-out, color 200ms ease-out;
+}
+
+.tab:hover {
+  background-color: color-mix(in srgb, var(--pels-text) 6%, transparent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--pels-text);
+  outline-offset: 2px;
+}
+
+.tab--active {
+  background: var(--pels-background);
+  color: var(--pels-text);
+  font-weight: var(--homey-font-weight-bold, 700);
+}
+
+/* ----- Chart ----- */
+
 .chart {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  min-height: 0;
   font-family: inherit;
 }
 
@@ -70,6 +143,13 @@ body.homey-dark-mode,
   font-weight: var(--homey-font-weight-regular, 400);
 }
 
+.chart__axis-title {
+  fill: var(--pels-muted);
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-bold, 700);
+}
+
 .chart__badge {
   font-size: 13px;
 }
@@ -82,17 +162,19 @@ body.homey-dark-mode,
   fill: var(--pels-plan);
 }
 
+/* Halo: a background-coloured outline lifts the blue "Used" dots off the green
+   bars so they stay legible where they overlap. */
 .chart__actual {
   fill: var(--pels-actual);
   stroke: var(--pels-background);
-  stroke-width: 2;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 
 .chart__price {
   fill: none;
   stroke: var(--pels-price);
-  stroke-width: 4;
+  stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
@@ -119,13 +201,13 @@ body.homey-dark-mode,
 .chart__legend-actual {
   fill: var(--pels-actual);
   stroke: var(--pels-background);
-  stroke-width: 2;
+  stroke-width: 3;
   vector-effect: non-scaling-stroke;
 }
 
 .chart__legend-price {
   stroke: var(--pels-price);
-  stroke-width: 4;
+  stroke-width: 2;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
 }

@@ -17,19 +17,278 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// widgets/plan_budget/src/api.ts
 var api_exports = {};
 __export(api_exports, {
   getChart: () => getChart
 });
 module.exports = __toCommonJS(api_exports);
-var import_planPriceWidgetPayload = require("./planPriceWidgetPayload");
-const COMBINED_PRICES_SETTING = "combined_prices";
-const collectV2Hours = (days) => Object.values(days).flatMap((day) => {
+
+// packages/shared-domain/src/planPriceWidgetCopy.ts
+var PLAN_PRICE_WIDGET_TITLE = "Budget and Price";
+var PLAN_PRICE_WIDGET_EMPTY = {
+  budgetDisabled: "Daily budget disabled",
+  noData: "No plan data available",
+  tomorrowPending: "Tomorrow plan not available yet",
+  loadError: "Unable to load widget"
+};
+var ORE_PER_KWH_LABEL = "\xF8re/kWh";
+var PLACEHOLDER_UNIT = "price units";
+var KWH_RATE_SUFFIX = /\s*\/\s*kwh\s*$/i;
+var normalizeUnitWithKwh = (unit) => KWH_RATE_SUFFIX.test(unit) ? unit : `${unit}/kWh`;
+var stripKwhRateSuffix = (unit) => unit.replace(KWH_RATE_SUFFIX, "").trim();
+var resolvePlanPriceCostDisplay = (params) => {
+  const { priceScheme, priceUnit } = params;
+  if (priceScheme === "flow" || priceScheme === "homey") {
+    const hasUnit = typeof priceUnit === "string" && priceUnit.trim() !== "" && priceUnit !== PLACEHOLDER_UNIT;
+    const unit = hasUnit ? priceUnit.trim() : "";
+    return {
+      // Strip a rate suffix so a total reads `kr`, not `kr/kWh`; the axis keeps
+      // the per-kWh rate shape.
+      costUnit: unit ? stripKwhRateSuffix(unit) : "",
+      costDivisor: 1,
+      priceAxisUnit: unit ? normalizeUnitWithKwh(unit) : ""
+    };
+  }
+  return {
+    costUnit: "kr",
+    costDivisor: 100,
+    priceAxisUnit: ORE_PER_KWH_LABEL
+  };
+};
+
+// widgets/plan_budget/src/planPriceWidgetPayload.ts
+var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
+var EMPTY_STATE_SUBTITLES = {
+  budget_disabled: PLAN_PRICE_WIDGET_EMPTY.budgetDisabled,
+  no_data: PLAN_PRICE_WIDGET_EMPTY.noData,
+  tomorrow_pending: PLAN_PRICE_WIDGET_EMPTY.tomorrowPending
+};
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+var resolveWidgetTarget = (value) => value === "tomorrow" ? "tomorrow" : "today";
+var normalizeSeriesLength = (series, count) => Array.from({ length: count }, (_value, index) => series[index] ?? null);
+var resolveLabel = (labels, startUtc, index) => {
+  const label = labels[index];
+  if (typeof label === "string" && label.trim()) {
+    const separatorIndex = label.indexOf(":");
+    return separatorIndex >= 0 ? label.slice(0, separatorIndex).trim() : label.trim();
+  }
+  const iso = startUtc[index];
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return "";
+  return String(date.getHours()).padStart(2, "0");
+};
+var resolveLabelEvery = (bucketCount) => {
+  if (bucketCount <= 8) return 1;
+  if (bucketCount <= 12) return 2;
+  if (bucketCount <= 24) return 4;
+  return Math.max(1, Math.round(bucketCount / 6));
+};
+var resolvePriceSeries = (params) => {
+  const { bucketStartUtc, bucketPrices, combinedPrices } = params;
+  if (bucketPrices.length === bucketStartUtc.length) {
+    return bucketPrices.map((value) => isFiniteNumber(value) ? value : null);
+  }
+  if (!combinedPrices?.prices || bucketStartUtc.length === 0) {
+    return bucketStartUtc.map(() => null);
+  }
+  const priceByStart = /* @__PURE__ */ new Map();
+  for (const entry of combinedPrices.prices) {
+    if (!entry || typeof entry !== "object") continue;
+    const timestamp = Date.parse(entry.startsAt);
+    if (!Number.isFinite(timestamp) || !isFiniteNumber(entry.total)) continue;
+    priceByStart.set(timestamp, entry.total);
+  }
+  return bucketStartUtc.map((iso) => {
+    const timestamp = Date.parse(iso);
+    if (!Number.isFinite(timestamp)) return null;
+    return priceByStart.get(timestamp) ?? null;
+  });
+};
+var resolveProjectionKwh = (params) => {
+  if (!params.useActual) return params.plannedKwh.map((value) => value);
+  return params.plannedKwh.map((planned, index) => {
+    const actual = params.actualKwh[index];
+    if (index < params.currentIndex) {
+      return isFiniteNumber(actual) ? actual : planned;
+    }
+    if (index === params.currentIndex && isFiniteNumber(actual)) {
+      return Math.max(actual, planned);
+    }
+    return planned;
+  });
+};
+var computeProjectedCost = (params) => {
+  if (params.costUnit.trim().length === 0) return null;
+  let rawTotal = 0;
+  let priced = false;
+  let missingPrice = false;
+  params.projectionKwh.forEach((kwh, index) => {
+    if (!isFiniteNumber(kwh) || kwh <= 0) return;
+    const price = params.priceSeries[index];
+    if (!isFiniteNumber(price)) {
+      missingPrice = true;
+      return;
+    }
+    rawTotal += price * kwh;
+    priced = true;
+  });
+  if (!priced || missingPrice) return null;
+  return rawTotal / Math.max(1, params.costDivisor);
+};
+var resolveSummaryTone = (projectedKwh, budgetKwh, isToday) => {
+  if (!isToday) return null;
+  if (!isFiniteNumber(budgetKwh) || budgetKwh <= 0) return null;
+  return projectedKwh > budgetKwh ? "over" : "on_track";
+};
+var buildPriceStats = (priceSeries) => {
+  const priceValues = priceSeries.filter(isFiniteNumber);
+  return {
+    priceValues,
+    priceMin: priceValues.length > 0 ? Math.min(...priceValues) : 0,
+    priceMax: priceValues.length > 0 ? Math.max(...priceValues) : 1
+  };
+};
+var resolveActualSeries = (day, bucketCount, isToday) => {
+  const actualKwh = normalizeSeriesLength(
+    Array.isArray(day?.buckets.actualKWh) ? day.buckets.actualKWh.map((value) => isFiniteNumber(value) ? Math.max(0, value) : null) : [],
+    bucketCount
+  );
+  return {
+    actualKwh,
+    showActual: isToday && actualKwh.some(isFiniteNumber)
+  };
+};
+var resolveCurrentState = (day, bucketCount, isToday) => {
+  const rawIndex = day?.currentBucketIndex;
+  const hasCurrentIndex = isFiniteNumber(rawIndex);
+  const maxIndex = Math.max(0, bucketCount - 1);
+  const currentIndex = hasCurrentIndex ? clamp(rawIndex, 0, maxIndex) : 0;
+  const showNow = Boolean(
+    isToday && hasCurrentIndex && rawIndex >= 0 && rawIndex < bucketCount
+  );
+  return { currentIndex, showNow };
+};
+var buildEmptyPayload = (target, reason) => ({
+  state: "empty",
+  target,
+  title: WIDGET_TITLE,
+  subtitle: EMPTY_STATE_SUBTITLES[reason]
+});
+var resolveDayKey = (snapshot, target) => {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const key = target === "tomorrow" ? snapshot.tomorrowKey : snapshot.todayKey;
+  return typeof key === "string" && key.trim() ? key : null;
+};
+var resolveDay = (snapshot, target) => {
+  const dayKey = resolveDayKey(snapshot, target);
+  if (!dayKey || !snapshot?.days || typeof snapshot.days !== "object") {
+    return { day: null, dayKey };
+  }
+  return {
+    day: snapshot.days[dayKey] ?? null,
+    dayKey
+  };
+};
+var buildPlanPriceWidgetPayload = (params) => {
+  const resolvedTarget = resolveWidgetTarget(params.target);
+  const { day, dayKey } = resolveDay(params.snapshot, resolvedTarget);
+  if (!day || !dayKey) {
+    return buildEmptyPayload(
+      resolvedTarget,
+      resolvedTarget === "tomorrow" ? "tomorrow_pending" : "no_data"
+    );
+  }
+  const plannedKwh = Array.isArray(day.buckets.plannedKWh) ? day.buckets.plannedKWh.map((value) => isFiniteNumber(value) ? Math.max(0, value) : 0) : [];
+  const bucketCount = plannedKwh.length;
+  if (bucketCount === 0) {
+    let emptyReason = "no_data";
+    if (day.budget.enabled === false) {
+      emptyReason = "budget_disabled";
+    } else if (resolvedTarget === "tomorrow") {
+      emptyReason = "tomorrow_pending";
+    }
+    return buildEmptyPayload(
+      resolvedTarget,
+      emptyReason
+    );
+  }
+  const bucketStartUtc = Array.isArray(day.buckets.startUtc) ? day.buckets.startUtc : [];
+  const labels = Array.isArray(day.buckets.startLocalLabels) ? day.buckets.startLocalLabels : [];
+  const bucketLabels = Array.from(
+    { length: bucketCount },
+    (_value, index) => resolveLabel(labels, bucketStartUtc, index)
+  );
+  const priceSeries = normalizeSeriesLength(
+    resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: Array.isArray(day.buckets.price) ? day.buckets.price : [],
+      combinedPrices: params.combinedPrices
+    }),
+    bucketCount
+  );
+  const priceStats = buildPriceStats(priceSeries);
+  const isToday = resolvedTarget === "today";
+  const { actualKwh, showActual } = resolveActualSeries(day, bucketCount, isToday);
+  const { currentIndex, showNow } = resolveCurrentState(day, bucketCount, isToday);
+  const costDisplay = resolvePlanPriceCostDisplay({
+    priceScheme: params.priceScheme,
+    priceUnit: params.combinedPrices?.priceUnit
+  });
+  const projectionKwh = resolveProjectionKwh({
+    plannedKwh,
+    actualKwh,
+    currentIndex,
+    useActual: showActual && showNow
+  });
+  const projectedKwh = projectionKwh.reduce((sum, value) => sum + value, 0);
+  const projectedCost = computeProjectedCost({
+    projectionKwh,
+    priceSeries,
+    costUnit: costDisplay.costUnit,
+    costDivisor: costDisplay.costDivisor
+  });
+  const summaryTone = resolveSummaryTone(projectedKwh, day.budget.dailyBudgetKWh, isToday);
+  return {
+    state: "ready",
+    target: resolvedTarget,
+    dateKey: typeof day.dateKey === "string" ? day.dateKey : dayKey,
+    bucketLabels,
+    plannedKwh,
+    actualKwh,
+    showActual,
+    priceSeries,
+    hasPriceData: priceStats.priceValues.length > 0,
+    currentIndex,
+    showNow,
+    labelEvery: resolveLabelEvery(bucketCount),
+    maxPlan: Math.max(1, ...plannedKwh),
+    priceMin: priceStats.priceMin,
+    priceMax: priceStats.priceMax,
+    priceAxisUnit: costDisplay.priceAxisUnit,
+    projectedKwh,
+    projectedCost,
+    costUnit: costDisplay.costUnit,
+    summaryTone
+  };
+};
+
+// widgets/plan_budget/src/api.ts
+var COMBINED_PRICES_SETTING = "combined_prices";
+var collectV2Hours = (days) => Object.values(days).flatMap((day) => {
   if (!day || typeof day !== "object") return [];
   const hours = day.hours;
   return Array.isArray(hours) ? hours : [];
 });
-const flattenStoreToCombinedPriceData = (value) => {
+var resolvePriceScheme = (value) => {
+  if (!value || typeof value !== "object") return void 0;
+  const scheme = value.priceScheme;
+  return typeof scheme === "string" ? scheme : void 0;
+};
+var flattenStoreToCombinedPriceData = (value) => {
   if (!value || typeof value !== "object") return null;
   const record = value;
   const isV2 = record.days && typeof record.days === "object" && !Array.isArray(record.days);
@@ -45,14 +304,16 @@ const flattenStoreToCombinedPriceData = (value) => {
     priceUnit: typeof record.priceUnit === "string" ? record.priceUnit : void 0
   };
 };
-const getChart = async ({ homey, query }) => {
+var getChart = async ({ homey, query }) => {
   const app = homey.app;
   const snapshot = typeof app?.getDailyBudgetUiPayload === "function" ? app.getDailyBudgetUiPayload() : null;
-  const combinedPrices = flattenStoreToCombinedPriceData(homey.settings.get(COMBINED_PRICES_SETTING));
-  return (0, import_planPriceWidgetPayload.buildPlanPriceWidgetPayload)({
+  const rawCombinedPrices = homey.settings.get(COMBINED_PRICES_SETTING);
+  const combinedPrices = flattenStoreToCombinedPriceData(rawCombinedPrices);
+  return buildPlanPriceWidgetPayload({
     snapshot,
     combinedPrices,
-    target: query?.day
+    target: query?.day,
+    priceScheme: resolvePriceScheme(rawCombinedPrices)
   });
 };
 // Annotate the CommonJS export names for ESM import in node:

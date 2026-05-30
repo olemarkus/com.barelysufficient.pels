@@ -52,6 +52,10 @@ const allowedOrphans = new Set([
   // render/widgetApp), which madge (scan roots exclude `widgets/`) doesn't
   // traverse, so the file reads as an orphan.
   'packages/shared-domain/src/headroomWidgetCopy.ts',
+  // Consumed by `widgets/plan_budget/src/**` (payload builder + browser chart +
+  // controller) via the esbuild widget bundle, which madge (run without
+  // `widgets/` in its roots) doesn't traverse.
+  'packages/shared-domain/src/planPriceWidgetCopy.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [

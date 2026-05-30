@@ -29,6 +29,12 @@ const collectV2Hours = (days: Record<string, unknown>): CombinedPriceEntry[] => 
   })
 );
 
+const resolvePriceScheme = (value: unknown): string | undefined => {
+  if (!value || typeof value !== 'object') return undefined;
+  const scheme = (value as { priceScheme?: unknown }).priceScheme;
+  return typeof scheme === 'string' ? scheme : undefined;
+};
+
 const flattenStoreToCombinedPriceData = (value: unknown): CombinedPriceData | null => {
   if (!value || typeof value !== 'object') return null;
   const record = value as { days?: unknown; prices?: unknown; lastFetched?: unknown; priceUnit?: unknown };
@@ -57,11 +63,13 @@ export const getChart = async ({ homey, query }: WidgetApiContext): Promise<Plan
   const snapshot = typeof app?.getDailyBudgetUiPayload === 'function'
     ? app.getDailyBudgetUiPayload()
     : null;
-  const combinedPrices = flattenStoreToCombinedPriceData(homey.settings.get(COMBINED_PRICES_SETTING));
+  const rawCombinedPrices = homey.settings.get(COMBINED_PRICES_SETTING);
+  const combinedPrices = flattenStoreToCombinedPriceData(rawCombinedPrices);
 
   return buildPlanPriceWidgetPayload({
     snapshot,
     combinedPrices,
     target: query?.day,
+    priceScheme: resolvePriceScheme(rawCombinedPrices),
   });
 };

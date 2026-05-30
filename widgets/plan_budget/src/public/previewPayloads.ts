@@ -30,6 +30,11 @@ export const PREVIEW_TODAY_PAYLOAD: PlanPriceWidgetReadyPayload = {
   maxPlan: 1.14,
   priceMin: 79,
   priceMax: 162,
+  priceAxisUnit: 'øre/kWh',
+  projectedKwh: 16.8,
+  projectedCost: 19.6,
+  costUnit: 'kr',
+  summaryTone: 'on_track',
 };
 
 export const PREVIEW_TOMORROW_PAYLOAD: PlanPriceWidgetReadyPayload = {
@@ -54,6 +59,11 @@ export const PREVIEW_TOMORROW_PAYLOAD: PlanPriceWidgetReadyPayload = {
   maxPlan: 1.09,
   priceMin: 72,
   priceMax: 173,
+  priceAxisUnit: 'øre/kWh',
+  projectedKwh: 15.6,
+  projectedCost: 18.3,
+  costUnit: 'kr',
+  summaryTone: null,
 };
 
 export const resolvePreviewPayload = (target: WidgetTarget): PlanPriceWidgetReadyPayload => (
