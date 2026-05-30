@@ -2031,65 +2031,45 @@ broader Material 3 / Homey-look alignment direction surfaced during that review
 but explicitly out of scope for the patch landing. Each is a separate effort,
 should not be folded into the same PR.
 
+**Shipped 2026-05-30 (design train, independent PRs):** calmer accent green-600
+`#16a34a` (#1339); reduce-orange-weight 4px left state-rail + calmer device-card
+defaults (#1343, was two items); Homey-native dividerised Settings nav with row
+icons (#1340); drop-eyebrow + numeric-first metric hero typography (#1346); M3
+underline tab strip (#1342); meter dark-tick re-tone (#1345, partial — remaining
+marker work tracked under "Progress markers" below). The items left below were
+out of scope of that train.
+
 - [ ] Real M3 token layer: migrate PELS from its current mixed
       `--color-base-*` / `--color-role-*` / `--md-sys-color-*` graph to a strict
       M3 `--md-sys-color-*` role layer. Components consume roles only — no raw
       hex, no opacity stacks, no one-off colours. Touches every component CSS
       file, every `--md-*` binding in `packages/settings-ui/public/style.css`,
-      every chart palette consumer under `packages/settings-ui/src/ui/charts/`.
+      every chart palette consumer (the flat ECharts modules at
+      `packages/settings-ui/src/ui/*Echarts.ts` plus `budgetRedesignChart.ts` /
+      `dayViewChart.ts` — there is no `src/ui/charts/` dir). NOTE: overlaps the
+      settings-ui unification train, which already introduced a
+      base → semantic → component tier; sequence with that rather than parallel.
 
-- [ ] Calmer PELS primary on light surfaces: tone `--color-base-accent-default`
-      from the current vivid `#22c55e` to something nearer `#16a34a` (green-600)
-      so the accent reads as "calm green" against white cards rather than
-      "bright fluorescent". Verify against Homey's own primary blue intensity
-      for parity. Re-verify the post-invert form for desktop dark.
+- [ ] Progress markers — finish item #6. The bare near-black "dark tick" is gone
+      (re-toned to `--pels-text-secondary`, #1345), but markers are not yet
+      genuinely self-explanatory: (a) single-marker bars (the "Safe pace" power
+      meter) have no always-on key — the meaning lives only in a hover tooltip
+      (non-discoverable on mobile) + aria-label; add a compact always-visible
+      micro-legend mirroring the multi-marker `.plan-hero__legend` swatch
+      geometry. (b) Over-threshold contrast (Codex, #1345): when the bar crosses
+      safe-pace/budget the target marker sits on the `--pels-status-warning`
+      (`#f59e0b`) fill where the grey marker is ~2:1 — give it a contrasting ring
+      so it stays visible on the empty track AND the amber/green fill in both
+      themes. Files: `packages/settings-ui/public/style.css`
+      (`.pels-meter-track__marker--target`, legend swatch rules).
 
-- [ ] Reduce orange weight on PELS-controlled / over-budget / simulation-mode
-      device and hero cards: today's CSS paints a full amber border around any
-      card in a warning state (Water Heater "Turned off by PELS", simulation
-      hero rim). On the new light canvas three warning cards in one viewport
-      reads as "everything is on fire". Migrate to a chip / state-rail (4 px
-      left rail in role colour + role-toned title + neutral border on the other
-      three sides) per the M3 status pattern. Files:
-      `packages/settings-ui/public/style.css` (`.plan-hero[data-tone]`,
-      `.pels-hero[data-tone]`, device-card warning state rules).
-
-- [ ] Replace the heavy filled-pill tab strip with an M3 tabs / navigation
-      treatment (underline indicator + label, or a smaller pill). Verify the
-      `Smart tasks` label still fits at 320 px without wrapping. Files: shell
-      navigation rules near `.tabs` / `.tab` selectors in
-      `packages/settings-ui/public/style.css`, focus styles, panel transitions.
-
-- [ ] Rework metric hero typography: drop long headline strings like
-      "0.3 of 4.5 kWh used" in favour of numeric-first stacks
-      ("0.3 kWh" → "of 4.5 kWh used this hour"). Enable `font-feature-settings:
-      "tnum"` on metric numbers, scale display type down at 320 px. Also drop
-      the all-caps eyebrow above section h2s ("DAILY BUDGET" / "ENERGY HISTORY"
-      / "SMART TASKS" / "CONFIGURE PELS") — Homey-native uses single-weight
-      sentence-case section labels with no eyebrow; today's eyebrow + display
-      heading reads as a marketing idiom. Files: `packages/shared-domain/src/`
-      metric format helpers, every hero template in
-      `packages/settings-ui/src/ui/views/`.
-
-- [ ] Progress visual cleanup: standardise on M3 tracks + semantic colour for
-      bar/segment progress (Energy used, Daily usage, smart-task plan).
-      Self-explanatory markers; remove unlabelled dark ticks; legends compact
-      and readable. Files: `packages/settings-ui/src/ui/charts/`,
-      `packages/settings-ui/public/style.css` (`.power-meter*`, `.pels-meter*`).
-
-- [ ] Calmer device-card defaults on the light canvas: keep normal devices on
-      plain white cards with neutral borders; reserve tone treatment for true
-      attention states only (paired with the orange-weight item above).
-
-- [ ] Homey-native Settings nav: today the Settings tab lists `Limits & safety`,
-      `Devices`, `Modes`, `Electricity prices`, `Price-aware devices`,
-      `Simulation mode`, `Advanced` as individually-bordered chevron-only cards.
-      Homey's own settings group these into a single list with internal dividers
-      and pair each row with a flat outline icon (cf. Living Room / Kitchen
-      icons in Homey's app nav). Migrate to a single dividerised list and add a
-      flat outline icon per row. Files: Settings tab markup under
-      `packages/settings-ui/src/ui/views/`, list/divider rules in
-      `packages/settings-ui/public/style.css`.
+- [ ] Settings-nav follow-ups (from #1340 pels-m3-critic, 2026-05-30): remove the
+      dead `.settings-nav-card__content` rule in
+      `packages/settings-ui/public/style.css` (the markup composes title/
+      description via `md-list-item` headline/supporting-text slots, so the
+      `__content` grid rule never applies); and normalise the row-icon stroke
+      widths — the price-aware bolt-in-circle is `1.4` while its six siblings are
+      `1.6`, so it reads optically lighter.
 
 - [ ] Architectural debt — saturated semantics drift under Homey's invert.
       Amber warn pills become pink/magenta and `Missed` / `Succeeded` chips
@@ -2100,7 +2080,8 @@ should not be folded into the same PR.
       ships a signal or until we move to a theme-handshake protocol.
 
 *Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
-#882, #884), 2026-05-18.*
+#882, #884), 2026-05-18. Items 2–5, 7–8 shipped via the design train
+(#1339/#1343/#1340/#1346/#1342/#1345), 2026-05-30.*
 
 ## P3 Future and Exploratory Work
 
