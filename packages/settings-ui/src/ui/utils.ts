@@ -167,4 +167,5 @@ export const initDebouncedSaveFlush = (): (() => void) | undefined => {
 };
 
 export { debouncedSetSetting };
+/** @public — used by debouncedSetSetting.test.ts (test-only API). */
 export const flushDebouncedSettingSaves = flushPendingSaves;

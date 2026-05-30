@@ -18,9 +18,3 @@ export type PlanSnapshot = Omit<SettingsUiPlanSnapshot, 'devices'> & {
   devices?: PlanDeviceSnapshot[];
 };
 
-export type PlanStatusBinding = {
-  device: PlanDeviceSnapshot;
-  reasonEl: HTMLElement;
-  chipEl: HTMLElement | null;
-  cooldownProgressEl: HTMLElement | null;
-};

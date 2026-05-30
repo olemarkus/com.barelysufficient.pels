@@ -26,11 +26,6 @@ const getDecimalPlaces = (value: number): number => {
   return Math.max(0, decimals - exponent);
 };
 
-export const getPrimaryTargetCapability = (
-  targets?: TargetCapabilityLike[] | null,
-): TargetCapabilityLike | null => (
-  Array.isArray(targets) && targets.length > 0 ? targets[0] : null
-);
 
 const clampTargetCapabilityValue = (
   target: Partial<Pick<TargetCapabilityLike, 'min' | 'max'>> | null | undefined,

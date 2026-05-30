@@ -182,6 +182,7 @@ export function getStartOfDayInTimeZone(date: Date, timeZone: string): number {
     return getDateKeyStartMs(getDateKeyInTimeZone(date, timeZone), timeZone);
 }
 
+/** @public — intentionally retained (was in check-dead-code parked list). */
 export function getWeekStartInTimeZone(date: Date, timeZone: string): number {
     const { year, month, day } = getZonedParts(date, timeZone);
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
@@ -196,10 +197,12 @@ export function getMonthStartInTimeZone(date: Date, timeZone: string): number {
     return getStartOfDayInTimeZone(monthStartDate, timeZone);
 }
 
+/** @public — intentionally retained (was in check-dead-code parked list). */
 export function formatDateInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
     return date.toLocaleDateString([], { timeZone, ...options });
 }
 
+/** @public — intentionally retained (was in check-dead-code parked list). */
 export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
     return date.toLocaleTimeString([], { timeZone, ...options });
 }

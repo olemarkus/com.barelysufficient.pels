@@ -11,7 +11,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../../../contracts/src/types.ts';
 import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../../../contracts/src/settingsKeys.ts';
-import { getSetting, setSetting } from './homey.ts';
+import { getSetting } from './homey.ts';
 import { state } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
@@ -103,13 +103,7 @@ export const loadDeviceControlProfiles = async (): Promise<void> => {
   }
 };
 
-export const saveDeviceControlProfiles = async (): Promise<void> => {
-  await setSetting(DEVICE_CONTROL_PROFILES, state.deviceControlProfiles);
-};
 
-export const saveDeviceTargetPowerConfigs = async (): Promise<void> => {
-  await setSetting(DEVICE_TARGET_POWER_CONFIGS, state.deviceTargetPowerConfigs);
-};
 
 export const applyLocalDeviceControlProfile = (
   deviceId: string,
