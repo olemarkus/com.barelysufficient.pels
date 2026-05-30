@@ -18,23 +18,22 @@
   align-items: center;
 }
 
+/* `.power` is the shared grid so the value row and the caption row sit on ONE
+   column template — each caption then lands directly under the value it labels.
+   The two wrapper rows use `display: contents` so their children participate in
+   this grid (sibling grids don't share track sizing; subgrid isn't relied on).
+   Columns: 1 = current value, 2 = "/" separator, 3 = budget value, 4 = slack. */
 .power {
-  display: inline-flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: max-content max-content max-content 1fr;
+  align-items: baseline;
   gap: var(--homey-su-1, 4px);
   min-width: 0;
 }
 
-.power__pair {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--homey-su-1, 4px);
-}
-
+.power__pair,
 .power__captions {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--homey-su-2, 8px);
+  display: contents;
 }
 
 .power__caption {
@@ -46,7 +45,23 @@
   letter-spacing: 0.04em;
 }
 
+/* "Power now" labels the current value (column 1); "Safe pace now" labels the
+   budget value (column 3), so it skips the "/" separator column (column 2). */
+.power__caption--current {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.power__caption--budget {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* Value row sits on grid row 1: current value (col 1), "/" separator (col 2),
+   budget value (col 3). Each caption (row 2) lands under its value. */
 .power__current {
+  grid-column: 1;
+  grid-row: 1;
   font-size: var(--homey-font-size-large, 20px);
   line-height: var(--homey-line-height-large, 28px);
   font-weight: var(--homey-font-weight-bold, 700);
@@ -54,12 +69,16 @@
 }
 
 .power__sep {
+  grid-column: 2;
+  grid-row: 1;
   color: var(--homey-text-color-light, #6d7680);
   font-size: var(--homey-font-size-default, 17px);
   line-height: var(--homey-line-height-default, 24px);
 }
 
 .power__budget {
+  grid-column: 3;
+  grid-row: 1;
   color: var(--homey-text-color-light, #6d7680);
   font-size: var(--homey-font-size-small, 14px);
   line-height: var(--homey-line-height-small, 20px);
@@ -69,7 +88,7 @@
 .bar {
   position: relative;
   height: var(--homey-su-2, 8px);
-  border-radius: var(--homey-border-radius-small, 4px);
+  border-radius: var(--homey-border-radius-small, 6px);
   background: var(--homey-line-color, rgba(15, 23, 28, 0.12));
   overflow: hidden;
 }
@@ -78,7 +97,7 @@
   height: 100%;
   width: 0%;
   background: var(--homey-text-color-light, #6d7680);
-  border-radius: var(--homey-border-radius-small, 4px);
+  border-radius: var(--homey-border-radius-small, 6px);
   transition: width 240ms ease-out, background-color 240ms ease-out;
 }
 

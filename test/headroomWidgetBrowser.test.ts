@@ -111,6 +111,40 @@ describe('headroom widget browser', () => {
     expect(targets.metaEl.dataset.tone).toBe('danger');
   });
 
+  test('over_cap meta omits the misleading "0 kW available" and shows only the paused count', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, {
+      ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 3,
+    });
+
+    expect(targets.metaEl.textContent).not.toContain('available');
+    expect(targets.metaEl.textContent).toBe('3 paused');
+    // The aria-label must match the visible meta — assistive tech must not hear
+    // the dropped "0 kW available" either.
+    const aria = targets.root.getAttribute('aria-label') ?? '';
+    expect(aria).not.toContain('available');
+    expect(aria).toContain('3 paused');
+  });
+
+  test('over_cap meta is empty when nothing is paused (no false "0 kW available")', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, {
+      ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 0,
+    });
+
+    expect(targets.metaEl.textContent).toBe('');
+  });
+
+  test('non-over_cap states still show the available-power meta fragment', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, {
+      ...READY, currentKw: 3.2, hourBudgetKw: 7, headroomKw: 3.8, limitState: 'under', shedCount: 2,
+    });
+
+    expect(targets.metaEl.textContent).toContain('available');
+    expect(targets.metaEl.textContent).toContain('2 paused');
+  });
+
   test('hides the state label when there is nothing exceptional to say', () => {
     const targets = resolveTargets();
     renderWidget(targets, { ...READY, limitState: 'under' });
@@ -141,6 +175,36 @@ describe('headroom widget browser', () => {
 
     expect(document.getElementById('widget-root')?.dataset.state).toBe('ready');
     controller.destroy();
+  });
+
+  test('does not render or call ready() when an in-flight load resolves after destroy()', async () => {
+    let resolveApi: (payload: HeadroomWidgetReadyPayload) => void = () => {};
+    const apiPromise = new Promise<HeadroomWidgetReadyPayload>((resolve) => {
+      resolveApi = resolve;
+    });
+    const ready = vi.fn();
+    const homey: WidgetHomey = {
+      api: vi.fn().mockReturnValue(apiPromise),
+      ready,
+    };
+    const targets = resolveTargets();
+    const controller = createWidgetController({
+      targets,
+      widgetDocument: document,
+      widgetWindow: window as WidgetWindow,
+    });
+
+    controller.bootstrap(homey); // starts loadAndRender, suspended on the pending api
+    await flushPromises();
+    expect(targets.root.dataset.state).not.toBe('ready'); // nothing rendered yet
+
+    controller.destroy(); // tear down before the load resolves
+    resolveApi(READY);
+    await flushPromises();
+
+    // The late resolution must not touch the torn-down DOM, nor call ready().
+    expect(targets.root.dataset.state).not.toBe('ready');
+    expect(ready).not.toHaveBeenCalled();
   });
 
   test('renders the load-error subtitle when the Homey API call fails', async () => {

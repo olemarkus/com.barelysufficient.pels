@@ -159,15 +159,48 @@ describe('starvation rescue widget browser', () => {
     expect(budgetBtn.dataset.deviceId).toBe('budget-1');
     expect((budgetRow.querySelector('[data-device-note]') as HTMLElement).hidden).toBe(true);
 
-    // Capacity row: 11 min ⇒ warn tone, NO rescue button (the guardrail), a note instead.
+    // Capacity row: 11 min ⇒ warn tone, NO rescue button (the guardrail).
     // Chip reads "Waiting", never the budget-releasable "Held back" (the hard cap
     // is physical — a capacity row is not something the user can let run now).
     expect(capacityRow.dataset.tone).toBe('warn');
     expect((capacityRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Waiting · 11 min');
     expect((capacityRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
+    // The capacity subtext already reads "Waiting for available power"; the note
+    // ("Waiting for available power.") only restates it, so it is suppressed to
+    // avoid printing the same reason twice (differs only by a trailing period).
+    expect((capacityRow.querySelector('[data-device-subtext]') as HTMLElement).textContent)
+      .toBe('Waiting for available power');
     const note = capacityRow.querySelector('[data-device-note]') as HTMLElement;
-    expect(note.hidden).toBe(false);
-    expect(note.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.capacityNote);
+    expect(note.hidden).toBe(true);
+    expect(note.textContent).toBe('');
+  });
+
+  test('a manual row also suppresses its near-duplicate note (only the reason once)', async () => {
+    // The manual subtext ("Under manual control") and note ("Under manual
+    // control.") differ only by a trailing period, so the dedup suppresses the
+    // note here too — the reason reads once, like the capacity row.
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') {
+          return {
+            state: 'ready',
+            devices: [
+              { deviceId: 'manual-1', deviceName: 'Office heat', cause: 'manual', accumulatedMs: 5 * 60_000, intendedNormalTargetC: 20 },
+            ],
+          } satisfies StarvationRescueDevicesPayload;
+        }
+        throw new Error(`unexpected ${path}`);
+      }),
+    }));
+    await flushPromises();
+
+    const row = document.querySelector('[data-device-list] .row') as HTMLElement;
+    expect((row.querySelector('[data-device-subtext]') as HTMLElement).textContent)
+      .toBe('Under manual control');
+    const note = row.querySelector('[data-device-note]') as HTMLElement;
+    expect(note.hidden).toBe(true);
+    expect(note.textContent).toBe('');
   });
 
   test('budget row with no known target hides the rescue button (API would reject no_target)', async () => {
@@ -221,6 +254,38 @@ describe('starvation rescue widget browser', () => {
     expect((homey.api as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       'POST', '/rescue', { deviceId: 'budget-1', deadlineAtMs: OK_PREVIEW.deadlineAtMs },
     );
+  });
+
+  test('does not render the list when an in-flight /devices load resolves after destroy()', async () => {
+    let resolveDevices: (payload: StarvationRescueDevicesPayload) => void = () => {};
+    const devicesPromise = new Promise<StarvationRescueDevicesPayload>((resolve) => {
+      resolveDevices = resolve;
+    });
+    const ready = vi.fn();
+    const homey = buildHomey({
+      ready,
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') return devicesPromise;
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    // Let the initial no-Homey bootstrap settle, then isolate the assertion to the
+    // real-Homey load below (clear the ready spy so we only judge the guarded path).
+    await flushPromises();
+    ready.mockClear();
+
+    controller!.bootstrap(homey); // starts loadAndRender, suspended on the pending /devices
+    await flushPromises();
+
+    controller!.destroy(); // tear down before the load resolves
+    resolveDevices(READY_PAYLOAD);
+    await flushPromises();
+
+    // The late resolution must not render the list nor call ready() post-teardown.
+    const list = document.querySelector('[data-device-list]') as HTMLElement;
+    expect(list.children).toHaveLength(0);
+    expect(ready).not.toHaveBeenCalled();
   });
 
   test('a failing /rescue keeps the confirm view with an error, never a done flash', async () => {

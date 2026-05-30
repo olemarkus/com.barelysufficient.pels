@@ -22,7 +22,7 @@ body,
   --pels-plan: var(--homey-color-green, #58c56a);
   --pels-actual: var(--homey-color-blue, #3f9fff);
   --pels-price: var(--homey-color-red, #f0696c);
-  --pels-now: var(--homey-color-blue, #3f9fff);
+  --pels-now: var(--homey-text-color-light, #97a2ab);
   --pels-success: var(--homey-text-color-success, #58c56a);
   --pels-danger: var(--homey-text-color-danger, #f0696c);
 }
@@ -151,7 +151,7 @@ body.homey-dark-mode,
 }
 
 .chart__badge {
-  font-size: 13px;
+  font-size: var(--homey-font-size-small, 14px);
 }
 
 .chart__legend-text {
@@ -191,6 +191,8 @@ body.homey-dark-mode,
   stroke: var(--pels-now);
   stroke-width: 2;
   stroke-linecap: round;
+  stroke-dasharray: 3 3;
+  opacity: 0.5;
   vector-effect: non-scaling-stroke;
 }
 

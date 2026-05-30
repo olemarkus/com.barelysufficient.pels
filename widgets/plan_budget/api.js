@@ -29,8 +29,8 @@ module.exports = __toCommonJS(api_exports);
 var PLAN_PRICE_WIDGET_TITLE = "Budget and Price";
 var PLAN_PRICE_WIDGET_EMPTY = {
   budgetDisabled: "Daily budget disabled",
-  noData: "No plan data available",
-  tomorrowPending: "Tomorrow plan not available yet",
+  noData: "No budget data available",
+  tomorrowPending: "Tomorrow's budget not available yet",
   loadError: "Unable to load widget"
 };
 var ORE_PER_KWH_LABEL = "\xF8re/kWh";
