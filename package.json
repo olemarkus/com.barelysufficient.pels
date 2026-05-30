@@ -88,6 +88,7 @@
     "eslint": "^10.4.0",
     "eslint-plugin-functional": "^9.0.5",
     "eslint-plugin-n": "^18.0.1",
+    "eslint-plugin-no-unsanitized": "^4.1.5",
     "eslint-plugin-sonarjs": "^4.0.3",
     "eslint-plugin-unicorn": "^64.0.0",
     "globals": "^17.6.0",

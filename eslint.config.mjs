@@ -4,6 +4,7 @@ import nodePlugin from 'eslint-plugin-n';
 import functional from 'eslint-plugin-functional';
 import sonarjs from 'eslint-plugin-sonarjs';
 import unicorn from 'eslint-plugin-unicorn';
+import noUnsanitized from 'eslint-plugin-no-unsanitized';
 import globals from 'globals';
 
 const sharedTypeScriptRules = {
@@ -300,6 +301,18 @@ export default tseslint.config(
       },
     },
     rules: browserTypeScriptRules,
+  },
+  {
+    // Guard the settings UI against HTML-injection sinks (`innerHTML`, `outerHTML`,
+    // `insertAdjacentHTML`, `document.write`, …). Constant strings are allowed by the
+    // plugin; only dynamic/computed assignments are flagged. This also reinforces the
+    // imperative→JSX migration (the canonical components don't build markup as strings).
+    files: ['packages/settings-ui/src/**/*.ts', 'packages/settings-ui/src/**/*.tsx'],
+    plugins: { 'no-unsanitized': noUnsanitized },
+    rules: {
+      'no-unsanitized/property': 'error',
+      'no-unsanitized/method': 'error',
+    },
   },
   {
     files: ['widgets/*/src/public/**/*.ts'],
