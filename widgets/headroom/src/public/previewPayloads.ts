@@ -7,5 +7,6 @@ export const PREVIEW_HEADROOM_PAYLOAD: HeadroomWidgetReadyPayload = {
   headroomKw: 3.8,
   shedCount: 2,
   priceLevel: 'cheap',
+  limitState: 'under',
   stale: false,
 };

@@ -20,8 +20,30 @@
 
 .power {
   display: inline-flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  min-width: 0;
+}
+
+.power__pair {
+  display: inline-flex;
   align-items: baseline;
-  gap: var(--homey-su, 4px);
+  gap: var(--homey-su-1, 4px);
+}
+
+.power__captions {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--homey-su-2, 8px);
+}
+
+.power__caption {
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color-light, #6d7680);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .power__current {
@@ -60,7 +82,8 @@
   transition: width 240ms ease-out, background-color 240ms ease-out;
 }
 
-.bar__fill[data-tone="warn"] {
+.bar__fill[data-tone="warn"],
+.bar__fill[data-tone="at-pace"] {
   background: var(--homey-color-warning, #f5a623);
 }
 
@@ -68,11 +91,31 @@
   background: var(--homey-color-danger, #f0696c);
 }
 
-.widget-root[data-tone="warn"] .power__current {
-  color: var(--homey-text-color-warning, #f5a623);
+.widget-root[data-tone="warn"] .power__current,
+.widget-root[data-tone="at-pace"] .power__current {
+  color: var(--homey-text-color-warning, #b9770e);
 }
 
 .widget-root[data-tone="danger"] .power__current {
+  color: var(--homey-text-color-danger, #f0696c);
+}
+
+.state-label {
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-bold, 700);
+  padding: 0 var(--homey-su-2, 8px);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.widget-root[data-tone="at-pace"] .state-label {
+  background: color-mix(in srgb, var(--homey-color-warning, #f5a623) 18%, transparent);
+  color: var(--homey-text-color-warning, #b9770e);
+}
+
+.widget-root[data-tone="danger"] .state-label {
+  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 20%, transparent);
   color: var(--homey-text-color-danger, #f0696c);
 }
 
@@ -97,7 +140,7 @@
 
 .chip--cheap {
   background: color-mix(in srgb, var(--homey-color-success, #58c56a) 18%, transparent);
-  color: var(--homey-text-color-success, #58c56a);
+  color: var(--homey-text-color-success, #2f8f47);
 }
 
 .chip--normal {
@@ -126,7 +169,8 @@
 }
 
 .widget-root[data-state="empty"] .power__sep,
-.widget-root[data-state="empty"] .power__budget {
+.widget-root[data-state="empty"] .power__budget,
+.widget-root[data-state="empty"] .power__captions {
   display: none;
 }
 
