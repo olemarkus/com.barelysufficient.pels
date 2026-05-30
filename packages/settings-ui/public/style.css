@@ -6036,10 +6036,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --day-view-color-now: var(--color-state-info-border);
 }
 
-#usage-panel:not(.hidden) {
-  display: grid;
-  gap: var(--spacing-4);
-}
+/* Usage page stacks its sections on the shared `.card.panel` rhythm
+   (`gap: --spacing-3`) like every other page — no per-page override. */
 
 .usage-day-summary {
   margin-bottom: var(--spacing-4);
