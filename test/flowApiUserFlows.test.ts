@@ -17,6 +17,13 @@ const zaptecId = 'f6af914f-7aef-4b2a-b46f-691450f91431';
 const easeeId = '30686557-7e69-4b1b-95b0-dfd0faa2d31e';
 const lampId = '216f1324-482e-4409-9843-8ced7813f895';
 
+// The write map is deviceId → capabilityId → (flowId → flowName). Most tests
+// only care which capabilities a device carries; this collapses to that set.
+const writtenCapabilities = (
+  writes: ReturnType<typeof normalizeFlowCapabilityWrites>,
+  deviceId: string,
+): Set<string> => new Set(writes.get(deviceId)?.keys());
+
 const flatFlowsFixture = {
   'flow-cozy': {
     trigger: { uri: 'homey:flowcardtrigger:homey:manager:flow:programmatic_trigger', id: 'homey:manager:flow:programmatic_trigger', args: {} },
@@ -104,9 +111,19 @@ describe('normalizeFlowCapabilityWrites', () => {
   it('collects device-capability writes from both flat and advanced flows', () => {
     const writes = normalizeFlowCapabilityWrites(flatFlowsFixture, advancedFlowsFixture);
 
-    expect(writes.get(lampId)).toEqual(new Set(['dim']));
-    expect(writes.get(zaptecId)).toEqual(new Set(['installation_current_control']));
-    expect(writes.get(easeeId)).toEqual(new Set(['max_power_3000']));
+    expect(writtenCapabilities(writes, lampId)).toEqual(new Set(['dim']));
+    expect(writtenCapabilities(writes, zaptecId)).toEqual(new Set(['installation_current_control']));
+    expect(writtenCapabilities(writes, easeeId)).toEqual(new Set(['max_power_3000']));
+  });
+
+  it('records the writing flow id and name per capability', () => {
+    const writes = normalizeFlowCapabilityWrites(flatFlowsFixture, advancedFlowsFixture);
+
+    // Advanced flow carries a name; the flat flow ('flow-cozy') has none → ''.
+    expect(writes.get(easeeId)?.get('max_power_3000')).toEqual(new Map([['adv-easee', 'Easee stepped load']]));
+    expect(writes.get(zaptecId)?.get('installation_current_control'))
+      .toEqual(new Map([['adv-zaptec', 'Zaptec stepped load']]));
+    expect(writes.get(lampId)?.get('dim')).toEqual(new Map([['flow-cozy', '']]));
   });
 
   it('ignores triggers, conditions, PELS-app actions, and manager actions', () => {
@@ -114,7 +131,7 @@ describe('normalizeFlowCapabilityWrites', () => {
     // The PELS report_evcharger_battery_level action and the bridge triggers
     // are not device-capability writes, so zaptec must only carry the one
     // real device write.
-    expect(writes.get(zaptecId)).toEqual(new Set(['installation_current_control']));
+    expect(writtenCapabilities(writes, zaptecId)).toEqual(new Set(['installation_current_control']));
     // The manager push_text action contributes no device.
     expect([...writes.keys()].sort()).toEqual([lampId, easeeId, zaptecId].sort());
   });
@@ -123,11 +140,14 @@ describe('normalizeFlowCapabilityWrites', () => {
     const writes = normalizeFlowCapabilityWrites(
       {},
       {
-        a: { cards: { c1: { id: `homey:device:${easeeId}:max_power_3000`, type: 'action' } } },
-        b: { cards: { c2: { id: `homey:device:${easeeId}:onoff`, type: 'action' } } },
+        a: { name: 'Flow A', cards: { c1: { id: `homey:device:${easeeId}:max_power_3000`, type: 'action' } } },
+        b: { name: 'Flow B', cards: { c2: { id: `homey:device:${easeeId}:onoff`, type: 'action' } } },
       },
     );
-    expect(writes.get(easeeId)).toEqual(new Set(['max_power_3000', 'onoff']));
+    expect(writtenCapabilities(writes, easeeId)).toEqual(new Set(['max_power_3000', 'onoff']));
+    // Each capability records its own writing flow.
+    expect(writes.get(easeeId)?.get('max_power_3000')).toEqual(new Map([['a', 'Flow A']]));
+    expect(writes.get(easeeId)?.get('onoff')).toEqual(new Map([['b', 'Flow B']]));
   });
 
   it('returns an empty map for empty inputs', () => {
@@ -155,7 +175,7 @@ describe('normalizeFlowCapabilityWrites', () => {
       { 'flow-x': { actions: [{ id: `homey:device:${easeeId}:onoff` }] } },
       {},
     );
-    expect(writes.get(easeeId)).toEqual(new Set(['onoff']));
+    expect(writtenCapabilities(writes, easeeId)).toEqual(new Set(['onoff']));
   });
 
   it('skips malformed flow / card entries without throwing', () => {
@@ -179,7 +199,7 @@ describe('readFlowCapabilityWrites (fail-closed)', () => {
     });
     expect(result.status).toBe('ok');
     if (result.status !== 'ok') throw new Error('expected ok');
-    expect(result.writes.get(zaptecId)).toEqual(new Set(['installation_current_control']));
+    expect(new Set(result.writes.get(zaptecId)?.keys())).toEqual(new Set(['installation_current_control']));
   });
 
   it('distinguishes read-ok-but-empty from unknown', async () => {

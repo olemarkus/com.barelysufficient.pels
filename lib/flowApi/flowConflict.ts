@@ -32,10 +32,15 @@ export type DeviceNativeWrite = {
   ownedCapabilities: readonly string[];
 };
 
-/** A device that has at least one capability written by both PELS and a Flow. */
+/**
+ * A device that has at least one capability written by both PELS and a Flow.
+ * `flowName` is set only when a single, named Flow is responsible for the
+ * conflict — the UI names it then, and otherwise falls back to generic copy.
+ */
 export type FlowConflict = {
   deviceId: string;
   conflictingCapabilities: string[];
+  flowName?: string;
 };
 
 /**
@@ -57,6 +62,35 @@ export function resolveFlowConflict(
 }
 
 /**
+ * The single Flow responsible for a device's conflict, or undefined when zero
+ * or more than one distinct Flow writes the conflicting capabilities (or the
+ * one Flow has no usable name). Resolving "is this a single named Flow?" here
+ * keeps the decision in the producer — the UI only checks whether a name
+ * exists, it never counts Flows.
+ */
+function resolveConflictFlowName(
+  writes: FlowCapabilityWrites,
+  deviceId: string,
+  conflictingCapabilities: readonly string[],
+): string | undefined {
+  const byCapability = writes.get(deviceId);
+  if (!byCapability) return undefined;
+
+  // Union the (flowId → name) entries across every conflicting capability so a
+  // Flow writing two of them still counts once.
+  const byFlow = new Map<string, string>();
+  for (const capabilityId of conflictingCapabilities) {
+    const flows = byCapability.get(capabilityId);
+    if (!flows) continue;
+    for (const [flowId, flowName] of flows) byFlow.set(flowId, flowName);
+  }
+
+  if (byFlow.size !== 1) return undefined;
+  const [flowName] = [...byFlow.values()];
+  return flowName.length > 0 ? flowName : undefined;
+}
+
+/**
  * Classify a set of candidate devices, returning one entry per device that
  * has at least one conflicting capability. Devices with no conflict are
  * omitted from the result.
@@ -66,9 +100,12 @@ export function classifyFlowConflicts(
   devices: readonly DeviceNativeWrite[],
 ): FlowConflict[] {
   return devices
-    .map((device) => ({
-      deviceId: device.deviceId,
-      conflictingCapabilities: resolveFlowConflict(writes, device.deviceId, device.ownedCapabilities),
-    }))
+    .map((device) => {
+      const conflictingCapabilities = resolveFlowConflict(writes, device.deviceId, device.ownedCapabilities);
+      const flowName = resolveConflictFlowName(writes, device.deviceId, conflictingCapabilities);
+      return flowName === undefined
+        ? { deviceId: device.deviceId, conflictingCapabilities }
+        : { deviceId: device.deviceId, conflictingCapabilities, flowName };
+    })
     .filter((conflict) => conflict.conflictingCapabilities.length > 0);
 }

@@ -49,6 +49,22 @@ describe('device detail flow-conflict banner', () => {
     expect(body()?.textContent).not.toContain('max_power_3000');
   });
 
+  it('names the conflicting Flow in the banner when a single Flow is responsible', async () => {
+    buildDom();
+    const { setDeviceDetailNativeWiringState } = await import('../src/ui/deviceDetail/nativeWiring.ts');
+
+    setDeviceDetailNativeWiringState(buildDevice({
+      flowConflict: { conflictingCapabilities: ['max_power_3000'], flowName: 'Charge at night' },
+    }));
+
+    expect(notice()?.hidden).toBe(false);
+    expect(title()?.textContent).toContain('Charge at night');
+    expect(title()?.textContent).not.toBe(NATIVE_WIRING_FLOW_CONFLICT_TITLE);
+    expect(body()?.textContent).toContain('Charge at night');
+    // Still no raw capability id in the user-facing copy.
+    expect(body()?.textContent).not.toContain('max_power_3000');
+  });
+
   it('auto-expands the Setup disclosure so the banner is visible', async () => {
     buildDom();
     const disclosure = document.getElementById('device-detail-setup-disclosure') as HTMLDetailsElement;

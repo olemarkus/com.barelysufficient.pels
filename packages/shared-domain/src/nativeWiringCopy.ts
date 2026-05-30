@@ -20,7 +20,19 @@ export type NativeWiringFlowConflictNotice = {
   body: string;
 };
 
-export function nativeWiringFlowConflictNotice(): NativeWiringFlowConflictNotice {
+// When a single named Flow is responsible, name it so the user knows exactly
+// which Flow to remove. The producer only sets a name when exactly one Flow is
+// the cause (see classifyFlowConflicts), so this never has to count Flows; an
+// empty/absent name falls back to the generic copy.
+export function nativeWiringFlowConflictNotice(flowName?: string): NativeWiringFlowConflictNotice {
+  if (flowName !== undefined && flowName.length > 0) {
+    return {
+      title: `The Flow “${flowName}” already controls this device`,
+      body: 'PELS left built-in device control (the switch below) off so it does not fight '
+        + `your Flow “${flowName}”. Remove it to let PELS control this device, or turn the `
+        + 'switch on to take over.',
+    };
+  }
   return {
     title: NATIVE_WIRING_FLOW_CONFLICT_TITLE,
     body: NATIVE_WIRING_FLOW_CONFLICT_BODY,

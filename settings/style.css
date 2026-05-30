@@ -4636,11 +4636,15 @@ details[open] > summary .disclosure-chevron {
 
 .detail-setup-notice__title {
   font-weight: var(--font-weight-semibold);
+  /* The flow-conflict title interpolates a user-authored Flow name; break a
+     long unbroken name instead of clipping it at the 320px viewport. */
+  overflow-wrap: anywhere;
 }
 
 .detail-setup-notice__body {
   font-size: var(--font-size-sm);
   color: var(--color-state-info-text);
+  overflow-wrap: anywhere;
 }
 
 .detail-setup-notice__action {
