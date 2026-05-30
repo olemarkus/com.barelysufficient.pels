@@ -6,10 +6,12 @@ import {
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
+  mutateDeferredObjectiveSettings,
   normalizeDeferredObjectiveActivePlans,
   normalizeDeferredObjectivePlanHistory,
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveBackfillConfig,
+  type DeferredObjectiveDeviceWriteDeps,
 } from '../../plan/deferredObjectives';
 import type { DeferredObjectiveSettingsEntry } from '../../plan/deferredObjectives/settings';
 import {
@@ -258,9 +260,18 @@ export function createDeferredObjectiveActivePlanRecorder(
   ctx: AppContext,
 ): DeferredObjectiveActivePlanRecorder {
   return new DeferredObjectiveActivePlanRecorder({
-    load: () => normalizeDeferredObjectiveActivePlans(
-      ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING),
-    ),
+    // Return `null` (not an empty payload) when the raw boot read is
+    // absent/non-object so the recorder seeds zero plans. NOTE: confirmation of
+    // the live-device set is no longer derived from this read's shape — the
+    // recorder starts UNCONFIRMED on EVERY boot (absent, non-object, empty,
+    // malformed, or wrong-version all reduce to a set the boot read cannot
+    // vouch for) and only the first plan-cycle `observe()` confirms it. See
+    // `DeferredObjectiveActivePlanRecorder.isLiveSetConfirmed`.
+    load: () => {
+      const raw: unknown = ctx.homey.settings.get(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING);
+      if (!raw || typeof raw !== 'object') return null;
+      return normalizeDeferredObjectiveActivePlans(raw);
+    },
     save: (next) => {
       try {
         ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
@@ -282,18 +293,80 @@ export function requireDeferredObjectiveActivePlanRecorder(
   return ctx.deferredObjectiveActivePlanRecorder;
 }
 
-export const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
-  const current = normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS));
-  const entry = current.objectivesByDeviceId[deviceId];
-  if (!entry || !entry.enabled) return;
-  const next = {
-    ...current,
-    objectivesByDeviceId: {
-      ...current.objectivesByDeviceId,
-      [deviceId]: { ...entry, enabled: false },
-    },
+/**
+ * Build the shared device-scoped write deps for the hardened objective write
+ * primitive. Both the create-smart-task widget path (app.ts) and the deadline
+ * Flow cards (via appInit) route their settings writes through ops built on
+ * this, so there is exactly one read-modify-write of `DEFERRED_OBJECTIVES_SETTINGS`.
+ *
+ * `knownLiveDeviceIds` reads the in-memory active-plan recorder's snapshot — the
+ * recorder's belief about which devices hold a live objective — so the primitive
+ * can refuse a write that would drop those entries after a transient-empty
+ * settings read.
+ */
+export const buildDeferredObjectiveDeviceWriteDeps = (
+  ctx: AppContext,
+  params: { nowMs: number; rebuildReason: string },
+): DeferredObjectiveDeviceWriteDeps => {
+  const activePlanRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+  const planHistoryRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
+  return {
+    read: () => normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
+    write: (next) => { ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next); },
+    knownLiveDeviceIds: () => Object.keys(activePlanRecorder.getActivePlansSnapshot().plansByDeviceId),
+    // While the recorder's live set is unconfirmed (transient-empty boot read,
+    // no cycle observed yet), `knownLiveDeviceIds` may be falsely empty — tell
+    // the clobber guard so it refuses a sibling-dropping create in that window.
+    liveSetAuthoritative: () => activePlanRecorder.isLiveSetConfirmed(),
+    activePlanRecorder,
+    planHistoryRecorder,
+    rebuildPlan: () => ctx.requestFlowPlanRebuild(params.rebuildReason),
+    nowMs: params.nowMs,
   };
-  ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
+};
+
+export const disableDeferredObjectiveInSettings = (ctx: AppContext, deviceId: string): void => {
+  // Route the read-modify-write through the SAME hardened primitive the create
+  // / clear paths use, so a partial transient read can't drop sibling
+  // objectives here. The mutator flips just this device's `enabled` flag; the
+  // primitive's clobber guard refuses the write if it would lose a sibling the
+  // read transiently lost. `touchedDeviceId` is this device, so flipping its
+  // own entry is never treated as a drop.
+  const activePlanRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+  let wasEnabled = false;
+  const persisted = mutateDeferredObjectiveSettings(
+    {
+      read: () => normalizeDeferredObjectiveSettings(ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS)),
+      write: (next) => { ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next); },
+      knownLiveDeviceIds: () => Object.keys(activePlanRecorder.getActivePlansSnapshot().plansByDeviceId),
+      liveSetAuthoritative: () => activePlanRecorder.isLiveSetConfirmed(),
+    },
+    (current) => {
+      const entry = current.objectivesByDeviceId[deviceId];
+      wasEnabled = Boolean(entry?.enabled);
+      if (!entry || !entry.enabled) {
+        // Nothing to flip — return the map unchanged so the guard treats this
+        // as a no-op write rather than a drop.
+        return { next: current, touchedDeviceId: deviceId };
+      }
+      return {
+        next: {
+          ...current,
+          objectivesByDeviceId: {
+            ...current.objectivesByDeviceId,
+            [deviceId]: { ...entry, enabled: false },
+          },
+        },
+        touchedDeviceId: deviceId,
+      };
+    },
+  );
+  // Only run the in-memory cleanup when there was an enabled objective AND the
+  // disable actually persisted. A no-op (already disabled / absent) or a
+  // refused clobber leaves the bus / tracker / active-plan state for the next
+  // clean cycle to reconcile, so in-memory state never drifts ahead of what is
+  // on disk.
+  if (!wasEnabled || !persisted) return;
   // Drop in-memory status + active plan so flow conditions like
   // `deadline_status_is` and the deadline UI agree with the persisted state
   // immediately, instead of seeing the last published snapshot until the

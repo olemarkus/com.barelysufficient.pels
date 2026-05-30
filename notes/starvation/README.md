@@ -5,14 +5,34 @@ Core intended-target / suppression-state diagnostics now exist in `lib/plan/plan
 and `lib/diagnostics/deviceDiagnosticsService.ts`, but flows/insights and any remaining
 integration gaps should still follow this note.
 
-The feature is detection only:
+> **v2 — user-initiated budget-exempt rescue (shipped).** The v1 DETECTION model
+> below is unchanged: the planner still never auto-mitigates starvation. What v2
+> adds is a separate, explicitly user-initiated lane: the starvation-rescue
+> dashboard widget (`widgets/starvation_rescue/`) lets a user grant a
+> *budget-caused* starved temperature device a bounded budget-exempt rescue
+> (`rescue.exemptFromBudget: 'always'`, a near-term +3h deadline, aimed at the
+> device's intended normal target). This bypasses DAILY-BUDGET admission only —
+> never capacity (the hard cap is physical), and capacity/manual/external rows
+> get no rescue affordance. The rescue MERGES into an existing smart task (adds
+> only the exemption, preserving the user's target/deadline/other permissions)
+> rather than replacing it. So the system is no longer "detection-only" for
+> temperature devices — but the new behaviour is gated behind explicit user
+> action, not automatic mitigation.
+>
+> The widget's row status chip intentionally shows `Starved · N min` (the live
+> duration). The "do not append duration to the badge" rule in the *Overview UI*
+> section below governs the OVERVIEW HERO surface, not this standalone action
+> widget, where the duration is the primary signal for choosing what to rescue.
+
+The detection feature is detection only:
 
 - no priority changes
 - no restore-order changes
 - no shed-order changes
 - no fairness logic
 - no automatic mitigation
-- no budget adjustment
+- no budget adjustment (the v2 widget rescue is user-initiated, not an automatic
+  budget adjustment by the planner)
 
 ## Scope
 

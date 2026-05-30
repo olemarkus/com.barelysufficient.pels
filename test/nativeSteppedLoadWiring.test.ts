@@ -310,6 +310,36 @@ describe('native stepped-load wiring', () => {
     expect(parsed.capabilities).not.toContain('max_power_3000');
   });
 
+  it('surfaces nativeWriteCapabilities from pre-strip caps for a native-enabled Hoiax', () => {
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      { getNativeEvWiringEnabled: () => true },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
+
+    // The control caps are stripped from the public capability list, but the
+    // conflict-detection field still reports what PELS natively writes.
+    expect(parsed.capabilities).not.toContain('max_power_3000');
+    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
+  });
+
+  it('surfaces nativeWriteCapabilities even when native wiring is OFF (PR4 gate population)', () => {
+    const deviceManager = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      createLogger(),
+      { getNativeEvWiringEnabled: () => false },
+    );
+
+    const [parsed] = deviceManager.parseDeviceListForTests([buildHoiaxDevice()]);
+
+    // Native wiring disabled → not actively controlled (no stepped controlModel),
+    // but it is still a candidate the conflict gate must see.
+    expect(parsed.controlModel).toBeUndefined();
+    expect(parsed.nativeWriteCapabilities).toEqual(['max_power_3000', 'onoff']);
+  });
+
   it('projects target_power controls as stepped-load wiring at the observation boundary', () => {
     const deviceManager = new DeviceTransport(
       mockHomeyInstance as unknown as Homey.App,

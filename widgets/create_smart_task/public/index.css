@@ -1,0 +1,383 @@
+/* The renderer switches steps and individual lines by toggling the `hidden`
+   attribute. Any author `display` rule on a hidden-toggled element would beat
+   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
+   regardless of specificity), so a hidden step would still render — the picker,
+   compose, preview, and created steps would stack instead of swapping. This
+   blanket author-origin reset re-asserts the UA semantics for every
+   hidden-toggled element in one place — the step views
+   (.picker-view/.compose-view/.preview-view/.created-view), the device list
+   (.rows), the empty/context/echo lines, the preview lines, and any future
+   hidden-toggled element — so no `display` rule below needs a per-rule
+   `:not([hidden])` guard. */
+[hidden] {
+  display: none !important;
+}
+
+.widget-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  gap: var(--homey-su-2, 8px);
+  box-sizing: border-box;
+}
+
+.picker-view,
+.compose-view,
+.preview-view,
+.created-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--homey-su-2, 8px);
+}
+
+.step-title {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+/* ----- Device picker ----- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.row {
+  display: block;
+  padding: 0;
+  margin: 0;
+}
+
+.row__btn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0 var(--homey-su-2, 8px);
+  align-items: center;
+  padding: var(--homey-su-1, 4px) var(--homey-su-2, 8px);
+  border: none;
+  border-radius: var(--homey-border-radius-small, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  text-align: left;
+  width: 100%;
+  min-height: 48px;
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+.row__btn:hover {
+  background-color: color-mix(in srgb, var(--homey-text-color, currentColor) 6%, transparent);
+}
+
+.row__btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.row__name {
+  grid-column: 1;
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color, inherit);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__meta {
+  grid-column: 2;
+  color: var(--homey-text-color-light, #6d7680);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.row__chevron {
+  grid-column: 3;
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.empty {
+  margin: auto 0 0;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  color: var(--homey-text-color-light, #6d7680);
+  text-align: center;
+}
+
+.empty-hint {
+  margin: var(--homey-su-1, 4px) 0 auto;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+  text-align: center;
+}
+
+/* ----- Step header / back ----- */
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: var(--homey-su-2, 8px);
+  min-height: 40px;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--homey-su-1, 4px);
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  padding: var(--homey-su-1, 4px) var(--homey-su-2, 8px) var(--homey-su-1, 4px) 0;
+  border-radius: var(--homey-border-radius-small, 6px);
+  cursor: pointer;
+  text-align: left;
+  min-height: 40px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.back-btn:hover {
+  background-color: color-mix(in srgb, var(--homey-text-color, currentColor) 6%, transparent);
+}
+
+.back-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.back-btn__chevron {
+  font-size: var(--homey-font-size-large, 20px);
+  line-height: 1;
+  flex: none;
+}
+
+.back-btn__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ----- Fields (goal + ready-by) ----- */
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--homey-su-2, 8px);
+  flex-wrap: wrap;
+}
+
+.field__label {
+  font-size: var(--homey-font-size-small, 14px);
+  color: var(--homey-text-color-light, #6d7680);
+  flex: none;
+}
+
+/* "Goal 80% · now 42%" anchor under the stepper, and the resolved
+   "Ready by Tomorrow 07:00" echo under the chips — both muted context lines. */
+.goal-context,
+.ready-by-echo {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--homey-su-2, 8px);
+}
+
+.stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: none;
+  background: color-mix(in srgb, var(--homey-text-color, currentColor) 8%, transparent);
+  color: var(--homey-text-color, inherit);
+  font-size: var(--homey-font-size-large, 20px);
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+.stepper__btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.stepper__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stepper__btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--homey-text-color, currentColor) 14%, transparent);
+}
+
+.stepper__value {
+  min-width: 64px;
+  text-align: center;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  font-variant-numeric: tabular-nums;
+  color: var(--homey-text-color, inherit);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--homey-su-1, 4px);
+}
+
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  padding: var(--homey-su-1, 4px) var(--homey-su-3, 12px);
+  /* Primary compose input on a touch tile — keep ≥44px hit target. */
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--homey-line-color, rgba(15, 23, 28, 0.12));
+  background: transparent;
+  color: var(--homey-text-color, inherit);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 200ms ease-out, border-color 200ms ease-out;
+}
+
+.chip-btn:hover {
+  background: color-mix(in srgb, var(--homey-text-color, currentColor) 6%, transparent);
+}
+
+.chip-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.chip-btn[data-selected="true"] {
+  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 22%, transparent);
+  border-color: color-mix(in srgb, var(--homey-color-success, #58c56a) 40%, transparent);
+  color: var(--homey-text-color-success, #2f8f47);
+}
+
+/* ----- Primary action ----- */
+
+.primary-btn {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--homey-border-radius-default, 10px);
+  background: var(--homey-color-success, #58c56a);
+  color: var(--homey-color-white, #ffffff);
+  font: inherit;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-bold, 700);
+  cursor: pointer;
+  transition: opacity 200ms ease-out;
+}
+
+.primary-btn:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* ----- Preview ----- */
+
+.preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--homey-su-1, 4px);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.preview-line {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color, inherit);
+}
+
+/* Cost is the headline — it's what earns this tile its visit. */
+.preview-line--cost {
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-bold, 700);
+}
+
+/* "cheapest hours before HH:MM" — the implicit "why" under the cost. */
+.preview-line--cost-subtext {
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+/* The when-window pairs with cost: present but a notch below the headline. */
+.preview-line--when {
+  font-weight: var(--homey-font-weight-medium, 500);
+}
+
+/* Energy demoted to a muted secondary line below cost + window. */
+.preview-line--energy,
+.preview-line--caveat,
+.preview-line--unavailable {
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+.preview-line--error {
+  color: var(--homey-text-color-danger, #f0696c);
+  font-weight: var(--homey-font-weight-medium, 500);
+}
+
+/* ----- Created flash ----- */
+
+.created-view {
+  align-items: center;
+  justify-content: center;
+}
+
+.created-msg {
+  margin: 0;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color-success, #2f8f47);
+  text-align: center;
+}

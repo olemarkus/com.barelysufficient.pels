@@ -30,8 +30,16 @@
  * writes, which is captured here as a normal device-capability write.
  */
 
-/** deviceId → set of capability ids written by some user-flow action. */
-export type FlowCapabilityWrites = Map<string, Set<string>>;
+/**
+ * deviceId → capabilityId → (flowId → flowName) for every device-capability
+ * written by some user-flow action.
+ *
+ * The flow id is the identity (two different Flows can share a display name),
+ * and the name is carried alongside so a later UI surface can name the single
+ * Flow responsible for a conflict. The name may be `''` when the Flow has no
+ * usable name; the conflict classifier treats that as "cannot name".
+ */
+export type FlowCapabilityWrites = Map<string, Map<string, Map<string, string>>>;
 
 const DEVICE_CARD_ID_PREFIX = 'homey:device:';
 
@@ -57,19 +65,41 @@ export function parseDeviceCapabilityWrite(
   return { deviceId, capabilityId };
 }
 
-function recordWrite(writes: FlowCapabilityWrites, deviceId: string, capabilityId: string): void {
-  const existing = writes.get(deviceId);
-  if (existing) {
-    existing.add(capabilityId);
-    return;
+function recordWrite(
+  writes: FlowCapabilityWrites,
+  deviceId: string,
+  capabilityId: string,
+  flowId: string,
+  flowName: string,
+): void {
+  let byCapability = writes.get(deviceId);
+  if (!byCapability) {
+    byCapability = new Map();
+    writes.set(deviceId, byCapability);
   }
-  writes.set(deviceId, new Set([capabilityId]));
+  let byFlow = byCapability.get(capabilityId);
+  if (!byFlow) {
+    byFlow = new Map();
+    byCapability.set(capabilityId, byFlow);
+  }
+  byFlow.set(flowId, flowName);
 }
 
-function collectFromCard(writes: FlowCapabilityWrites, card: unknown): void {
+function collectFromCard(
+  writes: FlowCapabilityWrites,
+  card: unknown,
+  flowId: string,
+  flowName: string,
+): void {
   if (!isRecord(card)) return;
   const write = parseDeviceCapabilityWrite(card.id);
-  if (write) recordWrite(writes, write.deviceId, write.capabilityId);
+  if (write) recordWrite(writes, write.deviceId, write.capabilityId, flowId, flowName);
+}
+
+// A Flow's display name, or '' when it has no usable name (the classifier
+// then cannot name it and falls back to the generic conflict copy).
+function flowDisplayName(flow: Record<string, unknown>): string {
+  return typeof flow.name === 'string' ? flow.name : '';
 }
 
 // A flow with `enabled === false` is returned by the Web API with its cards
@@ -81,12 +111,13 @@ function isDisabledFlow(flow: Record<string, unknown>): boolean {
 }
 
 function collectFromFlatFlows(writes: FlowCapabilityWrites, flatFlows: Record<string, unknown>): void {
-  for (const flow of Object.values(flatFlows)) {
+  for (const [flowId, flow] of Object.entries(flatFlows)) {
     if (!isRecord(flow) || isDisabledFlow(flow)) continue;
     const actions = flow.actions;
     if (!Array.isArray(actions)) continue;
+    const flowName = flowDisplayName(flow);
     for (const action of actions) {
-      collectFromCard(writes, action);
+      collectFromCard(writes, action, flowId, flowName);
     }
   }
 }
@@ -95,13 +126,14 @@ function collectFromAdvancedFlows(
   writes: FlowCapabilityWrites,
   advancedFlows: Record<string, unknown>,
 ): void {
-  for (const flow of Object.values(advancedFlows)) {
+  for (const [flowId, flow] of Object.entries(advancedFlows)) {
     if (!isRecord(flow) || isDisabledFlow(flow)) continue;
     const cards = flow.cards;
     if (!isRecord(cards)) continue;
+    const flowName = flowDisplayName(flow);
     for (const card of Object.values(cards)) {
       if (!isRecord(card) || card.type !== 'action') continue;
-      collectFromCard(writes, card);
+      collectFromCard(writes, card, flowId, flowName);
     }
   }
 }

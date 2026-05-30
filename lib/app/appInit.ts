@@ -17,8 +17,9 @@ import type { FlowHomeyLike } from '../utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import type { AppContext } from './appContext';
 import {
-  applyDeferredObjectiveChange,
+  clearObjectiveForDevice,
   normalizeDeferredObjectiveSettings,
+  upsertObjectiveForDevice,
 } from '../plan/deferredObjectives';
 import { DEFERRED_OBJECTIVES_SETTINGS, LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
 import {
@@ -26,6 +27,7 @@ import {
   normaliseLearnedThermostatDeadbandMap,
 } from '../utils/learnedThermostatDeadbandStore';
 import {
+  buildDeferredObjectiveDeviceWriteDeps,
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
   requireDeferredObjectivePlanHistoryRecorder,
@@ -36,8 +38,10 @@ import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './appInit/calibrationViews';
+import { isRuntimePlannedDevice } from './appDeviceSupport';
 
 export {
+  buildDeferredObjectiveDeviceWriteDeps,
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
@@ -204,7 +208,10 @@ export function createPlanService(ctx: AppContext): PlanService {
       evictMissingDeviceCacheEntries(ctx, snapshot);
       return snapshot
         .map((device) => toPlanDevice(ctx, device))
-        .filter((device) => device.managed !== false);
+        // Shared planned-set predicate — the create-smart-task candidate list
+        // and create-time validation use the SAME `isRuntimePlannedDevice` so a
+        // `managed: false` device can never be offered/persisted but unplanned.
+        .filter(isRuntimePlannedDevice);
     },
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
@@ -263,25 +270,29 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings(
       ctx.homey.settings.get(DEFERRED_OBJECTIVES_SETTINGS),
     ),
-    setDeferredObjectiveSettings: (next) => {
-      ctx.homey.settings.set(DEFERRED_OBJECTIVES_SETTINGS, next);
-    },
+    // Both writes route through the device-scoped ops over the hardened
+    // settings-mutation primitive (see buildDeferredObjectiveDeviceWriteDeps),
+    // so the Flow cards and the create-smart-task widget share one
+    // read-modify-write + notify/flush/rebuild path.
+    upsertDeferredObjectiveForDevice: (params) => upsertObjectiveForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(ctx, {
+        nowMs: ctx.getNow().getTime(),
+        rebuildReason: 'deadline_objective_card_set',
+      }),
+      params,
+    ),
+    clearDeferredObjectiveForDevice: (params) => clearObjectiveForDevice(
+      buildDeferredObjectiveDeviceWriteDeps(ctx, {
+        nowMs: ctx.getNow().getTime(),
+        rebuildReason: 'deadline_objective_card_clear',
+      }),
+      params,
+    ),
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
     getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,
     getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
     getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
-    applyDeferredObjectiveChange: (params) => {
-      const activeRecorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-      const historyRecorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      applyDeferredObjectiveChange({
-        ...params,
-        activePlanRecorder: activeRecorder,
-        planHistoryRecorder: historyRecorder,
-      });
-      activeRecorder.flushIfDirty();
-      historyRecorder.flushIfDirty();
-    },
     evaluateHeadroomForDevice: (params) => ctx.evaluateHeadroomForDevice(params),
     loadDailyBudgetSettings: () => requireDailyBudgetService(ctx).loadSettings(),
     updateDailyBudgetState: (options) => ctx.updateDailyBudgetState(options),

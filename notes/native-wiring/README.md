@@ -148,15 +148,60 @@ free of any cross-peer dependency on the device transport. Wiring supplies a
    (`charging_button`; `max_power_3000`/`max_power_2000`/`max_power`/`onoff`;
    `target_power`) is PR3's job, at the entry layer where importing
    `lib/device` is allowed. No wiring/behaviour change yet.
-3. **PR3:** default native stepped wiring ON for Hoiax / `target_power`
-   unless a flow conflict is found; resolve each device's owned native-write
-   capabilities and feed them + the PR1 read into the PR2 classifier; persist
-   a per-device `autoDecisionMade` marker so a user's explicit toggle is never
-   auto-reverted on a later upgrade; re-query cadence (startup + settings
-   open). Treat a `status: 'unknown'` read as "do not auto-flip".
-4. **PR4:** device-detail conflict banner naming the conflicting Flow /
-   capability (uses the classifier's returned capability ids); copy in
-   `packages/shared-domain/`.
+3. **PR3 (shipped):** resolve each native stepped-load device's owned
+   native-write capabilities (`resolveNativeSteppedLoadWriteCapabilities` in
+   `lib/device/nativeSteppedLoadWiring.ts`) and run the PR2 classifier against
+   the PR1 read inside the startup probe, structured-logging the per-device
+   conflict verdict (`candidateCount` / `conflictCount` / `conflicts`).
+   **Telemetry only — no default flip.** Validates the full detection pipeline
+   on real Homeys before any behaviour changes. The candidate enumeration +
+   owned-cap resolution it adds is reused by PR4.
+4. **PR4 (shipped):** native stepped wiring defaults ON for Hoiax
+   (`max_power_*`) devices unless a flow conflict is found.
+   - **Runtime default, not a settings write.** `getNativeEvWiringEnabled`
+     resolves: an explicit user entry in `NATIVE_EV_WIRING_DEVICES` (true or
+     false) always wins; an untouched device falls back to an in-memory,
+     conflict-gated auto-decision (`app.autoNativeWiringDecisions`). Nothing is
+     persisted, so there is no migration and no risk of corrupting user state,
+     and an explicit opt-out is never auto-reverted.
+   - **Gating:** `detectNativeWiringConflicts` (`setup/flowConflictProbe.ts`)
+     auto-enables Hoiax candidates with no conflicting Flow; an `unknown` read
+     yields no decisions (fail-closed). It runs once after the snapshot
+     warm-up gate, then re-parses the snapshot + rebuilds the plan so the
+     decision takes effect.
+   - **Scope:** `target_power` steppers are already default-ON (via the
+     `targetPowerSteppedCandidate` branch in `managerNativeEv.ts`) and are left
+     untouched. Detection runs each startup, so a restart picks up
+     newly-added conflicting Flows.
+   - **Accepted limitation:** detection runs once after the warm-up gate, with
+     a bounded retry while the snapshot is still empty. If the startup snapshot
+     refresh fails outright (gate releases via timeout) and stays broken past
+     the retries, a conflict-free Hoiax is not auto-enabled until the next
+     periodic snapshot refresh or a restart. The window is time-bounded and
+     capacity control is otherwise unaffected, so this is accepted rather than
+     given a dedicated recovery path; the re-query follow-up below closes it.
+5. **PR5 (shipped):** device-detail conflict banner. The per-device verdict is
+   surfaced on the snapshot as `flowConflict.conflictingCapabilities` (app
+   stores `flowConflictsByDevice`, exposed via the `getFlowConflict` parse
+   provider, attached in `resolveParsedDeviceSettings`); the settings-UI
+   `syncFlowConflictNotice` shows a non-interactive banner when it is set.
+   Copy lives in `packages/shared-domain/src/nativeWiringCopy.ts`. **Copy is
+   intentionally generic** — it names neither the Flow nor the raw capability
+   id (`max_power_3000` would be jargon); the conflict data decides *when* the
+   banner shows, not its text. The banner ties itself to the visible built-in
+   device-control switch and names both remedies (remove the Flow, or flip the
+   switch to override). `flowConflict` is display-only and does not affect the
+   control gate.
+
+   *Follow-ups:*
+   - Re-run conflict detection after snapshot refreshes (settings-open /
+     device-list refresh / the next successful periodic refresh) so that (a) a
+     Flow added after startup is reflected without a restart and (b) a degraded
+     startup that left the snapshot empty recovers automatically once it
+     populates — closing the accepted limitation noted in PR4.
+   - Plumb the conflicting Flow's name through `detectNativeWiringConflicts`
+     so the banner can name which Flow to remove (today the remedy points at an
+     unnamed Flow). Requires the flow-list reader to carry flow names.
 
 ## Validation reference
 

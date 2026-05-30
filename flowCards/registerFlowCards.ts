@@ -41,14 +41,30 @@ import { registerFlowBackedDeviceCards } from './flowBackedDeviceCards';
 import { registerDeadlineObjectiveCards } from './deadlineObjectiveCards';
 import { registerAllowSmartTaskRescueCard } from './smartTaskRescueCard';
 import type {
-  DeferredObjectiveChangeInput,
   DeferredObjectiveEndedBus,
   DeferredObjectiveHoursRemainingBus,
   DeferredObjectiveHoursRemainingTracker,
   DeferredObjectivePlanRevisionBus,
+  DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
 } from '../lib/plan/deferredObjectives';
+
+// Device-scoped objective writes the Flow cards delegate to. Both route through
+// the hardened settings-mutation primitive + shared notify/flush/rebuild
+// chokepoint in `lib/plan/deferredObjectives/objectiveWrite.ts` (wired with the
+// app's recorders in appInit). Return `false` when the primitive refused the
+// write as a suspected clobber from a transient-empty settings read.
+export type UpsertDeferredObjectiveForDevice = (params: {
+  deviceId: string;
+  deviceName: string | null;
+  entry: DeferredObjectiveSettingsEntry;
+  rescue?: 'preserve' | 'replace';
+}) => boolean;
+export type ClearDeferredObjectiveForDevice = (params: {
+  deviceId: string;
+  deviceName: string | null;
+}) => boolean;
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
@@ -91,13 +107,17 @@ export type FlowCardDeps = {
   };
   rebuildPlan: (source: string) => void;
   getDeferredObjectiveSettings?: () => DeferredObjectiveSettingsV1;
-  setDeferredObjectiveSettings?: (next: DeferredObjectiveSettingsV1) => void;
+  // Required — the deadline / clear / rescue cards MUST be able to observe
+  // whether the hardened write primitive refused (returned `false`). Optional
+  // chaining here silently swallowed refusals: a Flow reported success while
+  // nothing persisted. Production always wires these via appInit.
+  upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
+  clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;
   getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;
   getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
   getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
-  applyDeferredObjectiveChange?: (params: DeferredObjectiveChangeInput) => void;
   evaluateHeadroomForDevice: (params: {
     devices: HeadroomCardDeviceLike[];
     deviceId: string;

@@ -94,7 +94,21 @@ export type DeadlinesListHeroCopy = {
 
 // States the Smart tasks panel renders a baseline (non-populated) header for.
 // Shared so the producer constant and the view's prop type cannot drift.
-export type DeadlinesListBaselineState = 'loading' | 'error' | 'empty';
+//
+// `empty` and `empty_between_runs` are two distinct zero-active-card states:
+//   - `empty`            : true first run — no active cards AND no past-tasks
+//                          history. The header invites the user to add their
+//                          first task and the body carries the Flow setup copy.
+//   - `empty_between_runs`: no active cards, but the Past tasks archive below
+//                          has finished runs. The user has used smart tasks
+//                          before; the header must NOT say "first" / "yet"
+//                          (which reads as "you've never done this"). It points
+//                          the user at the archive instead.
+export type DeadlinesListBaselineState =
+  | 'loading'
+  | 'error'
+  | 'empty'
+  | 'empty_between_runs';
 
 // Eyebrow rendered on the baseline Smart tasks header. Kept as the same
 // literal the populated hero emits via `DeadlinesListHeroCopy.eyebrow` so
@@ -114,7 +128,22 @@ export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
   loading: 'Loading your smart tasks…',
   error: 'Smart tasks unavailable',
   empty: 'Add your first smart task',
+  // Between runs: the user has finished tasks in the archive but none are
+  // scheduled right now. "No smart tasks scheduled" states the present
+  // calmly without the "first" / "yet" framing that would erase their
+  // history. The body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to
+  // Past tasks.
+  empty_between_runs: 'No smart tasks scheduled',
 };
+
+// Body copy for the between-runs empty state. Sits under the
+// `empty_between_runs` headline and points the user at the Past tasks archive
+// below rather than repeating the first-run Flow setup instructions (they
+// already know how — they have finished runs). Kept in shared-domain so
+// runtime log breadcrumbs and the UI render the same sentence (Rule 4 — UI
+// text shared with logs).
+export const DEADLINES_LIST_BETWEEN_RUNS_BODY
+  = 'Nothing is scheduled right now. Your finished tasks are in Past tasks below.';
 
 // Five-bucket classification of list card status. Each `SmartTaskListStatusId`
 // is assigned to exactly one bucket; the `Record` constraint forces the keys

@@ -110,6 +110,17 @@ export type TargetDeviceSnapshot = {
     communicationModel?: 'local' | 'cloud';
     controlModel?: DeviceControlModel;
     steppedLoadProfile?: SteppedLoadProfile;
+    // Capabilities PELS writes when it natively controls this stepped-load
+    // device (max_power_* / onoff / target_power). Populated for stepped-load
+    // candidates even when native wiring is off. Used by native-wiring
+    // flow-conflict detection (notes/native-wiring/); not a control input.
+    nativeWriteCapabilities?: readonly string[];
+    // Set when a user Homey Flow writes a capability PELS would natively
+    // control for this device, so PELS holds off auto-enabling native wiring
+    // (notes/native-wiring/). Drives the device-detail conflict banner.
+    // `flowName` is present only when a single named Flow is responsible, so
+    // the banner can name it; absent otherwise (generic copy).
+    flowConflict?: { conflictingCapabilities: readonly string[]; flowName?: string };
     controlCapabilityId?: 'onoff' | 'evcharger_charging';
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;

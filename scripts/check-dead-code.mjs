@@ -44,6 +44,10 @@ const allowedOrphans = new Set([
   // Runtime wiring lands in the follow-up PR that resolves each device's owned
   // native-write capabilities and feeds them in.
   'lib/flowApi/flowConflict.ts',
+  // Consumed by `widgets/create_smart_task/src/api.ts` via the esbuild widget
+  // bundle, which madge (run against the runtime tsconfig that excludes
+  // `widgets/`) doesn't traverse.
+  'packages/shared-domain/src/smartTaskDeadlineFormat.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [
@@ -76,6 +80,16 @@ const deferredObjectiveBarrelExports = [
   'DeferredObjectivePlannedBucket',
   'resolveDeferredObjectiveDeadline',
   'DeferredObjectiveStep',
+  // Write-path barrel exports. The device-scoped ops + their shared deps type
+  // are consumed by app.ts and appInit; the hardened primitive
+  // `mutateDeferredObjectiveSettings` and `applyDeferredObjectiveChange` are
+  // re-exported from the barrel for direct unit testing (the ops call them
+  // intra-module), so ts-prune sees the barrel re-export as unused.
+  'applyDeferredObjectiveChange',
+  'DeferredObjectiveChangeInput',
+  'mutateDeferredObjectiveSettings',
+  'DeferredObjectiveSettingsMutationDeps',
+  'DeferredObjectiveSettingsMutator',
 ].join('|');
 
 const allowedUnusedExportPatterns = [
@@ -115,6 +129,12 @@ const allowedUnusedExportPatterns = [
   // in `lib/app/settingsUiAppRuntime.ts`.
   /^packages\/contracts\/src\/settingsUiApi\.ts:\d+ - SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX$/,
   /^packages\/contracts\/src\/targetCapabilities\.ts:\d+ - getTargetCapabilityStep$/,
+  // Consumed by `widgets/starvation_rescue/src/**` (payload builder + types
+  // re-export) via the esbuild widget bundle, which madge (run against the
+  // runtime tsconfig that excludes `widgets/`) doesn't traverse. The sibling
+  // `StarvationRescueDevice` export IS imported by app.ts, so only the payload
+  // type needs the exception.
+  /^packages\/contracts\/src\/starvationRescue\.ts:\d+ - StarvationRescueDevicesPayload$/,
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - _resetSmapsCacheForTests$/,
   /^lib\/diagnostics\/smapsRollup\.ts:\d+ - __resetSmapsDetailCacheForTests$/,
   /^lib\/diagnostics\/perfLogging\.ts:\d+ - __resetFdCountProbeForTests$/,
@@ -157,6 +177,28 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetEtaVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetTargetActionVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_TARGET_NOUN$/,
+  // Consumed by `widgets/create_smart_task/` (payload builder + browser
+  // render) via the esbuild widget bundle, which ts-prune (running against the
+  // runtime tsconfig that excludes `widgets/`) doesn't see.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_WIDGET_COPY$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_READY_BY_PRESETS$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - CREATE_SMART_TASK_READY_BY_DEFAULT_ID$/,
+  // Create-smart-task widget create-error copy resolver: maps a create reject
+  // reason (incl. `deadline_passed`) to the widget error line; called only from
+  // the widget browser bundle, invisible to ts-prune's runtime tsconfig.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveCreateSmartTaskRejectCopy$/,
+  // Create-smart-task widget compose-step copy helpers: the picker "Now <value>"
+  // hint and the "Goal … · now …" goal anchor render only in the widget browser
+  // bundle, which ts-prune (runtime tsconfig excludes `widgets/`) doesn't see.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskNowValueLine$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskGoalContextLine$/,
+  // smartTaskDeviceKind helpers: `resolveSmartTaskDeviceKind` is reached from
+  // app.ts (create-objective validation); the bounds/current-value helpers are
+  // consumed only by the create_smart_task widget payload builder via the
+  // esbuild bundle ts-prune doesn't follow.
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskGoalBounds$/,
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskCurrentValue$/,
+  /^packages\/shared-domain\/src\/smartTaskDeviceKind\.ts:\d+ - resolveSmartTaskDefaultGoal$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_STATUS_CHIP_VARIANT$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListStatus$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskListReadyByTone$/,
@@ -178,7 +220,12 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_HISTORY_EYEBROW$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_PAST_EMPTY_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_7DAY_HIT_RATE_LABEL$/,
-  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_HIT_RATE_NOUN$/,
+  // `formatSmartTaskHitRateFragment` (+ its `SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN`,
+  // reported `(used in module)`) compose the legible "N% of M finished" hit-rate
+  // fragment. Consumed only by `deferredPlanHistoryReceipt.ts`, whose own
+  // consumers are settings-UI/widget code the runtime tsconfig excludes, so
+  // ts-prune sees no runtime importer.
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - formatSmartTaskHitRateFragment$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_ROW_LABELS$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_EMPTY_COPY$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_LIST_LOAD_ERROR_COPY$/,

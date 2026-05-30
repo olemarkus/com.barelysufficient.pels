@@ -216,6 +216,108 @@ export const SMART_TASK_WIDGET_EMPTY_SUBTITLE = 'No active smart tasks';
 export const formatSmartTaskWidgetOverflow = (count: number): string =>
   `+${count} in Smart tasks`;
 
+// ─── Create-smart-task widget copy ───────────────────────────────────────────
+// User-facing strings for the standalone "New smart task" dashboard widget.
+// Housed here (not inlined in the widget package) so the strings sit beside the
+// rest of the smart-task vocabulary and runtime log breadcrumbs can reuse the
+// same wording per `feedback_ui_text_shared_with_logs`. The widget lets the
+// user set a goal on an eligible device and preview when it runs and what it
+// will cost before committing — "smart task" / "Ready by" / "objective"
+// vocabulary only, no shed/restore/headroom jargon (`notes/ui-terminology.md`).
+export const CREATE_SMART_TASK_WIDGET_COPY = {
+  // Step 1 — device picker.
+  pickDeviceTitle: 'New smart task',
+  pickDevicePrompt: 'Choose a device',
+  emptyNoDevices: 'No eligible devices',
+  // Warmer than a bare capability list: name the device kinds AND the next
+  // action, so a user with nothing yet knows exactly how to make a device
+  // appear here rather than hitting a dead end.
+  emptyNoDevicesHint: 'Add a thermostat, water heater, or EV charger in Homey and it’ll appear here.',
+  loadError: 'Could not load devices. Try again later.',
+  // Shown while the widget is still wiring up to the Homey app (the SDK bridge
+  // hasn't supplied a real API client yet). Distinct from `loadError` (a real
+  // fetch that failed): this is a transient "not ready yet" state that resolves
+  // on its own once the bridge connects, so it reads as loading rather than a
+  // hard failure. The widget never shows canned sample devices on a real boot,
+  // and keeps Create disabled until a real client is present, so a user can
+  // never see a false "Created" while running against sample data.
+  notReady: 'Connecting to Homey…',
+  // Step 2 — goal + ready-by.
+  goalLabel: 'Goal',
+  readyByLabel: 'Ready by',
+  previewButton: 'Preview',
+  // Step 3 — preview + confirm.
+  previewTitle: 'Preview',
+  // Canonical "Scheduled" vocabulary (matches `SMART_TASK_LIST_STATUS_LABELS`
+  // / `SMART_TASK_LIST_ROW_LABELS` and the terminology guide) rather than the
+  // one-off noun "Runs": the preview's when-window is the same concept the list
+  // chip names.
+  scheduledLabel: 'Scheduled',
+  energyLabel: 'Energy',
+  costLabel: 'Cost',
+  // The estimate is computed in isolation for this one candidate — surface the
+  // caveat honestly rather than implying a guarantee (the
+  // `DeferredObjectivePlanPreview` contract documents the same in-isolation
+  // direction-of-error). Kept short for the 320–480 px widget.
+  estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
+  createButton: 'Create smart task',
+  backButton: 'Back',
+  // Shown when the preview can't be projected (no price horizon yet, missing
+  // device reading, price-aware optimisation off). Distinct from a hard error.
+  // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+  previewUnavailable: 'Can’t preview this yet — no prices published for this window yet.',
+  // Pending state on the Create button while the /create round-trip is in
+  // flight. Distinct from `created` (the confirmed-success label): the button
+  // must read as work-in-progress, never as success, until a `{ ok: true }`
+  // create actually lands — otherwise a still-pending or later-failed create
+  // would have flashed "Smart task created" before anything was persisted.
+  creating: 'Creating…',
+  // Shown briefly after a successful create before the widget resets.
+  created: 'Smart task created',
+  // Generic submit failure (rejected candidate / transient SDK miss).
+  createError: 'Could not create the smart task. Check the goal and try again.',
+  // The previewed "Ready by" time slipped into the past between previewing and
+  // confirming (the user lingered past the chosen minute). The create is
+  // rejected rather than silently rolled to the next day so the created task
+  // can never disagree with the window the preview promised — re-previewing
+  // resolves a fresh future deadline. Retryable, not a hard failure.
+  deadlinePassed: 'That ready-by time just passed. Preview again to pick a fresh time.',
+} as const;
+
+// Map a create rejection reason to the user-facing widget error line. Only the
+// "the deadline you previewed has passed" case gets bespoke copy (it tells the
+// user the specific, retryable next step — re-preview); every other rejection
+// collapses to the generic submit-failure line. Lives in shared-domain so the
+// widget never inlines the strings and runtime log breadcrumbs can reuse the
+// same wording (`feedback_ui_text_shared_with_logs.md`). The argument is the
+// widget reject-reason slug; an unknown slug falls through to `createError`.
+export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): string => (
+  reason === 'deadline_passed'
+    ? CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed
+    : CREATE_SMART_TASK_WIDGET_COPY.createError
+);
+
+// Ready-by presets for the light, preset-driven deadline input. Each preset is
+// a fixed local 24-hour "HH:mm" the server resolves to the next future
+// occurrence (rolling to tomorrow if already past today). Morning-commute and
+// evening times cover the common EV-charge / heat-by-bedtime cases without a
+// heavy datetime picker. The user picks one of these anchor points directly —
+// there is no fine-grained ±minutes control on the widget.
+export type CreateSmartTaskReadyByPreset = {
+  id: string;
+  label: string;
+  localTime: string;
+};
+
+export const CREATE_SMART_TASK_READY_BY_PRESETS: readonly CreateSmartTaskReadyByPreset[] = [
+  { id: 'morning', label: '07:00', localTime: '07:00' },
+  { id: 'midday', label: '12:00', localTime: '12:00' },
+  { id: 'evening', label: '18:00', localTime: '18:00' },
+  { id: 'night', label: '22:00', localTime: '22:00' },
+];
+
+export const CREATE_SMART_TASK_READY_BY_DEFAULT_ID = 'morning';
+
 // Shared chip-tone slug union. Matches the `.plan-chip--*` CSS variants in
 // `packages/settings-ui/public/style.css` (`info`, `muted`, `ok`, `warn`,
 // `alert`). Typing the list-status variant map and the pending-hero tone
@@ -445,13 +547,39 @@ export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll a
 // (per `feedback_ui_text_shared_with_logs.md`); the window length (7 days)
 // is part of the user-facing copy on purpose — naming the horizon makes the
 // strip stand on its own without a tooltip.
-export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days';
-// Trailing fragment for the hit-rate value (`67% hit rate`). Held as a
-// constant so the producer can compose the strip via `join(' · ')` without
-// the noun ever drifting between the UI and the log breadcrumb that mirrors
-// it. The hit-rate definition (succeeded ÷ (succeeded + missed), excluding
-// abandoned/replaced) is documented on `resolvePlanHistory7DayHitRateStrip`.
-export const SMART_TASK_LIST_HIT_RATE_NOUN = 'hit rate';
+//
+// ", all devices" disambiguates the strip's scope from the calendar-week
+// dividers directly below it: the strip is a rolling 7-day window summed
+// across every device and is unaffected by the device-filter chips (it
+// resolves from the unfiltered entry list), whereas the week dividers are
+// calendar buckets that narrow when a device filter is active. Without the
+// cue, an "all devices" strip count sitting above a filtered "This week"
+// count reads as two contradictory totals for the same period.
+export const SMART_TASK_LIST_7DAY_HIT_RATE_LABEL = 'Last 7 days, all devices';
+// Trailing fragment for the hit-rate value. The percent is succeeded ÷
+// (succeeded + missed); abandoned/replaced runs are excluded from the
+// denominator. The earlier bare `67% hit rate` form hid that denominator, so
+// on a strip reading `8 succeeded · 3 missed · 1 abandoned · …` the user had
+// no way to see the percent was 8/11≈73% (over the 11 finished runs) rather
+// than 8/12 (over all 12). Naming the denominator ("of 11 finished") makes the
+// percent reconcile with the counts beside it without changing the math.
+//
+// "finished" names the succeeded + missed runs the rate is computed over: a
+// run that succeeded or missed reached its deadline and got a verdict, so it
+// finished; an abandoned/replaced run stopped early and did not, which is why
+// it sits outside the denominator. Kept here so runtime log breadcrumbs and
+// the UI render the identical fragment (per `feedback_ui_text_shared_with_logs.md`).
+export const SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN = 'finished';
+
+// Composes the legible hit-rate fragment ("73% of 11 finished"). `percent` is
+// the already-rounded integer the producer computed; `finishedCount` is the
+// denominator (succeeded + missed). The producer
+// (`resolvePlanHistory7DayHitRateStrip`) owns the arithmetic and only calls
+// this helper to phrase the result, so the visible string stays single-sourced.
+export const formatSmartTaskHitRateFragment = (
+  percent: number,
+  finishedCount: number,
+): string => `${percent}% of ${finishedCount} ${SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN}`;
 
 // Row labels for the Smart-tasks list card's `<dl>` block (Target / Starts /
 // Ready by). Lifted to shared-domain so runtime log breadcrumbs and the UI
@@ -493,6 +621,63 @@ export const resolveSmartTaskWidgetTargetActionVerb = (
   kind: 'temperature' | 'ev_soc',
 ): string => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
 
+// Single hour/hours pluralizer shared across the smart-task surfaces (sample
+// freshness line here, the create-smart-task scheduled-window helper in
+// `smartTaskDeadlineFormat.ts`, …) so the count→noun rule lives in one place
+// instead of being re-inlined at every call site.
+export const pluralHour = (count: number): string => (count === 1 ? 'hour' : 'hours');
+
+// Goal value as the user sees it on the create-smart-task widget: "80%" (no
+// space) for an EV charge target, "65 °C" (thin space) for a thermostat. One
+// source for the stepper readout AND the "now → goal" context lines so the
+// widget's percent/temperature spacing can never drift between them
+// (percent spacing matches `formatProgressValueForUnit` elsewhere in this file).
+export const formatSmartTaskGoalValue = (
+  value: number,
+  unitSymbol: '°C' | '%',
+): string => {
+  const rounded = Math.round(value * 10) / 10;
+  const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+  return unitSymbol === '%' ? `${text}%` : `${text} ${unitSymbol}`;
+};
+
+// "Now 42%" / "Now 48 °C" current-reading hint for the device picker row.
+// Sibling to `formatSmartTaskCurrentValueLine` (which renders the lowercase
+// "currently …" list-card variant); this is the picker's capitalised short
+// form. Returns null when the device hasn't reported a reading so the caller
+// can fall back to the bare unit. Lives here so the widget never inlines the
+// "Now <value>" string (per `feedback_ui_text_shared_with_logs.md`).
+export const formatSmartTaskNowValueLine = (params: {
+  currentValue: number | null;
+  unitSymbol: '°C' | '%';
+}): string | null => {
+  if (params.currentValue === null || !Number.isFinite(params.currentValue)) return null;
+  return `Now ${formatSmartTaskGoalValue(params.currentValue, params.unitSymbol)}`;
+};
+
+// Compose-step goal anchor: pairs the chosen goal with the device's current
+// reading so the target isn't shown in a vacuum ("Goal 80% · now 42%"). When
+// the goal sits above the current value we render the motion as an arrow
+// ("from 42% → 80%") which reads more naturally for the common "raise it"
+// case; an equal/lower goal stays on the "Goal … · now …" form (the arrow
+// would imply a decrease the planner can't drive). Collapses to "Goal <value>"
+// when no current reading is available. Sourced here so the phrasing is shared
+// (per `feedback_ui_text_shared_with_logs.md`).
+export const formatSmartTaskGoalContextLine = (params: {
+  goalValue: number;
+  currentValue: number | null;
+  unitSymbol: '°C' | '%';
+}): string => {
+  const goalLabel = formatSmartTaskGoalValue(params.goalValue, params.unitSymbol);
+  if (params.currentValue === null || !Number.isFinite(params.currentValue)) {
+    return `Goal ${goalLabel}`;
+  }
+  const nowLabel = formatSmartTaskGoalValue(params.currentValue, params.unitSymbol);
+  if (nowLabel === goalLabel) return `Goal ${goalLabel}`;
+  if (params.goalValue > params.currentValue) return `from ${nowLabel} → ${goalLabel}`;
+  return `Goal ${goalLabel} · now ${nowLabel}`;
+};
+
 // "Target" noun for the list values line when no current reading is available.
 // Re-exported from the canonical list-row label so the widget and the
 // settings-UI list card share one source.
@@ -507,10 +692,15 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   intro: 'No smart tasks yet. Open the Flow editor and add the',
   heatingAction: 'Add heating task',
   actionWord: 'action',
-  heatingExample: '(Heat … to … °C by Ready by)',
+  // User-outcome phrasing, not the internal Flow-card field name. The earlier
+  // "(Heat … to … °C by Ready by)" leaked the literal `Ready by` input label —
+  // it read as a placeholder, not a sentence; this states what the task
+  // achieves. Stays on-vocabulary per `notes/ui-terminology.md` (temperature
+  // says "temperature", never "charge"; EV says "percent").
+  heatingExample: '(heat a device to a target temperature by a time)',
   conjunction: 'or the',
   chargingAction: 'Add charging task',
-  chargingExample: '(Charge … to … % by Ready by)',
+  chargingExample: '(charge a device to a target percent by a time)',
   outro: 'to schedule a device for a specific ready-by time.',
 } as const;
 
@@ -1423,8 +1613,7 @@ export const formatLastSampleValue = (params: {
     return { text: `Updated ${minutes} min ago`, tone: null };
   }
   const hours = Math.max(1, Math.round(ageMs / ONE_HOUR_MS));
-  const unit = hours === 1 ? 'hour' : 'hours';
-  return { text: `Updated ${hours} ${unit} ago`, tone: null };
+  return { text: `Updated ${hours} ${pluralHour(hours)} ago`, tone: null };
 };
 
 // ─── Energy estimate range (variance buffer) ─────────────────────────────────

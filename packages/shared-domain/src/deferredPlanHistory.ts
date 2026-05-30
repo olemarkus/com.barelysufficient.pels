@@ -125,13 +125,26 @@ const OUTCOME_TONES: Record<DeferredObjectivePlanOutcome, DeferredPlanHistoryChi
   unknown: 'muted',
 };
 
-export const getPlanHistoryOutcomeLabel = (outcome: DeferredObjectivePlanOutcome): string => (
-  OUTCOME_LABELS[outcome]
-);
+export const getPlanHistoryOutcomeLabel = (outcome: DeferredObjectivePlanOutcome): string => OUTCOME_LABELS[outcome];
 
-export const getPlanHistoryOutcomeTone = (outcome: DeferredObjectivePlanOutcome): DeferredPlanHistoryChipTone => (
-  OUTCOME_TONES[outcome]
-);
+export const getPlanHistoryOutcomeTone = (
+  outcome: DeferredObjectivePlanOutcome,
+): DeferredPlanHistoryChipTone => OUTCOME_TONES[outcome];
+
+// Card-surface tone for a finalized history row, in the canonical
+// `.pels-surface-card[data-tone="…"]` vocabulary (`good | warn | muted`). PR2
+// surface/colour system (spec §7): the outcome tone is applied to the whole
+// row as an M3 tonal container, not just the corner badge — see the device-
+// card tonal-container pattern in `notes/overview-hero-spec.md`. A near-mirror
+// of the chip tone; the only divergence is `ok` → `good`, because the chip
+// primitive treats `--ok`/`--good` identically but the card primitive only
+// defines `[data-tone="good"]`. Derived from the chip tone so the two never
+// drift; the producer resolves the term and the view never maps tones itself
+// (layering: resolution in the producer). Succeeded → positive, Missed →
+// warning, Abandoned/Replaced/Unknown → neutral (a log entry, not a result).
+export const getPlanHistoryOutcomeCardTone = (
+  outcome: DeferredObjectivePlanOutcome,
+): 'good' | 'warn' | 'muted' => (OUTCOME_TONES[outcome] === 'ok' ? 'good' : OUTCOME_TONES[outcome]);
 
 // Overshoot threshold matches the `notes/smart-task-ui/README.md` design spec
 // ("Notable extras: overshoot line if delivered > target by > 5 °C / 10 %").

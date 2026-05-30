@@ -375,6 +375,8 @@ describe('DeadlinesList', () => {
 
     it('renders the header in the empty state', () => {
       const mount = mountIntoBody();
+      // No `historyPresent` flag — history not yet known. The view falls back
+      // to the first-run copy below the header.
       renderDeadlinesList(mount, { status: 'ready', cards: [] });
       expectHeaderVisible(mount);
       // Empty-state copy still mounts below the header.
@@ -388,6 +390,61 @@ describe('DeadlinesList', () => {
         cards: [buildCard({ statusId: 'on_track' })],
       });
       expectHeaderVisible(mount);
+    });
+  });
+
+  // Empty-state coordination with the Past tasks archive (PR1 "Tell the
+  // truth"). The active list's zero-card branch must distinguish a true first
+  // run (no history) from a between-runs lull (history exists). Showing "Add
+  // your first smart task" / "No smart tasks yet" to a user who has finished
+  // runs in the archive below erases their history; the between-runs state
+  // renders a calmer header that points down to Past tasks instead.
+  describe('empty-state coordination with history', () => {
+    it('keeps the first-run invitation when there is no active card AND no history', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: false });
+      // First-run headline + Flow setup copy, never the between-runs wording.
+      expect(mount.textContent).toContain('Add your first smart task');
+      expect(mount.textContent).toContain('No smart tasks yet');
+      expect(mount.textContent).not.toContain('No smart tasks scheduled');
+      expect(mount.querySelector('[data-state="empty-between-runs"]')).toBeNull();
+    });
+
+    it('shows the between-runs header (not "first" / "yet") when history exists', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, { status: 'ready', cards: [], historyPresent: true });
+      // Between-runs headline + a pointer to Past tasks below.
+      expect(mount.textContent).toContain('No smart tasks scheduled');
+      expect(mount.textContent).toContain('Past tasks');
+      // The "first" / "yet" framing must never reach a returning user.
+      expect(mount.textContent).not.toContain('Add your first smart task');
+      expect(mount.textContent).not.toContain('No smart tasks yet');
+      // The first-run Flow setup body must not render in the between-runs state.
+      expect(mount.querySelector('[data-state="empty"]')).toBeNull();
+      expect(mount.querySelector('[data-state="empty-between-runs"]')).not.toBeNull();
+    });
+
+    it('falls back to the first-run copy while history presence is still unknown', () => {
+      const mount = mountIntoBody();
+      // `historyPresent` omitted — the history fetch has not resolved yet. The
+      // conservative default is the first-run copy until the controller
+      // re-renders with the resolved flag.
+      renderDeadlinesList(mount, { status: 'ready', cards: [] });
+      expect(mount.textContent).toContain('Add your first smart task');
+      expect(mount.textContent).not.toContain('No smart tasks scheduled');
+    });
+
+    it('ignores historyPresent once active cards exist (populated hero owns the state)', () => {
+      const mount = mountIntoBody();
+      renderDeadlinesList(mount, {
+        status: 'ready',
+        cards: [buildCard({ statusId: 'on_track' })],
+        historyPresent: true,
+      });
+      // Neither empty body renders when there are active cards.
+      expect(mount.querySelector('[data-state="empty"]')).toBeNull();
+      expect(mount.querySelector('[data-state="empty-between-runs"]')).toBeNull();
+      expect(mount.textContent).not.toContain('No smart tasks scheduled');
     });
   });
 
@@ -839,7 +896,7 @@ describe('DeadlinesHistoryList 7-day hit-rate strip', () => {
     });
     const strip = mount.querySelector('.deadlines-history__summary-strip');
     expect(strip).not.toBeNull();
-    expect(strip!.textContent).toBe('Last 7 days · 2 succeeded · 1 missed · 67% hit rate');
+    expect(strip!.textContent).toBe('Last 7 days, all devices · 2 succeeded · 1 missed · 67% of 3 finished');
   });
 
   it('hides the strip when no entries fall in the 7-day window', () => {

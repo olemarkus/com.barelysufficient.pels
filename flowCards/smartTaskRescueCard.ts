@@ -5,8 +5,8 @@ import {
 } from '../lib/plan/deferredObjectives';
 import {
   getDropdownId,
-  requireSettingsAccessors,
-  upsertObjective,
+  requireSettingsRead,
+  throwIfWriteRefused,
   type DropdownArg,
 } from './deadlineObjectiveCards';
 import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
@@ -69,16 +69,30 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     if (!deviceId) throw new Error(SMART_TASK_RESCUE_MISSING_DEVICE);
     const key = RESCUE_PROPERTY_KEYS[resolveRescuePropertyId(payload?.property)];
     const mode = resolveWhen(payload?.when);
-    const accessors = requireSettingsAccessors(deps);
-    const settings = accessors.read();
+    const settings = requireSettingsRead(deps)();
     const prevEntry = settings.objectivesByDeviceId[deviceId];
     if (!prevEntry) {
       throw new Error(SMART_TASK_RESCUE_NO_TASK);
     }
     // Idempotent: an unchanged mode means no write, no re-plan, no plan revision.
     if (prevEntry.rescue?.[key] === mode) return true;
-    accessors.write(upsertObjective(settings, deviceId, withRescuePermission(prevEntry, key, mode)));
-    deps.rebuildPlan('deadline_objective_rescue_set');
+    // Route the write through the device-scoped op + hardened mutation
+    // primitive. `rescue: 'replace'` makes the op write this entry's rescue
+    // field verbatim (including clearing a permission to `undefined`) rather
+    // than preserving the prior one — this card IS the authority on rescue. A
+    // rescue-only change keeps the same kind/deadline/target, so the recorder
+    // notification no-ops; the plan rebuild applies the new permission.
+    // A `false` return means the hardened primitive refused the write (suspected
+    // transient-empty clobber) — surface it as a retryable error rather than
+    // reporting the permission was saved when it never persisted.
+    throwIfWriteRefused(
+      deps.upsertDeferredObjectiveForDevice({
+        deviceId,
+        deviceName: null,
+        entry: withRescuePermission(prevEntry, key, mode),
+        rescue: 'replace',
+      }),
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

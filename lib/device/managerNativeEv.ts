@@ -27,6 +27,7 @@ import {
   resolveNativeSteppedLoadObservationCapabilityId,
   resolveNativeSteppedLoadProfileSuggestion,
   resolveNativeSteppedLoadReportedStepId,
+  resolveNativeSteppedLoadWriteCapabilities,
   resolveTargetPowerReportedStepId,
   resolveTargetPowerSteppedLoadProfileFromConfig,
   stripNativeSteppedLoadControlCapabilities,
@@ -72,6 +73,7 @@ export function resolveFlowCapabilityOverlay(params: {
   suggestedSteppedLoadProfile?: SteppedLoadProfile;
   controlModel?: 'stepped_load';
   steppedLoadProfile?: SteppedLoadProfile;
+  nativeWriteCapabilities?: string[];
   targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
@@ -142,6 +144,11 @@ export function resolveFlowCapabilityOverlay(params: {
   });
   const activeNativeSteppedProfile = resolveActiveNativeSteppedProfile(nativeSteppedOverlay);
   const steppedLoadProfile = targetPowerOverlay.steppedLoadProfile ?? activeNativeSteppedProfile;
+  const nativeWriteCapabilities = resolveCandidateNativeWriteCapabilities({
+    device,
+    rawCapabilities,
+    rawCapabilityObj,
+  });
 
   return {
     capabilities: stripNativeSteppedLoadControlCapabilities({ device, capabilities, capabilityObj }),
@@ -159,9 +166,39 @@ export function resolveFlowCapabilityOverlay(params: {
     suggestedSteppedLoadProfile: nativeSteppedOverlay.suggestedSteppedLoadProfile,
     controlModel: steppedLoadProfile ? 'stepped_load' : undefined,
     steppedLoadProfile,
+    nativeWriteCapabilities,
     targetPowerConfig: targetPowerOverlay.targetPowerConfig,
     allReportedCapabilities,
   };
+}
+
+/**
+ * Owned native-write capabilities for the flow-conflict signal
+ * (notes/native-wiring/). Resolved from the RAW capabilities so:
+ *   - the real native control caps (max_power_* / target_power) are present
+ *     (the public snapshot list has them stripped), and
+ *   - a SYNTHETIC target_power (injected for a saved target-power/EV preset on
+ *     a device with no real setable target_power) is excluded — PELS does not
+ *     natively write that capability there, so it must not be flagged as a
+ *     conflict.
+ * Gated on genuine native candidacy (`isNativeSteppedLoadWiringCandidate`),
+ * which holds even when native wiring is OFF — so the not-yet-enabled devices
+ * the conflict gate exists for are still covered. Returns undefined when not a
+ * native candidate or no native-write capability is present.
+ */
+function resolveCandidateNativeWriteCapabilities(params: {
+  device: HomeyDeviceLike;
+  rawCapabilities: readonly string[];
+  rawCapabilityObj: DeviceCapabilityMap;
+}): string[] | undefined {
+  const isCandidate = isNativeSteppedLoadWiringCandidate({
+    device: params.device,
+    capabilities: params.rawCapabilities,
+    capabilityObj: params.rawCapabilityObj,
+  });
+  if (!isCandidate) return undefined;
+  const owned = resolveNativeSteppedLoadWriteCapabilities(params.rawCapabilities);
+  return owned.length > 0 ? owned : undefined;
 }
 
 function applyOverlaysWithDiagnostics(params: {

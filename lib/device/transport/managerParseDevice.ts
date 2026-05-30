@@ -51,7 +51,7 @@ import {
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
-    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt'
+    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
 >;
 
 export type DeviceTransportParseProviders = {
@@ -63,6 +63,7 @@ export type DeviceTransportParseProviders = {
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
+    getFlowConflict?: (deviceId: string) => TargetDeviceSnapshot['flowConflict'];
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
     getDeviceTargetPowerConfig?: (deviceId: string) => TargetDeviceSnapshot['targetPowerConfig'];
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
@@ -147,11 +148,11 @@ export function parseDevice(params: {
         flowBackedCapabilityIds,
         requiredFlowCapabilityIds,
         reportedCapabilities,
-        reportedStepId,
-        reportedStepObservedAtMs,
+        reportedStepId, reportedStepObservedAtMs,
         suggestedSteppedLoadProfile,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
     } = resolveFlowCapabilityOverlay({
         device: effectiveDevice,
@@ -245,6 +246,7 @@ export function parseDevice(params: {
         controlObservationCapabilityId,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         canSetControl,
         binaryControlObservation: resolveBinaryControlObservation(
@@ -321,6 +323,7 @@ function buildParsedDeviceSnapshot(params: {
     controlObservationCapabilityId?: string;
     controlModel?: TargetDeviceSnapshot['controlModel'];
     steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
+    nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
     targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
@@ -353,6 +356,7 @@ function buildParsedDeviceSnapshot(params: {
         controlObservationCapabilityId,
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         canSetControl,
         binaryControlObservation,
@@ -373,6 +377,7 @@ function buildParsedDeviceSnapshot(params: {
         ...resolveParsedDeviceSettings(deviceId, providers),
         controlModel,
         steppedLoadProfile,
+        nativeWriteCapabilities,
         targetPowerConfig,
         controlCapabilityId,
         powerKw: powerEstimate.powerKw,
@@ -480,6 +485,7 @@ function resolveParsedDeviceSettings(
         controllable: providers.getControllable?.(deviceId),
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),
+        flowConflict: providers.getFlowConflict?.(deviceId),
     };
 }
 

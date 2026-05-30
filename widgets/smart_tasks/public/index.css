@@ -1,3 +1,17 @@
+/* The renderer switches views and individual lines by toggling the `hidden`
+   attribute. Any author `display` rule on a hidden-toggled element would beat
+   the user-agent `[hidden] { display: none }` rule (author origin wins over UA
+   regardless of specificity), so a hidden view/list would still render — the
+   list and detail views would stack instead of swapping. This blanket
+   author-origin reset re-asserts the UA semantics for every hidden-toggled
+   element in one place — views (.list-view/.detail-view), the row list (.rows),
+   the empty/overflow lines, the detail lines, and any future hidden-toggled
+   element — so no `display` rule below needs a per-rule `:not([hidden])`
+   guard. */
+[hidden] {
+  display: none !important;
+}
+
 .widget-root {
   display: flex;
   flex-direction: column;

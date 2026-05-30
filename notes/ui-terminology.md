@@ -164,6 +164,19 @@ Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
 (used in chip-tone resolvers and the list status id) so log schemas and JSON
 contracts remain stable — only the user-visible chip label changed.
 
+#### Empty-state headlines
+
+The smart-task list distinguishes two zero-active-card states by whether the
+Past tasks archive below has any finished runs. Headlines come from
+`DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE` in
+`packages/shared-domain/src/deadlinesListHero.ts`; the first-run body intro is
+`SMART_TASK_LIST_EMPTY_COPY.intro` in `deadlineLabels.ts`.
+
+| State | Headline | When |
+|---|---|---|
+| First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty — the headline pairs with the `No smart tasks yet` body intro + Flow-setup invitation. |
+| Between runs (history exists) | `No smart tasks scheduled` | No active cards but the archive has finished runs — the calmer present-tense headline; the body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to Past tasks. Never `first` / `yet` here — that framing would erase a returning user's history. |
+
 ### Past-task outcome chips
 
 The smart-task history surface (past-tasks archive, history-detail hero) uses a
@@ -197,6 +210,25 @@ and the rows speak the same language. Shipped in PR #1243: the divider lead
 label is now relative (`This week` / `Last week` / `Week of 12 May`) and the
 outcome counts use the chip vocabulary (`N succeeded · N missed · N abandoned`,
 non-zero counts only).
+
+#### 7-day hit-rate strip
+
+A summary strip leads the past-tasks list with the rolling-7-day aggregate.
+Source: `SMART_TASK_LIST_7DAY_HIT_RATE_LABEL` and
+`formatSmartTaskHitRateFragment` in `packages/shared-domain/src/deadlineLabels.ts`.
+
+- **Lead label:** `Last 7 days, all devices`. The `, all devices` qualifier is
+  load-bearing — the strip total always spans every device, so it can't be
+  read as a contradiction of a device-filtered "This week" count sitting below
+  it.
+- **Hit-rate fragment:** `N% of M finished` (e.g. `67% of 3 finished`). The
+  percent is succeeded ÷ (succeeded + missed); `M` names that denominator so
+  the rate reconciles with the counts beside it. `finished` (the
+  `SMART_TASK_LIST_HIT_RATE_FINISHED_NOUN`) names succeeded + missed runs —
+  abandoned/replaced runs stopped early and sit outside the denominator. Do
+  **not** drift back to the bare `N% hit rate` form, which hid the denominator.
+
+Full strip example: `Last 7 days, all devices · 2 succeeded · 1 missed · 67% of 3 finished`.
 
 ### Recourse labels
 

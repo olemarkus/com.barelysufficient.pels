@@ -1,6 +1,9 @@
 import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import { NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
 import {
+  deviceDetailFlowConflictBody,
+  deviceDetailFlowConflictNotice,
+  deviceDetailFlowConflictTitle,
   deviceDetailNativeWiring,
   deviceDetailNativeWiringConfirm,
   deviceDetailNativeWiringConfirmRow,
@@ -9,6 +12,7 @@ import {
   deviceDetailNativeWiringRow,
   deviceDetailSetupDisclosure,
 } from '../dom.ts';
+import { nativeWiringFlowConflictNotice } from '../../../../shared-domain/src/nativeWiringCopy.ts';
 import { requiresNativeWiringForActivation, supportsNativeWiringActivation } from '../deviceUtils.ts';
 import { state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
@@ -35,14 +39,37 @@ const expandSetupDisclosure = () => {
   }
 };
 
-const syncNativeWiringRequirementSurfaces = (
+const syncFlowConflictNotice = (
   device: TargetDeviceSnapshot | null,
-  required: boolean,
-) => {
+  nativeWiringEffectiveEnabled: boolean,
+): boolean => {
+  // Only surface the conflict while native wiring is actually held off. Once
+  // the user overrides (turns the switch on) the "left control off" copy is no
+  // longer true even though the conflicting Flow still exists.
+  const hasConflict = !nativeWiringEffectiveEnabled
+    && (device?.flowConflict?.conflictingCapabilities?.length ?? 0) > 0;
+  if (deviceDetailFlowConflictNotice) {
+    deviceDetailFlowConflictNotice.hidden = !hasConflict;
+  }
+  if (!hasConflict) return false;
+  const notice = nativeWiringFlowConflictNotice(device?.flowConflict?.flowName);
+  if (deviceDetailFlowConflictTitle) deviceDetailFlowConflictTitle.textContent = notice.title;
+  if (deviceDetailFlowConflictBody) deviceDetailFlowConflictBody.textContent = notice.body;
+  return true;
+};
+
+const syncNativeWiringRequirementSurfaces = (required: boolean) => {
   if (deviceDetailNativeWiringNotice) {
     deviceDetailNativeWiringNotice.hidden = !required;
   }
-  if (!required) {
+};
+
+// Auto-expand the Setup disclosure once per device when it holds a notice the
+// user needs to see (activation required, or a flow conflict — both render
+// inside the collapsed `<details>`). The per-device guard keeps refreshes from
+// fighting a manual re-close.
+const syncSetupAutoExpand = (device: TargetDeviceSnapshot | null, shouldExpand: boolean) => {
+  if (!shouldExpand) {
     setupAutoExpandedForDeviceId = null;
     return;
   }
@@ -77,7 +104,9 @@ export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | 
     deviceDetailNativeWiringConfirm.selected = false;
     deviceDetailNativeWiringConfirm.disabled = !nativeWiringActivationPending;
   }
-  syncNativeWiringRequirementSurfaces(device, nativeWiringRequiredAndMissing);
+  syncNativeWiringRequirementSurfaces(nativeWiringRequiredAndMissing);
+  const hasFlowConflict = syncFlowConflictNotice(device, nativeWiringEffectiveEnabled);
+  syncSetupAutoExpand(device, nativeWiringRequiredAndMissing || hasFlowConflict);
 };
 
 export const updateCurrentDeviceNativeWiringSnapshot = (

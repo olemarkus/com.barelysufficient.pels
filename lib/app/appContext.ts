@@ -201,6 +201,7 @@ export type AppContext = {
   set powerSampleRebuildState(value: PowerSampleRebuildState);
   get latestTargetSnapshot(): TargetDeviceSnapshot[];
   getUiPickerDevices(): TargetDeviceSnapshot[];
+  getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[];
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard?: CapacityGuard;

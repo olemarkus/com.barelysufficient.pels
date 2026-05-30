@@ -1597,6 +1597,28 @@
     }
   ],
   "widgets": {
+    "create_smart_task": {
+      "name": {
+        "en": "New smart task"
+      },
+      "height": 240,
+      "api": {
+        "getCreateSmartTaskDevices": {
+          "method": "GET",
+          "path": "/devices"
+        },
+        "previewCreateSmartTask": {
+          "method": "POST",
+          "path": "/preview"
+        },
+        "createCreateSmartTask": {
+          "method": "POST",
+          "path": "/create"
+        }
+      },
+      "id": "create_smart_task",
+      "settings": []
+    },
     "headroom": {
       "name": {
         "en": "Available power"
@@ -1660,6 +1682,28 @@
         }
       },
       "id": "smart_tasks",
+      "settings": []
+    },
+    "starvation_rescue": {
+      "name": {
+        "en": "Get power now"
+      },
+      "height": 240,
+      "api": {
+        "getStarvationRescueDevices": {
+          "method": "GET",
+          "path": "/devices"
+        },
+        "previewStarvationRescue": {
+          "method": "POST",
+          "path": "/preview"
+        },
+        "createStarvationRescue": {
+          "method": "POST",
+          "path": "/rescue"
+        }
+      },
+      "id": "starvation_rescue",
       "settings": []
     }
   },

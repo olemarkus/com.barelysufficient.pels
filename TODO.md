@@ -108,6 +108,15 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       `SMART_TASK_WIDGET_EMPTY_SUBTITLE` / `formatSmartTaskWidgetOverflow` in
       `deadlineLabels.ts`.)*
 
+- [ ] Revisit the **check-dead-code allowlist exception** for
+      `StarvationRescueDevicesPayload`
+      (`packages/contracts/src/starvationRescue.ts`, allowlisted in
+      `scripts/check-dead-code.mjs`). It is needed only because madge runs
+      against the runtime tsconfig that excludes `widgets/`, so the widget
+      bundle's consumption of the type is invisible. If widget bundling/tsconfig
+      coverage changes so `widgets/**` is traversed, drop the exception. Source:
+      starvation-rescue widget PR (#1281).
+
 *v2.7.1 release-review findings (2026-05-17). Six items below from the
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
@@ -396,6 +405,37 @@ remains from this subsection.*
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
+
+- [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
+      promoted cost to the headline and demoted the energy estimate
+      ("Energy: 3.6–4.0 kWh") to a muted secondary line under the when-window
+      (`widgets/create_smart_task/public/index.html` preview body,
+      `render.ts` `formatEnergyLine`). Open product call: keep it muted, fold the
+      figure into the cost subtext ("≈4 kWh · cheapest hours before 07:00"), or
+      drop it entirely so the tile reads cost-and-when only. User-visible
+      outcome: how much numeric detail the pre-commit preview carries. Source:
+      PR #1274 fix-up, 2026-05-29.
+
+- [ ] **Create-smart-task load-error — add a tap-to-retry affordance.** When the
+      device fetch fails, the picker shows `CREATE_SMART_TASK_WIDGET_COPY.loadError`
+      ("Could not load devices. Try again later.") as static text with no way to
+      retry without leaving and reopening the widget
+      (`widgets/create_smart_task/src/public/render.ts` empty/error branch). Give
+      the error state a retry tap target that re-runs `loadAndRender`. User-visible
+      outcome: a stuck load can be recovered in place. Source: PR #1274 fix-up,
+      2026-05-29.
+
+- [ ] **Bring `widgets/create_smart_task/src` into `arch:check` scope.** The
+      widget source (`widgets/create_smart_task/src/**`) imports backend types
+      (`widgets/create_smart_task/src/api.ts` reaches into `lib/plan/**` /
+      contracts) but is NOT in the `.dependency-cruiser.cjs` cruise scope, so the
+      widget→`lib/plan` edges are currently unenforced — a widget could grow an
+      illegal runtime-backend import without `arch:check` failing. Add the widget
+      `src` to the cruise (mirroring how `packages/settings-ui/src` is scoped) and
+      add the boundary rules the settings-UI gets (widget may consume shared
+      contracts / shared-domain, never runtime backend internals directly).
+      Internal correctness only; no user-visible outcome. Source: PR #1274
+      pels-layering-guardian, 2026-05-29.
 
 - [ ] **Smart-tasks widget — `at_risk` dark-theme contrast + cannot_meet
       recourse copy.** The `data-tone="warn"` row paints a 12%-mixed warning
@@ -4629,3 +4669,46 @@ prod walk that didn't warrant a P2 slot.*
       time the file is touched — cosmetic-only. Source: gemini reviews
       of PRs #1227 + #1242, 2026-05-28.
 
+
+- [ ] **Per-device-key storage for deferred objectives.** Objectives are
+      persisted as one whole-map blob under `objectivesByDeviceId`
+      (`DEFERRED_OBJECTIVES_SETTINGS`), so every device-scoped create/clear is
+      a read-modify-write of the entire map. A transient or malformed settings
+      read of one device can therefore clobber sibling devices' tasks — the
+      class the hardened settings-mutation primitive currently guards against
+      with the active-plan-recorder reconcile + abandon-grace refusal.
+      Consider migrating to per-device-key storage (one settings key per
+      device) so a bad read of one device structurally cannot affect others,
+      eliminating the whole-map clobber class rather than guarding it at
+      runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.
+
+
+- [ ] **Close the transitive widget WebView import hole.** The
+      `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
+      `widgets/*/src/public/** -> lib|app|setup|...` edges. It does not catch the
+      transitive `public/** -> *WidgetPayload.ts -> lib` path, because the
+      `*WidgetPayload.ts` node builders are allowlisted to import lib and
+      `public/render.ts` (headroom, smart_tasks) imports those builders for
+      constants/types. Today every payload->lib edge is type-only (erased at
+      build, so nothing bundles into the WebView), but a future VALUE import in a
+      payload builder would silently ship runtime code into the browser bundle
+      while `arch:check` stays green. Fix: split the browser-safe constants/types
+      out of the node builders into a shared browser-safe module, then add a rule
+      forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`. Source:
+      codex review of PR #1286, 2026-05-29.
+
+
+- [ ] **Fold the starvation-rescue deadline-horizon guard into the producer.**
+      `widgets/starvation_rescue/src/api.ts` (create path) calls
+      `App.hasDeferredObjectiveForDevice` to decide whether its now+3h horizon
+      guard applies — a resolution-in-producer smell (the consumer reconstructs
+      the merge policy "does the candidate deadline matter?"). Fold the horizon
+      validation into `App.rescueDeviceWithBudgetExemption`, which already reads
+      the existing entry and owns the merge: reject past deadlines always, apply
+      the upper now+3h bound only on the fresh (no-existing-objective) branch,
+      returning a stable reject reason. Then delete `App.hasDeferredObjectiveForDevice`
+      and the widget's existence branch, and relocate `RESCUE_DEADLINE_HORIZON_MS`
+      to a browser-safe shared-domain module (both the widget candidate-builder and
+      the producer validator need it). The past-deadline correctness half is
+      already fixed (codex P2 on #1288); this is the layering cleanup.
+      Source: pels-layering-guardian + codex review of PR #1288, 2026-05-29.
