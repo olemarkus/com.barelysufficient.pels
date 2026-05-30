@@ -8,6 +8,10 @@ import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
 } from '../../../packages/shared-domain/src/smartTaskDeviceKind';
+import {
+  compareSmartTaskPickerRows,
+  resolveSmartTaskDeviceGroup,
+} from '../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 import type {
   CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
@@ -29,6 +33,7 @@ const buildDevice = (device: TargetDeviceSnapshot): CreateSmartTaskDevice | null
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
     kind,
+    group: resolveSmartTaskDeviceGroup({ kind }),
     unitSymbol: bounds.unit,
     goalMin: bounds.min,
     goalMax: bounds.max,
@@ -48,7 +53,10 @@ export const buildCreateSmartTaskDevicesPayload = (
   const devices = input.devices
     .map(buildDevice)
     .filter((device): device is CreateSmartTaskDevice => device !== null)
-    .sort((a, b) => a.deviceName.localeCompare(b.deviceName));
+    // Group by device family (heating devices → EV chargers), then by name
+    // within each group, so the managed-device subset reads as a deliberately
+    // organised list rather than an arbitrary alphabetical mix.
+    .sort(compareSmartTaskPickerRows);
 
   if (devices.length === 0) {
     return { state: 'empty', subtitle: EMPTY_NO_DEVICES_SUBTITLE, hint: EMPTY_NO_DEVICES_HINT };

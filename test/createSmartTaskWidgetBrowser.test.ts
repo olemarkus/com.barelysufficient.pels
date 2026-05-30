@@ -11,6 +11,7 @@ const WIDGET_MARKUP = `
   <main id="widget-root" class="widget-root" data-view="picker" aria-label="New smart task">
     <section class="picker-view" data-picker-view>
       <p class="step-title" data-picker-prompt>Choose a device</p>
+      <p class="step-caption" data-picker-caption></p>
       <ol class="rows" data-device-list></ol>
       <p class="empty" data-picker-empty hidden></p>
       <p class="empty-hint" data-picker-empty-hint hidden></p>
@@ -61,6 +62,7 @@ const WIDGET_MARKUP = `
   <template id="device-template">
     <li class="row">
       <button type="button" class="row__btn" data-device-button>
+        <span class="row__icon" data-device-icon role="img"></span>
         <span class="row__name" data-device-name></span>
         <span class="row__meta" data-device-meta></span>
       </button>
@@ -91,6 +93,7 @@ const DEVICE_A = {
   deviceId: 'd1',
   deviceName: 'Heater',
   kind: 'temperature',
+  group: 'heating',
   unitSymbol: '°C',
   goalMin: 5,
   goalMax: 85,
@@ -190,6 +193,7 @@ describe('create smart task widget browser', () => {
                 deviceId: 'd1',
                 deviceName: 'Heater',
                 kind: 'temperature',
+                group: 'heating',
                 unitSymbol: '°C',
                 goalMin: 5,
                 goalMax: 85,

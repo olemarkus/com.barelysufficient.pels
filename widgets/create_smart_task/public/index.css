@@ -40,6 +40,15 @@
   color: var(--homey-text-color-light, #6d7680);
 }
 
+/* Eligibility hint under "Choose a device": explains why only PELS-managed
+   devices appear here. Muted and small — context, not a heading. */
+.step-caption {
+  margin: 0;
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
 /* ----- Device picker ----- */
 
 .rows {
@@ -62,7 +71,7 @@
 
 .row__btn {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: 0 var(--homey-su-2, 8px);
   align-items: center;
   padding: var(--homey-su-1, 4px) var(--homey-su-2, 8px);
@@ -89,8 +98,41 @@
   outline-offset: 2px;
 }
 
-.row__name {
+/* Per-row device-type icon: a tonal mask tinted with the muted text colour, so
+   the list visually reads as grouped (thermostats → water heaters → EV
+   chargers). The icon glyph itself is a CSS mask data-URI (set per group
+   below); the visible colour comes from `background-color` so it always tracks
+   the dashboard theme. Not a colour declaration, so it's exempt from the
+   bare-literal colour lint. */
+.row__icon {
   grid-column: 1;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  align-self: center;
+  background-color: var(--homey-text-color-light, #6d7680);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+/* Thermometer — heating/temperature devices (thermostats, water heaters, heat pumps). */
+.row__icon[data-group="heating"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 5a3 3 0 0 0-6 0v7.76a4 4 0 1 0 6 0V5Zm-3-1a1 1 0 0 1 1 1v3H9V5a1 1 0 0 1 1-1Z'/%3E%3C/svg%3E");
+}
+
+/* Lightning bolt — EV chargers. */
+.row__icon[data-group="ev_charger"] {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M13 2 4 14h6l-1 8 9-12h-6l1-8Z'/%3E%3C/svg%3E");
+}
+
+.row__name {
+  grid-column: 2;
   font-weight: var(--homey-font-weight-medium, 500);
   color: var(--homey-text-color, inherit);
   overflow: hidden;
@@ -99,30 +141,36 @@
 }
 
 .row__meta {
-  grid-column: 2;
+  grid-column: 3;
   color: var(--homey-text-color-light, #6d7680);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .row__chevron {
-  grid-column: 3;
+  grid-column: 4;
   color: var(--homey-text-color-light, #6d7680);
 }
 
+/* Empty-state hierarchy: the actionable instruction (`.empty-hint`) is the most
+   legible line — it tells the user exactly how to make a device appear. The
+   "No eligible devices" subtitle (`.empty`) is demoted to a muted caption above
+   it. The whole state stays calm (text colours, never the danger tone) because
+   "nothing set up yet" is not an error. */
 .empty {
-  margin: auto 0 0;
-  font-size: var(--homey-font-size-default, 17px);
-  line-height: var(--homey-line-height-default, 24px);
+  margin: auto 0 var(--homey-su-1, 4px);
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
   color: var(--homey-text-color-light, #6d7680);
   text-align: center;
 }
 
 .empty-hint {
-  margin: var(--homey-su-1, 4px) 0 auto;
-  font-size: var(--homey-font-size-small, 14px);
-  line-height: var(--homey-line-height-small, 20px);
-  color: var(--homey-text-color-light, #6d7680);
+  margin: 0 0 auto;
+  font-size: var(--homey-font-size-default, 17px);
+  line-height: var(--homey-line-height-default, 24px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color, inherit);
   text-align: center;
 }
 
