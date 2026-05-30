@@ -64,6 +64,7 @@ import {
   registerAppFlowCards,
 } from '../lib/app/appInit';
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives';
+import { disableDeferredObjectiveInSettings } from '../lib/app/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
@@ -198,7 +199,7 @@ describe('app init plan service wiring', () => {
       },
     } as unknown as AppContext['homey'];
 
-    createDeferredObjectiveLifecycleEmitter(createAppContextMock({
+    const ctx = createAppContextMock({
       homey,
       deviceManager: {} as AppContext['deviceManager'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
@@ -206,12 +207,8 @@ describe('app init plan service wiring', () => {
         clearForDevice,
         getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
-    }));
-
-    const disable = (capturedEmitterDeps.current as {
-      disableDeferredObjective: (deviceId: string) => void;
-    }).disableDeferredObjective;
-    disable('heater-1');
+    });
+    disableDeferredObjectiveInSettings(ctx, 'heater-1');
 
     const stored = settingsStore.get('deferred_objective.heater-1') as { enabled: boolean };
     expect(stored?.enabled).toBe(false);
@@ -258,7 +255,7 @@ describe('app init plan service wiring', () => {
       },
     } as unknown as AppContext['homey'];
 
-    createDeferredObjectiveLifecycleEmitter(createAppContextMock({
+    const ctx = createAppContextMock({
       homey,
       deviceManager: {} as AppContext['deviceManager'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
@@ -269,12 +266,8 @@ describe('app init plan service wiring', () => {
           plansByDeviceId: { 'heater-1': {}, 'other-1': {} } as never,
         }),
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
-    }));
-
-    const disable = (capturedEmitterDeps.current as {
-      disableDeferredObjective: (deviceId: string) => void;
-    }).disableDeferredObjective;
-    disable('heater-1');
+    });
+    disableDeferredObjectiveInSettings(ctx, 'heater-1');
 
     // heater-1 disabled in its own key; the sibling's key is byte-for-byte intact.
     expect((settingsStore.get('deferred_objective.heater-1') as { enabled: boolean }).enabled).toBe(false);

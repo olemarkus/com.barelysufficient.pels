@@ -96,9 +96,14 @@ const processDiagnosticTransition = (params: {
   diagnostic: DeferredObjectiveDiagnostic;
   statusBus: DeferredObjectiveStatusBus;
   nowMs: number;
-  onDeadlinePassed?: (deviceId: string) => void;
+  onDeadlineReached?: (
+    deviceId: string,
+    objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
+    deadlineAtMs: number,
+    nowMs: number,
+  ) => void;
 }): void => {
-  const { diagnostic, statusBus, nowMs, onDeadlinePassed } = params;
+  const { diagnostic, statusBus, nowMs, onDeadlineReached } = params;
   const previous = statusBus.getCurrent(diagnostic.deviceId);
   const previousStatus = previous?.status ?? 'none';
   const nextStatus: DeferredObjectivePublishedStatus = diagnostic.status;
@@ -129,11 +134,22 @@ const processDiagnosticTransition = (params: {
   // callback is idempotent on enabled=false entries, so firing it on each
   // post-deadline cycle is harmless.
   if (
-    onDeadlinePassed
-    && diagnostic.deadlineAtMs !== null
+    diagnostic.deadlineAtMs !== null
     && nowMs >= diagnostic.deadlineAtMs
   ) {
-    onDeadlinePassed(diagnostic.deviceId);
+    // Single ending hook, owned by the app wiring: it both (a) returns a cap-off
+    // device the task was driving to its configured fallback posture directly via
+    // the transport (closing the `power_source = flow` gap where the next plan
+    // cycle — which used to emit the `shed_release` — can be hours away), and
+    // (b) DISARMS the task. Critically the disarm is **gated on the release being
+    // settled** (device observed in the shed posture) or a grace window: the
+    // callback keeps the task enabled (so this diagnostic survives and re-fires
+    // next tick) until the device confirms off, rather than disarming on the
+    // first tick — which would remove the diagnostic and make the release a
+    // single shot that a transient `unknown` observation could miss. `objectiveKind`
+    // lets the callback route EV tasks to `evcharger_charging` pause.
+    // See notes/state-management/deferred-objective-lifecycle-carveout.md.
+    onDeadlineReached?.(diagnostic.deviceId, diagnostic.objectiveKind, diagnostic.deadlineAtMs, nowMs);
   }
 };
 
@@ -141,13 +157,18 @@ export const emitDeferredObjectiveStatusTransitions = (params: {
   diagnostics: DeferredObjectiveDiagnostic[];
   statusBus: DeferredObjectiveStatusBus;
   nowMs: number;
-  onDeadlinePassed?: (deviceId: string) => void;
+  onDeadlineReached?: (
+    deviceId: string,
+    objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
+    deadlineAtMs: number,
+    nowMs: number,
+  ) => void;
 }): void => {
-  const { diagnostics, statusBus, nowMs, onDeadlinePassed } = params;
+  const { diagnostics, statusBus, nowMs, onDeadlineReached } = params;
   const seen = new Set<string>();
   for (const diagnostic of diagnostics) {
     seen.add(diagnostic.deviceId);
-    processDiagnosticTransition({ diagnostic, statusBus, nowMs, onDeadlinePassed });
+    processDiagnosticTransition({ diagnostic, statusBus, nowMs, onDeadlineReached });
   }
   for (const known of statusBus.listDeviceIds()) {
     if (!seen.has(known)) statusBus.forgetDevice(known);
