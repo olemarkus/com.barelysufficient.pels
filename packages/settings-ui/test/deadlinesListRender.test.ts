@@ -174,7 +174,7 @@ describe('DeadlinesList', () => {
       status: 'ready',
       cards: [buildCard({ statusId: 'cannot_meet' })],
     });
-    expect(mount.querySelector('.deadline-list-card__when-row--accent')).toBeNull();
+    expect(mount.querySelector('.deadline-list-card__when-row--neutral')).toBeNull();
     expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
   });
 
@@ -187,13 +187,13 @@ describe('DeadlinesList', () => {
     expect(mount.querySelector('.deadline-list-card__when-row--warn')).not.toBeNull();
   });
 
-  it('keeps the accent variant on healthy on_track cards', () => {
+  it('keeps the neutral variant on healthy on_track cards', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
       status: 'ready',
       cards: [buildCard({ statusId: 'on_track' })],
     });
-    expect(mount.querySelector('.deadline-list-card__when-row--accent')).not.toBeNull();
+    expect(mount.querySelector('.deadline-list-card__when-row--neutral')).not.toBeNull();
   });
 
   // Inline status word on the "Ready by" line: the warn/alert tones above are

@@ -159,7 +159,7 @@ export const DEADLINES_LIST_BETWEEN_RUNS_BODY
 // at-risk bucket is reserved for "the plan exists and will miss". The
 // `paused` bucket gets its own warn-tone headline so the hero answer aligns
 // with the per-card chip (`SMART_TASK_LIST_STATUS_CHIP_VARIANT` paints
-// `paused_unplugged` warn) and the ready-by accent tone
+// `paused_unplugged` warn) and the ready-by line tone
 // (`resolveSmartTaskListReadyByTone` returns `warn` for the same state).
 type StatusBucket = 'on_track' | 'pending' | 'paused' | 'at_risk' | 'satisfied';
 
