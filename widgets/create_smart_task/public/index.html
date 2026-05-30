@@ -12,6 +12,7 @@
       <!-- Step 1: pick a device -->
       <section class="picker-view" data-picker-view>
         <p class="step-title" data-picker-prompt>Choose a device</p>
+        <p class="step-caption" data-picker-caption></p>
         <ol class="rows" data-device-list></ol>
         <p class="empty" data-picker-empty hidden></p>
         <p class="empty-hint" data-picker-empty-hint hidden></p>
@@ -71,6 +72,7 @@
     <template id="device-template">
       <li class="row">
         <button type="button" class="row__btn" data-device-button aria-label="Device">
+          <span class="row__icon" data-device-icon role="img"></span>
           <span class="row__name" data-device-name></span>
           <span class="row__meta" data-device-meta></span>
           <span class="row__chevron" aria-hidden="true">&#8594;</span>

@@ -507,7 +507,7 @@ export const createField = (options: FieldOptions): HTMLElement => {
     wrapper.hidden = hidden;
 
     const labelEl = document.createElement('span');
-    labelEl.className = 'field__label';
+    labelEl.className = 'field__label pels-text-settings-label';
     labelEl.textContent = label;
     wrapper.appendChild(labelEl);
     wrapper.appendChild(control);

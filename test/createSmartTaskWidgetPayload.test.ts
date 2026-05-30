@@ -44,6 +44,8 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
       deviceId: 'heater',
       deviceName: 'Hot water',
       kind: 'temperature',
+      // Every temperature device groups as heating.
+      group: 'heating',
       unitSymbol: '°C',
       goalMin: 30,
       goalMax: 85,
@@ -67,6 +69,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     expect(payload.devices[0]).toMatchObject({
       deviceId: 'ev',
       kind: 'ev_soc',
+      group: 'ev_charger',
       unitSymbol: '%',
       goalMin: 1,
       goalMax: 100,
@@ -90,16 +93,28 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     expect(payload.devices[0]).toMatchObject({ goalMin: 5, goalMax: 95, goalStep: 0.5 });
   });
 
-  it('sorts eligible devices by name and drops ineligible ones', () => {
+  it('orders by device group (heating → EV chargers) then name, dropping ineligible ones', () => {
     const payload = buildCreateSmartTaskDevicesPayload({
       devices: [
-        buildDevice({ id: 'ev', name: 'Zoe', deviceClass: 'evcharger' }),
+        buildDevice({ id: 'ev-z', name: 'Zoe', deviceClass: 'evcharger' }),
         buildDevice({ id: 'plug', name: 'Lamp', deviceType: 'onoff' }),
-        buildDevice({ id: 'heater', name: 'Attic', deviceType: 'temperature', targets: [{ id: 't', value: 20, unit: 'C' }] }),
+        buildDevice({ id: 'ev-a', name: 'Audi', deviceClass: 'evcharger' }),
+        buildDevice({ id: 'tank', name: 'Tank', deviceClass: 'waterheater', deviceType: 'temperature', targets: [{ id: 't', value: 60, unit: 'C' }] }),
+        buildDevice({ id: 'attic', name: 'Attic', deviceType: 'temperature', targets: [{ id: 't', value: 20, unit: 'C' }] }),
+        buildDevice({ id: 'boiler', name: 'Cellar', deviceClass: 'boiler', deviceType: 'temperature', targets: [{ id: 't', value: 60, unit: 'C' }] }),
       ],
     });
     if (payload.state !== 'ready') throw new Error('expected ready');
-    expect(payload.devices.map((d) => d.deviceName)).toEqual(['Attic', 'Zoe']);
+    // All temperature devices group as heating (water heaters can't be told
+    // apart from thermostats at runtime), ordered by name (Attic, Cellar,
+    // Tank), then EV chargers by name (Audi, Zoe); the on/off plug is dropped.
+    expect(payload.devices.map((d) => [d.deviceName, d.group])).toEqual([
+      ['Attic', 'heating'],
+      ['Cellar', 'heating'],
+      ['Tank', 'heating'],
+      ['Audi', 'ev_charger'],
+      ['Zoe', 'ev_charger'],
+    ]);
   });
 
   it('uses the device id as the name when the snapshot name is blank', () => {

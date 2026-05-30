@@ -140,7 +140,7 @@ const RespondTogglesCard = ({
       onChange={(e) => onToggle((e.currentTarget as SwitchElement).selected)}
     />
     <span class="checkbox-field__content">
-      <span class="field__label">Respond to prices</span>
+      <span class="field__label pels-text-settings-label">Respond to prices</span>
       <small class="field__hint">
         When on, eligible devices boost during cheap hours and reduce during expensive hours.
       </small>

@@ -5248,6 +5248,22 @@ var resolveSmartTaskDefaultGoal = (params) => {
   return Math.min(bounds.max, Math.max(bounds.min, Math.round(snapped * 100) / 100));
 };
 
+// packages/shared-domain/src/smartTaskDevicePickerOrder.ts
+var SMART_TASK_DEVICE_GROUP_ORDER = [
+  "heating",
+  "ev_charger"
+];
+var resolveSmartTaskDeviceGroup = (device) => device.kind === "ev_soc" ? "ev_charger" : "heating";
+var GROUP_RANK = Object.fromEntries(
+  SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
+);
+var groupRank = (group) => GROUP_RANK[group];
+var compareSmartTaskPickerRows = (a, b) => {
+  const byGroup = groupRank(a.group) - groupRank(b.group);
+  if (byGroup !== 0) return byGroup;
+  return a.deviceName.localeCompare(b.deviceName);
+};
+
 // widgets/create_smart_task/src/createSmartTaskWidgetPayload.ts
 var EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices;
 var EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
@@ -5261,6 +5277,7 @@ var buildDevice = (device) => {
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
     kind,
+    group: resolveSmartTaskDeviceGroup({ kind }),
     unitSymbol: bounds.unit,
     goalMin: bounds.min,
     goalMax: bounds.max,
@@ -5270,7 +5287,7 @@ var buildDevice = (device) => {
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {
-  const devices = input.devices.map(buildDevice).filter((device) => device !== null).sort((a, b) => a.deviceName.localeCompare(b.deviceName));
+  const devices = input.devices.map(buildDevice).filter((device) => device !== null).sort(compareSmartTaskPickerRows);
   if (devices.length === 0) {
     return { state: "empty", subtitle: EMPTY_NO_DEVICES_SUBTITLE, hint: EMPTY_NO_DEVICES_HINT };
   }

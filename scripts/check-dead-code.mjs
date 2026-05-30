@@ -56,6 +56,10 @@ const allowedOrphans = new Set([
   // controller) via the esbuild widget bundle, which madge (run without
   // `widgets/` in its roots) doesn't traverse.
   'packages/shared-domain/src/planPriceWidgetCopy.ts',
+  // Create-smart-task picker ordering + grouping + eligibility copy: consumed
+  // only by the widget payload builder + browser render via the esbuild bundle,
+  // which madge (runtime tsconfig excludes `widgets/`) doesn't traverse.
+  'packages/shared-domain/src/smartTaskDevicePickerOrder.ts',
 ]);
 
 const deferredObjectiveBarrelExports = [

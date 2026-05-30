@@ -958,12 +958,8 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-1);
 }
 
-.settings-nav-card__title {
-  color: var(--text);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--font-line-height-snug);
-}
+/* `.settings-nav-card__title` now composes `.pels-text-card-title` in markup;
+   no per-block type needed. */
 
 .settings-nav-card__description {
   color: var(--muted);
@@ -1028,9 +1024,7 @@ md-primary-tab.tab[active]:hover {
   gap: 6px;
 }
 
-.field__label {
-  font-weight: var(--font-weight-semibold);
-}
+/* `.field__label` composes `.pels-text-settings-label` in markup. */
 
 .field__hint {
   margin: 0;
@@ -6659,12 +6653,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
+/* Typography from `.pels-text-card-title` (markup); structural props only. */
 .deadline-list-card__title {
   margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--font-line-height-snug);
-  color: var(--text);
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -7465,8 +7456,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   #price-aware-devices-panel,
   #device-detail-panel
 ) .field__label {
-  color: var(--pels-text-settings-label-color);
-  font-weight: var(--pels-text-settings-label-font-weight);
+  /* Colour/weight now come from `.pels-text-settings-label` (markup); this
+     panel context only tightens the line-height. */
   line-height: var(--font-line-height-tight);
 }
 
