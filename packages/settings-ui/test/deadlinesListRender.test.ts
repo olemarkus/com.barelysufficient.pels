@@ -54,6 +54,26 @@ describe('DeadlinesList', () => {
     expect(chips).not.toContain('Confidence medium');
   });
 
+  // drop-card-colour-rail: the tonal hero is now a plain neutral surface (no
+  // left colour-rail), so an attention hero must carry its severity in a status
+  // chip — otherwise an at-risk/cannot-meet/paused state would read identically
+  // to a calm one apart from the headline text.
+  it('carries the severity in a hero status chip on attention states, none when on track', () => {
+    const atRisk = mountIntoBody();
+    renderDeadlinesList(atRisk, { status: 'ready', cards: [buildCard({ statusId: 'at_risk' })] });
+    expect(
+      atRisk.querySelectorAll('.deadlines-list-hero .plan-hero__chips .plan-chip').length,
+      'at-risk hero shows a status chip (the colour cue on a plain card)',
+    ).toBeGreaterThan(0);
+
+    const onTrack = mountIntoBody();
+    renderDeadlinesList(onTrack, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] });
+    expect(
+      onTrack.querySelectorAll('.deadlines-list-hero .plan-hero__chips').length,
+      'calm on-track hero stays chip-less and colour-free',
+    ).toBe(0);
+  });
+
   it('maps low confidence to the live-hero chip vocabulary while learning on a recoverable card', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {

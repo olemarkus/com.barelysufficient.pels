@@ -102,15 +102,21 @@ describe('card primitive: canonical `.pels-surface-card` carries the visual cont
     expect(bareRule?.body).toMatch(/--md-elevation-level:\s*1/);
   });
 
-  it('declares the canonical `data-tone="…"` API (good / warn / alert / info / muted)', () => {
-    // Mirrors the chip-primitive pattern: a single source of truth for tone on
-    // the canonical primitive so future consumers can pick the data-attribute
-    // form without forcing a mass migration of the existing
-    // `.plan-card[data-state-kind="…"]` aliases.
-    const expectedTones = ['good', 'warn', 'alert', 'info', 'muted'];
-    expectedTones.forEach((tone) => {
+  it('keeps only the neutral `muted` surface tone; colour tones ride the chip', () => {
+    // Refined 2026-05-30 (drop-card-colour-rail): the chromatic tonal surfaces
+    // (`good` / `warn` / `alert` / `info`) no longer carry a per-tone CARD
+    // treatment — the role-coloured left state-rail read as the Material-2 /
+    // iOS accent-list idiom, so tonal cards are now PLAIN neutral surfaces and
+    // the colour lives entirely in the consumer's status chip
+    // (`.plan-chip[data-tone]`). Only `muted` keeps a surface rule (a neutral
+    // container one tier up, NO chroma) so an Abandoned history row doesn't
+    // read as an unstyled bare card among styled siblings.
+    expect(STYLE_CSS, 'expected the neutral muted-tone surface rule').toContain(
+      '.pels-surface-card[data-tone="muted"]',
+    );
+    ['good', 'warn', 'alert', 'info'].forEach((tone) => {
       const selector = `.pels-surface-card[data-tone="${tone}"]`;
-      expect(STYLE_CSS, `expected ${selector} selector in style.css`).toContain(selector);
+      expect(STYLE_CSS, `chromatic tone ${selector} must NOT carry a per-tone card surface rule`).not.toContain(selector);
     });
   });
 
