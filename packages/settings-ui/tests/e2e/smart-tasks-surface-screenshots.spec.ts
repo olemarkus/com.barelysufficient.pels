@@ -139,9 +139,13 @@ for (const width of [480, 360] as const) {
       // Take `browser` (not `page`) so no context is created until after the
       // chromium guard — Firefox rejects `isMobile` at context creation, so we
       // must skip it BEFORE building the mobile context.
-      test(state.name, async ({ browser, browserName }) => {
+      test(state.name, async ({ browser, browserName, baseURL }) => {
         test.skip(browserName !== 'chromium', 'Mobile dark capture needs chromium isMobile emulation (unsupported in Firefox).');
+        // A manually-created context does not inherit baseURL from the page
+        // fixture, so pass it explicitly or page.goto('/') has no base to
+        // resolve against.
         const context = await browser.newContext({
+          baseURL,
           viewport: { width, height: 3400 },
           isMobile: true,
           hasTouch: true,
