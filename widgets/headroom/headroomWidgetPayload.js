@@ -17,34 +17,68 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// widgets/headroom/src/headroomWidgetPayload.ts
 var headroomWidgetPayload_exports = {};
 __export(headroomWidgetPayload_exports, {
   EMPTY_SUBTITLE_DEFAULT: () => EMPTY_SUBTITLE_DEFAULT,
   buildHeadroomWidgetPayload: () => buildHeadroomWidgetPayload
 });
 module.exports = __toCommonJS(headroomWidgetPayload_exports);
-const STALE_AFTER_MS = 90 * 1e3;
-const EMPTY_SUBTITLE_DEFAULT = "No data yet";
-const isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
-const resolvePriceLevel = (value) => {
+
+// packages/shared-domain/src/headroomWidgetCopy.ts
+var HEADROOM_WIDGET_COPY = {
+  /** Eyebrow/caption for the left number. */
+  powerNowLabel: "Power now",
+  /**
+   * Eyebrow/caption for the right number — the dynamic this-hour threshold.
+   * Canonical term carries "now" (notes/ui-terminology.md) to disambiguate the
+   * dynamic safe pace from the static "Hard cap"; reads parallel with "Power now".
+   */
+  safePaceLabel: "Safe pace now",
+  /** Screen-reader prefix for the price chip in the aria-label ("Price cheap"). */
+  priceAriaPrefix: "Price",
+  /** Shown when there is no status to render yet. */
+  noDataSubtitle: "No data yet",
+  /** Shown when the widget API call fails. */
+  loadErrorSubtitle: "Unable to load"
+};
+
+// widgets/headroom/src/headroomWidgetPayload.ts
+var STALE_AFTER_MS = 90 * 1e3;
+var NEAR_PACE_RATIO = 0.85;
+var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var resolvePriceLevel = (value) => {
   if (value === "cheap") return "cheap";
   if (value === "expensive") return "expensive";
   if (value === "normal") return "normal";
   return "unknown";
 };
-const emptyPayload = (subtitle) => ({
+var resolveLimitState = (params) => {
+  const { currentKw, hourBudgetKw, hardCapHeadroomKw } = params;
+  if (hardCapHeadroomKw !== null && hardCapHeadroomKw < 0) return "over_cap";
+  if (hourBudgetKw <= 0) return "under";
+  const ratio = currentKw / hourBudgetKw;
+  if (ratio >= 1) return "at_pace";
+  if (ratio >= NEAR_PACE_RATIO) return "near";
+  return "under";
+};
+var emptyPayload = (subtitle) => ({
   state: "empty",
   subtitle
 });
-const buildHeadroomWidgetPayload = (input) => {
+var buildHeadroomWidgetPayload = (input) => {
   const status = input.status;
   if (!status) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
   const hourBudgetKw = isFiniteNumber(status.hourlyLimitKw) ? status.hourlyLimitKw : null;
   const headroomKw = isFiniteNumber(status.headroomKw) ? status.headroomKw : null;
   if (hourBudgetKw === null || headroomKw === null) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
   const currentKw = Math.max(0, hourBudgetKw - headroomKw);
+  const hardCapHeadroomKw = isFiniteNumber(status.hardCapHeadroomKw) ? status.hardCapHeadroomKw : null;
   const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
   const priceLevel = resolvePriceLevel(status.priceLevel);
+  const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
   const timeStale = lastUpdate === null ? true : nowMs - lastUpdate > STALE_AFTER_MS;
@@ -56,6 +90,7 @@ const buildHeadroomWidgetPayload = (input) => {
     headroomKw,
     shedCount,
     priceLevel,
+    limitState,
     stale
   };
   return ready;

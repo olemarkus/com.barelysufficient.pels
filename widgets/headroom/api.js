@@ -17,20 +17,93 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// widgets/headroom/src/api.ts
 var api_exports = {};
 __export(api_exports, {
   getHeadroom: () => getHeadroom
 });
 module.exports = __toCommonJS(api_exports);
-var import_headroomWidgetPayload = require("./headroomWidgetPayload");
-const PELS_STATUS_SETTING = "pels_status";
-const readStatus = (raw) => {
+
+// packages/shared-domain/src/headroomWidgetCopy.ts
+var HEADROOM_WIDGET_COPY = {
+  /** Eyebrow/caption for the left number. */
+  powerNowLabel: "Power now",
+  /**
+   * Eyebrow/caption for the right number — the dynamic this-hour threshold.
+   * Canonical term carries "now" (notes/ui-terminology.md) to disambiguate the
+   * dynamic safe pace from the static "Hard cap"; reads parallel with "Power now".
+   */
+  safePaceLabel: "Safe pace now",
+  /** Screen-reader prefix for the price chip in the aria-label ("Price cheap"). */
+  priceAriaPrefix: "Price",
+  /** Shown when there is no status to render yet. */
+  noDataSubtitle: "No data yet",
+  /** Shown when the widget API call fails. */
+  loadErrorSubtitle: "Unable to load"
+};
+
+// widgets/headroom/src/headroomWidgetPayload.ts
+var STALE_AFTER_MS = 90 * 1e3;
+var NEAR_PACE_RATIO = 0.85;
+var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
+var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var resolvePriceLevel = (value) => {
+  if (value === "cheap") return "cheap";
+  if (value === "expensive") return "expensive";
+  if (value === "normal") return "normal";
+  return "unknown";
+};
+var resolveLimitState = (params) => {
+  const { currentKw, hourBudgetKw, hardCapHeadroomKw } = params;
+  if (hardCapHeadroomKw !== null && hardCapHeadroomKw < 0) return "over_cap";
+  if (hourBudgetKw <= 0) return "under";
+  const ratio = currentKw / hourBudgetKw;
+  if (ratio >= 1) return "at_pace";
+  if (ratio >= NEAR_PACE_RATIO) return "near";
+  return "under";
+};
+var emptyPayload = (subtitle) => ({
+  state: "empty",
+  subtitle
+});
+var buildHeadroomWidgetPayload = (input) => {
+  const status = input.status;
+  if (!status) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  const hourBudgetKw = isFiniteNumber(status.hourlyLimitKw) ? status.hourlyLimitKw : null;
+  const headroomKw = isFiniteNumber(status.headroomKw) ? status.headroomKw : null;
+  if (hourBudgetKw === null || headroomKw === null) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
+  const currentKw = Math.max(0, hourBudgetKw - headroomKw);
+  const hardCapHeadroomKw = isFiniteNumber(status.hardCapHeadroomKw) ? status.hardCapHeadroomKw : null;
+  const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
+  const priceLevel = resolvePriceLevel(status.priceLevel);
+  const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
+  const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
+  const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
+  const timeStale = lastUpdate === null ? true : nowMs - lastUpdate > STALE_AFTER_MS;
+  const stale = timeStale || status.powerKnown === false;
+  const ready = {
+    state: "ready",
+    currentKw,
+    hourBudgetKw,
+    headroomKw,
+    shedCount,
+    priceLevel,
+    limitState,
+    stale
+  };
+  return ready;
+};
+
+// widgets/headroom/src/api.ts
+var PELS_STATUS_SETTING = "pels_status";
+var readStatus = (raw) => {
   if (!raw || typeof raw !== "object") return null;
   return raw;
 };
-const getHeadroom = async ({ homey }) => {
+var getHeadroom = async ({ homey }) => {
   const status = readStatus(homey.settings.get(PELS_STATUS_SETTING));
-  return (0, import_headroomWidgetPayload.buildHeadroomWidgetPayload)({ status });
+  return buildHeadroomWidgetPayload({ status });
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

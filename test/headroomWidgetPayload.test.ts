@@ -37,8 +37,41 @@ describe('buildHeadroomWidgetPayload', () => {
       headroomKw: 3.8,
       shedCount: 2,
       priceLevel: 'cheap',
+      limitState: 'under',
       stale: false,
     });
+  });
+
+  test('reports at_pace (not danger) when draw reaches safe pace under the hard cap', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: 1.7 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', currentKw: 6.3, limitState: 'at_pace' });
+  });
+
+  test('reports near when approaching but below the safe pace', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 0.5, hourlyLimitKw: 6 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', limitState: 'near' });
+  });
+
+  test('reports over_cap only when hard-cap headroom is negative', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: -0.4 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
+  });
+
+  test('does not escalate to over_cap when hard-cap headroom is absent', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: -0.5, hourlyLimitKw: 6 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', limitState: 'at_pace' });
   });
 
   test('clamps negative current to zero', () => {
