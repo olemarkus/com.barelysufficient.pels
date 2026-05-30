@@ -7,7 +7,7 @@ import type {
   DeferredObjectivePlanPreviewStatus,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
 import { buildDeferredObjectiveDiagnostic, type DeferredObjectiveDiagnostic } from './diagnosticsBridge';
@@ -22,7 +22,7 @@ export type PreviewDeferredObjectivePlanParams = {
   // The live plan-input device (already produced by `toPlanDevice`). Undefined
   // when the device is not in the current snapshot — the projection then comes
   // back `unavailable`, matching the planner's `objective_missing_device` path.
-  device: PlanInputDevice | undefined;
+  device: ObjectiveDeviceInput | undefined;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceOptimizationEnabled: boolean;

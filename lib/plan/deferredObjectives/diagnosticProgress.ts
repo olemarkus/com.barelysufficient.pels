@@ -31,7 +31,7 @@
  * does not try to detect this.
  */
 import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles';
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 
 export type DeferredObjectiveProgressResolution = {
@@ -54,7 +54,7 @@ type EvProgress = {
   reasonCode: 'objective_invalid_session' | 'objective_progress_stale';
 };
 
-const resolveEvObjectiveProgress = (device: PlanInputDevice): EvProgress => {
+const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress => {
   if (device.evChargingState === 'plugged_out' || device.evChargingState === 'plugged_in_discharging') {
     return { currentPercent: null, reasonCode: 'objective_invalid_session' };
   }
@@ -71,9 +71,12 @@ const resolveEvObjectiveProgress = (device: PlanInputDevice): EvProgress => {
 };
 
 const hasUsableTemperatureProgress = (params: {
-  device: PlanInputDevice;
+  device: ObjectiveDeviceInput;
   nowMs: number;
-}): params is { device: PlanInputDevice & { currentTemperature: number; lastFreshDataMs: number }; nowMs: number } => {
+}): params is {
+  device: ObjectiveDeviceInput & { currentTemperature: number; lastFreshDataMs: number };
+  nowMs: number;
+} => {
   const { device, nowMs } = params;
   // A finite `currentTemperature` paired with a finite `lastFreshDataMs` is
   // proof the device has produced at least one trusted observation. That is
@@ -93,7 +96,7 @@ const hasUsableTemperatureProgress = (params: {
 
 export const resolveObjectiveProgress = (params: {
   objective: DeferredObjectiveSettingsEntry;
-  device: PlanInputDevice;
+  device: ObjectiveDeviceInput;
   nowMs: number;
 }): DeferredObjectiveProgressResolution => {
   const { objective, device, nowMs } = params;

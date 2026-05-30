@@ -1,4 +1,4 @@
-import type { PlanInputDevice } from '../planTypes';
+import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry, DeferredObjectiveSettingsV1 } from './settings';
 
 // Survive one full cooldown window of transient SDK misses before dropping a
@@ -25,7 +25,7 @@ export const ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1000;
 const isEligibleNow = (
   deviceId: string,
   objective: DeferredObjectiveSettingsEntry,
-  deviceById: Map<string, PlanInputDevice>,
+  deviceById: Map<string, ObjectiveDeviceInput>,
 ): boolean => {
   if (!objective.enabled) return false;
   if (objective.rescue?.exemptFromBudget !== 'always') return false;
@@ -78,7 +78,7 @@ export class ConcurrentEligibleTaskTracker {
   // beyond the grace window are pruned.
   observe(params: {
     settings: DeferredObjectiveSettingsV1;
-    deviceById: Map<string, PlanInputDevice>;
+    deviceById: Map<string, ObjectiveDeviceInput>;
     nowMs: number;
   }): void {
     const { settings, deviceById, nowMs } = params;
@@ -125,7 +125,7 @@ export class ConcurrentEligibleTaskTracker {
 // the grace map survives across cycles.
 export const countConcurrentEligibleTasks = (params: {
   settings: DeferredObjectiveSettingsV1;
-  deviceById: Map<string, PlanInputDevice>;
+  deviceById: Map<string, ObjectiveDeviceInput>;
 }): number => {
   const tracker = new ConcurrentEligibleTaskTracker();
   tracker.observe({ ...params, nowMs: 0 });
@@ -139,7 +139,7 @@ export const countConcurrentEligibleTasks = (params: {
 // flicker in production (see TODO `Eligibility-count flicker hardening`).
 export const resolveConcurrentEligibleCount = (params: {
   settings: DeferredObjectiveSettingsV1;
-  deviceById: Map<string, PlanInputDevice>;
+  deviceById: Map<string, ObjectiveDeviceInput>;
   nowMs: number;
   tracker?: ConcurrentEligibleTaskTracker;
 }): number | ((bucketStartMs: number) => number) => {

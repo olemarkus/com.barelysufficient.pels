@@ -1,161 +1,181 @@
-# Lifecycle off the planner: clock-driven smart-task producer + direct disable actuator
+# Smart-task controller: planner knows nothing about smart tasks
 
-Status: **design — second verification pass.** Supersedes the first draft (which proposed a
-generic "device-prep layer"; that framing was revised after round-1 review — see *Verification
-status*). Reviewers: this is the current design — attack it.
+Status: **design — controller/inversion model.** Supersedes two earlier framings: a generic
+"device-prep layer" (round 1), then a "clock-driven producer whose flat facts the planner
+consumes" (round 2). Both were wrong about the planner's role — see *Goal*. This is the current
+design.
+
+## The invariant (definition of done)
+
+**The planner knows nothing about smart tasks.** Concretely and testably: **`lib/plan/**` imports
+nothing from the smart-task controller** — enforced by a dependency-cruiser rule
+(`no-plan-to-smarttasks`). That rule going green *is* the goal. Today it would fail on **8 plan
+files** (`planBuilder`, `planEngine`, `admission/deferredObjective`, `admission/index`,
+`planDevices`, `planLogging`, `planReasons`, `planTypes`); the program burns them down to zero.
+
+The shape is a **dependency inversion**. Today the planner *pulls* smart tasks in (it advances the
+lifecycle and applies objective settings in-loop). Target: a **smart-task controller** *pushes*
+decorated `PlanInputDevice`s into a smart-task-agnostic planner, and owns lifecycle + ending +
+terminal actuation on its own clock.
+
+**Enforcement caveat (must fix before the finish line is trustworthy).** The dependency-cruiser
+config runs in *post-compilation* mode (`tsPreCompilationDeps` unset), so `import type` edges are
+invisible to every rule. Both the `no-plan-to-smarttasks` burn-down meter *and* the
+`no-objectives-to-peer-except-power` relocation gate therefore see only **value** imports — a
+meter that can read zero while type-only plan↔controller coupling persists. Flipping
+`tsPreCompilationDeps: true` globally surfaces **~18 pre-existing repo-wide violations** (mostly
+`no-circular`), so it cannot just be turned on. Until that prerequisite cleanup lands, each
+relocation/finish-line step must prove decoupling with a **type-edge audit** (grep the moved
+module for `from '..plan'` imports, or a scoped pre-compilation-deps run), not the dep-cruiser
+green alone. Tracked in `TODO.md`.
 
 ## Goal (two-fold, one decoupling)
 
-The smart-task (deferred-objective) lifecycle should come off the planner on **both ends**:
+The smart-task (deferred-objective) lifecycle comes off the planner on **both ends**:
 
 1. **Off the planner's clock (input).** Lifecycle state is *clock-driven* (deadline,
    hours-remaining, progress vs time). The planner is *reactive* — driven by power samples and
-   device events. Today `buildDeferredObjectiveDiagnostics` runs **inside** `planBuilder`, so
-   lifecycle state only advances when a power event wakes the planner. **Concrete bug:** in
-   `power_source = flow` mode, plan cycles can be hours apart, so deadline transitions / ended
-   events / hours-remaining crossings **lag until the next power event**. The lifecycle needs
-   its own clock tick.
+   device events. Today `buildDeferredObjectiveDiagnostics` / `emitDeferredObjectiveStatusTransitions`
+   run **inside** `planBuilder`, so lifecycle state only advances when a power event wakes the
+   planner. **Concrete bug:** in `power_source = flow` mode, plan cycles can be hours apart, so
+   deadline transitions / ended events / hours-remaining crossings **lag until the next power
+   event**. The lifecycle needs its own clock tick, owned by the controller.
+
+   The controller's hand-off to the planner is **device-input mutation, not fact consumption.**
+   The planner does *not* read smart-task status/diagnostics. The controller folds each task's
+   effective settings into the `PlanInputDevice` for the current moment ("we're in an active hour
+   for this device → enable caps / set the target"); the planner then plans on those decorated
+   inputs, ignorant that smart tasks exist. This is the existing override channel
+   (`applyDeferredAdmissionToInput` / `buildDeferredTargetOverrides` / `applyDeferredObjectiveAdmission`),
+   **relocated to the controller** and made the *sole* channel — with the in-loop lifecycle
+   advancement/emission deleted from the planner.
 
 2. **Off the planner's path (output).** The terminal turn-off is currently smuggled out as a
-   per-cycle `shed_release` plan intent riding the capacity shed actuation path. It should
-   actuate **lifecycle-actuator → transport**, on the lifecycle's own clock — never through
-   the plan→executor capacity path.
+   per-cycle `shed_release` plan intent riding the capacity shed actuation path. The controller
+   **ends the task and actuates the terminal disable directly** (controller → transport), on its
+   own clock — never through the plan→executor capacity path.
 
 ## Vocabulary (load-bearing)
 
+- **Smart-task controller** = the stateful owner of a task's lifecycle: trigger-initiated (a Flow
+  trigger starts a task), clock-driven (advances state on time), responsible for **ending** the
+  task. Its outputs are (a) device-input mutations the planner consumes and (b) the terminal
+  disable actuation. Called a *controller*, not a *producer* — it owns and drives state, it does
+  not merely emit facts for the planner to read.
 - **Shed** = a *capacity cause* ("over budget → reduce load"). Stays "shed" in the plan path;
   that path genuinely sheds.
 - **Disable / limit** = the *effect*: drive a device to its configured **fallback posture**
   (fully off = disable; stepped-down / lower setpoint = limit).
 - **Lifecycle-end** = a *different cause* invoking the **same** disable/limit effect (task done
   → return device to fallback). It is **not** a shed.
-- **Shared reason-blind effect primitive**: "drive device to posture P." Both capacity-shed
-  and lifecycle-disable invoke it; the causes live in their own layers.
 - Today's `shedBehavior` / `OVERSHOOT_BEHAVIORS` config *is* the device's fallback posture.
   Renaming that config vocabulary touches settings keys + UI + logs — a **follow-up**, not in
   scope here.
 
 ## Target architecture (three components)
 
-1. **Clock-driven lifecycle producer** — the existing `lib/plan/deferredObjectives/` subsystem
-   (status `statusBus`/`statusTransitions`, lifecycle `activePlanRecorder`, `endedEventBus`,
-   horizon `rescueReplan`/`policyHorizon`), **relocated out of `lib/plan`** (expand
-   `lib/objectives/` or a new `lib/smartTasks/`) and advanced on its **own clock tick**. Pure:
-   emits flat facts (status, decision, ended event, deadline floor, boost request). It already
-   has non-plan consumers (`flowCards/deadlineObjectiveCards.ts`, `smartTaskTokens.ts`,
-   `smartTaskRescueCard.ts`) — evidence it is a producer, not plan-internal.
+1. **Smart-task controller** — the existing `lib/plan/deferredObjectives/` subsystem (status
+   `statusBus`/`statusTransitions`, lifecycle `activePlanRecorder`, `endedEventBus`, horizon
+   `rescueReplan`/`policyHorizon`, the concurrent-eligible tracker), **relocated out of
+   `lib/plan`** (a new `lib/smartTasks/` peer, or expand `lib/objectives/`) and advanced on its
+   **own clock tick** wired in `setup/`. It already has non-plan consumers
+   (`flowCards/deadlineObjectiveCards.ts`, `smartTaskTokens.ts`, `smartTaskRescueCard.ts`,
+   settings-UI history) — evidence it is not plan-internal. It reads device data through a narrow
+   input contract (`ObjectiveDeviceInput`), not `PlanInputDevice`.
 
-2. **Clock-driven lifecycle actuator** — on each lifecycle tick, for any task in a **terminal**
-   state on a **`controllable === false`** device still observed `on`, drive it to its
-   configured fallback posture (**disable/limit**) via the **transport**. Self-healing
+2. **Device-input decoration (controller → planner)** — the controller owns
+   `applyDeferredAdmissionToInput` / `buildDeferredTargetOverrides` / `buildDeferredReleaseIntents`
+   / the objective admission applier, and emits **decorated `PlanInputDevice`s** (or a narrow
+   override set the input pipeline applies). This is the *only* channel into the planner. The
+   planner imports nothing smart-task; it just plans on the inputs it is handed.
+
+3. **Clock-driven disable actuator** — on each lifecycle tick, for any task in a **terminal**
+   state on a **`controllable === false`** device still observed `on`, the controller drives it
+   to its configured fallback posture (**disable/limit**) via the **transport**. Self-healing
    (per-tick re-check survives dropped writes / unknown-observation), idempotent (observed-on
-   gate), no flow-mode lag (clock-driven). Writes at the executor/transport layer, wired by
-   `app.ts`. This is today's release-actuation logic, decoupled from the capacity path and
-   re-homed onto the clock loop. It is **not** a one-shot.
+   gate), no flow-mode lag (clock-driven). Not a one-shot. This is today's release-actuation
+   logic, decoupled from the capacity path and re-homed onto the controller's clock.
 
-3. **Power-driven planner** — `lib/plan`, reactive. Consumes the producer's **flat facts** for
-   cross-device arbitration (boost/caps/floor during active hours); decides capacity **sheds**,
-   which invoke the same disable/limit effect via the executor. No objective lifecycle inside.
+**Power-driven planner (`lib/plan`)** — reactive, smart-task-agnostic. Operates only on the
+`PlanInputDevice`s it is handed; decides capacity **sheds**, which invoke the shared disable/limit
+effect via the executor. No objective lifecycle, no objective facts, no objective imports.
 
-**No second-writer contention:** the lifecycle actuator only touches `controllable === false`
+**No second-writer contention:** the disable actuator only touches `controllable === false`
 devices — exactly the ones the planner has let go of (`shouldEmitTerminalRelease` already gates
 on this). The "caps-off-first, then disable" ordering is structural, not timing-dependent.
 
-## Capacity-marker fix (increment 1 — the live bug, independent)
+## Capacity-marker fix (shipped — historical, was the independent first down-payment)
 
-Separate from the relocation. The live bug: the **binary** disable path stamps capacity cooldown
-markers (`applyShedReleaseBinaryOff → applyBinarySheddingToDevice → recordShedActuation`,
-`binaryExecutor.ts:542`), polluting `lastInstabilityMs` / `lastDeviceShedMs` for a non-capacity
-event → mis-paced restores. (Temperature & stepped paths already route through the
-diagnostic-only recorder; the binary axis was missed.)
+Separate from the relocation; shipped in PR #1278 + `fix/device-control-intent`. The live bug:
+the **binary** disable path stamped capacity cooldown markers
+(`applyShedReleaseBinaryOff → applyBinarySheddingToDevice → recordShedActuation`), polluting
+`lastInstabilityMs` / `lastDeviceShedMs` for a non-capacity event → mis-paced restores. Fixed by
+routing the binary disable (direct + flow-backed, non-EV + EV `ev_pause`) through a reason-blind
+diagnostic-only dispatch off the capacity path (`pendingBinaryCommands.lifecycleRelease`
+discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decision-time clock vs
+`lastDeviceShedMs` actuation clock). Superseded #1249. This was the first down-payment on goal 2
+(disable off the capacity write path).
 
-Fix: route the binary disable through a **reason-blind disable dispatch off the capacity path**
-(records diagnostics only, skips `shouldSkipShedding`/`pendingSheds`, keeps the observed-on gate).
-**It must cover flow-backed devices too:** for flow-backed binary control the marker stamp is
-deferred to `handleConfirmedBinaryCommand` on a later cycle, and the `pendingBinaryCommands` entry
-carries no release-vs-shed discriminator — so tag the pending entry with a lifecycle-release
-discriminator (a dedicated field, **not** overloaded `logContext`) and branch
-`handleConfirmedBinaryCommand` to the diagnostic-only recorder. Without this, flow-backed binary
-devices keep polluting the markers — the exact population this serves. Plus the marker-ownership
-corrections the round-1 pass forced:
-- Per-device shed marker (B) becomes **plan-decision-time, edge-set, NOT cleared on departure**
-  (recovering readers compare it vs `lastRestoreMs`, `candidates.ts:452`).
-- **Do not** naively drop the executor `lastInstabilityMs` stamp — the plan stamps it only on a
-  *fresh shed selection* (`buildSheddingPlan.ts:174`), not on reconcile-after-drift re-sheds
-  (`binaryExecutor:542`, `steppedLoadExecutor:377`, `targetExecutor:115/179`); cover reconcile
-  or explicitly accept the relaxed restore back-off.
-- Defer a separate write-time field (C) — onset serves the throttle + reconciliation acceptably.
-- `logContext`/`capacity_control_off` demotion is a **pure rename**, NOT a persisted-state
-  migration: it is a runtime reason-code enum with zero `settings.get/set`, and `lastDeviceShedMs`
-  is itself in-memory only. The rename must update the shared-domain log helper
-  (`planReasonSemanticsCore.ts`) in the same change for log parity
-  (`feedback_ui_text_shared_with_logs`).
-- Capture the two extra direct stamp/read sites (`binaryExecutor:498`, `:126`).
+## Verification status (confirmed findings)
 
-The lifecycle-end **EV pause** (`ev_pause` via `applyDeferredEvCommand`) is the same bug on the
-EV axis — a binary `evcharger_charging` off through a sibling call site — and is fixed identically
-(`lifecycleRelease` + skip the capacity throttle). The EV charger is the primary smart-task device,
-so it must not be left polluting; increment 1 covers both the non-EV `shed_release` and the EV
-`ev_pause` lifecycle disables.
-
-This is the first down-payment on goal 2 (disable off the capacity write path), supersedes
-#1249, and is shippable now.
-
-## Verification status (round-2 findings)
-
-- **Relocation REQUIRES a `PlanInputDevice` type-hoist** (corrects the earlier claim that it
-  doesn't). Today `plan → deferredObjectives` is a runtime edge (`planBuilder.ts:53-62`) and
-  `deferredObjectives → planTypes` is a type edge (×7) — bidirectional, kept legal only because
-  both halves sit inside `lib/plan`. Splitting it is a real `no-circular` violation (this cruiser
-  config sets no `tsPreCompilationDeps`, so `import type` does not save it). `lib/objectives/` is
-  additionally forbidden by `no-objectives-to-peer-except-power`. Precondition: hoist
-  `PlanInputDevice` (+ its `planTypes` type-only deps) into a shared contract (`lib/planContract`
-  or `packages/contracts`); a new `lib/smartTasks/` peer is viable only after that and needs its
-  own dep-cruiser rule. The clock loop wires in `setup/`.
-- **`concurrentEligibleCount` is a producer-owned per-bucket RESOLVER, not a flat input.** It is a
-  stateful `ConcurrentEligibleTaskTracker` (cross-cycle grace map, per-bucket deadline filter)
-  returning `(bucketStartMs) => number`. The producer must own the tracker + closure; the seam
-  carries stateful bucket-parameterized logic, not a scalar.
-- **The one-shot lifecycle manager was a self-heal downgrade** — replaced by the clock-driven
-  per-tick self-healing actuator above.
-- **The lifecycle state tracking already exists** — this is relocation + re-clocking, not new
-  machinery.
+- **Relocation requires a type-boundary prep — confirmed, and resolved by a narrow contract, not
+  a `PlanInputDevice` hoist.** `deferredObjectives` imports from `lib/plan` via exactly one path:
+  `import type { PlanInputDevice }` (×7), and from `lib/dailyBudget` via `DailyBudget*Payload`
+  (×4). `lib/objectives/` (and any leafward peer home) is forbidden from both edges by
+  `no-objectives-to-peer-except-power`. The producer only reads a ~15-field device-data subset, so
+  the prep is a **narrow `ObjectiveDeviceInput` contract** (read side) + a **DailyBudget-payload
+  hoist to `packages/contracts`** (re-export shim keeps the other 33 consumers untouched) — the
+  planner adapts `PlanInputDevice → ObjectiveDeviceInput` at the call boundary. `planTypes` does
+  not reference `deferredObjectives`, so there is no cycle through the type edge once the import is
+  redirected. The `power/tracker` import is the allowed power↔objectives cycle.
+- **`concurrentEligibleCount` is a controller-owned per-bucket RESOLVER, not a flat input.** It is
+  a stateful `ConcurrentEligibleTaskTracker` (cross-cycle grace map, per-bucket deadline filter)
+  returning `(bucketStartMs) => number`. The controller owns the tracker + closure; the seam
+  carries stateful bucket-parameterized logic, not a scalar — so it must ride the decorated-input
+  channel, not be flattened to a number.
+- **The lifecycle state machinery already exists** — this is relocation + re-clocking + dependency
+  inversion, not new machinery.
 
 ## Increments
 
-1. **Shipped (PR #1278):** reason-blind binary-disable dispatch off the capacity path —
-   the lifecycle-release no longer stamps `lastInstabilityMs` / `lastDeviceShedMs` (direct
-   + flow-backed). Supersedes #1249's over-stamp half.
-1b. **Shipped (`fix/device-control-intent`):** the marker-ownership decomposition, increment 1.
-   Split the *reader* roles of `lastDeviceShedMs` by introducing a decision-time `shedDecidedMs`
-   clock (planner-owned, edge-set at finalization for devices entering `lastPlannedShedIds`,
-   cleared on restore alongside `lastDeviceShedMs`). The restore-eligibility readers (recovering
-   ×2, stepped-restore blocking, restore-log source, uncontrolled-restore gate) now read
-   `shedDecidedMs`; `lastDeviceShedMs` stays the actuation clock for the throttle / cooldown /
-   reconcile / recent-shed-backoff. Fixes the under-stamp (decided-but-already-off → restores
-   early) without touching the same-cycle throttle. Follow-ups (dedup the recovering helper;
-   move the recent-shed backoff onto the decision clock alongside a future `shedActuatedMs`
-   rename) are in `TODO.md`.
-2. **North-star program (separate, multi-PR):** relocate the lifecycle subsystem out of
-   `lib/plan` onto its own clock loop (producer) + the clock-driven disable actuator (completes
-   goals 1 & 2); untangle `concurrentEligibleCount` into a flat capacity input. ~40 files;
-   introduces a second loop.
+1. **Shipped (PR #1278):** reason-blind binary-disable dispatch off the capacity path.
+1b. **Shipped (`fix/device-control-intent`, PR #1296):** the `shedDecidedMs` marker-ownership
+   decomposition.
+2. **PR-A — device input contract.** Narrow `ObjectiveDeviceInput` read contract in
+   `lib/objectives/types.ts` (replaces the 7 `PlanInputDevice` imports). `PlanInputDevice` stays
+   structurally assignable, so no runtime adapter — the planner passes its device list straight
+   through. Behavior-neutral; no move. Lands the design note + the tracked `no-plan-to-smarttasks`
+   dep-cruiser rule (`warn`) so the debt is visible.
+2b. **PR-A2 — DailyBudget-payload hoist.** Move `DailyBudgetUiPayload` / `DailyBudgetDayPayload`
+   (+ their type closure) to `packages/contracts`, re-export from `lib/dailyBudget/dailyBudgetTypes`
+   (keeps the other ~33 consumers untouched), repoint the 4 producer files. After A + A2,
+   `deferredObjectives` imports zero plan/dailyBudget peer types.
+3. **PR-B — relocate** `deferredObjectives` into its peer home; update ~13 consumer import paths.
+   Mechanical, behavior-neutral.
+4. **Lift the lifecycle onto the clock.** Move `buildDeferredObjectiveDiagnostics` /
+   `emitDeferredObjectiveStatusTransitions` / hours-remaining + status buses / the concurrent
+   tracker out of `planBuilder`/`planEngine` onto the controller's clock tick (wired in `setup/`).
+   Kills the bulk of the 8-file debt (the lifecycle-emission half).
+5. **Move the input-decoration appliers into the controller.** The controller emits decorated
+   `PlanInputDevice`s; `planBuilder` stops calling the deferred appliers; delete
+   `admission/deferredObjective.ts`. Kills the input-mutation half.
+6. **Controller owns ending + the direct disable actuator** (goal 2 completed end-to-end).
+7. **Flip `no-plan-to-smarttasks` to `error`.** Green = planner knows nothing about smart tasks.
 
 ## Open questions / risks (reviewers, attack these)
 
 1. **Two loops (clock + power) touching shared state** — what snapshot/ordering discipline
-   prevents the planner reading half-updated lifecycle state? Today's single loop sidesteps
-   this; is immutable-per-tick-snapshot sufficient, and where does it live?
-2. **Headroom-coupling extraction** — is `concurrentEligibleCount` cleanly expressible as a flat
-   capacity input, or more entangled than it looks (it counts *objectives*, not just power)?
-3. **Clock tick mechanism** — timer granularity (minute-ish?), restart behavior, DST 23/25 h.
+   prevents the planner reading half-decorated inputs? The decoration must complete before the
+   plan cycle reads the input; is an immutable per-cycle decorated-input snapshot the seam, and
+   where does it live (`setup/` assembly, or a controller method the plan-input builder calls)?
+2. **Clock tick mechanism** — timer granularity (minute-ish?), restart behavior, DST 23/25 h.
    Does the actuator's per-tick self-heal hold in `flow` mode and across restart?
-4. **`controllable === false` gate** — does it *fully* prevent lifecycle/planner write
-   contention, including transitional cycles where a task is ending as caps releases?
-5. **Relocation import graph** — does moving `deferredObjectives` out of `lib/plan` create
-   cycles, given it consumes `lib/objectives`/`lib/dailyBudget`/`lib/power` and produces
-   `PlanInputDevice`-shaped facts?
-6. **Increment 1 independence** — is the binary-disable fix truly shippable without the
-   relocation, and does it pass the five #1249 regression findings?
-7. **Vocabulary churn** — is the shed/disable-limit split clarifying or confusing; is partial
-   adoption (new actuator only, retained "shed" config) coherent?
+3. **`controllable === false` gate** — does it *fully* prevent controller/planner write
+   contention, including the transitional cycle where a task is ending as caps releases?
+4. **Decoration vs facts boundary** — `concurrentEligibleCount` and the floor/headroom coupling:
+   are these fully expressible as device-input decoration, or is there a genuinely cross-device
+   capacity quantity that has no per-device home? If the latter, that is the one fact that must
+   cross as data — find it explicitly rather than letting the planner re-import the controller.
+5. **New peer dep-cruiser rule** — `lib/smartTasks/` (if chosen) needs its own
+   `no-smarttasks-to-peer-except-(power|objectives)` rule; confirm it consumes only
+   power/objectives/contracts/shared-domain downward.
