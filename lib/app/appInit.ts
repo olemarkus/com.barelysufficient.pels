@@ -29,11 +29,7 @@ import {
 } from '../utils/learnedThermostatDeadbandStore';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
-  disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
-  requireDeferredObjectivePlanHistoryRecorder,
-  WATERMARK_IDLE_REFRESH_MS,
-  writeWatermark,
 } from './appInit/deferredRecorders';
 import {
   buildStepPowerCalibrationView,
@@ -47,6 +43,7 @@ export {
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
 } from './appInit/deferredRecorders';
+export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 
 function requireDeviceManager(ctx: AppContext) {
   if (!ctx.deviceManager) {
@@ -103,7 +100,6 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
 
 
 export function createPlanEngine(ctx: AppContext) {
-  let lastWatermarkPersistMs = 0;
   return new PlanEngineClass({
     homey: ctx.homey,
     deviceManager: requireDeviceManager(ctx),
@@ -139,43 +135,6 @@ export function createPlanEngine(ctx: AppContext) {
     deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
-    deferredObjectiveDebugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
-    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, getStallClassification) => {
-      const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      const activePlans = ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
-      recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
-      // Persist the watermark when we flushed new history (recorder is clean and the save
-      // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
-      // last watermark write, also advance it — this keeps the back-fill window small during
-      // long idle stretches and prevents post-enable objectives from being back-filled into
-      // periods they didn't exist for. If the recorder is still dirty (failed save), leave
-      // the watermark alone so the next restart re-tries the persistence.
-      const flushed = recorder.flushIfDirty();
-      if (flushed) {
-        writeWatermark(ctx, nowMs);
-        lastWatermarkPersistMs = nowMs;
-        return;
-      }
-      if (recorder.isDirty()) return;
-      if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
-      writeWatermark(ctx, nowMs);
-      lastWatermarkPersistMs = nowMs;
-    },
-    observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
-      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-      recorder.observe(diagnostics, nowMs);
-      recorder.flushIfDirty();
-    },
-    // Read through `ctx.planService` at call time rather than capturing a
-    // reference at engine construction — `createPlanEngine` runs before
-    // `createPlanService`, so the service does not yet exist here. Returning
-    // `undefined` for an unclassified device (which is also what the
-    // classifier returns for `active` devices) means the recorder treats
-    // missing-classifier as "no stall promotion" and the target-reached
-    // path remains unchanged.
-    getStallClassification: (deviceId) => (
-      ctx.planService?.getStallClassification(deviceId)
-    ),
     // Read-through into the persisted per-device learned deadband map. The
     // setting is updated on every met/stalled finalize by
     // `updateLearnedThermostatDeadbandFromEntry` in `deferredRecorders.ts`,
@@ -195,10 +154,14 @@ export function createPlanEngine(ctx: AppContext) {
         deviceId,
       );
     },
-    getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
-    getDeferredObjectiveHoursRemainingBus: () => ctx.deferredObjectiveHoursRemainingBus,
-    getDeferredObjectiveHoursRemainingTracker: () => ctx.deferredObjectiveHoursRemainingTracker,
-    disableDeferredObjective: (deviceId) => disableDeferredObjectiveInSettings(ctx, deviceId),
+    // Active-plan commitment stays on the plan cycle (the planner reads
+    // committed plans for its decoration). Only the lifecycle EMISSION moved to
+    // the clock (DeferredObjectiveLifecycleEmitter); see createDeferredObjectiveLifecycleEmitter.
+    observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
+      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      recorder.observe(diagnostics, nowMs);
+      recorder.flushIfDirty();
+    },
     log: (...args: unknown[]) => ctx.log(...args),
     logDebug: (...args: unknown[]) => ctx.logDebug('plan', ...args),
     error: (...args: unknown[]) => ctx.error(...args),

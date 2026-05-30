@@ -158,10 +158,20 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    audit confirmed zero `lib/plan` imports from the moved subsystem; `no-objectives-to-peer-except-power`
    stays green. `no-plan-to-smarttasks` `to` path updated to the new home. A later rename to
    `lib/smartTasks/` remains an option.
-4. **Lift the lifecycle onto the clock.** Move `buildDeferredObjectiveDiagnostics` /
-   `emitDeferredObjectiveStatusTransitions` / hours-remaining + status buses / the concurrent
-   tracker out of `planBuilder`/`planEngine` onto the controller's clock tick (wired in `setup/`).
-   Kills the bulk of the 8-file debt (the lifecycle-emission half).
+4. **Lift the lifecycle EMISSION onto the clock (done — PR-C).** Shape chosen: *emission on
+   clock, decoration synchronous*. Only the non-planning emission — status transitions,
+   hours-remaining crossings, diagnostics, **plan-history** recording, and the deadline-passed
+   disable — moved onto a 30 s clock tick (`DeferredObjectiveLifecycleEmitter` +
+   `startDeferredObjectiveLifecycleClock`, wired via `BackgroundTasksController`). The
+   **active-plan COMMITMENT stays synchronous in `planBuilder`** (review catch): the planner
+   reads committed plans via `resolveCommittedHours` for its decoration, so promoting them is
+   decoration-relevant and must not lag a clock tick. The clock only *clears* an ended task's
+   plan (via `onDeadlinePassed → disable`), phase-separated from planBuilder's commit. The emitter
+   owns its own `ConcurrentEligibleTaskTracker` + the watermark closure; it is the sole writer to
+   the plan-history recorder. Fixes the `power_source = flow` lag with no two-loop staleness — the
+   decoration (admission/overrides/active-plan commit) stays synchronous per plan cycle; the full
+   decoration relocation is PR-D (step 5). The planner still imports the subsystem for the
+   decoration eval, so `no-plan-to-smarttasks` still fires until step 5/6.
 5. **Move the input-decoration appliers into the controller.** The controller emits decorated
    `PlanInputDevice`s; `planBuilder` stops calling the deferred appliers; delete
    `admission/deferredObjective.ts`. Kills the input-mutation half.
