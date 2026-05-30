@@ -14,6 +14,7 @@ import {
   resolveSmartTaskWidgetTargetActionVerb,
   SMART_TASK_WIDGET_EMPTY_HINT,
   SMART_TASK_WIDGET_EMPTY_SUBTITLE,
+  SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX,
   SMART_TASK_WIDGET_STATUS_LABELS,
   SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
@@ -213,7 +214,10 @@ const formatPlanMetaLabel = (revision: DeferredObjectiveActivePlanRevisionV1): s
     resolveEnergyPart(revision),
   ].filter((part): part is string => part !== null && part !== '');
   if (parts.length === 0) return null;
-  return parts.join(' · ');
+  // Prefix (from shared-domain so smart-task copy stays single-sourced) names the
+  // dense duration · power · energy run-on as a forward estimate; the renderer lifts
+  // this line to full text contrast to match.
+  return `${SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX} ${parts.join(' · ')}`;
 };
 
 const resolveConfidenceLabel = (

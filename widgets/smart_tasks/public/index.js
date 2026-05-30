@@ -43,7 +43,7 @@
         targetActionVerb: "Heat to",
         targetNoun: "Target",
         deadlineLongLabel: "Tomorrow 05:30",
-        planMetaLabel: "\u22482h 15m \xB7 1.8 kW \xB7 \u22484.0 kWh",
+        planMetaLabel: "Estimate \u22482h 15m \xB7 1.8 kW \xB7 \u22484.0 kWh",
         confidenceLabel: null,
         whyLabel: "Limited time left before the deadline.",
         recourseHint: null

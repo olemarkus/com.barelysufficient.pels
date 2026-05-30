@@ -208,6 +208,9 @@ export const SMART_TASK_WIDGET_EMPTY_HINT
 // so runtime logging and the widget render the same string per
 // `feedback_ui_text_shared_with_logs`.
 export const SMART_TASK_WIDGET_EMPTY_SUBTITLE = 'No active smart tasks';
+// One-word prefix for the detail-panel plan-meta recap (duration · power · energy)
+// so it isn't the least-legible line — names the dense run-on as a forward estimate.
+export const SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = 'Estimate';
 
 // Overflow line shown beneath the capped widget row list when more active
 // tasks exist than the widget renders (`+N in Smart tasks`). Formatter rather

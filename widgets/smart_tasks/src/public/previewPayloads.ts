@@ -41,7 +41,7 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       targetActionVerb: 'Heat to',
       targetNoun: 'Target',
       deadlineLongLabel: 'Tomorrow 05:30',
-      planMetaLabel: '≈2h 15m · 1.8 kW · ≈4.0 kWh',
+      planMetaLabel: 'Estimate ≈2h 15m · 1.8 kW · ≈4.0 kWh',
       confidenceLabel: null,
       whyLabel: 'Limited time left before the deadline.',
       recourseHint: null,

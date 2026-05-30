@@ -446,6 +446,9 @@ describe('buildSmartTasksWidgetPayload', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({ dev: plan }));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
+    // Leads with the one-word "Estimate" label so the dense recap line is named
+    // before its numbers (de-densing the detail panel's least-legible line).
+    expect(payload.rows[0].planMetaLabel?.startsWith('Estimate ')).toBe(true);
     expect(payload.rows[0].planMetaLabel).toContain('≈3h 0m');
     expect(payload.rows[0].planMetaLabel).toContain('2.4 kW');
     expect(payload.rows[0].planMetaLabel).toContain('7.2 kWh');
