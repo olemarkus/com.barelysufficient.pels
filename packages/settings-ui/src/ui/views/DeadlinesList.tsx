@@ -145,7 +145,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
       <MdElevation aria-hidden="true" />
       <MdRipple aria-hidden="true" />
       <div class="deadline-list-card__header">
-        <h3 class="deadline-list-card__title">{formatDisplayDeviceName(card.deviceName)}</h3>
+        <h3 class="deadline-list-card__title pels-text-card-title">{formatDisplayDeviceName(card.deviceName)}</h3>
         {/* Chips live in their own flex group so at 320 px they wrap below the
             title as a coherent block instead of one chip dangling beside it.
             Within the group they wrap among themselves; the group never splits

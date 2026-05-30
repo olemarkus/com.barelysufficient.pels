@@ -958,12 +958,8 @@ md-primary-tab.tab[active]:hover {
   gap: var(--spacing-1);
 }
 
-.settings-nav-card__title {
-  color: var(--text);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--font-line-height-snug);
-}
+/* `.settings-nav-card__title` now composes `.pels-text-card-title` in markup;
+   no per-block type needed. */
 
 .settings-nav-card__description {
   color: var(--muted);
@@ -6659,12 +6655,9 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
+/* Typography from `.pels-text-card-title` (markup); structural props only. */
 .deadline-list-card__title {
   margin: 0;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--font-line-height-snug);
-  color: var(--text);
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
