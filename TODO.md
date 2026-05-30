@@ -1947,6 +1947,14 @@ See `notes/state-management/deferred-objective-lifecycle-carveout.md`. PR-A
       is a clean compile error at the read site, so it is self-announcing). Source:
       pels-layering-guardian, 2026-05-30.
 
+- [ ] P3: pin `@pels/planner-types` as a strict leaf with a dedicated dep-cruiser rule
+      (`planner-types-is-a-leaf`). Today `shared-packages-no-runtime` forbids `planner-types/src ->
+      runtime` and `no-circular` covers cycles, which is adequate. But nothing forbids
+      `packages/contracts/src -> packages/planner-types/src` (an upward edge from contracts into a
+      sibling — a smell, though currently a type-only no-op under post-compilation cruising). Add the
+      leaf rule when assembling the program's finish-line rule set so the package stays a sink.
+      Source: pels-layering-guardian on PR-D1, 2026-05-30.
+
 - [ ] **Source/generated drift on `.plan-history-detail__hero[data-tone=*]`
       selectors.** Source CSS (`packages/settings-ui/public/style.css`) has
       muted-only with a comment claiming other tones flow through from

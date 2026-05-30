@@ -5,14 +5,14 @@ module.exports = {
       name: 'no-circular',
       comment: 'Prevent circular dependencies.',
       severity: 'error',
-      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain)/src/)' },
+      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain|planner-types)/src/)' },
       to: { circular: true },
     },
     {
       name: 'no-runtime-to-tests',
       comment: 'Runtime code must stay isolated from tests.',
       severity: 'error',
-      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain)/src/)' },
+      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/|packages/(settings-ui|contracts|shared-domain|planner-types)/src/)' },
       to: { path: '^(test/|tests/|packages/settings-ui/(test|tests)/)' },
     },
     {
@@ -94,9 +94,21 @@ module.exports = {
     },
     {
       name: 'shared-packages-no-runtime',
-      comment: 'Shared packages must remain browser-safe and runtime-agnostic.',
+      comment: 'Shared packages must remain browser-safe and runtime-agnostic. '
+        + '@pels/planner-types holds the planner I/O contracts (PlanInputDevice) '
+        + 'below the domain peer layer so producer modules outside lib/plan (the '
+        + 'smart-task controller in lib/objectives) can import them downward as '
+        + 'their CONCEPTUAL/value-graph home. NB: this rule only enforces the '
+        + 'planner-types -> runtime VALUE-import ban (real, post-compilation). It '
+        + 'does NOT, by itself, prevent an objectives -> lib/plan peer inversion: '
+        + 'that import is type-only and so invisible to this post-compilation '
+        + 'cruise (see the no-plan-to-smarttasks caveat below). The relocation\'s '
+        + 'load-bearing payoff for the finish line is the manual grep audit '
+        + '(objectives imports @pels/planner-types, never lib/plan), not cruiser '
+        + 'green. planner-types must depend only on sibling shared packages '
+        + '(e.g. @pels/contracts), never on the app runtime.',
       severity: 'error',
-      from: { path: '^packages/(contracts|shared-domain)/src/' },
+      from: { path: '^packages/(contracts|shared-domain|planner-types)/src/' },
       to: { path: '^(app\\.ts|flowCards/|drivers/|lib/)' },
     },
     {
