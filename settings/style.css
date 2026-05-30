@@ -903,26 +903,29 @@ md-primary-tab.tab[active]:hover {
   margin: 0;
 }
 
+/* Homey-native grouped Settings nav: one outer surface, rows separated by
+   internal 1px dividers (no per-row border or shadow), each row paired with a
+   flat outline icon. */
 .settings-nav-list {
   display: grid;
-  gap: var(--spacing-2);
+  gap: 0;
   padding: 0;
-  background: transparent;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
 }
 
 .settings-nav-card {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: var(--spacing-8);
+  min-height: var(--pels-touch-target-min);
   padding: 0;
-  border: 1px solid var(--panel-border) !important;
-  border-radius: var(--radius-md) !important;
-  background: var(--pels-surface-container-low) !important;
-  box-shadow: var(--shadow-md);
+  background: transparent;
   text-align: left;
   cursor: pointer;
-  overflow: hidden;
   --md-list-item-label-text-color: var(--text);
   --md-list-item-label-text-font: var(--font-sans);
   --md-list-item-label-text-weight: var(--font-weight-bold);
@@ -931,25 +934,36 @@ md-primary-tab.tab[active]:hover {
   --md-list-item-supporting-text-font: var(--font-sans);
   --md-list-item-supporting-text-size: var(--font-size-sm);
   --md-list-item-two-line-container-height: var(--spacing-8);
-  --md-list-item-leading-space: var(--spacing-4);
+  --md-list-item-leading-space: var(--spacing-3);
   --md-list-item-trailing-space: var(--spacing-3);
   --md-list-item-top-space: var(--spacing-3);
   --md-list-item-bottom-space: var(--spacing-3);
 }
 
+/* Internal dividers between rows; the first row has none. */
+.settings-nav-card + .settings-nav-card {
+  border-top: 1px solid var(--panel-border);
+}
+
 .settings-nav-card:hover,
 .settings-nav-card:focus-visible {
-  border-color: var(--accent) !important;
   background: var(--pels-surface-container) !important;
 }
 
 .settings-nav-card:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  outline-offset: calc(-1 * var(--spacing-1));
 }
 
 .settings-nav-card--quiet {
   opacity: 0.86;
+}
+
+.settings-nav-card__icon {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  color: var(--muted);
 }
 
 .settings-nav-card__content {
