@@ -42,6 +42,27 @@ module.exports = {
   },
   overrides: [
     {
+      // Settings-UI colours must come from design tokens, never bare literals — the
+      // dark/light themes only flip correctly through the `--color-*`/`--pels-*` vars.
+      // Mirrors the widgets rule below. `ignoreFunctions: false` stops bare colour
+      // functions (`rgb()`/`hsl()`/raw-literal gradients) slipping through; the
+      // `/var\(/` allowance lets any value that *references a token* pass, including
+      // tokenised `linear-gradient(var(--accent), …)` and `color-mix(…, var(--x))`,
+      // while a function over bare literals (no `var(`) is still rejected. Lands at
+      // error severity — the component CSS is already token-driven, so there is no
+      // backlog to defer.
+      files: ['packages/settings-ui/public/**/*.css'],
+      rules: {
+        'scale-unlimited/declaration-strict-value': [
+          ['/color$/', 'fill', 'stroke', 'background'],
+          {
+            ignoreFunctions: false,
+            ignoreValues: ['/var\\(/', 'transparent', 'currentColor', 'inherit', 'initial', 'unset', 'revert', 'none'],
+          },
+        ],
+      },
+    },
+    {
       // Dashboard widgets must take colours from Homey's `--homey-*` design tokens
       // (which adapt to the dashboard's light/dark theme) via `var()`, never a bare
       // literal. A bare `#hex`/`rgb()`/`hsl()` doesn't adapt and diverges from the
