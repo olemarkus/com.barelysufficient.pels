@@ -241,6 +241,15 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
       <div class="plan-hero__section">
         <p class="eyebrow plan-hero__section-label">{copy.eyebrow}</p>
         <h2 class="plan-hero__headline" id="deadlines-list-hero-headline">{copy.headline}</h2>
+        {/* Attention heroes (at-risk / cannot-meet / paused) carry their
+            severity in the canonical per-card status chip — the hero surface
+            itself is a plain neutral card, so the chip is the colour cue. The
+            calm `good` hero has no `subjectStatusId` and stays chip-less. */}
+        {copy.subjectStatusId !== undefined ? (
+          <div class="plan-hero__chips">
+            <StatusChip statusId={copy.subjectStatusId} />
+          </div>
+        ) : null}
         {target !== undefined ? (
           <p class="plan-hero__subline">
             {/* Flat dark-theme text + chevron affordance — no inverted/light

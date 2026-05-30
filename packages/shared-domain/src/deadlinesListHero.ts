@@ -90,6 +90,12 @@ export type DeadlinesListHeroCopy = {
   // branches name the soonest relevant card). Absent only on degenerate
   // future branches that don't name a specific card.
   readonly sublineTarget?: DeadlinesListHeroSublineTarget;
+  // Status of the subject card on attention heroes (at-risk / cannot-meet /
+  // paused). The view renders the canonical per-card status chip for this id
+  // in the hero so the severity carries a colour cue without a tonal card
+  // surface — the cards are plain; the chip carries the tone. Absent on the
+  // calm `good` hero, which stays chip-less and colour-free.
+  readonly subjectStatusId?: SmartTaskListStatusId;
 };
 
 // States the Smart tasks panel renders a baseline (non-populated) header for.
@@ -326,6 +332,7 @@ export const resolveDeadlinesListHero = (params: {
       subline,
       tone,
       sublineTarget: { deviceId: subjectCard.deviceId },
+      subjectStatusId: subjectCard.statusId,
     };
   }
 
@@ -348,6 +355,7 @@ export const resolveDeadlinesListHero = (params: {
       subline: buildPausedSubline(subjectCard, formatTime),
       tone: 'warn',
       sublineTarget: { deviceId: subjectCard.deviceId },
+      subjectStatusId: subjectCard.statusId,
     };
   }
 
