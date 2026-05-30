@@ -6754,6 +6754,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   padding-top: var(--spacing-4);
 }
 
+/* First-run empty-state copy ("No completed tasks yet …"). Body type size with
+ * the secondary text colour — deliberately NOT the dimmest `.muted` metadata
+ * tone, because on a true first run this is the only Past-tasks copy on screen
+ * and the spec (smart-tasks-surface-spec.md invariant 6) requires it stay
+ * legible. It sits a step below the active list's "Add your first smart task"
+ * primary CTA. */
+.deadlines-history__empty {
+  margin: 0;
+  font-size: var(--pels-text-body-font-size);
+  line-height: var(--pels-text-body-font-line-height);
+  color: var(--pels-text-secondary);
+}
+
 /* v2.7.3 — weekly archive section breaks in the past-tasks list. The group
  * wraps the week heading + the card list for that week. */
 .deadlines-history__week-group {

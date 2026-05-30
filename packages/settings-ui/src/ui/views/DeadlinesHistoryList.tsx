@@ -159,7 +159,12 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
     return (
       <section class="deadlines-history" aria-labelledby="deadlines-history-title">
         <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
-        <p class="muted">{SMART_TASK_PAST_EMPTY_COPY}</p>
+        {/* Supporting (secondary) tier, not the dimmest `.muted` metadata tier:
+            on the first-run screen this is the only Past-tasks copy, so the spec
+            (invariant 6) requires it stay legible — at least
+            `--pels-text-secondary` — while remaining subordinate to the active
+            list's "Add your first smart task" primary CTA. */}
+        <p class="deadlines-history__empty">{SMART_TASK_PAST_EMPTY_COPY}</p>
       </section>
     );
   }
