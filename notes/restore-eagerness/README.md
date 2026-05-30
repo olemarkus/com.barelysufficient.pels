@@ -27,7 +27,7 @@ Field behavior still needs monitoring for this narrower case:
 This is no longer the broad "restore logic is wrong" problem from the earlier investigation. It
 is now a calibration and observability problem around delayed power visibility.
 
-Per-device-per-step calibration (`lib/observer/devicePowerCalibration.ts`) is one of the signals
+Per-device-per-step calibration (`lib/device/devicePowerCalibration.ts`) is one of the signals
 available to the restore-admission path: stepped-load helpers consult the conservative-high
 admission view (`max(observed, nameplate)`) when sizing restore deltas, so a device that
 historically draws more than its nameplate at a given step reserves more headroom on restore.

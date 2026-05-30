@@ -2,9 +2,9 @@
 
 ## Source-of-evidence metadata stays in the observation layer
 
-The observation layer (`lib/device/stateOfCharge.ts`,
-`lib/device/managerObservation.ts`,
-`lib/device/flowReportedCapabilities.ts`) is responsible for resolving a
+The observation layer (`lib/device/transport/stateOfCharge.ts`,
+`lib/device/transport/managerObservation.ts`,
+`lib/device/transport/flowReportedCapabilities.ts`) is responsible for resolving a
 device's SoC from whichever inputs are available — native capability values,
 flow-reported synthetic values, freshness timestamps. Downstream layers
 (plan / executor / contracts / UI) read the resolved `DeviceStateOfChargeSnapshot`
@@ -20,7 +20,8 @@ captured.
 
 `capabilityId` stays on the snapshot because the observation layer itself
 reuses it to route realtime updates and to detect snapshot-diff dirtiness
-(`deviceManagerRuntime.ts`, `deviceManagerObservation.ts`). It is consumed
+(`lib/device/transport/managerObservation.ts`,
+`lib/device/transport/managerRealtimeHandlers.ts`). It is consumed
 within the same layer that emits it.
 
 ## Synthetic SoC and capability naming

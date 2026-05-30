@@ -107,9 +107,12 @@ runtime can grow into it without a settings migration. From
 `packages/contracts/src/deferredObjectiveSettings.ts` via the v1 note:
 
 - `enforcement: 'soft' | 'hard'` is part of the `ev_soc` variant.
-- Only `'soft'` has any runtime effect today; the planner does not
-  distinguish hard from soft, and the EV flow card hardcodes `'soft'` so
-  users cannot create a hard EV deadline either.
+- The planner already distinguishes the two in **one** narrow way: hard
+  reserves a wider variance buffer (`BUFFER_K_HARD` vs `BUFFER_K_SOFT` in
+  `lib/plan/deferredObjectives/profileEnergyResolution.ts`). The **hard
+  admission lane** in this note — guaranteed reservation, hard-boost
+  rebalancing, mode-override — has not shipped, and the EV flow card
+  hardcodes `'soft'` so users cannot create a hard EV deadline yet.
 - Temperature objectives are soft-only at the schema level for now. The
   Settings UI must not expose hard temperature deadlines until the runtime
   semantics in this note are explicitly designed and implemented.
