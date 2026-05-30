@@ -1152,7 +1152,7 @@ md-filled-button.is-busy {
 
 .pill.ok {
   color: var(--color-semantic-bg);
-  background: var(--color-base-good-default);
+  background: var(--color-role-good);
   border-color: transparent;
 }
 
@@ -2044,7 +2044,7 @@ md-filled-button.is-busy {
   width: var(--spacing-2);
   height: var(--spacing-2);
   border-radius: var(--radius-full);
-  background: var(--color-base-accent-default);
+  background: var(--color-role-accent);
   align-self: center;
 }
 
@@ -4126,7 +4126,7 @@ md-filled-button.is-busy {
 .price-low {
   background: var(--color-state-positive-bg);
   border-color: var(--color-state-positive-border);
-  color: var(--color-base-accent-default);
+  color: var(--color-role-accent);
 }
 
 .price-medium {
@@ -4138,7 +4138,7 @@ md-filled-button.is-busy {
 .price-high {
   background: var(--color-state-negative-bg);
   border-color: var(--color-state-negative-border);
-  color: var(--color-base-danger-default);
+  color: var(--color-role-danger);
 }
 
 #tibber-token-field a {
@@ -4301,7 +4301,7 @@ md-filled-button.is-busy {
 }
 
 #dry-run-banner .banner__icon {
-  color: var(--color-base-warning-default);
+  color: var(--color-role-warn);
   font-size: var(--font-size-md);
 }
 
@@ -6035,12 +6035,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 .day-view-bar__segment--uncontrolled,
 .daily-budget-bar__segment--uncontrolled {
-  background: var(--pels-chart-background, var(--color-base-info-default));
+  background: var(--pels-chart-background, var(--color-role-info));
 }
 
 .day-view-bar__segment--controlled,
 .daily-budget-bar__segment--controlled {
-  background: var(--pels-chart-managed, var(--color-base-warning-default));
+  background: var(--pels-chart-managed, var(--color-role-warn));
 }
 
 .day-view-bar__segment--measured {
@@ -6048,11 +6048,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-bar__segment--warn {
-  background: var(--day-view-color-warn, var(--color-base-warning-default));
+  background: var(--day-view-color-warn, var(--color-role-warn));
 }
 
 .day-view-bar__segment--cheap {
-  background: var(--day-view-color-cheap, var(--color-base-accent-default));
+  background: var(--day-view-color-cheap, var(--color-role-accent));
 }
 
 .day-view-bar__segment--normal {
@@ -6060,7 +6060,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-bar__segment--expensive {
-  background: var(--day-view-color-expensive, var(--color-base-danger-default));
+  background: var(--day-view-color-expensive, var(--color-role-danger));
 }
 
 .day-view-bar.is-past .day-view-bar__segment,
@@ -6074,7 +6074,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-bar.is-warn .day-view-bar__segment {
-  background: var(--day-view-color-warn, var(--color-base-warning-default));
+  background: var(--day-view-color-warn, var(--color-role-warn));
 }
 
 .day-view-chart.is-disabled .day-view-bar__segment {
@@ -6089,18 +6089,18 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   width: 8px;
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--day-view-color-actual, var(--color-base-gray-50));
+  background: var(--day-view-color-actual, var(--pels-chart-actual));
   border: 2px solid var(--pels-surface-container-lowest);
   transform: translate(-50%, 50%);
   pointer-events: none;
 }
 
 .day-view-marker--budget {
-  background: var(--day-view-color-budget, var(--color-base-info-default));
+  background: var(--day-view-color-budget, var(--color-role-info));
 }
 
 .day-view-marker--actual {
-  background: var(--day-view-color-actual, var(--color-base-gray-50));
+  background: var(--day-view-color-actual, var(--pels-chart-actual));
 }
 
 .day-view-marker--now {
@@ -6148,11 +6148,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-legend__swatch--uncontrolled {
-  background: var(--pels-chart-background, var(--color-base-info-default));
+  background: var(--pels-chart-background, var(--color-role-info));
 }
 
 .day-view-legend__swatch--controlled {
-  background: var(--pels-chart-managed, var(--color-base-warning-default));
+  background: var(--pels-chart-managed, var(--color-role-warn));
 }
 
 .day-view-legend__swatch--measured {
@@ -6160,15 +6160,15 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-legend__swatch--budget {
-  background: var(--day-view-color-budget, var(--color-base-info-default));
+  background: var(--day-view-color-budget, var(--color-role-info));
 }
 
 .day-view-legend__swatch--warn {
-  background: var(--day-view-color-warn, var(--color-base-warning-default));
+  background: var(--day-view-color-warn, var(--color-role-warn));
 }
 
 .day-view-legend__swatch--cheap {
-  background: var(--day-view-color-cheap, var(--color-base-accent-default));
+  background: var(--day-view-color-cheap, var(--color-role-accent));
 }
 
 .day-view-legend__swatch--normal {
@@ -6176,14 +6176,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .day-view-legend__swatch--expensive {
-  background: var(--day-view-color-expensive, var(--color-base-danger-default));
+  background: var(--day-view-color-expensive, var(--color-role-danger));
 }
 
 .day-view-legend__swatch--actual {
   width: 8px;
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--day-view-color-actual, var(--color-base-gray-50));
+  background: var(--day-view-color-actual, var(--pels-chart-actual));
   border: 2px solid var(--pels-surface-container-lowest);
 }
 
@@ -7836,17 +7836,17 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
   .pels-meter-track__fill,
   .pels-meter-segments__seg--managed {
-    background: var(--color-base-good-soft);
+    background: var(--color-state-positive-text);
   }
   .pels-meter-track__fill[data-tone="warning"],
   .pels-meter-segments__seg--background[data-over-safe-pace],
   .pels-meter-segments__seg--managed[data-over-safe-pace] {
-    background: var(--color-base-warning-soft);
+    background: var(--color-state-warning-text);
   }
   .pels-meter-track__fill[data-tone="critical"],
   .pels-meter-segments__seg--background[data-over-hard-cap],
   .pels-meter-segments__seg--managed[data-over-hard-cap] {
-    background: var(--color-base-danger-soft);
+    background: var(--color-state-negative-text);
   }
 
   /* Material filled text fields / selects — Homey-style inset white. Mobile's
