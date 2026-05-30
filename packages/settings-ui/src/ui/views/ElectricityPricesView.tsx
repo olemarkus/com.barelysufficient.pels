@@ -147,7 +147,7 @@ const NorwaySection = ({
   <>
     <p class="eyebrow eyebrow--inline">Grid tariff</p>
     <div class="field">
-      <span class="field__label" id="electricity-prices-county-label">County</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-county-label">County</span>
       <MdFilledSelect
         value={countyCode}
         aria-labelledby="electricity-prices-county-label"
@@ -172,7 +172,7 @@ const NorwaySection = ({
       <small class="field__hint">Your county for grid tariff lookup.</small>
     </div>
     <div class="field">
-      <span class="field__label" id="electricity-prices-grid-company-label">Grid company</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
       <MdFilledSelect
         value={organizationNumber}
         aria-labelledby="electricity-prices-grid-company-label"
@@ -188,7 +188,7 @@ const NorwaySection = ({
       <small class="field__hint">Filtered by county.</small>
     </div>
     <div class="field">
-      <span class="field__label" id="electricity-prices-tariff-group-label">Tariff group</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-tariff-group-label">Tariff group</span>
       <MdFilledSelect
         value={tariffGroup}
         aria-labelledby="electricity-prices-tariff-group-label"
@@ -208,7 +208,7 @@ const NorwaySection = ({
 
     <p class="eyebrow eyebrow--inline">Spot price</p>
     <div class="field">
-      <span class="field__label" id="electricity-prices-norway-model-label">Norway pricing model</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-norway-model-label">Norway pricing model</span>
       <MdFilledSelect
         value={norwayPriceModel}
         aria-labelledby="electricity-prices-norway-model-label"
@@ -232,7 +232,7 @@ const NorwaySection = ({
       </p>
     )}
     <div class="field">
-      <span class="field__label" id="electricity-prices-price-area-label">Price area</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-price-area-label">Price area</span>
       <MdFilledSelect
         value={priceArea}
         aria-labelledby="electricity-prices-price-area-label"
@@ -251,7 +251,7 @@ const NorwaySection = ({
       </small>
     </div>
     <label class="field">
-      <span class="field__label" id="electricity-prices-provider-surcharge-label">Provider surcharge (øre/kWh, incl. VAT)</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge (øre/kWh, incl. VAT)</span>
       <MdFilledTextField
         type="number"
         value={String(providerSurcharge)}
@@ -349,7 +349,7 @@ const ThresholdForm = ({
     <h3 class="section-title">Cheap and expensive hours</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
     <label class="field">
-      <span class="field__label" id="electricity-prices-threshold-label">Price threshold (%)</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold (%)</span>
       <MdFilledTextField
         type="number"
         value={String(thresholdPercent)}
@@ -365,7 +365,7 @@ const ThresholdForm = ({
       <small class="field__hint">Hours this % below or above average are marked cheap or expensive.</small>
     </label>
     <label class="field">
-      <span class="field__label" id="electricity-prices-min-diff-label">
+      <span class="field__label pels-text-settings-label" id="electricity-prices-min-diff-label">
         {isExternal ? 'Minimum price difference' : 'Minimum price difference (øre/kWh)'}
       </span>
       <MdFilledTextField
