@@ -2831,14 +2831,14 @@ md-filled-button.is-busy {
   line-height: var(--pels-text-caption-font-line-height);
 }
 /* Semantic shared class: a device / entity name as the primary identifier in a
-   list row. Section-label's size + weight, but PRIMARY colour — it is the row's
+   list row. The answer role (md + semibold + primary): a prominent list identifier — it is the row's
    main label, not a secondary one. (Device names used as a secondary reference,
    e.g. plan-history, stay on their muted role.) See settings-ui-semantic-map. */
 .entity-name {
-  color: var(--pels-text-primary);
-  font-size: var(--pels-text-section-label-font-size);
-  font-weight: var(--pels-text-section-label-font-weight);
-  line-height: var(--pels-text-section-label-font-line-height);
+  color: var(--pels-text-answer-color);
+  font-size: var(--pels-text-answer-font-size);
+  font-weight: var(--pels-text-answer-font-weight);
+  line-height: var(--pels-text-answer-font-line-height);
 }
 .pels-text-settings-label {
   color: var(--pels-text-settings-label-color);
@@ -3753,12 +3753,12 @@ md-filled-button.is-busy {
   border-bottom: none;
 }
 
+/* Typography from `.entity-name` (markup); structural props only. */
 .device-row__name {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-2);
   min-width: 0;
-  font-weight: var(--font-weight-bold);
   margin-bottom: var(--spacing-1);
 }
 
@@ -4555,7 +4555,6 @@ details[open] > summary .disclosure-chevron {
   }
   
   .device-row.price-optimization-row .device-row__name {
-    font-weight: var(--font-weight-semibold);
     margin-bottom: var(--spacing-1);
   }
   
@@ -4682,7 +4681,6 @@ details[open] > summary .disclosure-chevron {
   align-items: start;
   min-width: 0;
   margin-bottom: 0;
-  font-weight: var(--font-weight-semibold);
 }
 
 .detail-mode-row__priority {
