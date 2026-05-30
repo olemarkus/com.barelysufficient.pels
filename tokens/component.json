@@ -181,13 +181,21 @@
         "label-size": { "value": "{font.size.sm}" },
         "label-size-compact": { "value": "{font.size.xs}" },
         "label-weight": { "value": "{font.weight.semibold}" },
+        "selected-indicator-color": {
+          "value": "{color.role.accent}",
+          "comment": "M3 underline-indicator colour for the selected nav tab. The selected tab now reads as a modern M3 tab strip — an accent underline bar plus a primary-text label — rather than a filled pill. Accent (brand green) is the canonical M3 active-indicator colour and stays distinct from the tonal segmented-control fill used elsewhere."
+        },
+        "selected-indicator-height": {
+          "value": "3px",
+          "comment": "M3 primary-tab active-indicator thickness (3 px is the Material 3 spec value). Literal px — there is no 3 px spacing step and the indicator is a fixed hairline bar, not layout spacing, so it is encoded directly at the token layer."
+        },
         "selected-background": {
-          "value": "rgba({color.base.accent.default-rgb}, 0.28)",
-          "comment": "PR2 colour policy: the selected nav tab is a TONAL selected-container, not a full-saturated brand-green fill. `primary` (brand green) is reserved for actions and strong-positive state; the nav tab is page chrome, so it shares the segmented control's tonal-accent selected language (`component.segmented.selected.background`) rather than a third green meaning. Keep this value equal to that token."
+          "value": "transparent",
+          "comment": "The selected nav tab no longer fills a pill — it uses the M3 underline indicator (`selected-indicator-color`) plus a primary-text label, so the tab container stays transparent (the base `.tabs` rule already paints no container fill). Retained as the documented selected-state anchor for the strip; the layout test pins it to `transparent` to guard against a pill regression, and the `selected-hover-background` sibling is still consumed by `.plan-chip--link` hover."
         },
         "selected-hover-background": {
           "value": "rgba({color.base.accent.default-rgb}, 0.38)",
-          "comment": "Hover bump for the tonal selected-container — a deeper tint of the same accent fill, not the saturated `accent-strong` block."
+          "comment": "Tonal accent-tint hover fill. No longer used by the nav tab (which is underline-only) but still consumed by `.plan-chip--link[aria-pressed=true]:hover`, so the token stays."
         },
         "selected-text": { "value": "{pels.text.primary}" }
       }
