@@ -1,9 +1,22 @@
 # Observer / Transport Split
 
-This is a design note for splitting `DeviceManager` into two physically separate
-modules. No code has changed yet. The note exists so the direction is captured
-before implementation, and so subsequent PRs can reference a single source for
-"why is it shaped like this."
+This is the design-of-record for splitting `DeviceManager` into two physically
+separate modules. **The split shipped** across a 6-PR train (PRs #1095, #1102,
+#1107, #1140, #1148, #1158); `DeviceManager` was renamed to `DeviceTransport`
+and the observer now owns the typed-event emitter. (The snapshot store —
+`latestSnapshot` / `latestSnapshotById` / `getHomePowerW` — deliberately stayed
+on `DeviceTransport`; see the "Shipped vs original target" callout below.) The note
+is kept as the single source for "why is it shaped like this" — runtime code in
+`app.ts`, `lib/device/`, `lib/observer/`, `lib/plan/`, `lib/executor/`, and
+`.dependency-cruiser.cjs` points here for the layering rationale. The
+**Sequencing** section carries per-PR notes on what actually landed versus the
+original target; see the "Shipped vs original target" callout under
+**Target shape** for the bullets that stayed deferred.
+
+> The **Why**, **Target shape**, and **Decisions** sections below are preserved in
+> their original design-time voice (present tense describes the *pre-split* state and
+> the *intended* end state). For what actually shipped, read the **Sequencing**
+> section and the "Shipped vs original target" callout — those are authoritative.
 
 ## Why
 
@@ -269,24 +282,10 @@ These are not strictly part of the split but block it in subtle ways:
   (wiring); PR #3 reconfirmed during the rename — still only `app.ts`
   imports it, so it stays put.
 
-## What this note breaks in existing notes
+## Reconciled with other notes
 
-The following statements in `notes/state-management/` need to be revised when
-implementation lands:
-
-- `notes/state-management/README.md:92-95` — "DeviceManager owns observed
-  current state and device-specific actuation transport" becomes
-  "Transport owns SDK I/O and produces normalized snapshots; observer owns
-  the stored view."
-- `notes/state-management/README.md:96-98` — "executor … issue the needed
-  request through DeviceManager" becomes "executor issues the needed request
-  through `DeviceTransport`."
-- `notes/state-management/README.md:104-105` — `ExecutableObservedState` is
-  built from `observer.getSnapshot()`, not `DeviceManager` snapshots.
-- `notes/state-management/README.md:117-119` — the flow-vs-binary admission
-  rule moves into transport's parse pipeline; observer never sees the
-  pre-admission source.
-
-`docs/architecture.md` similarly needs the peer DAG updated to show transport
-as an SDK-leaf and observer as the state-store peer between transport and
-plan/executor.
+Resolved when the train landed: `notes/state-management/README.md` and
+`docs/architecture.md` were updated to describe transport as the SDK-leaf that
+produces normalized snapshots and observer as the state-store peer (the
+`DeviceManager` → `DeviceTransport` rename is reflected throughout). No
+outstanding cross-note revisions remain.

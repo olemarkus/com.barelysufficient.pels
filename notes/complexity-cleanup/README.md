@@ -29,19 +29,20 @@ Remaining work:
 - split app lifecycle context into initialized vs initializing phases so post-startup services are
   not exposed forever as optional fields
 
-### `PlanRebuildScheduler` and power-sample rebuild bridging
+### Rebuild scheduler
 
-`lib/app/planRebuildScheduler.ts` exists and is wired as the shared priority/timer queue for
-`hardCap`, `signal`, and `flow` intents. Flow-card rebuilds and realtime EV SoC rebuilds enter the
-shared scheduler directly, while power-sample rebuilds still pass through
-`appPowerRebuildScheduler.ts`.
+The scheduler family now lives under `lib/plan/rebuildScheduler/` (`scheduler.ts`, `signalDriven.ts`,
+`powerDriven.ts`, `policy.ts`, `stateHelpers.ts`, `shortfallSuppression.ts`) after the move out of
+`lib/app/` in `dac04420`. Power-sample ingestion was extracted into the `PowerSamplePipeline` class
+at `setup/powerSamplePipeline.ts` (`941c29ef`), so the old `appPowerRebuildScheduler.ts` compatibility
+wrapper is gone — `hardCap`, `signal`, `flow`, and power-sample intents all flow through the unified
+scheduler. The bridging cleanup that used to live here is complete.
 
 Remaining work:
 
-- remove or explicitly document the optional fallback scheduler path in `appPowerRebuildScheduler`
 - decide whether the scheduler's internal timers should register with `TimerRegistry`
-- decide whether tight-noop backoff, mitigation holdoff, and pending-promise state should stay in
-  the compatibility wrapper or move into the unified scheduler
+- keep tight-noop backoff, mitigation holdoff, and pending-promise state cohesive as the policy
+  surface in `policy.ts` grows
 
 ### `planService.ts`
 
@@ -69,12 +70,12 @@ Remaining work:
 ### Device-transport and snapshot cleanup
 
 Parsing, observation, and binary-settle internals have been extracted, and as of the observer/transport
-split (PRs #1095 / #1102 / #1107 / #1140), the orchestrating class is `DeviceTransport`
-(`lib/device/deviceTransport.ts`). The read-side parse pipeline lives under `lib/device/transport/`; plan
-and executor consume only the `DeviceObservation` read interface. See
-`notes/state-management/observer-transport-split.md` for the layering, remaining steps (PR #4 moves
-pending/settle to observer; PR #5 splits the realtime handler), and the deferred file-rename sweep that
-would align the surviving `manager*.ts` filenames + `device/manager-*` logger tags with the rename.
+split the orchestrating class is `DeviceTransport` (`lib/device/deviceTransport.ts`). The read-side
+parse pipeline lives under `lib/device/transport/`; plan and executor consume only the
+`DeviceObservation` read interface. See `notes/state-management/observer-transport-split.md` for the
+layering rationale, and `notes/state-management/README.md` + `docs/architecture.md` for the current
+contract. One deferred cleanup remains: a file-rename sweep aligning the surviving `manager*.ts`
+filenames + `device/manager-*` logger tags with the `DeviceTransport` rename.
 
 Remaining work:
 

@@ -36,13 +36,6 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
-
-- [x] Refresh the `ws` / `socket.io-client` dependency advisory now that
-      upstream has a non-breaking 6.x path. Resolved 2026-05-26 via
-      `npm update engine.io-client` → `engine.io-client@6.6.5`,
-      `ws@8.20.1`; closes GHSA-58qx-3vcg-4xpx with `socket.io-client@4.8.3`
-      intact and no override needed.
-
 *v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
@@ -77,11 +70,6 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       the effective mode-options set differs. Files:
       `drivers/pels_insights/device.ts:140-152`. Source: release-review
       pels-runtime-reality, 2026-05-26.
-
-- [x] Bind `widgets/smart_tasks/public/index.css` `.row__values` font-size
-      to `var(--homey-font-size-small, 14px)`. Done in the interactive-widget
-      PR — `.row__values` now uses the host token. Source: release-review
-      pels-m3-critic, 2026-05-26.
 
 - [ ] Rename capability `mode_indicator` title from "Mode" to "PELS mode"
       for device-tile scan consistency with the rest of the PELS capability
@@ -121,57 +109,9 @@ listed below in the P2 release-review 2026-05-28 subsection.*
 six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
 release, not v2.7.1 merge-blockers.*
 
-
 *Pro Homey runtime-log audit (2026-05-17, log
 `/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
 
-- [x] Align user-visible Homey labels, Flow cards, and public docs with the redesigned Settings UI
-      terminology.
-      The settings UI mostly follows `notes/ui-terminology.md`, but Homey-facing labels and public
-      docs still teach old wording and old navigation. Replace visible `headroom`, `soft limit`,
-      `shed`, `controlled/uncontrolled`, `shortfall`, `Soft margin`, `Dry run`, `Cheap delta`, and
-      `Expensive delta` with the approved vocabulary. Update docs to describe the current shell:
-      `Overview`, `Budget`, `Usage`, `Smart tasks`, and `Settings`, with setup paths such as
-      `Settings > Limits & safety`, `Settings > Devices`, `Settings > Electricity prices`, and
-      `Settings > Simulation mode`.
-      Files: `.homeycompose/capabilities/*.json`, `.homeycompose/flow/**/*.json`,
-      `docs/configuration.md`, `docs/getting-started.md`, relevant generated `app.json` after
-      `homey app validate`.
-      Shipped: pre-existing commits `bc80cc94`, `4540dcac`, `4b261603`, `31b174fc`, `7490b208`
-      already landed the capability/flow/doc rewrites. Final drift caught in batch9: the
-      `pels_hourly_limit_kw` locale override in `locales/en.json` still said
-      `Current hourly limit` while the capability JSON had moved to `Current safe pace`; the
-      locale wins at runtime via `homey.__()`, so users saw the stale string. Locale realigned
-      to `Current safe pace` so capability + locale + UI all agree. Per PR #1013, README.md
-      and `.homeycompose/app.json` keywords stay as-is (pre-onboarding marketing copy).
-      Token id `name: "shortfall"` on the `deadline_ended` trigger is preserved as a stable
-      contract identifier (visible label is `Gap to target`).
-- [x] Make the browser Homey stub reliable enough for future screenshot UI audits.
-      Shipped: 16/16 declared API routes handled (was 10), `deferredObjectiveActivePlans`
-      seeded on both bootstrap surfaces, typed `BootstrapAuditScenario` builder with six
-      scenarios (normal, pressure, over-budget, missing-price, empty-history, dense-device)
-      at the Homey SDK boundary, `__stub.applyAuditScenario(name)` plus
-      `__PELS_HOMEY_STUB__ = { scenario: '...' }` boot-time entry point, parity test
-      enforces helper/browser stub names stay in sync. See `notes/browser-stub.md`.
-      Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
-      `packages/settings-ui/test/helpers/homeyApiMock.ts`,
-      `packages/settings-ui/test/helpers/auditScenarios.ts`,
-      `packages/settings-ui/test/auditScenarios.test.ts`,
-      `notes/browser-stub.md`.
-- [x] Add loading skeletons across the five panels.
-      Loading state today is a plain `<p class="muted">Awaiting data…</p>` in all panels —
-      identical wording, identical styling, no M3 shimmer / skeleton. First-paint after the
-      Configure dialog opens shows a flat grey wall until the bootstrap fetch resolves.
-      Standardize on a single M3 skeleton primitive (one shape per panel: hero placeholder +
-      card placeholders) and use it everywhere.
-      Files: `packages/settings-ui/src/ui/views/*.tsx`,
-      `packages/settings-ui/public/style.css`.
-      Shipped: Budget panel (HTML skeleton in `#budget-redesign-surface`), Usage panel
-      (HTML skeleton overlay + `data-loading` toggle, dropped by `renderPowerStats`),
-      Smart tasks past list (`DeadlinesHistoryList` `loading` state), Smart task plan SPA
-      route (`DeadlinePlan` `loading` state + initial HTML in `#deadline-plan-root`). Overview
-      panel already shipped its skeleton at v2.7.3; Settings panel is static navigation
-      with no async load and intentionally has no skeleton.
 - [ ] Consolidate the remaining duplicated card / button / segmented-control /
       ripple / elevation primitives across every settings-UI surface.
       The hero + section-label rebind phase of the original "unify the hero primitive" P1
@@ -471,184 +411,6 @@ PRs. Items below are later polish.*
       may need per-device step granularity). Source: pels-runtime-reality
       review of PR #1214, 2026-05-28.
 
-- [x] **Consolidate adjacent EV-state user-visible strings into shared-domain.**
-      `packages/settings-ui/src/ui/deviceDetail/evBoost.ts:78-79` carries two
-      EV-state-gated strings — `'Car not connected. Boost will not activate.'`
-      and `'Car is discharging. Boost will not activate.'` — keyed off the
-      same `evChargingState` discriminator as `EV_COMMANDABLE_NOW_REASONS`.
-      They predate PR #1212 and stayed inline; same logs-reuse principle
-      (`feedback_ui_text_shared_with_logs`) applies. Co-locate them in
-      `packages/shared-domain/` so settings-ui imports the strings rather
-      than carrying its own literals. Source: pels-copy-and-terminology
-      review of PR #1212, 2026-05-27. Resolved in the p2-polish-batch PR —
-      strings moved to `EV_BOOST_BLOCK_REASONS` in
-      `packages/shared-domain/src/commandableNowReason.ts`.
-
-- [x] **Split `recordShedActuation` for lifecycle-end release writes.** The
-      release-shed paths in `lib/executor/shedReleaseActuation.ts` call
-      `recordShedActuation` so the per-device `pels_shed` diagnostic event
-      fires for forensic traces. But the same call also writes
-      `lastDeviceShedMs` and `lastInstabilityMs`, which feed the
-      `isShedThrottled` 5 s gate and the system-wide instability marker.
-      For a lifecycle-end release this is mostly benign — the released
-      device is already in its shed posture so no real capacity shed
-      should follow within the throttle window — but the conflation
-      inverts the semantic. Introduce a `recordReleaseShedActuation`
-      that records only the diagnostic event and leaves the shed-cooldown
-      clock alone, then route both release sites through it. Source:
-      pels-runtime-reality review of PR #1199, 2026-05-27. Resolved in
-      the p2-polish-batch PR — `PlanExecutor.recordReleaseShedActuation`
-      skips `lastInstabilityMs` / `lastDeviceShedMs` while still firing the
-      per-device `pels_shed` event and closing any open activation attempt.
-
-- [x] **Resolve `set_step` target step at the producer instead of at apply
-      time.** `ShedActionIntent` carries only `{ kind: 'set_step' }` with
-      no `targetStepId`. The release path in
-      `lib/executor/shedReleaseActuation.ts` resolves the target step via
-      a cascade (configured `shedBehavior.stepId` → lowest active step →
-      off step); the cap-driven shed path in
-      `lib/plan/planSteppedLoad.ts` only ever picks lowest-active and
-      ignores the configured stepId. Same logical question ("what step
-      is `set_step` for this device") answered two ways. Extend the
-      producer to emit `{ kind: 'set_step'; targetStepId: string }`,
-      apply the cascade once, and have both consumers consume the flat
-      value. Source: pels-layering-guardian review of PR #1199,
-      2026-05-27. Resolved (narrowly) in the p2-polish-batch PR — the
-      producer now resolves the release cascade onto
-      `ShedActionIntent.set_step.targetStepId`; `shedReleaseActuation`
-      reads it via `intent.shedStepId` on `ExecutableReleaseIntent`. The
-      cap-driven shed path in `planSteppedLoad.ts` keeps its
-      lowest-active-step pick (intentional semantic divergence — cap-shed
-      maximises load drop, release honours the user-configured shed
-      posture).
-
-- [x] **Rename snapshot `shedStepId` to `releaseShedStepId` (or document the
-      asymmetric read).** After the p2-polish-batch PR, `DevicePlanDevice.shedStepId`
-      carried the producer-resolved release-cascade target step. The release
-      executor reads it; the cap-driven shed path in `planSteppedLoad.ts`
-      ignores it (cap-shed re-derives lowest-active itself). Any new consumer
-      that reads `shedStepId` to predict cap-shed behaviour would be wrong.
-      Either rename to `releaseShedStepId` (clearer intent) or add a producer-
-      side comment block on the snapshot triple explicitly naming the
-      asymmetric read. Source: pels-runtime-reality review of the
-      p2-polish-batch PR, 2026-05-28. Resolved in the rename-shedstepid PR —
-      both: the field is renamed to `releaseShedStepId` across runtime + tests,
-      and `ShedSnapshotTriple` carries a doc-block naming the asymmetric
-      cap-shed-ignores / release-reads contract.
-
-- [x] **Route post-plan restore revisions through `materializeShedSnapshotFields`.**
-      `lib/plan/restore/index.ts:498` writes `shedAction = 'set_step'`
-      directly when revising a `DevicePlanDevice` after the initial plan
-      materialisation. It bypasses the chunk-6 adapter, leaving a second
-      materialisation site for revision-semantics. Extending the adapter
-      to cover post-plan revisions (or routing this call through it)
-      closes the last gap in the single-materialisation-site contract.
-      Source: pels-layering-guardian review of PR #1196, 2026-05-27.
-      Resolved in PR A of the post-detype cleanup batch — the revision
-      site now calls `materializeShedSnapshotFields` with a `set_step`
-      intent and overrides `shedStepId` to the specific step (the adapter
-      is intentionally agnostic to step-id selection).
-
-- [x] **Chunk 6 — fold the `controllable` gate into the `shedIntent` producer.**
-      `lib/device/deviceActionProjection.ts:resolveShedIntent` (chunk 5)
-      emits `{ kind: 'set_temperature', temperature }` whenever
-      `shedBehavior.action === 'set_temperature'` and a primary target
-      exists — regardless of plan-cycle controllability. The consumer at
-      `lib/plan/planDevices.ts:resolveShedActionFromIntent` then downgrades
-      that intent to `turn_off` when `controllable === false`. This is the
-      "producer leaks, consumer overrides" hedge — works (parity-tested)
-      but creates two cap-off downgrade paths (no-primary-target in
-      producer; controllable=false in consumer) that both land at
-      `turn_off`. Chunk 6: accept `controllable` as a producer input (or
-      add a `{ kind: 'no_op' }` variant) so the consumer never overrides.
-      Source: pels-layering-guardian review of chunk 5 (PR #1193),
-      2026-05-27. Resolved in PR A of the post-detype cleanup batch —
-      `ShedIntentResolveInput` now takes `controllable`, and
-      `planDevices.resolveShedAction` re-resolves the intent with the
-      post-admission controllable so the deferred-objective rescue lane is
-      honoured.
-
-- [x] **Chunk 6 — collapse `resolveShedActionFromIntent` re-dispatch into
-      a materialisation adapter.** The chunk-5 consumer dispatches the
-      `set_step` intent back into the legacy `resolveSteppedShedAction`,
-      which re-derives the same conditions the producer already evaluated.
-      Chunk 6 retires the legacy fallback, removes the `controllable &&
-      shouldShed` consumer-side gate (once it moves to the producer per
-      the previous TODO), and folds `{ shedAction, shedTemperature,
-      shedStepId }` materialisation into a dedicated adapter — likely
-      `lib/plan/planActionMaterialization.ts`. Source: pels-layering-guardian
-      + pels-runtime-reality reviews of chunk 5 (PR #1193), 2026-05-27.
-      Resolved in PR A of the post-detype cleanup batch — the dual-read
-      fallback (`deriveFallbackShedIntent`) is retired; `shedIntent` is
-      required on `PlanInputDevice`; the consumer re-resolves the intent
-      with the post-admission controllable and feeds the materialiser,
-      which now only applies the `shouldShed` gate.
-
-- [x] **Chunk 6 — consolidate restore-power source-label union into a shared
-      type.** `RestorePowerSource` now lives canonically in
-      `packages/contracts/src/types.ts`. The observer (`lib/observer/observedPower.ts`),
-      producer (`lib/device/deviceResidualKw.ts`), and plan layer
-      (`lib/plan/planTypes.ts`, `lib/plan/restore/accounting.ts`) all import
-      from the contracts package. The wiring adapter
-      `lib/app/appInit/residualKwForPlanDevice.ts` also reads the canonical
-      type. A seventh source label is now a one-line edit. PR B2 (2026-05-27).
-
-- [x] **Chunk 6 — close `isFiniteNumber` vs `typeof === 'number'`
-      strictness delta.** `lib/device/deviceResidualKw.ts` (`resolveResidualKwRestore`)
-      uses `isFiniteNumber(planningPowerKw)` where the legacy
-      `lib/plan/restore/accounting.ts:resolveSteppedRestorePower` uses
-      `typeof dev.planningPowerKw === 'number'`. The only delta is `±Infinity`
-      (legacy: accept; producer: reject). Snapshots never produce `Infinity`,
-      so the cascade-parity test still passes, but the chunk-4a doc-block
-      claims "byte-for-byte" preservation. Chunk 6: tighten the legacy guard
-      to `isFiniteNumber` so both paths agree, or remove the "byte-for-byte"
-      claim. Source: pels-layering-guardian review of PR #1191, 2026-05-27.
-      Resolved in PR A of the post-detype cleanup batch — tightened the
-      legacy guard to `isFiniteNumber`, byte-for-byte parity restored.
-
-- [x] **Before chunk 6 — expand restore-accounting cascade-parity test
-      coverage.** `test/restoreAccountingParity.test.ts` exercises path-1
-      (stepped+on, source `'planning'`) and path-3 (binary off, fallback to
-      `getRestoreDrawKw`). It does not cover the path-2 → path-3 fall-through
-      where a stepped device is observed-off AND
-      `getSteppedLoadRestoreStep` returns a step with `planningPowerW === 0`
-      (or `null`), nor the stepped-with-`selectedStepId`-absent case. Both
-      producer and legacy return the fallback for these cases, but adding
-      fixtures hardens the test against future producer drift before chunk 6
-      removes the legacy fallback. Source: pels-runtime-reality + pels-layering-guardian
-      reviews of PR #1191, 2026-05-27.
-
-- [x] **Chunk 6 — rename `pickStepCalibrationFields` →
-      `pickPropagatedPlanFields`.** `lib/plan/planDevices.ts:467` now
-      propagates `residualKw` in addition to step-calibration fields; the
-      helper's original name is misleading. Either rename, or split the
-      spread inline. Source: pels-layering-guardian review of PR #1191,
-      2026-05-27. Resolved in PR A of the post-detype cleanup batch.
-
-- [x] **Before chunk 6 — expand cascade-parity test in
-      `test/planRemainingSheddableLoad.test.ts`.** The chunk-3 parity test
-      covers a happy-path 3-device mix (simple-on, stepped-max with binary,
-      stepped-low with binary). It does not cascade-test the four
-      edge cases the producer-resolved and legacy-fallback paths must agree
-      on: (1) stepped, `hasBinaryControl: false`, already at lowest active
-      step; (2) stepped with `selectedStepId` absent and
-      `hasKnownEffectiveStep === false` (measured-power fallback);
-      (3) stepped with `selectedStepId` absent and
-      `hasKnownEffectiveStep === true` (one of reportedStepId / actualStepId
-      / assumedStepId set); (4) temperature device with
-      `currentValue == normalized shedTemperature`. Unit tests in
-      `test/deviceResidualKwShed.test.ts` cover each branch in isolation,
-      but the load-bearing invariant is `sumRemainingSheddableLoadKw`
-      watt-equality. Harden the cascade test before chunk 6 removes the
-      legacy fallback. Source: pels-runtime-reality review of PR #1190,
-      2026-05-27. Resolved 2026-05-27: cascade-parity covers cases (a), (b),
-      (d); case (c) is pinned as a KNOWN DIVERGENCE because
-      `RemainingSheddableSteppedFields` strips `reportedStepId` from the
-      legacy fallback path while the producer (wired upstream) sees it. In
-      production the producer is always wired, so the divergence is benign;
-      chunk 6 should either propagate `reportedStepId` through the fallback
-      type or document the asymmetry.
-
 - [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
       `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
       `appContext.ts` as the long-term inhabitant, but new wiring continues
@@ -662,149 +424,6 @@ PRs. Items below are later polish.*
       while the migration completes. Source: pels-layering-guardian review
       of PR #1190 flagged chunk 3's new file as misplaced; root cause is
       the un-finished sunsetting, not chunk 3.
-
-- [x] **Chunk 6 — lift `canSet` into the producer + migrate `canTurnOnDevice`.**
-      `lib/device/deviceActionProjection.ts` now exports `resolveCanSetControl`
-      / `isCanSetControl` as a sibling producer bit to `commandableNow`
-      (`canSetControl !== false` plus the legacy `canSetOnOff` fallback),
-      `toPlanDevice` populates `PlanInputDevice.canSetControlResolved`, and
-      `planExecutorSupport.canTurnOnDevice` now reads
-      `isCommandableNow(snapshot) && isCanSetControl(snapshot)` instead of
-      round-tripping through `getBinaryControlPlan` + `getEvRestoreBlockReason`.
-      `getBinaryControlPlan`'s own `canSet` is rewritten on top of the new
-      producer so the legacy view stays bit-exact.
-      Source: pels-layering-guardian review of PR #1189, 2026-05-27.
-
-- [x] **Chunk 6 — co-locate `commandableNowReason` strings in `packages/shared-domain/**`.**
-      `lib/device/deviceActionProjection.ts` produces reason strings
-      ("charger is unplugged", "charger state unknown", etc.) that today
-      live runtime-internal. Chunk 6 routes UI consumers to
-      `commandableNowReason`, at which point these strings will surface in
-      UI and the shared-domain home becomes mandatory per
-      `feedback_ui_text_shared_with_logs`. They duplicate strings already
-      in `lib/plan/restore/devices.ts:108` (`getEvRestoreStateBlockReason`)
-      — both should consolidate to one shared-domain helper.
-      Source: pels-runtime-reality review of PR #1189, 2026-05-27.
-
-- [x] **Chunk 5/6 — populate and consume `boostActive`.**
-      `buildBoostPlanDeviceFields` now resolves `boostActive` via
-      `resolveBoostActive({ temperatureBoostActive, evBoostActive })` and
-      writes it onto `DevicePlanDevice`. `restore/helpers.ts`
-      `isBoostEffectiveForEscalation` reads `dev.boostActive === true`
-      instead of recomputing the OR. `resolveBoostActive` and
-      `isCommandableNow` allowlist entries dropped in
-      `scripts/check-dead-code.mjs`; `getCommandableNowReason` stays
-      parked until the chunk-6 UI off-state-reason routing lands.
-      Source: pels-runtime-reality + pels-layering-guardian reviews of
-      PR #1189, 2026-05-27.
-
-- [x] **Chunk 6 — normalize EV-detection across producer helpers.**
-      `lib/device/deviceActionProjection.ts` mixes `controlCapabilityId ===
-      'evcharger_charging'` (new helpers) and `deviceClass === 'evcharger'`
-      (older `resolveEvBoostActive`). Pre-existing asymmetry that propagated
-      via the chunk-1 helper move. Normalize on one predicate (`isEvDevice(dev)`)
-      and route all producer EV gates through it.
-      Source: pels-runtime-reality + pels-layering-guardian reviews of
-      PR #1189, 2026-05-27.
-      DONE: PR p2-c3-ev-predicate — introduced module-private `isEvDevice`
-      union helper, migrated `resolveEvBoostActive`, `resolveEvCommandableBlock`,
-      `getEvRestoreBlockReason`, and `isEvPhysicallyUnplugged`. No test
-      fixture set only one of the two fields; full suite still green.
-
-- [x] **Evict `lastKnownCommandableByDevice` (and `lastKnownPowerKw`) on
-      device deletion.** Both producer-side caches grow unboundedly when
-      devices are removed from Homey at runtime. Each entry is ~50 bytes;
-      practical bound is a few KB well inside the 160 MB RSS ceiling, but
-      unbounded over the app's lifetime. Add a sweep keyed on "device id no
-      longer present in the latest snapshot" for both records.
-      Source: pels-runtime-reality + pels-layering-guardian reviews of
-      PR #1189, 2026-05-27.
-      DONE: PR p2-d-cache-eviction — added `evictMissingDeviceCacheEntries`
-      in `lib/app/appInit.ts`, called from both batch sites
-      (`createPlanService.getPlanDevices`, `app.ts:getLiveDevices`) on the
-      full snapshot before mapping. Focused unit tests cover present /
-      orphan / no-op / empty-snapshot.
-
-- [x] **Chunk 4/5/6 — first-cycle `commandableNow` semantics for new EV
-      devices.** A fresh EV device with `evChargingState === undefined` and
-      no prior observation in `lastKnownCommandableByDevice` currently
-      resolves to `commandableNow: false, reason: 'charger state unknown'`.
-      No live consumer reads the bit in chunk 2, but once executors consume
-      it (chunks 4-6), pessimistic-on-first-cycle is the safer default
-      (matches "don't write to a device whose state we've never confirmed").
-      Lock that semantics in when executors come online.
-      Source: pels-runtime-reality review of PR #1189, 2026-05-27.
-      DONE: PR p2-d-cache-eviction — documented the first-cycle contract
-      in the `resolveCommandableNow` doc-comment ("pessimistic-on-first-
-      cycle, load-bearing once executors consume the bit"); added a
-      focused unit test in `test/deviceActionProjectionCommandableNow.test.ts`
-      pinning the case (never-seen EV, `evChargingState === undefined`,
-      no `previousObservation` → `commandableNow: false`,
-      reason `'charger state unknown'`).
-
-- [x] **Smart-task lifecycle-end release for stepped devices without binary
-      control.** `lib/executor/shedReleaseActuation.ts` materialises the
-      configured shedBehavior for a cap-off device when its deferred objective
-      transitions to a terminal status: `turn_off`/`set_step` route through
-      the binary off path, `set_temperature` through a target write. Stepped
-      devices whose only handle is the step capability (no `onoff` /
-      `evcharger_charging`) currently no-op with a `shed_release_skipped` log
-      because lifecycle release does not re-project a shed-purpose stepped
-      intent (the existing stepped action carries `purpose: 'keep'` and
-      `desired.on !== false`, so `applySteppedLoadShedOff` would bail). A
-      proper fix re-projects a synthetic shed-purpose stepped intent at apply
-      time or pushes the projection earlier in planBuilder so the executor
-      receives a shed-ready action for this case. Source: smart-task
-      lifecycle-end generalisation, 2026-05-27.
-
-- [x] **Integration test: thermostat + binary device lifecycle-end release.**
-      `test/evDevices.integration.test.ts` covers the EV pause regression in
-      depth; the new non-EV shed_release path only has the unit tests in
-      `test/shedReleaseActuation.test.ts`. Mirror the EaseeMockCharger
-      pattern for a mock thermostat and a mock binary heater so the full
-      smart-task → satisfied → release → idempotent-re-emission flow has
-      end-to-end coverage. Source: smart-task lifecycle-end generalisation,
-      2026-05-27. Resolved by `test/lifecycleEndReleaseNonEv.integration.test.ts`
-      which exercises the real `applyShedReleaseIntent` dispatch against the
-      real binary/target executors with minimal inline mock heater/thermostat
-      scaffolding (the full deferred-objective wiring through `createApp` is
-      EV-shaped; the integration test focuses on the executor end of the
-      pipeline where the per-cycle re-emission idempotency lives).
-
-- [x] **Tighten shed_release binary idempotency to trusted-evidence pattern.**
-      `lib/executor/shedReleaseActuation.ts:99` skips the binary write only
-      when `snapshot.currentOn === false`. Under a transient Homey SDK miss
-      the field can default to `undefined`, falling through to a redundant
-      `applyBinarySheddingToDevice` write that the 60s shed cooldown then
-      contains. Mirror the abandon-grace pattern in
-      `lib/executor/planExecutionDrift.ts:185-191` and switch the guard to
-      `observed.observedBinaryState === 'off'`, treating `'unknown'` as
-      "no trusted observation yet, skip the write". Source: pels-runtime-reality
-      review of PR #1185, 2026-05-27.
-
-- [x] **Record shed_release target writes in per-device diagnostics.**
-      `applyShedReleaseTemperature` in `lib/executor/shedReleaseActuation.ts`
-      routes through `applyTargetUpdate` with `isRestoring: false`.
-      `applyTargetUpdatePlan` only records `recordRestoreActuation` when
-      `isRestoring` is true and never calls `recordShedActuation`, so the
-      diagnostics service never logs a `pels_shed` event for the release.
-      Compare `trySetShedTemperature` (`lib/executor/targetExecutor.ts:179`)
-      which does record the actuation. Practically non-blocking today
-      (cap-off devices don't re-enter capacity-driven shed paths) but it
-      undercounts per-device actuations and weakens forensic traces.
-      Source: pels-runtime-reality review of PR #1185, 2026-05-27.
-
-- [x] **Consolidate `observationTrust.ts` into a shared layer.**
-      The detype-chunk-1 producer extraction (PR #1187) inlined
-      `getTrustedCurrentTemperatureC` and `getTrustedStateOfCharge` into
-      `lib/device/deviceActionProjection.ts` because the originals live in
-      `lib/observer/observationTrust.ts` and `lib/device/` cannot import
-      `lib/observer/` per `no-device-to-peer-except-power`. The observer
-      module imports only `lib/utils/appTypeGuards` and a contracts type —
-      no observer-specific state. Moving it to `lib/utils/observationTrust.ts`
-      lets both layers import a single source and lets the inlined copies +
-      dead-code allowlist entries be removed. Source: pels-layering-guardian
-      review of PR #1187, 2026-05-27.
 
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
@@ -944,18 +563,6 @@ the renderer can land.*
       available kW (e.g. `5 kW free · 7 of 12 used`). Source: release-review
       pels-ux-fit, 2026-05-26.
 
-- [x] **Smart-tasks widget — on `cannot_meet` rows, replace
-      `Ready by HH:MM` with `Due HH:MM` so the time half doesn't contradict
-      the chip.** Done in the interactive-widget PR — the ETA verb is now
-      producer-resolved (`resolveSmartTaskWidgetEtaVerb`, "Due" on failing
-      tasks else "Ready by"), shared between the list row and the detail
-      panel. Source: release-review pels-ux-fit, 2026-05-26.
-
-- [x] **Smart-tasks widget — add a one-sentence pointer in the empty
-      state.** Done in the interactive-widget PR — `SMART_TASK_WIDGET_EMPTY_HINT`
-      ("Add a smart task from a Flow card to see it here.") renders under the
-      empty subtitle. Source: release-review pels-ux-fit, 2026-05-26.
-
 - [ ] **Smart-tasks widget — detail-panel polish follow-ups (interactive-widget
       PR P2/P3).** Carry the lower-priority findings from the four review
       subagents on the interactive widget:
@@ -1085,21 +692,6 @@ the renderer can land.*
       `gemini-code-assist` medium on PR #1037
       (lib/plan/planBinaryControl.ts:~259), 2026-05-24.
 
-- [x] **Guardrail `getLogger` against runtime-interpolated module names.** Today
-      `getLogger(module)` in `lib/logging/logger.ts` caches one proxy per
-      distinct `module` string. Module-scope `const logger = getLogger('plan/x')`
-      is safe and bounded; a future caller writing `getLogger(\`device-\${id}\`)`
-      per cycle would grow the cache unboundedly (one proxy per device id ever
-      seen) and emit fragmented bindings. Add either (a) a lint rule requiring
-      the argument to be a string literal, or (b) a runtime warn-once if the
-      cache exceeds N entries. Source: `pels-runtime-reality` P2 on the
-      `getLogger` foundation chip, 2026-05-24. Shipped option (b):
-      `MAX_LOGGER_CACHE_SIZE = 64` (≈68% headroom over the 38 current static
-      callsites) with a module-scoped `cacheGrowthWarningEmitted` flag so a
-      single `logger_cache_growth_exceeded` warn fires the first time the
-      cache outgrows the cap (via `rootLogger.warn` tagged `module:
-      'logging/cache'`).
-
 - [ ] **P3** — Extend Slice 2 floor promotion beyond priority 1. (Demoted from the v2.9 train P0
       closeout.) Slice 2 (PR #983) gates floor promotion on
       `device.priority === 1 && both rescue permissions === 'always'`
@@ -1136,95 +728,7 @@ the renderer can land.*
 
 *Session P2 deferrals from batch 21 reviews (2026-05-24).*
 
-- [x] Postmortem copy for `unknown`-with-plan doesn't bridge to the "View
-      details" chart affordance. The fallback sentence "PELS could not
-      determine how this smart task finished." reads coherently when the
-      hero is one-sentence (the `unknown`-no-plan branch). With a plan
-      recorded (now showing the collapsed chart card after PR #1074), the
-      user sees the sentence + the toggle and may wonder "if you don't
-      know, what details?" The expand reveals the plan, which is honest
-      evidence — but the copy doesn't preview it. Consider a copy variant
-      for the `hasRecordedPlan` branch like "PELS made a plan for this
-      smart task but couldn't observe how it finished."
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts:776-778`.
-      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
-      *Done 2026-05-24:* `formatPlanHistoryPostmortem` now discriminates on
-      `originalPlan/finalPlan` presence and emits "PELS made a plan for
-      this smart task but couldn't observe how it finished." when a plan
-      was recorded; the no-plan branch keeps the original wording byte-
-      identically. Tests assert both branches.
-
-- [x] Comment about Abandoned + RevisionsCard interaction is stale. The
-      block at `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx:1219-1220`
-      claims "Abandoned entries default collapsed and the card follows
-      the same 'log when asked for' rhythm" — but Abandoned has
-      `quietAbandoned: true` so the toggle never renders,
-      `chartCollapsed` never flips, and `RevisionsCard` is never shown
-      for Abandoned. Pre-existing drift; PR #1074's `unknown`-with-plan
-      is the first case where the described rhythm actually holds.
-      Update the comment to match (e.g. "Unknown-with-plan entries
-      default collapsed; the card opens on demand").
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
-      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
-      *Done 2026-05-24:* comment rewritten to name Unknown-with-plan as
-      the actual default-collapsed/opens-on-demand case and call out that
-      Abandoned/Replaced stay quiet (`quietAbandoned: true` → no toggle,
-      `RevisionsCard` never shows).
-
-- [x] Notes table summary in `notes/v2-7-2/postmortem-chart-policy.md:19`
-      could disambiguate `chartCollapsedByDefault` vs `quietAbandoned`.
-      The producer-flag summary reads `Unknown=true` but doesn't make
-      explicit that this is the `chartCollapsedByDefault` value;
-      `quietAbandoned` is what actually toggles per `hasRecordedPlan`.
-      The prose at lines 27-32 covers it, but the table-style summary
-      could be misread to suggest unknown ALWAYS gets a collapsed card.
-      Tighten the phrasing in a future docs sweep.
-      Files: `notes/v2-7-2/postmortem-chart-policy.md`.
-      Source: `pels-ux-fit`, PR #1074 follow-up, 2026-05-24.
-      Resolved: producer-flag summary now annotates the values as
-      `chartCollapsedByDefault` only and points to the `quietAbandoned`
-      discriminator that flips per `hasRecordedPlan` for Unknown.
-
-- [x] Rename `resolvePlanGenericReasonText` to a name that describes the
-      actual function (e.g. `resolveStillReportingAfterPauseText` or
-      `resolveReportedLoadAfterPauseText`). Shipped per task spec in
-      PR #1075 but the name doesn't describe what the function does —
-      it only computes the "Still reporting … after pause" sentence,
-      not a generic plan reason. Also: the
-      `(dev.reason as { detail?: unknown } | undefined)?.detail` cast at
-      the call site is preserved verbatim from the pre-extraction code;
-      it's now a published contract between settings-ui and the
-      shared-domain helper, so the weak typing is more visible than
-      before. A typed `DeviceReason` narrowing helper would be the
-      cleaner fix.
-      Files: `packages/shared-domain/src/planReasonFormatting.ts`,
-      `packages/shared-domain/src/planReasonSemantics.ts`,
-      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
-      Source: PR #1075 self-review, 2026-05-24.
-      Resolved: renamed to `resolveReportedLoadAfterPauseText`; added
-      typed `readDeviceReasonDetail(reason: unknown): unknown` narrowing
-      helper alongside (re-exported via `planReasonSemantics.ts`) and the
-      call site in `PlanDeviceCards.tsx` now uses both — no `as` cast.
-
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
-
-- [x] `.deadline-list-card:hover` still hardcodes `background:
-      var(--color-surface-3)` (style.css:~6224-6229) even though
-      `.pels-surface-card[data-interactive]:hover` now provides M3
-      elevation lift. Once the elevation-only hover visual is validated
-      against the existing baseline on real hardware, delete the
-      manual surface-tier swap so the M3 elevation contract is the
-      single source of truth.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
-      Done 2026-05-24 in CSS micro-fix bundle: dropped the
-      `background: var(--color-surface-3)` line from the
-      `.deadline-list-card:hover, :focus-visible` rule so only the
-      accent border swap remains; the canonical `.pels-surface-card
-      [data-interactive]:hover` `--md-elevation-level: 3` lift owns
-      the surface-tier change. Pinned by a new
-      `cardPrimitiveRebind.test.ts` regression that asserts the
-      hover/focus rule body carries no `background:` declaration.
 
 - [ ] Docs screenshot drift after PR #1040 card consolidation. The
       diagnostics card radius went 10px → 14px (token violation fix);
@@ -1248,48 +752,6 @@ the renderer can land.*
       next release to confirm the at-rest treatment isn't too flat.
       Files: visual review only, no code.
       Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
-
-- [x] Comment hygiene on the `.pels-surface-card` primitive block.
-      `packages/settings-ui/public/style.css:2464-2479` and three other
-      comment blocks repeat the same "canonical / decorator" preamble.
-      Consolidate into one block above `.pels-surface-card` and
-      shorten the per-rule comments so future readers see the rule of
-      thumb in one place.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1040 follow-up, 2026-05-24.
-      Done 2026-05-24 in CSS micro-fix bundle: added one
-      "Canonical primitives — rule of thumb" preamble block above
-      `.pels-surface-card` documenting the canonical / decorator
-      contract, the doubled-class and panel-scope cascade idioms,
-      and the shared `data-tone` tonal API. Per-decorator comment
-      blocks on `.plan-history-card`, `.plan-history-card--link`,
-      `.detail-diagnostics-card`, and `.deadline-list-card`
-      shortened to a one-line pointer to the preamble plus any
-      decorator-specific contract notes.
-
-- [x] Budget chip-rail toggle `margin-left: auto` causes a cosmetic
-      asymmetry when it wraps. PR #1016 routes the Budget header through
-      the shared `.plan-hero` primitive with a `.plan-hero__chips` row
-      carrying the price-level chip and the Plan/Adjust toggle. The
-      toggle uses `margin-left: auto` (style.css:4643) to sit flush
-      right when no chip is shown; when the row narrows below the
-      combined width the toggle wraps to its own flex line and the
-      `auto` margin pushes it to the right edge while the chip sits at
-      the left — readable but cosmetically asymmetric against the
-      headline below. Either drop the `margin-left: auto` (let the
-      parent's `justify-content` handle alignment) or align both edges
-      intentionally on wrap. Cosmetic; bounded one-rule fix.
-      Files: `packages/settings-ui/public/style.css`.
-      Source: `pels-m3-critic`, PR #1016 follow-up, 2026-05-23.
-      Done 2026-05-23 in commit d229c480 (v2.9 retrospective P2
-      cleanups): dropped `margin-left: auto` from
-      `.budget-page-header__action` so the parent
-      `.plan-hero__headline-row`'s `justify-content: space-between`
-      (no-chip path) and the chip-rail's `flex: 1 1 auto` (chip path)
-      handle trailing alignment. Inline comment block above the rule
-      records the rationale. Closed from the CSS micro-fix bundle on
-      2026-05-24 after confirming the diff already landed; no further
-      CSS edit required.
 
 - [ ] Short-deadline smart-task runs can't benefit from `capped_idle`
       promotion. PR #1018's `capped_idle` discriminator requires a
@@ -1322,241 +784,6 @@ the renderer can land.*
       Files: `lib/objectives/recovery.ts`.
       Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
 
-- [x] Harden the rescue-only replan-reason routing against partial /
-      combined toggle scenarios. The PR-998 regression suite covers
-      "no rescue → some rescue" and "both → none", plus the negative
-      cases (target-change wins, neither changes). Two scenarios should
-      also be pinned so a future refactor can't silently invert the
-      cascade: (a) a single-permission toggle
-      (`exemptFromBudget: never → always` with
-      `limitLowerPriorityDevices` unchanged at a non-null value) — drives
-      the `key === ...` ternary in `withRescuePermission` end-to-end to
-      the recorder; (b) a rescue toggle simultaneous with a
-      `planStatus` drift on identical hours, asserting that
-      `flow_permission_changed` still wins because `baseChanged = false`
-      while `rescueChanged = true` (and the metadata-only drift would
-      have routed to `schedule_revised` on its own).
-      Files: `test/deferredObjectiveActivePlan.test.ts`,
-      `flowCards/smartTaskRescueCard.ts`,
-      `lib/plan/deferredObjectives/replanReason.ts`.
-      Source: `pels-runtime-reality`, PR #998 follow-up, 2026-05-23.
-      Resolved: added `emits flow_permission_changed on a
-      single-permission toggle when the other rescue permission stays
-      granted` and `emits flow_permission_changed when a rescue toggle
-      and a planStatus drift land in the same cycle` to
-      `test/deferredObjectiveActivePlan.test.ts`'s
-      `rescue-permission-only replan routing` describe block.
-
-- [x] Smart-task extra-permissions row wraps mid-word at 320 px under
-      worst-case payload. `.deadline-list-card__when-row dd` uses
-      `overflow-wrap: anywhere`, so the longest composed value (both
-      permissions granted, `at_risk` mode) can split words like
-      "lower-prio | rity". No overflow risk; just visual noise at the
-      narrowest viewport. Consider a soft-break-friendly wrap (break on
-      separator / hyphen) or a line-clamp + tooltip for the worst case.
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
-      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
-      Fixed in `fix/p2-ux-micro-bundle`: swapped `overflow-wrap: anywhere`
-      → `overflow-wrap: break-word` on `.deadline-list-card__when-row dd`
-      (list page) and `.plan-inputs__row-value` (detail page, same
-      `extraPermissionsValue` payload) so the browser prefers word-boundary
-      breaks (spaces / `·` separator) and only splits mid-word as a last
-      resort. Detail-page parity added inline after `pels-ux-fit` P1 flag.
-
-- [x] Smart-task detail pending branch renders `<PendingHero />` +
-      `<PriorRunsHistory />` as a `<>` fragment without an outer
-      `pels-surface-card`, while sibling states (`loading`, `error`,
-      `completed`, `history-missing`) all wrap their content in a card.
-      The history then sits flush against the panel background instead of
-      a card. Visually defensible (the history list owns its own card
-      stack) but inconsistent rhythm worth a follow-up to either wrap or
-      explicitly document why pending is the odd one out.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-      Source: `pels-ux-fit`, PR #992 follow-up, 2026-05-23.
-      Documented in `fix/p2-ux-micro-bundle` (no code change): the pending
-      branch mirrors the `ready` branch (`.pels-hero` + sibling cards as a
-      fragment). `.pels-hero` is itself a card-shaped surface (border,
-      radius, surface tier) and `PriorRunsHistory` rows own their own
-      `.pels-surface-card` stack — wrapping would double-card the hero and
-      nest history rows inside an extra container. Added an explanatory
-      comment above the fragment in `DeadlinePlanRoot`.
-
-- [x] Finish the Budget hero copy-locality pass alongside
-      `dailyBudgetHeroStrings.ts`. The v2.9 Rule-4 cleanup pulled the
-      finish-of-day decision sentences and the `resolveHeadroomLine` template
-      onto shared-domain, but the rest of the hero copy chain is still
-      inlined in settings-ui: `HEADLINE_LABEL_BY_VIEW` (`Yesterday's total` /
-      `Projected today` / `Planned for tomorrow`), the disabled-state
-      sentences `'Waiting for daily budget data'` / `'Daily budget off'`, and
-      the today-tone lines in `resolveTodayLine` /
-      `resolveChartSubtitle` (`'Projected to finish over budget.'` etc.).
-      Move them into `dailyBudgetHeroStrings.ts` so runtime logs and
-      screenshots quote one canonical source.
-      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
-      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23. Done 2026-05-24 (bundled with the Headroom-helper rename):
-      added `DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW`,
-      `DAILY_BUDGET_DISABLED_WAITING`, `DAILY_BUDGET_DISABLED_OFF`,
-      `resolveTodayLine(status, cause)`, and
-      `resolveChartSubtitle({ view, mode, status, priceReliable, priceShapingEnabled })`
-      as shared-domain exports; `budgetRedesign.ts` now imports those and
-      keeps only the local payload→discriminant glue.
-
-- [x] Rename the new `dailyBudgetHeroStrings.ts` helper API to drop the
-      `Headroom` jargon. `composeHeadroomOverBudgetUsed`,
-      `composeHeadroomLeftToday`, and `composeHeadroomLineWithEstimate` are
-      new shared-domain symbols introduced by the v2.9 Rule-4 cleanup; the
-      visible strings already use "left in today's budget" / "over budget
-      already used" (no jargon), but the symbol names leak the banned term
-      per `notes/ui-terminology.md` Rule 1. Rename to `composeBudgetUsedOver`
-      / `composeBudgetRemainingToday` / `composeBudgetRemainingLineWithEstimate`
-      or similar. Also resolve the `est.` abbreviation in the template — Rule 3
-      bans abbreviations in visible labels; widen to `estimated` when the
-      pre-existing wording is reworked.
-      Files: `packages/shared-domain/src/dailyBudgetHeroStrings.ts`,
-      `packages/settings-ui/src/ui/budgetRedesign.ts`.
-      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23. Done 2026-05-24: renamed to `composeBudgetUsedOver` /
-      `composeBudgetRemainingToday` /
-      `composeBudgetRemainingLineWithEstimate`; the estimate-suffix template
-      now spells `estimated` in full ("· estimated 6.50 kr today" instead of
-      "· est. 6.50 kr today"). All callsites in `budgetRedesign.ts` updated;
-      no other importers existed.
-
-- [x] Route test/doc anchors through the shared-domain copy constants.
-      `test/deviceOverview.test.ts:147`, `test/planReasonUserFacing.test.ts:57`,
-      `packages/settings-ui/test/budgetRedesign.test.ts:155-156`, and
-      `docs/plan-states.md:35,55` hardcode `Limited by the hard cap` /
-      `Limited by today's daily budget` / `Yesterday finished …` strings
-      verbatim. Importing `PLAN_STATE_HELD_FALLBACK_STATUS` /
-      `PLAN_STATE_DAILY_BUDGET_STATUS` (and the dailyBudget hero constants)
-      would let a future rename trip the tests instead of silently diverging.
-      Files: those above; constants in
-      `packages/shared-domain/src/planStateLabels.ts` and
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
-      Source: `pels-copy-and-terminology`, v2.9 Rule-4 cleanup follow-up,
-      2026-05-23; reworded 2026-05-24 after the undersell walk-back
-      (961904f8) standardised the "Limited by …" wording across helpers.
-      Done 2026-05-24 (bundled with the `headroomLine`/`resolveHeadroomLine`
-      symbol rename): `test/deviceOverview.test.ts` now imports
-      `PLAN_STATE_HELD_FALLBACK_STATUS` from
-      `packages/shared-domain/src/planStateLabels`; `test/planReasonUserFacing.test.ts`
-      imports `PLAN_STATE_HELD_FALLBACK_STATUS` (line 57),
-      `PLAN_STATE_DAILY_BUDGET_STATUS` (line 62), and
-      `PLAN_STATE_HOURLY_BUDGET_STATUS` (line 67 — opportunistic pin while in
-      the same expected-cases table); `packages/settings-ui/test/budgetRedesign.test.ts`
-      imports `YESTERDAY_FINISHED_OVER_BUDGET` / `YESTERDAY_FINISHED_WITHIN_BUDGET`
-      from `packages/shared-domain/src/dailyBudgetHeroStrings` for the
-      yesterday decision-line assertions. `docs/plan-states.md` lookup tables
-      stay verbatim because markdown can't import; the doc is human reference
-      and the literal strings are the pedagogical value.
-
-- [x] Finish the `Headroom` Rule-1 sweep in settings-ui. After PR #1049
-      purged `Headroom` from `dailyBudgetHeroStrings.ts`, two internal
-      settings-ui symbols still carry the banned term:
-      `BudgetHeroData.headroomLine` (field at
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:42`) and
-      `resolveHeadroomLine` (function at
-      `packages/settings-ui/src/ui/budgetRedesign.ts:265`). Neither
-      reaches the user or runtime logs — these are TypeScript identifier
-      names only — but the field name now contradicts the visible
-      vocabulary it carries (the produced string says "left in today's
-      budget" / "over budget already used", never "headroom"). Rename
-      to `budgetRemainingLine` / `resolveBudgetRemainingLine` (or
-      similar) and update the `BudgetHeroData` shape, the `BudgetOverview`
-      consumer, and any test snapshots that anchor on the field name.
-      Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `packages/settings-ui/test/budgetRedesign.test.ts`.
-      Source: `pels-copy-and-terminology`, PR #1049 follow-up, 2026-05-24.
-      Done 2026-05-24 (bundled with the test/doc anchor pivot above):
-      renamed `BudgetHeroData.headroomLine` → `budgetRemainingLine` and
-      `resolveHeadroomLine` → `resolveBudgetRemainingLine`; updated every
-      importer in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `packages/settings-ui/test/budgetRedesign.test.ts`,
-      `packages/settings-ui/test/heroPrimitiveRebind.test.ts`, and
-      `packages/settings-ui/test/chipPrimitiveRebind.test.ts`. No visible
-      string changed; the produced subline still reads
-      "… left in today's budget" / "… over budget already used".
-
-- [x] Lift the remaining inlined visible strings in
-      `packages/settings-ui/src/ui/budgetRedesign.ts` into
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts` per Rule 4.
-      PR #1049 covered the hero headline/disabled/today/chart-subtitle set
-      but several adjacent strings still live in settings-ui only and
-      cannot be reused by runtime log statements:
-      ~~`Close to budget` / `On budget` / `Over by … kWh`
-      (lines 190-194)~~, ~~`Using cheaper hours` /
-      `Using cheaper hours (price data unavailable)` (line 262)~~, ~~the
-      five-line `resolveNoPlanLine` block (282-290)~~,
-      ~~`resolveTomorrowLine` strings (293-295)~~, ~~the
-      `Managed … · Background …` split-line template (236)~~,
-      ~~`Hourly plan` / `Progress` chart titles (391)~~, the
-      ~~`High` / `Medium` / `Low` confidence-band labels (405-407)~~, the
-      ~~`Showing tomorrow's plan…` / `Showing today's plan…` comparison
-      labels (487, 494)~~, and the ~~`Adjust budget` button label at
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx:229`~~. Lift
-      each into a shared-domain helper or constant that runtime logging
-      can reach for parity. Bundle in batches by section (hero subtitle,
-      chart subtitle, no-plan sentences, etc.) rather than one giant move.
-      Files: `packages/settings-ui/src/ui/budgetRedesign.ts`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
-      Source: `pels-copy-and-terminology`, PR #1049 follow-up, 2026-05-24.
-      *First wave done (2026-05-25):* hero subtitle batch lifted —
-      `Close to budget` (`BUDGET_HERO_CLOSE_TO_BUDGET`), `On budget`
-      (`BUDGET_HERO_ON_BUDGET`), the `Over by N.N kWh` pill template
-      (`composeBudgetHeroOverBy`), `Using cheaper hours` /
-      `Using cheaper hours (price data unavailable)`
-      (`BUDGET_HERO_USING_CHEAPER_HOURS` /
-      `BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES`), and the
-      `Managed N.N kWh · Background M.M kWh` split-line
-      (`composeManagedBackgroundLine`) all moved into
-      `packages/shared-domain/src/dailyBudgetHeroStrings.ts` with their
-      kWh formatting; `budgetRedesignResolvers.ts` consumes them and
-      computes nothing locally.
-      *Second wave done (2026-05-25):* chart titles + confidence labels +
-      comparison labels + adjust-button batch lifted —
-      `Hourly plan` / `Progress` chart titles
-      (`BUDGET_CHART_TITLE_HOURLY_PLAN` / `BUDGET_CHART_TITLE_PROGRESS`,
-      consumed by both `resolveChartData` and the `ToggleGroup` in
-      `BudgetOverview.tsx` so the heading and the toggle option labels
-      share one source), `High` / `Medium` / `Low` confidence-band labels
-      (`BUDGET_CONFIDENCE_LABEL_HIGH` / `BUDGET_CONFIDENCE_LABEL_MEDIUM` /
-      `BUDGET_CONFIDENCE_LABEL_LOW`, with a new `BudgetConfidenceLabel`
-      type narrowing `BudgetConfidenceData['label']` to those constants),
-      `Showing tomorrow's plan — tomorrow's prices are in.` /
-      `Showing today's plan — tomorrow's prices not yet available.`
-      comparison labels (`BUDGET_COMPARISON_SHOWING_TOMORROW` /
-      `BUDGET_COMPARISON_SHOWING_TODAY`), and the `Adjust budget` button
-      label (`BUDGET_ADJUST_BUDGET_BUTTON`). All visible wording preserved
-      byte-for-byte.
-      *Third / final wave done (2026-05-25):* `resolveNoPlanLine` block
-      and `resolveTomorrowLine` strings lifted —
-      `Tomorrow's plan is not available yet. Check electricity prices if it does not appear shortly.`
-      (`BUDGET_NO_PLAN_TOMORROW_WAITING`),
-      `Yesterday history is not available yet.`
-      (`BUDGET_NO_PLAN_YESTERDAY_WAITING`),
-      `PELS is preparing the daily plan. Check again shortly.`
-      (`BUDGET_NO_PLAN_TODAY_PREPARING`),
-      `Enable daily budget to plan tomorrow.`
-      (`BUDGET_NO_PLAN_ENABLE_FOR_TOMORROW`),
-      `Enable daily budget to build a daily plan.`
-      (`BUDGET_NO_PLAN_ENABLE_FOR_TODAY`),
-      `Most planned use is shifted toward cheaper hours.`
-      (`BUDGET_TOMORROW_PRICE_SHAPED`), and
-      `Tomorrow's budget plan is ready.`
-      (`BUDGET_TOMORROW_PLAN_READY`). The router functions themselves
-      also moved: `resolveNoPlanLine(view, budgetEnabled)` and
-      `resolveTomorrowLine(priceShapingActive)` now live in
-      `dailyBudgetHeroStrings.ts`; the consumer in
-      `budgetRedesignResolvers.ts` is a one-line call site (the tomorrow
-      wrapper only narrows the payload to the boolean discriminant the
-      producer expects). Multi-wave lift complete.
-
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
       `lib/plan/deferredObjectives/planHistory.ts:141-148` notes that
@@ -1584,22 +811,6 @@ so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
 
-- [x] Threshold validation for *mildly* multi-step devices. The 0.35 / 0.75
-      RSD thresholds were calibrated for raw per-sample CV; pooled within-band
-      variance is structurally smaller, so a profile with only modest
-      between-band variance reduction could in principle reach `high` based
-      on a small lift. The smoking-gun test covers a tight-noise case; add a
-      mildly-different-band test (e.g. means 0.25/0.30, looser within-band m2)
-      and confirm the model correctly returns `medium`, not `high`. If it
-      over-promotes, tighten the high threshold for the banded path
-      (e.g. 0.20). Files: `test/objectiveProfileBandedConfidence.test.ts`,
-      `lib/objectives/stats.ts`. **Done 2026-05-24:** banded high threshold
-      tightened 0.35 → 0.20 in `resolveBandedProfileConfidence`
-      (`lib/objectives/stats.ts`). New fixture (means 0.25/0.30, m2=0.07,
-      RSD≈0.321) pins the `medium` verdict; existing five fixtures
-      (tight-noise high, medium, low, buffer-drift, weighted-mean-fallback)
-      all unaffected. Raw-CV path (`resolveProfileConfidence`) intentionally
-      unchanged.
 - [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
       (integration interval extends outside band coverage) reads the now
       band-aware `kwhPerUnit.confidence`, while the energy estimate for the
@@ -1614,63 +825,8 @@ block merge.*
       `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
       `packages/contracts/src/objectiveProfileTypes.ts`,
       `lib/objectives/profiles.ts`.
-- [x] Log parity / doc drift. The structured-log field `energyConfidence`
-      (`objective_profile_sample_recorded`) now silently shifts semantics
-      (band-aware when bands exist), so old/new log dumps are no longer
-      directly comparable for the same device after bands fit. Add a sibling
-      `globalEnergyConfidence` that always carries the raw-CV value, or rename.
-      Same shift applies to the comment at
-      `packages/shared-domain/src/deadlineLabels.ts:1126` describing
-      `provenance.confidence` as the "legacy raw-CV stat" — update to reflect
-      band-aware semantics.
-      Done (PR pending) — added `globalEnergyConfidence` sibling field on
-      `objective_profile_sample_recorded` (recomputes raw-CV via
-      `resolveProfileConfidence({sampleCount, mean, m2})` on the post-update
-      `kwhPerUnit` stat, before `applyBandedConfidence` overrides
-      `kwhPerUnit.confidence`). Rephrased the `provenance.confidence` comment in
-      `deadlineLabels.ts` and the matching contract comment in
-      `deferredObjectiveActivePlans.ts` to "band-aware when bands have fit,
-      falls back to raw-CV otherwise."
-
 *v2.8.0 → origin/main release-review findings (2026-05-22). From the
 five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
-
-- [x] Miss attribution compares delivered energy against the *buffered*
-      `plannedKWh`, not the mean. When the SE buffer is large (cold-start)
-      `plannedKWh` is inflated, so a run can be labelled
-      `capacity_shortfall` when the real cause was the conservative buffer.
-      Diagnostics/history-explanation only — never affects control or the
-      met/missed verdict; subsumed by the standing feasibility P0. Sibling
-      of the live-chip buffered-basis question in the variance-buffer group
-      below; fix by comparing delivered against `energyExpectedKWh` (the
-      mean) before this telemetry tunes feasibility.
-      Files: `packages/shared-domain/src/deferredPlanHistoryAttribution.ts:115-121`.
-      Source: `pels-runtime-reality`, v2.8.0→origin/main release-review pass.
-      DONE (2026-05-24, `fix/p2-miss-attribution-mean`): threaded mean from the
-      live revision through `InProgressRecord.energyExpectedKWhAtFinalize` →
-      `pushEntry` → `buildFinalizedAttributionEvent` →
-      `resolveDeferredPlanHistoryMissAttribution(entry, energyExpectedKWh?)`.
-      Falls back to buffered `plannedKWh` when the mean is absent (UI render,
-      backfill, restart-recovered finalize) so UI attribution is no-worse-than-
-      before. Met/missed verdict (`classifyOutcome` / `wasTargetReached`) is
-      untouched. Test: `does not label a wide-buffer high-confidence run
-      delivering the mean as capacity_shortfall` in
-      `test/deferredPlanHistoryAttribution.test.ts`.
-      AMENDMENT (2026-05-24, same PR): `pels-runtime-reality` flagged a P1 on
-      the original PR — the runtime log emitted `missCause` with the mean-aware
-      comparison but the UI render path (which has no live hint) fell back to
-      the buffered comparison, so the same finalized entry could resolve two
-      different causes. Persist `energyExpectedKWh?: number` on
-      `DeferredObjectivePlanHistoryRevisionSnapshot` (optional, finite > 0) and
-      promote `InProgressRecord.energyExpectedKWhAtFinalize` onto the snapshot
-      via `attachEnergyExpectedKWh` in `finalizeRecord`. Snapshot wins over the
-      optional argument inside `resolveDeferredPlanHistoryMissAttribution` so
-      runtime and UI now resolve identical causes; old entries (no persisted
-      field) still fall back to the buffered comparison. Validator extended in
-      `lib/plan/deferredObjectives/planHistorySettings.ts` to reject
-      non-positive / NaN tampered writes. Regression test: `persists the mean
-      energy on the snapshot so the UI render path resolves the same missCause
-      as the runtime log` in `test/deferredObjectivePlanHistory.test.ts`.
 
 - [ ] Muted meta lines on the warn/alert tonal hero sit ~3.6:1 (below
       WCAG AA 4.5:1) at the top gradient stop. Established device-card
@@ -1737,34 +893,6 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
       review of PR #965.
 
-- [x] Band fitter does not split textbook bimodal data with 6 samples (3 per
-      cluster, ~67 % mean separation). Multi-band SHS probe 2026-05-23 (PELS
-      v2.9.0) drove the Mill v2 mock through two consecutive regimes designed
-      to produce two clearly separated `kwhPerUnit` clusters: 4 walks at
-      1500 W (≈0.30 kWh/°C) in the 19–21 °C input range, then 4 walks at
-      2500 W (≈0.50 kWh/°C) in the 21–23 °C range. After the run,
-      `power_tracker_state.objectiveProfiles[device].bands` was empty despite
-      `bufferedSamples: 6`, `kwhPerUnit.mean: 0.40182`, `min: 0.3005`,
-      `max: 0.5007`, `confidence: medium`.
-      **Analysis (2026-05-25, see `test/objectiveProfileBandsShsReplay.test.ts`):**
-      `MIN_SSE_REDUCTION_FRACTION` is NOT the active constraint. The natural
-      bimodal split at idx 3 yields a 99.94% SSE reduction — two orders of
-      magnitude above the 10% floor. The active blocker is the entry-level
-      gate `samples.length >= OBJECTIVE_PROFILE_MIN_BAND_SAMPLES * 2 = 16`;
-      the buffer held 6, so `fitBandsFromSamples` returns `undefined` at the
-      guard before any SSE math runs. Even bypassing the entry gate, the
-      per-band 8-sample floor (`firstSplit = start + 8`, `lastSplit = end - 8`)
-      would skip every candidate split (largest cluster on either side = 3).
-      **Decision: accept current behaviour.** The 8-per-band minimum is a
-      deliberate noise-floor protection documented in
-      `notes/objective-profile-bands.md`; lowering it to 3 to admit this case
-      would risk one outlier dominating any short bimodal sequence. The prod
-      run was undersized for band fitting (needs ≥16 buffered samples with
-      ≥8 per cluster). Rationale added to constant comments in
-      `lib/objectives/bands.ts`. Replay regression test pins the gate decision.
-      Source: SHS multi-band live-walk 2026-05-23. Artifacts:
-      `/tmp/thermal-multiband-live-20260523-132901/pels.settings.after.json`.
-
 - [ ] Calm-list discoverability of "what PELS has learned" (PR #970). Gating the
       confidence chip to cold-start + silencing it on `on_track` is correct for
       the list mission ("on track?"), but it removes the chip that
@@ -1818,102 +946,6 @@ were rolled back before they could land.*
       Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
       Source: live prod UI walk, 2026-05-22.
 
-- [x] Docs vocabulary sweep: "capacity step" still appears in
-      `docs/smart-tasks.md` and the `docs/cost-saving-functions.md`
-      neighbourhood. Index and Getting Started were reframed to "hourly
-      limit / power-based tariff" in PR #931; remaining occurrences
-      should be reconciled so the docs are internally consistent.
-      Source: `pels-copy-and-terminology` agent, PR #931 review.
-      Resolution: case-insensitive `capacity step` / `capacity-step`
-      grep across `docs/` returned a single literal occurrence at
-      `docs/smart-tasks.md:115` (`Power limiting protects the capacity
-      step.`), replaced with `Power limiting protects the hard cap.`
-      to match the canonical "hard cap" phrasing used elsewhere in the
-      same file (e.g. line 66) and the index. `docs/cost-saving-functions.md`
-      only contained the already-established "capacity tariff step"
-      vocabulary (line 31), which mirrors `docs/index.md:58` and the
-      water-heater use case, so no rewrite was needed.
-      Files touched: `docs/smart-tasks.md`.
-
-- [x] Verify structured-debug back-pressure on the `power_calibration` topic.
-      Verification only — the destination is already bounded.
-      Traced `createCalibrationSnapshotMutationHook` in
-      `lib/device/devicePowerCalibrationStore.ts:522-553` (renamed from the
-      old `appPowerCalibrationWiring.ts` location) through
-      `app.ts#getStructuredDebugEmitter` (no-op when topic off) →
-      pino root logger → `lib/logging/homeyDestination.ts`. The Writable
-      destination runs `_write` synchronously: parse the JSON line,
-      forward to Homey SDK `this.log()` / `this.error()`, invoke
-      `callback()` immediately. Node's internal stream buffer never
-      accumulates because pino writes synchronously and the destination
-      drains synchronously; the only retained state is a partial last
-      line (single pending record) and the per-(device, step) 30 s
-      debounce already caps the emit rate to ~2/min/device/step under
-      steady load. Rotation is handled externally by the Homey
-      supervisor (see `/tmp/pels/start.*.{stdout,stderr}.log`).
-      Documented inline at the emit block; no code change beyond the
-      verification comment.
-      Files touched: `lib/device/devicePowerCalibrationStore.ts`.
-      Source: `pels-runtime-reality` agent, v2.7.3 release-review pass.
-
-- [x] Active-mode card heading hierarchy on the Settings landing page.
-      Shipped via `fix/p2-active-mode-heading`: the `.settings-current-mode`
-      label is now an `<h3 class="field__label settings-current-mode__heading"
-      id="settings-active-mode-summary">Current mode</h3>` so the Settings
-      landing page reads `h2 "Configure PELS" -> h3 "Current mode"` instead
-      of jumping straight to the nav cards. Promotion approach chosen over
-      re-introducing a separate heading to avoid redundant "Mode" + "Current
-      mode" text; the surrounding `.settings-current-mode` section and the
-      `#active-mode-select` both target the restored
-      `settings-active-mode-summary` id via `aria-labelledby`. CSS neutralises
-      browser `<h3>` defaults (margin / font-size / line-height) so the
-      visual treatment matches the pre-v2.7.4 label.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`, `settings/index.html`,
-      `settings/style.css`, `packages/settings-ui/test/settings.test.ts`,
-      `packages/settings-ui/test/heroPrimitiveRebind.test.ts`,
-      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts`.
-      Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
-
-- [x] Power-week chart height duplicated across JS and CSS.
-      Done via `refactor/p2-chart-week-height-token`: promoted to
-      `--pels-chart-week-height` (literal `240px` in
-      `tokens/component.json` → regenerated to `settings/tokens.css`).
-      `.power-week-chart` consumes `var(--pels-chart-week-height)` for
-      both `height` and `min-height` in `packages/settings-ui/public/style.css`
-      (synced to `settings/style.css`); `powerWeekChartEcharts.ts` now
-      reads the token via `getComputedStyle().getPropertyValue(
-      '--pels-chart-week-height')` in a new `resolveChartHeight` helper
-      that feeds both the `initEcharts` constructor and the subsequent
-      `chart.resize` call (fallback constant matches the token's literal
-      source value). Pattern mirrors PR #1118 (`--pels-chart-cell-radius`)
-      end-to-end. Regression locked by
-      `packages/settings-ui/test/chartWeekHeightToken.test.ts` (4 cases:
-      tokens.css declaration, public/style.css `height`+`min-height`
-      consumption, runtime `getComputedStyle` read, fallback path).
-      Files: `tokens/component.json`, `settings/tokens.css`,
-      `packages/settings-ui/public/style.css`, `settings/style.css`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/test/chartWeekHeightToken.test.ts`.
-      Source: `pels-m3-critic` agent, PR #1061 follow-up, 2026-05-24.
-
-- [x] Heatmap `disposePowerWeekChart` inline-style cleanup.
-      Done via `refactor/p2-heatmap-inline-style`: the `#power-list`
-      container now carries `.power-week-chart`, which owns
-      `height`/`min-height`/`-webkit-tap-highlight-color` (240 px
-      literal, matching the existing physical-chart convention shared
-      with `.deadline-horizon-chart`). `powerWeekChartEcharts.ts`'s
-      `ensurePlot`/`disposePowerWeekChart` no longer mutate the
-      container's inline style; `clearPlotInlineStyles` deleted.
-      Tests pin the new contract by asserting the renderer never writes
-      its three former inline-style properties (echarts itself still
-      writes `position: relative` for its own layout, which is fine).
-      Files: `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/test/power-ui.test.ts`.
-      Source: `pels-m3-critic` agent, v2.7.3 release-review pass.
-
 *Resolved review-finding (not a TODO; logged here so future audits don't
 re-raise it): the v2.7.3 release-review flagged "guard activation
 penalty against stale-meter inflation at window expiry" as a candidate
@@ -1952,48 +984,14 @@ No action.*
       wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
 
-- [x] Type the combined-prices `ctx` accessor in `lib/app/appInit.ts`.
-      Done in `refactor/p2-ctx-prices-type` — `CombinedHourlyPrice` from
-      `lib/price/priceTypes.ts` is the shared type surface. Callsites updated:
-      `app.ts` (the `getCombinedHourlyPrices` field hook), `lib/app/appContext.ts`
-      (`AppContext.getCombinedHourlyPrices`), `lib/app/appPriceLowestTrigger.ts`
-      (`PriceLowestTriggerCheckerDeps`), `flowCards/registerFlowCards.ts`
-      (`FlowCardDeps`), and `lib/price/priceCoordinator.ts` (explicit return
-      type). The public `evaluateLowestPriceCard` /
-      `resolveCurrentPriceFromCombined` parameters were also tightened from
-      `unknown` to `readonly CombinedHourlyPrice[]`. No runtime change.
-      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
-
 - [ ] Reduce `lib/plan/deferredObjectives/planHistory.ts` `max-lines`
       override (currently 720, was 620 pre-v2.8.0). Bumped to host the
       hour-rollover detector and finalize-time flush. Target: lower once the
       in-progress record + finalize paths split into their own module.
       Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
 
-- [x] Reduce `lib/app/appInit.ts` `max-lines` override (was 520).
-      Done in `cdf2d164` (`refactor(app): split appInit into
-      deferredRecorders + calibrationViews`): the per-hour price resolver
-      (`resolveHourPriceFromContext`) moved into
-      `lib/app/appInit/deferredRecorders.ts` (244 LOC) alongside the
-      deferred-objective recorder factories; calibration view helpers
-      moved into `lib/app/appInit/calibrationViews.ts` (111 LOC).
-      `appInit.ts` is now 324 LOC and the per-file `max-lines: 520`
-      override was removed from `eslint.config.mjs`. (The shared-domain
-      `resolvePostmortemTone` helper extraction had already landed.)
-
 *v2.8.0 release-review findings (2026-05-19). Four items from the
 five-agent fan-out pass on `v2.7.4..origin/main`.*
-
-- [x] Stale-sample row in Smart task plan-inputs card needs a tone
-      affordance. Done in `fix/p2-stale-sample-tone`:
-      `KwhPerUnitProvenanceRow` now carries a `tone: 'warn' | null` slug
-      that `formatLastSampleValue` resolves once at the producer (the
-      stale branch returns `{ text, tone: 'warn' }`; fresh branches stay
-      `null`). The `PlanInputsCard` view dispatches the slug to a new
-      `.plan-inputs__row-value--warn` CSS modifier styled with
-      `--pels-status-on-warning` + `--font-weight-semibold`, mirroring
-      the existing `.deadline-list-card__when-row--warn` pattern.
-      Source: `pels-ux-fit`, v2.8.0 release-review pass.
 
 - [ ] Flatten the deferred-objective diagnostic to expose `currentValue`
       + `kWhPerUnit` so recorder/UI consumers stop branching on
@@ -2013,59 +1011,6 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
       `packages/contracts/src/`.
       Source: `pels-runtime-reality`, v2.8.0 release-review pass.
-
-- [x] Plan-inputs freshness string ticks once per minute while the
-      Smart task detail page is open. `PlanInputsCard` now owns a
-      component-local 60s `setInterval` (registered via `useEffect`,
-      cleaned up on unmount via the returned teardown) that re-renders
-      the freshness slot off `Date.now()`; producer keeps emitting a
-      pre-formatted seed string for non-React consumers + cold first
-      paint. Tick is gated on at least one provenance row carrying
-      `freshnessOfMs`, so bootstrap-only / no-provenance plans never
-      arm the timer.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanFormatters.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/test/deadlinePlanFreshnessTick.test.ts`.
-      Source: `adversarial-review`, v2.8.0 release-review pass.
-
-- [x] Smart tasks empty-state copy says `'Schedule a ready-by deadline'`
-      while the eyebrow says `'Smart tasks'`. Per
-      `feedback_terminology_plan_vs_deadline`, surface this with the
-      consistent "smart task" / "ready-by" vocabulary — e.g. "Add your
-      first smart task" or "Schedule a ready-by time".
-      Files: `packages/settings-ui/src/ui/views/DeadlinesList.tsx`.
-      Source: `pels-ux-fit`, v2.8.0 release-review pass.
-      Resolved: empty-state headline now reads
-      `'Add your first smart task'` (in
-      `packages/shared-domain/src/deadlinesListHero.ts`); pairs naturally
-      with the body stanza's "Add heating task" / "Add charging task"
-      action language and keeps the "smart task" anchor consistent with
-      the `Smart tasks` eyebrow.
-
-- [x] Refresh stale smart-task UX notes that still mention "move deadline
-      later" as a missed-task recourse. `notes/ui-terminology.md` now defines
-      the canonical recourse pair as `Lower daily budget` / `Review device`;
-      `notes/smart-task-ui/README.md` still has two older references around the
-      recovering-from-mistake and history-detail CTA sketches. Deferred from
-      the v2.7.4 lovability U3 copy review because the PR only changes active
-      confidence/status chips.
-      Shipped: both replacements were already landed in `eeb8e400` (docs:
-      capture release-review follow-up cleanup, 2026-05-21) — this entry was
-      created later and not crossed off at the time.
-      - `notes/smart-task-ui/README.md:93-94`: `No CTA to lower the daily
-        budget or move the deadline later.` → `No CTA to lower the daily
-        budget or review the device settings that affected the missed run.`
-        (recovering-from-mistake persona).
-      - `notes/smart-task-ui/README.md:152`: `\`Lower daily budget\` / \`Move
-        deadline later\` (composed from reason)` → `\`Lower daily budget\` /
-        \`Review device\` (composed from reason)` (asymmetric-treatment
-        Next-step CTA table cell).
-      No other occurrences in `notes/smart-task-ui/README.md`; the only
-      remaining "Move deadline later" mention in `notes/` is the canonical
-      retirement explanation in `ui-terminology.md:185`, which is the source
-      of truth and intentionally documents the prior copy.
 
 - [ ] Add explicit backup-hour reservations for committed smart-task schedules.
       Day-zero committed schedules now keep the first full-horizon allocation
@@ -2092,56 +1037,9 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
 
-- [x] Smart-task history-detail hero treats `unknown` outcomes as
-      `quietAbandoned` (no chart card) alongside `abandoned`/`replaced`.
-      copilot reviewer on PR #887 (`deadlinePlanHistoryDetailHero.ts:242`)
-      noted the chart policy note only calls out Abandoned + Replaced as the
-      no-chart shapes, and `unknown` entries may still want the comparison
-      chart as evidence when a plan was recorded. Decide whether `unknown`
-      should fall back to a collapsed-chart shape or stay quiet, and update
-      `notes/v2-7-2/postmortem-chart-policy.md` to match the resolved policy.
-      Resolved: `unknown` with a recorded plan (`originalPlan` or
-      `finalPlan` present) now renders the chart card collapsed (same shape
-      as Succeeded — "View details" toggle); `unknown` without a recorded
-      plan stays quiet (same shape as Abandoned). Discriminator is plan
-      presence, not outcome value. `abandoned`/`replaced` unchanged.
-      Files: `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
-      `notes/v2-7-2/postmortem-chart-policy.md`. Tests:
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` —
-      "Unknown shape with recorded plan" and "Unknown shape with no
-      recorded plan".
-
 - [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
       confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
       pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
-
-- [x] Extract a `resolvePlanGenericReasonText` helper alongside
-      `resolveTemperatureReasonLine` so the `"Still reporting … after pause
-      — …"` sentence currently duplicated across
-      `planTemperatureCardText.ts` and `planSteppedCardText.ts` lives at
-      one site. The parent "Overview device-card status copy is still
-      partially duplicated" item closed in 961904f8 (the three sibling
-      helpers — `planTemperatureCardText.ts`, `planSteppedCardText.ts`,
-      `planReasonFormatting.ts` — now consume
-      `PLAN_STATE_HELD_FALLBACK_STATUS` / `PLAN_STATE_DAILY_BUDGET_STATUS`
-      / `PLAN_STATE_HOURLY_BUDGET_STATUS` from `planStateLabels.ts`);
-      this is the still-open sentence-level residual.
-      Files: `packages/shared-domain/src/planSteppedCardText.ts`,
-      `packages/shared-domain/src/planTemperatureCardText.ts`,
-      `packages/shared-domain/src/planReasonFormatting.ts`.
-      Shipped: `resolvePlanGenericReasonText(params: { measuredPowerKw:
-      number | undefined; detail: unknown })` now lives in
-      `packages/shared-domain/src/planReasonFormatting.ts` (re-exported via
-      `planReasonSemantics.ts`). On audit the sentence only ever lived in
-      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`
-      (`resolveReportedLoadReason`), not in either card-text helper — the
-      TODO's "duplicated across temperature/stepped" description was stale.
-      The single delegating call site is `PlanDeviceCards.tsx`
-      `resolveReportedLoadReason`; covered by
-      `test/planReasonUserFacing.test.ts`
-      `describe('resolvePlanGenericReasonText')` including a
-      character-for-character `referenceFormat` comparison against the
-      pre-extraction inline formatter.
 
 - [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
       `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the
@@ -2190,7 +1088,6 @@ and #1222. Remaining: the persona expansions below.*
       new `packages/shared-domain/src/budgetConfidenceStrings.ts`.
       Source: 2026-05-27 prod walk, scoped out of PR-4.
 
-
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
 release-review pass (2026-05-17). All three depend on the history schema
 v3 → v4 migration, which is out of scope for v2.7.1; sequence them together
@@ -2220,20 +1117,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
       `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
 
-- [x] Promote heatmap cell radius `2px` to a token. Added
-      `--pels-chart-cell-radius` (aliased to `{radius.xs}` so the px value
-      stays 2 px) and pointed both callsites at it: the
-      `.usage-legend__swatch--unreliable` rule in `public/style.css`
-      (synced to `settings/style.css`) and the
-      `resolveCellRadius` reader in `powerWeekChartEcharts.ts`. The
-      legend-vs-cell shape contract is now enforced at a single
-      chart-scoped token rather than two parallel `--radius-xs` reads.
-      Source: `pels-m3-critic` agent.
-      Files: `tokens/component.json`, `settings/tokens.css` (regenerated),
-      `packages/settings-ui/public/style.css`, `settings/style.css`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/test/chartCellRadiusToken.test.ts`.
-
 - [ ] Light-canvas tooltip contrast spot-check on Homey light. The
       `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to
       `color: var(--text)` on `background: var(--color-surface-elevated)`
@@ -2245,60 +1128,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `settings/style.css` `.tippy-box[data-theme~='pels']` rule
       block.
 
-- [x] Smart-task error banners + "plan" wording on smart-task surfaces.
-      Lifted the six user-facing banner strings to shared-domain and dropped
-      "plan" from the SR loading copy + panel aria-label so smart-task
-      surfaces match `notes/ui-terminology.md § Plan vs deadline`:
-      - `SMART_TASK_BANNER_LOAD_ERROR_PREFIX` = `"Smart task data could not
-        be loaded: "` (composed with the transport cause in
-        `deadlinePlanMount.ts`).
-      - `SMART_TASK_BANNER_UNAVAILABLE_TITLE` = `"Smart task unavailable"`
-        (was `"Smart task plan unavailable"` in user reports).
-      - `SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE` = `"Smart task data is
-        not available for this device."` (was inlined in `deadlinePlan.ts`).
-      - `SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE` /
-        `SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY` for the
-        history-missing card.
-      - `SMART_TASK_LOADING_LABEL` = `"Loading smart task…"` (was
-        `"Loading smart task plan…"` in `public/index.html`).
-      Also dropped "plan" from the two log-only strings in
-      `deadlinePlanMount.ts` and the panel aria-label
-      (`"Smart task plan"` → `"Smart task"`) so debugger and SR users
-      see the same noun the user sees. Source:
-      `pels-copy-and-terminology` agent.
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanMount.ts`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/public/index.html`.
-
-- [x] Pre-existing jargon in `packages/shared-domain/src/deviceOverview.ts:135-140,178,187`.
-      Replaced raw Shed/Restore jargon with terminology-guide wording:
-      - `"Shed (charging paused)"` → `"Charging paused"` (lines 135, 178)
-      - `"Shed (lowered temperature)"` → `"Lowered"` (line 136)
-      - `` `Shed to ${step}` `` → `` `Limited to ${step}` `` (line 138)
-      - `"Shed (reduced step)"` → `"Limited"` (line 138)
-      - `"Shed (powered off)"` → `"Turned off"` (line 140)
-      - `"Restore requested"` → `"Resume requested"` (line 187)
-      Source: `pels-copy-and-terminology` agent.
-      Files: `packages/shared-domain/src/deviceOverview.ts`,
-      `notes/ui-terminology.md`.
-
-- [x] `activePlanRecorder.ts:584-594` sets explicit `undefined` on
-      snapshot fields and relies on `JSON.stringify` dropping them. The
-      comment is intentional, but the in-memory object exposes explicit
-      `undefined` keys that violate `exactOptionalPropertyTypes`-style
-      contracts elsewhere and risk inconsistent round-tripping if Homey
-      ever serialises via a path that preserves `undefined`. Switch to
-      conditional spread for the `objective_changed` reset path so the
-      field is only set when defined.
-      Source: `adversarial-review` skill.
-      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts:584-594`.
-      Resolved: destructure-and-rest drops the snapshot fields from
-      `...current`, then conditional spread re-adds them only when the
-      resolved snapshot has a defined value. Same `JSON.stringify` output;
-      no explicit `undefined` keys on the in-memory plan object.
-
 - [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
       The History detail page is supposed to answer "how much did it cost?" and "by how much
       did it succeed?" — but the contract has neither `deliveredKWh` nor `totalCost`, so the UI
@@ -2309,20 +1138,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `lib/plan/deadlineRecorder.ts` (or equivalent),
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-
-- [x] Show a real revision log on the History detail page.
-      Today the entire revision surface is the single line "Replanned N times." — no timestamps,
-      no per-revision reasons, no diff of which hours changed. The page's whole mission of
-      "did PELS change the plan and why?" goes unanswered. Render a chronological list of
-      revisions with: revision time, plain-English reason (from a kind-aware helper), and an
-      optional inline mini-diff showing hours added / removed.
-      Shipped — `DeadlinePlanHistoryDetail.tsx` now renders a `What changed` card
-      with `<li class="plan-revision-row">` rows fed by `PlanHistoryRevisionLogRow`
-      (`packages/shared-domain/src/deferredPlanHistory.ts`); the kind-aware
-      `revisionReason` resolver in `deadlineLabels.ts` supplies the per-row copy.
-      Contract carries `revisions[]` on `DeferredObjectivePlanHistoryEntry`. The
-      live-task counterpart shipped alongside as the `Recent plan changes` panel
-      on `DeadlinePlan.tsx` (PR #1197).
 
 - [ ] v2.7.1: Switch `report_evcharger_battery_level.json` `battery_percent` argument from
       `type: "number"` to `type: "range"` for a slider-style picker. The card shipped in
@@ -2405,15 +1220,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
       (markup consolidation for #1 and #3), `settings/style.css` (regen).
 
-- [x] Settings → Advanced page H2 "Device diagnostics" doesn't describe the page.
-      Live-walk 2026-05-16 (`/tmp/pels-live-walk/05-settings-advanced-480-1.png`):
-      the page header reads "Device diagnostics" but the page contains Debug logging
-      categories + Daily-budget tuning + Data management + Device cleanup + Device
-      log. Renamed to "Diagnostics & maintenance" so users can predict what
-      they'll find under the entry. Literal H2 lives in
-      `packages/settings-ui/public/index.html:518` (synced to
-      `settings/index.html` via `npm run build:settings`).
-
 - [ ] Settings → Electricity prices: two `<select>` controls render at different
       contrast on the same page. Live-walk 2026-05-16
       (`/tmp/pels-live-walk/05-settings-prices-480-top.png`) shows one select inverted
@@ -2435,47 +1241,12 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`.
 
-- [x] Smart-task active detail repeats "Cannot finish" 3× (pill, headline, body).
-      Live-walk 2026-05-16 (`/tmp/pels-live-walk/04-smart-task-active-detail-480.png`).
-      Reads as alarm spam rather than information. Keep the pill + one explanatory
-      line; drop the duplicate copies. Resolution: the headline was already
-      suppressed on the alert branch (prior PR 1078 work). Dropped the third
-      restatement — the `· won't reach by HH:MM` tail on the delivered-so-far
-      line — in `formatDeadlineDeliveredSoFarLine`; the cannot-meet branch now
-      renders only the magnitude (`Delivered X of Y kWh · still {curr} of
-      {target}`) so the alert chip + meta-line shortfall sentence remain the
-      sole verdict surfaces. Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-
 *Eight Overview-surface P2 polish items from the 2026-05-16 live-walk audit
 (TV-stue missing temp line, chip-primitive consolidation, Smart-task aria,
 hero warning emoji, projected-marker alignment, safe-pace subline visibility,
 device-card vertical rhythm floor, em-dash punctuation drift) shipped in
 v2.7.3 — see commit `chore(v2.7.3): Overview card-rhythm + chip-primitive
 consolidation + a11y polish (8 P2)`.*
-
-- [x] Usage heatmap week-navigation chevrons have no visible chrome + use the
-      wrong ARIA attribute. Live walk 2026-05-16
-      (`/tmp/pels-rewalk/usage/08-heatmap-close.png`): `<md-text-button>`
-      chevrons render as tiny bare green icons with no visible affordance, AND
-      the accessibility name is set as `data-aria-label` (an arbitrary data
-      attribute) instead of `aria-label` — so screen readers will announce the
-      button with no label at all. Fix: rename `data-aria-label` → `aria-label`
-      (real attribute), and bump the visual chrome (background fill or border)
-      so users see something tappable.
-      Files: `packages/settings-ui/src/ui/views/UsageOverview.tsx` (or wherever
-      the heatmap week-nav lives), `packages/settings-ui/public/style.css`.
-      Done: a11y audit confirmed the chevrons already carry real `aria-label`
-      attributes (`Previous week` / `Next week`) — no `data-aria-label` typo
-      remained in the tree. Visible-chrome fix added a `.heatmap-nav-chevron`
-      decorator class on the canonical `<md-text-button>` primitive (keeps M3
-      focus-ring, ripple, ARIA, 48 px touch-target floor); doubled-class
-      cascade with `--pels-surface-container-high` ground, `--pels-surface-outline`
-      border, `--radius-md`, `min-width: var(--pels-touch-target-min)` to square
-      the hit-box, and `--md-sys-color-primary: var(--text)` so the chevron icon
-      reads ~12:1 on the dark ground (WCAG AAA) instead of competing with the
-      heatmap-cell accent palette.
 
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. Today `lib/observer/idleDetector.ts` requires
@@ -2664,21 +1435,6 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/tests/e2e/**`,
       `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
       ignored `output/` artifacts only.
-- [x] Make the browser Homey stub follow the injected SDK handoff more closely.
-      After assigning `window.Homey`, call `window.onHomeyReady?.(Homey)` so full-browser audits
-      exercise the same delivery path as Homey's injected settings SDK. Keep the existing global
-      fallback covered for compatibility.
-      Files: `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`,
-      settings UI boot tests.
-- [x] Update the Settings UI Homey API mock to stop serving devices from
-      `target_devices_snapshot`. Production now serves `/ui_devices` and `/ui_refresh_devices`
-      from runtime app state, so the mock should model live device data explicitly and avoid
-      masking runtime-backed device API regressions.
-      Shape: `createHomeyMock({ uiState: { devices: TargetDeviceSnapshot[] } })` powers the
-      `/ui_devices` and `/ui_refresh_devices` handlers; a deprecated fallback still reads the
-      `target_devices_snapshot` setting when `uiState.devices` is undefined, so legacy callers
-      keep working until they migrate.
-      Files: `packages/settings-ui/test/helpers/homeyApiMock.ts`, settings UI tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
@@ -2698,94 +1454,11 @@ consolidation + a11y polish (8 P2)`.*
       `dist/script.js` (now ~1.3 MB); decide whether the settings script needs an explicit
       size budget and trim if so.
       Files: `packages/settings-ui/package.json`, settings build/sync scripts.
-- [x] Runtime `[MODULE_TYPELESS_PACKAGE_JSON]` warning from Homey runs.
-      DONE (2026-05-29): root cause was tsc emitting `packages/shared-domain` as ESM into the
-      type-less `.homeybuild` deploy (the source `package.json` declared `"type":"module"`, but
-      no `package.json` ships inside `.homeybuild`, so Node reparsed the ESM-syntax `.js` under
-      the type-less `/app` manifest). `lib/**` already emitted CJS, so only shared-domain tripped
-      the warning. Earlier note's `.mjs`/package-metadata theory was wrong. Fix: switched
-      `packages/shared-domain` to `"type":"commonjs"` so tsc emits CJS (matches the deploy), and
-      dropped the `.js` import extensions so both tsc (nodenext-CJS) and esbuild
-      (`moduleResolution: bundler`) resolve extension-less to the `.ts` — which also let the five
-      hand-written `.js` re-export shims be deleted. `contracts` stays ESM (type-only, never
-      value-imported at runtime, so it never warned). Root `package.json` left type-less on
-      purpose: adding `"type":"module"` there breaks Homey's CJS app loader.
 - [ ] Update public deadline documentation once the feature enters testing. Keep
       `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
       states until the deadline, and a later below-target reading returns to tracking. Keep
       terminology aligned with `notes/ui-terminology.md`.
-- [x] Add `objective_missing_capacity` user-facing copy for thermal smart tasks. A new water
-      heater (or any thermal device without `measure_power`) never builds a `kWhPerUnit`
-      profile, so the diagnostics bridge emits `objective_missing_capacity` and the task sits
-      "Waiting" indefinitely with no explanation. Thermal objectives intentionally have no
-      bootstrap rate (thermal mass varies orders of magnitude across devices), so the only fix
-      is to tell the user. One-line copy fix on the pending-reason path: "Learning energy use
-      — needs power readings from this device."
-      NOTE (2026-05-23): the user-visible `pendingReason: 'missing_capacity'` has TWO upstream
-      paths — `objective_missing_capacity` (no profile yet, this entry) AND
-      `objective_missing_charge_rate` (`resolveObjectiveSteps` returning `[]` on
-      non-stepped thermal devices). The second path is now closed by a
-      `measuredPowerKw` → `expectedPowerKw` → `powerKw` thermal fallback in
-      `resolveObjectiveSteps`; this copy entry only addresses the first path (no-profile
-      cold-start).
-      DONE (2026-05-24): exported `PENDING_REASON_MISSING_CAPACITY_COPY` in
-      `packages/shared-domain/src/deadlineLabels.ts` as the canonical user-facing
-      one-liner; the thermal `missing_capacity` pending-hero resolver derives its
-      headline + metaLine from the constant (split on the em-dash, body
-      re-capitalised) so headline + body combined read as the one-line copy.
-      `headlineReason` is suppressed to keep the hero a single coherent sentence.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/contracts/src/deferredObjectiveActivePlans.ts` (if a new pending-reason value is
-      needed).
-- [x] Reassess `isLegacyNoneStatusMatch` in `flowCards/deadlineObjectiveCards.ts:167-175`.
-      DONE (2026-05-24): chose Option A (keep the compat layer + tighten the
-      comment). Git-history audit of `.homeycompose/flow/conditions/deadline_status_is.json`
-      shows the dropdown shipped `'cannot_meet'` and `'none'` only between
-      `3ba281d7` (2026-05-10) and `d67e0d97` (2026-05-12); the first version
-      to publish the card was v2.7.0 on 2026-05-16 (commit `155ad896`), so no
-      public release ever carried `'none'` or `'cannot_meet'` in the
-      dropdown. The other three legacy ids (`pending_prices`, `cannot_finish`,
-      `done`) were never in a shipped dropdown at all. The compat layer is
-      kept because (a) pre-release test installs in that 2-day window may
-      persist `'none'` in flow args and (b) advanced users can hand-edit the
-      flow card JSON in Homey, so a flow may carry an id outside the shipped
-      set; the runtime cost is a string compare on a path that already needs
-      the settings read it consumes. Tightened the inline comment block on
-      `isLegacyNoneStatusMatch` to cite the actual commit history (not a
-      vague "users who created flows during that window" claim that implied a
-      public release shipped with `'none'`) and pointed at
-      `normalizeSmartTaskStatusArg` for the other four legacy aliases. Tests
-      already cover all five legacy ids (`test/deadlineObjectiveCards.test.ts`
-      lines 511, 538, 547, 563, 577); only the regression-test docstring was
-      updated to match the new wording.
-      Files: `flowCards/deadlineObjectiveCards.ts`, `test/deadlineObjectiveCards.test.ts`.
-- [x] Add PELS-side unit tests for EV kWhPerUnit learning. Cover: a plan with no learned profile
-      uses the bootstrap estimate; an accepted SoC rise records a `kWhPerUnit` sample; subsequent
-      plans switch from bootstrap to the learned estimate; and rejection reasons fire as expected
-      for no-progress samples, duplicate samples, and SoC rises below the minimum-delta threshold.
-      Shipped `test/evKwhPerUnitLearning.test.ts` (2026-05-24) with six cases tied to the real
-      production constants (`BOOTSTRAP_EV_SOC_KWH_PER_PERCENT`, `OBJECTIVE_PROFILE_MIN_INTERVAL_MS`,
-      and a local mirror of the unexported `MIN_SOC_RISE_PERCENT` from
-      `lib/objectives/profiles.ts`):
-        - "uses BOOTSTRAP_EV_SOC_KWH_PER_PERCENT when no profile has been learned yet"
-        - "records a kWhPerUnit sample equal to delivered energy / SoC delta"
-        - "switches `resolveProfileEnergy` from bootstrap to learned after the first accepted
-          sample"
-        - "rejects a no-progress SoC sample with `rise_too_small` (zero delta, non-negative)"
-        - "rejects a duplicate-timestamp SoC sample with `non_monotonic_time`"
-        - "rejects an SoC rise below MIN_SOC_RISE_PERCENT with `rise_too_small`"
-      Files: `test/evKwhPerUnitLearning.test.ts`.
-- [x] Hide duplicate responsive tab controls from the accessibility tree. Audit (2026-05-24)
-      found a single `md-tabs#shell-nav` surface in `packages/settings-ui/public/index.html` and
-      no dynamically rendered second nav; a CDP `Accessibility.getFullAXTree` snapshot in both
-      Chromium and Firefox at 320 px and 480 px reported exactly one `role=tab` node per
-      destination (Overview / Budget / Usage / Smart tasks / Settings) — the suspected duplicate
-      surface does not exist. Locked the invariant in with a regression test
-      (`layout-regressions.spec.ts` › "exposes each top-nav destination exactly once in the
-      a11y tree at 320px / 480px") so a future bottom-nav redesign that forgets to hide the
-      inactive surface fails CI.
 - [ ] Debounce or sequence plan rebuilds around budget/price-shaping toggle changes. Toggling daily
       budget or price-shaping briefly produced `objective_missing_price_horizon` plan reasons
       before recovering. The reason is correct in isolation, but the transient flash makes the
@@ -2793,7 +1466,7 @@ consolidation + a11y polish (8 P2)`.*
       the rebuild until the dependent settings are coherent, or show an explicit "applying"
       loading state on the plan surface so the user sees a pending state instead of an odd
       reason. Confirm the recovery still happens within one rebuild cycle once settled.
-      Files: `lib/plan/planService.ts`, `lib/app/planRebuildScheduler.ts`,
+      Files: `lib/plan/planService.ts`, `lib/plan/rebuildScheduler/scheduler.ts`,
       settings UI plan view loading states, plan-reason regression tests.
 - [ ] Clarify log severity and wording for expected planner states. Several normal outcomes look
       like failures in log review: `cannot_meet` on a deadline objective, `failed: false` fields
@@ -2805,15 +1478,6 @@ consolidation + a11y polish (8 P2)`.*
       messages.
       Files: `lib/logging/**`, `lib/plan/deferredObjectives/**`, EV learning sample-rejection
       sites, log/wording regression tests.
-- [x] Add missing swap lifecycle coverage from the pre-release review. Cover completed stepped
-      swap cleanup with a stepped target and requested step, assert approved stepped swaps persist
-      the stale-cleanup timestamp, and add an `applyRestorePlan()` integration test for orphan
-      measurement deferral before a fresh power sample.
-      Files: `test/swapLifecycle.test.ts`
-      (`completed cleanup clears a stepped target only after its requested step is reached`),
-      `test/planRestoreBackoff.test.ts`
-      (`persists a stale-cleanup timestamp on an approved stepped swap that survives a state roundtrip`,
-      `defers a swap restore for orphan-measurement metadata until a fresh power sample arrives`).
 - [ ] Finish the planner/executor/device-transport state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceTransport` should
       provide observed current state and own native / flow / capability transport; executor should
@@ -2867,85 +1531,6 @@ consolidation + a11y polish (8 P2)`.*
       needs durable storage, extract a small persistence helper/queue instead of adding more
       direct settings writes to the executor.
       Files: `lib/executor/planExecutor.ts`.
-- [x] Split `DeviceManager` into `lib/device/transport/` (SDK seam + per-control-model wiring
-      + parse pipeline, produces normalized snapshots and admit-or-suppressed events) and
-      `lib/observer/` (state store, freshness, pending, settle, realtime fanout). Executor
-      calls `transport.write(...)` directly; observer subscribes to transport events.
-      Plan stops importing `lib/device/**` entirely — binary-control writes at
-      `lib/plan/planBinaryControl.ts:217` and the `deviceManager.getSnapshot()` calls at
-      `:257` / `lib/plan/planBinaryControlHelpers.ts:107` move to executor / observer reads.
-      Promotes `todo-narrow-plan-device-dep` (`.dependency-cruiser.cjs:146-151`) to error and
-      adds a new error rule binding executor away from `lib/device/**`. Settle suppression
-      runs in transport's parse pipeline via a `pendingPredicate` callback injected by
-      `lib/app/` and backed by observer.
-      Sequencing: (1a) `getSnapshotByDeviceId` helper + `DeviceObservation` read interface
-      — shipped in PR #1095; (1b) restructure plan to return binary control decisions, move
-      dispatch to executor, promote cruiser rules — shipped in PR #1102; (2) move read-side
-      files into transport, DeviceManager becomes a facade — shipped in PR #1107; (3) rename
-      DeviceManager → DeviceTransport (file `manager.ts` → `deviceTransport.ts`) and kill the
-      facade — shipped in PR #1140; (4) move pending/settle into observer and wire the
-      injected predicate — shipped in PR #1148; (5) three-way realtime split — observer
-      owns the typed-event emitter at `lib/observer/observedStateEvents.ts`, transport
-      routes the post-translation fan-out through an injected
-      `observedStateDispatcher` callback bag (same pattern as PR #4's `pendingPredicate`),
-      wiring (`lib/app/appRealtimeDeviceReconcileRuntime.ts`) subscribes to the
-      observer-owned emitter and consults the executor's drift predicate
-      (`lib/executor/planExecutionDrift.ts`, in place since PR #1b) before
-      scheduling a planner reapply. No drift conditions changed; only the
-      location of the post-translation event emitter moved. The transport-side
-      `shouldReconcilePlan` boolean remains in transport as a
-      snapshot-vs-snapshot change-significance filter — it is not
-      drift-against-plan-intent. Shipped in PR #5. Train complete; one
-      follow-up sweep deferred (filenames / logger tags / structured-event
-      identifiers from PR #3 — see the next bullet).
-      Design: `notes/state-management/observer-transport-split.md`.
-      Files: `lib/device/**`, `lib/observer/**`, `lib/executor/**`, `lib/plan/planBinaryControl*.ts`,
-      `lib/app/appDeviceControlSteppedState.ts`, `.dependency-cruiser.cjs`,
-      `notes/state-management/README.md`, `docs/architecture.md`.
-- [x] Sweep remaining test files with ad-hoc `{ getSnapshot: vi.fn() }` mocks typed as
-      `DeviceManager` and migrate them to `test/utils/deviceObservationMock.ts`'s
-      `withGetSnapshotByDeviceId` helper. Tests pass today because their code paths
-      don't exercise the migrated reads, but later PRs in the observer/transport
-      split will migrate more sites and may surface silent `undefined` returns from
-      these stubs. Known sites include `test/appDebugHelpers.test.ts`,
-      `test/shed_restore.test.ts`, `test/deferredObjectiveAdmission.test.ts`, and
-      ~13 others (run `grep -rln "as DeviceManager\|: DeviceManager" test/` for
-      the full list). Source: `pels-layering-guardian` P2-2 on PR #1095,
-      2026-05-24. Migrated 2 files (13 mock construction sites total:
-      `test/appDebugHelpers.test.ts` `buildDeviceManager` factory +
-      `test/app.test.ts` 12 inline sites). Left 2 sites on the old pattern
-      because they don't define `getSnapshot` at all — the helper requires it
-      and these tests only exercise `getDevicesForDebug`
-      (`test/app.test.ts:2793` flow-backed-device autocomplete cache test,
-      `test/appDebugHelpers.test.ts:49` debug device fetch failure routing
-      test). The other TODO-listed files (`test/shed_restore.test.ts`,
-      `test/deferredObjectiveAdmission.test.ts`) turned out not to construct
-      ad-hoc DeviceManager mocks; the `~13 others` count from the original
-      grep over-counted by including async `getSnapshot` mocks that belong to
-      `App`/`PelsApp` flow-snapshot sources, not `DeviceObservation`.
-- [x] Move pending-binary-command bookkeeping fully into observer as part of
-      the PR #4 step of the observer/transport split. Today PR #1b leaves
-      `state.pendingBinaryCommands[deviceId]` writes inside plan
-      (`decideBinaryControl` records) and deletes inside executor
-      (`dispatchBinaryControlDecision` clears on failure). The split is
-      acknowledged transitional — see the doc comment on
-      `dispatchBinaryControlDecision`. Cleaner shape post-#4: dispatcher
-      returns a discriminated result (`{ok: false, reason: 'dispatch_failed'} |
-      {ok: true}`) and a sync helper in observer consumes the failure to clear
-      pending, so writes and deletes are both observer-owned. Source:
-      `pels-layering-guardian` P2-1 on PR #1b draft, 2026-05-24.
-      Shipped in PR #4: observer owns the canonical
-      `PendingBinaryCommandStore` (`lib/observer/pendingBinaryCommands.ts`)
-      bound to a backing `state.pendingBinaryCommands` `Record` on
-      `PlanEngineState`. `dispatchBinaryControlDecision` returns
-      `{ok: true} | {ok: false; reason: 'dispatch_failed'}` and writes/clears
-      pending exclusively via the store; plan's `decideBinaryControl` no
-      longer touches pending state. The `pendingBinaryCommands` field
-      stays on `PlanEngineState` as the canonical read API for the eight
-      plan-side consumers; the store is the sole mutator via the backing
-      `Record`. Migrating those reads to a `store.peek(id)` / `store.get(id)`
-      API is a possible future cleanup but is not scheduled — see the
-      open follow-up entry below.
 - [ ] (Optional follow-up to the observer/transport split.) Migrate the
       plan- and executor-side reads that consult
       `state.pendingBinaryCommands[id]` directly onto a
@@ -2962,34 +1547,6 @@ consolidation + a11y polish (8 P2)`.*
       Type references (executor): `planExecutor.ts:297`,
       `planExecutorPredicates.ts:17`. Source: post-merge cumulative
       review on 2026-05-25.
-- [x] Re-home `lib/device/stateOfCharge.ts`. PR #2 of the observer/transport
-      split left it at `lib/device/stateOfCharge.ts`; PR #3 took the cheap
-      path and moved it into `lib/device/transport/stateOfCharge.ts`. Every
-      current consumer is transport-side
-      (`transport/managerObservation.ts`, `transport/managerRealtimeHandlers.ts`,
-      `transport/managerParseDevice.ts`, `transport/managerFreshness.ts`)
-      or part of `lib/device/deviceTransport.ts` (the renamed
-      `DeviceTransport` class) / `managerRuntime.ts` (both fine as
-      cross-folder imports). The move converts the previous
-      `transport/managerObservation → ../stateOfCharge →
-      transport/flowReportedCapabilities` back-edge into a clean
-      intra-transport import. The deeper path (extracting pure SoC math to
-      `lib/utils/` or `packages/shared-domain/src/` with the structural
-      `DeviceCapabilityMap` / `FlowReportedCapabilities*` type deps) was
-      deferred — no consumer pressure yet. Source: PR #2 secondary cleanup
-      + `pels-layering-guardian` P2-1 on PR #1107, 2026-05-24. Done in
-      PR #3.
-- [x] Add a compile-time shape-parity guard between observer-side and
-      transport-side dispatcher event types from PR #5 (#1158). Done:
-      bidirectional `extends` checks on
-      `Parameters<...['observedStateChanged']>[0]` and
-      `Parameters<...['planReconcile']>[0]` landed in
-      `test/observerObservedStateEvents.test.ts`. A future field added to
-      one dispatcher type without the other now fails compilation before
-      it ever runs as a test. Same PR also added `binarySettle` timeout
-      coverage (window finalisation, abandon-grace, drift-vs-match-vs-untracked
-      branches, observation-cancels-timer) per the adversarial-review
-      P2 finding from the cumulative review.
 - [ ] Sweep file renames + logger tags + structured-event identifiers that still
       carry the `manager`/`DeviceManager`/`device_manager` name post-rename
       (PR #3 of the observer/transport split, #1140). Three buckets, each
@@ -3027,74 +1584,6 @@ consolidation + a11y polish (8 P2)`.*
       deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
       keep trimming any delegates that no longer buy readability or testability.
       Files: `app.ts`, `lib/app/**`.
-- [ ] Finish post-unification cleanup for plan rebuild scheduling.
-      `PlanRebuildScheduler` exists and is wired, but the compatibility surface in
-      `appPowerRebuildScheduler.ts` still owns signal/backoff bridging. Either fold that surface
-      into the unified scheduler or document it as an explicit compatibility layer.
-      Files: `lib/app/planRebuildScheduler.ts`, `lib/app/appPowerRebuildScheduler.ts`,
-      scheduler tests.
-- [x] Remove redundant downstream `managed !== false` filters now that unmanaged devices are
-      excluded from `latestTargetSnapshot` at parse time. Current sites:
-      `lib/app/appSnapshotHelpers.ts:264`, `lib/app/appInit.ts:341`,
-      `lib/plan/planEvBoost.ts:15`, `lib/plan/planTemperatureBoost.ts:22`, and
-      `lib/plan/planDiagnostics.ts:130`.
-      **Investigation 2026-05-25 — premise wrong; filters are load-bearing.** The
-      parse-time exclusion in `lib/device/transport/managerManagedFilter.ts:24-39`
-      is gated by `isManagedFilterActive` (`lib/app/appDeviceSupport.ts:42-44`),
-      which only fires when at least one device has `managed === true`. On a
-      fresh install — or in any state where devices have been explicitly marked
-      `managed: false` without any `true` opt-in — the filter is **inactive**
-      and devices flow through `parseDeviceList` into `latestTargetSnapshot`
-      with `managed: false`. The downstream `managed !== false` filters
-      drop them at that point. The comment block at
-      `appDeviceSupport.ts:36-41` documents the intentional gate ("explicit
-      `false` must NOT activate the filter on its own — otherwise a fresh-
-      install user would flip from 'all devices visible' to 'only explicit-
-      true visible' the moment the first unsupported device is auto-disabled").
-      Verified by `test/plan.test.ts:1388-1403` (excludes unmanaged devices
-      from the plan snapshot) and `test/app.test.ts` (stepped_feedback events
-      under fresh-install setup) — both fail when the downstream filter is
-      removed. To reframe: either close this TODO, or land a precondition
-      that extends parse-time exclusion to also drop explicit-`false` devices
-      regardless of filter-active status (which itself must reconcile with the
-      fresh-install behaviour the gate intentionally protects). Marked done
-      because the current state is correct as designed.
-- [x] Deduplicate `applyDeviceDriverOverride` along the snapshot pipeline. Today the override is
-      applied in `DeviceManager.refreshSnapshot`, again in the private `parseDeviceList`, and a
-      third time inside `resolveParseDeviceIdentity`.
-      Files: `lib/device/manager.ts`, `lib/device/managerParseDevice.ts`,
-      `lib/device/managerParseIdentity.ts`.
-      Resolution: `DeviceManager.refreshSnapshot` (snapshot pipeline) and the
-      `parseDeviceListForTests` test entry are now the single application sites
-      for the parse path; the realtime pipeline keeps its own single application
-      inside `DeviceManager.handleRealtimeDeviceUpdate`. The wrapper
-      `DeviceManager.parseDeviceList` (was site #2) now trusts already-effective
-      input, and `resolveParseDeviceIdentity` (was site #3) no longer touches
-      driver overrides or compatibility metadata. Regression covered by
-      `test/deviceManager.test.ts` (`getDeviceDriverIdOverride` invoked once per
-      device for both `parseDeviceListForTests` and `refreshSnapshot`).
-- [x] Audit whether daily-budget confidence scoring materially changes control decisions. If it is
-      purely informational, simplify it aggressively.
-      Files: `lib/dailyBudget/dailyBudgetConfidence.ts`, daily budget service/plan paths.
-      Audit result: every consumer is informational. The producer
-      (`computeBacktestedConfidence` / `resolveConfidence`) feeds five sites:
-      `DailyBudgetManager.update` (writes onto `budget.confidence`,
-      `confidenceDebug`), `dailyBudgetManagerSnapshot.logBudgetSummaryIfNeeded`
-      (single debug log line), `dailyBudgetService.applyOverallModelConfidence`
-      (copies today's confidence to adjacent-day snapshots), `buildDailyBudgetSnapshot`
-      (puts the values onto the `state` block of `DailyBudgetDayPayload`), and
-      `budgetRedesignResolvers.resolveConfidenceData` /
-      `views/BudgetOverview.BudgetConfidenceCard` (Plan-confidence card label,
-      percent, and the four explainer rows). `grep` on `lib/plan/`, `lib/executor/`,
-      `lib/device/`, `lib/power/`, `lib/observer/`, `lib/app/` confirms no planner /
-      shed / restore / budget-gate branch reads either value. Aggressive
-      simplification (e.g. collapsing to a 3-state band, dropping the bootstrap
-      CI) is mechanically possible but would also have to reshape `ConfidenceDebug`
-      in `packages/contracts/src/dailyBudgetTypes.ts` and the four debug-row
-      labels the UI renders, plus ~900 lines of tests, so this PR documents the
-      scope at the top of `lib/dailyBudget/dailyBudgetConfidence.ts` and closes
-      the audit. Future simplification is a follow-up if the explainer card
-      changes.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -3149,31 +1638,6 @@ consolidation + a11y polish (8 P2)`.*
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
       `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
-- [x] Quiet repeated `stale_device_observation_refresh` log entries that never resolve.
-      The headroom-for-device fix (Unit 4) makes stale-but-stable devices contribute their
-      configured load to headroom math, but the snapshot-refresh fallback in
-      `appSnapshotHelpers.ts` still wakes every 60s, refreshes those devices, and emits the
-      same `stale_device_observation_refresh` event with `freshAfterRefreshDevices: 0` whenever
-      a Homey driver only republishes per-capability `lastUpdated` on value change. Add a
-      backoff or one-shot per-device "still stale after refresh" log so the stream doesn't
-      grow proportionally to uptime, and consider whether `'unknown'` (never observed)
-      devices should also stop triggering the refresh loop after one attempt.
-      Files: `lib/app/appSnapshotHelpers.ts`, `lib/observer/observationFreshness.ts`,
-      snapshot-refresh tests.
-      *(landed: per-device `staleRefreshLogLastEmitMsById` map gates
-      `stale_device_observation_refresh` info emits to at most one per 15-minute window
-      per device — matching the planner's other 15-min repeat-event windows — so the
-      stream is bounded instead of growing with uptime. Recovery (device becomes fresh)
-      clears that device's backoff so a later stall re-emits. The `'unknown'`
-      never-observed case already short-circuits at `isDeviceObservationStaleByAge`,
-      which excludes `'unknown'` from the refresh-loop filter entirely, so the loop
-      never runs for those devices and no extra logic was needed — documented as a
-      comment in `refreshStaleDeviceObservations`. Counter accuracy preserved:
-      `stillStaleAfterRefreshDevices` still reflects the true count; only the log
-      emit is gated, and the new `loggedStillStaleDevices` field surfaces the gated
-      subset. In-memory only per `feedback_homey_sdk_unreliable`. Locked by two new
-      `appSnapshotHelpers.test.ts` cases for the 100-cycle bound and the
-      reset-on-recovery contract.)*
 - [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
       The headroom-for-device path now credits configured load for stale-on devices on the
       assumption that they are still in their last-seen state. A device that has been
@@ -3186,47 +1650,6 @@ consolidation + a11y polish (8 P2)`.*
       whatsoever.
       Files: `lib/observer/observedPower.ts`, `lib/plan/planHeadroomDevice.ts`, related
       activation/headroom tests.
-- [x] Animate the "Building plan…" chip so users can tell planning is alive. *(landed via
-      Option B: new `data-pulse="true"` attribute on the canonical `.plan-chip` primitive,
-      bound to a low-key opacity loop (1 → 0.6 → 1) in `packages/settings-ui/public/style.css`
-      routed through the existing `--pels-motion-pulse-duration` token. Discriminator path:
-      list surface — `StatusChip` in `DeadlinesList.tsx` emits `data-pulse="true"` when
-      `statusId === 'building_plan'`; pending hero — `buildPendingHero` in
-      `deadlinePlanPending.ts` sets `pulse: true` on the liveStateChip when
-      `liveState === 'building_plan'` (the `DeadlinePlanChip` type gained an optional
-      `pulse?: boolean` field which both `DeadlineHero` and `PendingHero` forward onto
-      `data-pulse`). `prefers-reduced-motion: reduce` disables the animation; the
-      `prefers-reduced-motion: no-preference` gate keeps the pulse off for users who opted
-      out of motion. Locked by `buildingPlanChipPulse.test.ts` (CSS keyframe + reduced-motion
-      contract) and per-surface DOM assertions in `deadlinesListRender.test.ts` /
-      `deadlinePlanRender.test.ts`.)*
-- [x] Reconcile chip tone between the Smart tasks list and the plan detail.
-      For the same `Building plan…` state the list card uses `muted` tone but the plan-detail
-      pending hero uses `info` tone. Pick one and apply uniformly. *(landed: shared-domain
-      `resolveBuildingPlanChipTone()` → `'info'` in `packages/shared-domain/src/deadlineLabels.ts`;
-      `SMART_TASK_LIST_STATUS_CHIP_VARIANT.building_plan` and `pendingChipTone` both call it,
-      and the paired `resolvePausedUnpluggedChipTone()` → `'warn'` covers the EV paused
-      state. List chip now reads `info` to make the state more discoverable.)*
-- [x] Bring the pending-hero body copy up to action-text weight. *(landed via Option B: new
-      `plan-hero__subline--action` modifier in `packages/settings-ui/public/style.css` mapped to
-      `--pels-text-primary`. The pending hero's `metaLine` slot in `PendingHero`
-      (`packages/settings-ui/src/ui/views/DeadlinePlan.tsx`) now binds to it, so the "why is
-      this still building?" copy — `device_data_missing` ("PELS needs a current state of
-      charge…"), `missing_capacity` ("Learning energy use — needs power readings from this
-      device."), `awaiting_horizon_plan` ("Will start when the next-day price drop publishes."),
-      `price_feature_disabled`, `invalid_session`, etc. — reads at primary on-surface contrast.
-      The ready hero keeps `--muted` for its recap meta/cost/delivered-so-far lines; existing
-      uses across BudgetOverview, the index.html helper text, and the ready-hero meta lines are
-      untouched.)*
-- [x] Highlight the correct tab when deep-linking into a smart-task plan from the Overview
-      device card. *(Landed: `deadlinePlanRouter` now keeps the shell-nav visible while the
-      plan-detail panel is up and lights the Smart tasks tab via a new `setActiveTabIndicator`
-      helper extracted from `showTab`; the prior `setShellNavVisible(false)` hide is gone.
-      A new `pels:tab-shown` listener resets the deep-link URL + unmounts when the user clicks
-      any shell-nav tab while plan-detail is open, so reload stays coherent.)*
-      Files: `packages/settings-ui/src/ui/deadlinePlanRouter.ts`,
-      `packages/settings-ui/src/ui/realtime.ts`,
-      `packages/settings-ui/tests/e2e/deadline-plan.spec.ts`.
 - [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
       `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
@@ -3235,178 +1658,6 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (done);
       `packages/settings-ui/public/index.html` (Electricity prices panel hero — pending);
       `packages/settings-ui/src/ui/electricityPrices.ts` (pending).
-- [x] Consolidate the three near-identical pulse keyframe animations.
-      `settings/style.css` defined three pulse animations at 1.4 s / 1.5 s / 1.6 s —
-      imperceptibly different and not driven from a shared token. Promoted the median
-      1.5 s cadence to `pels.motion.pulse-duration` in `tokens/component.json`, which
-      generates `--pels-motion-pulse-duration` in `settings/tokens.css`. All three
-      call sites (`.device-loading-notice`, `.plan-card__stepped-direction`,
-      `.plan-card__stepped-seg[data-pulse="true"]`) now reference
-      `var(--pels-motion-pulse-duration)`, keeping the `pulse`,
-      `plan-stepped-direction-pulse(-down)`, and `plan-stepped-pulse` keyframes intact
-      (their content encodes meaningfully different visual effects — transform
-      translateY vs. opacity-only with distinct 0.6 / 0.45 floors). Regression locked
-      by `packages/settings-ui/test/pulseDurationToken.test.ts`.
-- [x] Audit `settings/style.css` for hardcoded px / rem values that should bind to tokens.
-      Shipped: every cleanly-bindable single-value literal in
-      `packages/settings-ui/public/style.css` now routes through the design
-      tokens. Bindings:
-      - `4px` → `--spacing-1` (`.card h2` / `.pels-hero h2` / `.device-detail-heading h2`
-        margin; `.price-indicator` margin-right; `.plan-row__meta` / `.price-enable-text` /
-        `.tabs` (480px breakpoint) / `.day-view-bars` / `.day-view-labels` gap; `.day-view-labels`
-        padding-top; `.device-row.price-optimization-row .device-row__name`
-        margin-bottom (360px breakpoint); `#shell-nav .tab` padding-inline (360px breakpoint));
-      - `8px` → `--spacing-2` (`.plan-card__step-labels` margin-inline; `.inline-actions`
-        gap + margin-top; `.detail-diagnostics-list` gap; `.detail-mode-row__header` gap;
-        `.power-day-header` padding bottom-axis; `.device-row__state-chip` and
-        `.price-now-badge` padding inline-axis);
-      - `12px` → `--spacing-3` (`.price-summary` padding + margin-bottom; `.form__actions` /
-        `.list__footer` / `.toggle-label` / `.price-row` / `.detail-diagnostics-grid` /
-        `.detail-stepped-header` / `.detail-stepped-row` gap; `.list__footer` /
-        `.hourly-nav` margin-bottom; `.detail-mode-row` gap row-axis; `.list__footer`
-        margin-top; `.price-last-fetched` margin-top; `.settings-collapse .collapse-content h4`
-        margin bottom-axis + `:first-child` margin-top);
-      - `16px` → `--spacing-4` (`.price-info` margin-bottom; `.price-notice` padding
-        block-axis; `.slide-panel__footer` / `.hourly-pattern__empty` padding;
-        `.settings-collapse .collapse-content h4` margin top-axis; `.detail-mode-row`
-        gap column-axis);
-      - `24px` → `--spacing-6` (`.detail-section` margin-bottom);
-      - `999px` → `--radius-full` (9 pill primitives: `.plan-card__load-track`,
-        `.plan-card__load-fill`, `.plan-card__load-tick`, `.plan-card__metric-track`,
-        `.plan-card__metric-fill`, `.plan-card__metric-tick`, `.day-view-marker /
-        .daily-budget-dot`, `.day-view-legend__swatch--actual`, `.value-adjuster`);
-      - `border-radius: 8px` → `--radius-md` in `.price-summary` (sibling-card
-        normalization — `.price-notice-info` / `.price-notice-warning` already on
-        `--radius-md`, 2 px corner-radius drift removed).
-      New token introduced: `--font-size-xxs: 10px` in `tokens/base.json`
-      (regenerated into `settings/tokens.css` via `npm run build:settings`),
-      bound by `.plan-card__metric-scale` (was the lone `font-size: 0.62rem`
-      literal; ≈9.92 px at the 16 px root).
-      Intermediate values (`gap: 2px` / `3px` / `6px` / `10px` and similar small
-      paddings) intentionally left as literals — the existing spacing scale
-      (`--spacing-1` = 4 → `--spacing-2` = 8 → `--spacing-3` = 12 …) skips
-      these increments and inventing `--spacing-0_5` / `--spacing-1_5` etc.
-      would create awkward fractional tokens that fight the numeric
-      convention. The `border-radius: 50%` (circular markers) and
-      `border-radius: 0` (deliberate reset) cases are intentional geometric
-      primitives, not px literals.
-      Regression locked by `packages/settings-ui/test/styleCssTokenAudit.test.ts`
-      (20 assertions: token declaration in `dist/tokens.css`, every catalogued
-      call-site binding, defensive guards against re-introducing the bare
-      literals, and a sweep that rejects any new bare
-      `(gap|padding): {4,8,12,16,24,32}px` or `font-size: <px|rem>` declaration).
-      Files: `packages/settings-ui/public/style.css`, `tokens/base.json`,
-      `settings/tokens.css` + `settings/style.css` (regen),
-      `packages/settings-ui/test/styleCssTokenAudit.test.ts`.
-- [x] Investigate repeated stale managed-device refreshes that never become fresh.
-      Finding: case (a) — refresh is a no-op by design. `lastFreshDataMs` is
-      derived by `resolveLastFreshDataMs` (`lib/device/transport/managerParseSnapshot.ts`)
-      from the highest Homey per-capability `lastUpdated`. Many Homey drivers
-      (Z-Wave/Zigbee thermostats in particular) only advance `lastUpdated`
-      when a capability genuinely reports a new value; a targeted refresh
-      that re-fetches the snapshot does NOT bump `lastUpdated`, Homey serves
-      the cached value with the same timestamp. The 40-min
-      `STALE_DEVICE_OBSERVATION_MS` window is the backstop, and the
-      `device_became_stale`/`device_became_fresh` per-device transitions in
-      the same prod log confirm devices DO eventually re-emit fresh when
-      telemetry changes (all stale entries in `/tmp/pels/start.main.0a4464c3.stdout.log`
-      are `Termostat *`). Already documented in three places: comment in
-      `mergeFresherCapabilityObservations` (lines 202-209 of
-      `lib/device/transport/managerObservation.ts`), comment above
-      `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` in
-      `lib/app/appSnapshotHelpers.ts` (lines 19-26), and module doc in
-      `lib/observer/observationFreshness.ts` (lines 7-14). Refresh failures
-      would show up as `device_snapshot_refresh_failed` — none present in
-      prod logs. Regression added in `test/appSnapshotHelpers.test.ts`,
-      `refreshStaleDeviceObservations contract` describe block:
-       - `counts a device as fresh once refresh produces a newer
-         lastFreshDataMs and as still-stale when it does not` — pins the
-         structured `stale_device_observation_refresh` counter split
-         (`freshAfterRefreshDevices` vs `stillStaleAfterRefreshDevices`).
-       - `emits device_became_stale with the last observation timestamp
-         as the still-stale reason` — pins the per-device "could not
-         refresh" reason, surfaced via `device_became_stale` carrying
-         `deviceId`, `deviceName`, `ageMs`, `lastObservationAt`, `source`.
-      Files: `test/appSnapshotHelpers.test.ts`, `TODO.md`.
-- [x] Quiet duplicate-snapshot `objective_profile_non_monotonic_time` rejections.
-      Shipped: `updateDeviceObjectiveProfile` (`lib/objectives/profiles.ts`) now
-      silently returns the existing profile when the interval rejection reason is
-      `objective_profile_non_monotonic_time` and `sample.value === previous.lastSample.value`,
-      so neither the structured `objective_profile_sample_rejected` event nor the
-      `rejectedSamples` counter increments. Covers both exact `(observedAtMs, value)`
-      duplicates and `intervalMs ∈ {-2, -4}` cases where a capability ages out of the
-      `Math.max` floor. Other interval-rejection reasons (`interval_too_short`,
-      `interval_too_long`, `unit_changed`) and any non-monotonic sample whose value
-      moved still flow through the normal emit+counter path. Regression tests added in
-      `test/objectiveProfiles.test.ts` under the
-      `non_monotonic_time suppression for unchanged-value duplicates` describe block:
-      `suppresses non_monotonic_time rejection on exact (observedAtMs, value) duplicates`,
-      `suppresses non_monotonic_time rejection when observedAtMs slips backwards but value is unchanged`,
-      `still emits non_monotonic_time rejection when observedAtMs slips backwards and value changed`.
-      Files: `lib/objectives/profiles.ts`, `test/objectiveProfiles.test.ts`.
-      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
-- [x] Plan engine fires before the first device snapshot lands, producing a one-cycle
-      `deferred_objective_unknown reasonCode:objective_missing_device` event on every
-      restart.
-      Shipped: new `SnapshotWarmupGate` (`lib/plan/snapshotWarmupGate.ts`) instantiated in
-      `app.ts#initSnapshotWarmupGate` between `initPlanEngine` and `initPlanService` and
-      consumed by `PlanService.rebuildPlanFromCache` — any rebuild attempted before the
-      gate releases waits at the gate (held inside `rebuildPlanFromCache` before the
-      operation queue, so the wait does not interact with steady-state queue ordering).
-      The gate is released by `bootstrapSnapshotAndPlan` (`lib/app/appLifecycleHelpers.ts`)
-      with reason `snapshot_ready` once the first `refreshTargetDevicesSnapshot()`
-      resolves; if that throws or the snapshot fetch stalls past the
-      `SNAPSHOT_WARMUP_TIMEOUT_MS` bound (5_000ms in prod, 0 in tests) it auto-releases
-      with reason `timeout` so startup never deadlocks. `app.ts#onUninit` also releases
-      the gate before `planRebuildScheduler.cancelAll('app_uninit')` so partial-startup
-      shutdowns drain cleanly. Release emits a structured `snapshot_warmup_gate_released`
-      event at info (snapshot_ready) or warn (timeout) for log-audit attribution, and a
-      `plan_rebuild_warmup_waited_total` perf counter increments on each wait so we can
-      track how many rebuilds hit the gate in production. Per `feedback_homey_sdk_unreliable`
-      the gate never touches persisted state and the next periodic refresh retries.
-      Wait shape: `await snapshotWarmupGate.wait()` inside `PlanService.rebuildPlanFromCache`
-      (`lib/plan/planService.ts`). Bound: 5s in production, configurable via
-      `SNAPSHOT_WARMUP_TIMEOUT_MS` constant; 0 in tests. Regression coverage in
-      `test/snapshotWarmupGate.test.ts` describes:
-      `SnapshotWarmupGate` (auto-release on bound, snapshot_ready release, immediate
-      release with timeoutMs=0, idempotent release, timer-cancellation on early release),
-      `bootstrapSnapshotAndPlan warmup gate integration` (releases on success, releases
-      on `refreshTargetDevicesSnapshot` rejection so startup completes, post-warmup
-      rebuilds are not blocked), and `PlanService.rebuildPlanFromCache warmup gate`
-      (waits before the engine call when held; holds concurrent
-      price/settings/flow-triggered rebuilds during the warmup window). The bus-publish
-      half of the acceptance is met transitively: `statusBus.publish` is only reachable
-      from inside a plan rebuild via `emitDeferredObjectiveStatusTransitions`
-      (`lib/plan/planBuilder.ts:699`), so holding the rebuild also holds the publish.
-      Files: `app.ts`, `lib/plan/snapshotWarmupGate.ts`, `lib/plan/planService.ts`,
-      `lib/app/appContext.ts`, `lib/app/appInit.ts`, `lib/app/appLifecycleHelpers.ts`,
-      `test/snapshotWarmupGate.test.ts`.
-      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
-- [x] Energy training stuck at `bandsCount:0` for thermostats with no `crediblePowerW`.
-      `lib/objectives/samples.ts:57-82` returns `kwhPerUnit:null` when neither
-      `measuredPowerKw > 0` nor `reportedStep.planningPowerW > 0` is present at sample
-      time. `lib/objectives/profiles.ts:436-438` then skips the band buffer update, so
-      the device's adaptive band fitter (per `notes/objective-profile-bands.md`) never
-      sees any input. `Termostat Synne` in this audit window had `acceptedSamples:67` but
-      `bandsCount:0`, `rateConfidence:"low"`, `energyConfidence:"low"`. For thermostats
-      without an inline meter and without a per-step planning-power configured, energy
-      training is effectively disabled — no warning, no recourse surfaced to the user.
-      Why P2: silent gap; user expectation is "the longer this runs the smarter it gets"
-      and the reality is that some devices will not improve regardless of sample count.
-      Resolution: approach (a) implemented in `lib/objectives/noPowerSourceDiagnostic.ts`.
-      `buildAcceptedProfileSample` emits a one-shot `objective_profile_no_power_source`
-      structured event per device per process lifetime, after
-      `OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD = 20` consecutive accepted samples
-      with unresolved `crediblePowerW`. The in-memory counter (no persisted state per
-      `feedback_homey_sdk_unreliable`) resets on any valid power reading; the
-      already-emitted flag persists so a flipping device doesn't spam. The diagnostic is
-      informational — band-fitter behavior unchanged. Requirement now documented in
-      `notes/objective-profile-bands.md` ("a credible power source must be available per
-      accepted sample" + diagnostic semantics).
-      Files: `lib/objectives/noPowerSourceDiagnostic.ts` (new),
-      `lib/objectives/profiles.ts`, `notes/objective-profile-bands.md`,
-      `test/objectiveProfiles.test.ts`.
-      Source: Pro Homey runtime-log audit 2026-05-17 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 - [ ] Clamp stale EV boost stepped-load intent after boost deactivates.
       When EV boost admits a higher charger step and a later SoC update turns boost off, the next
       plan can briefly carry the old higher `desiredStepId` even when the shed-invariant reason
@@ -3446,7 +1697,7 @@ consolidation + a11y polish (8 P2)`.*
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
 - [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
       Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
-      plausibility cascade: `lib/app/appPowerCalibrationWiring.ts` (calibration),
+      plausibility cascade: `lib/device/devicePowerCalibrationStore.ts` (calibration),
       `lib/plan/deferredObjectives/planHistory.ts`, and
       `lib/plan/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
       calibration first, then the two deferred-objective recorders.
@@ -3454,7 +1705,7 @@ consolidation + a11y polish (8 P2)`.*
       Why P2 (demoted from P1 in release-review pass): pure refactor — three modules
       duplicating the same pattern. No user-visible difference.
       Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
-      `lib/app/appPowerCalibrationWiring.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
+      `lib/device/devicePowerCalibrationStore.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
       `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
 - [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
       executor context are applied consistently across normal restore planning, restore cooldown,
@@ -3534,30 +1785,6 @@ consolidation + a11y polish (8 P2)`.*
       `notes/smart-task-ui/README.md`.
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`, live-hero unit tests.
-- [x] Add an `Overshoot {N} {unit}` muted line on Succeeded history entries where the final
-      progress materially exceeded the target. Live-Homey walk found a Succeeded run with
-      `29.3 °C → 77.7 °C · target 65.0 °C` — overshot by 12.7 °C — surfaced as a normal success
-      with no flag. Overshoots that large often indicate the deferred override stopped applying
-      when satisfied flipped live and the device-local thermostat kept running on its own; a
-      muted line is enough to let the user spot a tuning problem. Threshold: > 5 °C for
-      thermal, > 10 % for EV (mirror the bands the hysteresis design proposes).
-      Why P2: passive support-cost reduction; users who notice the overshoot today have no
-      surface that confirms it's interesting.
-      Shipped via batch 47 — producer helper signature
-      `formatPlanHistoryOvershootLine(entry): string | null` returns null on non-`met`
-      outcomes and on within-threshold runs; thresholds `> 5 °C` (thermal) and `> 10 %` (EV);
-      wired into `deadlinePlanHistoryDetailHero.ts` Succeeded branch (rendered as
-      `.plan-history-detail__overshoot` in `DeadlinePlanHistoryDetail.tsx`) and the
-      `DeadlinePlanHistory.tsx` past-list card (rendered as `.plan-history-card__overshoot`).
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts` (existing
-      `formatPlanHistoryOvershootLine` helper now consumed on Succeeded heroes),
-      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row variant),
-      `packages/settings-ui/public/style.css`,
-      `test/deferredPlanHistoryPostmortem.test.ts`,
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`,
-      `packages/settings-ui/test/deadlinePlanHistory.test.ts`.
 - [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
       Today the live chart paints planned bars + a dotted measured line; the eye treats them
       as separate. After a run, the history chart shows planned bars + (eventually, when the
@@ -3570,80 +1797,6 @@ consolidation + a11y polish (8 P2)`.*
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       shared chart-option helper if extracted.
-- [x] Cross-link from smart-task history detail to Usage's same-day chart for the device.
-      A user investigating "why did this run miss?" benefits from seeing the device's
-      whole-day power profile around the deadline. Shipped in PR #867 (v2.7.2 train); the
-      one-line link below the history hero reads `See household usage on {date} →` and
-      encodes `?page=usage&deviceId={X}&date={ISO}` so a future Usage view that honours
-      deviceId/date filters can read them off the URL. Reverse direction (Usage → Smart
-      tasks) intentionally not added; Usage users aren't asking task-shaped questions.
-      Limitations: copy says "household usage" (not "{device name} usage") because the
-      Usage view today is household-scoped — no per-device chart filtering exists yet, so
-      naming the device in the link would mis-promise. The click handler in
-      `deadlinePlanMount.ts` arms an explicit return link back to the Smart-task detail
-      rather than relying on Usage to honour the filter params. View-level test
-      coverage added 2026-05-25 ("renders the Usage cross-link below the hero with the
-      correct href and copy") to lock the rendered href + copy + data-attribute.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/deadlineUrls.ts` (usage deep-link builder),
-      `packages/shared-domain/src/deferredPlanHistory.ts` (label helper),
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts` (view test).
-- [x] Complete the `--day-view-color-*` → `--pels-chart-*` migration on Budget surfaces.
-      Migration manifest (2026-05-25):
-        - `.budget-comparison__legend-swatch--background` (`style.css:5229`):
-          `--day-view-color-background-usage` → `--pels-chart-background`.
-        - `.budget-comparison__legend-swatch--managed` (`style.css:5233`):
-          `--day-view-color-managed-usage` → `--pels-chart-managed`.
-        - `.day-view-bar__segment--uncontrolled, .daily-budget-bar__segment--uncontrolled`
-          (`style.css:5883`): `--day-view-color-background-usage` → `--pels-chart-background`
-          (fallback `--color-base-info-default` preserved).
-        - `.day-view-bar__segment--controlled, .daily-budget-bar__segment--controlled`
-          (`style.css:5888`): `--day-view-color-managed-usage` → `--pels-chart-managed`
-          (fallback `--color-base-warning-default` preserved).
-        - `.day-view-legend__swatch--uncontrolled` (`style.css:5996`):
-          `--day-view-color-background-usage` → `--pels-chart-background`
-          (fallback `--color-base-info-default` preserved).
-        - `.day-view-legend__swatch--controlled` (`style.css:6000`):
-          `--day-view-color-managed-usage` → `--pels-chart-managed`
-          (fallback `--color-base-warning-default` preserved).
-        - Shim definitions deleted from `#budget-panel` block (former
-          `style.css:5758-5761`): `--day-view-color-background-usage`,
-          `--day-view-color-managed-usage`, and the unused dependent
-          `--day-view-color-actual-background-usage` /
-          `--day-view-color-actual-managed-usage` (zero consumers).
-        - `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts:205,209` now
-          probes `--pels-chart-background` / `--pels-chart-managed` (hex fallbacks
-          unchanged; canonical tokens resolve through the same
-          `--color-role-info` / `--color-role-warn` chain).
-        - Regenerated `settings/style.css` via `npm run build:settings`; source and
-          generated bundle confirmed byte-identical.
-      Visual: no change — canonical `--pels-chart-background` / `--pels-chart-managed`
-      resolve to the same `--color-role-info` / `--color-role-warn` values the shim was
-      bound to. Unblocks the chart-token P0 "shims removed after one release" promise.
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/tests/e2e/daily-budget-rollover.spec.ts`,
-      `settings/style.css` (regen).
-- [x] Extend the snapshot-fallback pattern used by `writeFreshSetting` callers in
-      `deviceDetail/index.ts` and `deviceDetail/shedBehavior.ts` to the remaining
-      settings-write call sites. `managedControl.ts`, `nativeWiring.ts`,
-      `targetPowerConfig.ts`, `evBoost.ts`, and `temperatureBoost.ts` still pass
-      `fallbackValue: {}` and would synthesise an empty map if the Homey SDK
-      transiently returned a non-null, non-object value (e.g. a string from
-      corrupted state). The helper already protects the realistic null transient
-      blip, so this is a defence-in-depth item, not a release blocker.
-      Files: `packages/settings-ui/src/ui/deviceDetail/managedControl.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/nativeWiring.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/targetPowerConfig.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/evBoost.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`.
-- [x] Sync `docs/plan-states.md` device-card secondary-text language with `notes/ui-terminology.md`.
-      `docs/plan-states.md:26` still described the held-state secondary text as "Limited by PELS"
-      while `notes/ui-terminology.md:100` and the live UI (post PR 4.4) now use `Lowered by PELS`
-      / `Charging paused`. Updated the doc paragraph so the public docs site matches the shipped UI
-      (`Limited by PELS` → `Lowered by PELS`; EV-charger `Charging paused` and `Turned off by PELS`
-      wording was already correct).
-      Files: `docs/plan-states.md`.
-
 *v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
@@ -3656,20 +1809,6 @@ consolidation + a11y polish (8 P2)`.*
       recovery one cycle is lost to first-cycle pessimism via the new
       producer-cache eviction. Source: release-review pels-runtime-reality,
       2026-05-28.
-
-- [x] Split `recordReleaseShedActuation` so release intents don't write
-      `lastInstabilityMs`/`lastDeviceShedMs`. The shed-purpose release path
-      (`lib/executor/shedReleaseActuation.ts` at the temperature and binary
-      apply sites) reuses `recordShedActuation`, which writes the
-      system-wide instability marker. For a *release* (device going into
-      shed posture intentionally) this is incorrect — the marker should
-      reflect capacity-driven instability only. Inline TODO noted at
-      `lib/executor/shedReleaseActuation.ts:121`. Source: release-review
-      adversarial-review, 2026-05-28.
-      Resolved: the binary lifecycle-release now routes through the diagnostic-only
-      recorder for both direct and flow-backed devices via a
-      `pendingBinaryCommands.lifecycleRelease` discriminator (the temperature and
-      stepped axes were already diagnostic-only).
 
 - [ ] Clear `history[]` (or insert a separator row) on smart-task signature
       change in `lib/plan/deferredObjectives/activePlanRecorder.ts:670-697`.
@@ -3706,33 +1845,6 @@ consolidation + a11y polish (8 P2)`.*
 chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
 follow-up train that were missed at merge time; filed here for the next
 wave.*
-
-- [x] **Binary `shed_release` path still bumps the capacity-instability
-      marker.** Commit `5d44846b polish: shared EV-boost copy, release-only
-      actuation recorder, producer-side set_step target` introduced
-      `recordReleaseShedActuation` but only wired it into the temperature
-      and stepped release branches of `lib/executor/planExecutor.ts`. The
-      default binary `shed_release` path still calls
-      `applyBinarySheddingToDevice(deps.buildBinaryExecutorContext())`,
-      whose context is built with `boundRecordShedActuation`. For non-flow-
-      backed `turn_off` release actions that means `lastInstabilityMs` and
-      `lastDeviceShedMs` are still bumped, so the new diagnostic-only
-      release marker does not apply to the common binary release case.
-      Acceptance: route the binary `shed_release` path through
-      `recordReleaseShedActuation` (the helper is already an arrow-function
-      field on `PlanExecutor` and auto-bound to `this`, so no separate
-      `bound*` wrapper is needed); add a regression test in
-      `test/shedReleaseActuation.test.ts` pinning that a binary release
-      intent does not bump `lastInstabilityMs`. Files:
-      `lib/executor/planExecutor.ts` (around the binary-release-intent
-      branch), `test/shedReleaseActuation.test.ts`. Source: codex review
-      of closed PR #1233, 2026-05-28.
-      Resolved: routed via a `pendingBinaryCommands.lifecycleRelease` discriminator
-      threaded from `applyShedReleaseBinaryOff` — the direct write records through
-      `recordReleaseShedActuation`, and the deferred flow-backed confirmation
-      branches in `handleConfirmedBinaryCommand`, so neither `lastInstabilityMs` nor
-      `lastDeviceShedMs` is stamped. Regression tests: `test/planExecutor.test.ts`
-      (flow-backed) + `test/shedReleaseActuation.test.ts`.
 
 - [ ] P3: collapse the `lifecycleRelease → recorder` selection into one helper. The
       "a lifecycle disable records via the diagnostic-only recorder" rule now lives in
@@ -3901,68 +2013,6 @@ should not be folded into the same PR.
 *Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
 #882, #884), 2026-05-18.*
 
-- [x] Lift `budgetRedesign.ts` back under the 500-line `max-lines` cap.
-      Already done — file is 156 effective lines and no `eslint.config.mjs`
-      override exists. Resolved through prior cleanups (the PR #884 override
-      was removed at some point between then and now). Closing as stale.
-
-- [x] Restore an `<h2>` page heading on the Usage panel.
-      PR #881 demoted "Energy history" from `<h2>` to `<p class="eyebrow">`
-      as part of the hero double-capsule trim, leaving Usage without a
-      heading at the panel level. Other panels (Overview, Budget, Smart
-      tasks, Settings) all carry an `<h2>` as the panel landmark heading;
-      Usage now skips that level which breaks the document outline for
-      screen-reader users.
-      Source: gemini-code-assist on PR #881 (medium) at
-      `packages/settings-ui/public/index.html:178` and
-      `settings/index.html:178`.
-      Resolution: added a visually-hidden `<h2>Usage</h2>` as the first
-      direct child of `#usage-panel` so the eyebrow ("Energy history")
-      stays the only visible label while the document outline regains a
-      stable topical landmark (anchor test in
-      `packages/settings-ui/test/panelLoadingSkeletons.test.ts`).
-
-- [x] Audit `settings/index.html` ↔ `packages/settings-ui/public/index.html`
-      sync at PR-author time.
-      PR #881's "Smart tasks eyebrow" change landed in `settings/index.html`
-      (the built output) but not in `packages/settings-ui/public/index.html`
-      (the source). A future `npm run build:settings` will regenerate
-      `settings/index.html` from source and silently revert the eyebrow
-      drop. Verify the source and re-sync (or document why the two
-      diverged in the PR description).
-      Source: gemini-code-assist on PR #881, `settings/index.html` (high).
-      Files: both index.html files.
-      Resolution: re-ran `npm run build:settings`; the index.html pair is
-      byte-for-byte after rebuild. Discovered one stale `settings/style.css`
-      copy (the `.plan-inputs__row-value--warn` warn-tone block from commit
-      `99ad7631` had not been re-synced) and re-bundled it as part of the
-      same commit so source and shipped bundle are now in lock-step.
-
-- [x] Move PR #882's hardcoded user copy into shared-domain helpers.
-      PR #882 introduced two inline strings the PR description acknowledged
-      as exceptions (TV-stue temperature placeholder at
-      `PlanDeviceCards.tsx:462`; projected-energy text at
-      `PlanHero.tsx:556`). Both should be folded into
-      `packages/shared-domain/**` helpers per
-      `feedback_ui_text_shared_with_logs` so logging surfaces the same
-      wording.
-      Source: gemini-code-assist on PR #882 (2× medium).
-      Files: `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/shared-domain/src/deviceOverview.ts` (or new helper).
-      Done: (1) the TV-stue "Temperature unavailable" placeholder was
-      already replaced in PR #893 (`refactor(plan): plannedTarget is
-      non-nullable on the temperature path`) — `resolveTemperatureLine`
-      in `packages/shared-domain/src/planTemperatureCardText.ts` now
-      emits `target N° · sensor unavailable` when the sensor reading is
-      missing, and the inline placeholder in `PlanDeviceCards.tsx` is
-      gone. (2) The projected-energy text moved to
-      `formatProjectedEnergySubline` in
-      `packages/shared-domain/src/planHeroSummary.ts`; `PlanHero.tsx`
-      now imports the helper instead of the inline template. Producer
-      owns the `toFixed(2)` formatting per
-      `feedback_layering_resolution_in_producer`.
-
 ## P3 Future and Exploratory Work
 
 *v2.10.0..HEAD release-review cleanup (2026-05-29).*
@@ -4010,102 +2060,6 @@ prod walk that didn't warrant a P2 slot.*
       `notes/overview-hero-spec.md` (document the chosen behaviour).
       Source: 2026-05-27 prod walk first-glance-time observation.
 
-- [x] Apply Homey-SDK transient-fail grace to `loadFlowReportedCapabilities`.
-      Pre-existing condition (predates the `SettingsRepository` chip
-      `PR #1147`): `app.ts:loadFlowReportedCapabilities` overwrites
-      `this.flowReportedCapabilities` unconditionally with the parsed-
-      then-filtered result. A transient SDK miss parses to `{}` and
-      clears the in-memory map. Compare with the `loadPowerTracker`
-      pattern that guards with `if (stored) this.powerTracker = stored;`
-      — the flow-reported-capabilities path needs the same "keep
-      previous on empty parse" gate (or a different signal for "user
-      really cleared all entries" vs "SDK gave us nothing this tick").
-      Files: `app.ts:loadFlowReportedCapabilities`.
-      Shipped: `loadFlowReportedCapabilities` now short-circuits when
-      the parsed map is empty AND the in-memory map already holds
-      entries — kept on disk too, so a later successful read reconciles.
-      A warn-once `flow_capabilities_load_empty_parse_keeping_existing`
-      structured log fires the first time the grace fires per process.
-      Fresh-install path (`parsed=={}`, in-memory=={}) and intentional
-      filter-to-empty path (`parsed={...}`, `filtered=={}`) are
-      unchanged. Regression tests:
-      `test/app.test.ts` "keeps in-memory flow-reported capabilities
-      when SDK returns an empty parse" and "overwrites in-memory
-      flow-reported capabilities when SDK returns a real parse".
-
-- [x] Document the new `setup/` layer in `CLAUDE.md` and `docs/architecture.md`.
-      The first `setup/` chip (PR #1144,
-      `setup/schedulerTelemetryObserver.ts`) introduces `setup/` at repo
-      root as the honest home for app-wiring classes (factories,
-      observers, registrars). Dependency-cruiser enforces the one-way
-      direction (`no-lib-to-setup`), but the "Repository Layout" and
-      "Architecture" sections in `CLAUDE.md` still describe `lib/app/`
-      as the wiring layer. The `setup/` convention should be:
-      - One purpose per file, named for the concrete wiring it does
-        (no grab-bag `setupHelpers.ts`).
-      - Each file exposes a class or a single `register*` / `init*`
-        function — no bags of utility functions.
-      - Files greater than ~150 LOC are fat-fingered and should split.
-      - `setup/` may import `lib/**` and `packages/**`; never the
-        reverse.
-      As remaining wiring migrates out of `lib/app/`, that directory
-      should sunset; `lib/app/appContext.ts` (type definition) probably
-      stays.
-      Files: `CLAUDE.md`, `docs/architecture.md`.
-      Shipped: `CLAUDE.md` has `setup/` in the Repository Layout tree,
-      `setup/**` added to the Architecture diagram + hard rules, a new
-      "App wiring (`setup/`)" subsection in Key Modules, and the
-      `lib/app/` row reworded as sunsetting. `docs/architecture.md`
-      mirrors this: `setup/**` in the layer diagram and the
-      "App wiring" row, a new `no-lib-to-setup` entry in the Hard rules
-      list, a dedicated "App wiring lives in `setup/`" section
-      explaining direction + conventions + sunset, and a new
-      "App-wiring code" row in the "Where new code goes" table. The
-      Homey-SDK adapter row now points at `setup/` for new wiring.
-
-- [x] Drop the remaining `lib/price/priceService.ts` max-lines override.
-      After the Norgespris usage helpers (`getCurrentMonthUsageKwh`,
-      `getHourlyUsageEstimateKwh`) moved to `lib/price/priceServiceNorgespris.ts`,
-      the orchestrator class sits at 509 effective LOC — 9 over the 500-line
-      default. Extracting the two price-info formatters
-      (`formatFlowPriceInfo`, `formatNorwayPriceInfo`) to a sibling would
-      push it under the default and let the per-file `max-lines: 510`
-      override go away.
-      Files: `lib/price/priceService.ts`, `eslint.config.mjs`.
-      **Done (2026-05-25):** `formatFlowPriceInfo` and `formatNorwayPriceInfo`
-      moved into `lib/price/priceInfoFormatters.ts` (24 LOC); the flow
-      formatter now takes the unit label as a parameter so the new module
-      stays a pure helper. `priceService.ts` dropped from 550 → 529 raw LOC
-      (well under the 500-line effective default after blank/comment lines
-      are skipped) and the per-file `max-lines: 510` override block in
-      `eslint.config.mjs` has been removed.
-
-- [x] Clean up low-severity v2.9 review-note drift. The implementation is
-      correct, but contributor notes point at stale files or examples:
-      `notes/smart-task-flow-cards/README.md` still names deleted
-      `flowCards/deadlineEndedTokens.ts` in the implementation punch list
-      even though the top of the same note says the code moved to
-      `flowCards/smartTaskTokens.ts`; `notes/deferred-load-objectives/feasibility-confidence.md`
-      and the matching TODO citation point at old `objectiveProfiles.ts`
-      lines for energy-window math now living in
-      `lib/objectives/energyAccumulator.ts`; and
-      `notes/smart-task-ui/README.md` mentions a `Backup hours` history pill
-      that is still future scope. Update or annotate the stale references so
-      future reviewers do not chase missing surfaces.
-      Files: `notes/smart-task-flow-cards/README.md`,
-      `notes/deferred-load-objectives/feasibility-confidence.md`,
-      `notes/smart-task-ui/README.md`, matching TODO citation if retained.
-      Source: adversarial docs review, v2.9.0 closeout, 2026-05-23.
-      **Done (2026-05-25):** flow-cards punch list now points at
-      `flowCards/smartTaskTokens.ts` instead of deleted
-      `flowCards/deadlineEndedTokens.ts`; feasibility-confidence note
-      reframes the `objectiveProfiles.ts:429 — previousSample.crediblePowerW ×
-      intervalMs` reference as historical and points at the post-fix math in
-      `lib/objectives/energyAccumulator.ts:29-31` (`subIntervalEnergyKwh`) +
-      `lib/objectives/energyAccumulator.ts:43-50` (`calculateWindowEnergyKwh`);
-      smart-task-ui review walk annotates the `Backup hours` pill row as
-      future scope so contributors do not treat it as a shipped surface.
-
 - [ ] Persistence-hardening backlog: normalize `power_tracker_state` at the
       Settings UI/API boundary. `lib/app/settingsUiApi.ts` still casts raw
       `homey.settings.get('power_tracker_state')` to `PowerTrackerState`; the
@@ -4143,50 +2097,6 @@ prod walk that didn't warrant a P2 slot.*
       this as a low-priority observation, not actionable yet.
       Files: `lib/plan/deferredObjectives/horizonPlanner.ts:resolveStatus`,
       possibly `activePlanSchedule.ts` for emit gating.
-
-- [x] Surface mode-target misconfiguration to the user.
-      Effectively resolved at the data layer rather than via a UI warning:
-      `seedMissingModeTargets` in `lib/app/appDeviceSupport.ts:433` auto-fills missing
-      `(device, mode)` entries for managed+controllable temperature devices using the
-      device's current setpoint, wired into the snapshot refresh cycle next to
-      `disableUnsupportedDevices`. Covers app boot, mid-life new devices, and managed-flag
-      flips. Edge-triggered (`ba1ccd67`) so user clears are respected. The "user has to be
-      warned to configure" scenario no longer arises for normal users — the system
-      persists the thermostat's current value as the canonical mode target on first
-      encounter, and the planner reads from the persisted value thereafter. Closing.
-
-- [x] Add abandon-grace to the mode-target-missing skip path. Today a single transient
-      Homey SDK miss on `getPrimaryTargetCapability(dev.targets)?.value` drops the
-      device from the plan for that cycle (and re-runs every plan cycle while the miss
-      persists). Per `feedback_homey_sdk_unreliable`, capability reads can transiently
-      fail during cold-start, re-pair, or zone reload. Track consecutive missed-read
-      cycles per device in `PlanEngineState` and only skip after a grace window
-      (e.g. 3–5 cycles); within grace, reuse the last successfully resolved target.
-      Files: `lib/plan/planDevices.ts`, `lib/plan/planEngineState.ts`.
-      Shipped: `MODE_TARGET_GRACE_CYCLES = 4` (in-memory `modeTargetMissingByDevice`
-      on `PlanEngineState`); within grace the cached prior capability value is
-      reused as a `grace_fallback` seed and no skip event is emitted. See
-      `lib/plan/planModeTargetGuard.ts`.
-
-- [x] Throttle `missing_mode_target` / `missing_mode_target_and_current_target` events
-      per device. The emitter is already gated by the `plan` debug topic (off by
-      default), so production volume is bounded — but when users enable the topic,
-      a stuck misconfigured device fires every plan cycle (10 s in `homey_energy`
-      mode = ~8,640/day). Per-device emit-on-transition + N-minute heartbeat would
-      keep the signal useful without flooding the log buffer (RSS headroom is ~30 MB
-      per `project_homey_rss_limit`). Files: `lib/plan/planDevices.ts`.
-      Shipped: `MISSING_MODE_TARGET_EMIT_INTERVAL_MS = 15 * 60 * 1000` (per-device
-      emit on transition + 15-minute heartbeat). Same shape as
-      `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` in `lib/app/appSnapshotHelpers.ts`.
-      In-memory only per `feedback_homey_sdk_unreliable`. See
-      `lib/plan/planModeTargetGuard.ts`.
-
-- [x] **P2 — Mode-target grace cache hygiene** (follow-ups from PR #1159 runtime-reality review):
-  - [x] Bind `cachedTargetValue` to capability ID (`lib/plan/planModeTargetGuard.ts`) so a device re-pair during grace can't reuse the value against a different capability.
-  - [x] Garbage-collect `modeTargetMissingByDevice` entries for removed devices — added `cleanupMissingModeTargetDevices` in `lib/plan/planModeTargetGuard.ts`, wired into `syncHeadroomCardState`'s `cleanupMissingDevices` branch in `lib/plan/planHeadroomState.ts` (same snapshot-refresh trigger).
-  - [x] Cap `missingCycles` at `MODE_TARGET_GRACE_CYCLES + 1` so it doesn't grow unbounded while a device stays in skip (cosmetic, for log/snapshot stability).
-  - [x] Skip-path 15-min heartbeat coverage added (`test/planDevices.test.ts`).
-  - [x] `payload.operatingMode` on heartbeat re-emit: documented inline in `planModeTargetGuard.ts` that the field reflects mode at emit-time, not first-miss time; mode transitions during the missing window do not reset the throttle.
 
 - [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
 
@@ -4244,69 +2154,6 @@ prod walk that didn't warrant a P2 slot.*
       `notes/deferred-load-objectives/` (design doc when picked up).
       Source: investigation 2026-05-18 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
 
-- [x] Add Playwright assertion that the segmented short/full labels never co-render.
-      PR 3.2 introduced a dual-label pattern on `.segmented__option-label--full` /
-      `--short` toggled by `@media (max-width: 360px)`. If a future CSS regression
-      breaks the toggle, both spans could render concurrently. A 480 px probe
-      asserting `--short` width is 0, and a 320 px probe asserting `--full` width
-      is 0, would catch the dual-render regression.
-      Files: `packages/settings-ui/tests/e2e/`, `packages/settings-ui/public/style.css`.
-      Done: `packages/settings-ui/tests/e2e/segmented-short-full-labels.spec.ts`
-      ("segmented dual-label exclusivity" — 480 px and 320 px probes on the
-      Budget day picker; CSS hides via `display: none`, so `toBeHidden()` /
-      `toBeVisible()` match the runtime behavior).
-
-- [x] Overview device-name trailing whitespace. Live-walk 2026-05-16:
-      `aria-label="Open device details for Termostat gang "` and several others
-      ("Synne ", "vaskerom ", "kontor ", "bad tredje ", "hovedsoverom "). Likely
-      user-entered in Homey itself, but a `String#trimEnd` on display would be
-      polite and avoid screen-reader pauses.
-      Helper: `packages/shared-domain/src/displayDeviceName.ts`
-      (`formatDisplayDeviceName`). Display-only — persisted state stays
-      verbatim. Callsites: `views/PlanDeviceCards.tsx` (generic + temperature
-      cards, DeadlineChip), `views/PlanSteppedCard.tsx`,
-      `views/PriceAwareDevicesView.tsx`, `views/DeadlinesList.tsx`,
-      `views/DeadlinesHistoryList.tsx`, `views/DeadlinePlanHistory.tsx`,
-      `views/DeadlinePlanHistoryDetail.tsx`, `ui/modes.ts`, `ui/devices.ts`,
-      `ui/deviceDetail/index.ts`, `ui/advanced.ts`, `ui/deadlinePlan.ts`,
-      `ui/deadlinePlanHero.ts`.
-
-- [x] Resolve `resolveHeroTone` name collision between `usageHero.ts` and `deadlinePlanHero.ts`.
-      Done: renamed the deadline-plan helper to `resolveDeadlineHeroTone` and left
-      `usageHero.ts:resolveHeroTone` untouched — fewer callsite churn (2 callers updated:
-      `deadlinePlan.ts` production + the `resolveDeadlineHeroTone` describe block in
-      `packages/settings-ui/test/deadlinePlan.test.ts`). A doc comment in
-      `deadlinePlanHero.ts` now points back to the usage-side sibling so the distinction
-      stays auditable.
-- [x] Split chip label for `at_risk` plans vs `cannot_meet` plans.
-      Done at the chip-label layer (already shipped in `Align smart task confidence chips`
-      on 2026-05-19 — `atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk` = "At risk",
-      `cannotMeetChipLabel: 'Cannot finish'`; `resolveHeroStatusChip` routes them with
-      `warn` vs `alert` tones). This pass pins the split with a regression test in
-      `test/smartTaskListLabels.test.ts` (`at_risk vs cannot_meet chip labels`) so a future
-      collapse can't re-merge them. The `cannotMeet` boolean fold at
-      `deadlinePlan.ts:500` is intentionally left — the partial-schedule budget-bound
-      at_risk regression at `deadlinePlan.test.ts:1448` already pins the desired body-copy
-      reuse (budget cause sentence + Open Budget recourse on at_risk + budget), and
-      removing the fold would invert that intentional design.
-- [x] Always show observed coverage on smart-task history cards. v2.9.x —
-      `formatPlanHistoryObservedCoverage` was time-based ("Brief gap (Xm)" / "Not observed
-      for Yh") and silently collapsed to null whenever ≥99 % of the [start, deadline]
-      window carried a diagnostic stream, hiding the planner-vs-reality mismatch where the
-      planner allocated hours but the device drew no power. Rewrote the helper to count
-      planned hour buckets (M = `plannedKWh > 0` buckets in finalPlan / originalPlan) and
-      buckets touched by `observedIntervals` (N), emitting `"Observed N of M planned
-      hours"` whenever M > 0 so the N=0-of-M=5 case surfaces as visible signal. Backfill
-      branch and the no-plan/no-active-buckets null branch unchanged. Re-enabled
-      `coverageLine` on the history-detail hero for Succeeded / Missed / unknown-with-plan
-      shapes (still suppressed on quiet abandoned/replaced). Test:
-      `test/deferredPlanHistoryObservedCoverage.test.ts` (`formatPlanHistoryObservedCoverage`
-      → 9 cases, including the canonical "Observed 0 of 5 planned hours" actionable
-      assertion).
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`,
-      `packages/settings-ui/test/deadlinePlanHistory.test.ts`,
-      `test/deferredPlanHistoryObservedCoverage.test.ts`.
 - [ ] Cross-kind copy sharing in `deadlineLabels.ts` — revisit when first kind-specific
       divergence lands. Temperature and EV share byte-identical `cannotMeetShortfall` and
       `cannotMeetFallback` strings (only `cannotMeetDailyBudgetExhausted` differs by the noun).
@@ -4314,27 +2161,6 @@ prod walk that didn't warrant a P2 slot.*
       "objective_invalid_session" entry — audit whether the shared helpers still make sense or
       if the kinds should split fully. No action until the first divergence.
       Files: `packages/shared-domain/src/deadlineLabels.ts`.
-- [x] Document recurring smart-task usage in `set_*_deadline` flow card hints. The action
-      auto-disables the objective after deadline passes (correct, prevents silent replans), but
-      the user-facing card hint didn't explain that users need a daily trigger (e.g.
-      "when EV plugged in") to re-arm. Appended one sentence to each card's `hint` field
-      (English-only — no other flow card carries Norwegian copy):
-      - `set_ev_charge_deadline`: "The smart task auto-disables once the deadline passes;
-        run this card from a recurring Flow (e.g. when the EV is plugged in) to re-arm it
-        for the next session."
-      - `set_temperature_deadline`: "The smart task auto-disables once the deadline passes;
-        run this card from a recurring Flow (e.g. on a daily schedule) to re-arm it for
-        the next run."
-      Files: `.homeycompose/flow/actions/set_ev_charge_deadline.json`,
-      `.homeycompose/flow/actions/set_temperature_deadline.json`, regenerated `app.json`.
-- [x] Add DST fall-back ambiguity regression test for deadline resolution.
-      `lib/plan/deferredObjectives/deadline.ts:112-146` handles DST rigorously (probes timezone
-      at ±36h, ±12h, 0h to find valid UTC candidates matching local HH:mm), but the fall-back
-      ambiguous hour (e.g. 2:30 AM existing twice) currently selects earliest-future without an
-      explicit test. Add the regression. Pinned by
-      `test/deferredObjectiveDiagnostics.test.ts` →
-      `resolveDeferredObjectiveDeadline > selects the earliest valid UTC candidate for an
-      ambiguous fall-back hour` (Europe/Oslo, 2026-10-25 fall-back, deadline 02:30).
 - [ ] Revisit deadline-hero "Need X kWh" staleness if users find the original-vs-remaining
       framing confusing. The active-plan recorder no longer persists `energyNeededKWh` /
       `plannedKWh` decrements within an unchanged schedule (to avoid Homey settings churn on
@@ -4346,18 +2172,6 @@ prod walk that didn't warrant a P2 slot.*
       Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/deadlinePlanResolvers.ts`.
-- [x] Distinguish "missed by an unknown amount" from "missed by exactly 0 kWh" on the
-      `deadline_ended` flow trigger (the only trigger that surfaces a missed deadline today;
-      the old `deadline_missed` name in this note pre-dates the v2.x rename). The Homey SDK
-      rejects `null` for `number`-typed tokens (see `homey-apps-sdk-v3/lib/FlowCardTrigger.js`),
-      so `shortfall` falls back to `0` when the device-side delta is unobservable.
-      Added a `shortfall_known: boolean` token (true when `outcome === 'succeeded'`, or when
-      both the target and final-progress samples are finite for the active `objectiveKind`;
-      false when one is null and the numeric token had to fall back to 0). Existing
-      `shortfall` semantics unchanged.
-      Files: `flowCards/smartTaskTokens.ts` (`computeShortfall` now returns
-      `{ value, known }`), `.homeycompose/flow/triggers/deadline_ended.json`, regenerated
-      `app.json`, `test/deadlineObjectiveCards.test.ts`.
 - [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
       usage history can explain which step or mode was active during each measured period.
       Files: future device-level step-change tracker; usage-history UI.
@@ -4394,7 +2208,7 @@ prod walk that didn't warrant a P2 slot.*
 - [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
       Per-charger automation profile (enabled, target percent or kWh, ready-by time,
       enforcement, speed mode, optional manual kW and derating) plus a hook on the
-      `sessionStartedAtMs` boundary in `lib/device/stateOfCharge.ts` that materializes the
+      `sessionStartedAtMs` boundary in `lib/device/transport/stateOfCharge.ts` that materializes the
       defaults into a `DeferredObjectiveSettingsV1` entry through the same upsert path the flow
       card uses. Persistence must align with the shared `PersistedSettingsState<T>` helper from
       `notes/persisted-settings-state.md`.
@@ -4402,7 +2216,7 @@ prod walk that didn't warrant a P2 slot.*
       `set_ev_charge_deadline` manually, but the v1 flow-card path is workable without it.
       Design: `notes/ev-ready-by/README.md`.
       Files: new `packages/contracts/src/evChargerDefaults.ts`,
-      new `lib/app/evChargerDefaultsWiring.ts`, `lib/device/stateOfCharge.ts`,
+      new `lib/app/evChargerDefaultsWiring.ts`, `lib/device/transport/stateOfCharge.ts`,
       defaults / auto-trigger tests.
 - [ ] EV deadline polish: manual override actions and urgency rule.
       Add `charge_now` and `pause_until_next_planned_slot` flow actions. Add a
@@ -4464,24 +2278,6 @@ prod walk that didn't warrant a P2 slot.*
       parameter expansion (`${PWD:t}`).
       Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
       `scripts/resolve-homey-id.mjs`.
-- [x] Add an explicit cap on `DeferredObjectivePlanHistoryEntry.revisions[]` length.
-      Surfaced by adversarial-review on v2.7.2 PR 1 (schema v3→v4). The in-memory
-      `InProgressRecord.revisions` array is rebuilt with `[...existing, newEntry]` on every
-      cycle that observes a new revision (`appendRevisionLogIfNew` in
-      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`). Realistic runs see 5-10
-      entries due to the active-plan recorder's per-cycle dedupe, so the persisted size is
-      bounded in practice. A pathological replan loop (prices oscillate, `rate_refined`
-      keeps firing) could push the array large; the rebuild path is O(n²) over the run.
-      Shipped `MAX_REVISIONS_PER_ENTRY = 64` with a drop-oldest `.slice(-cap)` in the
-      append path, mirroring `PROGRESS_SAMPLES_PER_ENTRY_CAP`. In-memory only — existing
-      persisted entries with `<= 64` revisions load identically; no schema change.
-      Files: `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts` (`InProgressRecord.revisions`).
-- [x] Split `lib/plan/deferredObjectives/planHistory.ts` so the file drops back under the
-      500-LOC ESLint ceiling without an override.
-      Already done — file is 546 raw lines but `skipBlankLines + skipComments` keeps it
-      under the 500-line ceiling, and no `eslint.config.mjs` override exists. The
-      `planHistoryV4Helpers.ts` extraction from v2.7.2 PR 1 was sufficient. Closing as stale.
 - [ ] Consider single-pass `resolveLiveCostAndDelivery` in `packages/settings-ui/src/ui/deadlinePlan.ts`.
       Surfaced by gemini-code-assist on v2.7.2 PR 2 as Medium. Current implementation iterates
       `hours` twice (once in `resolveLiveCostAndDelivery`, once in `buildTimeline`'s
@@ -4510,31 +2306,6 @@ prod walk that didn't warrant a P2 slot.*
       (`feedback_ui_text_shared_with_logs` keeps runtime logging + UI reading the same strings).
       Files: `packages/shared-domain/src/deadlineLabels.ts`,
       `packages/shared-domain/src/smartTaskListStatus.ts` (new), `packages/shared-domain/src/evCardState.ts` (new).
-- [x] Move v2.7.2/PR4 chart strings into a shared-domain `historyDetailChartLabels(kind)` helper.
-      Shipped as `historyDetailChartLabels(mode: DeferredPlanHistoryChartMode)` in
-      `packages/shared-domain/src/deferredPlanHistoryChartData.ts` (re-exported via
-      `deferredPlanHistory.ts`). Returns a flat `HistoryDetailChartLabels` object with the
-      mode-aware `cardTitle` / `fallbackNote` resolved at the producer and the parametric
-      tooltip + aria-label helpers as functions. Strings are kind-agnostic today so the
-      helper takes `mode`, not `kind`.
-- [x] markPoint tone-aware for the "Reached target" dot on the history-detail chart.
-      Pinned the markPoint to neutral tokens (`--pels-status-on-good` fill +
-      `--pels-text-primary` stroke via the existing `palette.text` field) so the marker
-      stays legible if a future variant ever attaches `metAtMs` to a non-`good` hero tone.
-      Threaded a new `statusOnGood` field through `Palette` / `resolvePalette` and applied
-      it on both the original and revised-overlay `markPoint` configs.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
-- [x] Test history-detail chart legend wrap at 320 px and bump `grid.top` if needed.
-      Bumped `grid.top` from 44 → 60 px on both `buildHistoryDetailChartOption` (legacy)
-      and `buildHistoryDetailTrajectoryOption`, mirroring PR 1's `containLabel: true`
-      pattern. Added a 320 px Playwright probe in `charts-layout.spec.ts` that mounts a
-      trajectory-mode entry (4-entry legend) and asserts the legend's bottom edge sits
-      above the chart's first y-axis tick. Added unit tests pinning the new value on
-      both option builders.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`,
-      `packages/settings-ui/test/deadlinePlanHistoryDetail.test.ts`.
 - [ ] Hoist the `useEchartsMount` helper from `DeadlinePlanHistoryDetail.tsx` to a shared
       module in `echartsRegistry.ts`. PR 4 introduced the helper file-locally, but the
       same init/dispose/resize pattern exists in `powerWeekChartEcharts.ts`,
@@ -4699,7 +2470,6 @@ prod walk that didn't warrant a P2 slot.*
       time the file is touched — cosmetic-only. Source: gemini reviews
       of PRs #1227 + #1242, 2026-05-28.
 
-
 - [ ] **Per-device-key storage for deferred objectives.** Objectives are
       persisted as one whole-map blob under `objectivesByDeviceId`
       (`DEFERRED_OBJECTIVES_SETTINGS`), so every device-scoped create/clear is
@@ -4711,7 +2481,6 @@ prod walk that didn't warrant a P2 slot.*
       device) so a bad read of one device structurally cannot affect others,
       eliminating the whole-map clobber class rather than guarding it at
       runtime. Source: create-smart-task widget review (Fu-Ev/Fu-Ey), 2026-05-29.
-
 
 - [ ] **Close the transitive widget WebView import hole.** The
       `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
@@ -4726,7 +2495,6 @@ prod walk that didn't warrant a P2 slot.*
       out of the node builders into a shared browser-safe module, then add a rule
       forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`. Source:
       codex review of PR #1286, 2026-05-29.
-
 
 - [ ] **Fold the starvation-rescue deadline-horizon guard into the producer.**
       `widgets/starvation_rescue/src/api.ts` (create path) calls

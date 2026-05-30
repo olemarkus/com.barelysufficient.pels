@@ -9,7 +9,7 @@ places today; consolidating them is the proposed fix.
 
 Three modules independently reimplement the same persistence state machine:
 
-- `lib/app/appPowerCalibrationWiring.ts` — calibration snapshot
+- `lib/device/devicePowerCalibrationStore.ts` — calibration snapshot
 - `lib/plan/deferredObjectives/planHistory.ts` — deferred-objective plan-history recorder
 - `lib/plan/deferredObjectives/activePlanRecorder.ts` — deferred-objective active-plan recorder
 
@@ -98,7 +98,7 @@ pending changes that haven't reached `homey.settings.set`."
 
 ## What the consumer keeps
 
-After migration, a recorder file like `appPowerCalibrationWiring.ts` should
+After migration, a recorder file like `devicePowerCalibrationStore.ts` should
 hold only:
 
 - the `T` type (or import it)

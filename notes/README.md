@@ -1,48 +1,82 @@
 # Internal Notes
 
-This directory is for contributor-facing and agent-facing engineering notes that do not belong in the published user docs.
+Contributor- and agent-facing engineering notes that do not belong in the published user docs.
+Notes are either **design-of-record** (why a shipped subsystem is shaped the way it is) or
+**deferred-design** (a parked plan with a clear revisit trigger). Where a note describes shipped
+work it carries a status line; treat anything without one as still-forward design.
 
-Current notes:
+Per-directory `CLAUDE.md` files (`state-management/`, `starvation/`, `daily-budget-auto-adjust/`)
+are agent-context invariant digests, not notes — they are loaded automatically and are not listed
+below.
 
-- `complexity-cleanup/README.md`: current runtime simplification map after the major executor,
-  device-manager, app-helper, timer, context, and rebuild-scheduler slices landed.
-- `complexity-cleanup/god-file-policy.md`: proposal for replacing blanket `max-lines` waivers
-  with explicit shrink targets or documented config-level ceilings.
-- `logging/README.md`: structured logging policy, current event inventory, ALS context, and
-  migration guidance away from prose runtime logs.
-- `settings-ui-reorganization.md`: target product/navigation ownership model for reorganizing the
-  Settings UI around Overview, Budget, Usage, Smart tasks, and Settings while preserving canonical
-  owners for limits, devices, modes, price, simulation mode, and advanced diagnostics.
-- `ui-terminology.md`: canonical user-facing vocabulary for UI labels, status strings, tab names,
-  and help text.
-- `restore-eagerness/README.md`: the narrowed remaining restore-admission concern after the larger
-  restore-stability fixes landed.
-- `state-management/README.md`: Homey state-source trust, stale-data risks, reconcile pitfalls, and guidance for pending/observed state work.
-- `starvation/README.md`: intended temperature-device starvation model and the remaining rollout
-  work; core diagnostics/service pieces now exist, but flows/insights are still the main gap.
-- `daily-budget-auto-adjust/README.md`: planned daily-budget auto-adjust policy based on eligible exempted energy from completed days.
-- `deferred-load-objectives/README.md`: deadline-aware objective model for loads that need to
-  reach a ready state; the soft temperature runtime slice has shipped, while richer EV admission,
-  step-change history, and contention handling remain future work in this note. Hard deadlines
-  and energy-based milestones are deferred and moved to dedicated notes (see below).
-- `ev-ready-by/README.md`: product framing, release-readiness analysis, and prioritized task
-  plan for the user-facing EV charging deadline feature built on the deferred-load-objectives
-  model.
-- `hard-deadlines/README.md`: deferred-from-v1 design for hard-enforcement deadlines, the
-  hard-objective admission lane, hard-boost rebalancing, and the temperature-side mode-override
-  subsystem. Soft enforcement is what ships today.
-- `planning-horizon-milestones/README.md`: deferred-from-v1 design for energy-based milestones
-  and the priority-adjusted horizon-scheduling model. The shipped horizon planner covers the
-  same intent via deadline-reserve and `planned_using_policy_avoid` reasons.
-- `smart-task-flow-cards/README.md`: redesign proposal for the smart-task trigger cards —
-  drop dropdown filtering args, expose stable-id tokens as public-API contract, add numeric
-  tokens. Notification-text composition stays in the user's flow (see Rule 4).
-- `status-hysteresis/README.md`: deferred-from-v1 design for hysteresis on smart-task status
-  transitions and confidence-scaled deadline margins. Trigger to revisit is real telemetry
-  showing user-observable flapping; a target-boundary deadband is the smaller alternative
-  fix for the only edge case the shipped flow-trigger dedup doesn't already cover.
-- `ev-soc-layering.md`: decision record for keeping SoC source-of-evidence metadata inside the
-  observation layer.
-- `overview-hero-spec.md`: current Overview hero and device-card design reference.
-- `persisted-settings-state.md`: design note for a shared persisted-settings state helper.
-- `units.md`: unit conventions for runtime and UI surfaces.
+## Conventions & references
+
+- `AGENTS.md` — executable-plan intent rules for contributors/agents.
+- `personas.md` — who each surface serves; the PELS-wide product rubric (`pels-ux-fit` lens).
+- `ui-terminology.md` — canonical user-facing vocabulary for labels, status strings, tab names.
+- `units.md` — unit conventions for runtime and UI surfaces (and the in-flight kW→W quantization).
+- `overview-hero-spec.md` — Overview hero and device-card design reference.
+- `browser-stub.md` — settings-UI test harness / audit-scenario reference.
+
+## Architecture decision records
+
+- `ev-soc-layering.md` — source-of-evidence SoC metadata stays in the observation layer.
+- `persisted-settings-state.md` — proposed shared persisted-settings/recorder state helper (open).
+- `objective-profile-bands.md` — learned-profile banding + display-confidence resolution model.
+- `desktop-light-mobile-dark.md` — *(shipped)* light-canvas-on-desktop / dark-on-mobile theme model.
+- `v2-7-2/postmortem-chart-policy.md` — active-vs-historic chart asymmetry policy.
+
+## Runtime complexity & wiring
+
+- `complexity-cleanup/README.md` — current runtime simplification map.
+- `complexity-cleanup/god-file-policy.md` — `max-lines` policy + Bucket-B documented exceptions.
+- `logging/README.md` — structured-logging policy, event inventory, ALS context.
+- `native-wiring/README.md` — native stepped-load flow-conflict detection + device banner (shipped).
+- `persisted-settings-state.md` — see Architecture decision records above.
+
+## State management
+
+- `state-management/README.md` — state-source trust, stale-data risks, reconcile pitfalls.
+- `state-management/observer-transport-split.md` — *(shipped)* observer/transport split
+  design-of-record; the layering rationale that runtime code + `.dependency-cruiser.cjs` point to.
+- `state-management/deferred-objective-lifecycle-carveout.md` — lifecycle-release off the capacity
+  shed lane (increment 1 shipped; north-star relocation still pending).
+
+## Settings UI
+
+- `settings-ui-reorganization.md` — *(partially shipped)* Overview/Budget/Usage/Smart-tasks/Settings
+  ownership model.
+
+## Deferred-load objectives & deadlines
+
+- `deferred-load-objectives/README.md` — the cluster ADR for the deadline-aware objective model
+  (soft temperature + horizon planner shipped; richer EV admission, contention handling deferred).
+- `deferred-load-objectives/budget-bound-false-cannot-meet.md` — closed investigation: false
+  `cannot_meet` under daily-budget binding.
+- `deferred-load-objectives/feasibility-confidence.md` — *(shipped)* learned-rate confidence fix
+  (sub-interval energy, within-band residual, `mean + k·SE` verdict margin).
+- `deferred-load-objectives/feasibility-floor-vs-climbed-band.md` — floor-vs-climbed-band feasibility
+  (both slices shipped).
+- `ev-ready-by/README.md` — EV charging deadline feature (admission + trust surfaces shipped; kWh
+  target mode + expanded observability deferred).
+- `hard-deadlines/README.md` — deferred hard-enforcement admission lane (soft ships today; hard only
+  widens the variance buffer so far).
+- `planning-horizon-milestones/README.md` — deferred energy-milestone / horizon-scheduling design.
+- `status-hysteresis/README.md` — deferred status-transition hysteresis (revisit on real flapping
+  telemetry).
+
+## Smart tasks
+
+- `smart-tasks-surface-spec.md` — governing reference for the Smart tasks settings surface
+  (active list + Past tasks history): the value-contract and look, decided once.
+- `smart-task-flow-cards/README.md` — smart-task trigger-card design (stable-id tokens; shipped).
+- `smart-task-ui/README.md` — smart-task UI product-review / design rationale.
+- `smart-task-miss-attribution.md` — *(shipped)* plan-time miss-attribution on finalized runs.
+- `idle-classification.md` — *(shipped)* near_target_idle / unresponsive / capped_idle device states.
+
+## Other features
+
+- `starvation/README.md` — temperature-device starvation model; detection + rescue widget shipped,
+  flow cards / insights still the gap.
+- `daily-budget-auto-adjust/README.md` — planned daily-budget auto-adjust policy (unimplemented).
+- `restore-eagerness/README.md` — narrowed remaining restore-admission concern (late-ramp overshoot).

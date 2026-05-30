@@ -1,5 +1,10 @@
 # Desktop-light / mobile-dark theme model
 
+> **Status: shipped** (`967365c5` — light desktop theme, counter-filter dropped).
+> This is the design-of-record for the live behaviour, not a proposal. The
+> `(hover: hover) and (pointer: fine)` gate is in `settings/style.css`; the old
+> `prefers-color-scheme` counter-filter survives only as a comment.
+
 ## Context
 
 Homey's web shell unconditionally applies `filter: invert(1) hue-rotate(180deg)` to every embedded settings iframe when the parent `<html>` has class `darkTheme` — on **desktop** only. Homey mobile never applies that filter. Homey assumes every settings app is a light-canvas surface and uses the desktop filter as its dark-mode mechanism.

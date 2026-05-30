@@ -1,14 +1,12 @@
-# Smart Task Flow Cards — Redesign Proposal
+# Smart Task Flow Cards — Design Rationale
 
-The shipped trigger cards have a design issue: the `outcome` and `status`
-dropdown args make users either set up one flow per filtered value or pick the
-`any` option, and the tokens carrying those values today emit display labels
-rather than stable identifiers — so even when a user does land on a single
-trigger, downstream condition logic has to compare English strings that may
-localize or be renamed.
-
-This note collects the proposed redesign: one trigger per lifecycle event,
-stable-id tokens treated as public API, condition cards used for filtering.
+The smart-task trigger cards were redesigned around three decisions: **one
+trigger per lifecycle event** (no dropdown filter args), **stable-id tokens
+treated as public API** (not localizable display labels), and **condition cards
+for filtering**. The original cards forced either one-flow-per-filtered-value or
+the `any` option, and emitted display labels that downstream logic had to
+compare as English strings. This note is the design-of-record for *why* the
+cards are shaped this way and the stable token contract they expose.
 
 **Status:** shipped (2026-05-15), then trimmed (2026-05-15, again 2026-05-18)
 after comparing token counts against installed Homey apps (Easee, Home Connect,
@@ -33,7 +31,9 @@ re-add the token quietly.
 
 - `deadline_ended` — `device_name` (string), `outcome` (string, stable
   lowercase id: `succeeded` / `missed` / `abandoned`), `shortfall`
-  (number, 0 when succeeded; flow UI label "Gap to target").
+  (number, 0 when succeeded; flow UI label "Gap to target"),
+  `shortfall_known` (boolean — false when the device-side delta was not
+  observable and `shortfall` fell back to 0; gate numeric comparisons on it).
 - `deadline_status_changed` — `device_name` (string), `status` (string,
   stable lowercase id: `waiting` / `on_track` / `at_risk` /
   `unachievable` / `satisfied`).
@@ -94,7 +94,7 @@ no display-label sibling.
 
 Today, `target_text`, `shortfall_text`, etc. are pre-formatted strings.
 Expose the underlying numbers as separate tokens so flows can do math
-(`if shortfall_value > 5: warn loud`) without parsing strings. Shipped
+(`if shortfall > 5: warn loud`) without parsing strings. Shipped
 example: `deadline_ended` emits a `shortfall` number token rather than a
 `shortfall_text` string. Apply the same pattern when extending the other
 triggers.
@@ -107,139 +107,65 @@ push body from the underlying tokens is the flow author's job — same as every
 other Homey app. This avoids locking out localisation and avoids a token
 contract whose stability we'd have to defend across copy revisions.
 
-## Per-card target shape
+## Per-card target shape (rejected expansion — kept as backlog)
 
-> **Pre-trim proposal — not the shipped contract.** The token lists below
-> are the original full-fat redesign and were deliberately trimmed against
-> peer-app conventions before landing. The shipped shape is the "Delivered
-> token bag (minimum)" section near the top of this note. Treat what
-> follows as a backlog of tokens to revisit one-by-one if a concrete
-> flow-author need surfaces, not as a target to implement wholesale —
-> re-expansion would walk back the trim decision. In particular, the
-> `*_text` tokens (`target_text`, `shortfall_text`, `deadline_local_time`,
-> `estimated_duration_text`) and any composed `notification_text` are out
-> of scope per Rule 4.
+The original full-fat per-card token lists (the `*_value` / `*_unit` /
+`*_local_time` / `delivered_kwh` / `revisions_count` / `risk_reason` proposals
+for each trigger) were **deliberately trimmed** against peer-app conventions
+before landing and are not the shipped contract. The shipped bag is the
+"Delivered token bag (minimum)" section near the top of this note plus the
+**Stable token contract** table below. The trimmed proposals are intentionally
+not reproduced here — re-expanding them wholesale would walk back the trim
+decision; revisit individual tokens only when a concrete flow-author need
+surfaces. The `*_text` tokens and any composed `notification_text` stay out of
+scope per Rule 4.
 
-### `deadline_ended`
-
-**Args:** `device` (autocomplete). No outcome dropdown.
-
-**Title formatting:** `Smart task ended for [[device]]`.
-
-**Tokens (pre-trim proposal — see banner above):**
-- `device_name` (string) — shipped
-- `outcome` (string, stable id: `succeeded` / `missed` / `abandoned`) — shipped
-- `shortfall` (number, 0 when succeeded; flow UI label "Gap to target") — shipped
-- `kind` (string, stable id) — proposed
-- `target_value` (number) and `target_unit` (string id: `c` / `percent`) — proposed
-- `final_progress_value` (number, nullable) and `final_progress_unit` (string id) — proposed
-- `delivered_kwh` (number) — proposed
-- `finished_at_local_time` (string, formatted, empty when not succeeded) — proposed
-- `revisions_count` (number) — proposed
-
-### `deadline_status_changed`
-
-**Args:** `device` (autocomplete). No status dropdown.
-
-**Title formatting:** `Smart task status changed for [[device]]`.
-
-**Tokens (pre-trim proposal — see banner above):**
-- `device_name` (string) — shipped
-- `status` (string, stable id: `waiting` / `on_track` / `at_risk` /
-  `unachievable` / `satisfied`) — shipped
-- `kind` (string, stable id) — proposed
-- `previous_status_id` (string, stable id, nullable) — proposed
-- `target_value` (number), `target_unit` (string id) — proposed
-- `planned_start_local_time` (string, formatted, nullable) — proposed
-- `planned_finish_local_time` (string, formatted, nullable) — proposed
-- `required_kwh` (number, nullable) — proposed
-- `planning_speed_kw` (number, nullable) — proposed
-- `risk_reason` (string id, nullable) — proposed
-
-The runtime-side suppression rules already in place (first observation, same-
-status re-fire) stay.
-
-### `deadline_plan_changed`
-
-**Args:** `device` (autocomplete). No change.
-
-**Tokens (pre-trim proposal — see banner above):**
-- `device_name` — shipped
-- `remaining_kwh` — shipped
-- `planned_hours` — shipped
-- `projected_finish_local_time` — shipped
-- `kind` (stable id) — proposed
-- `change_reason_id` (string, stable id: `prices_revised` / `rate_refined` /
-  `objective_changed` / `measured_deviation`) — proposed. The recorder already classifies
-  the first three; `measured_deviation` is reserved and will fire once the observability
-  work lands. The `flow_card` and `prices_arrived` revision reasons mark plan *creation*
-  rather than *change* and are not emitted on `deadline_plan_changed`.
-
-### `deadline_status_is` (condition)
-
-Today the dropdown arg uses stable ids (`waiting` / `on_track` / etc.) but the
-runlistener accepts legacy values too. After Rule 2 lands, this card stays —
-users who prefer a condition card over a token comparison still get one — but
-the comparison value is the same stable id surfaced as `status_id` in the
-trigger.
-
-The shipped dropdown is intentionally the canonical flow-status set only:
-`Waiting`, `On track`, `At risk`, `Cannot finish`, and `Satisfied`
-(`waiting`, `on_track`, `at_risk`, `unachievable`, `satisfied`). Public docs
-must not describe Smart-task list-only display states such as `Scheduled` or
-`Paused — unplugged`, or label variants such as `Building plan…`, as
-selectable values on this condition card unless the card JSON grows matching
-dropdown options.
+One condition-card constraint still matters: `deadline_status_is`'s shipped
+dropdown is intentionally the canonical flow-status set only — `Waiting`,
+`On track`, `At risk`, `Cannot finish`, `Satisfied` (`waiting`, `on_track`,
+`at_risk`, `unachievable`, `satisfied`). Public docs must not describe
+Smart-task list-only display states (`Scheduled`, `Paused — unplugged`) or
+label variants (`Building plan…`) as selectable values unless the card JSON
+grows matching dropdown options.
 
 ## Stable token contract
 
-The following token *values* become public API. Treat any change as a
-breaking change.
+These are the tokens the cards actually emit today (verified against
+`.homeycompose/flow/triggers/*.json` and `flowCards/smartTaskTokens.ts`). Their
+stable-id *values* are public API — treat any rename as a breaking change.
 
-| Token | Values |
-|---|---|
-| `kind` | `temperature`, `ev_soc` |
-| `outcome_id` | `succeeded`, `missed`, `abandoned` |
-| `status_id`, `previous_status_id` | `waiting`, `on_track`, `at_risk`, `unachievable`, `satisfied` |
-| `change_reason_id` | `prices_revised`, `rate_refined`, `objective_changed`, `measured_deviation` |
-| `risk_reason` | reason codes from `lib/plan/deferredObjectives/types.ts` |
-| `target_unit`, `shortfall_unit`, `final_progress_unit` | `c`, `percent` |
+| Trigger | Tokens | Stable-id values |
+|---|---|---|
+| `deadline_ended` | `device_name`, `outcome`, `shortfall` (number), `shortfall_known` (boolean) | `outcome`: `succeeded`, `missed`, `abandoned` |
+| `deadline_status_changed` | `device_name`, `status` | `status`: `waiting`, `on_track`, `at_risk`, `unachievable`, `satisfied` |
+| `deadline_plan_changed` | `device_name`, `remaining_kwh` (number), `planned_hours` (number), `projected_finish_local_time` | — |
+| `smart_task_hours_remaining` | `device_name`, `hours_remaining` (number) | — |
 
-Document these in the card JSON and the token-building code so future-
-refactor PRs know not to rename them silently.
+The `deadline_status_is` condition compares against the same `status` enum. The
+trimmed proposal-era tokens (`kind`, `*_id` suffixes, `previous_status_id`,
+`change_reason_id`, `risk_reason`, `*_unit`) were **not** shipped — see the
+rejected-expansion note above.
 
 ## Common flow scenarios this design serves
 
 | Goal | Flow shape |
 |---|---|
-| Notify on every smart task outcome | trigger + action, compose body from `device_name` + `outcome` in the flow |
-| Notify only when EV charge fails | trigger + condition `outcome_id = missed AND kind = ev_soc` + action |
-| Per-outcome routing | trigger + branch on `outcome_id` |
-| Alert when status reaches at-risk | trigger + condition `status_id = at_risk` |
-| Alert when leaving satisfied (e.g. temp drop) | trigger + condition `previous_status_id = satisfied AND status_id != satisfied` |
-| Replanned because rates refined | `deadline_plan_changed` + condition `change_reason_id = rate_refined` |
-| Loud alarm only when shortfall is large | `deadline_ended` + condition `outcome_id = missed AND shortfall_value > 5` |
+| Notify on every smart task outcome | `deadline_ended` + action, compose body from `device_name` + `outcome` in the flow |
+| Notify only on failed outcomes | `deadline_ended` + Logic condition `outcome = missed` + action |
+| Per-outcome routing | `deadline_ended` + branch on `outcome` |
+| Alert when status reaches at-risk | `deadline_status_changed` + `deadline_status_is` condition `At risk` |
+| Loud alarm only when shortfall is large | `deadline_ended` + Logic condition `outcome = missed AND shortfall > 5` (gate on `shortfall_known`) |
+| React to a replanned schedule | `deadline_plan_changed` + read `remaining_kwh` / `planned_hours` in the flow |
 
-## Implementation outline
+## Implementation
 
-Files that need to change:
-
-- `.homeycompose/flow/triggers/deadline_ended.json` — drop `outcome` arg,
-  add new token list.
-- `.homeycompose/flow/triggers/deadline_status_changed.json` — drop
-  `status` arg, add new token list.
-- `.homeycompose/flow/triggers/deadline_plan_changed.json` — add new
-  tokens.
-- `flowCards/deadlineObjectiveCards.ts` — update `buildTriggerTokens`
-  for status_changed; remove dropdown-based runlistener filtering.
-- `flowCards/smartTaskTokens.ts` — emit `outcome_id` alongside
-  `outcome`; add numeric tokens.
-- Active-plan recorder / planHistory — surface the new numeric fields the
-  tokens depend on (`delivered_kwh`, `revisions_count`, numeric target /
-  progress) if not already available.
-- Tests under `test/deadlineObjectiveCards.test.ts` — extend token-shape
-  coverage; assert stable-id values explicitly so future renames break the
-  test rather than user flows silently.
+Shipped across `.homeycompose/flow/triggers/deadline_*.json` (dropdown args
+dropped, stable-id token bags added), `flowCards/deadlineObjectiveCards.ts`
+(runlistener filtering removed), and `flowCards/smartTaskTokens.ts` (the token
+builder). Stable-id values are asserted in `test/deadlineObjectiveCards.test.ts`
+so a future rename breaks the test rather than user flows silently. The proposal
+to also emit `outcome_id` / numeric introspection tokens (`delivered_kwh`,
+`revisions_count`) was trimmed and not shipped.
 
 ## Migration notes
 
