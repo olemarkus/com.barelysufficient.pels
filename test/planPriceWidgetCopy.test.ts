@@ -2,11 +2,26 @@
  * @vitest-environment node
  */
 import {
+  PLAN_PRICE_WIDGET_ARIA,
+  PLAN_PRICE_WIDGET_EMPTY,
   formatPlanPriceSummary,
   resolvePlanPriceCostDisplay,
 } from '../packages/shared-domain/src/planPriceWidgetCopy';
 
 describe('plan price widget copy', () => {
+  test('empty-state copy uses budget wording, not "plan" (the bars are the daily budget)', () => {
+    expect(PLAN_PRICE_WIDGET_EMPTY.noData).toBe('No budget data available');
+    expect(PLAN_PRICE_WIDGET_EMPTY.tomorrowPending).toBe("Tomorrow's budget not available yet");
+    // No "plan" wording leaks into the budget-feature empty sublines.
+    expect(Object.values(PLAN_PRICE_WIDGET_EMPTY).join(' ')).not.toMatch(/\bplan\b/i);
+  });
+
+  test('chart aria copy is the canonical Budget-and-price wording', () => {
+    expect(PLAN_PRICE_WIDGET_ARIA.unavailable).toBe('Budget and price chart unavailable');
+    expect(PLAN_PRICE_WIDGET_ARIA.tomorrow).toBe('Budget and price chart for tomorrow');
+    expect(PLAN_PRICE_WIDGET_ARIA.today).toBe('Budget and price chart for today');
+  });
+
   test('resolves the Norwegian øre→kr cost display by default', () => {
     expect(resolvePlanPriceCostDisplay({})).toEqual({
       costUnit: 'kr',

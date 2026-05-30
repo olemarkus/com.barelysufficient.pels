@@ -26,12 +26,22 @@ export const PLAN_PRICE_WIDGET_AXIS = {
   energy: 'kWh',
 } as const;
 
-// Empty / error sublines.
+// Empty / error sublines. These describe the daily-BUDGET feature, so they say
+// "budget" rather than "plan" (the bars are the daily-budget allocation, not the
+// planning-layer "plan" — see feedback_terminology_plan_vs_deadline).
 export const PLAN_PRICE_WIDGET_EMPTY = {
   budgetDisabled: 'Daily budget disabled',
-  noData: 'No plan data available',
-  tomorrowPending: 'Tomorrow plan not available yet',
+  noData: 'No budget data available',
+  tomorrowPending: "Tomorrow's budget not available yet",
   loadError: 'Unable to load widget',
+} as const;
+
+// Chart SVG aria-labels (screen-reader description of the chart region). Kept
+// here alongside the other widget copy so runtime/renderer share one source.
+export const PLAN_PRICE_WIDGET_ARIA = {
+  unavailable: 'Budget and price chart unavailable',
+  tomorrow: 'Budget and price chart for tomorrow',
+  today: 'Budget and price chart for today',
 } as const;
 
 export const PLAN_PRICE_WIDGET_PRICE_MISSING = 'Price data missing';

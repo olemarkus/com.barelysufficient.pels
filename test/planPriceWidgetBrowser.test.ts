@@ -204,7 +204,7 @@ describe('plan budget widget browser', () => {
     };
 
     renderWidget(chartEl, null, 'morning');
-    expect(chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('No plan data available');
+    expect(chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('No budget data available');
 
     renderWidget(chartEl, payload, 'morning');
     expect(chartEl.querySelector('.chart__badge')?.textContent).toBe('Price data missing');

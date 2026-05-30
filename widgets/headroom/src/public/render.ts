@@ -89,7 +89,20 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
 
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
   const pausedLabel = headroomPausedLabel(payload.shedCount);
-  metaEl.textContent = payload.shedCount > 0 ? `${availableLabel} · ${pausedLabel}` : availableLabel;
+  // Over the hard cap there is no available power, so the clamped
+  // "0 kW available" would be misleading. The "Over hard cap" state pill + red
+  // bar carry the severity; the meta line shows just the paused count (empty
+  // when nothing is paused). The actual overage isn't on the payload yet —
+  // tracked in TODO.md to surface "X kW over hard cap" later. The aria-label
+  // reuses this same text so assistive tech never hears the dropped figure.
+  const resolveMetaText = (): string => {
+    if (payload.limitState === 'over_cap') {
+      return payload.shedCount > 0 ? pausedLabel : '';
+    }
+    return payload.shedCount > 0 ? `${availableLabel} · ${pausedLabel}` : availableLabel;
+  };
+  const metaText = resolveMetaText();
+  metaEl.textContent = metaText;
   metaEl.dataset.tone = tone === 'danger' ? 'danger' : 'ok';
 
   const stateSummary = headroomLimitStateLabel(payload.limitState);
@@ -98,7 +111,7 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
     `${HEADROOM_WIDGET_COPY.powerNowLabel} ${currentLabel} kW`,
     `${HEADROOM_WIDGET_COPY.safePaceLabel} ${budgetLabelKw} kW`,
     ...(stateSummary ? [stateSummary] : []),
-    availableLabel,
+    ...(metaText ? [metaText] : []),
     `${HEADROOM_WIDGET_COPY.priceAriaPrefix} ${priceLabel}`,
   ];
   root.setAttribute('aria-label', `${ariaParts.join('. ')}.`);

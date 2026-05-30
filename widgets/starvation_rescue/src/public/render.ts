@@ -76,6 +76,12 @@ const setLine = (el: HTMLElement, text: string | null): void => {
   el.hidden = !visible;
 };
 
+// Two display lines are "the same" if they match after lowercasing, trimming,
+// and dropping a single trailing period — used to suppress a note that merely
+// restates the subtext.
+const normalizeLine = (text: string): string => text.trim().replace(/\.$/, '').toLowerCase();
+const linesMatch = (a: string, b: string): boolean => normalizeLine(a) === normalizeLine(b);
+
 const hide = (el: HTMLElement): void => { el.hidden = true; };
 
 const setVisible = (el: HTMLElement, visible: boolean): void => { el.hidden = !visible; };
@@ -107,10 +113,12 @@ const renderDeviceRow = (
   const noteEl = li.querySelector('[data-device-note]');
   const rescueBtn = li.querySelector('[data-rescue-button]');
 
+  const subtext = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
+
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
   if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
   if (subtextEl instanceof HTMLElement) {
-    subtextEl.textContent = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
+    subtextEl.textContent = subtext;
   }
 
   // Budget rows: a rescue button (the only interactive affordance). Other
@@ -127,7 +135,14 @@ const renderDeviceRow = (
     }
   }
   if (noteEl instanceof HTMLElement) {
-    setLine(noteEl, offersRescue ? null : resolveStarvationRowNote(device.cause));
+    // The note is suppressed for rescuable (budget) rows, and otherwise only
+    // shown when it adds information beyond the subtext. For capacity/manual/
+    // external rows the note and subtext are near-identical (e.g. "Waiting for
+    // available power" vs "Waiting for available power.") — printing both reads
+    // as a doubled line, so drop the note when it duplicates the subtext
+    // (compared case-insensitively, ignoring a trailing period).
+    const note = offersRescue ? null : resolveStarvationRowNote(device.cause);
+    setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
   }
   return li;
 };
