@@ -372,25 +372,28 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
 // `cannot_meet` collapse to the same timestamp tone here — the chip
 // preserves the distinction.
 //
-// Maps to 'accent' (default green) for healthy / pending / queued / satisfied
-// states; 'warn' for at-risk / paused / cannot-meet. The view layer renders
-// `.deadline-list-card__when-row--accent` / `--warn` / `--alert` per the
-// resolved slug — never branches on status itself. The `--alert` CSS variant
-// is currently unused by this resolver but kept in place for future status
-// codes that may legitimately warrant the strongest tone on the timestamp.
-export type SmartTaskListReadyByTone = 'accent' | 'warn' | 'alert';
+// Maps to 'neutral' (primary text, no colour) for healthy / pending / queued /
+// satisfied states; 'warn' for at-risk / paused / cannot-meet. Colour on the
+// Ready-by line is reserved to signal a PROBLEM — a healthy timestamp stays
+// neutral so the brand green isn't overloaded onto a passive readout (it
+// already carries nav-selection and primary actions elsewhere). The view layer
+// renders `.deadline-list-card__when-row--neutral` / `--warn` / `--alert` per
+// the resolved slug — never branches on status itself. The `--alert` CSS
+// variant is currently unused by this resolver but kept in place for future
+// status codes that may legitimately warrant the strongest tone on the line.
+export type SmartTaskListReadyByTone = 'neutral' | 'warn' | 'alert';
 
 // Total mapping (mirrors `SMART_TASK_LIST_STATUS_CHIP_VARIANT` above) so a new
 // `SmartTaskListStatusId` member produces a TypeScript error here rather than
 // silently falling through to the default tone.
 const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskListReadyByTone> = {
-  building_plan: 'accent',
-  queued: 'accent',
+  building_plan: 'neutral',
+  queued: 'neutral',
   paused_unplugged: 'warn',
-  on_track: 'accent',
+  on_track: 'neutral',
   at_risk: 'warn',
   cannot_meet: 'warn',
-  satisfied: 'accent',
+  satisfied: 'neutral',
 };
 
 export const resolveSmartTaskListReadyByTone = (
