@@ -288,6 +288,7 @@ export const createWidgetController = (params: {
     usePreviewData = searchParams.get('preview') === '1';
     maybeApplyPreviewTheme(widgetDocument, searchParams);
     const payload = await fetchDevices(homeyRef, usePreviewData);
+    if (destroyed) return;
     if (loadId === loadSequence) {
       devicesPayload = payload;
       // Only the list view depends on the device list; an in-progress confirm

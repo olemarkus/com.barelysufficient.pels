@@ -141,7 +141,14 @@
     setStateLabel(stateLabelEl, payload.limitState);
     const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
     const pausedLabel = headroomPausedLabel(payload.shedCount);
-    metaEl.textContent = payload.shedCount > 0 ? `${availableLabel} \xB7 ${pausedLabel}` : availableLabel;
+    const resolveMetaText = () => {
+      if (payload.limitState === "over_cap") {
+        return payload.shedCount > 0 ? pausedLabel : "";
+      }
+      return payload.shedCount > 0 ? `${availableLabel} \xB7 ${pausedLabel}` : availableLabel;
+    };
+    const metaText = resolveMetaText();
+    metaEl.textContent = metaText;
     metaEl.dataset.tone = tone === "danger" ? "danger" : "ok";
     const stateSummary = headroomLimitStateLabel(payload.limitState);
     const priceLabel = headroomPriceChipLabel(payload.priceLevel);
@@ -149,7 +156,7 @@
       `${HEADROOM_WIDGET_COPY.powerNowLabel} ${currentLabel} kW`,
       `${HEADROOM_WIDGET_COPY.safePaceLabel} ${budgetLabelKw} kW`,
       ...stateSummary ? [stateSummary] : [],
-      availableLabel,
+      ...metaText ? [metaText] : [],
       `${HEADROOM_WIDGET_COPY.priceAriaPrefix} ${priceLabel}`
     ];
     root.setAttribute("aria-label", `${ariaParts.join(". ")}.`);
@@ -232,6 +239,7 @@
     let loadSequence = 0;
     let refreshTimer = null;
     let visibilityListenerBound = false;
+    let destroyed = false;
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       try {
@@ -239,14 +247,14 @@
         const preview = searchParams.get("preview") === "1";
         maybeApplyPreviewTheme(widgetDocument, searchParams);
         const payload = preview || !homeyRef ? resolveHeadroomPreviewPayload(searchParams.get("state")) : await homeyRef.api("GET", "/headroom");
-        if (loadId !== loadSequence) return;
+        if (destroyed || loadId !== loadSequence) return;
         renderWidget(targets, payload);
       } catch (error) {
-        if (loadId !== loadSequence) return;
+        if (destroyed || loadId !== loadSequence) return;
         console.error("Failed to load headroom widget", error);
         renderWidget(targets, { state: "empty", subtitle: LOAD_ERROR_SUBTITLE });
       } finally {
-        if (loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
+        if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
           homeyRef.ready();
           initialRenderDone = true;
         }
@@ -278,6 +286,7 @@
       bindVisibilityReload();
     };
     const destroy = () => {
+      destroyed = true;
       if (refreshTimer !== null) {
         widgetWindow.clearInterval(refreshTimer);
         refreshTimer = null;

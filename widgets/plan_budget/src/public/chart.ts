@@ -1,5 +1,7 @@
 import {
+  PLAN_PRICE_WIDGET_ARIA,
   PLAN_PRICE_WIDGET_AXIS,
+  PLAN_PRICE_WIDGET_EMPTY,
   PLAN_PRICE_WIDGET_LEGEND,
   PLAN_PRICE_WIDGET_PRICE_MISSING,
   PLAN_PRICE_WIDGET_TITLE,
@@ -23,7 +25,7 @@ const GRID_LINES = 4;
 const BAR_RADIUS = 3;
 const DOT_RADIUS = 4;
 const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
-const DEFAULT_EMPTY_SUBTITLE = 'No plan data available';
+const DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
 
 // The day splits at noon: morning = local hours 00–11, afternoon = 12–23.
 // Splitting by each bucket's LOCAL hour (not its array index) keeps the halves
@@ -479,7 +481,7 @@ export const renderEmptyState = (
   const chartDocument = chartEl.ownerDocument;
 
   clearNode(chartEl);
-  chartEl.setAttribute('aria-label', payload.subtitle || 'Budget and price chart unavailable');
+  chartEl.setAttribute('aria-label', payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
   chartEl.appendChild(createSvg(chartDocument, 'rect', {
     class: 'chart__panel',
     x: PANEL.x,
@@ -516,8 +518,8 @@ export const renderReadyState = (
   chartEl.setAttribute(
     'aria-label',
     payload.target === 'tomorrow'
-      ? 'Budget and price chart for tomorrow'
-      : 'Budget and price chart for today',
+      ? PLAN_PRICE_WIDGET_ARIA.tomorrow
+      : PLAN_PRICE_WIDGET_ARIA.today,
   );
 
   chartEl.appendChild(groups.chartGroup);

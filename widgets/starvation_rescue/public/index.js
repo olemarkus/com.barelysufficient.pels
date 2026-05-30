@@ -438,6 +438,8 @@
     el.textContent = visible ? text : "";
     el.hidden = !visible;
   };
+  var normalizeLine = (text) => text.trim().replace(/\.$/, "").toLowerCase();
+  var linesMatch = (a, b) => normalizeLine(a) === normalizeLine(b);
   var hide = (el) => {
     el.hidden = true;
   };
@@ -455,10 +457,11 @@
     const subtextEl = li.querySelector("[data-device-subtext]");
     const noteEl = li.querySelector("[data-device-note]");
     const rescueBtn = li.querySelector("[data-rescue-button]");
+    const subtext = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
     if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
     if (chipEl instanceof HTMLElement) chipEl.textContent = formatStarvationRowChip(device.cause, device.accumulatedMs);
     if (subtextEl instanceof HTMLElement) {
-      subtextEl.textContent = resolveStarvationRowSubtext(device.cause, device.intendedNormalTargetC);
+      subtextEl.textContent = subtext;
     }
     if (rescueBtn instanceof HTMLButtonElement) {
       if (offersRescue) {
@@ -471,7 +474,8 @@
       }
     }
     if (noteEl instanceof HTMLElement) {
-      setLine(noteEl, offersRescue ? null : resolveStarvationRowNote(device.cause));
+      const note = offersRescue ? null : resolveStarvationRowNote(device.cause);
+      setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
     }
     return li;
   };
@@ -776,6 +780,7 @@
       usePreviewData = searchParams.get("preview") === "1";
       maybeApplyPreviewTheme(widgetDocument, searchParams);
       const payload = await fetchDevices(homeyRef, usePreviewData);
+      if (destroyed) return;
       if (loadId === loadSequence) {
         devicesPayload = payload;
         if (view.kind === "list") render();

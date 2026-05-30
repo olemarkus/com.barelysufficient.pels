@@ -1946,10 +1946,10 @@ var require_wait = __commonJS({
   "node_modules/thread-stream/lib/wait.js"(exports2, module2) {
     "use strict";
     var WAIT_MS = 1e4;
-    function wait(state, index, expected, timeout, done) {
+    function wait(state2, index, expected, timeout, done) {
       const max = timeout === Infinity ? Infinity : Date.now() + timeout;
       const check = () => {
-        const current = Atomics.load(state, index);
+        const current = Atomics.load(state2, index);
         if (current === expected) {
           done(null, "ok");
           return;
@@ -1959,7 +1959,7 @@ var require_wait = __commonJS({
           return;
         }
         const remaining = max === Infinity ? WAIT_MS : Math.min(WAIT_MS, Math.max(1, max - Date.now()));
-        const result = Atomics.waitAsync(state, index, current, remaining);
+        const result = Atomics.waitAsync(state2, index, current, remaining);
         if (result.async) {
           result.value.then(check);
         } else {
@@ -1968,10 +1968,10 @@ var require_wait = __commonJS({
       };
       check();
     }
-    function waitDiff(state, index, expected, timeout, done) {
+    function waitDiff(state2, index, expected, timeout, done) {
       const max = timeout === Infinity ? Infinity : Date.now() + timeout;
       const check = () => {
-        const current = Atomics.load(state, index);
+        const current = Atomics.load(state2, index);
         if (current !== expected) {
           done(null, "ok");
           return;
@@ -1981,7 +1981,7 @@ var require_wait = __commonJS({
           return;
         }
         const remaining = max === Infinity ? WAIT_MS : Math.min(WAIT_MS, Math.max(1, max - Date.now()));
-        const result = Atomics.waitAsync(state, index, expected, remaining);
+        const result = Atomics.waitAsync(state2, index, expected, remaining);
         if (result.async) {
           result.value.then(check);
         } else {
@@ -4730,6 +4730,16 @@ var ONE_HOUR_MS2 = 60 * 60 * 1e3;
 // lib/objectives/deferredObjectives/activePlanRecorder.ts
 var logger3 = getLogger("plan/deferred-active");
 var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
+
+// lib/utils/perfCounters.ts
+var state = {
+  startedAt: Date.now(),
+  counts: {},
+  durations: {}
+};
+
+// lib/utils/opRssTracker.ts
+var MB = 1024 * 1024;
 
 // packages/contracts/src/deferredObjectiveSettings.ts
 var normalizeEntryBase = (raw) => {

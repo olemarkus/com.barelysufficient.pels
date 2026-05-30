@@ -71,6 +71,7 @@ export const createWidgetController = (params: {
   let loadSequence = 0;
   let refreshTimer: number | null = null;
   let visibilityListenerBound = false;
+  let destroyed = false;
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
@@ -81,14 +82,14 @@ export const createWidgetController = (params: {
       const payload: HeadroomWidgetPayload = preview || !homeyRef
         ? resolveHeadroomPreviewPayload(searchParams.get('state'))
         : await homeyRef.api('GET', '/headroom') as HeadroomWidgetPayload;
-      if (loadId !== loadSequence) return;
+      if (destroyed || loadId !== loadSequence) return;
       renderWidget(targets, payload);
     } catch (error) {
-      if (loadId !== loadSequence) return;
+      if (destroyed || loadId !== loadSequence) return;
       console.error('Failed to load headroom widget', error);
       renderWidget(targets, { state: 'empty', subtitle: LOAD_ERROR_SUBTITLE });
     } finally {
-      if (loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
+      if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();
         initialRenderDone = true;
       }
@@ -125,6 +126,7 @@ export const createWidgetController = (params: {
   };
 
   const destroy = (): void => {
+    destroyed = true;
     if (refreshTimer !== null) {
       widgetWindow.clearInterval(refreshTimer);
       refreshTimer = null;

@@ -82,6 +82,14 @@ listed below in the P2 release-review 2026-05-28 subsection.*
         / `test:ui:unit`) but passes in isolation; cost three pre-push retries during
         the widget train. Stabilize (likely shared-DOM/async teardown bleed between
         tests). Source: widget-polish train, 2026-05-30.
+  - [ ] **`headroom` over_cap overage figure** — the over-cap meta line now omits the
+        misleading clamped "0 kW available" and shows only the paused count, but it
+        doesn't yet surface the *actual* overage ("X kW over hard cap"). That needs the
+        payload builder to expose the hard-cap overage (current − cap) on the headroom
+        payload so the renderer can show how far over the physical ceiling we are.
+        Files: `widgets/headroom/src/headroomWidgetPayload.ts` (add overage field) +
+        `widgets/headroom/src/public/render.ts` + `headroomWidgetCopy.ts` (copy helper).
+        Source: widget-polish round 2, 2026-05-30.
 
 - [ ] **Align (or deliberately keep) "Starved" in device-detail diagnostics.** The
       Held-back-devices widget now says "Held back"; `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts`

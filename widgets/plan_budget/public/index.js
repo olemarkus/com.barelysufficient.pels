@@ -14,9 +14,14 @@
   };
   var PLAN_PRICE_WIDGET_EMPTY = {
     budgetDisabled: "Daily budget disabled",
-    noData: "No plan data available",
-    tomorrowPending: "Tomorrow plan not available yet",
+    noData: "No budget data available",
+    tomorrowPending: "Tomorrow's budget not available yet",
     loadError: "Unable to load widget"
+  };
+  var PLAN_PRICE_WIDGET_ARIA = {
+    unavailable: "Budget and price chart unavailable",
+    tomorrow: "Budget and price chart for tomorrow",
+    today: "Budget and price chart for today"
   };
   var PLAN_PRICE_WIDGET_PRICE_MISSING = "Price data missing";
   var PLAN_PRICE_WIDGET_TABS = {
@@ -53,7 +58,7 @@
   var BAR_RADIUS = 3;
   var DOT_RADIUS = 4;
   var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
-  var DEFAULT_EMPTY_SUBTITLE = "No plan data available";
+  var DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
   var HALF_SPLIT_HOUR = 12;
   var parseBucketLocalHour = (label) => {
     if (typeof label !== "string") return null;
@@ -358,7 +363,7 @@
   var renderEmptyState = (chartEl, payload) => {
     const chartDocument = chartEl.ownerDocument;
     clearNode(chartEl);
-    chartEl.setAttribute("aria-label", payload.subtitle || "Budget and price chart unavailable");
+    chartEl.setAttribute("aria-label", payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
     chartEl.appendChild(createSvg(chartDocument, "rect", {
       class: "chart__panel",
       x: PANEL.x,
@@ -388,7 +393,7 @@
     clearNode(chartEl);
     chartEl.setAttribute(
       "aria-label",
-      payload.target === "tomorrow" ? "Budget and price chart for tomorrow" : "Budget and price chart for today"
+      payload.target === "tomorrow" ? PLAN_PRICE_WIDGET_ARIA.tomorrow : PLAN_PRICE_WIDGET_ARIA.today
     );
     chartEl.appendChild(groups.chartGroup);
     appendPanel(chartDocument, groups.panelGroup);

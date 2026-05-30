@@ -281,7 +281,7 @@ describe('plan price widget payload', () => {
       state: 'empty',
       target: 'tomorrow',
       title: 'Budget and Price',
-      subtitle: 'Tomorrow plan not available yet',
+      subtitle: "Tomorrow's budget not available yet",
     });
   });
 
@@ -395,7 +395,7 @@ describe('plan price widget payload', () => {
       state: 'empty',
       target: 'tomorrow',
       title: 'Budget and Price',
-      subtitle: 'Tomorrow plan not available yet',
+      subtitle: "Tomorrow's budget not available yet",
     });
   });
 });
