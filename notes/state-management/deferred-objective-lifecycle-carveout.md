@@ -174,7 +174,22 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    decoration eval, so `no-plan-to-smarttasks` still fires until step 5/6.
 5. **Move the input-decoration appliers into the controller.** The controller emits decorated
    `PlanInputDevice`s; `planBuilder` stops calling the deferred appliers; delete
-   `admission/deferredObjective.ts`. Kills the input-mutation half.
+   `admission/deferredObjective.ts`. Kills the input-mutation half. Realized via a dedicated
+   `@pels/planner-types` workspace (`packages/planner-types/`) that hosts the planner's I/O
+   contracts below the domain peer layer, so `lib/objectives` can import them *downward* without
+   inverting the peer DAG (PR-A's narrow `ObjectiveDeviceInput` decoupled only the read side; the
+   controller now needs to *emit* a full `PlanInputDevice`, which is what the hoist enables).
+   Sub-sequence:
+   - **PR-D1 (done):** create `@pels/planner-types`; move `PlanInputDevice` (+ its
+     `StepPowerCalibrationView` helper) there; `lib/plan/planTypes` re-exports both so the ~54
+     existing consumers stay untouched. `planner-types` is wired into `arch:check` and the
+     `shared-packages-no-runtime` / `no-circular` / `no-runtime-to-tests` dep-cruiser guards
+     (browser-safe, may import only sibling shared packages like `@pels/contracts`).
+     Behavior-neutral.
+   - **PR-D1b:** move `ExecutablePlan` (+ `SteppedStepActuationState`) closure into the package.
+   - **PR-D2:** relocate the 4 decoration appliers + the eval into the controller; `planBuilder`
+     consumes the returned bundle and imports zero `lib/objectives`; delete
+     `admission/deferredObjective.ts`. Active-plan commitment stays synchronous (PR-C catch).
 6. **Controller owns ending + the direct disable actuator** (goal 2 completed end-to-end).
 7. **Flip `no-plan-to-smarttasks` to `error`.** Green = planner knows nothing about smart tasks.
 
