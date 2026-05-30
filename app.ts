@@ -95,6 +95,7 @@ import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildSche
 import {
   buildDeferredObjectiveDeviceWriteDeps,
   createDeferredObjectiveActivePlanRecorder,
+  createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
   createDeviceDiagnosticsService,
   createPlanEngine,
@@ -999,6 +1000,12 @@ class PelsApp extends Homey.App {
 
   private startPostStartupBackgroundTasks(): void {
     this.startPowerTrackerPruning();
+    // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
+    // history). PlanService exists by now, so the emitter's getDevices reads the
+    // live plan-device source. Runs off the power path — fixes the flow-mode lag.
+    this.backgroundTasks.startDeferredObjectiveLifecycleClock(
+      createDeferredObjectiveLifecycleEmitter(this.ctx),
+    );
     // Fire-and-forget native-wiring flow-conflict detection. Best-effort: must
     // never block or fail startup, and reads fail closed. See
     // setup/flowConflictProbe.ts.

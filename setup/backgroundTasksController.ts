@@ -7,6 +7,8 @@ import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from '../l
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
+import { startDeferredObjectiveLifecycleClock } from '../lib/app/deferredObjectiveLifecycleClock';
+import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 
 export type BackgroundTasksControllerDeps = {
   homey: Homey.App['homey'];
@@ -47,6 +49,7 @@ export class BackgroundTasksController {
   private stopPerfLog?: () => void;
   private stopResourceWarnings?: () => void;
   private stopHeapSnapshot?: () => void;
+  private stopDeferredObjectiveClock?: () => void;
 
   constructor(private readonly deps: BackgroundTasksControllerDeps) {}
 
@@ -88,10 +91,20 @@ export class BackgroundTasksController {
     });
   }
 
+  startDeferredObjectiveLifecycleClock(emitter: DeferredObjectiveLifecycleEmitter): void {
+    if (this.stopDeferredObjectiveClock) this.stopDeferredObjectiveClock();
+    this.stopDeferredObjectiveClock = startDeferredObjectiveLifecycleClock({
+      emitter,
+      getNowMs: () => this.deps.getNow().getTime(),
+      error: (message, error) => this.deps.error(message, error),
+    });
+  }
+
   stopAll(): void {
     this.stopPriceLowestTrigger?.();
     this.stopPerfLog?.();
     this.stopResourceWarnings?.();
     this.stopHeapSnapshot?.();
+    this.stopDeferredObjectiveClock?.();
   }
 }

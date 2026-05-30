@@ -1,9 +1,11 @@
 const {
   capturedPlanEngineDeps,
+  capturedEmitterDeps,
   capturedPriceCoordinatorDeps,
   capturedFlowCardDeps,
 } = vi.hoisted(() => ({
   capturedPlanEngineDeps: { current: null as null | Record<string, unknown> },
+  capturedEmitterDeps: { current: null as null | Record<string, unknown> },
   capturedPriceCoordinatorDeps: { current: null as null | Record<string, unknown> },
   capturedFlowCardDeps: { current: null as null | Record<string, unknown> },
 }));
@@ -16,6 +18,22 @@ vi.mock('../lib/plan/planEngine', () => ({
       this.deps = deps;
       capturedPlanEngineDeps.current = deps;
     }
+  },
+}));
+
+// The clock-driven smart-task lifecycle emitter now owns the disable +
+// observe/watermark closures (moved out of createPlanEngine). Capture its deps
+// the same way so the wiring tests below exercise them.
+vi.mock('../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
+  DeferredObjectiveLifecycleEmitter: class MockEmitter {
+    deps: Record<string, unknown>;
+
+    constructor(deps: Record<string, unknown>) {
+      this.deps = deps;
+      capturedEmitterDeps.current = deps;
+    }
+
+    tick(): void {}
   },
 }));
 
@@ -37,6 +55,7 @@ vi.mock('../flowCards/registerFlowCards', () => ({
 }));
 
 import {
+  createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
   createPlanEngine,
   createPlanService,
@@ -151,7 +170,7 @@ describe('app init plan service wiring', () => {
     // settings, leaving the last published status snapshot live in the bus
     // until the next plan cycle's forget-sweep. Flow conditions like
     // deadline_status_is would still match the stale snapshot in that window.
-    capturedPlanEngineDeps.current = null;
+    capturedEmitterDeps.current = null;
     const settingsStore = new Map<string, unknown>();
     // Per-device key: this device's objective lives under its own key.
     settingsStore.set('deferred_objective.heater-1', {
@@ -179,7 +198,7 @@ describe('app init plan service wiring', () => {
       },
     } as unknown as AppContext['homey'];
 
-    createPlanEngine(createAppContextMock({
+    createDeferredObjectiveLifecycleEmitter(createAppContextMock({
       homey,
       deviceManager: {} as AppContext['deviceManager'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
@@ -189,7 +208,7 @@ describe('app init plan service wiring', () => {
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     }));
 
-    const disable = (capturedPlanEngineDeps.current as {
+    const disable = (capturedEmitterDeps.current as {
       disableDeferredObjective: (deviceId: string) => void;
     }).disableDeferredObjective;
     disable('heater-1');
@@ -204,7 +223,7 @@ describe('app init plan service wiring', () => {
     // Per-device-key storage: disabling heater-1 writes ONLY its own key. A
     // sibling task under its own key is structurally untouchable — there is no
     // shared map to clobber.
-    capturedPlanEngineDeps.current = null;
+    capturedEmitterDeps.current = null;
     const settingsStore = new Map<string, unknown>();
     settingsStore.set('deferred_objective.heater-1', {
       enabled: true,
@@ -239,7 +258,7 @@ describe('app init plan service wiring', () => {
       },
     } as unknown as AppContext['homey'];
 
-    createPlanEngine(createAppContextMock({
+    createDeferredObjectiveLifecycleEmitter(createAppContextMock({
       homey,
       deviceManager: {} as AppContext['deviceManager'],
       deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
@@ -252,7 +271,7 @@ describe('app init plan service wiring', () => {
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     }));
 
-    const disable = (capturedPlanEngineDeps.current as {
+    const disable = (capturedEmitterDeps.current as {
       disableDeferredObjective: (deviceId: string) => void;
     }).disableDeferredObjective;
     disable('heater-1');
@@ -416,9 +435,9 @@ describe('app init plan service wiring', () => {
     const setSpy = ctx.homey.settings.set as unknown as ReturnType<typeof vi.fn>;
     setSpy.mockClear();
 
-    capturedPlanEngineDeps.current = null;
-    createPlanEngine(ctx);
-    const observe = (capturedPlanEngineDeps.current as {
+    capturedEmitterDeps.current = null;
+    createDeferredObjectiveLifecycleEmitter(ctx);
+    const observe = (capturedEmitterDeps.current as {
       observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
     }).observeDeferredObjectivePlanHistory;
 
@@ -478,9 +497,9 @@ describe('app init plan service wiring', () => {
     ctx.deferredObjectivePlanHistoryRecorder = recorder;
     setSpy.mockClear();
 
-    capturedPlanEngineDeps.current = null;
-    createPlanEngine(ctx);
-    const observe = (capturedPlanEngineDeps.current as {
+    capturedEmitterDeps.current = null;
+    createDeferredObjectiveLifecycleEmitter(ctx);
+    const observe = (capturedEmitterDeps.current as {
       observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
     }).observeDeferredObjectivePlanHistory;
 

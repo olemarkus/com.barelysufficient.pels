@@ -1905,6 +1905,26 @@ smart-task-agnostic. Finish line = `no-plan-to-smarttasks` dep-cruiser rule gree
 See `notes/state-management/deferred-objective-lifecycle-carveout.md`. PR-A
 (`ObjectiveDeviceInput` narrow read contract) shipped the device-input decoupling.*
 
+- [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
+      `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
+      no-op; the emit side (status-transition publish, hours-remaining crossing, and especially the
+      `onDeadlinePassed` → disable firing through the clock tick) is only covered indirectly
+      (migrated `appInit.test.ts` + the per-module `statusTransitions`/`hoursRemainingCrossings`
+      tests). Add a direct emitter test that constructs a deadline-passed diagnostic and asserts the
+      disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
+      pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
+
+- [ ] P3 (gate PR-D on this): single-writer + single-tracker invariant. After PR-C the
+      `DeferredObjectiveLifecycleEmitter` is the SOLE writer to the shared plan-history + active-plan
+      recorders, and owns its own `ConcurrentEligibleTaskTracker` (planBuilder keeps a separate one
+      for the decoration eval — intentional, transiently divergent during an SDK flicker, both
+      self-heal in the 60-min grace window). When PR-D relocates the decoration appliers, it must NOT
+      re-introduce a second recorder writer or a third tracker. Invariant noted in
+      `lib/app/appInit/deferredObjectiveLifecycle.ts`. Also a P3 tidy: that file reads
+      `getActivePlansSnapshot()` twice per tick (verbatim from the pre-PR code) — collapse to one
+      read. Source: pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`,
+      2026-05-30.
+
 - [ ] **P1 (program prerequisite): enforcement is type-edge-blind.** `.dependency-cruiser.cjs`
       runs post-compilation (`tsPreCompilationDeps` unset), so `import type` edges are invisible
       to every rule — including the new `no-plan-to-smarttasks` burn-down meter and the

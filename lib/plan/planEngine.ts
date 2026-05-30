@@ -30,12 +30,7 @@ import {
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type {
-  DeferredObjectiveHoursRemainingBus,
-  DeferredObjectiveHoursRemainingTracker,
-  DeferredObjectiveSettingsV1,
-  DeferredObjectiveStatusBus,
-} from '../objectives/deferredObjectives';
+import type { DeferredObjectiveSettingsV1 } from '../objectives/deferredObjectives';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -71,15 +66,8 @@ export type PlanEngineDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
-  observeDeferredObjectivePlanHistory?: PlanBuilderDeps['observeDeferredObjectivePlanHistory'];
-  observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
-  getStallClassification?: PlanBuilderDeps['getStallClassification'];
   getLearnedThermostatDeadbandC?: PlanBuilderDeps['getLearnedThermostatDeadbandC'];
-  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
-  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
-  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
-  disableDeferredObjective?: (deviceId: string) => void;
+  observeDeferredObjectiveActivePlans?: PlanBuilderDeps['observeDeferredObjectiveActivePlans'];
   markSteppedLoadDesiredStepIssued: (params: {
     deviceId: string;
     desiredStepId: string;
@@ -136,15 +124,8 @@ export class PlanEngine {
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
-      deferredObjectiveDebugStructured: deps.deferredObjectiveDebugStructured,
-      observeDeferredObjectivePlanHistory: deps.observeDeferredObjectivePlanHistory,
-      observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
-      getStallClassification: deps.getStallClassification,
       getLearnedThermostatDeadbandC: deps.getLearnedThermostatDeadbandC,
-      getDeferredObjectiveStatusBus: deps.getDeferredObjectiveStatusBus,
-      getDeferredObjectiveHoursRemainingBus: deps.getDeferredObjectiveHoursRemainingBus,
-      getDeferredObjectiveHoursRemainingTracker: deps.getDeferredObjectiveHoursRemainingTracker,
-      disableDeferredObjective: deps.disableDeferredObjective,
+      observeDeferredObjectiveActivePlans: deps.observeDeferredObjectiveActivePlans,
       log: deps.log,
       logDebug: deps.logDebug,
     };

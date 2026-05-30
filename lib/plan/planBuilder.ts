@@ -53,13 +53,8 @@ import type { DeferredReleaseIntent } from './admission';
 import {
   buildDeferredObjectiveDiagnostics,
   ConcurrentEligibleTaskTracker,
-  emitDeferredObjectiveDiagnostics,
-  emitDeferredObjectiveStatusTransitions,
   type DeferredObjectiveDiagnostic,
-  type DeferredObjectiveHoursRemainingBus,
-  type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectiveSettingsV1,
-  type DeferredObjectiveStatusBus,
 } from '../objectives/deferredObjectives';
 
 type ShortfallMeta = Pick<
@@ -92,24 +87,6 @@ export type PlanBuilderDeps = {
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
-  deferredObjectiveDebugStructured?: StructuredDebugEmitter;
-  observeDeferredObjectivePlanHistory?: (
-    diagnostics: DeferredObjectiveDiagnostic[],
-    nowMs: number,
-    getStallClassification?: (
-      deviceId: string,
-    ) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined,
-  ) => void;
-  // Reader for the per-device idle classification from the observer layer
-  // (`createIdleClassifier`). Threaded through so the planHistory recorder
-  // can promote a deferred-objective run to `met` / `metReason: 'stalled'`
-  // (`near_target_idle`) or `metReason: 'stalled_device_capped'`
-  // (`capped_idle`) when the device has settled at its plateau. Optional so
-  // test harnesses and pre-classification call paths still work — absence
-  // means no promotion will fire (target-reached path unchanged).
-  getStallClassification?: (
-    deviceId: string,
-  ) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
   // Reader for the per-device learned thermostat deadband (°C). Added to the
   // raw user target by `buildDeferredTargetOverrides` so the planner commands
   // the device a little above the user's deadline target — compensating for
@@ -118,14 +95,14 @@ export type PlanBuilderDeps = {
   // setting purge). Self-healing: a lost store just relearns from the next
   // met/stalled run. See `lib/utils/learnedThermostatDeadbandStore.ts`.
   getLearnedThermostatDeadbandC?: (deviceId: string) => number;
+  // Commits the active-plan recorder (pending -> committed) each plan cycle.
+  // Stays on the plan path (not the lifecycle clock) because the planner reads
+  // committed plans via resolveCommittedHours for its decoration — the
+  // commitment must be synchronous with planning, not lag up to a clock tick.
   observeDeferredObjectiveActivePlans?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
   ) => void;
-  getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
-  getDeferredObjectiveHoursRemainingBus?: () => DeferredObjectiveHoursRemainingBus | undefined;
-  getDeferredObjectiveHoursRemainingTracker?: () => DeferredObjectiveHoursRemainingTracker | undefined;
-  disableDeferredObjective?: (deviceId: string) => void;
   log: (...args: unknown[]) => void;
   logDebug: (...args: unknown[]) => void;
 };
@@ -244,12 +221,12 @@ export class PlanBuilder {
       deferredAvoidDeviceIds,
       deferredReleaseIntentByDeviceId,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => {
+      // Commit the active-plan recorder synchronously with planning: the planner
+      // reads committed plans (resolveCommittedHours) for its decoration, so this
+      // promotion must not lag a clock tick. Pure emission (status transitions,
+      // hours-remaining, diagnostics, plan history, deadline-passed) is owned by
+      // the clock-driven DeferredObjectiveLifecycleEmitter instead.
       this.deps.observeDeferredObjectiveActivePlans?.(deferredEvaluations, nowTs);
-      this.deps.observeDeferredObjectivePlanHistory?.(
-        deferredEvaluations,
-        nowTs,
-        this.deps.getStallClassification,
-      );
       const deferredAdmission = applyDeferredObjectiveAdmission(deferredEvaluations, devices);
       const deferredTargetOverrides = buildDeferredTargetOverrides(
         deferredEvaluations,
@@ -341,11 +318,6 @@ export class PlanBuilder {
         restoreResult,
         nowTs,
       });
-    });
-    this.trackDuration('plan_emit_deferred_ms', () => {
-      this.emitDeferredObjectiveDiagnostics(deferredEvaluations);
-      this.emitDeferredObjectiveStatusTransitions(deferredEvaluations, nowTs);
-      this.emitDeferredObjectiveHoursRemainingCrossings(deferredEvaluations, nowTs);
     });
     return {
       meta,
@@ -735,38 +707,6 @@ export class PlanBuilder {
       hardCapKw: this.capacitySettings.limitKw,
       concurrentEligibleTracker: this.concurrentEligibleTracker,
     });
-  }
-
-  private emitDeferredObjectiveDiagnostics(diagnostics: DeferredObjectiveDiagnostic[]): void {
-    if (!this.deps.deferredObjectiveDebugStructured) return;
-    emitDeferredObjectiveDiagnostics({
-      diagnostics,
-      debugStructured: this.deps.deferredObjectiveDebugStructured,
-    });
-  }
-
-  private emitDeferredObjectiveStatusTransitions(
-    diagnostics: DeferredObjectiveDiagnostic[],
-    nowMs: number,
-  ): void {
-    const statusBus = this.deps.getDeferredObjectiveStatusBus?.();
-    if (!statusBus) return;
-    emitDeferredObjectiveStatusTransitions({
-      diagnostics,
-      statusBus,
-      nowMs,
-      onDeadlinePassed: this.deps.disableDeferredObjective,
-    });
-  }
-
-  private emitDeferredObjectiveHoursRemainingCrossings(
-    diagnostics: DeferredObjectiveDiagnostic[],
-    nowMs: number,
-  ): void {
-    const bus = this.deps.getDeferredObjectiveHoursRemainingBus?.();
-    const tracker = this.deps.getDeferredObjectiveHoursRemainingTracker?.();
-    if (!bus || !tracker) return;
-    tracker.observe({ diagnostics, nowMs, bus });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {

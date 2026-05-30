@@ -207,6 +207,15 @@ export class PlanService {
     return this.deps.planEngine.buildDevicePlanSnapshot(devices);
   }
 
+  /**
+   * The current live device inputs (snapshot projection). Exposed so the
+   * clock-driven smart-task lifecycle emitter reads the same device source the
+   * plan loop does, without re-implementing the projection.
+   */
+  getPlanDevices(): PlanInputDevice[] {
+    return this.deps.getPlanDevices();
+  }
+
   // Bridge from the observer-layer idle classifier into the plan layer.
   // Surfaced so the deferred-objective history recorder (lives in `lib/plan`,
   // wired in `appInit.ts`) can promote a smart task to `met` / `'stalled'`

@@ -65,6 +65,7 @@ const deferredObjectiveBarrelExports = [
   'DeferredObjectiveSettingsKind',
   'DeferredObjectiveSettingsV1',
   'emitDeferredObjectiveDiagnostics',
+  'emitDeferredObjectiveStatusTransitions',
   'normalizeDeferredObjectiveSettings',
   'planDeferredObjectiveHorizon',
   'DeferredObjective',
