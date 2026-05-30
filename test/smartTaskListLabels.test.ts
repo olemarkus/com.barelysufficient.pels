@@ -258,11 +258,11 @@ describe('resolveSmartTaskListReadyByTone', () => {
     expect(resolveSmartTaskListReadyByTone('paused_unplugged')).toBe('warn');
   });
 
-  it('returns the default accent tone for healthy / pending / queued / satisfied states', () => {
-    expect(resolveSmartTaskListReadyByTone('on_track')).toBe('accent');
-    expect(resolveSmartTaskListReadyByTone('building_plan')).toBe('accent');
-    expect(resolveSmartTaskListReadyByTone('queued')).toBe('accent');
-    expect(resolveSmartTaskListReadyByTone('satisfied')).toBe('accent');
+  it('returns the neutral tone for healthy / pending / queued / satisfied states', () => {
+    expect(resolveSmartTaskListReadyByTone('on_track')).toBe('neutral');
+    expect(resolveSmartTaskListReadyByTone('building_plan')).toBe('neutral');
+    expect(resolveSmartTaskListReadyByTone('queued')).toBe('neutral');
+    expect(resolveSmartTaskListReadyByTone('satisfied')).toBe('neutral');
   });
 });
 
@@ -270,8 +270,8 @@ describe('resolveSmartTaskListReadyByStatusWord', () => {
   // The Ready-by line previously signalled non-healthy states with colour only
   // (`--warn`/`--alert`). A red-green-deficient user can't read that off the
   // timestamp, so the non-healthy states gain an inline status word; healthy /
-  // pending / queued / satisfied stay null (green is default-positive and the
-  // chip already names "On track").
+  // pending / queued / satisfied stay null (the line is neutral with nothing
+  // wrong to flag, and the chip already names "On track").
   it('returns null for healthy / pending / queued / satisfied states', () => {
     expect(resolveSmartTaskListReadyByStatusWord('on_track')).toBeNull();
     expect(resolveSmartTaskListReadyByStatusWord('building_plan')).toBeNull();

@@ -375,6 +375,18 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
+- [ ] **Smart-tasks surface — reserve the brand green to one meaning.** PR #1347
+      removed the accent green from the healthy "Ready by" timestamp (it now reads
+      neutral). The brand green still does three jobs on the same screen:
+      nav-tab selection, the hero card's accent border, and the "Succeeded"
+      past-task status chip. Selection, hero-emphasis, and success-status are
+      distinct axes; sharing one hue keeps a residual overload. Decide a single
+      reservation (e.g. tonal selected-container for nav per the existing
+      segmented pattern, a non-green hero treatment, or a distinct success token)
+      so green carries one role surface-wide. User-visible outcome: the green on
+      the smart-tasks screen stops reading as "several unrelated things are
+      highlighted." Source: PR #1347 m3-critic, 2026-05-30.
+
 - [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
       promoted cost to the headline and demoted the energy estimate
       ("Energy: 3.6–4.0 kWh") to a muted secondary line under the when-window
@@ -1949,6 +1961,22 @@ objectives consumer — see carve-out note step 5).*
 - [ ] P3 tidy: `lib/app/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
       twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
       pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
+
+- [x] **PR-E — clock-driven terminal device disable (Goal 2 output side, the "disable a device
+      after the task ends" end-game).** Fixed the flow-mode bug where a cap-off device on a
+      missed/unsatisfied deadline was left running (the auto-disable removed the diagnostic before
+      the next sparse plan cycle could emit the terminal `shed_release`). The lifecycle clock now
+      fires `onDeadlineReached` at deadline-passed (any status), returns the cap-off device to its
+      shed posture via the thin `lib/device/shedBehaviorActuation.applyShedBehavior` (set-and-forget,
+      executor untouched), and **gates the disarm** on the device settling / a 5-min grace so the
+      release re-fires (no single-shot). Additive — the plan-path `deferredReleaseIntent` stays for
+      idle-bucket holds (Fork A). See carve-out note step 6.
+- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device
+      is skipped by the clock path (keeps its plan-path release) — needs executor-side current/power
+      resolution for a direct stepped command; (b) fully retire the *terminal* `deferredReleaseIntent`
+      from the plan path so it isn't double-covered (gated on (a)); (c) the same "task disabled →
+      cap-off device stranded" shape exists for a user/Flow disable mid-run, not just deadline-passed.
+      Source: investigation + Codex review on PR-E, 2026-05-30.
 
 - [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
       value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`

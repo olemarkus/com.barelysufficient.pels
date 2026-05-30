@@ -6,6 +6,7 @@ import {
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
   formatEnergyUsedOfBudget,
+  formatEnergyUsedOfBudgetParts,
   formatFreshnessChip,
   formatHeroHeadline,
   formatPowerMeterMarkerLabels,
@@ -99,6 +100,24 @@ describe('formatEnergyUsedOfBudget', () => {
     expect(formatEnergyUsedOfBudget(4.2, 11)).toBe('4.2 of 11.0 kWh used');
     expect(formatEnergyUsedOfBudget(0, 4.5)).toBe('0.0 of 4.5 kWh used');
     expect(formatEnergyUsedOfBudget(1.25, 0.9)).toBe('1.3 of 0.9 kWh used');
+  });
+});
+
+describe('formatEnergyUsedOfBudgetParts', () => {
+  it('splits into a leading value and a trailing budget qualifier', () => {
+    expect(formatEnergyUsedOfBudgetParts(0, 4.5)).toEqual({
+      lead: '0.0',
+      qualifier: 'of 4.5 kWh used',
+    });
+  });
+
+  it('reproduces the log-shared string verbatim when joined with one space', () => {
+    // Invariant: the presentation split must never drift from the log-shared
+    // `formatEnergyUsedOfBudget` wording (feedback_ui_text_shared_with_logs).
+    for (const [used, budget] of [[4.2, 11], [0, 4.5], [1.25, 0.9]] as const) {
+      const { lead, qualifier } = formatEnergyUsedOfBudgetParts(used, budget);
+      expect(`${lead} ${qualifier}`).toBe(formatEnergyUsedOfBudget(used, budget));
+    }
   });
 });
 

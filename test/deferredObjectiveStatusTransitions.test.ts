@@ -47,6 +47,38 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     expect(transitions).toEqual(['on_track', 'at_risk']);
   });
 
+  it('fires onDeadlineReached (deviceId, objectiveKind, deadlineAtMs, nowMs) once the deadline has passed', () => {
+    // Regression: the clock-driven terminal disable. Before this, a cap-off
+    // device on a missed deadline in power_source=flow mode was left running —
+    // the auto-disable removed the diagnostic before the next sparse plan cycle
+    // could emit the terminal shed_release. The lifecycle clock now drives the
+    // ending (release + gated disarm); the app callback gets deadlineAtMs/nowMs
+    // so it can grace-bound the disarm while the release settles.
+    const bus = createDeferredObjectiveStatusBus();
+    const onDeadlineReached = vi.fn();
+    const diag = baseDiagnostic({ deviceId: 'heater-1', status: 'at_risk', deadlineAtMs: 1_000 });
+
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlineReached });
+    expect(onDeadlineReached).not.toHaveBeenCalled();
+
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlineReached });
+    expect(onDeadlineReached).toHaveBeenCalledWith('heater-1', 'temperature', 1_000, 1_000);
+  });
+
+  it('routes objectiveKind through to onDeadlineReached so EV tasks can pause the charger', () => {
+    const bus = createDeferredObjectiveStatusBus();
+    const onDeadlineReached = vi.fn();
+    const diag = baseDiagnostic({
+      deviceId: 'ev-1',
+      status: 'cannot_meet',
+      objectiveKind: 'ev_soc',
+      deadlineAtMs: 1_000,
+    });
+
+    emitDeferredObjectiveStatusTransitions({ diagnostics: [diag], statusBus: bus, nowMs: 2_000, onDeadlineReached });
+    expect(onDeadlineReached).toHaveBeenCalledWith('ev-1', 'ev_soc', 1_000, 2_000);
+  });
+
   it('sets the sticky deadlineMissed flag once the deadline has passed without satisfaction', () => {
     // The dedicated "ended" Flow trigger is published from planHistory.ts now;
     // statusTransitions only carries the sticky snapshot flag that gates the
@@ -125,10 +157,10 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     expect(bus.getCurrent('heater-1')?.deadlineMissed).toBe(true);
   });
 
-  it('invokes onDeadlinePassed once the deadline has passed (any non-trivial status)', () => {
+  it('invokes onDeadlineReached once the deadline has passed (any non-trivial status)', () => {
     const bus = createDeferredObjectiveStatusBus();
-    const disabled: string[] = [];
-    const onDeadlinePassed = (deviceId: string) => { disabled.push(deviceId); };
+    const reached: string[] = [];
+    const onDeadlineReached = (deviceId: string) => { reached.push(deviceId); };
 
     const diag = baseDiagnostic({
       deviceId: 'heater-1',
@@ -137,27 +169,27 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
     });
     // Pre-deadline: no callback.
     emitDeferredObjectiveStatusTransitions({
-      diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlinePassed,
+      diagnostics: [diag], statusBus: bus, nowMs: 999, onDeadlineReached,
     });
-    expect(disabled).toEqual([]);
-    // Deadline reached: callback fires. Subsequent ticks may fire again — the
-    // callback itself is idempotent (no-op when enabled is already false),
-    // so we only assert here that the first post-deadline tick triggers it.
+    expect(reached).toEqual([]);
+    // Deadline reached: callback fires each post-deadline tick (the app callback
+    // gates the actual disarm on the release settling), so we only assert here
+    // that the first post-deadline tick triggers it.
     emitDeferredObjectiveStatusTransitions({
-      diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlinePassed,
+      diagnostics: [diag], statusBus: bus, nowMs: 1_000, onDeadlineReached,
     });
-    expect(disabled[0]).toBe('heater-1');
+    expect(reached[0]).toBe('heater-1');
   });
 
-  it('disables a satisfied-at-deadline objective so it does not stay enabled forever', () => {
+  it('invokes onDeadlineReached for a satisfied-at-deadline objective (so the app callback can disarm it)', () => {
     // Regression for the case where a device reaches its target before the
     // deadline and remains 'satisfied' as the deadline passes. The previous
-    // gating on deadlineJustPassed (which is false for satisfied) left the
-    // objective enabled indefinitely; now we disable on any post-deadline
-    // diagnostic regardless of status branch.
+    // gating on deadlineJustPassed (which is false for satisfied) skipped the
+    // ending hook; now it fires on any post-deadline diagnostic regardless of
+    // status branch so the app callback disarms it.
     const bus = createDeferredObjectiveStatusBus();
-    const disabled: string[] = [];
-    const onDeadlinePassed = (deviceId: string) => { disabled.push(deviceId); };
+    const reached: string[] = [];
+    const onDeadlineReached = (deviceId: string) => { reached.push(deviceId); };
 
     const satisfied = baseDiagnostic({
       deviceId: 'heater-1',
@@ -165,13 +197,13 @@ describe('emitDeferredObjectiveStatusTransitions', () => {
       deadlineAtMs: 1_000,
     });
     emitDeferredObjectiveStatusTransitions({
-      diagnostics: [satisfied], statusBus: bus, nowMs: 999, onDeadlinePassed,
+      diagnostics: [satisfied], statusBus: bus, nowMs: 999, onDeadlineReached,
     });
-    expect(disabled).toEqual([]);
+    expect(reached).toEqual([]);
     emitDeferredObjectiveStatusTransitions({
-      diagnostics: [satisfied], statusBus: bus, nowMs: 1_500, onDeadlinePassed,
+      diagnostics: [satisfied], statusBus: bus, nowMs: 1_500, onDeadlineReached,
     });
-    expect(disabled).toEqual(['heater-1']);
+    expect(reached).toEqual(['heater-1']);
   });
 
   it('forgets devices no longer present in diagnostics', () => {
