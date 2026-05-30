@@ -45,6 +45,11 @@ await buildWidget({
 await buildWidget({
   name: 'headroom',
   apiEntries: ['api.ts', 'headroomWidgetPayload.ts'],
+  // The payload builder value-imports `packages/shared-domain/headroomWidgetCopy`,
+  // which lives outside the widget tree; inline transitive deps into the CJS API
+  // bundle so the Homey widget runtime can load `getHeadroom` (otherwise the
+  // relative require resolves to MODULE_NOT_FOUND in production).
+  bundleApi: true,
 });
 
 await buildWidget({

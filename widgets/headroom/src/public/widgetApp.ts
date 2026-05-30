@@ -1,9 +1,10 @@
+import { HEADROOM_WIDGET_COPY } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
 import { PREVIEW_HEADROOM_PAYLOAD } from './previewPayloads';
 import { renderWidget, type RenderTargets } from './render';
 import type { HeadroomWidgetPayload } from '../headroomWidgetTypes';
 
 const REFRESH_INTERVAL_MS = 10 * 1000;
-const LOAD_ERROR_SUBTITLE = 'Unable to load';
+const LOAD_ERROR_SUBTITLE = HEADROOM_WIDGET_COPY.loadErrorSubtitle;
 
 export type WidgetWindow = Window & {
   Homey?: unknown;
@@ -34,20 +35,29 @@ const resolveTargets = (widgetDocument: Document): RenderTargets | null => {
   const root = widgetDocument.getElementById('widget-root');
   const currentEl = widgetDocument.querySelector('[data-current]');
   const budgetEl = widgetDocument.querySelector('[data-budget]');
+  const captionCurrentEl = widgetDocument.querySelector('[data-caption-current]');
+  const captionBudgetEl = widgetDocument.querySelector('[data-caption-budget]');
   const chipEl = widgetDocument.querySelector('[data-price]');
   const barFillEl = widgetDocument.querySelector('[data-bar]');
+  const stateLabelEl = widgetDocument.querySelector('[data-state-label]');
   const metaEl = widgetDocument.querySelector('[data-meta]');
   if (
     !(root instanceof HTMLElement)
     || !(currentEl instanceof HTMLElement)
     || !(budgetEl instanceof HTMLElement)
+    || !(captionCurrentEl instanceof HTMLElement)
+    || !(captionBudgetEl instanceof HTMLElement)
     || !(chipEl instanceof HTMLElement)
     || !(barFillEl instanceof HTMLElement)
+    || !(stateLabelEl instanceof HTMLElement)
     || !(metaEl instanceof HTMLElement)
   ) {
     return null;
   }
-  return { root, currentEl, budgetEl, chipEl, barFillEl, metaEl };
+  return {
+    root, currentEl, budgetEl, captionCurrentEl, captionBudgetEl,
+    chipEl, barFillEl, stateLabelEl, metaEl,
+  };
 };
 
 export const createWidgetController = (params: {
