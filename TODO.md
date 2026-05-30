@@ -375,17 +375,25 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Smart-tasks surface — reserve the brand green to one meaning.** PR #1347
-      removed the accent green from the healthy "Ready by" timestamp (it now reads
-      neutral). The brand green still does three jobs on the same screen:
-      nav-tab selection, the hero card's accent border, and the "Succeeded"
-      past-task status chip. Selection, hero-emphasis, and success-status are
-      distinct axes; sharing one hue keeps a residual overload. Decide a single
-      reservation (e.g. tonal selected-container for nav per the existing
-      segmented pattern, a non-green hero treatment, or a distinct success token)
-      so green carries one role surface-wide. User-visible outcome: the green on
-      the smart-tasks screen stops reading as "several unrelated things are
-      highlighted." Source: PR #1347 m3-critic, 2026-05-30.
+- [ ] **Reusable real-device DARK capture harness (host-bleed verification gap).**
+      The green-reservation concern flagged after PR #1347 was investigated by
+      pixel-sampling both the local render and the LIVE device webview
+      (`homeylocal.com`, reached via Configure on my.homey.app). Conclusion: the
+      brand green is NOT overloaded — the three on-screen greens are already
+      distinct tones (saturated `#22c55e` for actions, the tonal selected-container
+      `~#255d42`/`#97c9ab` for nav selection, mint `#9ef3d0` text for success), and
+      the hero border is a dark teal, not brand green. The selected nav tab renders
+      the intended tonal token on the real device, not a saturated fill. Host-CSS
+      bleed also came back clean: on the live webview `appearance:none` and PELS's
+      own surface tokens are the COMPUTED values on chips/buttons, so PELS rules win
+      the cascade over Homey's host `button{}` (theme-independent). The one residual
+      is tooling: Firefox can't trigger the touch-gated mobile-DARK theme and
+      breaks my.homey.app's Configure→iframe flow when `hasTouch` is set, so the
+      DARK device theme (where a light-button bleed would be most visible) was not
+      captured end-to-end. Build a small chromium harness that injects the
+      `homeylocal.com` session cookie + `isMobile/hasTouch` to capture the real
+      device UI in mobile-dark, so future host-bleed checks are reproducible.
+      Source: PR #1347 follow-up real-device walk, 2026-05-30.
 
 - [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
       promoted cost to the headline and demoted the energy estimate
@@ -1941,8 +1949,10 @@ value AND type (grep-verified).** See
 (subsystem relocation to `lib/objectives`), PR-C (lifecycle emission on a 30 s
 clock), PR-D1 (`@pels/planner-types` + `PlanInputDevice` hoist), PR-D2 (decoration
 appliers + eval onto the `DeferredObjectiveDecorationController`, constructed in
-app-wiring; rule flipped to `error`). PR-D1b dropped (ExecutablePlan has no
-objectives consumer — see carve-out note step 5).*
+app-wiring; rule flipped to `error`), **PR-E #1338 (clock-driven terminal device
+disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1b
+dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
+**PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
 
 - [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
       `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
@@ -1971,12 +1981,17 @@ objectives consumer — see carve-out note step 5).*
       executor untouched), and **gates the disarm** on the device settling / a 5-min grace so the
       release re-fires (no single-shot). Additive — the plan-path `deferredReleaseIntent` stays for
       idle-bucket holds (Fork A). See carve-out note step 6.
-- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device
-      is skipped by the clock path (keeps its plan-path release) — needs executor-side current/power
-      resolution for a direct stepped command; (b) fully retire the *terminal* `deferredReleaseIntent`
-      from the plan path so it isn't double-covered (gated on (a)); (c) the same "task disabled →
-      cap-off device stranded" shape exists for a user/Flow disable mid-run, not just deadline-passed.
-      Source: investigation + Codex review on PR-E, 2026-05-30.
+- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device:
+      the clock path returns `skip` and disarms immediately, so it gets **NO terminal release at all**
+      (disarm removes the diagnostic → the plan path won't re-emit `shed_release` either) — such a
+      device on a missed deadline can be **left running at a higher step**. Needs the executor-side
+      current/power resolution (`applyShedReleaseSteppedLoad`) for a direct stepped command on the
+      clock, or to gate the disarm until the plan path has shed it. (Codex flagged the inaccurate
+      earlier "keeps its plan-path release" framing — it does not.) (b) fully retire the *terminal*
+      `deferredReleaseIntent` from the plan path so it isn't double-covered (the path stays for
+      idle-bucket holds, Fork A); (c) the same "task disabled → cap-off device stranded" shape exists
+      for a user/Flow disable mid-run, not just deadline-passed. Source: investigation + Codex review
+      on PR-E, 2026-05-30.
 
 - [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
       value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`

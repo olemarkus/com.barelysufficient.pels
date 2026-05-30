@@ -1,33 +1,40 @@
 # Smart-task controller: planner knows nothing about smart tasks
 
-Status: **design — controller/inversion model.** Supersedes two earlier framings: a generic
-"device-prep layer" (round 1), then a "clock-driven producer whose flat facts the planner
-consumes" (round 2). Both were wrong about the planner's role — see *Goal*. This is the current
-design.
+Status: **SHIPPED (2026-05-30) — controller/inversion model.** Both ends of the carve-out landed;
+`no-plan-to-smarttasks` is enforced as `error` and green. Shipped across PR-A #1298, PR-A2 #1300,
+PR-B #1302, PR-C #1311, **PR-D1 #1324** (`@pels/planner-types` + `PlanInputDevice` hoist),
+**PR-D2 #1330** (decoration controller; rule flipped to `error`), **PR-E #1338** (clock-driven
+terminal device disable). PR-D1b (ExecutablePlan hoist) was dropped — no objectives consumer.
+This document is now a historical design record + the home for the remaining follow-ups (see the
+*Increments* and *Follow-ups* below; the per-step detail is preserved for context). The earlier
+"design" framing below superseded two prior ones (a generic "device-prep layer", then a
+"clock-driven producer whose flat facts the planner consumes") — both wrong about the planner's
+role; the inversion model is what shipped.
 
-## The invariant (definition of done)
+## The invariant (achieved + enforced)
 
 **The planner knows nothing about smart tasks.** Concretely and testably: **`lib/plan/**` imports
 nothing from the smart-task controller** — enforced by a dependency-cruiser rule
-(`no-plan-to-smarttasks`). That rule going green *is* the goal. Today it would fail on **8 plan
-files** (`planBuilder`, `planEngine`, `admission/deferredObjective`, `admission/index`,
-`planDevices`, `planLogging`, `planReasons`, `planTypes`); the program burns them down to zero.
+(`no-plan-to-smarttasks`), now `error` and green. The 8 plan files that originally coupled in
+(`planBuilder`, `planEngine`, `admission/deferredObjective`, `admission/index`, `planDevices`,
+`planLogging`, `planReasons`, `planTypes`) were burned down to zero (value AND type edges,
+grep-verified); the executor is independently objectives-free.
 
-The shape is a **dependency inversion**. Today the planner *pulls* smart tasks in (it advances the
-lifecycle and applies objective settings in-loop). Target: a **smart-task controller** *pushes*
-decorated `PlanInputDevice`s into a smart-task-agnostic planner, and owns lifecycle + ending +
-terminal actuation on its own clock.
+The shape was a **dependency inversion**, now realized: the planner no longer *pulls* smart tasks
+in (it used to advance the lifecycle and apply objective settings in-loop). A **smart-task
+controller** *pushes* decorated `PlanInputDevice`s into a smart-task-agnostic planner, and owns
+lifecycle + ending + terminal actuation on its own clock.
 
-**Enforcement caveat (must fix before the finish line is trustworthy).** The dependency-cruiser
-config runs in *post-compilation* mode (`tsPreCompilationDeps` unset), so `import type` edges are
-invisible to every rule. Both the `no-plan-to-smarttasks` burn-down meter *and* the
-`no-objectives-to-peer-except-power` relocation gate therefore see only **value** imports — a
-meter that can read zero while type-only plan↔controller coupling persists. Flipping
+**Enforcement caveat (standing — still true post-ship).** The dependency-cruiser config runs in
+*post-compilation* mode (`tsPreCompilationDeps` unset), so `import type` edges are invisible to
+every rule. Both the `no-plan-to-smarttasks` rule *and* the `no-objectives-to-peer-except-power`
+gate see only **value** imports — a meter that can read zero while type-only plan↔controller
+coupling persists. The flip of `no-plan-to-smarttasks` to `error` was therefore gated on a manual
+**type-edge audit** (`grep -rn "from .*objectives" lib/plan/` → zero), NOT cruiser-green alone, and
+the same grep must guard any future `lib/plan` change near the seam. Flipping
 `tsPreCompilationDeps: true` globally surfaces **~18 pre-existing repo-wide violations** (mostly
-`no-circular`), so it cannot just be turned on. Until that prerequisite cleanup lands, each
-relocation/finish-line step must prove decoupling with a **type-edge audit** (grep the moved
-module for `from '..plan'` imports, or a scoped pre-compilation-deps run), not the dep-cruiser
-green alone. Tracked in `TODO.md`.
+`no-circular`), so it cannot just be turned on — durable hardening (burn those down + enable the
+flag, or a grep-based CI check) is tracked in `TODO.md`.
 
 ## Goal (two-fold, one decoupling)
 
@@ -241,20 +248,21 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    executor is independently objectives-free too. Planner and executor now know nothing about smart
    tasks.
 
-## Open questions / risks (reviewers, attack these)
+## Resolved questions / risks (how the ship answered them)
 
-1. **Two loops (clock + power) touching shared state** — what snapshot/ordering discipline
-   prevents the planner reading half-decorated inputs? The decoration must complete before the
-   plan cycle reads the input; is an immutable per-cycle decorated-input snapshot the seam, and
-   where does it live (`setup/` assembly, or a controller method the plan-input builder calls)?
-2. **Clock tick mechanism** — timer granularity (minute-ish?), restart behavior, DST 23/25 h.
-   Does the actuator's per-tick self-heal hold in `flow` mode and across restart?
-3. **`controllable === false` gate** — does it *fully* prevent controller/planner write
-   contention, including the transitional cycle where a task is ending as caps releases?
-4. **Decoration vs facts boundary** — `concurrentEligibleCount` and the floor/headroom coupling:
-   are these fully expressible as device-input decoration, or is there a genuinely cross-device
-   capacity quantity that has no per-device home? If the latter, that is the one fact that must
-   cross as data — find it explicitly rather than letting the planner re-import the controller.
-5. **New peer dep-cruiser rule** — `lib/smartTasks/` (if chosen) needs its own
-   `no-smarttasks-to-peer-except-(power|objectives)` rule; confirm it consumes only
-   power/objectives/contracts/shared-domain downward.
+1. **Two loops (clock + power) touching shared state** — RESOLVED: the decoration stays
+   **synchronous** with the plan cycle. The controller's `decorate()` runs inline in
+   `planBuilder.buildPlanSnapshotWithTimings` (PR-D2), so there is no half-decorated-input window;
+   only the lifecycle EMISSION + the terminal disable run on the separate 30 s clock (PR-C/PR-E).
+   Active-plan commitment is the one decoration-relevant promotion kept synchronous (PR-C catch).
+2. **Clock tick mechanism** — RESOLVED: 30 s tick (`startDeferredObjectiveLifecycleClock`), deadlines
+   are absolute timestamps (DST-safe), and the terminal actuator self-heals per-tick (re-fires until
+   the device confirms the shed posture or a 5-min grace; works in `flow` mode + across restart).
+3. **`controllable === false` gate** — RESOLVED: the terminal release only touches cap-off
+   (`isCapacityControlEnabled === false`) devices; cap-on stays on the planner's lane. No
+   contention. The transitional cap-off ending is handled by the gated disarm.
+4. **Decoration vs facts boundary** — RESOLVED: `concurrentEligibleCount` stays a controller-owned
+   stateful resolver (`ConcurrentEligibleTaskTracker`) inside the decoration channel; no cross-device
+   capacity fact had to cross as data — the planner imports nothing smart-task.
+5. **Peer dep-cruiser rule** — RESOLVED differently: the subsystem stayed in `lib/objectives` (no new
+   `lib/smartTasks/` peer), covered by the existing `no-objectives-to-peer-except-power` rule.
