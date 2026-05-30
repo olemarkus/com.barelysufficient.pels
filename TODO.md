@@ -55,6 +55,34 @@ listed below in the P2 release-review 2026-05-28 subsection.*
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
 
+- [x] **Dashboard widget polish pass — SHIPPED (widget-polish train, 2026-05-30).**
+      All five surfaces addressed across PRs #1313–#1317 (lint enforcement #1305).
+      See `notes/widget-review.md` § Shipped for the finding → PR mapping. P0 budget
+      chart (#1316: AM/PM tabs, labeled axes, projected kWh+kr, de-cluttered bars,
+      + DST-safe split / actual-usage projection / partial-cost suppression),
+      Available-power labels + amber at-limit (#1317), "Held-back devices" rename +
+      cause-specific chip (#1313), smart-tasks tile (#1314), picker grouping (#1315,
+      collapsed to Heating+EV — see below). Remaining widget follow-ups (deferred,
+      low urgency):
+  - [ ] **EV picker row bare `%`** — show `SoC unknown` when the snapshot has no
+        state-of-charge value (today an EV row can render `%` with no number).
+        Files: `widgets/create_smart_task/src/createSmartTaskWidgetPayload.ts` /
+        `public/render.ts`. Source: widget review P3 (ux-fit), 2026-05-30.
+  - [ ] **`plan_budget` `--pels-*` token-namespace divergence** — it defines its own
+        token layer + a `.homey-dark-mode` block while the other four widgets consume
+        `--homey-*` directly. Converge to one theming strategy. Source: widget review
+        P3 (m3-critic), 2026-05-30.
+  - [ ] **Flat-surface / height-adaptive / one focal tile** — the five near-identical
+        dark cards lack a focal point, and the passive tiles (Held-back devices, Smart
+        tasks) reserve a fixed ~240 px slab for one line of content. Make healthy/empty
+        states height-adaptive; give one tile a deliberate focal treatment. Source:
+        widget review P1 (fresh-render m3-critic + ux-fit), 2026-05-30.
+  - [ ] **`settings.test.ts` full-suite flake** — "renders devices with target
+        temperature capabilities" fails intermittently under full-suite load (`test:ui`
+        / `test:ui:unit`) but passes in isolation; cost three pre-push retries during
+        the widget train. Stabilize (likely shared-DOM/async teardown bleed between
+        tests). Source: widget-polish train, 2026-05-30.
+
 - [ ] **Align (or deliberately keep) "Starved" in device-detail diagnostics.** The
       Held-back-devices widget now says "Held back"; `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts`
       still says "Starved" / "Starved for {duration}" / "Not starved" / "Starvation
@@ -88,22 +116,6 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       headers that previously rendered "PELS Status" still parse on
       existing user dashboards. Source: release-review
       pels-copy-and-terminology, 2026-05-26.
-
-- [ ] Hoist the remaining **headroom-widget** user-facing copy into
-      `packages/shared-domain/src/` per `feedback_ui_text_shared_with_logs`.
-      Still inlined in the headroom widget: the price-level labels
-      (`cheap` / `expensive`) and the `N paused` line in
-      `widgets/headroom/src/public/render.ts`. Move to a shared helper so
-      runtime logging and the widget share strings — every other PELS surface
-      already follows the convention. Files:
-      `widgets/headroom/src/public/render.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`. Source:
-      release-review pels-copy-and-terminology, 2026-05-26.
-      *(Smart-tasks-widget copy is done: `Ready by` already routes through
-      `resolveSmartTaskWidgetEtaVerb`, and the empty-state subtitle +
-      `+N in Smart tasks` overflow now source from
-      `SMART_TASK_WIDGET_EMPTY_SUBTITLE` / `formatSmartTaskWidgetOverflow` in
-      `deadlineLabels.ts`.)*
 
 - [ ] Revisit the **check-dead-code allowlist exception** for
       `StarvationRescueDevicesPayload`
