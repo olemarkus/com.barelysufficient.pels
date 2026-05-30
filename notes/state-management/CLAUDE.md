@@ -51,7 +51,7 @@ observer producer (`lib/observer/observationFreshness.ts`) exposes a tri-state
 `lastFreshDataMs` age and must not collapse `stale` into "broken." In
 particular:
 
-- **Smart-task temperature planning** (`lib/plan/deferredObjectives/diagnosticProgress.ts`)
+- **Smart-task temperature planning** (`lib/objectives/deferredObjectives/diagnosticProgress.ts`)
   credits the last-seen temperature for any device that has produced at least
   one trusted observation. It deliberately does not consult `observationStale`,
   because that flag is age-derived today (`lib/app/appInit.ts` calls

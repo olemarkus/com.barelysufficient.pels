@@ -14,8 +14,8 @@ import type {
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
-import { readAllObjectives } from '../plan/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveSettingsV1 } from '../plan/deferredObjectives/settings';
+import { readAllObjectives } from '../objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveSettingsV1 } from '../objectives/deferredObjectives/settings';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,

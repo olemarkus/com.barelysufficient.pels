@@ -1,9 +1,9 @@
-import { progressCurrentValue } from '../lib/plan/deferredObjectives/diagnosticsBridge';
-import type { DeferredObjectiveProgressResolution } from '../lib/plan/deferredObjectives/diagnosticProgress';
+import { progressCurrentValue } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+import type { DeferredObjectiveProgressResolution } from '../lib/objectives/deferredObjectives/diagnosticProgress';
 import {
   resolveDisplayConfidence,
   resolveProfileEnergy,
-} from '../lib/plan/deferredObjectives/profileEnergyResolution';
+} from '../lib/objectives/deferredObjectives/profileEnergyResolution';
 import type {
   DeviceObjectiveProfile,
   ObjectiveProfileBand,

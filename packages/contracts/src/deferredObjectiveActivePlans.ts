@@ -1,6 +1,6 @@
 // Type-only file: runtime code must not value-import contracts per the
 // packaging boundary. The schema version literal lives at the runtime side
-// (`lib/plan/deferredObjectives/activePlanSettings.ts`).
+// (`lib/objectives/deferredObjectives/activePlanSettings.ts`).
 
 // `prices_revised` is reserved for revisions where the planner consumed a
 // newer price horizon than the last revision (Nordpool publishes tomorrow's
@@ -32,7 +32,7 @@ export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap
 
 // Producer-resolved verdict for what bound the floor schedule on this revision.
 // Mirrors the planner's `statusDetail` mapping in
-// `lib/plan/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
+// `lib/objectives/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
 // → `budget`, `feasible_above_floor` → `step_power`, `estimate_uncertain` →
 // `estimate`, `target_cannot_be_met` → `time_capacity`, anything else → `none`).
 // Persisted so the hero copy resolver can route a `cannot_meet` / `at_risk` plan
@@ -59,7 +59,7 @@ export type DeferredObjectiveActivePlanCommitmentV1 = {
   hours: DeferredObjectiveActivePlanHourV1[];
 };
 
-// Mirrors `DeferredObjectiveHorizonStatus` in `lib/plan/deferredObjectives/types`.
+// Mirrors `DeferredObjectiveHorizonStatus` in `lib/objectives/deferredObjectives/types`.
 // Duplicated here because contracts must stay browser-safe and cannot import
 // from `lib/`.
 export type DeferredObjectiveActivePlanStatusV1 =

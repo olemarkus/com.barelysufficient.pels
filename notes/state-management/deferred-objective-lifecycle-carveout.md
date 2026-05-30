@@ -74,11 +74,11 @@ The smart-task (deferred-objective) lifecycle comes off the planner on **both en
 
 ## Target architecture (three components)
 
-1. **Smart-task controller** — the existing `lib/plan/deferredObjectives/` subsystem (status
+1. **Smart-task controller** — the `lib/objectives/deferredObjectives/` subsystem (status
    `statusBus`/`statusTransitions`, lifecycle `activePlanRecorder`, `endedEventBus`, horizon
-   `rescueReplan`/`policyHorizon`, the concurrent-eligible tracker), **relocated out of
-   `lib/plan`** (a new `lib/smartTasks/` peer, or expand `lib/objectives/`) and advanced on its
-   **own clock tick** wired in `setup/`. It already has non-plan consumers
+   `rescueReplan`/`policyHorizon`, the concurrent-eligible tracker), **relocated out of `lib/plan`**
+   (PR-B, into the objectives peer) and — still to come — advanced on its **own clock tick** wired
+   in `setup/`. It already has non-plan consumers
    (`flowCards/deadlineObjectiveCards.ts`, `smartTaskTokens.ts`, `smartTaskRescueCard.ts`,
    settings-UI history) — evidence it is not plan-internal. It reads device data through a narrow
    input contract (`ObjectiveDeviceInput`), not `PlanInputDevice`.
@@ -150,8 +150,14 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    (+ their type closure) to `packages/contracts`, re-export from `lib/dailyBudget/dailyBudgetTypes`
    (keeps the other ~33 consumers untouched), repoint the 4 producer files. After A + A2,
    `deferredObjectives` imports zero plan/dailyBudget peer types.
-3. **PR-B — relocate** `deferredObjectives` into its peer home; update ~13 consumer import paths.
-   Mechanical, behavior-neutral.
+3. **PR-B — relocate (done).** `git mv lib/plan/deferredObjectives → lib/objectives/deferredObjectives`
+   (subdir of the existing objectives peer — same directory depth, so every internal `../../`
+   import still resolves; zero internal edits). 36 consumer import paths repointed. Chosen over a
+   new `lib/smartTasks/` peer because the same-depth subdir needs no new dep-cruiser rule (the
+   existing `no-objectives-to-peer-except-power` already covers it) and no `../../` churn. Type-edge
+   audit confirmed zero `lib/plan` imports from the moved subsystem; `no-objectives-to-peer-except-power`
+   stays green. `no-plan-to-smarttasks` `to` path updated to the new home. A later rename to
+   `lib/smartTasks/` remains an option.
 4. **Lift the lifecycle onto the clock.** Move `buildDeferredObjectiveDiagnostics` /
    `emitDeferredObjectiveStatusTransitions` / hours-remaining + status buses / the concurrent
    tracker out of `planBuilder`/`planEngine` onto the controller's clock tick (wired in `setup/`).

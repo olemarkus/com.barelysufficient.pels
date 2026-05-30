@@ -39,7 +39,7 @@ const allowedOrphans = new Set([
   'drivers/pels_insights/device.ts',
   'drivers/pels_insights/driver.ts',
   // Pure scheduler entrypoint for the deferred-objective planner; runtime integration follows separately.
-  'lib/plan/deferredObjectives/index.ts',
+  'lib/objectives/deferredObjectives/index.ts',
   // Pure conflict classifier for native-wiring flow detection (notes/native-wiring/).
   // Runtime wiring lands in the follow-up PR that resolves each device's owned
   // native-write capabilities and feeds them in.
@@ -153,7 +153,7 @@ const allowedUnusedExportPatterns = [
   // UI routing reroutes off-state reason strings onto it.
   /^lib\/device\/deviceActionProjection\.ts:\d+ - getCommandableNowReason$/,
   // Pure scheduler barrel kept intentionally until planner integration consumes it.
-  new RegExp(`^lib\\/plan\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
+  new RegExp(`^lib\\/objectives\\/deferredObjectives\\/index\\.ts:\\d+ - (${deferredObjectiveBarrelExports})$`),
   // Consumed by packages/settings-ui/src/ui/deviceDetail/evBoost.ts via cross-package relative import; ts-prune ignores cross-package edges.
   /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EV_BOOST_BLOCK_REASONS$/,
   /^packages\/shared-domain\/src\/commandableNowReason\.ts:\d+ - EvBoostBlockReasonKey$/,

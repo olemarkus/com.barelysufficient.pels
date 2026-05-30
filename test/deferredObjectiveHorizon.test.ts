@@ -1,9 +1,9 @@
-import { planDeferredObjectiveHorizon } from '../lib/plan/deferredObjectives';
+import { planDeferredObjectiveHorizon } from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjective,
   DeferredObjectiveHorizonBucket,
   DeferredObjectiveStep,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17);

@@ -1,17 +1,17 @@
 import {
   DeferredObjectivePlanHistoryRecorder,
   type PlanHistoryPersistDeps,
-} from '../lib/plan/deferredObjectives/planHistory';
+} from '../lib/objectives/deferredObjectives/planHistory';
 import {
   appendRevisionLogIfNew,
   buildFinalHourFlush,
   detectHourRollover,
   MAX_REVISIONS_PER_ENTRY,
-} from '../lib/plan/deferredObjectives/planHistoryV4Helpers';
+} from '../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';

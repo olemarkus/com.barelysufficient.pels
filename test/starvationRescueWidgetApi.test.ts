@@ -2,7 +2,7 @@
  * @vitest-environment node
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeferredObjectivePlanPreviewCandidate } from '../lib/plan/deferredObjectives';
+import type { DeferredObjectivePlanPreviewCandidate } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectivePlanPreviewEstimate } from '../packages/contracts/src/deferredObjectivePlanPreview';
 import type { StarvationRescueDevice } from '../packages/contracts/src/starvationRescue';
 import { buildStarvationRescueDevicesPayload } from '../widgets/starvation_rescue/src/starvationRescueWidgetPayload';

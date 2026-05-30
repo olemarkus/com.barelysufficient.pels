@@ -30,7 +30,7 @@ export const resolveUsefulPowerKw = (device: TargetDeviceSnapshot): number | nul
 };
 
 // The planner commits to running this device at the lowest non-zero step for
-// the full hour (see `resolveAllocation` in `lib/plan/deferredObjectives/
+// the full hour (see `resolveAllocation` in `lib/objectives/deferredObjectives/
 // horizonPlanner.ts`). The Plan inputs card surfaces that committed power so
 // the user can sanity-check "Needs X kWh" against the realistic per-hour cap.
 export const resolveLowestActiveStepKw = (device: TargetDeviceSnapshot): number | null => {

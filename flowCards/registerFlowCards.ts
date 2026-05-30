@@ -48,11 +48,11 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 
 // Device-scoped objective writes the Flow cards delegate to. Both write the
 // target device's OWN settings key + run the shared notify/flush/rebuild
-// chokepoint in `lib/plan/deferredObjectives/objectiveWrite.ts` (wired with the
+// chokepoint in `lib/objectives/deferredObjectives/objectiveWrite.ts` (wired with the
 // app's recorders in appInit). A per-key write touches only that one device, so
 // it cannot clobber a sibling task — there is no refusal/conflict to report.
 export type UpsertDeferredObjectiveForDevice = (params: {

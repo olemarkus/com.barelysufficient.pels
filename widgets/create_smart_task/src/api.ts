@@ -1,4 +1,4 @@
-import { resolveDeferredObjectiveDeadline } from '../../../lib/plan/deferredObjectives';
+import { resolveDeferredObjectiveDeadline } from '../../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,

@@ -109,7 +109,7 @@ runtime can grow into it without a settings migration. From
 - `enforcement: 'soft' | 'hard'` is part of the `ev_soc` variant.
 - The planner already distinguishes the two in **one** narrow way: hard
   reserves a wider variance buffer (`BUFFER_K_HARD` vs `BUFFER_K_SOFT` in
-  `lib/plan/deferredObjectives/profileEnergyResolution.ts`). The **hard
+  `lib/objectives/deferredObjectives/profileEnergyResolution.ts`). The **hard
   admission lane** in this note — guaranteed reservation, hard-boost
   rebalancing, mode-override — has not shipped, and the EV flow card
   hardcodes `'soft'` so users cannot create a hard EV deadline yet.

@@ -16,7 +16,7 @@ import {
   type DeferredObjectiveHoursRemainingEvent,
   type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectiveStatusSnapshot,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import { isFiniteNumber } from '../lib/utils/appTypeGuards';
 
 // The status-token id set is a public-API contract for flow authors. Aliasing

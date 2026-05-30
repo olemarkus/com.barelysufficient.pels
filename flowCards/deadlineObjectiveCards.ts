@@ -4,7 +4,7 @@ import {
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusSnapshot,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';

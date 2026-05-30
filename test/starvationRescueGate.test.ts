@@ -5,7 +5,7 @@ import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSeman
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveSettingsV1, DeferredObjectiveRescuePermissions } from '../lib/plan/deferredObjectives';
+import type { DeferredObjectiveSettingsV1, DeferredObjectiveRescuePermissions } from '../lib/objectives/deferredObjectives';
 
 // GATE TRACE (PR3 step 0): prove that a smart task carrying `rescue.exemptFromBudget`
 // on a CAP-ON (controllable=true), daily-budget-starved temperature device actually

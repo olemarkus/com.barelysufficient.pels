@@ -2,7 +2,7 @@ import {
   OBJECTIVE_PROFILE_MIN_INTERVAL_MS,
   updateObjectiveProfilesFromSnapshot,
 } from '../lib/objectives/profiles';
-import { resolveProfileEnergy } from '../lib/plan/deferredObjectives/profileEnergyResolution';
+import { resolveProfileEnergy } from '../lib/objectives/deferredObjectives/profileEnergyResolution';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../packages/shared-domain/src/objectiveProfileBootstrap';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';

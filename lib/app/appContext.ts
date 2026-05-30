@@ -4,8 +4,8 @@ import type { DeviceTransport } from '../device/deviceTransport';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DailyBudgetService } from '../dailyBudget/dailyBudgetService';
 import type { DailyBudgetUiPayload, DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
-import type { DeferredObjectiveActivePlanRecorder } from '../plan/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectivePlanHistoryRecorder } from '../plan/deferredObjectives/planHistory';
+import type { DeferredObjectiveActivePlanRecorder } from '../objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectivePlanHistoryRecorder } from '../objectives/deferredObjectives/planHistory';
 import type { DeviceDiagnosticsService } from '../diagnostics/deviceDiagnosticsService';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { HeadroomForDeviceDecision } from '../plan/planHeadroomDevice';
@@ -15,7 +15,7 @@ import type {
   DeferredObjectiveHoursRemainingTracker,
   DeferredObjectivePlanRevisionBus,
   DeferredObjectiveStatusBus,
-} from '../plan/deferredObjectives';
+} from '../objectives/deferredObjectives';
 import type { PlanEngine } from '../plan/planEngine';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';

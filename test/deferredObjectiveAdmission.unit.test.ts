@@ -3,8 +3,8 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredTargetOverrides,
 } from '../lib/plan/admission';
-import type { DeferredObjectiveDiagnostic } from '../lib/plan/deferredObjectives';
-import type { DeferredObjectiveHorizonPlan } from '../lib/plan/deferredObjectives';
+import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives';
+import type { DeferredObjectiveHorizonPlan } from '../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 
 const buildEvDevice = (overrides: Partial<PlanInputDevice> & { id: string }): PlanInputDevice => ({

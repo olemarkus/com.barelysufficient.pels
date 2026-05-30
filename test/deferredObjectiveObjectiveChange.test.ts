@@ -3,7 +3,7 @@ import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
   type DeferredObjectiveSettingsEntry,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 
 const HOUR_MS = 60 * 60 * 1000;
 

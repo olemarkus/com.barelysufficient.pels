@@ -2,7 +2,7 @@ import {
   type DeferredObjectiveRescueMode,
   type DeferredObjectiveRescuePermissions,
   type DeferredObjectiveSettingsEntry,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import {
   getDropdownId,
   requireSettingsRead,

@@ -71,17 +71,17 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   `set_temperature_deadline`, `clear_deadline`; conditions `deadline_status_is`,
   `has_active_deadline`; triggers `deadline_status_changed`, `deadline_ended`,
   `deadline_plan_changed`.
-- Horizon planner (`lib/plan/deferredObjectives/horizonPlanner.ts`) selecting budget-friendly
+- Horizon planner (`lib/objectives/deferredObjectives/horizonPlanner.ts`) selecting budget-friendly
   hours before the deadline, price-gated.
-- Diagnostics bridge (`lib/plan/deferredObjectives/diagnosticsBridge.ts`) emitting
+- Diagnostics bridge (`lib/objectives/deferredObjectives/diagnosticsBridge.ts`) emitting
   `DeferredObjectiveDiagnostic` per cycle.
-- Active-plan recorder (`lib/plan/deferredObjectives/activePlanRecorder.ts`) persisting current
+- Active-plan recorder (`lib/objectives/deferredObjectives/activePlanRecorder.ts`) persisting current
   allocation with revision triggers (`flow_card`, `prices_arrived`, `objective_changed`,
   `prices_revised`, `rate_refined`).
-- Plan history (`lib/plan/deferredObjectives/planHistory.ts`) capturing per-deadline outcomes
+- Plan history (`lib/objectives/deferredObjectives/planHistory.ts`) capturing per-deadline outcomes
   (`met` / `missed` / `abandoned` / `replaced`).
 - Per-device-per-step power calibration (`lib/device/devicePowerCalibration.ts`,
-  `lib/plan/deferredObjectives/objectiveStepPower.ts`) with EMA learning, conservative-high and
+  `lib/objectives/deferredObjectives/objectiveStepPower.ts`) with EMA learning, conservative-high and
   conservative-low query primitives, already wired into stepped-load deferred objectives.
 - Smart tasks UI surfaces: list and per-device deadline-plan and history pages
   (`packages/settings-ui/src/ui/deadlinePlan.ts`, `deadlinesList.ts`).
@@ -140,7 +140,7 @@ next-planned-start line, an active-charging finish line, and a plug-out paused
 line. Start/finish come from the active-plan recorder's `latest.hours`; the
 paused state comes from `isPlugOutPaused` (the `objective_invalid_session`
 reason emitted by `resolveEvObjectiveProgress` in
-`lib/plan/deferredObjectives/diagnosticsBridge.ts`, which fires when the
+`lib/objectives/deferredObjectives/diagnosticsBridge.ts`, which fires when the
 observation layer reports `stateOfCharge.status === 'invalid'`).
 
 #### Planning speed and estimated duration — shipped
@@ -175,7 +175,7 @@ shapes round-tripping through the active-plan recorder.
 
 Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
 `flowCards/deadlineObjectiveCards.ts`,
-`lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+`lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
 `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and
 bridge tests.
 
@@ -208,7 +208,7 @@ deliver notifications directly.
   `notification_text` token is explicitly *not* part of this proposal —
   see `notes/smart-task-flow-cards/README.md` Rule 4.
 
-Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
 `flowCards/deadlineObjectiveCards.ts`,
 `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 

@@ -60,7 +60,7 @@ import {
   type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
-} from './deferredObjectives';
+} from '../objectives/deferredObjectives';
 
 type ShortfallMeta = Pick<
   DevicePlan['meta'],

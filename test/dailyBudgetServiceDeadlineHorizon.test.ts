@@ -5,7 +5,7 @@
 import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
 import {
   buildDeferredObjectivePolicyHorizon,
-} from '../lib/plan/deferredObjectives/policyHorizon';
+} from '../lib/objectives/deferredObjectives/policyHorizon';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,

@@ -6,12 +6,12 @@ import {
   ELIGIBILITY_ABANDON_GRACE_MS,
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectivePlannedBucket,
-} from '../lib/plan/deferredObjectives';
-import { buildDeferredObjectiveDebugPayload } from '../lib/plan/deferredObjectives/diagnosticDebugPayload';
-import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives/planHistory';
+} from '../lib/objectives/deferredObjectives';
+import { buildDeferredObjectiveDebugPayload } from '../lib/objectives/deferredObjectives/diagnosticDebugPayload';
+import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
@@ -1180,7 +1180,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // `observationStale: true`. Smart-task planning must still credit the
     // last-seen temperature in that case. See
     // `lib/observer/observationFreshness.ts` for the doctrine and
-    // `lib/plan/deferredObjectives/diagnosticProgress.ts` for why this gate
+    // `lib/objectives/deferredObjectives/diagnosticProgress.ts` for why this gate
     // deliberately does not consult `observationStale`.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,

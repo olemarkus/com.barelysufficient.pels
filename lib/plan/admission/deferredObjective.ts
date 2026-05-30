@@ -1,5 +1,5 @@
 import type { PlanInputDevice } from '../planTypes';
-import type { DeferredObjectiveDiagnostic } from '../deferredObjectives/diagnosticsBridge';
+import type { DeferredObjectiveDiagnostic } from '../../objectives/deferredObjectives/diagnosticsBridge';
 import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostatDeadbandStore';
 
 export type DeferredReleaseIntent = 'ev_resume' | 'ev_pause' | 'shed_release';

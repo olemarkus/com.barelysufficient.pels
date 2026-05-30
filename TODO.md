@@ -393,7 +393,7 @@ PRs. Items below are later polish.*
       2026-05-29.
 
 - [ ] **Non-divisible per-task headroom share for single-step devices.**
-      `lib/plan/deferredObjectives/policyHorizon.ts:313`
+      `lib/objectives/deferredObjectives/policyHorizon.ts:313`
       `resolveReservedHeadroomKw` divides `(hardCapKw − backgroundKWh/duration)`
       equally across concurrent fully-reserved tasks. Works correctly for
       stepped thermostats / water heaters where the device can throttle to
@@ -707,8 +707,8 @@ the renderer can land.*
       after Slice 2 deployment showing a long-tail `cannot_meet` rate on non-top-priority
       tasks. Pick up if that signal emerges; otherwise leave alone.
       Files:
-      `lib/plan/deferredObjectives/policyHorizon.ts`,
-      `lib/plan/deferredObjectives/rescueReplan.ts`,
+      `lib/objectives/deferredObjectives/policyHorizon.ts`,
+      `lib/objectives/deferredObjectives/rescueReplan.ts`,
       `lib/dailyBudget/dailyBudgetBreakdown.ts` (forecast input).
       Source: `pels-runtime-reality` P1 on PR #983, 2026-05-23.
 
@@ -786,7 +786,7 @@ the renderer can land.*
 
 - [ ] Document the lossy-restart gap in the postmortem strip UI. The
       lossy-restart contract at
-      `lib/plan/deferredObjectives/planHistory.ts:141-148` notes that
+      `lib/objectives/deferredObjectives/planHistory.ts:141-148` notes that
       progress accumulated between the pre-restart opening anchor and the
       first post-restart observation lands in *neither* hour bucket — the
       kWh are dropped from `hourlyContributions`. The postmortem strip
@@ -800,7 +800,7 @@ the renderer can land.*
       against the per-revision hourly contribution coverage; the gap is
       always the hour the pre-restart opening was anchored in.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`
-      (rendering), `lib/plan/deferredObjectives/planHistory.ts:141-148`
+      (rendering), `lib/objectives/deferredObjectives/planHistory.ts:141-148`
       (data signal so the renderer can identify the gap).
       Source: `pels-runtime-reality`, PR #990 follow-up, 2026-05-23.
 
@@ -822,7 +822,7 @@ block merge.*
       `bandedConfidence ?? confidence`; `resolveDisplayConfidence` fallback
       keeps the raw `confidence`). Alternative: have the fallback re-compute
       raw RSD from `{sampleCount, mean, m2}` directly. Files:
-      `lib/plan/deferredObjectives/profileEnergyResolution.ts`,
+      `lib/objectives/deferredObjectives/profileEnergyResolution.ts`,
       `packages/contracts/src/objectiveProfileTypes.ts`,
       `lib/objectives/profiles.ts`.
 *v2.8.0 → origin/main release-review findings (2026-05-22). From the
@@ -862,10 +862,10 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
       `.homeycompose/flow/actions/allow_smart_task_rescue.json`,
       `packages/shared-domain/src/deadlineLabels.ts`,
-      `lib/plan/deferredObjectives/settings.ts`,
+      `lib/objectives/deferredObjectives/settings.ts`,
       `lib/plan/admission/deferredObjective.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`,
-      `lib/plan/deferredObjectives/replanReason.ts`.
+      `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
+      `lib/objectives/deferredObjectives/replanReason.ts`.
       Source: v2.9.0 release-review refresh, 2026-05-22.
 
 *Variance-buffer follow-ups (2026-05-22, PR #965 — `mean + k·SE` planning buffer).*
@@ -966,12 +966,12 @@ No action.*
       (settings change, OOM, deploy) reset the hour anchor; any progress
       delivered between the pre-restart opening and the first post-restart
       observation is dropped from the postmortem strip. Contract is documented
-      in `lib/plan/deferredObjectives/planHistory.ts:InProgressRecord` and the
+      in `lib/objectives/deferredObjectives/planHistory.ts:InProgressRecord` and the
       `restarts mid-run drop the in-flight hour anchor` regression test pins
       the observed behaviour. Persist alongside the rest of the in-progress
       record so the strip stays whole across restarts.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
-      Files: `lib/plan/deferredObjectives/planHistory.ts`,
+      Files: `lib/objectives/deferredObjectives/planHistory.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`.
 
 - [ ] Prorate postmortem-strip delivery across unobserved multi-hour gaps
@@ -984,7 +984,7 @@ No action.*
       wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
 
-- [ ] Reduce `lib/plan/deferredObjectives/planHistory.ts` `max-lines`
+- [ ] Reduce `lib/objectives/deferredObjectives/planHistory.ts` `max-lines`
       override (currently 720, was 620 pre-v2.8.0). Bumped to host the
       hour-rollover detector and finalize-time flush. Target: lower once the
       in-progress record + finalize paths split into their own module.
@@ -995,7 +995,7 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
 
 - [ ] Flatten the deferred-objective diagnostic to expose `currentValue`
       + `kWhPerUnit` so recorder/UI consumers stop branching on
-      `objectiveKind`. `lib/plan/deferredObjectives/planHistory.ts`
+      `objectiveKind`. `lib/objectives/deferredObjectives/planHistory.ts`
       `applyHourlyDeliveryRollover` (~907-916) and
       `flushOpenHourAtFinalize` (~990-1000) repeatedly switch on
       `diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC :
@@ -1006,9 +1006,9 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       Acceptance: diagnostic exposes flat `currentValue: number | null`
       and `kWhPerUnit: number | null`; consumers read them without kind
       branches.
-      Files: `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
-      `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      Files: `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
+      `lib/objectives/deferredObjectives/planHistory.ts`,
+      `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts`,
       `packages/contracts/src/`.
       Source: `pels-runtime-reality`, v2.8.0 release-review pass.
 
@@ -1021,9 +1021,9 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       distinct from committed delivery hours, surface the assumption in the
       plan detail, and decide how daily-budget capacity is reserved so backup
       hours do not silently steal energy from other tasks.
-      Files: `lib/plan/deferredObjectives/horizonPlanner.ts`,
-      `lib/plan/deferredObjectives/bucketAllocation.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      Files: `lib/objectives/deferredObjectives/horizonPlanner.ts`,
+      `lib/objectives/deferredObjectives/bucketAllocation.ts`,
+      `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
       `notes/deferred-load-objectives/`.
 
@@ -1112,7 +1112,7 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       `DeferredObjectiveActivePlanRevisionV1`; delete the settings-UI helpers
       and update the contract.
       Source: `pels-layering-guardian`, v2.9.0 retrospective, 2026-05-23.
-      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
       `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
       `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
@@ -1476,7 +1476,7 @@ consolidation + a11y polish (8 P2)`.*
       for actual control or data faults), and reshape wording so logs read as state transitions
       rather than failures. Keep field semantics stable; only adjust level and human-readable
       messages.
-      Files: `lib/logging/**`, `lib/plan/deferredObjectives/**`, EV learning sample-rejection
+      Files: `lib/logging/**`, `lib/objectives/deferredObjectives/**`, EV learning sample-rejection
       sites, log/wording regression tests.
 - [ ] Finish the planner/executor/device-transport state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceTransport` should
@@ -1607,7 +1607,7 @@ consolidation + a11y polish (8 P2)`.*
       Design: `notes/ev-ready-by/README.md`.
       Files: `packages/contracts/src/deferredObjectiveSettings.ts`,
       `flowCards/deadlineObjectiveCards.ts`,
-      `lib/plan/deferredObjectives/diagnosticsBridge.ts`,
+      `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
 - [ ] **P3** — Make `enforcement: 'hard'` actually bypass daily-budget pressure on EV deadlines.
       `lib/plan/planBuilder.ts:258` uses `min(capacitySoftLimit, dailySoftLimit)` uniformly,
@@ -1635,7 +1635,7 @@ consolidation + a11y polish (8 P2)`.*
       `estimated_duration_text`, and `risk_reason`. The active-plan recorder already carries
       `energyNeededKWh`, `planStatus`, `kwhPerUnitSource`, and the bucket allocation needed.
       Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`,
+      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
       `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 - [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
@@ -1698,15 +1698,15 @@ consolidation + a11y polish (8 P2)`.*
 - [ ] Extract a shared `PersistedSettingsState<T>` helper for recorder-style settings storage.
       Three modules currently reimplement the same dirty / debounce / abandon-grace / flush /
       plausibility cascade: `lib/device/devicePowerCalibrationStore.ts` (calibration),
-      `lib/plan/deferredObjectives/planHistory.ts`, and
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
+      `lib/objectives/deferredObjectives/planHistory.ts`, and
+      `lib/objectives/deferredObjectives/activePlanRecorder.ts`. After the helper lands, migrate
       calibration first, then the two deferred-objective recorders.
       Design context in `notes/persisted-settings-state.md`.
       Why P2 (demoted from P1 in release-review pass): pure refactor — three modules
       duplicating the same pattern. No user-visible difference.
       Files: new `lib/persistence/` or `lib/utils/persistedSettingsState.ts`,
-      `lib/device/devicePowerCalibrationStore.ts`, `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
+      `lib/device/devicePowerCalibrationStore.ts`, `lib/objectives/deferredObjectives/planHistory.ts`,
+      `lib/objectives/deferredObjectives/activePlanRecorder.ts`, recorder/persistence tests.
 - [ ] Unify stepped restore admission wrappers so pending-swap source-off holds and stepped swap
       executor context are applied consistently across normal restore planning, restore cooldown,
       meter-settling, and active stepped upgrade paths.
@@ -1811,7 +1811,7 @@ consolidation + a11y polish (8 P2)`.*
       2026-05-28.
 
 - [ ] Clear `history[]` (or insert a separator row) on smart-task signature
-      change in `lib/plan/deferredObjectives/activePlanRecorder.ts:670-697`.
+      change in `lib/objectives/deferredObjectives/activePlanRecorder.ts:670-697`.
       When the objective signature changes mid-task, the persisted record is
       rebuilt with `...currentWithoutSnapshot` which preserves
       `current.history`, then a fresh `latest` is written and the prior
@@ -2079,8 +2079,8 @@ prod walk that didn't warrant a P2 slot.*
       again and double-bill `deliveredKWh` / `totalCost`. Before adding a
       production caller, choose whether external pushes or internal rollover is
       authoritative for that hour and add a regression.
-      Files: `lib/plan/deferredObjectives/planHistory.ts`,
-      `lib/plan/deferredObjectives/planHistoryV4Helpers.ts`,
+      Files: `lib/objectives/deferredObjectives/planHistory.ts`,
+      `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts`,
       `test/deferredObjectivePlanHistory.test.ts`.
       Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
 
@@ -2095,7 +2095,7 @@ prod walk that didn't warrant a P2 slot.*
       → `on_track` transition, or smoothing the verdict over a small window.
       Defer until a real user complaint surfaces — prod walk 2026-05-23 logged
       this as a low-priority observation, not actionable yet.
-      Files: `lib/plan/deferredObjectives/horizonPlanner.ts:resolveStatus`,
+      Files: `lib/objectives/deferredObjectives/horizonPlanner.ts:resolveStatus`,
       possibly `activePlanSchedule.ts` for emit gating.
 
 - [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
@@ -2129,7 +2129,7 @@ prod walk that didn't warrant a P2 slot.*
       Source: adversarial-review on PR #891 (2026-05-18).
 
 - [ ] Wire deferred-objective step intent into cascade control (future feature).
-      Today `lib/plan/deferredObjectives/horizonPlanner.ts:158,188` computes a
+      Today `lib/objectives/deferredObjectives/horizonPlanner.ts:158,188` computes a
       `requestedMinimumStepId` per planned bucket and emits it via
       `lib/plan/admission/deferredObjective.ts:53-57` on the `DeferredAdmissionDecision`,
       but no consumer reads it for control — it reaches diagnostics, log payloads,
@@ -2149,7 +2149,7 @@ prod walk that didn't warrant a P2 slot.*
       horizon plans with no executor effect, while the cascade shed thermostats
       to absorb soft overshoot) is intentional.
       Files: `lib/plan/admission/deferredObjective.ts`,
-      `lib/plan/deferredObjectives/horizonPlanner.ts`,
+      `lib/objectives/deferredObjectives/horizonPlanner.ts`,
       `lib/plan/shedding/selection.ts`, `lib/plan/shedding/candidates.ts`,
       `notes/deferred-load-objectives/` (design doc when picked up).
       Source: investigation 2026-05-18 (`/tmp/pels/start.main.0a4464c3.stdout.log`).
@@ -2169,7 +2169,7 @@ prod walk that didn't warrant a P2 slot.*
       live remaining kWh, route it through a non-persisted live snapshot (e.g. include the
       current diagnostic's `energyNeededKWh` in the UI bootstrap payload) rather than re-
       enabling per-cycle persistence.
-      Files: `lib/plan/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
+      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/settings-ui/src/ui/deadlinePlanResolvers.ts`.
 - [ ] Track per-device step changes with the same 30-day hourly retention model, so measured
@@ -2257,7 +2257,7 @@ prod walk that didn't warrant a P2 slot.*
       Related: `notes/smart-task-ui/README.md` §4.
       Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/src/ui/deadlinePlan.ts` (load-state mapping),
-      `lib/plan/deferredObjectives/planHistory.ts` (transient handoff to in-page route).
+      `lib/objectives/deferredObjectives/planHistory.ts` (transient handoff to in-page route).
 - [ ] Add a banner to the *active* task hero showing "Last [kind] task missed: {short
       reason}" for ~24 h after a finalized miss. The user lands on the active task when
       they open the app worried about the same deadline pattern; the breadcrumb avoids the

@@ -597,7 +597,7 @@ describe('DeadlinePlanHistoryDetail', () => {
         outcome: 'unknown',
         // Unknown outcomes have no final progress recorded — that's what
         // produced the classification (see `classifyOutcome` in
-        // `lib/plan/deferredObjectives/planHistory.ts`).
+        // `lib/objectives/deferredObjectives/planHistory.ts`).
         finalProgressC: null,
         finalProgressPercent: null,
         originalPlan: buildRevision(),

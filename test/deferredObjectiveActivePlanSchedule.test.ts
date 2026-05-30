@@ -1,7 +1,7 @@
 import {
   mergeHoursPreservingCommitment,
   shouldFireNotification,
-} from '../lib/plan/deferredObjectives/activePlanSchedule';
+} from '../lib/objectives/deferredObjectives/activePlanSchedule';
 
 describe('mergeHoursPreservingCommitment', () => {
   it('returns the live hours when the commitment is empty (satisfied-then-drift)', () => {

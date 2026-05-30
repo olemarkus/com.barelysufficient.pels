@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { migrateBlobToPerKeyIfNeeded } from '../plan/deferredObjectives';
+import { migrateBlobToPerKeyIfNeeded } from '../objectives/deferredObjectives';
 
 type BootMigrationsParams = {
   homey: Homey.App['homey'];

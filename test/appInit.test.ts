@@ -44,7 +44,7 @@ import {
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
 } from '../lib/app/appInit';
-import { DeferredObjectivePlanHistoryRecorder } from '../lib/plan/deferredObjectives';
+import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,

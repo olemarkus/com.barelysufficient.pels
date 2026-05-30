@@ -78,7 +78,7 @@ module.exports = {
         + 'The only exception is a widget\'s node entries, which run in the app process '
         + 'when the widget requests data: api.ts (the Homey API handler) and the '
         + '*WidgetPayload.ts builders may bridge to lib helpers (e.g. '
-        + 'create_smart_task/src/api.ts imports lib/plan/deferredObjectives; '
+        + 'create_smart_task/src/api.ts imports lib/objectives/deferredObjectives; '
         + 'plan_budget/src/planPriceWidgetPayload.ts imports lib/dailyBudget types). '
         + 'Known gap: this catches only DIRECT public->runtime edges, not the '
         + 'transitive public/** -> *WidgetPayload.ts -> lib path. Today the '
@@ -181,21 +181,20 @@ module.exports = {
         'GOAL / definition-of-done for the smart-task controller extraction (see '
         + 'notes/state-management/deferred-objective-lifecycle-carveout.md): the planner must know '
         + 'nothing about smart tasks. lib/plan/** must not import the deferred-objective '
-        + '(smart-task) lifecycle. The controller still physically lives at '
-        + 'lib/plan/deferredObjectives/ pre-relocation, so this tracks the plan -> deferredObjectives '
-        + 'subsystem-import debt. CAVEAT: this config runs in post-compilation mode '
-        + '(tsPreCompilationDeps is unset), so `import type` edges are INVISIBLE to dependency-cruiser '
-        + '— this rule (and the no-objectives-to-peer-except-power relocation gate) count only VALUE '
-        + 'imports. Today that is the lone planBuilder value edge; the planEngine + admission '
-        + 'type-only edges are real but uncounted. So this meter is a coarse value-edge guard, NOT a '
-        + 'sound finish line: do NOT flip it to error, and do NOT trust the relocation gate to prove '
-        + 'decoupling, without a type-edge audit (grep, or a scoped tsPreCompilationDeps run — which '
-        + 'currently surfaces ~18 pre-existing repo-wide violations, a separate prerequisite tracked '
-        + 'in TODO.md and the carve-out note). Kept `warn` so arch:check stays green while the '
-        + 'value-edge debt shrinks visibly.',
+        + '(smart-task) lifecycle. The controller now lives at lib/objectives/deferredObjectives/ '
+        + '(relocated out of lib/plan in PR-B), so this tracks the remaining plan -> '
+        + 'objectives/deferredObjectives consumer debt (planBuilder/planEngine/admission, to be '
+        + 'removed as the lifecycle + input-decoration move onto the controller clock). CAVEAT: this '
+        + 'config runs in post-compilation mode (tsPreCompilationDeps is unset), so `import type` '
+        + 'edges are INVISIBLE to dependency-cruiser — this rule counts only VALUE imports. So this '
+        + 'meter is a coarse value-edge guard, NOT a sound finish line: do NOT flip it to error '
+        + 'without a type-edge audit (grep, or a scoped tsPreCompilationDeps run — which currently '
+        + 'surfaces ~18 pre-existing repo-wide violations, a separate prerequisite tracked in TODO.md '
+        + 'and the carve-out note). Kept `warn` so arch:check stays green while the value-edge debt '
+        + 'shrinks visibly.',
       severity: 'warn',
-      from: { path: '^lib/plan/', pathNot: '^lib/plan/deferredObjectives/' },
-      to: { path: '^lib/plan/deferredObjectives/' },
+      from: { path: '^lib/plan/' },
+      to: { path: '^lib/objectives/deferredObjectives/' },
     },
     {
       name: 'no-plan-to-device',

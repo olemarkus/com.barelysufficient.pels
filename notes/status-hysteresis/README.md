@@ -3,7 +3,7 @@
 Hysteresis on smart-task status transitions and confidence-scaled deadline
 margins are **deferred from v1**. The shipped runtime transitions
 immediately on status change
-(`lib/plan/deferredObjectives/statusTransitions.ts:117`) and uses a flat
+(`lib/objectives/deferredObjectives/statusTransitions.ts:117`) and uses a flat
 deadline-reserve margin without a confidence band. This note collects the
 design so the intent isn't lost; the trigger for picking it up is real
 telemetry showing user-observable status flapping, not the section's
@@ -37,7 +37,7 @@ reporting an integer percent that bounces 79 → 80 → 79 across consecutive
 samples produces three status fires for no real progress.
 
 The fix is an **asymmetric satisfied-gate** at the diagnostic boundary in
-`lib/plan/deferredObjectives/diagnosticsBridge.ts`:
+`lib/objectives/deferredObjectives/diagnosticsBridge.ts`:
 
 - **Entering `satisfied`** requires `current >= target` exactly (no
   premature satisfaction). This is already shipped — `energy_already_met`
@@ -109,7 +109,7 @@ landing `likely_to_meet` when they should land `at_risk`.
 ## Status enum (shipped, for reference)
 
 The shipped status values live on the diagnostic type
-(`lib/plan/deferredObjectives/diagnosticsBridge.ts`):
+(`lib/objectives/deferredObjectives/diagnosticsBridge.ts`):
 
 - `unknown` — required inputs missing, stale, invalid, or impossible to
   evaluate.

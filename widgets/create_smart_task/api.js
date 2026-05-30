@@ -4422,7 +4422,7 @@ __export(api_exports, {
 });
 module.exports = __toCommonJS(api_exports);
 
-// lib/plan/deferredObjectives/bucketAllocation.ts
+// lib/objectives/deferredObjectives/bucketAllocation.ts
 var HOUR_MS = 60 * 60 * 1e3;
 
 // lib/logging/logger.ts
@@ -4582,7 +4582,7 @@ function shiftDateKey(dateKey, dayDelta) {
   return new Date(Date.UTC(year, month - 1, day + dayDelta, 0, 0, 0, 0)).toISOString().slice(0, 10);
 }
 
-// lib/plan/deferredObjectives/deadline.ts
+// lib/objectives/deferredObjectives/deadline.ts
 var MINUTE_MS = 60 * 1e3;
 var HOUR_MS2 = 60 * MINUTE_MS;
 var resolveDeferredObjectiveDeadline = (params) => {
@@ -4686,7 +4686,7 @@ var parseLocalTime = (localTime) => {
   };
 };
 
-// lib/plan/deferredObjectives/rescueReplan.ts
+// lib/objectives/deferredObjectives/rescueReplan.ts
 var DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
 
 // lib/objectives/rejectionLogging.ts
@@ -4705,29 +4705,29 @@ var OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1e3;
 var OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/concurrentEligibleTasks.ts
+// lib/objectives/deferredObjectives/concurrentEligibleTasks.ts
 var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/diagnosticsBridge.ts
+// lib/objectives/deferredObjectives/diagnosticsBridge.ts
 var logger = getLogger("plan/deferred-diag-bridge");
 
-// lib/plan/deferredObjectives/hoursRemainingCrossings.ts
+// lib/objectives/deferredObjectives/hoursRemainingCrossings.ts
 var HOUR_MS3 = 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/planHistoryV4Helpers.ts
+// lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/planHistoryInProgressState.ts
+// lib/objectives/deferredObjectives/planHistoryInProgressState.ts
 var INTERVAL_MERGE_GAP_MS = 5 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/planHistory.ts
+// lib/objectives/deferredObjectives/planHistory.ts
 var logger2 = getLogger("plan/deferred-history");
 var ABANDON_GRACE_MS = 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/activePlanSchedule.ts
+// lib/objectives/deferredObjectives/activePlanSchedule.ts
 var ONE_HOUR_MS2 = 60 * 60 * 1e3;
 
-// lib/plan/deferredObjectives/activePlanRecorder.ts
+// lib/objectives/deferredObjectives/activePlanRecorder.ts
 var logger3 = getLogger("plan/deferred-active");
 var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
 

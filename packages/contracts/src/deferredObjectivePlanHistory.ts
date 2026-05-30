@@ -85,7 +85,7 @@ export type DeferredObjectivePlanHistoryRevisionSnapshot = {
   acceptedSamples?: number;
   // The per-active-hour useful power (kW) the planner committed for this run —
   // the lowest non-zero step, the only delivery guaranteed for a full hour
-  // (see `lib/plan/deferredObjectives/planningSpeed.ts`). Mirrors the active
+  // (see `lib/objectives/deferredObjectives/planningSpeed.ts`). Mirrors the active
   // plan's `initialPlanningSpeedKw`. Persisted so the attribution can compare
   // the committed floor against the energy the executor actually delivered:
   // delivery at or above the floor on a missed run points at an energy-needed
@@ -247,7 +247,7 @@ export type DeferredObjectivePlanHistoryEntry = {
 };
 
 // Runtime cap on `progressSamples` per entry lives in
-// `lib/plan/deferredObjectives/planHistory.ts` as a local constant — runtime
+// `lib/objectives/deferredObjectives/planHistory.ts` as a local constant — runtime
 // code must not value-import contract source files (see
 // `test/runtimePackaging.test.ts`). The Settings UI (PRs 2–7 of the v2.7.2
 // train) will surface its own constant or read the array length directly,

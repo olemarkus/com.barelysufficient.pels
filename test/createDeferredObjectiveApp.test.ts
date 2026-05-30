@@ -5,7 +5,7 @@ import {
   readAllObjectives,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsV1,
-} from '../lib/plan/deferredObjectives';
+} from '../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 // A managed temperature device in the runtime-planned snapshot, with a 30..75 °C

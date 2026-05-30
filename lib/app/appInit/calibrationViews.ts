@@ -4,7 +4,7 @@ import {
   hasRecentDrawAt,
   isStepCalibrationConfident,
 } from '../../device/devicePowerCalibration';
-import { firstPositiveFinite } from '../../plan/deferredObjectives/planningSpeed';
+import { firstPositiveFinite } from '../../objectives/deferredObjectives/planningSpeed';
 import type { StepPowerCalibrationView } from '../../plan/planTypes';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';

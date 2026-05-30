@@ -35,7 +35,7 @@ import type {
   DeferredObjectiveHoursRemainingTracker,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
-} from './deferredObjectives';
+} from '../objectives/deferredObjectives';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
