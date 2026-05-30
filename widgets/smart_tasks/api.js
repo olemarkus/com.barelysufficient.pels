@@ -100,6 +100,7 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
 };
 var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card to see it here.";
 var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
+var SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = "Estimate";
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
@@ -550,7 +551,7 @@ var formatPlanMetaLabel = (revision) => {
     resolveEnergyPart(revision)
   ].filter((part) => part !== null && part !== "");
   if (parts.length === 0) return null;
-  return parts.join(" \xB7 ");
+  return `${SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX} ${parts.join(" \xB7 ")}`;
 };
 var resolveConfidenceLabel = (provenance, statusId) => formatSmartTaskListConfidenceChipLabel({
   confidence: provenance?.displayConfidence ?? provenance?.confidence ?? null,

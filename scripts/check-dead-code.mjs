@@ -179,6 +179,7 @@ const allowedUnusedExportPatterns = [
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetEtaVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - resolveSmartTaskWidgetTargetActionVerb$/,
   /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_TARGET_NOUN$/,
+  /^packages\/shared-domain\/src\/deadlineLabels\.ts:\d+ - SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX$/,
   // Consumed by `widgets/create_smart_task/` (payload builder + browser
   // render) via the esbuild widget bundle, which ts-prune (running against the
   // runtime tsconfig that excludes `widgets/`) doesn't see.

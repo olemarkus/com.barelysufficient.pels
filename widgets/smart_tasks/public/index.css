@@ -216,12 +216,6 @@
   outline-offset: 2px;
 }
 
-.back-btn__chevron {
-  font-size: var(--homey-font-size-large, 20px);
-  line-height: 1;
-  flex: none;
-}
-
 .back-btn__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -267,7 +261,14 @@
 }
 
 .detail-line--recourse,
-.detail-line--meta,
 .detail-line--confidence {
   color: var(--homey-text-color-light, #6d7680);
+}
+
+/* The estimate recap (duration · power · energy) is the densest line on the
+   panel; keep it at full text contrast so the labelled run-on stays legible
+   rather than reading as the dimmest line. */
+.detail-line--meta {
+  color: var(--homey-text-color, inherit);
+  font-variant-numeric: tabular-nums;
 }
