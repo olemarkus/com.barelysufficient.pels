@@ -4686,6 +4686,9 @@ var parseLocalTime = (localTime) => {
   };
 };
 
+// lib/objectives/deferredObjectives/policyHorizon.ts
+var PRICE_WINDOW_HOUR_MS = 60 * 60 * 1e3;
+
 // lib/objectives/deferredObjectives/rescueReplan.ts
 var DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
 

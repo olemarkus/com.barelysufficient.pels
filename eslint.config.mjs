@@ -130,6 +130,16 @@ export default tseslint.config(
     },
   },
   {
+    // The widget harness mount script runs in the browser (injects a fake Homey
+    // into each widget iframe), so it needs browser globals on top of node.
+    files: ['tests/widget-harness/harness.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
     files: ['packages/settings-ui/tests/e2e/fixtures/**/*.js'],
     languageOptions: {
       ecmaVersion: 2020,
