@@ -56,6 +56,9 @@
   overflow-y: auto;
 }
 
+/* Plain tonal card — NO coloured left state-rail (the M2/iOS accent-stripe
+   idiom, off-pattern for Homey; rejected on #1343/#1351). State reads from the
+   toned status chip + a soft full-card tint, not a stripe. */
 .row {
   display: flex;
   flex-direction: column;
@@ -63,13 +66,11 @@
   padding: var(--homey-su-2, 8px);
   margin: 0;
   border-radius: var(--homey-border-radius-small, 6px);
-  border-left: 3px solid var(--homey-color-warning, #f5a623);
   background: color-mix(in srgb, var(--homey-color-warning, #f5a623) 8%, transparent);
 }
 
 /* Tone escalates with starvation duration: a long-held device reads as danger. */
 .row[data-tone="danger"] {
-  border-left-color: var(--homey-color-danger, #f0696c);
   background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 10%, transparent);
 }
 

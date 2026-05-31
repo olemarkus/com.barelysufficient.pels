@@ -128,22 +128,28 @@
   color: var(--homey-text-color-danger, #f0696c);
 }
 
+/* Homey-native status tag (shared recipe with the price chip below and the
+   create_smart_task widget): medium weight, small radius, faint tonal border
+   over a light tonal fill — a soft tag, not a saturated pill. */
 .state-label {
   font-size: var(--homey-font-size-small, 14px);
   line-height: var(--homey-line-height-small, 20px);
-  font-weight: var(--homey-font-weight-bold, 700);
+  font-weight: var(--homey-font-weight-medium, 500);
   padding: 0 var(--homey-su-2, 8px);
-  border-radius: 999px;
+  border-radius: var(--homey-border-radius-small, 6px);
+  border: 1px solid var(--homey-line-color, rgba(15, 23, 28, 0.12));
   white-space: nowrap;
 }
 
 .widget-root[data-tone="at-pace"] .state-label {
-  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 18%, transparent);
+  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 12%, transparent);
+  border-color: color-mix(in srgb, var(--homey-color-success, #58c56a) 30%, transparent);
   color: var(--homey-text-color-success, #2f8f47);
 }
 
 .widget-root[data-tone="danger"] .state-label {
-  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 20%, transparent);
+  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 12%, transparent);
+  border-color: color-mix(in srgb, var(--homey-color-danger, #f0696c) 30%, transparent);
   color: var(--homey-text-color-danger, #f0696c);
 }
 
@@ -160,29 +166,32 @@
 .chip {
   font-size: var(--homey-font-size-small, 14px);
   line-height: var(--homey-line-height-small, 20px);
-  font-weight: var(--homey-font-weight-bold, 700);
+  font-weight: var(--homey-font-weight-medium, 500);
   padding: 0 var(--homey-su-2, 8px);
-  border-radius: 999px;
+  border-radius: var(--homey-border-radius-small, 6px);
+  border: 1px solid var(--homey-line-color, rgba(15, 23, 28, 0.12));
   text-transform: capitalize;
 }
 
 .chip--cheap {
-  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 18%, transparent);
+  background: color-mix(in srgb, var(--homey-color-success, #58c56a) 12%, transparent);
+  border-color: color-mix(in srgb, var(--homey-color-success, #58c56a) 30%, transparent);
   color: var(--homey-text-color-success, #2f8f47);
 }
 
 .chip--normal {
-  background: var(--homey-line-color, rgba(15, 23, 28, 0.12));
+  background: transparent;
   color: var(--homey-text-color-light, #6d7680);
 }
 
 .chip--expensive {
-  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 20%, transparent);
+  background: color-mix(in srgb, var(--homey-color-danger, #f0696c) 12%, transparent);
+  border-color: color-mix(in srgb, var(--homey-color-danger, #f0696c) 30%, transparent);
   color: var(--homey-text-color-danger, #f0696c);
 }
 
 .chip--unknown {
-  background: var(--homey-line-color, rgba(15, 23, 28, 0.12));
+  background: transparent;
   color: var(--homey-text-color-light, #6d7680);
 }
 
