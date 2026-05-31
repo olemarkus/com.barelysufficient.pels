@@ -50,13 +50,20 @@ Answers **"get this device ready by a time — without building a Flow."**
 
 An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), set the goal and a **Ready by** time, then preview and confirm. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap.
 
+The preview is honest about whether the task can be created:
+
+- **Cannot finish** means the widget blocks creation for that ready-by time.
+- **At risk** means creation is allowed, but the task may need most of the available window.
+- **Satisfied** means the device already meets the goal.
+- If PELS cannot preview yet, the widget says which input is missing where possible, such as prices, a current reading, or price-aware planning.
+
 This is the dashboard equivalent of the **Add charging task** / **Add heating task** Flow cards; see [Smart Tasks](/smart-tasks) for how a task behaves once it exists.
 
 ## Held-back devices
 
 Answers **"why isn't this running — and can I let it now?"**
 
-The widget lists devices PELS is currently holding back (paused or limited) and the reason. For an eligible device you can tap **Let it run now** to release it: it claims capacity within the hard cap, so it starts as soon as there is room. Use it when you want a specific device to run sooner than PELS would otherwise allow.
+The widget lists devices PELS is currently holding back (paused or limited) and the reason. For a device held back by today's daily budget, you can tap **Let it run now** to create a short Smart task with budget leeway. Capacity, manual, and external-service rows stay informational because the hard cap is physical and cannot be bypassed from the widget.
 
 ## When to use which
 
@@ -64,6 +71,6 @@ The widget lists devices PELS is currently holding back (paused or limited) and 
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
 - **Smart tasks** — when you depend on deadlines; the widget turns red before you'd otherwise notice a miss.
 - **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
-- **Held-back devices** — to understand, and optionally override, why something isn't running right now.
+- **Held-back devices** — to understand why something is not running right now, and optionally let one budget-held device run now.
 
 All widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in extra polling or device traffic.

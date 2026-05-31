@@ -5,6 +5,7 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
   DeferredObjectivePlanPreviewHour,
   DeferredObjectivePlanPreviewStatus,
+  DeferredObjectivePlanPreviewUnavailableReason,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/price/priceUnitLabel';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
@@ -142,9 +143,7 @@ const buildEstimateFromDiagnostic = (params: {
   if (!diag.horizonPlan) {
     return {
       status: 'unavailable',
-      ...(isThermalObservationGap(diag)
-        ? { unavailableReason: 'needs_observation' as const }
-        : {}),
+      unavailableReason: resolvePreviewUnavailableReason(diag),
       scheduledHours: [],
       projectedFinishAtMs: null,
       energyEstimateKWh: null,
@@ -184,6 +183,24 @@ const buildEstimateFromDiagnostic = (params: {
 const resolvePreviewStatus = (
   status: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>['status'],
 ): DeferredObjectivePlanPreviewStatus => status;
+
+const resolvePreviewUnavailableReason = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectivePlanPreviewUnavailableReason => {
+  if (isThermalObservationGap(diag)) return 'needs_observation';
+  const reasonCode = diag.reasonCode;
+  if (reasonCode === 'objective_invalid_deadline') return 'invalid_deadline';
+  if (reasonCode === 'objective_invalid_session') return 'invalid_session';
+  if (reasonCode === 'objective_missing_capacity' || reasonCode === 'objective_missing_charge_rate') {
+    return 'missing_capacity';
+  }
+  if (reasonCode === 'objective_missing_device') return 'missing_device';
+  if (reasonCode === 'objective_missing_price_horizon') return 'missing_prices';
+  if (reasonCode === 'objective_price_feature_disabled') return 'price_feature_disabled';
+  if (reasonCode === 'objective_missing_temperature') return 'missing_reading';
+  if (reasonCode === 'objective_progress_stale') return 'progress_stale';
+  return 'unknown';
+};
 
 // Mirror the recorder's rule for `energyExpectedKWh`: surface it only when it
 // is a finite number distinct from the buffered `energyNeededKWh`, so a UI's

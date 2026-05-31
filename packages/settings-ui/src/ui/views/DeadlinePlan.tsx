@@ -414,7 +414,10 @@ export const buildChartOption = (
 ): EChartsOption => {
   const hourCount = payload.timeline.hours.length;
   const labels = payload.timeline.hours.map((hour) => hour.time);
-  const showLabelEvery = hourCount > 10 ? 3 : 2;
+  // Keep the two-line "Now" / deadline labels from colliding with interior
+  // ticks in the 320 px Homey WebView. First/last always render below, so the
+  // interior cadence can be sparse without losing the time span.
+  const showLabelEvery = hourCount > 10 ? 4 : 3;
   // Use the natural max of the (already scaled) display values and keep the
   // price axis anchored at zero for normal non-negative prices. Nord Pool can
   // go negative; in that case the lower bound follows the data so those hours

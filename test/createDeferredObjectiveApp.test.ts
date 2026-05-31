@@ -332,5 +332,44 @@ describe('createDeferredObjective (app)', () => {
       expect(app.hasDeferredObjectiveForDevice('heater-1')).toBe(true);
       await app.onUninit?.();
     });
+
+    it('does not treat a disabled past objective as an open task for rescue', async () => {
+      const app = await initApp();
+      const pastEntry = {
+        enabled: false,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 60,
+        deadlineAtMs: Date.now() - 60 * 1000,
+      };
+      mockHomeyInstance.settings.set('deferred_objective.heater-1', pastEntry);
+
+      expect(app.hasDeferredObjectiveForDevice('heater-1')).toBe(false);
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
+        enabled: true,
+        targetTemperatureC: 65,
+      });
+      await app.onUninit?.();
+    });
+
+    it('still treats a disabled future objective as an open paused task', async () => {
+      const app = await initApp();
+      const futureEntry = {
+        enabled: false,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 60,
+        deadlineAtMs: Date.now() + 60 * 60 * 1000,
+      };
+      mockHomeyInstance.settings.set('deferred_objective.heater-1', futureEntry);
+
+      expect(app.hasDeferredObjectiveForDevice('heater-1')).toBe(true);
+      expect(app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65)))
+        .toEqual({ ok: false, reason: 'device_not_eligible' });
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject(futureEntry);
+      await app.onUninit?.();
+    });
   });
 });

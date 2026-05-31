@@ -31,9 +31,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// ../pels/node_modules/pino-std-serializers/lib/err-helpers.js
+// node_modules/pino-std-serializers/lib/err-helpers.js
 var require_err_helpers = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/err-helpers.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/err-helpers.js"(exports2, module2) {
     "use strict";
     var isErrorLike = (err) => {
       return err && typeof err.message === "string";
@@ -88,9 +88,9 @@ var require_err_helpers = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/lib/err-proto.js
+// node_modules/pino-std-serializers/lib/err-proto.js
 var require_err_proto = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/err-proto.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/err-proto.js"(exports2, module2) {
     "use strict";
     var seen = /* @__PURE__ */ Symbol("circular-ref-tag");
     var rawSymbol = /* @__PURE__ */ Symbol("pino-raw-err-ref");
@@ -139,9 +139,9 @@ var require_err_proto = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/lib/err.js
+// node_modules/pino-std-serializers/lib/err.js
 var require_err = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/err.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/err.js"(exports2, module2) {
     "use strict";
     module2.exports = errSerializer;
     var { messageWithCauses, stackWithCauses, isErrorLike } = require_err_helpers();
@@ -179,9 +179,9 @@ var require_err = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/lib/err-with-cause.js
+// node_modules/pino-std-serializers/lib/err-with-cause.js
 var require_err_with_cause = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/err-with-cause.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/err-with-cause.js"(exports2, module2) {
     "use strict";
     module2.exports = errWithCauseSerializer;
     var { isErrorLike } = require_err_helpers();
@@ -222,9 +222,9 @@ var require_err_with_cause = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/lib/req.js
+// node_modules/pino-std-serializers/lib/req.js
 var require_req = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/req.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/req.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       mapHttpRequest,
@@ -317,9 +317,9 @@ var require_req = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/lib/res.js
+// node_modules/pino-std-serializers/lib/res.js
 var require_res = __commonJS({
-  "../pels/node_modules/pino-std-serializers/lib/res.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/lib/res.js"(exports2, module2) {
     "use strict";
     module2.exports = {
       mapHttpResponse,
@@ -366,9 +366,9 @@ var require_res = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino-std-serializers/index.js
+// node_modules/pino-std-serializers/index.js
 var require_pino_std_serializers = __commonJS({
-  "../pels/node_modules/pino-std-serializers/index.js"(exports2, module2) {
+  "node_modules/pino-std-serializers/index.js"(exports2, module2) {
     "use strict";
     var errSerializer = require_err();
     var errWithCauseSerializer = require_err_with_cause();
@@ -403,9 +403,9 @@ var require_pino_std_serializers = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/caller.js
+// node_modules/pino/lib/caller.js
 var require_caller = __commonJS({
-  "../pels/node_modules/pino/lib/caller.js"(exports2, module2) {
+  "node_modules/pino/lib/caller.js"(exports2, module2) {
     "use strict";
     function noOpPrepareStackTrace(_, stack) {
       return stack;
@@ -431,9 +431,9 @@ var require_caller = __commonJS({
   }
 });
 
-// ../pels/node_modules/@pinojs/redact/index.js
+// node_modules/@pinojs/redact/index.js
 var require_redact = __commonJS({
-  "../pels/node_modules/@pinojs/redact/index.js"(exports2, module2) {
+  "node_modules/@pinojs/redact/index.js"(exports2, module2) {
     "use strict";
     function deepClone(obj) {
       if (obj === null || typeof obj !== "object") {
@@ -864,9 +864,9 @@ var require_redact = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/symbols.js
+// node_modules/pino/lib/symbols.js
 var require_symbols = __commonJS({
-  "../pels/node_modules/pino/lib/symbols.js"(exports2, module2) {
+  "node_modules/pino/lib/symbols.js"(exports2, module2) {
     "use strict";
     var setLevelSym = /* @__PURE__ */ Symbol("pino.setLevel");
     var getLevelSym = /* @__PURE__ */ Symbol("pino.getLevel");
@@ -935,9 +935,9 @@ var require_symbols = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/redaction.js
+// node_modules/pino/lib/redaction.js
 var require_redaction = __commonJS({
-  "../pels/node_modules/pino/lib/redaction.js"(exports2, module2) {
+  "node_modules/pino/lib/redaction.js"(exports2, module2) {
     "use strict";
     var Redact = require_redact();
     var { redactFmtSym, wildcardFirstSym } = require_symbols();
@@ -1017,9 +1017,9 @@ var require_redaction = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/time.js
+// node_modules/pino/lib/time.js
 var require_time = __commonJS({
-  "../pels/node_modules/pino/lib/time.js"(exports2, module2) {
+  "node_modules/pino/lib/time.js"(exports2, module2) {
     "use strict";
     var nullTime = () => "";
     var epochTime = () => `,"time":${Date.now()}`;
@@ -1048,9 +1048,9 @@ var require_time = __commonJS({
   }
 });
 
-// ../pels/node_modules/quick-format-unescaped/index.js
+// node_modules/quick-format-unescaped/index.js
 var require_quick_format_unescaped = __commonJS({
-  "../pels/node_modules/quick-format-unescaped/index.js"(exports2, module2) {
+  "node_modules/quick-format-unescaped/index.js"(exports2, module2) {
     "use strict";
     function tryStringify(o) {
       try {
@@ -1167,9 +1167,9 @@ var require_quick_format_unescaped = __commonJS({
   }
 });
 
-// ../pels/node_modules/atomic-sleep/index.js
+// node_modules/atomic-sleep/index.js
 var require_atomic_sleep = __commonJS({
-  "../pels/node_modules/atomic-sleep/index.js"(exports2, module2) {
+  "node_modules/atomic-sleep/index.js"(exports2, module2) {
     "use strict";
     if (typeof SharedArrayBuffer !== "undefined" && typeof Atomics !== "undefined") {
       let sleep = function(ms) {
@@ -1202,9 +1202,9 @@ var require_atomic_sleep = __commonJS({
   }
 });
 
-// ../pels/node_modules/sonic-boom/index.js
+// node_modules/sonic-boom/index.js
 var require_sonic_boom = __commonJS({
-  "../pels/node_modules/sonic-boom/index.js"(exports2, module2) {
+  "node_modules/sonic-boom/index.js"(exports2, module2) {
     "use strict";
     var fs = require("fs");
     var EventEmitter = require("events");
@@ -1789,9 +1789,9 @@ var require_sonic_boom = __commonJS({
   }
 });
 
-// ../pels/node_modules/on-exit-leak-free/index.js
+// node_modules/on-exit-leak-free/index.js
 var require_on_exit_leak_free = __commonJS({
-  "../pels/node_modules/on-exit-leak-free/index.js"(exports2, module2) {
+  "node_modules/on-exit-leak-free/index.js"(exports2, module2) {
     "use strict";
     var refs = {
       exit: [],
@@ -1883,9 +1883,9 @@ var require_on_exit_leak_free = __commonJS({
   }
 });
 
-// ../pels/node_modules/thread-stream/package.json
+// node_modules/thread-stream/package.json
 var require_package = __commonJS({
-  "../pels/node_modules/thread-stream/package.json"(exports2, module2) {
+  "node_modules/thread-stream/package.json"(exports2, module2) {
     module2.exports = {
       name: "thread-stream",
       version: "4.0.0",
@@ -1941,9 +1941,9 @@ var require_package = __commonJS({
   }
 });
 
-// ../pels/node_modules/thread-stream/lib/wait.js
+// node_modules/thread-stream/lib/wait.js
 var require_wait = __commonJS({
-  "../pels/node_modules/thread-stream/lib/wait.js"(exports2, module2) {
+  "node_modules/thread-stream/lib/wait.js"(exports2, module2) {
     "use strict";
     var WAIT_MS = 1e4;
     function wait(state2, index, expected, timeout, done) {
@@ -1994,9 +1994,9 @@ var require_wait = __commonJS({
   }
 });
 
-// ../pels/node_modules/thread-stream/lib/indexes.js
+// node_modules/thread-stream/lib/indexes.js
 var require_indexes = __commonJS({
-  "../pels/node_modules/thread-stream/lib/indexes.js"(exports2, module2) {
+  "node_modules/thread-stream/lib/indexes.js"(exports2, module2) {
     "use strict";
     var WRITE_INDEX = 4;
     var READ_INDEX = 8;
@@ -2007,9 +2007,9 @@ var require_indexes = __commonJS({
   }
 });
 
-// ../pels/node_modules/thread-stream/index.js
+// node_modules/thread-stream/index.js
 var require_thread_stream = __commonJS({
-  "../pels/node_modules/thread-stream/index.js"(exports2, module2) {
+  "node_modules/thread-stream/index.js"(exports2, module2) {
     "use strict";
     var { version } = require_package();
     var { EventEmitter } = require("events");
@@ -2434,9 +2434,9 @@ var require_thread_stream = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/transport.js
+// node_modules/pino/lib/transport.js
 var require_transport = __commonJS({
-  "../pels/node_modules/pino/lib/transport.js"(exports2, module2) {
+  "node_modules/pino/lib/transport.js"(exports2, module2) {
     "use strict";
     var { createRequire } = require("module");
     var { existsSync } = require("node:fs");
@@ -2657,9 +2657,9 @@ var require_transport = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/tools.js
+// node_modules/pino/lib/tools.js
 var require_tools = __commonJS({
-  "../pels/node_modules/pino/lib/tools.js"(exports2, module2) {
+  "node_modules/pino/lib/tools.js"(exports2, module2) {
     "use strict";
     var diagChan = require("node:diagnostics_channel");
     var format = require_quick_format_unescaped();
@@ -2986,9 +2986,9 @@ var require_tools = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/constants.js
+// node_modules/pino/lib/constants.js
 var require_constants = __commonJS({
-  "../pels/node_modules/pino/lib/constants.js"(exports2, module2) {
+  "node_modules/pino/lib/constants.js"(exports2, module2) {
     var DEFAULT_LEVELS = {
       trace: 10,
       debug: 20,
@@ -3008,9 +3008,9 @@ var require_constants = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/levels.js
+// node_modules/pino/lib/levels.js
 var require_levels = __commonJS({
-  "../pels/node_modules/pino/lib/levels.js"(exports2, module2) {
+  "node_modules/pino/lib/levels.js"(exports2, module2) {
     "use strict";
     var {
       lsCacheSym,
@@ -3201,17 +3201,17 @@ var require_levels = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/lib/meta.js
+// node_modules/pino/lib/meta.js
 var require_meta = __commonJS({
-  "../pels/node_modules/pino/lib/meta.js"(exports2, module2) {
+  "node_modules/pino/lib/meta.js"(exports2, module2) {
     "use strict";
     module2.exports = { version: "10.3.1" };
   }
 });
 
-// ../pels/node_modules/pino/lib/proto.js
+// node_modules/pino/lib/proto.js
 var require_proto = __commonJS({
-  "../pels/node_modules/pino/lib/proto.js"(exports2, module2) {
+  "node_modules/pino/lib/proto.js"(exports2, module2) {
     "use strict";
     var { EventEmitter } = require("node:events");
     var {
@@ -3439,9 +3439,9 @@ var require_proto = __commonJS({
   }
 });
 
-// ../pels/node_modules/safe-stable-stringify/index.js
+// node_modules/safe-stable-stringify/index.js
 var require_safe_stable_stringify = __commonJS({
-  "../pels/node_modules/safe-stable-stringify/index.js"(exports2, module2) {
+  "node_modules/safe-stable-stringify/index.js"(exports2, module2) {
     "use strict";
     var { hasOwnProperty } = Object.prototype;
     var stringify = configure();
@@ -4035,9 +4035,9 @@ ${originalIndentation}`;
   }
 });
 
-// ../pels/node_modules/pino/lib/multistream.js
+// node_modules/pino/lib/multistream.js
 var require_multistream = __commonJS({
-  "../pels/node_modules/pino/lib/multistream.js"(exports2, module2) {
+  "node_modules/pino/lib/multistream.js"(exports2, module2) {
     "use strict";
     var metadata = /* @__PURE__ */ Symbol.for("pino.metadata");
     var { DEFAULT_LEVELS } = require_constants();
@@ -4203,9 +4203,9 @@ var require_multistream = __commonJS({
   }
 });
 
-// ../pels/node_modules/pino/pino.js
+// node_modules/pino/pino.js
 var require_pino = __commonJS({
-  "../pels/node_modules/pino/pino.js"(exports2, module2) {
+  "node_modules/pino/pino.js"(exports2, module2) {
     "use strict";
     var os = require("node:os");
     var stdSerializers = require_pino_std_serializers();
@@ -4930,10 +4930,10 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
   createButton: "Create smart task",
   backButton: "Back",
-  // Shown when the preview can't be projected (no price horizon yet, missing
-  // device reading, price-aware optimisation off). Distinct from a hard error.
-  // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-  previewUnavailable: "Can\u2019t preview this yet \u2014 no prices published for this window yet.",
+  // Shown when the preview can't be projected and the backend did not provide a
+  // more specific missing-input reason. Distinct from a hard error. Avoids the
+  // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+  previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
   // Shown specifically when the device has no learned energy profile yet
   // (`unavailableReason === 'needs_observation'`): there is no temperature
   // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -4987,8 +4987,20 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
   // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
   // projection gap rather than a feasibility verdict.
-  cannotMeet: "May not be ready by this time. Try an earlier goal or a later ready-by time.",
-  atRisk: "This might not be ready in time \u2014 a later ready-by time or lower goal is safer."
+  cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
+  atRisk: "At risk \u2014 this may need most of the available window."
+};
+var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
+  invalid_deadline: "Can\u2019t preview this ready-by time yet.",
+  invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
+  missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
+  missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
+  needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
+  missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
+  missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
+  price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+  progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
+  unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
 };
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";

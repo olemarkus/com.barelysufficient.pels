@@ -199,8 +199,17 @@ bot findings (incl. several genuine bugs, noted below) were fixed in-PR.
 | #1315 | `create_smart_task` picker | Grouped by device family with type icons + a **managed-devices eligibility** caption; promoted the empty-state instruction. **Owner decision:** the runtime normalizes every device class into a fixed set with no water-heater class (a Høiax water heater arrives as `heater`), so water heaters can't be distinguished from thermostats — collapsed to **Heating + EV chargers** (kind-based, always correct) rather than ship a never-populated water-heater group. |
 | #1305 | lint enforcement | `stylelint-declaration-strict-value` + `widgets/**` override (shipped ahead of the train). |
 
+### Release-review cleanup — 2026-05-31
+
+The follow-up release-review pass fixed the concrete widget-readiness bugs left
+after the polish train: New smart task and Held-back devices now surface and
+block `Cannot finish`, unavailable previews carry reason-specific copy instead
+of always blaming missing prices, EV/temperature rows no longer render bare
+units when the current reading is unknown, smart-task recourse hints are no
+longer imperative when the row has no tap target, and the public widget docs now
+cover all five widgets.
+
 ### Deliberately deferred (tracked in `TODO.md`)
-- **EV picker row bare `%`** (P3) — show `SoC unknown` when no value.
 - **`plan_budget` `--pels-*` namespace divergence** (P3) — ~~it defines its own token layer + a `.homey-dark-mode` block while the other four consume `--homey-*` directly.~~ RESOLVED 2026-05-31 (widget token-strategy train): all five widgets now share `widgets/_shared/widget-tokens.css` (`--pw-*`, composed only from Homey base tokens); plan_budget's local layer + dark-mode block retired onto the sibling translucent-tint recipe, enforced by a stylelint font-token guard.
 - **Flat-surface / height-adaptive / one focal tile** (P1-new from the fresh render) — the chart refresh + amber at-limit added some colour energy, but the five-near-identical-dark-cards gestalt and the fixed-240 px dead space on passive tiles were not tackled.
 - **Device-detail diagnostics still says "Starved"** — `notes/ui-terminology.md` records this as a deliberate advanced-surface fork vs the widget's "Held back"; decide explicitly later (own TODO item).

@@ -307,6 +307,12 @@ const previewedDeadline = (response: CreateSmartTaskPreviewResponse): number | u
   response.ok ? response.deadlineAtMs : undefined
 );
 
+const previewAllowsCreate = (response: CreateSmartTaskPreviewResponse): boolean => (
+  response.ok
+  && response.estimate.status !== 'unavailable'
+  && response.estimate.status !== 'cannot_meet'
+);
+
 // Discriminated action a click maps to. Pure resolution (no closure state) so
 // the controller's dispatcher stays small and the mapping is unit-testable.
 type ClickAction =
@@ -459,6 +465,7 @@ export const createWidgetController = (params: {
 
   const runCreate = async (): Promise<void> => {
     if (view.kind !== 'preview') return;
+    if (!previewAllowsCreate(view.response)) return;
     const request = buildCandidateRequest(view, previewedDeadline(view.response));
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;

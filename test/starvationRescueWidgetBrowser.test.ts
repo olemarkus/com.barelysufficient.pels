@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../packages/shared-domain/src/planStarvation';
 import { installWidget } from '../widgets/starvation_rescue/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../widgets/starvation_rescue/src/public/widgetApp';
-import type { StarvationRescueDevicesPayload } from '../widgets/starvation_rescue/src/starvationRescueWidgetTypes';
+import type {
+  StarvationRescueDevicesPayload,
+  StarvationRescuePreviewResponse,
+} from '../widgets/starvation_rescue/src/starvationRescueWidgetTypes';
 import { registerHiddenGuardSuite } from './cssTestUtils';
 
 // Mirrors the production index.html markup the renderer queries against.
@@ -292,6 +295,38 @@ describe('starvation rescue widget browser', () => {
     expect(root.dataset.view).toBe('done');
     expect((document.querySelector('[data-done-msg]') as HTMLElement).textContent)
       .toBe(STARVATION_RESCUE_WIDGET_COPY.rescueDoneQueued);
+  });
+
+  test('a cannot-finish rescue preview is visibly distinct and cannot be confirmed', async () => {
+    const rescueCalls: unknown[] = [];
+    const cannotMeetPreview: StarvationRescuePreviewResponse = {
+      ...OK_PREVIEW,
+      estimate: { ...OK_PREVIEW.estimate, status: 'cannot_meet' },
+    };
+    const homey = buildHomey({
+      api: vi.fn(async (_method: string, path: string, body?: unknown) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') return cannotMeetPreview;
+        if (path === '/rescue') { rescueCalls.push(body); return { ok: true, runsCurrentHour: true }; }
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    const statusLine = document.querySelector('[data-confirm-unavailable]') as HTMLElement;
+    expect(statusLine.hidden).toBe(false);
+    expect(statusLine.textContent).toContain('Cannot finish');
+    const confirmBtn = document.querySelector('[data-confirm-btn]') as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(true);
+
+    click('[data-confirm-btn]');
+    await flushPromises();
+    expect(rescueCalls).toHaveLength(0);
   });
 
   test('does not render the list when an in-flight /devices load resolves after destroy()', async () => {

@@ -236,12 +236,13 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
      **idle-bucket holds still ride it** (Fork A keeps idle on the plan path — those need the shared
      release-intent channel; only the *terminal* ending moved to the clock).
 
-   **Follow-ups (not blocking):** (a) the niche stepped-only `set_step` shed on a device with no
-   binary handle is skipped by the clock path (logged) and keeps its plan-path release — a direct
-   stepped command needs executor-side current/power resolution; (b) fully retiring the *terminal*
-   release from the plan path (so it isn't double-covered) is a later cleanup, gated on (a);
-   (c) the same "task disabled → device stranded" shape exists for a **user/Flow disable** mid-run,
-   not just deadline-passed — out of PR-E scope.
+   **Follow-ups (not blocking):** (a) fully retiring the *terminal* release from
+   the plan path (so it isn't double-covered) is a later cleanup; (b) the same
+   "task disabled → device stranded" shape exists for a **user/Flow disable**
+   mid-run, not just deadline-passed — out of PR-E scope. The former niche
+   stepped-only `set_step` gap is closed: a no-binary-handle stepped device now
+   gets a direct lifecycle-clock `set_step` shed command, and disarm waits for
+   observed stepped posture (or the normal grace window).
 7. **Flip `no-plan-to-smarttasks` to `error` — DONE (PR-D2).** `lib/plan/**` imports zero
    `lib/objectives` (value AND type, confirmed by `grep -rn "from .*objectives" lib/plan/` → none;
    the rule is type-edge-blind so the grep audit, not cruiser-green alone, gated the flip). The

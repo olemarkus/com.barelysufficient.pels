@@ -186,6 +186,13 @@ const submitRescue = async (
   }
 };
 
+const previewAllowsRescue = (response: StarvationRescuePreviewResponse | null): response is Extract<
+  StarvationRescuePreviewResponse,
+  { ok: true }
+> => response?.ok === true
+  && response.estimate.status !== 'unavailable'
+  && response.estimate.status !== 'cannot_meet';
+
 export const createWidgetController = (params: {
   targets: RenderTargets;
   widgetDocument: Document;
@@ -243,7 +250,7 @@ export const createWidgetController = (params: {
     // Only commit once a successful preview resolved — its `deadlineAtMs` is the
     // exact deadline we echo back so the server persists what the user saw. The
     // confirm button is already disabled until then; this guards the contract.
-    if (!response?.ok) return;
+    if (!previewAllowsRescue(response)) return;
     const deadlineAtMs = response.deadlineAtMs;
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;

@@ -30,109 +30,57 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 *(prior closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
 #982, #983; surviving follow-ups demoted to P1/P2.)*
 
-### P0 — Widget loveability pass (2026-05-31)
-
-*Source: owner walked the live dashboard with all five PELS widgets stacked
-(real-device screenshots) and rejected the "shippable polish" verdict of the
-2026-05-30 widget-polish train (`notes/widget-review.md` § Shipped) — "the
-potential for improvement is immense." This is a fresh, blunter pass: each
-widget gets re-examined against whether it is actually loveable and lives up to
-its job, not merely truthful. Every state (incl. the confusing ones) is
-reproducible offline via the interactive dashboard harness — `npm run
-widget-harness` → open the printed URL — which mounts each widget in an iframe
-against mocked endpoints (`tests/widget-harness/mockData.mjs`), so the widgets
-run their real data path with editable data and per-widget scenario switches. We
-walk them one at a time, delivering each as its own PR.*
-
-*Homey-CSS-standards pass (separate PR, 2026-05-31): de-pilled the chips /
-state-labels and converged them onto one Homey-native soft-tag recipe (medium
-weight, `border-radius-small`, faint tonal border over a light fill) across
-`headroom` + `smart_tasks`, and removed the rejected coloured left state-rail
-from `starvation_rescue` (plain tonal cards now). `plan_budget` audited clean
-(no pills / no raw values). The deeper per-widget loveability items below
-(headroom's twin labels, smart_tasks recourse/persona, starvation per-cause
-copy) are untouched by that pass and remain open.*
-
-- [ ] **New smart task (`create_smart_task`) — plan-graph + structural fixes
-      delivered; picker/feasibility polish remains.** Shipped: a real plan-graph
-      preview (a stepped spot-price curve with the scheduled hours highlighted),
-      backed by a new `priceSeries` on the preview estimate
-      (`planPreview.ts` → `buildDeferredObjectivePolicyWindowPrices`); the compose
-      CTA is no longer clipped (widget grown 240→380); the "Ready by" chips are
-      de-pilled to the flat Homey radius; the widget now sizes to its content via
-      `Homey.setHeight` (ResizeObserver-driven), so the picker grows to fit every
-      eligible device and the dashboard scrolls through it — no clipping/internal
-      scroll. **Remaining:** no type-ahead/filter when many devices are eligible
-      (the grown list can get long — harness `create_smart_task` `overflow`
-      scenario); no feasibility signal
-      when a ready-by time is unreachable (the preview returns `cannot_meet` but
-      the widget doesn't surface it — harness `cannot_meet` scenario); the chart's
-      hour-tick labels are formatted client-side from `startsAtMs` (DST risk)
-      rather than backend-provided like `scheduledWindowLabel`. **Done:** an
-      `unavailable` preview for a device with no learned profile yet
-      (`unavailableReason: 'needs_observation'`, via `planPreview.ts`) now shows an
-      honest "PELS must observe this device first" line instead of (falsely)
-      blaming missing prices.
-
-- [ ] **Available power (`headroom`) not loveable.** The tile screams / reads
-      noisy: a giant current-kW number, a coloured price pill ("Cheap"), and
-      twin all-caps headers ("POWER NOW" / "SAFE PACE NOW") sitting over a single
-      bar with a single value — the labels read as two columns but only one
-      number exists, so it's unparseable at a glance. Tone/red-at-limit semantics
-      also need a second look (harness: `headroom-480`, `-at_pace`, `-over_cap`).
-      Walk-through pending.
-
-- [ ] **Budget and Price (`plan_budget`) not loveable.** The "Projected …"
-      summary line renders at header scale and dominates the tile whose real
-      content is the chart; the truncation ("On tra…") on a real device loses the
-      status word (harness: `plan_budget-480`). Walk-through pending.
-
-- [ ] **Smart tasks (`smart_tasks`) not loveable.** Read-only status list whose
-      rows ("Cannot finish", "At risk", "Building plan…") offer no recourse —
-      open question whether it satisfies any persona as built, or needs an action
-      / re-scope (harness: `smart_tasks-480`). Walk-through pending.
-
-- [ ] **Get power now / Held-back devices (`starvation_rescue`) — rescue rework
-      in progress; copy + create-screen consolidation remain.** Rail removed in
-      the CSS pass (#1372). Rescue rework (see `project_starvation_rescue_boost_direction`
-      memory): **PR1 delivered** — "Let it run now" now grants the device the
-      limit-lower-priority permission (boost) alongside the budget exemption — gated
-      on stepped-load eligibility (only stepped/EV devices can honour it) — so it
-      actually claims capacity (within the hard cap), plus an honest "Running as
-      soon as there's room" flash when there's no runnable plan. **PR2 delivered** —
-      a collapsed, off-by-default "Extra permissions" disclosure on the
-      create_smart_task compose screen: `May go over daily budget` (any device) and
-      `May limit lower-priority devices` (gated ON EFFECT — offered only for a
-      stepped-load device at top priority, and only enabled once budget exemption
-      is on, since it is inert otherwise). Server re-gates both (defence-in-depth).
-      **PR3 delivered** — the rescue now REUSES the create engine: a device that
-      already has a smart task is excluded from the rescue (so a rescue is always a
-      fresh create, never a merge), `App.previewStarvationRescuePlan` /
-      `rescueDeviceWithBudgetExemption` delegate to `previewDeferredObjectivePlan` /
-      `createDeferredObjective`, and the bespoke merge machinery
-      (`resolveBudgetExemptionRescueEntry` / `addBudgetExemptionRescueForDevice`)
-      is retired. The rescue keeps its bespoke confirm sheet. **Remaining (follow-up
-      polish, not blocking):** inherit the create widget's plan-graph chart +
-      canonical "Extra permissions" read-only display on the rescue confirm sheet;
-      a real at-cap honesty signal (the in-isolation preview overstates, so the
-      flash branch only catches the no-plan case, not the at-cap case); and the
-      per-cause status copy still leaks the engine model ("Waiting on an external
-      service", "Under manual control", "On hold · 0 min").
-    - **P3 (from PR2 review): create-screen "Extra permissions" opt-out is
-      additive-only.** `createDeferredObjective` uses the `preserve` rescue policy,
-      and the compose screen always seeds both toggles OFF without reflecting a
-      device's existing standing permission (set via Flow / the rescue lane). So a
-      fresh create with both toggles visibly off does NOT remove a standing
-      permission — surprising, though not data loss, and the preserve-on-opt-out
-      contract is now pinned by a test. Fix when worthwhile: surface the device's
-      current standing permission in the compose view (seed the toggles from it) so
-      the screen reads as authoritative.
+No open P0 release blockers after the 2026-05-31 release-review cleanup. The
+remaining dashboard-widget desirability work is tracked as P1/P3 follow-up below;
+the concrete release-readiness bugs from the `v2.10.0..HEAD` pass were fixed in
+the release-review cleanup PR.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
 *v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
+
+### P1 — Widget loveability follow-ups (demoted from P0, 2026-05-31)
+
+*Source: owner walked the live dashboard with all five PELS widgets stacked
+(real-device screenshots) and rejected the "shippable polish" verdict of the
+2026-05-30 widget-polish train (`notes/widget-review.md` § Shipped). The
+2026-05-31 release-review cleanup fixed the concrete release blockers: New smart
+task and Held-back devices now surface/block `Cannot finish`, preview-unavailable
+copy names the missing input instead of always blaming prices, unknown EV/temperature
+rows no longer render bare units, smart-task recourse copy is non-imperative, and
+public docs now describe all five widgets. Remaining work is desirability polish,
+not a release gate.*
+
+- [ ] **New smart task (`create_smart_task`) picker scale + DST polish.** The
+      feasibility-honesty gap is fixed; remaining work is type-ahead/filtering for
+      many eligible devices and backend-provided hour labels for the plan graph
+      instead of client-side formatting from `startsAtMs`.
+
+- [ ] **Available power (`headroom`) not loveable.** Re-check hierarchy, the price
+      chip's visual weight, and at-limit/over-cap tone in the harness
+      (`headroom-480`, `-at_pace`, `-over_cap`).
+
+- [ ] **Budget and Price (`plan_budget`) not loveable.** The projected summary can
+      dominate the chart and still truncates status on real device widths
+      (`plan_budget-480`).
+
+- [ ] **Smart tasks (`smart_tasks`) not loveable.** The read-only status list still
+      needs a product pass for whether it should offer action/routing or remain a
+      pure glance surface.
+
+- [ ] **Held-back devices (`starvation_rescue`) confirm-sheet polish.** Remaining
+      non-blocking work: inherit the create widget's plan-graph chart, show a
+      canonical read-only `Extra permissions` summary on the confirm sheet, and
+      add a real at-cap honesty signal for cases where the in-isolation preview
+      overstates what can run.
+
+- [ ] **P3: create-screen `Extra permissions` opt-out is additive-only.**
+      `createDeferredObjective` uses the `preserve` rescue policy, and the compose
+      screen still does not reflect a device's existing standing permission set
+      via Flow / the rescue lane. Surface the current standing permission in the
+      compose view when the screen should read as authoritative.
 
 *v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
 release-review pass, 2026-05-26 — the original entry committed as
@@ -145,9 +93,10 @@ lifecycle-end release beyond EV` + new integration coverage at
 `shouldEmitSatisfiedPause` → `shouldEmitTerminalRelease` so non-EV cap-off
 devices (thermostats, water heaters) now receive a `shed_release` intent
 on lifecycle end and the executor routes it through `getShedBehavior`
-(`set_temperature` for thermostats, binary off otherwise). One residual
-gap — stepped-only devices without `onoff`/`evcharger_charging` — is
-listed below in the P2 release-review 2026-05-28 subsection.*
+(`set_temperature` for thermostats, binary off otherwise). The later residual
+gap for stepped-only devices without `onoff`/`evcharger_charging` was closed in
+the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
+`set_step` shed command and gating disarm until the stepped target is observed.*
 
 *v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -162,10 +111,6 @@ listed below in the P2 release-review 2026-05-28 subsection.*
       cause-specific chip (#1313), smart-tasks tile (#1314), picker grouping (#1315,
       collapsed to Heating+EV — see below). Remaining widget follow-ups (deferred,
       low urgency):
-  - [ ] **EV picker row bare `%`** — show `SoC unknown` when the snapshot has no
-        state-of-charge value (today an EV row can render `%` with no number).
-        Files: `widgets/create_smart_task/src/createSmartTaskWidgetPayload.ts` /
-        `public/render.ts`. Source: widget review P3 (ux-fit), 2026-05-30.
   - [x] **`plan_budget` `--pels-*` token-namespace divergence — DONE (widget token-strategy
         train, 2026-05-31).** Retired the local `--pels-*` layer + `.homey-dark-mode` block onto
         the shared widget `--pw-*` semantic token layer (`widgets/_shared/widget-tokens.css`,
@@ -593,20 +538,15 @@ PRs. Items below are later polish.*
       Internal correctness only; no user-visible outcome. Source: PR #1274
       pels-layering-guardian, 2026-05-29.
 
-- [ ] **Smart-tasks widget — `at_risk` dark-theme contrast + cannot_meet
-      recourse copy.** The `data-tone="warn"` row paints a 12%-mixed warning
+- [ ] **Smart-tasks widget — `at_risk` dark-theme contrast.** The `data-tone="warn"` row paints a 12%-mixed warning
       wash (`widgets/smart_tasks/public/index.css:72-74`, eta recolor
       `:104-112`); over the dark Homey host theme that wash is very
       low-contrast, so the "at risk" signal leans almost entirely on the status
       chip. Audit the warn fill against the dark host palette and bump it to a
-      legible state-layer. Separately, the cannot_meet recourse string
-      (`RECOURSE_CANNOT_MEET_DEVICE` in `deadlineLabels.ts:134`) is an
-      imperative ("Open this device's settings…") the widget can't fulfill — it
-      renders as plain muted text with no tap affordance. Consider softening to
-      a statement of cause, or routing the detail row to open the app. Both are
-      honest constraints (the chip still carries status), so polish not
-      correctness. Source: release-review pels-ux-fit + pels-m3-critic,
-      2026-05-29.
+      legible state-layer. The cannot-meet recourse copy half of this finding was
+      fixed in the 2026-05-31 release-review cleanup by softening the non-clickable
+      instruction into a cause-oriented line. Source: release-review pels-ux-fit +
+      pels-m3-critic, 2026-05-29.
 
 - [ ] **Non-divisible per-task headroom share for single-step devices.**
       `lib/objectives/deferredObjectives/policyHorizon.ts:313`
@@ -2059,15 +1999,6 @@ consolidation + a11y polish (8 P2)`.*
       from caps directly, but the asymmetry with pre-refactor logic is real.
       Source: release-review adversarial-review, 2026-05-28.
 
-- [ ] Stepped-only devices (no `onoff`/`evcharger_charging` handle) skip
-      lifecycle release with a debug log in
-      `lib/executor/shedReleaseActuation.ts`. Re-project a shed-purpose
-      stepped intent at lifecycle end so they wind down at deadline. This is
-      the residual gap from commit `61807892 fix(admission): generalise
-      smart-task lifecycle-end release beyond EV` — the binary and target
-      release paths landed; the stepped-only re-projection path is still
-      open. Source: release-review pels-runtime-reality, 2026-05-28.
-
 *Bot-review audit follow-ups (2026-05-28). Items surfaced by
 chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
 follow-up train that were missed at merge time; filed here for the next
@@ -2159,17 +2090,15 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       executor untouched), and **gates the disarm** on the device settling / a 5-min grace so the
       release re-fires (no single-shot). Additive — the plan-path `deferredReleaseIntent` stays for
       idle-bucket holds (Fork A). See carve-out note step 6.
-- [ ] PR-E follow-ups (not blocking): (a) stepped-only `set_step` shed on a no-binary-handle device:
-      the clock path returns `skip` and disarms immediately, so it gets **NO terminal release at all**
-      (disarm removes the diagnostic → the plan path won't re-emit `shed_release` either) — such a
-      device on a missed deadline can be **left running at a higher step**. Needs the executor-side
-      current/power resolution (`applyShedReleaseSteppedLoad`) for a direct stepped command on the
-      clock, or to gate the disarm until the plan path has shed it. (Codex flagged the inaccurate
-      earlier "keeps its plan-path release" framing — it does not.) (b) fully retire the *terminal*
-      `deferredReleaseIntent` from the plan path so it isn't double-covered (the path stays for
-      idle-bucket holds, Fork A); (c) the same "task disabled → cap-off device stranded" shape exists
-      for a user/Flow disable mid-run, not just deadline-passed. Source: investigation + Codex review
-      on PR-E, 2026-05-30.
+- [ ] PR-E follow-ups (not blocking): (a) fully retire the *terminal*
+      `deferredReleaseIntent` from the plan path so it isn't double-covered (the
+      path stays for idle-bucket holds, Fork A); (b) the same "task disabled →
+      cap-off device stranded" shape exists for a user/Flow disable mid-run, not
+      just deadline-passed. Source: investigation + Codex review on PR-E,
+      2026-05-30. Closed in the 2026-05-31 release-review cleanup: stepped-only
+      `set_step` shed on a no-binary-handle device now issues a direct
+      lifecycle-clock stepped command and waits for observed step posture before
+      disarming.
       NOTE (2026-05-31): the distinct `set_temperature`-with-missing-target case (stale behavior or a
       target cap dropped from the snapshot → set_temperature command no-ops until grace, leaving the
       device running) is now FIXED — `resolveTerminalShedCommand` falls back to binary-off when there

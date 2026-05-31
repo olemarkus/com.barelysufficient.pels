@@ -136,6 +136,8 @@ Use Smart tasks when one device must reach a target by a specific time. For exam
 
 Smart tasks are created with Homey Flow action cards such as **Add charging task** and **Add heating task**. See [Smart Tasks](/smart-tasks) for the full guide.
 
+For dashboard-driven setup, pin the **New smart task** widget. It lets you pick a managed device, preview the ready-by window, and create a one-off task. The **Smart tasks** widget then shows active task status, and **Held-back devices** can offer **Let it run now** for devices waiting on today's daily budget.
+
 ## Quick setup checklist
 
 Once you have worked through the steps above, verify:

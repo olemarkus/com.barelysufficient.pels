@@ -4901,7 +4901,7 @@ details[open] > summary .disclosure-chevron {
  * floor so the buttons can shrink to fit the container while keeping the
  * 48 px touch target and break-word wrap protection. */
 @media (max-width: 360px) {
-  .segmented button.segmented__option.segmented__option {
+  .segmented button.segmented__option.segmented__option.segmented__option {
     min-width: 0;
   }
 }

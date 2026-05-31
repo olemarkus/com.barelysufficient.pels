@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatSmartTaskGoalValue,
   formatSmartTaskNowValueLine,
+  formatSmartTaskUnknownNowValueLine,
   formatSmartTaskGoalContextLine,
   pluralHour,
   CREATE_SMART_TASK_WIDGET_COPY,
@@ -50,6 +51,13 @@ describe('formatSmartTaskNowValueLine', () => {
   it('returns null when there is no reading', () => {
     expect(formatSmartTaskNowValueLine({ currentValue: null, unitSymbol: '%' })).toBeNull();
     expect(formatSmartTaskNowValueLine({ currentValue: Number.NaN, unitSymbol: '°C' })).toBeNull();
+  });
+});
+
+describe('formatSmartTaskUnknownNowValueLine', () => {
+  it('uses explicit unknown copy instead of a bare unit', () => {
+    expect(formatSmartTaskUnknownNowValueLine('ev_soc')).toBe('Charge level unknown');
+    expect(formatSmartTaskUnknownNowValueLine('temperature')).toBe('Temperature unknown');
   });
 });
 

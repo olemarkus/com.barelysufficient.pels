@@ -80,10 +80,10 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
   createButton: "Create smart task",
   backButton: "Back",
-  // Shown when the preview can't be projected (no price horizon yet, missing
-  // device reading, price-aware optimisation off). Distinct from a hard error.
-  // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-  previewUnavailable: "Can\u2019t preview this yet \u2014 no prices published for this window yet.",
+  // Shown when the preview can't be projected and the backend did not provide a
+  // more specific missing-input reason. Distinct from a hard error. Avoids the
+  // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+  previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
   // Shown specifically when the device has no learned energy profile yet
   // (`unavailableReason === 'needs_observation'`): there is no temperature
   // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -137,8 +137,20 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
   // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
   // projection gap rather than a feasibility verdict.
-  cannotMeet: "May not be ready by this time. Try an earlier goal or a later ready-by time.",
-  atRisk: "This might not be ready in time \u2014 a later ready-by time or lower goal is safer."
+  cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
+  atRisk: "At risk \u2014 this may need most of the available window."
+};
+var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
+  invalid_deadline: "Can\u2019t preview this ready-by time yet.",
+  invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
+  missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
+  missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
+  needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
+  missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
+  missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
+  price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+  progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
+  unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
 };
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";

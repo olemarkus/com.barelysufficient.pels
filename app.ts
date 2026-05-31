@@ -1872,10 +1872,11 @@ class PelsApp extends Homey.App {
         cause: entry.starvation.cause,
         accumulatedMs: entry.starvation.accumulatedMs,
         intendedNormalTargetC: entry.intendedNormalTargetC,
-        // A device that already has a smart task stays VISIBLE in the held-back
-        // list but is not rescuable (the widget suppresses its button): the rescue
-        // is a fresh one-shot task and must never replace the device's own task —
-        // its existing task is what should bring it to target.
+        // A device with an open smart task stays VISIBLE in the held-back list
+        // but is not rescuable (the widget suppresses its button): the rescue is
+        // a fresh one-shot task and must never replace the device's own active
+        // or paused future task. A disabled task whose deadline is already in the
+        // past no longer blocks rescue; it is history, not an open task.
         hasSmartTask: this.hasDeferredObjectiveForDevice(entry.deviceId),
       });
     }
@@ -1951,13 +1952,15 @@ class PelsApp extends Homey.App {
   private readDeferredObjectiveEntry(deviceId: string): DeferredObjectiveSettingsEntry | undefined {
     return readObjectiveForDevice(this.homey.settings, deviceId);
   }
-  // Whether the device currently has a persisted deferred objective (a smart
-  // task), enabled or not. The starvation rescue uses this to EXCLUDE task-having
-  // devices: a rescue is a fresh one-shot task for a held-back device, so it must
-  // never replace an existing task. Excluding them is also what lets the rescue
-  // reuse the create engine directly (it is always a fresh create, never a merge).
+  // Whether the device currently has an open deferred objective (a smart task).
+  // Enabled entries always count; disabled future entries also count because the
+  // user has paused a still-open task. Disabled past entries do not count — they
+  // are completed/abandoned history and must not suppress a fresh held-back
+  // rescue forever.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
-    return this.readDeferredObjectiveEntry(deviceId) !== undefined;
+    const entry = this.readDeferredObjectiveEntry(deviceId);
+    if (!entry) return false;
+    return entry.enabled || entry.deadlineAtMs > this.getNow().getTime();
   }
   // Only stepped-load devices (EV chargers + stepped thermal) can honour the
   // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
@@ -2231,9 +2234,9 @@ class PelsApp extends Homey.App {
     // here, but `createDeferredObjective`'s own `ensureMigrated` guard refuses the
     // write rather than clobbering — so the user's task is safe either way.)
     migrateBlobToPerKeyIfNeeded(this.homey.settings);
-    // A device that already has a smart task is not rescuable. Re-assert here (the
-    // list already excludes it) so this lane can never REPLACE a user's task: the
-    // rescue is strictly a fresh create.
+    // A device that already has an open smart task is not rescuable. Re-assert
+    // here (the list already excludes it) so this lane can never REPLACE a user's
+    // active or paused future task: the rescue is strictly a fresh create.
     if (this.hasDeferredObjectiveForDevice(deviceId)) {
       return { ok: false, reason: 'device_not_eligible' };
     }

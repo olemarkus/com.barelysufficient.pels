@@ -67,8 +67,8 @@ var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the dead
 var WHY_CANNOT_MEET_DEVICE = "Not enough delivery before the deadline.";
 var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
 var WHY_AT_RISK_TIME = "Limited time left before the deadline.";
-var RECOURSE_CANNOT_MEET_BUDGET = "Lower the daily budget so future days reserve power earlier.";
-var RECOURSE_CANNOT_MEET_DEVICE = "Open this device\u2019s settings in the PELS app to see what\u2019s holding it back.";
+var RECOURSE_CANNOT_MEET_BUDGET = "Budget settings show whether future days need power reserved earlier.";
+var RECOURSE_CANNOT_MEET_DEVICE = "Device settings show what\u2019s holding it back.";
 var RECOURSE_INVALID_SESSION = "Plug the EV in to resume.";
 var isBudgetDriven = (input) => {
   if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
@@ -100,9 +100,119 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
     recourseHint: null
   };
 };
-var SMART_TASK_WIDGET_EMPTY_HINT = "Add one from a Flow card or the New smart task widget to see it here.";
+var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card for a managed device, or use the New smart task widget to see it here.";
 var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
 var SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = "Estimate";
+var CREATE_SMART_TASK_WIDGET_COPY = {
+  // Step 1 — device picker.
+  pickDeviceTitle: "New smart task",
+  pickDevicePrompt: "Choose a device",
+  emptyNoDevices: "No eligible devices",
+  // Warmer than a bare capability list: name the device kinds AND the next
+  // action, so a user with nothing yet knows exactly how to make a device
+  // appear here rather than hitting a dead end.
+  emptyNoDevicesHint: "Add a thermostat, water heater, or EV charger in Homey and it\u2019ll appear here.",
+  loadError: "Could not load devices. Try again later.",
+  // Shown while the widget is still wiring up to the Homey app (the SDK bridge
+  // hasn't supplied a real API client yet). Distinct from `loadError` (a real
+  // fetch that failed): this is a transient "not ready yet" state that resolves
+  // on its own once the bridge connects, so it reads as loading rather than a
+  // hard failure. The widget never shows canned sample devices on a real boot,
+  // and keeps Create disabled until a real client is present, so a user can
+  // never see a false "Created" while running against sample data.
+  notReady: "Connecting to Homey\u2026",
+  // Step 2 — goal + ready-by.
+  goalLabel: "Goal",
+  readyByLabel: "Ready by",
+  previewButton: "Preview",
+  // Step 3 — preview + confirm.
+  previewTitle: "Preview",
+  // Canonical "Scheduled" vocabulary (matches `SMART_TASK_LIST_STATUS_LABELS`
+  // / `SMART_TASK_LIST_ROW_LABELS` and the terminology guide) rather than the
+  // one-off noun "Runs": the preview's when-window is the same concept the list
+  // chip names.
+  scheduledLabel: "Scheduled",
+  energyLabel: "Energy",
+  costLabel: "Cost",
+  // The estimate is computed in isolation for this one candidate — surface the
+  // caveat honestly rather than implying a guarantee (the
+  // `DeferredObjectivePlanPreview` contract documents the same in-isolation
+  // direction-of-error). Kept short for the 320–480 px widget.
+  estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
+  createButton: "Create smart task",
+  backButton: "Back",
+  // Shown when the preview can't be projected and the backend did not provide a
+  // more specific missing-input reason. Distinct from a hard error. Avoids the
+  // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+  previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
+  // Shown specifically when the device has no learned energy profile yet
+  // (`unavailableReason === 'needs_observation'`): there is no temperature
+  // bootstrap rate, so PELS can't estimate the run until it has watched the
+  // device draw power. Tells the user the two ways to make that happen rather
+  // than (falsely) blaming prices. Names the real per-device toggle
+  // ("Power-limit control", see settings-ui `devices.ts`) so the remedy is
+  // actionable. Avoids the reserved "plan" noun.
+  previewNeedsObservation: "PELS needs to observe this device in action before it can be used for a smart task. Either let it run normally for a while, or turn on Power-limit control for it.",
+  // Shown when the candidate's goal is already met (preview `status: 'satisfied'`
+  // → zero scheduled hours): there is nothing to schedule, so explain that
+  // honestly rather than reusing the no-prices line. Uses the canonical "goal"
+  // noun (matches `goalLabel`) and avoids the reserved "plan" noun.
+  previewSatisfied: "This goal is already met \u2014 nothing to schedule.",
+  // Pending state on the Create button while the /create round-trip is in
+  // flight. Distinct from `created` (the confirmed-success label): the button
+  // must read as work-in-progress, never as success, until a `{ ok: true }`
+  // create actually lands — otherwise a still-pending or later-failed create
+  // would have flashed "Smart task created" before anything was persisted.
+  creating: "Creating\u2026",
+  // Shown briefly after a successful create before the widget resets.
+  created: "Smart task created",
+  // Generic submit failure (rejected candidate / transient SDK miss).
+  createError: "Could not create the smart task. Check the goal and try again.",
+  // A transient settings-write refusal (`write_conflict`): the goal was valid,
+  // the persist just flaked, so the data is safe and a plain retry resolves it.
+  // Distinct from `createError` so we never tell the user to "check the goal"
+  // for a failure that has nothing to do with their input.
+  writeConflict: "Could not save the smart task just now. Try again.",
+  // The previewed "Ready by" time slipped into the past between previewing and
+  // confirming (the user lingered past the chosen minute). The create is
+  // rejected rather than silently rolled to the next day so the created task
+  // can never disagree with the window the preview promised — re-previewing
+  // resolves a fresh future deadline. Retryable, not a hard failure.
+  deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time.",
+  // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
+  // default; a user opts in per task. The section hint stays honest about scope
+  // (only to hit THIS deadline) and never implies more total power or a raised
+  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
+  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
+  // breadcrumb, and runtime logs all read identically.
+  extraPermissionsTitle: "Extra permissions",
+  extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+  // Shown under the limit-lower-priority toggle when it is disabled: that
+  // permission only has any effect alongside the budget one, so it is gated on it.
+  limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
+  // Shown in the preview when the in-isolation projection returns a real planner
+  // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
+  // `at_risk` (might not). Surfaced as a prominent warning so a user never
+  // commits an unreachable ready-by believing it is fine. The estimate
+  // UNDERSTATES this risk (it projects the candidate in isolation — see the
+  // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
+  // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
+  // projection gap rather than a feasibility verdict.
+  cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
+  atRisk: "At risk \u2014 this may need most of the available window."
+};
+var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
+  invalid_deadline: "Can\u2019t preview this ready-by time yet.",
+  invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
+  missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
+  missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
+  needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
+  missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
+  missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
+  price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+  progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
+  unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
+};
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
