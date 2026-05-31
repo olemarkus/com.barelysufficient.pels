@@ -162,10 +162,29 @@ listed below in the P2 release-review 2026-05-28 subsection.*
         state-of-charge value (today an EV row can render `%` with no number).
         Files: `widgets/create_smart_task/src/createSmartTaskWidgetPayload.ts` /
         `public/render.ts`. Source: widget review P3 (ux-fit), 2026-05-30.
-  - [ ] **`plan_budget` `--pels-*` token-namespace divergence** — it defines its own
-        token layer + a `.homey-dark-mode` block while the other four widgets consume
-        `--homey-*` directly. Converge to one theming strategy. Source: widget review
-        P3 (m3-critic), 2026-05-30.
+  - [x] **`plan_budget` `--pels-*` token-namespace divergence — DONE (widget token-strategy
+        train, 2026-05-31).** Retired the local `--pels-*` layer + `.homey-dark-mode` block onto
+        the shared widget `--pw-*` semantic token layer (`widgets/_shared/widget-tokens.css`,
+        composed exclusively from Homey base tokens); panel/tab surface now uses the sibling
+        translucent-tint recipe. All five widgets now read one vocabulary; a stylelint guard bans
+        raw font props in `widgets/**/*.css`. Source: widget review P3 (m3-critic), 2026-05-30.
+  - [ ] **Widget price-chip vocabulary divergence** — the headroom "Available power" chip says
+        `Cheap`/`Expensive` while the sibling shared-domain helper `priceLevelChips.ts` says
+        `Price low`/`Price high` for the same cheap/expensive signal. Pre-existing (the token PR
+        only moved the casing out of CSS into the copy). Align both onto one vocabulary, or document
+        the widget-scoped synonym in `notes/ui-terminology.md`. Also: `headroomPriceChipLabel`'s
+        aria path yields "Price Cheap" / "Price Normal" (and "Price —" for unknown, which the chip
+        hides) — reconsider the aria construction when aligning. Source: pels-copy-and-terminology
+        P2/P3, widget token-strategy train 2026-05-31.
+  - [ ] **No unit test pins the widget chip casing** — add a direct assertion that
+        `headroomPriceChipLabel('cheap') === 'Cheap'` (etc.) so a revert to lowercase — which would
+        silently reintroduce the removed CSS `text-transform` dependency — is caught. Source:
+        adversarial-review (low), widget token-strategy train 2026-05-31.
+  - [ ] **No CI guard that committed widget bundles match source** — generated
+        `widgets/*/public/index.css` (and `index.js`) are committed but nothing fails CI if they
+        drift from `src/`. Add a post-`build:widgets` `git diff --exit-code widgets/*/public`
+        check so a stale generated artifact (or a hand-edit of a generated file) is caught. Source:
+        adversarial-review (low), widget token-strategy train 2026-05-31.
   - [ ] **Flat-surface / height-adaptive / one focal tile** — the five near-identical
         dark cards lack a focal point, and the passive tiles (Held-back devices, Smart
         tasks) reserve a fixed ~240 px slab for one line of content. Make healthy/empty

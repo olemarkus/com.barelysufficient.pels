@@ -78,15 +78,32 @@ module.exports = {
       // a widget border/outline colour so it lands on a linted property.
       files: ['widgets/**/*.css'],
       rules: {
+        // One rule, two jobs — colours AND every font/text property must resolve
+        // to a token, never a raw value.
+        //
+        // Colours (`/color$/`, fill, stroke, background) take a Homey-derived
+        // token; a bare `#hex`/`rgb()` doesn't adapt to the dashboard theme.
+        //
+        // Fonts: every text property resolves to the shared `--pw-*` semantic
+        // layer (itself composed only from Homey base tokens) — never a raw
+        // value. Bans raw `font-size` / `font-weight` / `line-height` /
+        // `letter-spacing` / `text-transform` / `font-variant*`. A `var(...)`
+        // reference passes (the `--pw-*` tokens, or `var(--pw-numeric)` for
+        // tabular figures); `inherit` passes for the `font: inherit` longhands.
+        // Homey ships no base token for `letter-spacing` / `text-transform`, so
+        // those are simply absent from widget CSS — the guard makes that
+        // structural, not a review-discipline matter. `--pw-numeric` is the one
+        // documented escape hatch (see widgets/_shared/widget-tokens.css).
+        //
+        // `ignoreFunctions: false` + `/var\(/` in `ignoreValues`: any value that
+        // references a token passes (incl. tonal `color-mix(…, var(--x))`), while
+        // a bare `color-mix()` with no `var(` is still rejected — the
+        // literal-inside-mix bypass stays closed.
         'scale-unlimited/declaration-strict-value': [
-          ['/color$/', 'fill', 'stroke', 'background'],
+          ['/color$/', 'fill', 'stroke', 'background', 'font-size', 'font-weight', 'line-height', 'letter-spacing', 'text-transform', '/^font-variant/'],
           {
             ignoreFunctions: false,
-            // Allow `color-mix()` only when it mixes a token — i.e. it contains a
-            // `var(...)`. A `color-mix()` over bare literals (e.g.
-            // `color-mix(in srgb, #fff 20%, transparent)`) does NOT match and is
-            // rejected, closing the literal-inside-color-mix bypass.
-            ignoreValues: ['/color-mix\\(.*var\\(/', 'transparent', 'currentColor', 'inherit', 'initial', 'unset', 'revert', 'none'],
+            ignoreValues: ['/var\\(/', 'transparent', 'currentColor', 'inherit', 'initial', 'unset', 'revert', 'none'],
           },
         ],
       },
