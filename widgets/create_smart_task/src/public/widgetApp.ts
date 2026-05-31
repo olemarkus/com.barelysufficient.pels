@@ -25,6 +25,10 @@ const READY_BY_PRESET_LOCAL_TIME: Record<string, string> = {
 export type WidgetWindow = Window & {
   Homey?: unknown;
   onHomeyReady?: (homey: WidgetHomey) => void;
+  // Declared explicitly: the lib.dom `Window` interface doesn't surface the
+  // global `ResizeObserver` constructor as a property, and the widget reads it
+  // off the injected window (optional so non-DOM test windows can omit it).
+  ResizeObserver?: typeof globalThis.ResizeObserver;
 };
 
 // Homey widget API client. Unlike the observe-only widgets, this widget POSTs a
@@ -32,12 +36,62 @@ export type WidgetWindow = Window & {
 export type WidgetHomey = {
   api: (method: string, path: string, body?: unknown) => Promise<unknown>;
   ready?: () => void;
+  // Resize the widget iframe to fit content. This widget is a multi-step form
+  // whose height varies per view (picker → compose → preview → created), so we
+  // measure after every render and report the height — Homey widgets don't
+  // scroll internally, they size the iframe to what we ask for.
+  setHeight?: (height: number) => void;
 };
 
 export type WidgetController = {
   bootstrap: (homey: WidgetHomey | null) => void;
   destroy: () => void;
   loadAndRender: () => Promise<void>;
+};
+
+// Keep the widget iframe sized to its content. Homey widgets don't scroll
+// internally — the dashboard scrolls between widgets and anything past the
+// iframe height is clipped — so instead of a fixed compose height we measure the
+// content-height root and call Homey.setHeight. A ResizeObserver (rather than a
+// synchronous measure in render) is what makes this reliable: the first paint,
+// web-font load, and async device-list arrival all change the height *after* a
+// render returns, so a synchronous read sees a stale/pre-layout value and the
+// widget only self-corrects on the next interaction. The observer fires once
+// layout settles and on every later size change. `getHomey` is read lazily so
+// the reporter created before bootstrap still sees the assigned Homey client.
+const createHeightReporter = (
+  root: HTMLElement,
+  widgetWindow: WidgetWindow,
+  getHomey: () => WidgetHomey | null,
+): { observe: () => void; disconnect: () => void } => {
+  let observer: ResizeObserver | null = null;
+  let lastReportedHeight = 0;
+  const report = (): void => {
+    const homey = getHomey();
+    if (!homey?.setHeight) return;
+    // Homey mounts the widget under <body class="homey-widget-small">, whose
+    // stylesheet pads the body around #widget-root. The root's own box excludes
+    // that padding, so report root height + the body's vertical padding —
+    // otherwise the iframe ends up a few px short and clips each view's bottom.
+    const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
+    const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
+      + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+    const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+    if (height <= 0 || height === lastReportedHeight) return;
+    lastReportedHeight = height;
+    homey.setHeight(height);
+  };
+  return {
+    observe: (): void => {
+      if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
+      observer = new widgetWindow.ResizeObserver(() => report());
+      observer.observe(root);
+    },
+    disconnect: (): void => {
+      observer?.disconnect();
+      observer = null;
+    },
+  };
 };
 
 const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
@@ -516,8 +570,15 @@ export const installWidget = (
   if (!targets) return null;
 
   const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
+  // Size the iframe to content (Homey.setHeight) only once a real Homey client
+  // is wired — the no-Homey preview/harness path renders at natural page size.
+  let activeHomey: WidgetHomey | null = null;
+  const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
+
   const installWindow = widgetWindow;
   installWindow.onHomeyReady = (homey: WidgetHomey): void => {
+    activeHomey = homey;
+    heightReporter.observe();
     controller.bootstrap(homey);
   };
 
@@ -531,5 +592,14 @@ export const installWidget = (
   } else {
     bootstrapWithoutHomey();
   }
-  return controller;
+  return {
+    ...controller,
+    destroy: (): void => {
+      controller.destroy();
+      heightReporter.disconnect();
+      // Drop the client so any late ResizeObserver callback short-circuits in
+      // getHomey() instead of calling setHeight on a torn-down widget.
+      activeHomey = null;
+    },
+  };
 };

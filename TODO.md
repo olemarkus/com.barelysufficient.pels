@@ -59,9 +59,12 @@ copy) are untouched by that pass and remain open.*
       backed by a new `priceSeries` on the preview estimate
       (`planPreview.ts` → `buildDeferredObjectivePolicyWindowPrices`); the compose
       CTA is no longer clipped (widget grown 240→380); the "Ready by" chips are
-      de-pilled to the flat Homey radius. **Remaining:** the device picker still
-      has no scroll affordance / type-ahead when many devices are eligible
-      (harness `create_smart_task` `overflow` scenario); no feasibility signal
+      de-pilled to the flat Homey radius; the widget now sizes to its content via
+      `Homey.setHeight` (ResizeObserver-driven), so the picker grows to fit every
+      eligible device and the dashboard scrolls through it — no clipping/internal
+      scroll. **Remaining:** no type-ahead/filter when many devices are eligible
+      (the grown list can get long — harness `create_smart_task` `overflow`
+      scenario); no feasibility signal
       when a ready-by time is unreachable (the preview returns `cannot_meet` but
       the widget doesn't surface it — harness `cannot_meet` scenario); the chart's
       hour-tick labels are formatted client-side from `startsAtMs` (DST risk)

@@ -13,11 +13,14 @@
   display: none !important;
 }
 
+/* Content-height (not pinned to the iframe): widgetApp measures this element
+   and calls Homey.setHeight so the iframe grows to fit the current step. A
+   fixed `height: 100%` would force internal scroll regions, which Homey
+   dashboards don't honour — the content would just clip. */
 .widget-root {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
   gap: var(--homey-su-2, 8px);
   box-sizing: border-box;
 }
@@ -51,6 +54,8 @@
 
 /* ----- Device picker ----- */
 
+/* No internal scroll: the widget grows to fit the full device list and the
+   Homey dashboard scrolls through it (Homey widgets don't scroll internally). */
 .rows {
   list-style: none;
   margin: 0;
@@ -58,9 +63,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--homey-su-1, 4px);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .row {
@@ -464,9 +466,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--homey-su-1, 4px);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .preview-line {
