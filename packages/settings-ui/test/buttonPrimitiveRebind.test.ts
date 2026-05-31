@@ -191,7 +191,7 @@ describe('button primitive: every native-button recourse CTA walks the canonical
     ).toHaveLength(2);
     hits.forEach((hit) => {
       expect(hit, `recourse button missing .pels-button: ${hit}`).toMatch(
-        /class="pels-button"/,
+        /class="pels-button hy-nostyle"/,
       );
       expect(hit, `recourse button must not retain legacy class: ${hit}`).not.toMatch(
         /plan-hero__recourse-button/,
@@ -202,7 +202,7 @@ describe('button primitive: every native-button recourse CTA walks the canonical
   it('DeadlinePlanHistoryDetail recourse button carries `.pels-button`', () => {
     const hits = recourseButtonHits(DEADLINE_HISTORY_DETAIL_TSX);
     expect(hits, 'expected one native recourse button (history-detail hero)').toHaveLength(1);
-    expect(hits[0]).toMatch(/class="pels-button"/);
+    expect(hits[0]).toMatch(/class="pels-button hy-nostyle"/);
     expect(hits[0]).not.toMatch(/plan-hero__recourse-button/);
   });
 
@@ -218,7 +218,7 @@ describe('button primitive: every native-button recourse CTA walks the canonical
     const collapsed = text.replace(/\s+/g, ' ');
     // The toggle is the only `<button>` carrying both classes on the
     // history-detail surface, so a single combined match is sufficient.
-    const regex = /<button[^>]*class="pels-button plan-history-detail__chart-toggle"[^>]*>/g;
+    const regex = /<button[^>]*class="pels-button plan-history-detail__chart-toggle hy-nostyle"[^>]*>/g;
     const matches = collapsed.match(regex) ?? [];
     expect(
       matches,

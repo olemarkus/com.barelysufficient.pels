@@ -110,7 +110,7 @@ const DeviceFilterChipRow = ({
         // the `--info` tone here: blue is the informational-status pill
         // elsewhere, so reusing it for "this filter is active" muddied the chip
         // vocabulary (PR-29).
-        class="plan-chip plan-chip--link"
+        class="plan-chip plan-chip--link hy-nostyle"
         aria-pressed={allActive}
         onClick={() => onSelectDevice(null)}
       >
@@ -122,7 +122,7 @@ const DeviceFilterChipRow = ({
           <button
             key={device.deviceId}
             type="button"
-            class="plan-chip plan-chip--link"
+            class="plan-chip plan-chip--link hy-nostyle"
             aria-pressed={active}
             // Tapping the active chip clears the filter; tapping an inactive
             // chip switches to that device. Matches the spec's "tap selected

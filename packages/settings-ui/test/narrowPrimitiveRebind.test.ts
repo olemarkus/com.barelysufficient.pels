@@ -167,7 +167,7 @@ describe('segmented primitive: canonical `.segmented` is the single source of tr
         // `<div class="segmented" role="group" …>` is the canonical container.
         expect(source).toMatch(/<div\s+class="segmented"\s+role="group"/);
         // Buttons carry `.segmented__option` + `aria-pressed`.
-        expect(source).toMatch(/class="segmented__option"/);
+        expect(source).toMatch(/class="segmented__option hy-nostyle"/);
         expect(source).toMatch(/aria-pressed=\{value === opt\.value\}/);
     });
 

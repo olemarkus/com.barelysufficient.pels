@@ -846,7 +846,7 @@ const HistoryDetailHero = ({
       <div class="plan-hero__recourse plan-history-detail__recourse">
         <button
           type="button"
-          class="pels-button"
+          class="pels-button hy-nostyle"
           data-deadline-recourse-tab={hero.recourse.targetTab}
           data-deadline-recourse-device-id={hero.recourse.deviceId ?? ''}
         >
@@ -1226,7 +1226,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
             {hero.chartCollapsedByDefault && (
               <button
                 type="button"
-                class="pels-button plan-history-detail__chart-toggle"
+                class="pels-button plan-history-detail__chart-toggle hy-nostyle"
                 aria-expanded={!chartCollapsed}
                 onClick={() => setChartCollapsed(!chartCollapsed)}
               >

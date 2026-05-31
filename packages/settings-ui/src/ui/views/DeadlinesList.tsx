@@ -262,7 +262,7 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
                 ripple). */}
             <button
               type="button"
-              class="deadlines-list-hero__nav-target"
+              class="deadlines-list-hero__nav-target hy-nostyle"
               data-deadline-card-id={target.deviceId}
               onClick={() => scrollToCardByDeviceId(target.deviceId)}
             >

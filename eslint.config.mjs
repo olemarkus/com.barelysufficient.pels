@@ -328,6 +328,18 @@ export default tseslint.config(
         { selector: "CallExpression[callee.object.name='document'][callee.property.name=/^createElement(NS)?$/]", message: 'No imperative DOM in views — render via Preact JSX.' },
         { selector: "CallExpression[callee.property.name=/^(appendChild|insertBefore|replaceChild|removeChild|prepend|replaceChildren)$/]", message: 'No imperative DOM mutation in views — render via Preact JSX.' },
         { selector: "AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]", message: 'No innerHTML in views — render via Preact JSX.' },
+        // Homey injects a host stylesheet (`_base.css`) into the app settings
+        // iframe whose "legacy button" rule
+        // `button:not(.hy-nostyle):not([class*='homey-button']):not([class*='hy-button'])`
+        // (specificity (0,3,1), loaded after our sheet) forces light-grey
+        // `#e7e7e7` chrome onto any native <button> lacking an opt-out class —
+        // invisible in light theme, a glaring light rectangle in our dark theme.
+        // Every native <button> must carry the `hy-nostyle` class so the host
+        // rule can't match it (the doubled-class specificity trick on
+        // `.segmented__option` / `.pels-button` was applied per-element and was
+        // forgotten on the filter chips + hero sub-line — this guard makes the
+        // opt-out impossible to forget). Static class string required.
+        { selector: "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(class|className)$/] :matches(Literal[value=/(^| )hy-nostyle( |$)/], TemplateElement[value.cooked=/(^| )hy-nostyle( |$)/])))", message: "Native <button> must include the `hy-nostyle` class so Homey's host button stylesheet can't bleed light-grey chrome onto it in dark theme (see style.css host-bleed notes)." },
       ],
     },
   },

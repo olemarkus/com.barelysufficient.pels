@@ -145,7 +145,7 @@ export const createToggleGroup = <T extends string>(
     options.forEach(({ value, label }) => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = 'segmented__option';
+        btn.className = 'segmented__option hy-nostyle';
         btn.textContent = label;
         btn.setAttribute('aria-pressed', 'false');
         btn.addEventListener('click', () => onSelect(value));
