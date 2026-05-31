@@ -1004,6 +1004,31 @@
     evening: "18:00",
     night: "22:00"
   };
+  var createHeightReporter = (root, widgetWindow, getHomey) => {
+    let observer = null;
+    let lastReportedHeight = 0;
+    const report = () => {
+      const homey = getHomey();
+      if (!homey?.setHeight) return;
+      const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
+      const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+      const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+      if (height <= 0 || height === lastReportedHeight) return;
+      lastReportedHeight = height;
+      homey.setHeight(height);
+    };
+    return {
+      observe: () => {
+        if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
+        observer = new widgetWindow.ResizeObserver(() => report());
+        observer.observe(root);
+      },
+      disconnect: () => {
+        observer?.disconnect();
+        observer = null;
+      }
+    };
+  };
   var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
     const theme = searchParams.get("theme");
     if (theme === "dark") {
@@ -1347,8 +1372,12 @@
     const targets = resolveTargets(widgetDocument);
     if (!targets) return null;
     const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
+    let activeHomey = null;
+    const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
     const installWindow = widgetWindow;
     installWindow.onHomeyReady = (homey) => {
+      activeHomey = homey;
+      heightReporter.observe();
       controller.bootstrap(homey);
     };
     const bootstrapWithoutHomey = () => {
@@ -1361,7 +1390,14 @@
     } else {
       bootstrapWithoutHomey();
     }
-    return controller;
+    return {
+      ...controller,
+      destroy: () => {
+        controller.destroy();
+        heightReporter.disconnect();
+        activeHomey = null;
+      }
+    };
   };
 
   // widgets/create_smart_task/src/public/index.ts

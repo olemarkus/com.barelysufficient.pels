@@ -450,6 +450,68 @@ describe('create smart task widget browser', () => {
       expect(input('[data-perm-limit-input]').disabled).toBe(true);
     });
   });
+
+  // Homey widgets don't scroll internally, so the widget sizes its iframe to the
+  // rendered content via Homey.setHeight, driven by a ResizeObserver. jsdom ships
+  // neither a ResizeObserver nor real layout, so install a controllable fake and
+  // stub the measured height to exercise the reporting contract.
+  describe('iframe height (Homey.setHeight)', () => {
+    let triggers: Array<() => void>;
+    const installFakeResizeObserver = (): void => {
+      triggers = [];
+      // A real (non-arrow) function so `new widgetWindow.ResizeObserver(...)`
+      // constructs; returning an object makes `new` yield that observer stub.
+      const Fake = function FakeResizeObserver(cb: ResizeObserverCallback) {
+        return {
+          observe: (): number => triggers.push(() => cb([], {} as ResizeObserver)),
+          unobserve: (): undefined => undefined,
+          disconnect: (): undefined => undefined,
+        };
+      };
+      (window as WidgetWindow).ResizeObserver = Fake as unknown as typeof ResizeObserver;
+    };
+    const stubRootHeight = (px: number): void => {
+      const root = document.getElementById('widget-root') as HTMLElement;
+      vi.spyOn(root, 'getBoundingClientRect').mockReturnValue({ height: px } as DOMRect);
+    };
+
+    afterEach(() => {
+      delete (window as WidgetWindow).ResizeObserver;
+      document.body.style.padding = '';
+    });
+
+    test('reports content height plus body padding (rounded up), deduping repeats', async () => {
+      installFakeResizeObserver();
+      stubRootHeight(412.2);
+      // Homey's .homey-widget-small pads the body around the root; the reported
+      // height must include it or the iframe clips each view's bottom.
+      document.body.style.paddingTop = '8px';
+      document.body.style.paddingBottom = '8px';
+      const setHeight = vi.fn();
+      const homey: WidgetHomey = {
+        api: async () => ({ state: 'ready', devices: [DEVICE_A] }),
+        ready: () => undefined,
+        setHeight,
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey);
+      await flushPromises();
+
+      triggers[0]();
+      expect(setHeight).toHaveBeenCalledWith(429); // ceil(412.2 + 8 + 8)
+
+      triggers[0](); // unchanged height → no redundant setHeight
+      expect(setHeight).toHaveBeenCalledTimes(1);
+    });
+
+    test('the no-Homey boot never observes or sizes', async () => {
+      installFakeResizeObserver();
+      installWidget(window as WidgetWindow, document);
+      // onHomeyReady never fires → bootstrapWithoutHomey wires a null client.
+      await flushPromises();
+      expect(triggers).toHaveLength(0);
+    });
+  });
 });
 
 // The renderer switches steps (.picker-view/.compose-view/.preview-view/
