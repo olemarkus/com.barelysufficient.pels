@@ -119,4 +119,5 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 - [Getting Started](/getting-started)
 - [Configuration](/configuration)
 - [Flow Cards](/flow-cards)
+- [Deadline Charging With State of Charge](/how-to-deadline-charging-soc)
 - [Zaptec EV Charger](/zaptec-ev-charger)

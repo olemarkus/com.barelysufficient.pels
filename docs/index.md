@@ -63,9 +63,9 @@ editLink: false
 
   ### Charge an EV without crossing your whole-home power limit
 
-  If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app.
+  If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
 
-  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
+  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With SoC](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
 
   ### Move hot water, heating or ventilation toward cheap hours
 

@@ -247,7 +247,7 @@ Blocked unmet-demand time is split into:
 
 ### EV Scope
 
-EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. PELS can tell whether it paused or resumed an EV charger, but it does **not** know the charger's real charging objective such as target SoC or ready-by time.
+EV chargers are intentionally excluded from unmet-demand and starvation metrics in v1. EV Smart tasks do know the target SoC and ready-by time, but those belong to the Smart task status and history surfaces, not to per-device starvation diagnostics. See [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the user setup.
 
 EV chargers are still included in:
 
