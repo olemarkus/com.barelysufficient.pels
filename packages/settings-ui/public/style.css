@@ -251,7 +251,7 @@ body {
   line-height: var(--font-line-height-comfortable);
   /* Override Homey's body padding (we handle our own layout spacing). */
   padding: 0 !important;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* ─── Typography role utilities ─────────────────────────────────────────────

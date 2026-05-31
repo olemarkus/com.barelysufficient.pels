@@ -392,21 +392,21 @@ PRs. Items below are later polish.*
       override still holds (fails if it's ever dropped). Source: PR #1352 m3-critic
       → verified false positive, 2026-05-31.
 
-- [ ] **Budget-adjust captures aren't host-faithful — and host CSS breaks the
-      sticky footer under test.** `budget-adjust-ux.spec.ts` is a functional spec
-      that also writes review screenshots via `shot()`, but it stays on the bare
-      `test` (not `renderTest`), so its budget plan / adjust / preview captures
-      render WITHOUT Homey's host CSS. Migrating it whole-hog fails: under the
-      injected host CSS the sticky-footer offset assertion blew up (received
-      221px vs the expected <12), i.e. Homey's `_base.css` (`html{height:100%;
-      overflow:auto}` / `body{min-height:100%}` / `html>body{padding:8px
-      !important}`) perturbs the budget redesign's sticky-bottom layout. Two
-      things to settle: (1) whether that sticky-footer break is a REAL on-device
-      regression (host CSS is present in prod) or just a test-measurement artefact
-      of the injection — verify on the real device; (2) give the budget surface a
-      faithful capture path — likely a dedicated `budget-screenshots.spec.ts` on
-      `renderTest` for the visuals, leaving the functional walkthrough on bare
-      `test`. Source: PR #1356 codex, 2026-05-31.
+- [x] **Budget adjust sticky footer breaks under Homey host CSS — FIXED.** Homey's
+      `_base.css` sets `html{height:100%;overflow:auto}`, flipping the page scroll
+      model so `html` becomes a fixed-height scroll viewport. Root cause: PELS's
+      `body { overflow-x: hidden }` made the spec auto-promote `overflow-y` to
+      `auto` (hidden-x + visible-y → y becomes auto), so `body` was an unintended
+      SECOND scroll container; under the host's scrolling `html` the sticky actions
+      bar (`position:sticky; bottom:0`) pinned to the inner `body` scroller instead
+      of the viewport, landing ~237px off-screen. Fixed by `body { overflow-x:
+      clip }` — `clip` suppresses horizontal overflow WITHOUT promoting overflow-y,
+      so `body` stops being a scroll container and the bar pins to the viewport.
+      Verified locally (prod-faithful: the iframe doc == index.html + host CSS):
+      offset 0px under host AND without, no regression across 54 layout/scroll
+      specs. `budget-adjust-ux.spec.ts` is now on `renderTest` (renders with the
+      host CSS) so its captures are host-faithful and its sticky assertion guards
+      this fix. Source: PR #1356 codex → fixed, 2026-05-31.
 
 - [ ] **Reusable real-device DARK capture harness (Firefox touch-gate gap).**
       The host-bleed reproduction is now solved in chromium: the captured prod

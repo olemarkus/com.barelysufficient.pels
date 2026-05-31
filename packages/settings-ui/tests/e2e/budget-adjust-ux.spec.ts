@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
-import { expect, test, type Page } from './fixtures/test';
+import { expect, renderTest as test, type Page } from './fixtures/test';
 
 const OUT_DIR = '/tmp/pels-budget-ux';
 
