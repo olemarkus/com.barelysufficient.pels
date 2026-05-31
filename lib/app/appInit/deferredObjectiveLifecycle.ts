@@ -15,7 +15,10 @@ import {
 } from '../../device/shedBehaviorActuation';
 import { getLogger } from '../../logging/logger';
 import { resolveFlowBackedBinaryTriggerCardId } from '../../executor/planExecutorPredicates';
-import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
+import {
+  getPrimaryTargetCapability,
+  normalizeTargetCapabilityValue,
+} from '../../utils/targetCapabilities';
 import type { ShedActuationTransport } from '../../device/shedBehaviorActuation';
 import {
   disableDeferredObjectiveInSettings,
@@ -48,14 +51,34 @@ export const resolveTerminalShedCommand = (
       flowBacked: flowBackedCapabilityIds.includes('evcharger_charging'),
     };
   }
-  if (behavior.action === 'set_temperature' && behavior.temperature !== null) {
+  // Only emit a `set_temperature` command when the device actually HAS a primary
+  // target capability to write to — keyed on the capability's PRESENCE, not its
+  // current value. A present capability whose value is transiently unreadable is
+  // the self-healing case we must preserve: the actuation
+  // (`shedBehaviorActuation.ts`) no-ops while `observed.targetValue` is non-numeric
+  // and the disarm grace keeps the task enabled, so the setpoint is applied as soon
+  // as a trusted observation arrives. Falling through to a binary handle (or `skip`)
+  // there would drop the diagnostic before the value returns and the configured
+  // setpoint shed would never run.
+  //
+  // The genuine failure this guards against is a MISSING capability: when the
+  // behavior says `set_temperature` but the device has NO primary target (stale
+  // persisted behavior, or the thermostat/target capability dropped out of the
+  // snapshot entirely), the command target would be a real number while the
+  // observed value stayed `null` FOREVER — the actuation would no-op every tick,
+  // `isInShedPosture` (`null === number`) would never settle, and the task would
+  // re-actuate a no-op until the disarm grace elapsed, disarming with the device
+  // STILL RUNNING. In that case fall through to the binary-off fallback below,
+  // which can still shed the load via the device's binary handle.
+  const primaryTarget = getPrimaryTargetCapability(device.targets);
+  if (behavior.action === 'set_temperature' && behavior.temperature !== null && primaryTarget !== null) {
     // Normalize the shed setpoint to the target capability's min/max/step the SAME
     // way the transport write does, so the observed (post-write, device-normalized)
     // value matches the command target and `isInShedPosture` actually settles —
     // otherwise an out-of-range legacy setpoint would re-issue every tick until grace.
     return {
       kind: 'set_temperature',
-      targetValue: normalizeTargetCapabilityValue({ target: device.targets[0], value: behavior.temperature }),
+      targetValue: normalizeTargetCapabilityValue({ target: primaryTarget, value: behavior.temperature }),
     };
   }
   const capabilityId = device.controlCapabilityId ?? device.binaryControlObservation?.capabilityId;
@@ -115,9 +138,11 @@ const readTerminalObserved = (
   if (objectiveKind === 'ev_soc') {
     return { binaryState: resolveEvBinaryState(device.evChargingState), targetValue: null };
   }
-  // Bind the observed setpoint read to the SAME target cap `applyDeviceTargets`
-  // writes (`targets[0]`), so the idempotency check can't desync from the write.
-  const primaryTarget = device.targets[0];
+  // Bind the observed setpoint read to the SAME target cap `resolveTerminalShedCommand`
+  // resolves and `applyDeviceTargets` writes, so the idempotency check can't desync
+  // from the write. A missing primary target yields `null` here, which is exactly why
+  // the command resolver refuses to emit a `set_temperature` command without one.
+  const primaryTarget = getPrimaryTargetCapability(device.targets);
   return {
     binaryState: resolveBinaryState(device.binaryControlObservation),
     targetValue: typeof primaryTarget?.value === 'number' ? primaryTarget.value : null,
