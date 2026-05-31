@@ -425,6 +425,49 @@ describe('power tracker integration', () => {
     }
   });
 
+  it('counts a boundary day once per weekday/hour slot across two prune runs', () => {
+    vi.useFakeTimers();
+    try {
+      // A single calendar day whose hours age out of the 30-day hourly window across
+      // two prune runs must contribute count +1 (not +2) per weekday/hour slot. The
+      // old dense 0..23 loop incremented every slot's count on every run, inflating the
+      // divisor with zero-sum entries and biasing typical-day averages low.
+      const dayStart = Date.UTC(2025, 0, 6, 0, 0, 0); // Monday
+      const hour = (h: number) => new Date(dayStart + h * 60 * 60 * 1000).toISOString();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const dayOfWeek = new Date('2025-01-06T00:00:00.000Z').getUTCDay();
+
+      // Run 1: only hours 0 and 1 have aged past the 30-day threshold.
+      vi.setSystemTime(dayStart + 2 * 60 * 60 * 1000 + thirtyDaysMs);
+      const firstRun = aggregateAndPruneHistory({
+        buckets: { [hour(0)]: 1, [hour(1)]: 2, [hour(2)]: 3, [hour(3)]: 4 },
+        dailyTotals: {},
+        hourlyAverages: {},
+      });
+
+      expect(firstRun.hourlyAverages[`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
+      expect(firstRun.hourlyAverages[`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
+      // Hours not yet aged out must not have a count contribution yet.
+      expect(firstRun.hourlyAverages[`${dayOfWeek}_2`]).toBeUndefined();
+
+      // Run 2: clock advances so hours 2 and 3 now age out too, fed the persisted state.
+      vi.setSystemTime(dayStart + 4 * 60 * 60 * 1000 + thirtyDaysMs);
+      const secondRun = aggregateAndPruneHistory({
+        buckets: firstRun.buckets,
+        dailyTotals: firstRun.dailyTotals,
+        hourlyAverages: firstRun.hourlyAverages,
+      });
+
+      // Each hour slot contributed exactly once total — no zero-sum double counting.
+      expect(secondRun.hourlyAverages[`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
+      expect(secondRun.hourlyAverages[`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
+      expect(secondRun.hourlyAverages[`${dayOfWeek}_2`]).toEqual({ sum: 3, count: 1 });
+      expect(secondRun.hourlyAverages[`${dayOfWeek}_3`]).toEqual({ sum: 4, count: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('omits per-device buckets when pruning removes every device bucket', () => {
     vi.useFakeTimers();
     try {

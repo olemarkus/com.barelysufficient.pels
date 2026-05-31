@@ -1223,27 +1223,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       0.1 (slider with float step) or coarsen to `1` (typical battery-percent precision)
       when this lands. Surfaced by the v2.7.0 PR 4.1 audit.
       Files: `.homeycompose/flow/actions/report_evcharger_battery_level.json`, `app.json`.
-- [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
-      data. `derivedHourlyAverages` in `packages/settings-ui/src/ui/power.ts`
-      still falls back to bucket-derived values only when persisted
-      `hourlyAverages` is empty; once it has any entry, the chart shows only
-      the >30-day-old slice that `aggregateAndPruneHistory` has rotated in.
-      The Daily-usage merge fix did not extend here because the persisted
-      `hourlyAverages` count is per-day (incremented for all 24 slots once per
-      processed day) while the bucket-derived count is per-hour, so additive
-      merge would mis-weight the average. Either rework the persisted format
-      to per-hour counts, or compute a unified pattern by grouping merged
-      day-hour entries before averaging.
-      Files: `packages/settings-ui/src/ui/power.ts`,
-      `lib/power/tracker.ts` (`processDayHourBuckets`).
-- [ ] `processDayHourBuckets` in `lib/power/tracker.ts` over-counts the
-      day count for boundary days that have their hours moved into
-      `hourlyAverages` across multiple prune runs. Each prune that moves at
-      least one hour of a given day calls the helper for that day, which
-      increments count by 1 for all 24 weekday-hour slots. A day whose hours
-      cross the threshold across two prune ticks therefore contributes count
-      +2 instead of +1, biasing the typical-day averages slightly low.
-      Files: `lib/power/tracker.ts` (`aggregateAndPruneHistory`).
 
       **Acceptance bar — fix all three of these consolidation candidates (or
       explicitly close each with a one-line "rejected because…" in the PR):**

@@ -204,6 +204,37 @@ describe('power page stats (buckets-only)', () => {
     vi.useRealTimers();
   });
 
+  // Regression: `aggregateAndPruneHistory` folds only >30-day-old hours into
+  // persisted `hourlyAverages`; the most-recent-30-days stay in `tracker.buckets`.
+  // `getPowerStats` used to read persisted `hourlyAverages` outright once non-empty,
+  // dropping every recent hour from the Typical-day chart. The merge must fold
+  // bucket-derived recent hours in additively.
+  it('merges recent buckets into the typical-day pattern, not only the aged slice', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 4, 16, 12, 0, 0))); // 2026-05-16 12:00 UTC
+
+    // Persisted (aged) slice: Monday hour 8 = 5 kWh over a single observed day.
+    // 2026-05-11 is a Monday → getUTCDay() === 1.
+    const hourlyAverages = { '1_8': { sum: 5, count: 1 } };
+
+    // Recent buckets: Monday 2026-05-11 hour 8 = 1 kWh (within 30-day window, still in
+    // buckets). Same weekday/hour slot as the persisted entry.
+    const buckets = { '2026-05-11T08:00:00.000Z': 1 };
+
+    await installHomeyClient({ hourlyAverages, buckets });
+
+    const { getPowerStats } = await import('../src/ui/power.ts');
+    const { stats } = await getPowerStats();
+
+    const mondayHour8 = stats.hourlyPatternWeekday.find((point) => point.hour === 8);
+    expect(mondayHour8).toBeDefined();
+    // Merged: (5 + 1) / (1 + 1) = 3. The persisted-only path would have shown 5/1 = 5,
+    // ignoring the recent bucket entirely.
+    expect(mondayHour8?.avg).toBeCloseTo(3, 6);
+
+    vi.useRealTimers();
+  });
+
   it('limits hourly detail to the current UTC week by default', async () => {
     const buckets = buildBuckets('2025-01-01T00:00:00.000Z', 14 * 24, 0.4);
     vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2025, 0, 10, 12, 0, 0));

@@ -85,6 +85,31 @@ export const getDerivedHourlyAverages = (buckets: Record<string, number> | undef
   return averages;
 };
 
+// Persisted `hourlyAverages` only ever holds weekday/hour slices for hours that have
+// aged out of the 30-day hourly retention window in `lib/power/tracker.ts`
+// (`aggregateAndPruneHistory`). The most-recent-30-days of hourly buckets still live
+// exclusively in `tracker.buckets`. Reading persisted `hourlyAverages` alone (once it
+// is non-empty) therefore drops every recent hour from the typical-day chart. Merge
+// both sources additively: each hourly bucket is moved out of `buckets` once folded
+// into `hourlyAverages`, so no hour is counted twice (same invariant as
+// `mergeDailyTotals`).
+export const mergeHourlyAverages = (
+  persisted: Record<string, { sum: number; count: number }> | undefined,
+  buckets: Record<string, number> | undefined,
+  timeZone: string,
+): Record<string, { sum: number; count: number }> => {
+  const merged: Record<string, { sum: number; count: number }> = {};
+  for (const [key, data] of Object.entries(persisted || {})) {
+    merged[key] = { sum: data.sum, count: data.count };
+  }
+  const fromBuckets = getDerivedHourlyAverages(buckets, timeZone);
+  for (const [key, data] of Object.entries(fromBuckets)) {
+    const existing = merged[key] || { sum: 0, count: 0 };
+    merged[key] = { sum: existing.sum + data.sum, count: existing.count + data.count };
+  }
+  return merged;
+};
+
 export const getHourlyPatternMeta = (buckets: Record<string, number> | undefined, timeZone: string) => {
   if (!buckets || Object.keys(buckets).length === 0) {
     return 'Average kWh per hour based on historical data.';
