@@ -344,22 +344,30 @@ const ErrorBody = ({ message }: { message: string }) => (
 // Flow-setup instructions are the single most important block on the surface,
 // so they must read as the loudest copy. Mirrors the pending-hero `metaLine`
 // precedent (`.plan-hero__subline--action`) in DeadlinePlan.tsx, which already
-// promotes the most-actionable string out of the muted tier.
+// promotes the most-actionable string out of the muted tier. The widget route
+// is a parallel-but-secondary way to create a task, so it lives in its own
+// trailing paragraph at the calmer supporting tone (no `--action`, matching
+// `BetweenRunsBody`) — the eye gets a break between the two routes instead of
+// parsing one run-on sentence.
 const EmptyBody = () => (
-  <p class="plan-hero__subline plan-hero__subline--action deadlines-list-body" data-state="empty">
-    {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
-    <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-    <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.conjunction}{' '}
-    <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
-    <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.outro}{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.widgetLead}{' '}
-    <strong>{SMART_TASK_LIST_EMPTY_COPY.widgetName}</strong>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.widgetOutro}
-  </p>
+  <>
+    <p class="plan-hero__subline plan-hero__subline--action deadlines-list-body" data-state="empty">
+      {SMART_TASK_LIST_EMPTY_COPY.intro}{' '}
+      <strong>{SMART_TASK_LIST_EMPTY_COPY.heatingAction}</strong>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
+      <em>{SMART_TASK_LIST_EMPTY_COPY.heatingExample}</em>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.conjunction}{' '}
+      <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
+      <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.outro}
+    </p>
+    <p class="plan-hero__subline deadlines-list-body" data-state="empty-widget-route">
+      {SMART_TASK_LIST_EMPTY_COPY.widgetLead}{' '}
+      <strong>{SMART_TASK_LIST_EMPTY_COPY.widgetName}</strong>{' '}
+      {SMART_TASK_LIST_EMPTY_COPY.widgetOutro}
+    </p>
+  </>
 );
 
 // Between-runs body: no active tasks, but the Past tasks archive below has
