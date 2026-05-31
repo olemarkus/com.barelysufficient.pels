@@ -408,18 +408,28 @@ PRs. Items below are later polish.*
       host CSS) so its captures are host-faithful and its sticky assertion guards
       this fix. Source: PR #1356 codex → fixed, 2026-05-31.
 
-- [ ] **`renderTest` screenshot captures render in LIGHT theme, not the dark
-      users see.** (m3-critic, PR #1366.) `renderTest` faithfully injects the host
-      CSS, but the page-fixture screenshot specs (landing / device-detail /
-      deadline-plan / docs-settings / budget-adjust-ux) use the project's default
-      `page`, which is NOT touch — so they render the desktop LIGHT theme. Host-CSS
-      *bleed* is theme-independent so detection is unaffected, but the captures
-      written for visual review aren't what mobile users see. Fix: a dark-capable
-      variant (own `isMobile`+`hasTouch` tall-viewport context + a `browserName
-      !== 'chromium'` skip, mirroring `smart-tasks-surface-screenshots.spec.ts`,
-      since the shared `page` fixture can't force `isMobile` without breaking the
-      `firefox-mobile-width` project). Migrate the page-fixture screenshot specs
-      onto it. Source: PR #1366 m3-critic, 2026-05-31.
+- [ ] **Extend the review theme-matrix to the DETAIL surfaces.** The dark-capable
+      capture variant the m3-critic light-theme P2 (#1366) asked for now exists —
+      `captureThemes` (PR #1369), driven by `theme-matrix-screenshots.spec.ts` over
+      the five main tabs (overview/budget/usage/smart-tasks/settings) in
+      light-desktop + dark-mobile + light-mobile. Correction to that P2's framing:
+      the `device-detail` / `docs-settings` / `deadline-plan` / `landing` specs it
+      named are NOT review captures — they write COMMITTED docs assets to
+      `docs/public/screenshots/**` (and `docs/screenshots/**`) and are intentionally
+      single light theme; do NOT migrate those (it would corrupt the docs site).
+      The real gap is that the matrix covers tab landings but not the DETAIL views:
+      the per-device detail panel, the deadline-plan detail, the Settings
+      sub-sections (limits/devices/modes). Highest value is **device detail in
+      DARK** — that panel is dense with native button/chip/slider primitives, the
+      exact place host-CSS bleed (the #1352 class) shows, and it's currently only
+      ever captured light (where bleed hides). The device-detail (thermostat +
+      stepped/Zaptec) and deadline-plan detail surfaces are now in the matrix
+      (element captures via `captureThemes`, all three themes). Residual, low
+      value: the Settings sub-sections (limits & safety / devices / modes) — their
+      primitives are the form controls already covered by the global label
+      override, so add them only if a forms-surface review wants the dark variant.
+      Source: PR #1366 m3-critic → reframed + device-detail/deadline-plan done
+      2026-05-31.
 
 - [ ] **Real-device mobile-DARK capture — LOW VALUE, mostly superseded.** The
       original idea was a chromium harness (inject the `homeylocal.com` session +
