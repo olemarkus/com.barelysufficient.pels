@@ -104,7 +104,18 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // rejected rather than silently rolled to the next day so the created task
   // can never disagree with the window the preview promised — re-previewing
   // resolves a fresh future deadline. Retryable, not a hard failure.
-  deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time."
+  deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time.",
+  // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
+  // default; a user opts in per task. The section hint stays honest about scope
+  // (only to hit THIS deadline) and never implies more total power or a raised
+  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
+  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
+  // breadcrumb, and runtime logs all read identically.
+  extraPermissionsTitle: "Extra permissions",
+  extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+  // Shown under the limit-lower-priority toggle when it is disabled: that
+  // permission only has any effect alongside the budget one, so it is gated on it.
+  limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this."
 };
 var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
@@ -451,7 +462,13 @@ var buildDevice = (device) => {
     goalMax: bounds.max,
     goalStep: bounds.step,
     defaultGoal: resolveSmartTaskDefaultGoal({ kind, bounds, currentValue }),
-    currentValue
+    currentValue,
+    // Gate-on-effect: the limit-lower-priority permission only changes the plan
+    // for a stepped-load device at top priority (the planner's `fullyReserved`
+    // floor is `priority === 1`). The stepped predicate mirrors app.ts
+    // `deviceSupportsLimitLowerPriority`; the extra `priority === 1` keeps the
+    // compose toggle from ever being offered where it would be a no-op.
+    supportsLimitLowerPriority: device.controlModel === "stepped_load" && device.steppedLoadProfile?.model === "stepped_load" && device.priority === 1
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {

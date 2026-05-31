@@ -370,6 +370,94 @@
   opacity: 0.9;
 }
 
+/* ----- Extra permissions (optional, collapsed, off by default) ----- */
+
+.extra-perms {
+  border-top: 1px solid var(--homey-line-color, rgba(0, 0, 0, 0.1));
+  padding-top: var(--homey-su-2, 8px);
+}
+
+.extra-perms__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--homey-su-2, 8px);
+  min-height: 48px;
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--homey-font-size-default, 17px);
+  font-weight: var(--homey-font-weight-medium, 500);
+  color: var(--homey-text-color, inherit);
+}
+
+/* Drop the native disclosure triangle (we draw our own chevron). */
+.extra-perms__summary::-webkit-details-marker {
+  display: none;
+}
+
+.extra-perms__summary:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+.extra-perms__chevron {
+  flex: none;
+  color: var(--homey-text-color-light, #6d7680);
+  transition: transform 200ms ease-out;
+}
+
+.extra-perms[open] .extra-perms__chevron {
+  transform: rotate(180deg);
+}
+
+.extra-perms__hint {
+  margin: 0 0 var(--homey-su-1, 4px);
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
+/* A toggle row: native checkbox + its label, a full 48 px touch target. */
+.perm-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--homey-su-2, 8px);
+  min-height: 48px;
+  cursor: pointer;
+  font-size: var(--homey-font-size-default, 17px);
+  color: var(--homey-text-color, inherit);
+}
+
+.perm-toggle__input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--homey-color-success, #58c56a);
+  cursor: pointer;
+}
+
+.perm-toggle__input:focus-visible {
+  outline: 2px solid var(--homey-text-color, currentColor);
+  outline-offset: 2px;
+}
+
+/* Disabled = gated off (limit-lower-priority needs the budget toggle first). */
+.perm-toggle__input:disabled {
+  cursor: default;
+}
+
+.perm-toggle__input:disabled + .perm-toggle__text {
+  opacity: 0.45;
+}
+
+.perm-toggle__note {
+  margin: 0 0 var(--homey-su-1, 4px);
+  padding-left: calc(20px + var(--homey-su-2, 8px));
+  font-size: var(--homey-font-size-small, 14px);
+  line-height: var(--homey-line-height-small, 20px);
+  color: var(--homey-text-color-light, #6d7680);
+}
+
 /* ----- Preview ----- */
 
 .preview-body {

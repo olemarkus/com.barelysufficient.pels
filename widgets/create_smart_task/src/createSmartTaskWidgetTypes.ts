@@ -25,6 +25,13 @@ export type CreateSmartTaskDevice = {
   goalStep: number;
   defaultGoal: number;
   currentValue: number | null;
+  // Whether the "May limit lower-priority devices" toggle would ACTUALLY change
+  // this device's plan — true only for a stepped-load device at top priority
+  // (priority 1), the only context the planner's reserved-headroom promotion
+  // (`fullyReserved`) honours. Gated on effect so the compose screen never
+  // offers a permission that would be a no-op for this device. The budget-exempt
+  // toggle has no such gate (any device can exceed the soft daily budget).
+  supportsLimitLowerPriority: boolean;
 };
 
 export type CreateSmartTaskDevicesPayload = {
@@ -54,6 +61,15 @@ export type CreateSmartTaskCandidateRequest = {
   // rolled to the next day. The server never trusts it as the persisted value
   // without that validation.
   deadlineAtMs?: number;
+  // Optional "Extra permissions" the user opted into for this task (both default
+  // off). `exemptFromBudget` lets the task exceed the soft daily budget;
+  // `limitLowerPriorityDevices` lets it limit lower-priority devices. Both are
+  // re-gated SERVER-side (the widget's visibility is not trusted): the latter is
+  // dropped unless the device is stepped-load eligible, and persists only
+  // alongside `exemptFromBudget` (it is inert without it). Sent as plain booleans;
+  // the server maps an opted-in permission to the `'always'` rescue mode.
+  exemptFromBudget?: boolean;
+  limitLowerPriorityDevices?: boolean;
 };
 
 // Preview response: the in-isolation plan estimate plus the resolved deadline

@@ -36,6 +36,22 @@ const WIDGET_MARKUP = `
         <div class="chip-row" data-ready-by-list></div>
       </div>
       <p class="ready-by-echo" data-ready-by-echo hidden></p>
+      <details class="extra-perms" data-extra-perms>
+        <summary class="extra-perms__summary">
+          <span class="extra-perms__title" data-extra-perms-title>Extra permissions</span>
+          <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
+        </summary>
+        <p class="extra-perms__hint" data-extra-perms-hint></p>
+        <label class="perm-toggle">
+          <input type="checkbox" class="perm-toggle__input" data-perm-budget-input />
+          <span class="perm-toggle__text" data-perm-budget-label></span>
+        </label>
+        <label class="perm-toggle" data-perm-limit hidden>
+          <input type="checkbox" class="perm-toggle__input" data-perm-limit-input />
+          <span class="perm-toggle__text" data-perm-limit-label></span>
+        </label>
+        <p class="perm-toggle__note" data-perm-limit-note hidden></p>
+      </details>
       <button type="button" class="primary-btn" data-preview-btn>Preview</button>
     </section>
     <section class="preview-view" data-preview-view hidden>
@@ -363,6 +379,77 @@ describe('create smart task widget browser', () => {
       expect(composeTitle.textContent).toBe(DEVICE_B.deviceName);
     });
   });
+
+  describe('extra permissions', () => {
+    const steppedDevice = { ...DEVICE_A, deviceId: 'd-step', deviceName: 'EV charger', supportsLimitLowerPriority: true };
+    const plainDevice = { ...DEVICE_A, supportsLimitLowerPriority: false };
+    const buildHomey = (devices: unknown[], createCalls: unknown[]): WidgetHomey => ({
+      api: async (method: string, path: string, body?: unknown) => {
+        if (method === 'GET' && path === '/devices') return { state: 'ready', devices };
+        if (method === 'POST' && path === '/preview') return OK_PREVIEW;
+        if (method === 'POST' && path === '/create') { createCalls.push(body); return { ok: true }; }
+        throw new Error(`unexpected api ${method} ${path}`);
+      },
+      ready: () => undefined,
+    });
+    const input = (sel: string): HTMLInputElement => document.querySelector(sel) as HTMLInputElement;
+
+    test('offers limit-lower-priority only for an eligible device, gated behind budget, and sends both on create', async () => {
+      const createCalls: unknown[] = [];
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([steppedDevice], createCalls));
+      await flushPromises();
+      click('[data-device-button]');
+
+      // Offered (eligible) but DISABLED until budget exemption is on (inert alone).
+      expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(false);
+      expect(input('[data-perm-limit-input]').disabled).toBe(true);
+
+      click('[data-perm-budget-input]');
+      expect(input('[data-perm-limit-input]').disabled).toBe(false);
+      click('[data-perm-limit-input]');
+      click('[data-preview-btn]');
+      await flushPromises();
+      click('[data-create-btn]');
+      await flushPromises();
+
+      expect(createCalls).toHaveLength(1);
+      expect(createCalls[0]).toMatchObject({ exemptFromBudget: true, limitLowerPriorityDevices: true });
+    });
+
+    test('hides limit-lower-priority for an ineligible device; a budget-only create omits it', async () => {
+      const createCalls: unknown[] = [];
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([plainDevice], createCalls));
+      await flushPromises();
+      click('[data-device-button]');
+
+      expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(true);
+      click('[data-perm-budget-input]');
+      click('[data-preview-btn]');
+      await flushPromises();
+      click('[data-create-btn]');
+      await flushPromises();
+
+      expect(createCalls[0]).toMatchObject({ exemptFromBudget: true });
+      expect(createCalls[0]).not.toHaveProperty('limitLowerPriorityDevices');
+    });
+
+    test('turning budget exemption back off forces limit-lower-priority off too', async () => {
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([steppedDevice], []));
+      await flushPromises();
+      click('[data-device-button]');
+
+      click('[data-perm-budget-input]');
+      click('[data-perm-limit-input]');
+      expect(input('[data-perm-limit-input]').checked).toBe(true);
+
+      click('[data-perm-budget-input]'); // budget off → limit must reset off + disable
+      expect(input('[data-perm-limit-input]').checked).toBe(false);
+      expect(input('[data-perm-limit-input]').disabled).toBe(true);
+    });
+  });
 });
 
 // The renderer switches steps (.picker-view/.compose-view/.preview-view/
@@ -381,6 +468,7 @@ registerHiddenGuardSuite({
     '.rows', // device list (hidden when there are no devices)
     '.empty', '.empty-hint', // picker affordances
     '.goal-context', '.ready-by-echo', // compose context lines
+    '.perm-toggle', '.perm-toggle__note', // limit-lower-priority toggle + its gated note
     '.preview-line', // toggled preview text lines
   ],
 });

@@ -290,6 +290,17 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // can never disagree with the window the preview promised — re-previewing
   // resolves a fresh future deadline. Retryable, not a hard failure.
   deadlinePassed: 'That ready-by time just passed. Preview again to pick a fresh time.',
+  // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
+  // default; a user opts in per task. The section hint stays honest about scope
+  // (only to hit THIS deadline) and never implies more total power or a raised
+  // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
+  // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
+  // breadcrumb, and runtime logs all read identically.
+  extraPermissionsTitle: 'Extra permissions',
+  extraPermissionsHint: 'Off unless you turn them on — only used to hit this deadline.',
+  // Shown under the limit-lower-priority toggle when it is disabled: that
+  // permission only has any effect alongside the budget one, so it is gated on it.
+  limitLowerPriorityNeedsBudget: 'Turn on “May go over daily budget” to use this.',
 } as const;
 
 // Map a create rejection reason to the user-facing widget error line. Two cases
@@ -496,7 +507,11 @@ export const formatSmartTaskListConfidenceChipLabel = (params: {
 export const SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL = 'Extra permissions (set via Flow)';
 export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devices may be limited separately.';
 
-const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
+// The canonical user-facing names for the two rescue permissions. Exported so
+// the create-smart-task widget's "Extra permissions" toggles, the settings-UI
+// breadcrumb, and runtime log breadcrumbs all use the SAME wording — never an
+// inlined duplicate (`feedback_ui_text_shared_with_logs`).
+export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'May go over daily budget',
   limitLowerPriorityDevices: 'May limit lower-priority devices',
 };

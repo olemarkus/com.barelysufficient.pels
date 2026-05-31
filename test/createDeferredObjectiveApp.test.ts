@@ -146,6 +146,83 @@ describe('createDeferredObjective (app)', () => {
     await app.onUninit?.();
   });
 
+  // The create-smart-task widget's opt-in "Extra permissions" ride the candidate;
+  // the app re-gates them against the device (defence-in-depth) so a tampered or
+  // stale client can never persist a permission the device can't honour.
+  describe('extra-permissions gate (create)', () => {
+    const steppedHeater = (priority = 1): TargetDeviceSnapshot => ({
+      ...buildPlannedHeater(),
+      priority,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [{ id: 'off', planningPowerW: 0 }, { id: 'on', planningPowerW: 2000 }],
+      },
+    } as unknown as TargetDeviceSnapshot);
+    const withRescue = (
+      rescue: DeferredObjectivePlanPreviewCandidate['rescue'],
+    ): DeferredObjectivePlanPreviewCandidate => ({ ...tempCandidate(60), rescue });
+
+    it('persists both permissions for a stepped device with budget exemption', async () => {
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater()]);
+      const result = app.createDeferredObjective(
+        'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue)
+        .toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+      await app.onUninit?.();
+    });
+
+    it('STRIPS limit-lower-priority on a non-stepped device (binary has no step to promote)', async () => {
+      const app = await initApp(); // default heater is non-stepped
+      const result = app.createDeferredObjective(
+        'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      await app.onUninit?.();
+    });
+
+    it('STRIPS limit-lower-priority when budget exemption is not also granted (inert alone)', async () => {
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater()]);
+      const result = app.createDeferredObjective('heater-1', withRescue({ limitLowerPriorityDevices: 'always' }));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('STRIPS limit-lower-priority on a stepped device below top priority (inert at the planner)', async () => {
+      // Matches the planner's fullyReserved === 1 floor: a stepped device that is
+      // not priority 1 can never honour the grant, so a tampered/stale client that
+      // sends it must not get it persisted (gate ≡ widget gate-on-effect).
+      const app = await initApp();
+      app.setSnapshotForTests([steppedHeater(100)]);
+      const result = app.createDeferredObjective(
+        'heater-1', withRescue({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' }),
+      );
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      await app.onUninit?.();
+    });
+
+    it('PRESERVES a standing permission when a fresh create opts out (additive-only preserve policy)', async () => {
+      // Documented contract: the create screen rebuilds an entry from goal/deadline
+      // and never carries a device's existing standing permission, so a create with
+      // both toggles off must NOT wipe a permission set elsewhere (e.g. via Flow or
+      // the rescue lane). See the create-screen opt-out follow-up in TODO.md.
+      const app = await initApp(); // non-stepped heater → standing exemption is budget-only
+      app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(60));
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      const result = app.createDeferredObjective('heater-1', tempCandidate(62));
+      expect(result).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toEqual({ exemptFromBudget: 'always' });
+      await app.onUninit?.();
+    });
+  });
+
   describe('rescueDeviceWithBudgetExemption (merge-not-replace)', () => {
     it('creates the rescue objective when the device has none', async () => {
       const app = await initApp();

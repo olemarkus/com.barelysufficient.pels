@@ -40,6 +40,24 @@
           <div class="chip-row" data-ready-by-list></div>
         </div>
         <p class="ready-by-echo" data-ready-by-echo hidden></p>
+        <!-- Optional, collapsed, OFF by default. Native <details> = an accessible
+             keyboard-operable disclosure with no JS needed for the expand. -->
+        <details class="extra-perms" data-extra-perms>
+          <summary class="extra-perms__summary">
+            <span class="extra-perms__title" data-extra-perms-title>Extra permissions</span>
+            <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
+          </summary>
+          <p class="extra-perms__hint" data-extra-perms-hint></p>
+          <label class="perm-toggle">
+            <input type="checkbox" class="perm-toggle__input" data-perm-budget-input>
+            <span class="perm-toggle__text" data-perm-budget-label></span>
+          </label>
+          <label class="perm-toggle" data-perm-limit hidden>
+            <input type="checkbox" class="perm-toggle__input" data-perm-limit-input>
+            <span class="perm-toggle__text" data-perm-limit-label></span>
+          </label>
+          <p class="perm-toggle__note" data-perm-limit-note hidden></p>
+        </details>
         <button type="button" class="primary-btn" data-preview-btn>Preview</button>
       </section>
 

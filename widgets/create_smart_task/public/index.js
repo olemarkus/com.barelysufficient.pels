@@ -78,7 +78,18 @@
     // rejected rather than silently rolled to the next day so the created task
     // can never disagree with the window the preview promised — re-previewing
     // resolves a fresh future deadline. Retryable, not a hard failure.
-    deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time."
+    deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time.",
+    // Step 2 — optional "Extra permissions" disclosure. Collapsed and OFF by
+    // default; a user opts in per task. The section hint stays honest about scope
+    // (only to hit THIS deadline) and never implies more total power or a raised
+    // cap (`feedback_hard_cap_is_physical`). The two toggle labels themselves come
+    // from `SMART_TASK_EXTRA_PERMISSION_LABELS` so the widget, the settings-UI
+    // breadcrumb, and runtime logs all read identically.
+    extraPermissionsTitle: "Extra permissions",
+    extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+    // Shown under the limit-lower-priority toggle when it is disabled: that
+    // permission only has any effect alongside the budget one, so it is gated on it.
+    limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this."
   };
   var resolveCreateSmartTaskRejectCopy = (reason) => {
     if (reason === "deadline_passed") return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
@@ -118,6 +129,10 @@
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
     satisfied: null
+  };
+  var SMART_TASK_EXTRA_PERMISSION_LABELS = {
+    exemptFromBudget: "May go over daily budget",
+    limitLowerPriorityDevices: "May limit lower-priority devices"
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
@@ -416,7 +431,8 @@
           goalMax: 85,
           goalStep: 0.5,
           defaultGoal: 65,
-          currentValue: 48
+          currentValue: 48,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-ev",
@@ -428,7 +444,8 @@
           goalMax: 100,
           goalStep: 1,
           defaultGoal: 80,
-          currentValue: 42
+          currentValue: 42,
+          supportsLimitLowerPriority: true
         }
       ]
     },
@@ -448,7 +465,8 @@
           goalMax: 30,
           goalStep: 0.5,
           defaultGoal: 21,
-          currentValue: 19.5
+          currentValue: 19.5,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-bedroom",
@@ -460,7 +478,8 @@
           goalMax: 30,
           goalStep: 0.5,
           defaultGoal: 18,
-          currentValue: 17.2
+          currentValue: 17.2,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-bathroom-floor",
@@ -472,7 +491,8 @@
           goalMax: 35,
           goalStep: 0.5,
           defaultGoal: 24,
-          currentValue: 22.1
+          currentValue: 22.1,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-office",
@@ -484,7 +504,8 @@
           goalMax: 30,
           goalStep: 0.5,
           defaultGoal: 20,
-          currentValue: 20.4
+          currentValue: 20.4,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-hot-water",
@@ -496,7 +517,8 @@
           goalMax: 85,
           goalStep: 0.5,
           defaultGoal: 65,
-          currentValue: 48
+          currentValue: 48,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-cabin-water",
@@ -508,7 +530,8 @@
           goalMax: 85,
           goalStep: 0.5,
           defaultGoal: 60,
-          currentValue: 55
+          currentValue: 55,
+          supportsLimitLowerPriority: false
         },
         {
           deviceId: "preview-ev",
@@ -520,7 +543,8 @@
           goalMax: 100,
           goalStep: 1,
           defaultGoal: 80,
-          currentValue: 42
+          currentValue: 42,
+          supportsLimitLowerPriority: true
         },
         {
           deviceId: "preview-ev-guest",
@@ -532,7 +556,8 @@
           goalMax: 100,
           goalStep: 1,
           defaultGoal: 80,
-          currentValue: 30
+          currentValue: 30,
+          supportsLimitLowerPriority: true
         }
       ]
     }
@@ -842,6 +867,28 @@
     if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
     return `${C.readyByLabel} ${formatSmartTaskDeadlineLong(next.getTime(), now.getTime(), null)}`;
   };
+  var renderExtraPermissions = (targets, view) => {
+    const {
+      extraPermsTitle,
+      extraPermsHint,
+      permBudgetInput,
+      permBudgetLabel,
+      permLimitToggle,
+      permLimitInput,
+      permLimitLabel,
+      permLimitNote
+    } = targets;
+    extraPermsTitle.textContent = C.extraPermissionsTitle;
+    extraPermsHint.textContent = C.extraPermissionsHint;
+    permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
+    permBudgetInput.checked = view.exemptFromBudget;
+    permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
+    const offerLimit = view.device.supportsLimitLowerPriority;
+    setVisible(permLimitToggle, offerLimit);
+    permLimitInput.checked = view.limitLowerPriorityDevices;
+    permLimitInput.disabled = !view.exemptFromBudget;
+    setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
+  };
   var renderCompose = (targets, view) => {
     const { device, goal, readyById } = view;
     const { composeTitle, goalLabel, goalValueEl, goalContextEl, goalDecBtn, goalIncBtn } = targets;
@@ -849,6 +896,7 @@
     goalLabel.textContent = C.goalLabel;
     readyByLabel.textContent = C.readyByLabel;
     previewBtn.textContent = C.previewButton;
+    renderExtraPermissions(targets, view);
     composeTitle.textContent = device.deviceName;
     goalValueEl.textContent = formatSmartTaskGoalValue(goal, device.unitSymbol);
     setLine(goalContextEl, formatSmartTaskGoalContextLine({
@@ -1014,6 +1062,12 @@
       readyByLabel: "[data-ready-by-label]",
       readyByList: "[data-ready-by-list]",
       readyByEchoEl: "[data-ready-by-echo]",
+      extraPermsTitle: "[data-extra-perms-title]",
+      extraPermsHint: "[data-extra-perms-hint]",
+      permBudgetLabel: "[data-perm-budget-label]",
+      permLimitToggle: "[data-perm-limit]",
+      permLimitLabel: "[data-perm-limit-label]",
+      permLimitNote: "[data-perm-limit-note]",
       previewView: "[data-preview-view]",
       previewTitle: "[data-preview-title]",
       previewCostEl: "[data-preview-cost]",
@@ -1035,13 +1089,20 @@
       previewBackBtn: "[data-preview-back]",
       createBtn: "[data-create-btn]"
     };
+    const inputs = {
+      permBudgetInput: "[data-perm-budget-input]",
+      permLimitInput: "[data-perm-limit-input]"
+    };
     const generic = Object.fromEntries(
       Object.entries(map).map(([k, sel]) => [k, d.querySelector(sel)])
     );
     const btns = Object.fromEntries(
       Object.entries(buttons).map(([k, sel]) => [k, d.querySelector(sel)])
     );
-    if (!(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(readyByTemplate instanceof HTMLTemplateElement) || Object.values(generic).some((el) => !(el instanceof HTMLElement)) || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement))) {
+    const checks = Object.fromEntries(
+      Object.entries(inputs).map(([k, sel]) => [k, d.querySelector(sel)])
+    );
+    if (!(root instanceof HTMLElement) || !(deviceTemplate instanceof HTMLTemplateElement) || !(readyByTemplate instanceof HTMLTemplateElement) || Object.values(generic).some((el) => !(el instanceof HTMLElement)) || Object.values(btns).some((el) => !(el instanceof HTMLButtonElement)) || Object.values(checks).some((el) => !(el instanceof HTMLInputElement))) {
       return null;
     }
     return {
@@ -1049,14 +1110,19 @@
       deviceTemplate,
       readyByTemplate,
       ...generic,
-      ...btns
+      ...btns,
+      ...checks
     };
   };
   var initialComposeView = (device) => ({
     kind: "compose",
     device,
     goal: device.defaultGoal,
-    readyById: CREATE_SMART_TASK_READY_BY_DEFAULT_ID
+    readyById: CREATE_SMART_TASK_READY_BY_DEFAULT_ID,
+    // Extra permissions always start off — a fresh device choice never inherits a
+    // prior task's opt-ins.
+    exemptFromBudget: false,
+    limitLowerPriorityDevices: false
   });
   var steppedGoalView = (view, direction) => {
     if (view.kind !== "compose") return view;
@@ -1064,18 +1130,36 @@
     const next = Math.round((goal + direction * device.goalStep) * 100) / 100;
     return { ...view, goal: Math.min(device.goalMax, Math.max(device.goalMin, next)) };
   };
+  var budgetToggledView = (view, checked) => {
+    if (view.kind !== "compose") return view;
+    return { ...view, exemptFromBudget: checked, limitLowerPriorityDevices: checked && view.limitLowerPriorityDevices };
+  };
+  var limitToggledView = (view, checked) => {
+    if (view.kind !== "compose") return view;
+    return { ...view, limitLowerPriorityDevices: checked };
+  };
   var backView = (view) => {
     if (view.kind === "preview") {
-      return { kind: "compose", device: view.device, goal: view.goal, readyById: view.readyById };
+      return {
+        kind: "compose",
+        device: view.device,
+        goal: view.goal,
+        readyById: view.readyById,
+        // Keep the opt-in extra permissions when stepping back to edit the goal.
+        exemptFromBudget: view.exemptFromBudget,
+        limitLowerPriorityDevices: view.limitLowerPriorityDevices
+      };
     }
     return { kind: "picker" };
   };
-  var buildCandidateRequest = (device, goal, readyById, deadlineAtMs) => ({
-    deviceId: device.deviceId,
-    kind: device.kind,
-    target: goal,
-    readyByLocalTime: READY_BY_PRESET_LOCAL_TIME[readyById] ?? READY_BY_PRESET_LOCAL_TIME.morning,
-    ...deadlineAtMs === void 0 ? {} : { deadlineAtMs }
+  var buildCandidateRequest = (source, deadlineAtMs) => ({
+    deviceId: source.device.deviceId,
+    kind: source.device.kind,
+    target: source.goal,
+    readyByLocalTime: READY_BY_PRESET_LOCAL_TIME[source.readyById] ?? READY_BY_PRESET_LOCAL_TIME.morning,
+    ...deadlineAtMs === void 0 ? {} : { deadlineAtMs },
+    ...source.exemptFromBudget ? { exemptFromBudget: true } : {},
+    ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
   });
   var previewedDeadline = (response) => response.ok ? response.deadlineAtMs : void 0;
   var closestDataValue = (target, selector, key) => {
@@ -1120,6 +1204,8 @@
     if (readyById) return { kind: "select-ready-by", readyById };
     if (eventTarget.closest("[data-goal-dec]")) return { kind: "goal-dec" };
     if (eventTarget.closest("[data-goal-inc]")) return { kind: "goal-inc" };
+    if (eventTarget.closest("[data-perm-budget-input]")) return { kind: "toggle-budget" };
+    if (eventTarget.closest("[data-perm-limit-input]")) return { kind: "toggle-limit" };
     if (eventTarget.closest("[data-preview-btn]")) return { kind: "preview" };
     if (eventTarget.closest("[data-create-btn]")) return { kind: "create" };
     if (eventTarget.closest("[data-compose-back]") || eventTarget.closest("[data-preview-back]")) {
@@ -1149,17 +1235,15 @@
     };
     const runPreview = async () => {
       if (view.kind !== "compose") return;
-      const { device, goal, readyById } = view;
       const token = ++requestSeq;
-      const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(device, goal, readyById));
+      const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view));
       if (token !== requestSeq || view.kind !== "compose") return;
-      view = { kind: "preview", device, goal, readyById, response, submitting: false, error: null };
+      view = { ...view, kind: "preview", response, submitting: false, error: null };
       render();
     };
     const runCreate = async () => {
       if (view.kind !== "preview") return;
-      const { device, goal, readyById } = view;
-      const request = buildCandidateRequest(device, goal, readyById, previewedDeadline(view.response));
+      const request = buildCandidateRequest(view, previewedDeadline(view.response));
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;
       render();
@@ -1197,6 +1281,12 @@
           return;
         case "goal-inc":
           setView(steppedGoalView(view, 1));
+          return;
+        case "toggle-budget":
+          setView(budgetToggledView(view, targets.permBudgetInput.checked));
+          return;
+        case "toggle-limit":
+          setView(limitToggledView(view, targets.permLimitInput.checked));
           return;
         case "preview":
           void runPreview();

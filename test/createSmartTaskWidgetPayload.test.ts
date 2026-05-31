@@ -124,4 +124,39 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices[0].deviceName).toBe('ev-1');
   });
+
+  describe('supportsLimitLowerPriority (gate-on-effect)', () => {
+    const steppedHeater = (overrides: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => buildDevice({
+      id: 'heater',
+      name: 'Hot water',
+      deviceType: 'temperature',
+      currentTemperature: 48,
+      targets: [{ id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 }],
+      controlModel: 'stepped_load',
+      steppedLoadProfile: { model: 'stepped_load' } as TargetDeviceSnapshot['steppedLoadProfile'],
+      ...overrides,
+    });
+    const firstDevice = (device: TargetDeviceSnapshot): boolean => {
+      const payload = buildCreateSmartTaskDevicesPayload({ devices: [device] });
+      if (payload.state !== 'ready') throw new Error('expected ready');
+      return payload.devices[0].supportsLimitLowerPriority;
+    };
+
+    it('is true for a stepped-load device at top priority (1)', () => {
+      expect(firstDevice(steppedHeater({ priority: 1 }))).toBe(true);
+    });
+
+    it('is false for a stepped-load device below top priority (inert there)', () => {
+      expect(firstDevice(steppedHeater({ priority: 100 }))).toBe(false);
+    });
+
+    it('is false for a stepped-load device with no priority set', () => {
+      expect(firstDevice(steppedHeater({ priority: undefined }))).toBe(false);
+    });
+
+    it('is false for a non-stepped (binary) device even at top priority', () => {
+      expect(firstDevice(steppedHeater({ controlModel: undefined, steppedLoadProfile: undefined, priority: 1 })))
+        .toBe(false);
+    });
+  });
 });
