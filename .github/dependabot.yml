@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Keep GitHub Actions (and the local composite action) up to date. Dependabot
+  # bumps the pinned commit SHAs and refreshes the trailing version comments.
+  - package-ecosystem: github-actions
+    # "/" covers the workflow files; the composite action carries its own
+    # pinned `uses:` and must be listed explicitly to be scanned.
+    directories:
+      - /
+      - /.github/actions/setup
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

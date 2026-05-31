@@ -2,9 +2,9 @@ name: Test
 
 on:
   push:
-    branches: [main, v2.7.2]
+    branches: [main]
   pull_request:
-    branches: [main, v2.7.2]
+    branches: [main]
 
 permissions:
   contents: read
@@ -20,22 +20,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Setup Node.js 22.22.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Pin npm 10.9.4
-        run: npm install --global npm@10.9.4
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
 
       - name: Install Homey CLI
         run: npm install --global homey@3.12.2
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Run lint, typecheck, and static checks
         run: npm run ci:checks
@@ -52,19 +43,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Setup Node.js 22.22.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Pin npm 10.9.4
-        run: npm install --global npm@10.9.4
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
 
       - name: Build docs site
         run: npm run docs:build
@@ -75,19 +57,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Setup Node.js 22.22.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Pin npm 10.9.4
-        run: npm install --global npm@10.9.4
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
 
       - name: Run runtime Jest suites
         run: npm run ci:test:runtime
@@ -97,25 +70,17 @@ jobs:
     timeout-minutes: 20
     env:
       HOME: /root
+    # Keep the Playwright image tag in sync with @playwright/test in package.json.
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Setup Node.js 22.22.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Pin npm 10.9.4
-        run: npm install --global npm@10.9.4
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
 
       - name: Run settings UI Jest suites
         run: npm run ci:test:settings-ui
@@ -129,25 +94,17 @@ jobs:
       fail-fast: false
       matrix:
         project: [chromium-mobile-width, firefox-mobile-width, chromium-narrow-width]
+    # Keep the Playwright image tag in sync with @playwright/test in package.json.
     container:
       image: mcr.microsoft.com/playwright:v1.60.0-jammy
       options: --ipc=host
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Setup Node.js 22.22.0
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.0
-          cache: npm
-
-      - name: Pin npm 10.9.4
-        run: npm install --global npm@10.9.4
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
 
       - name: Build settings UI once for Playwright
         run: npm --workspace @pels/settings-ui run build
@@ -159,7 +116,7 @@ jobs:
 
       - name: Upload Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-report-${{ matrix.project }}
           path: |
