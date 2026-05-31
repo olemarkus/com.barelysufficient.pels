@@ -62,7 +62,6 @@ const openDeviceDetail = (deviceId: string) => async (page: Page): Promise<Locat
   await row.locator('.pels-device-card__detail-button').click();
   const panel = page.locator('#device-detail-panel');
   await panel.waitFor();
-  await page.waitForTimeout(300);
   return panel;
 };
 
@@ -94,7 +93,6 @@ const SURFACES: { name: string; prepare?: (page: Page) => Promise<void>; open: (
       await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
       const panel = page.locator('#deadline-plan-panel');
       await panel.locator('.plan-hero__headline').waitFor();
-      await page.waitForTimeout(400);
       return panel;
     },
   },
