@@ -408,17 +408,32 @@ PRs. Items below are later polish.*
       host CSS) so its captures are host-faithful and its sticky assertion guards
       this fix. Source: PR #1356 codex → fixed, 2026-05-31.
 
-- [ ] **Reusable real-device DARK capture harness (Firefox touch-gate gap).**
-      The host-bleed reproduction is now solved in chromium: the captured prod
-      host CSS lives in `test/fixtures/homey-wrap/` and the render-gate fixture
-      (`renderTest` / `injectHomeyHostCss`) injects it into every screenshot spec,
-      so bleed shows up in review. The remaining gap is the LIVE device walk:
-      Firefox can't trigger the touch-gated mobile-DARK theme and breaks
-      my.homey.app's Configure→iframe flow when `hasTouch` is set. A small chromium
-      harness that injects the `homeylocal.com` session cookie + `isMobile/hasTouch`
-      would let us spot-check the real device in mobile-dark when the fixture needs
-      re-capturing. Lower priority now that the fixture-based reproduction exists.
-      Source: PR #1347 follow-up real-device walk, 2026-05-30.
+- [ ] **`renderTest` screenshot captures render in LIGHT theme, not the dark
+      users see.** (m3-critic, PR #1366.) `renderTest` faithfully injects the host
+      CSS, but the page-fixture screenshot specs (landing / device-detail /
+      deadline-plan / docs-settings / budget-adjust-ux) use the project's default
+      `page`, which is NOT touch — so they render the desktop LIGHT theme. Host-CSS
+      *bleed* is theme-independent so detection is unaffected, but the captures
+      written for visual review aren't what mobile users see. Fix: a dark-capable
+      variant (own `isMobile`+`hasTouch` tall-viewport context + a `browserName
+      !== 'chromium'` skip, mirroring `smart-tasks-surface-screenshots.spec.ts`,
+      since the shared `page` fixture can't force `isMobile` without breaking the
+      `firefox-mobile-width` project). Migrate the page-fixture screenshot specs
+      onto it. Source: PR #1366 m3-critic, 2026-05-31.
+
+- [ ] **Real-device mobile-DARK capture — LOW VALUE, mostly superseded.** The
+      original idea was a chromium harness (inject the `homeylocal.com` session +
+      `isMobile/hasTouch`) to capture the live device in mobile-dark. Investigated:
+      it's blocked (Firefox can't touch-gate dark; chromium can't reach the device
+      settings URL without the my.homey.app session+Configure flow, not just a
+      cookie) AND largely unnecessary — a LOCAL mobile-dark render + the committed
+      `test/fixtures/homey-wrap/` host bundle, which was verified byte-identical to
+      prod, already gives a prod-faithful dark review surface; the device would
+      only add real data, irrelevant to visual/bleed review. The one residual need
+      is re-capturing the host fixture if Homey ships a new `homey.css` — served by
+      the proven Firefox-profile walk (Configure → dump the iframe's stylesheet
+      links), which is reproducible ad-hoc. Keep deprioritised unless a fixture
+      refresh is needed. Source: PR #1347 walk → reassessed 2026-05-31.
 
 - [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
       promoted cost to the headline and demoted the energy estimate
