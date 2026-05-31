@@ -303,7 +303,7 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   const today = dayContext.usedNowKWh;
   const derivedDailyTotals = mergeDailyTotals(tracker.dailyTotals, tracker.buckets, timeZone);
   const derivedHourlyAverages = mergeHourlyAverages(
-    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | undefined,
+    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | null | undefined,
     tracker.buckets,
     timeZone,
   );
