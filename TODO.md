@@ -68,7 +68,11 @@ copy) are untouched by that pass and remain open.*
       when a ready-by time is unreachable (the preview returns `cannot_meet` but
       the widget doesn't surface it — harness `cannot_meet` scenario); the chart's
       hour-tick labels are formatted client-side from `startsAtMs` (DST risk)
-      rather than backend-provided like `scheduledWindowLabel`.
+      rather than backend-provided like `scheduledWindowLabel`. **Done:** an
+      `unavailable` preview for a device with no learned profile yet
+      (`unavailableReason: 'needs_observation'`, via `planPreview.ts`) now shows an
+      honest "PELS must observe this device first" line instead of (falsely)
+      blaming missing prices.
 
 - [ ] **Available power (`headroom`) not loveable.** The tile screams / reads
       noisy: a giant current-kW number, a coloured price pill ("Cheap"), and

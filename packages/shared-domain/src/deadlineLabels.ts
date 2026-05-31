@@ -270,6 +270,21 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // device reading, price-aware optimisation off). Distinct from a hard error.
   // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
   previewUnavailable: 'Can’t preview this yet — no prices published for this window yet.',
+  // Shown specifically when the device has no learned energy profile yet
+  // (`unavailableReason === 'needs_observation'`): there is no temperature
+  // bootstrap rate, so PELS can't estimate the run until it has watched the
+  // device draw power. Tells the user the two ways to make that happen rather
+  // than (falsely) blaming prices. Names the real per-device toggle
+  // ("Power-limit control", see settings-ui `devices.ts`) so the remedy is
+  // actionable. Avoids the reserved "plan" noun.
+  previewNeedsObservation:
+    'PELS needs to observe this device in action before it can be used for a smart task. '
+    + 'Either let it run normally for a while, or turn on Power-limit control for it.',
+  // Shown when the candidate's goal is already met (preview `status: 'satisfied'`
+  // → zero scheduled hours): there is nothing to schedule, so explain that
+  // honestly rather than reusing the no-prices line. Uses the canonical "goal"
+  // noun (matches `goalLabel`) and avoids the reserved "plan" noun.
+  previewSatisfied: 'This goal is already met — nothing to schedule.',
   // Pending state on the Create button while the /create round-trip is in
   // flight. Distinct from `created` (the confirmed-success label): the button
   // must read as work-in-progress, never as success, until a `{ ok: true }`

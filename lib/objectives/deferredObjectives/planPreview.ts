@@ -111,6 +111,20 @@ const withEnabled = (
   };
 };
 
+// A thermal device with no usable energy profile yet — either no learned/bootstrap
+// kWh-per-unit (`objective_missing_capacity`) or a learned rate but no executable
+// step because `planningPowerKw` is uncalibrated (`objective_missing_charge_rate`).
+// From the user's view both are the same "PELS hasn't observed this device draw
+// power yet" cold-start, so they earn the same `needs_observation` copy. Mirrors
+// `THERMAL_LEARNING_CAPACITY_REASON_CODES` in `activePlanRecorder`; the
+// `temperature` guard keeps an EV's `objective_missing_charge_rate` (a real missing
+// charger reading, not an observation gap) on the generic message.
+const isThermalObservationGap = (diag: DeferredObjectiveDiagnostic): boolean => (
+  diag.objectiveKind === 'temperature'
+  && (diag.reasonCode === 'objective_missing_capacity'
+    || diag.reasonCode === 'objective_missing_charge_rate')
+);
+
 const buildEstimateFromDiagnostic = (params: {
   diag: DeferredObjectiveDiagnostic;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -121,10 +135,16 @@ const buildEstimateFromDiagnostic = (params: {
   const { diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs } = params;
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
-  // null numerics rather than inventing a plan.
+  // null numerics rather than inventing a plan. When the cause is specifically a
+  // thermal energy-profile gap (PELS hasn't observed this device draw power yet),
+  // tag it so the UI can say "PELS must observe this device first" instead of
+  // falsely blaming prices.
   if (!diag.horizonPlan) {
     return {
       status: 'unavailable',
+      ...(isThermalObservationGap(diag)
+        ? { unavailableReason: 'needs_observation' as const }
+        : {}),
       scheduledHours: [],
       projectedFinishAtMs: null,
       energyEstimateKWh: null,

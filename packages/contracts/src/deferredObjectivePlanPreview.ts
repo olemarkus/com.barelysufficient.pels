@@ -77,6 +77,16 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // projection could not run (see the status union doc); the numeric fields
   // below are then all null.
   status: DeferredObjectivePlanPreviewStatus;
+  // Coarse cause of an `unavailable` projection, so a UI can explain WHY rather
+  // than guessing. Present only when `status === 'unavailable'`, and only for the
+  // one cause that has bespoke copy: `'needs_observation'` means the device has no
+  // learned energy profile yet (e.g. a thermostat PELS has never watched run —
+  // there is no temperature bootstrap rate), so PELS must observe it before it can
+  // project a plan. Absent for every other `unavailable` cause (genuinely no price
+  // horizon, price-aware optimisation off, missing device reading, …), which keeps
+  // the generic "no prices published yet" message. Deliberately a single literal,
+  // not an open union, to stay lean — add members only when they earn distinct copy.
+  unavailableReason?: 'needs_observation';
   // Hour-aligned charging hours the planner would schedule, ascending by
   // `startsAtMs`. Empty when nothing is scheduled (e.g. already-satisfied,
   // deadline passed, or `unavailable`).
