@@ -9,20 +9,23 @@ integration gaps should still follow this note.
 > below is unchanged: the planner still never auto-mitigates starvation. What v2
 > adds is a separate, explicitly user-initiated lane: the starvation-rescue
 > dashboard widget (`widgets/starvation_rescue/`) lets a user grant a
-> *budget-caused* starved temperature device a bounded budget-exempt rescue
-> (`rescue.exemptFromBudget: 'always'`, a near-term +3h deadline, aimed at the
-> device's intended normal target). This bypasses DAILY-BUDGET admission only —
-> never capacity (the hard cap is physical), and capacity/manual/external rows
-> get no rescue affordance. The rescue MERGES into an existing smart task (adds
-> only the exemption, preserving the user's target/deadline/other permissions)
-> rather than replacing it. So the system is no longer "detection-only" for
-> temperature devices — but the new behaviour is gated behind explicit user
-> action, not automatic mitigation.
+> *budget-caused* held-back device a bounded smart task with budget leeway and,
+> where the device can honor it, lower-priority limiting. The widget excludes
+> devices that already have an open smart task, so the action is a fresh create
+> through the same engine as the New smart task widget, not a merge into an
+> existing deadline. This bypasses DAILY-BUDGET admission only — never capacity
+> (the hard cap is physical), and capacity/manual/external rows get no rescue
+> affordance. So the system is no longer "detection-only" for temperature
+> devices — but the new behaviour is gated behind explicit user action, not
+> automatic mitigation.
 >
-> The widget's row status chip intentionally shows `Starved · N min` (the live
-> duration). The "do not append duration to the badge" rule in the *Overview UI*
-> section below governs the OVERVIEW HERO surface, not this standalone action
-> widget, where the duration is the primary signal for choosing what to rescue.
+> The widget's row status chip intentionally shows the live duration with
+> cause-specific wording: `Held back · N min` for budget-held rows that can be
+> released, `Waiting · N min` for capacity/external rows, and `On hold · N min`
+> for manual rows. The "do not append duration to the badge" rule in the
+> *Overview UI* section below governs the OVERVIEW HERO surface, not this
+> standalone action widget, where the duration is the primary signal for
+> choosing what to rescue.
 
 The detection feature is detection only:
 

@@ -262,7 +262,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].whyLabel).toBe('Today’s daily budget runs out before the deadline.');
     expect(payload.rows[0].recourseHint).toBe(
-      'Lower the daily budget so future days reserve power earlier.',
+      'Budget settings show whether future days need power reserved earlier.',
     );
   });
 
@@ -286,7 +286,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].whyLabel).toBe('Not enough delivery before the deadline.');
     expect(payload.rows[0].recourseHint).toBe(
-      'Open this device’s settings in the PELS app to see what’s holding it back.',
+      'Device settings show what’s holding it back.',
     );
   });
 
@@ -306,7 +306,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].whyLabel).toBe('Not enough delivery before the deadline.');
     expect(payload.rows[0].recourseHint).toBe(
-      'Open this device’s settings in the PELS app to see what’s holding it back.',
+      'Device settings show what’s holding it back.',
     );
   });
 
@@ -332,7 +332,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     const byId = Object.fromEntries(payload.rows.map((r) => [r.deviceId, r]));
     expect(byId.budget.whyLabel).toBe('Today’s daily budget may run out before the deadline.');
     expect(byId.budget.recourseHint).toBe(
-      'Lower the daily budget so future days reserve power earlier.',
+      'Budget settings show whether future days need power reserved earlier.',
     );
     expect(byId.time.whyLabel).toBe('Limited time left before the deadline.');
     expect(byId.time.recourseHint).toBeNull();

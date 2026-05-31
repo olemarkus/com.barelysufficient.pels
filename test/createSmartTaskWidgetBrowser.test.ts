@@ -3,6 +3,7 @@ import {
 } from '../packages/shared-domain/src/deadlineLabels';
 import { installWidget } from '../widgets/create_smart_task/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../widgets/create_smart_task/src/public/widgetApp';
+import type { CreateSmartTaskPreviewResponse } from '../widgets/create_smart_task/src/createSmartTaskWidgetTypes';
 import { registerHiddenGuardSuite } from './cssTestUtils';
 
 // Mirrors the production index.html markup the renderer queries against, so the
@@ -334,59 +335,132 @@ describe('create smart task widget browser', () => {
     });
   });
 
-  // An unavailable preview must explain WHY honestly: a device with no learned
-  // profile yet (`unavailableReason: 'needs_observation'`) gets the bespoke
-  // "observe this device first" copy, never the (false) "no prices" line.
-  describe('unavailable preview message reflects the backend reason', () => {
-    const previewWith = (estimate: Record<string, unknown>) => ({
-      ok: true as const,
+  describe('preview verdicts gate create honestly', () => {
+    const previewWith = (estimate: Record<string, unknown>): CreateSmartTaskPreviewResponse => ({
+      ok: true,
       deadlineAtMs: Date.now() + 60 * 60 * 1000,
       deadlineLabel: 'Today 07:00',
       scheduledWindowLabel: '',
-      estimate: { scheduledHours: [], projectedFinishAtMs: null, energyEstimateKWh: null, energyExpectedKWh: null, costEstimate: null, ...estimate },
+      estimate: {
+        scheduledHours: [],
+        projectedFinishAtMs: null,
+        energyEstimateKWh: null,
+        energyExpectedKWh: null,
+        costEstimate: null,
+        ...estimate,
+      },
+    } as CreateSmartTaskPreviewResponse);
+
+    const buildHomey = (previewResponse: CreateSmartTaskPreviewResponse, createCalls: unknown[] = []): WidgetHomey => ({
+      api: async (method: string, path: string, body?: unknown) => {
+        if (method === 'GET' && path === '/devices') return { state: 'ready', devices: [DEVICE_A] };
+        if (method === 'POST' && path === '/preview') return previewResponse;
+        if (method === 'POST' && path === '/create') { createCalls.push(body); return { ok: true }; }
+        throw new Error(`unexpected api ${method} ${path}`);
+      },
+      ready: () => undefined,
     });
 
-    const renderUnavailablePreview = async (estimate: Record<string, unknown>): Promise<HTMLElement> => {
-      const homey: WidgetHomey = {
-        api: async (method: string, path: string) => {
-          if (method === 'GET' && path === '/devices') return { state: 'ready', devices: [DEVICE_A] };
-          if (method === 'POST' && path === '/preview') return previewWith(estimate);
-          throw new Error(`unexpected api ${method} ${path}`);
-        },
-        ready: () => undefined,
+    test('cannot-finish preview is visibly distinct and cannot be created', async () => {
+      const createCalls: unknown[] = [];
+      const cannotMeetPreview = {
+        ...OK_PREVIEW,
+        estimate: { ...OK_PREVIEW.estimate, status: 'cannot_meet' as const },
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey(cannotMeetPreview, createCalls));
       await flushPromises();
+
       click('[data-device-button]');
       click('[data-preview-btn]');
       await flushPromises();
-      return document.querySelector('[data-preview-unavailable]') as HTMLElement;
-    };
 
-    test('needs_observation shows the observe-the-device copy, not the no-prices line', async () => {
-      const el = await renderUnavailablePreview({ status: 'unavailable', unavailableReason: 'needs_observation' });
-      expect(el.hidden).toBe(false);
-      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation);
-      expect(el.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
-      // The Create button stays enabled — an unprojectable candidate is still creatable.
+      const statusLine = document.querySelector('[data-preview-feasibility]') as HTMLElement;
+      expect(statusLine.hidden).toBe(false);
+      expect(statusLine.textContent).toContain('Cannot finish');
+      expect((document.querySelector('[data-preview-unavailable]') as HTMLElement).hidden).toBe(true);
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
-      expect(createBtn.disabled).toBe(false);
+      expect(createBtn.disabled).toBe(true);
+
+      click('[data-create-btn]');
+      await flushPromises();
+      expect(createCalls).toHaveLength(0);
+    });
+
+    test('unavailable preview uses the backend reason instead of always blaming missing prices', async () => {
+      const createCalls: unknown[] = [];
+      const unavailablePreview = previewWith({
+        status: 'unavailable',
+        unavailableReason: 'missing_reading',
+      });
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview, createCalls));
+      await flushPromises();
+
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const statusLine = document.querySelector('[data-preview-unavailable]') as HTMLElement;
+      expect(statusLine.textContent).toBe('Can’t preview this yet — PELS needs a current device reading.');
+      expect(statusLine.textContent).not.toContain('prices published');
+      const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
+      expect(createBtn.disabled).toBe(true);
+
+      click('[data-create-btn]');
+      await flushPromises();
+      expect(createCalls).toHaveLength(0);
+    });
+
+    test('needs_observation shows the observe-the-device copy and cannot be created yet', async () => {
+      const unavailablePreview = previewWith({
+        status: 'unavailable',
+        unavailableReason: 'needs_observation',
+      });
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview));
+      await flushPromises();
+
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const statusLine = document.querySelector('[data-preview-unavailable]') as HTMLElement;
+      expect(statusLine.hidden).toBe(false);
+      expect(statusLine.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation);
+      expect(statusLine.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+      expect((document.querySelector('[data-create-btn]') as HTMLButtonElement).disabled).toBe(true);
     });
 
     test('an unavailable preview with no reason keeps the generic line', async () => {
-      const el = await renderUnavailablePreview({ status: 'unavailable' });
-      expect(el.hidden).toBe(false);
-      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+      const unavailablePreview = previewWith({ status: 'unavailable' });
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview));
+      await flushPromises();
+
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const statusLine = document.querySelector('[data-preview-unavailable]') as HTMLElement;
+      expect(statusLine.hidden).toBe(false);
+      expect(statusLine.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
     });
 
-    test('an already-met goal (satisfied, zero hours) shows the goal-met copy, not the no-prices line', async () => {
-      // `satisfied` is projectable=false (zero scheduled hours) but is NOT an
-      // unavailable cause — it must read as "already met", never "no prices".
-      const el = await renderUnavailablePreview({ status: 'satisfied' });
-      expect(el.hidden).toBe(false);
-      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied);
-      expect(el.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+    test('an already-met goal shows the goal-met copy, not the missing-data line', async () => {
+      const satisfiedPreview = previewWith({ status: 'satisfied' });
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey(satisfiedPreview));
+      await flushPromises();
+
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const statusLine = document.querySelector('[data-preview-feasibility]') as HTMLElement;
+      expect(statusLine.hidden).toBe(false);
+      expect(statusLine.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied);
+      expect((document.querySelector('[data-preview-unavailable]') as HTMLElement).hidden).toBe(true);
     });
   });
 
@@ -447,13 +521,13 @@ describe('create smart task widget browser', () => {
       ready: () => undefined,
     });
 
-    test('a cannot_meet verdict surfaces the warning, not the missing-price line, and still allows create', async () => {
-      const cannotMeetPreview = {
+    test('an at_risk verdict surfaces the warning, not the missing-price line, and still allows create', async () => {
+      const atRiskPreview = {
         ...OK_PREVIEW,
-        estimate: { ...OK_PREVIEW.estimate, status: 'cannot_meet' as const },
+        estimate: { ...OK_PREVIEW.estimate, status: 'at_risk' as const },
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(cannotMeetPreview));
+      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(atRiskPreview));
       await flushPromises();
       click('[data-device-button]');
       click('[data-preview-btn]');
@@ -461,13 +535,12 @@ describe('create smart task widget browser', () => {
 
       const feasibility = document.querySelector('[data-preview-feasibility]') as HTMLElement;
       expect(feasibility.hidden).toBe(false);
-      expect(feasibility.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.cannotMeet);
-      // The "no prices published" line must NOT also show — a cannot_meet is a
+      expect(feasibility.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.atRisk);
+      // The "no prices published" line must NOT also show — at-risk is a
       // feasibility verdict, not a missing-price gap.
       const unavailable = document.querySelector('[data-preview-unavailable]') as HTMLElement;
       expect(unavailable.hidden).toBe(true);
-      // Surfacing the risk is the fix; create stays reachable (the estimate
-      // understates cannot_meet risk, so the user decides).
+      // At-risk is still a user decision; only cannot-finish blocks create.
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
       expect(createBtn.disabled).toBe(false);
     });

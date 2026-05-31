@@ -1,14 +1,32 @@
-import { planTerminalEnding, resolveTerminalShedCommand } from '../lib/app/appInit/deferredObjectiveLifecycle';
+import {
+  buildShedActuationTransport,
+  planTerminalEnding,
+  resolveTerminalShedCommand,
+} from '../lib/app/appInit/deferredObjectiveLifecycle';
 import { applyShedBehavior } from '../lib/device/shedBehaviorActuation';
 import type {
   ShedActuationCommand,
   ShedActuationObservedState,
   ShedActuationTransport,
 } from '../lib/device/shedBehaviorActuation';
+import type { AppContext } from '../lib/app/appContext';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 
 const binaryOff: ShedActuationCommand = { kind: 'binary_off', capabilityId: 'onoff', flowBacked: false };
 const setTemp: ShedActuationCommand = { kind: 'set_temperature', targetValue: 5 };
+const setStep: ShedActuationCommand = {
+  kind: 'set_step',
+  profile: {
+    model: 'stepped_load',
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1000 },
+      { id: 'high', planningPowerW: 3000 },
+    ],
+  },
+  targetStepId: 'low',
+  planningCurrentA: 0,
+};
 const skip: ShedActuationCommand = { kind: 'skip', reasonCode: 'x' };
 
 const observed = (state: Partial<ShedActuationObservedState>): ShedActuationObservedState => ({
@@ -48,6 +66,18 @@ describe('planTerminalEnding (gated terminal-ending decision — the P1 fix)', (
 
   it('disarms once the thermostat is already at the shed setpoint — settled', () => {
     expect(planTerminalEnding(setTemp, observed({ targetValue: 5 }), false))
+      .toEqual({ actuate: false, disarm: true });
+  });
+
+  it('actuates and waits while a stepped device is above the terminal shed step', () => {
+    expect(planTerminalEnding(setStep, observed({ stepId: 'high' }), false))
+      .toEqual({ actuate: true, disarm: false });
+  });
+
+  it('disarms once a stepped device is at or below the terminal shed step', () => {
+    expect(planTerminalEnding(setStep, observed({ stepId: 'low' }), false))
+      .toEqual({ actuate: false, disarm: true });
+    expect(planTerminalEnding(setStep, observed({ stepId: 'off' }), false))
       .toEqual({ actuate: false, disarm: true });
   });
 
@@ -181,6 +211,25 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
     expect(command).toEqual({ kind: 'skip', reasonCode: 'no_binary_handle_for_terminal_release' });
   });
 
+  it('emits a stepped command for a stepped-only device with no binary handle', () => {
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget({
+        controlCapabilityId: undefined,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: setStep.profile,
+        reportedStepId: 'high',
+      }),
+      'temperature',
+      { action: 'set_step', temperature: null, stepId: 'low' },
+      [],
+    );
+    expect(command).toMatchObject({
+      kind: 'set_step',
+      targetStepId: 'low',
+      previousStepId: 'high',
+    });
+  });
+
   it('still emits set_temperature when the primary target exists but its value is transiently absent', () => {
     // A PRESENT target whose `value` is only temporarily unreadable must keep its
     // setpoint command: `applyShedBehavior` no-ops while the observation is
@@ -214,5 +263,121 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
       [],
     );
     expect(command).toEqual({ kind: 'set_temperature', targetValue: 5 });
+  });
+});
+
+describe('applyShedBehavior — stepped terminal release', () => {
+  it('requests the target step and records the pending step when observed above target', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, transport: 'flow' as const }));
+    const markSteppedLoadDesiredStepIssued = vi.fn();
+    const transport: ShedActuationTransport = {
+      setCapability: vi.fn(async () => undefined),
+      applyDeviceTargets: vi.fn(async () => undefined),
+      triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
+      requestSteppedLoadStep,
+      markSteppedLoadDesiredStepIssued,
+    };
+
+    const wrote = await applyShedBehavior({
+      deviceId: 'stepped-1',
+      name: 'Stepped heater',
+      command: setStep,
+      observed: { stepId: 'high' },
+      transport,
+    });
+
+    expect(wrote).toBe(true);
+    expect(requestSteppedLoadStep).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'stepped-1',
+      desiredStepId: 'low',
+      planningPowerW: 1000,
+      previousStepId: 'high',
+    }));
+    expect(markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'stepped-1',
+      desiredStepId: 'low',
+      previousStepId: 'high',
+    }));
+  });
+
+  it('does not step up when the observed step is already below the target', async () => {
+    const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, transport: 'flow' as const }));
+    const transport: ShedActuationTransport = {
+      setCapability: vi.fn(async () => undefined),
+      applyDeviceTargets: vi.fn(async () => undefined),
+      triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
+      requestSteppedLoadStep,
+    };
+
+    const wrote = await applyShedBehavior({
+      deviceId: 'stepped-1',
+      name: 'Stepped heater',
+      command: setStep,
+      observed: { stepId: 'off' },
+      transport,
+    });
+
+    expect(wrote).toBe(false);
+    expect(requestSteppedLoadStep).not.toHaveBeenCalled();
+  });
+
+  it('omits the optional stepped request wrapper when the device manager does not expose it', async () => {
+    const ctx = {
+      deviceManager: {
+        setCapability: vi.fn(async () => undefined),
+        applyDeviceTargets: vi.fn(async () => undefined),
+      },
+      deviceControlHelpers: {
+        markSteppedLoadDesiredStepIssued: vi.fn(),
+      },
+      homey: {
+        flow: { getTriggerCard: vi.fn() },
+      },
+    } as unknown as AppContext;
+
+    const transport = buildShedActuationTransport(ctx);
+
+    expect(transport).not.toBeNull();
+    expect(transport?.requestSteppedLoadStep).toBeUndefined();
+    await expect(applyShedBehavior({
+      deviceId: 'stepped-1',
+      name: 'Stepped heater',
+      command: setStep,
+      observed: observed({ stepId: 'high' }),
+      transport: transport as ShedActuationTransport,
+    })).resolves.toBe(false);
+  });
+
+  it('binds the optional stepped request wrapper to the device manager receiver', async () => {
+    type StepRequestParams = Parameters<NonNullable<ShedActuationTransport['requestSteppedLoadStep']>>[0];
+    const deviceManager = {
+      setCapability: vi.fn(async () => undefined),
+      applyDeviceTargets: vi.fn(async () => undefined),
+      requestSteppedLoadStep: vi.fn(async function request(this: unknown, _params: StepRequestParams) {
+        if (this !== deviceManager) throw new Error('lost device manager receiver');
+        return { requested: true as const, transport: 'flow' as const };
+      }),
+    };
+    const ctx = {
+      deviceManager,
+      deviceControlHelpers: {
+        markSteppedLoadDesiredStepIssued: vi.fn(),
+      },
+      homey: {
+        flow: { getTriggerCard: vi.fn() },
+      },
+    } as unknown as AppContext;
+
+    const transport = buildShedActuationTransport(ctx) as ShedActuationTransport;
+    const wrote = await applyShedBehavior({
+      deviceId: 'stepped-1',
+      name: 'Stepped heater',
+      command: setStep,
+      observed: observed({ stepId: 'high' }),
+      transport,
+    });
+
+    expect(wrote).toBe(true);
+    expect(deviceManager.requestSteppedLoadStep).toHaveBeenCalledTimes(1);
   });
 });

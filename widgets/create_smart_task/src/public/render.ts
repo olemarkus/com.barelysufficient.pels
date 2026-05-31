@@ -7,6 +7,8 @@ import {
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
   formatSmartTaskNowValueLine,
+  formatSmartTaskUnknownNowValueLine,
+  resolveSmartTaskPreviewStatusCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   composeSmartTaskScheduledLine,
@@ -155,12 +157,12 @@ const renderDeviceRow = (
   const metaEl = li.querySelector('[data-device-meta]');
   if (nameEl instanceof HTMLElement) nameEl.textContent = device.deviceName;
   if (metaEl instanceof HTMLElement) {
-    // "Now 42%" / "Now 48 °C" hint (shared formatter), or just the unit when
-    // the device hasn't reported a reading.
+    // "Now 42%" / "Now 48 °C" hint (shared formatter), or an explicit unknown
+    // state when the device has not reported a reading.
     metaEl.textContent = formatSmartTaskNowValueLine({
       currentValue: device.currentValue,
       unitSymbol: device.unitSymbol,
-    }) ?? device.unitSymbol;
+    }) ?? formatSmartTaskUnknownNowValueLine(device.kind);
   }
   return li;
 };
@@ -322,25 +324,13 @@ const formatWhenLine = (response: OkPreview): string => composeSmartTaskSchedule
   readyByLabel: C.readyByLabel,
 });
 
-// Whether the in-isolation projection produced a usable plan. `unavailable`
-// status or zero scheduled hours means there is nothing concrete to show.
-const isProjectable = (response: OkPreview): boolean => (
-  response.estimate.status !== 'unavailable' && response.estimate.scheduledHours.length > 0
-);
+const hasScheduledHours = (response: OkPreview): boolean => response.estimate.scheduledHours.length > 0;
 
-// The non-projectable line, chosen by what the backend actually reported. An
-// already-met goal (`satisfied`, zero scheduled hours) says so; a device with no
-// learned profile yet gets the honest "observe this device first" copy; every
-// other cause keeps the generic message. Takes the whole estimate because two
-// distinct fields (status, unavailableReason) drive the choice.
-const resolvePreviewUnavailableCopy = (
-  estimate: OkPreview['estimate'],
-): string => {
-  if (estimate.status === 'satisfied') return C.previewSatisfied;
-  return estimate.unavailableReason === 'needs_observation'
-    ? C.previewNeedsObservation
-    : C.previewUnavailable;
-};
+const canCreateFromPreview = (response: CreateSmartTaskPreviewResponse): boolean => (
+  response.ok
+  && response.estimate.status !== 'unavailable'
+  && response.estimate.status !== 'cannot_meet'
+);
 
 // Energy is the demoted secondary line — kept (it answers "how much will it
 // pull") but muted below the cost headline + when-window.
@@ -364,27 +354,17 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
   });
 };
 
-// A real planner verdict that the candidate may miss its deadline, surfaced as a
-// prominent warning so the user never commits an unreachable ready-by believing
-// it is fine. `cannot_meet` is the hard "won't make it"; `at_risk` is the softer
-// "might not". The in-isolation estimate UNDERSTATES this risk (see the preview
-// contract), so a verdict here is worth heeding. Null for the healthy verdicts.
-const resolveFeasibilityWarning = (status: OkPreview['estimate']['status']): string | null => {
-  if (status === 'cannot_meet') return C.cannotMeet;
-  if (status === 'at_risk') return C.atRisk;
-  return null;
-};
-
 // Render a successfully-projected (or zero-hour) preview. Cost leads; the
 // when-window pairs with it; energy is the muted secondary line. The
 // "cheapest hours before HH:MM" subtext rides under the cost only when there is
-// a cost figure to explain. A `cannot_meet` / `at_risk` verdict also raises a
-// feasibility warning above the figures.
+// a cost figure to explain. Preview verdicts sit above the figures when they
+// need attention, so `cannot_meet` cannot masquerade as an ordinary estimate.
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
-  const projectable = isProjectable(response);
-  const feasibilityWarning = resolveFeasibilityWarning(response.estimate.status);
-  setLine(targets.previewFeasibilityEl, feasibilityWarning);
-  const costLine = projectable ? formatCostLine(response.estimate) : null;
+  const scheduled = hasScheduledHours(response);
+  const estimated = response.estimate.status !== 'unavailable';
+  const costLine = scheduled ? formatCostLine(response.estimate) : null;
+  const verdictLine = resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason);
+  setLine(targets.previewFeasibilityEl, estimated ? verdictLine : null);
   setLine(targets.previewCostEl, costLine);
   setLine(
     targets.previewCostSubtextEl,
@@ -393,7 +373,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // The price curve with the scheduled hours highlighted — shown only when the
   // projection is usable and the backend supplied a price series. Falls back to
   // the text lines (when/energy) when there's nothing chartable.
-  const charted = projectable && response.estimate.priceSeries !== undefined
+  const charted = scheduled && response.estimate.priceSeries !== undefined
     && renderPreviewChart(targets.previewChartEl, {
       priceSeries: response.estimate.priceSeries,
       scheduledHours: response.estimate.scheduledHours,
@@ -404,18 +384,12 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // the stars and the tile's vertical budget is better spent keeping the honest
   // estimate caveat un-clipped. Energy stays as the text fallback when there's
   // no chart.
-  setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
-  // The non-projectable line is only for a genuine `unavailable` /
-  // nothing-to-show projection — NOT for a real `cannot_meet` / `at_risk` verdict
-  // (which carries its own feasibility warning above), so it never mislabels a
-  // feasibility miss as a missing-price gap. Within that, pick the bespoke copy
-  // so an already-met goal or a not-yet-observed device reads honestly instead of
-  // (falsely) being told prices are missing.
-  setLine(
-    targets.previewUnavailableEl,
-    !projectable && feasibilityWarning === null ? resolvePreviewUnavailableCopy(response.estimate) : null,
-  );
-  setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
+  setLine(targets.previewEnergyEl, estimated && !charted ? formatEnergyLine(response.estimate) : null);
+  // Show a verdict line for unavailable / at-risk / cannot-finish / satisfied
+  // previews. This keeps cannot-finish from looking like a normal estimate, and
+  // avoids blaming every unavailable preview on missing prices.
+  setLine(targets.previewUnavailableEl, estimated ? null : verdictLine);
+  setLine(targets.previewCaveatEl, estimated && response.estimate.status !== 'satisfied' ? C.estimateCaveat : null);
 };
 
 const hidePreviewLines = (targets: RenderTargets): void => {
@@ -425,6 +399,7 @@ const hidePreviewLines = (targets: RenderTargets): void => {
   hide(targets.previewChartEl);
   hide(targets.previewWhenEl);
   hide(targets.previewEnergyEl);
+  hide(targets.previewUnavailableEl);
   hide(targets.previewCaveatEl);
 };
 
@@ -446,10 +421,7 @@ const renderPreview = (
   }
   renderOkPreview(targets, response);
   setLine(targets.previewErrorEl, error);
-  // The user can always commit a successfully-projected candidate; an
-  // unprojectable one (no price horizon) is still creatable — the deadline and
-  // goal are valid — so only a hard preview failure disables create.
-  createBtn.disabled = submitting;
+  createBtn.disabled = submitting || !canCreateFromPreview(response);
   // PENDING shows progress copy, NOT the success label. The success label
   // ("Smart task created") only ever appears once the `created` view renders
   // after a confirmed `{ ok: true }` create — never while the request is still

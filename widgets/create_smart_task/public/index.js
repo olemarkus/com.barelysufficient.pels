@@ -54,10 +54,10 @@
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
     createButton: "Create smart task",
     backButton: "Back",
-    // Shown when the preview can't be projected (no price horizon yet, missing
-    // device reading, price-aware optimisation off). Distinct from a hard error.
-    // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-    previewUnavailable: "Can\u2019t preview this yet \u2014 no prices published for this window yet.",
+    // Shown when the preview can't be projected and the backend did not provide a
+    // more specific missing-input reason. Distinct from a hard error. Avoids the
+    // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+    previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
     // Shown specifically when the device has no learned energy profile yet
     // (`unavailableReason === 'needs_observation'`): there is no temperature
     // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -111,9 +111,42 @@
     // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
     // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
     // projection gap rather than a feasibility verdict.
-    cannotMeet: "May not be ready by this time. Try an earlier goal or a later ready-by time.",
-    atRisk: "This might not be ready in time \u2014 a later ready-by time or lower goal is safer."
+    cannotMeet: "Cannot finish \u2014 not enough usable time before this ready-by time.",
+    atRisk: "At risk \u2014 this may need most of the available window."
   };
+  var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
+    invalid_deadline: "Can\u2019t preview this ready-by time yet.",
+    invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
+    missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
+    missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
+    needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
+    missing_prices: "Can\u2019t preview this yet \u2014 prices through this window are not available yet.",
+    missing_reading: "Can\u2019t preview this yet \u2014 PELS needs a current device reading.",
+    price_feature_disabled: "Can\u2019t preview this yet \u2014 price-aware planning is off.",
+    progress_stale: "Can\u2019t preview this yet \u2014 PELS needs a fresher device reading.",
+    unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable
+  };
+  var resolveSmartTaskPreviewUnavailableCopy = (reason) => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? "unknown"];
+  var resolveSmartTaskPreviewStatusCopy = (status, unavailableReason) => {
+    switch (status) {
+      case "unavailable":
+        return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
+      case "cannot_meet":
+        return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
+      case "at_risk":
+        return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
+      case "satisfied":
+        return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
+      case "invalid":
+      case "on_track":
+        return null;
+      default: {
+        const exhaustive = status;
+        return exhaustive;
+      }
+    }
+  };
+  var formatSmartTaskUnknownNowValueLine = (kind) => kind === "ev_soc" ? "Charge level unknown" : "Temperature unknown";
   var resolveCreateSmartTaskRejectCopy = (reason) => {
     if (reason === "deadline_passed") return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
     if (reason === "write_conflict") return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
@@ -823,7 +856,7 @@
       metaEl.textContent = formatSmartTaskNowValueLine({
         currentValue: device.currentValue,
         unitSymbol: device.unitSymbol
-      }) ?? device.unitSymbol;
+      }) ?? formatSmartTaskUnknownNowValueLine(device.kind);
     }
     return li;
   };
@@ -938,11 +971,8 @@
     scheduledLabel: C.scheduledLabel,
     readyByLabel: C.readyByLabel
   });
-  var isProjectable = (response) => response.estimate.status !== "unavailable" && response.estimate.scheduledHours.length > 0;
-  var resolvePreviewUnavailableCopy = (estimate) => {
-    if (estimate.status === "satisfied") return C.previewSatisfied;
-    return estimate.unavailableReason === "needs_observation" ? C.previewNeedsObservation : C.previewUnavailable;
-  };
+  var hasScheduledHours = (response) => response.estimate.scheduledHours.length > 0;
+  var canCreateFromPreview = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "cannot_meet";
   var formatEnergyLine = (estimate) => {
     if (estimate.energyEstimateKWh === null) return null;
     return `${C.energyLabel}: ${formatEnergyEstimateKWh({
@@ -958,33 +988,26 @@
       costUnit: estimate.costUnit
     });
   };
-  var resolveFeasibilityWarning = (status) => {
-    if (status === "cannot_meet") return C.cannotMeet;
-    if (status === "at_risk") return C.atRisk;
-    return null;
-  };
   var renderOkPreview = (targets, response) => {
-    const projectable = isProjectable(response);
-    const feasibilityWarning = resolveFeasibilityWarning(response.estimate.status);
-    setLine(targets.previewFeasibilityEl, feasibilityWarning);
-    const costLine = projectable ? formatCostLine(response.estimate) : null;
+    const scheduled = hasScheduledHours(response);
+    const estimated = response.estimate.status !== "unavailable";
+    const costLine = scheduled ? formatCostLine(response.estimate) : null;
+    const verdictLine = resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason);
+    setLine(targets.previewFeasibilityEl, estimated ? verdictLine : null);
     setLine(targets.previewCostEl, costLine);
     setLine(
       targets.previewCostSubtextEl,
       costLine !== null ? formatCheapestHoursSubtext(response.deadlineLabel) : null
     );
-    const charted = projectable && response.estimate.priceSeries !== void 0 && renderPreviewChart(targets.previewChartEl, {
+    const charted = scheduled && response.estimate.priceSeries !== void 0 && renderPreviewChart(targets.previewChartEl, {
       priceSeries: response.estimate.priceSeries,
       scheduledHours: response.estimate.scheduledHours
     });
     setVisible(targets.previewChartEl, charted);
     setLine(targets.previewWhenEl, formatWhenLine(response));
-    setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
-    setLine(
-      targets.previewUnavailableEl,
-      !projectable && feasibilityWarning === null ? resolvePreviewUnavailableCopy(response.estimate) : null
-    );
-    setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
+    setLine(targets.previewEnergyEl, estimated && !charted ? formatEnergyLine(response.estimate) : null);
+    setLine(targets.previewUnavailableEl, estimated ? null : verdictLine);
+    setLine(targets.previewCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
   };
   var hidePreviewLines = (targets) => {
     hide(targets.previewFeasibilityEl);
@@ -993,6 +1016,7 @@
     hide(targets.previewChartEl);
     hide(targets.previewWhenEl);
     hide(targets.previewEnergyEl);
+    hide(targets.previewUnavailableEl);
     hide(targets.previewCaveatEl);
   };
   var renderPreview = (targets, view) => {
@@ -1008,7 +1032,7 @@
     }
     renderOkPreview(targets, response);
     setLine(targets.previewErrorEl, error);
-    createBtn.disabled = submitting;
+    createBtn.disabled = submitting || !canCreateFromPreview(response);
     createBtn.textContent = submitting ? C.creating : C.createButton;
   };
   var renderWidget = (targets, payload, view) => {
@@ -1226,6 +1250,7 @@
     ...source.limitLowerPriorityDevices ? { limitLowerPriorityDevices: true } : {}
   });
   var previewedDeadline = (response) => response.ok ? response.deadlineAtMs : void 0;
+  var previewAllowsCreate = (response) => response.ok && response.estimate.status !== "unavailable" && response.estimate.status !== "cannot_meet";
   var closestDataValue = (target, selector, key) => {
     const el = target.closest(selector);
     return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
@@ -1307,6 +1332,7 @@
     };
     const runCreate = async () => {
       if (view.kind !== "preview") return;
+      if (!previewAllowsCreate(view.response)) return;
       const request = buildCandidateRequest(view, previewedDeadline(view.response));
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;

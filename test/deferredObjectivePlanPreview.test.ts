@@ -307,8 +307,8 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
     expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('missing_prices');
     expect(estimate.priceSeries).toBeUndefined();
-    expect(estimate.priceAxisUnit).toBeUndefined();
   });
 
   it('projects an on-track temperature candidate as an estimate', () => {
@@ -371,20 +371,21 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.unavailableReason).toBe('needs_observation');
   });
 
-  it('leaves unavailableReason absent for a price-horizon unavailable (not an observation gap)', () => {
+  it('tags unavailable with the missing input when price-aware planning is off', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),
       powerTracker: buildEvPowerTracker(),
       dailyBudgetSnapshot: buildSnapshot(),
-      // Optimisation off → policy horizon unavailable → the cause is NOT a missing
-      // profile, so the widget must keep the generic "no prices" message.
+      // Optimisation off → policy horizon unavailable for a specific reason. This
+      // is not a missing profile, but it still earns explicit copy instead of
+      // falling through to the generic unavailable line.
       priceOptimizationEnabled: false,
       hardCapKw: 10,
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
     expect(estimate.status).toBe('unavailable');
-    expect(estimate.unavailableReason).toBeUndefined();
+    expect(estimate.unavailableReason).toBe('price_feature_disabled');
   });
 
   it('returns at_risk when the deadline forces the plan into its safety reserve', () => {
@@ -446,6 +447,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
     expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('missing_device');
     expect(estimate.scheduledHours).toEqual([]);
     expect(estimate.projectedFinishAtMs).toBeNull();
     expect(estimate.energyEstimateKWh).toBeNull();
@@ -464,6 +466,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
     expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('price_feature_disabled');
     expect(estimate.energyEstimateKWh).toBeNull();
   });
 
@@ -480,6 +483,7 @@ describe('previewDeferredObjectivePlan', () => {
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
     expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('missing_prices');
     expect(estimate.costEstimate).toBeNull();
     expect(estimate.costUnit).toBeUndefined();
   });

@@ -10,6 +10,7 @@ import {
 import {
   formatEnergyEstimateKWh,
   formatDeadlineCostMetaLine,
+  resolveSmartTaskPreviewStatusCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   composeSmartTaskScheduledLine,
@@ -187,6 +188,12 @@ export const isProjectable = (response: OkPreview): boolean => (
   response.estimate.status !== 'unavailable' && response.estimate.scheduledHours.length > 0
 );
 
+const canConfirmPreview = (response: StarvationRescuePreviewResponse | null): boolean => (
+  response?.ok === true
+  && response.estimate.status !== 'unavailable'
+  && response.estimate.status !== 'cannot_meet'
+);
+
 const formatWhenLine = (response: OkPreview): string => composeSmartTaskScheduledLine({
   scheduledWindowLabel: response.scheduledWindowLabel,
   deadlineLabel: response.deadlineLabel,
@@ -213,11 +220,15 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
 
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
+  const estimated = response.estimate.status !== 'unavailable';
   setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
   setLine(targets.confirmWhenEl, formatWhenLine(response));
-  setLine(targets.confirmEnergyEl, projectable ? formatEnergyLine(response.estimate) : null);
-  setLine(targets.confirmUnavailableEl, projectable ? null : C.previewUnavailable);
-  setLine(targets.confirmCaveatEl, projectable ? C.estimateCaveat : null);
+  setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
+  setLine(
+    targets.confirmUnavailableEl,
+    resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason),
+  );
+  setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== 'satisfied' ? C.estimateCaveat : null);
 };
 
 const hideConfirmLines = (targets: RenderTargets): void => {
@@ -257,7 +268,7 @@ const renderConfirm = (
   }
   renderOkPreview(targets, response);
   setLine(targets.confirmErrorEl, error);
-  confirmBtn.disabled = submitting;
+  confirmBtn.disabled = submitting || !canConfirmPreview(response);
   confirmBtn.textContent = submitting ? C.rescuePending : C.rescueConfirmButton;
 };
 

@@ -4,6 +4,10 @@
    copy across files; `feedback_ui_text_shared_with_logs` keeps runtime
    logging and the UI reading the same strings, which requires colocation. */
 import type {
+  DeferredObjectivePlanPreviewStatus,
+  DeferredObjectivePlanPreviewUnavailableReason,
+} from '../../contracts/src/deferredObjectivePlanPreview';
+import type {
   DeferredObjectiveRescuePermissions,
   DeferredObjectiveRescueMode,
   DeferredObjectiveSettingsKind,
@@ -130,8 +134,8 @@ const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
 const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
 const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
 
-const RECOURSE_CANNOT_MEET_BUDGET = 'Lower the daily budget so future days reserve power earlier.';
-const RECOURSE_CANNOT_MEET_DEVICE = 'Open this device’s settings in the PELS app to see what’s holding it back.';
+const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
+const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 
 export type SmartTaskWidgetDetailCopy = {
@@ -203,7 +207,7 @@ export const resolveSmartTaskWidgetDetailCopy = (
 // widget can't render at 320–480 px; this is the one-sentence form. Names both
 // creation routes: a Flow card or the separate "New smart task" widget.
 export const SMART_TASK_WIDGET_EMPTY_HINT
-  = 'Add one from a Flow card or the New smart task widget to see it here.';
+  = 'Add a smart task from a Flow card for a managed device, or use the New smart task widget to see it here.';
 
 // Widget empty-state subtitle. Lives here (not inlined in the widget package)
 // so runtime logging and the widget render the same string per
@@ -266,10 +270,10 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
   createButton: 'Create smart task',
   backButton: 'Back',
-  // Shown when the preview can't be projected (no price horizon yet, missing
-  // device reading, price-aware optimisation off). Distinct from a hard error.
-  // Avoids the reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
-  previewUnavailable: 'Can’t preview this yet — no prices published for this window yet.',
+  // Shown when the preview can't be projected and the backend did not provide a
+  // more specific missing-input reason. Distinct from a hard error. Avoids the
+  // reserved "plan" noun (`feedback_terminology_plan_vs_deadline`).
+  previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',
   // Shown specifically when the device has no learned energy profile yet
   // (`unavailableReason === 'needs_observation'`): there is no temperature
   // bootstrap rate, so PELS can't estimate the run until it has watched the
@@ -325,9 +329,53 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
   // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
   // projection gap rather than a feasibility verdict.
-  cannotMeet: 'May not be ready by this time. Try an earlier goal or a later ready-by time.',
-  atRisk: 'This might not be ready in time — a later ready-by time or lower goal is safer.',
+  cannotMeet: 'Cannot finish — not enough usable time before this ready-by time.',
+  atRisk: 'At risk — this may need most of the available window.',
 } as const;
+
+const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUnavailableReason, string> = {
+  invalid_deadline: 'Can’t preview this ready-by time yet.',
+  invalid_session: 'Can’t preview this yet — plug the EV in to start.',
+  missing_capacity: 'Can’t preview this yet — PELS needs power readings from this device.',
+  missing_device: 'Can’t preview this yet — PELS can’t find this device.',
+  needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
+  missing_prices: 'Can’t preview this yet — prices through this window are not available yet.',
+  missing_reading: 'Can’t preview this yet — PELS needs a current device reading.',
+  price_feature_disabled: 'Can’t preview this yet — price-aware planning is off.',
+  progress_stale: 'Can’t preview this yet — PELS needs a fresher device reading.',
+  unknown: CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable,
+};
+
+export const resolveSmartTaskPreviewUnavailableCopy = (
+  reason: DeferredObjectivePlanPreviewUnavailableReason | undefined,
+): string => PREVIEW_UNAVAILABLE_COPY_BY_REASON[reason ?? 'unknown'];
+
+export const resolveSmartTaskPreviewStatusCopy = (
+  status: DeferredObjectivePlanPreviewStatus,
+  unavailableReason?: DeferredObjectivePlanPreviewUnavailableReason,
+): string | null => {
+  switch (status) {
+    case 'unavailable':
+      return resolveSmartTaskPreviewUnavailableCopy(unavailableReason);
+    case 'cannot_meet':
+      return CREATE_SMART_TASK_WIDGET_COPY.cannotMeet;
+    case 'at_risk':
+      return CREATE_SMART_TASK_WIDGET_COPY.atRisk;
+    case 'satisfied':
+      return CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied;
+    case 'invalid':
+    case 'on_track':
+      return null;
+    default: {
+      const exhaustive: never = status;
+      return exhaustive;
+    }
+  }
+};
+
+export const formatSmartTaskUnknownNowValueLine = (
+  kind: DeferredObjectiveSettingsKind,
+): string => (kind === 'ev_soc' ? 'Charge level unknown' : 'Temperature unknown');
 
 // Map a create rejection reason to the user-facing widget error line. Two cases
 // get bespoke copy: the previewed deadline passing (tells the user to re-preview)
@@ -766,7 +814,7 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   conjunction: 'or the',
   chargingAction: 'Add charging task',
   chargingExample: '(charge a device to a target percent by a time)',
-  outro: 'to schedule a device for a specific ready-by time.',
+  outro: 'to schedule a managed device for a specific ready-by time.',
   // Second route: the "New smart task" dashboard widget
   // (widgets/create_smart_task) creates a task directly, without the Flow
   // editor. Rendered as its own trailing paragraph in `EmptyBody`, so the lead

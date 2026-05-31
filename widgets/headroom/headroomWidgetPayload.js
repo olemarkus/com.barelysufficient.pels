@@ -36,7 +36,7 @@ var HEADROOM_WIDGET_COPY = {
    * dynamic safe pace from the static "Hard cap"; reads parallel with "Power now".
    */
   safePaceLabel: "Safe pace now",
-  /** Screen-reader prefix for the price chip in the aria-label ("Price cheap"). */
+  /** Screen-reader prefix for the price chip in the aria-label ("Price Cheap"). */
   priceAriaPrefix: "Price",
   /** Shown when there is no status to render yet. */
   noDataSubtitle: "No data yet",

@@ -1,4 +1,13 @@
 import { getLogger } from '../logging/logger';
+import type {
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
+import type {
+  SteppedLoadStepRequestResult,
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import {
+  getSteppedLoadStep,
+} from '../utils/deviceControlProfiles';
 
 const logger = getLogger('device/shed-behavior-actuation');
 
@@ -33,6 +42,15 @@ export type ShedActuationCommand =
   // on) — the producer resolves which from the snapshot's flowBackedCapabilityIds.
   | { kind: 'binary_off'; capabilityId: 'onoff' | 'evcharger_charging'; flowBacked: boolean }
   | { kind: 'set_temperature'; targetValue: number }
+  | {
+    kind: 'set_step';
+    profile: SteppedLoadProfile;
+    targetStepId: string;
+    planningCurrentA: number;
+    previousStepId?: string;
+    stepCommandPending?: boolean;
+    nextStepCommandRetryAtMs?: number;
+  }
   | { kind: 'skip'; reasonCode: string };
 
 export type ShedActuationObservedState = {
@@ -40,6 +58,8 @@ export type ShedActuationObservedState = {
   binaryState?: 'on' | 'off' | 'unknown';
   /** Last observed thermostat target, for the set_temperature idempotency check. */
   targetValue?: number | null;
+  /** Trusted stepped-load observation, sourced from reported/native step state. */
+  stepId?: string;
 };
 
 export type ShedActuationTransport = {
@@ -52,6 +72,21 @@ export type ShedActuationTransport = {
     capabilityId: 'onoff' | 'evcharger_charging',
     desired: boolean,
   ) => Promise<void>;
+  requestSteppedLoadStep?: (params: {
+    deviceId: string;
+    profile: SteppedLoadProfile;
+    desiredStepId: string;
+    planningPowerW: number;
+    planningCurrentA: number;
+    actuationMode?: 'plan' | 'reconcile';
+    previousStepId?: string;
+  }) => Promise<SteppedLoadStepRequestResult>;
+  markSteppedLoadDesiredStepIssued?: (params: {
+    deviceId: string;
+    desiredStepId: string;
+    previousStepId?: string;
+    issuedAtMs?: number;
+  }) => void;
 };
 
 /**
@@ -70,24 +105,93 @@ export const applyShedBehavior = async (params: {
   transport: ShedActuationTransport;
 }): Promise<boolean> => {
   const { deviceId, name, command, observed, transport } = params;
-  if (command.kind === 'skip') {
-    logger.debug({
-      event: 'terminal_shed_skipped',
-      reasonCode: command.reasonCode,
-      deviceId,
-      deviceName: name,
-    });
+  switch (command.kind) {
+    case 'skip':
+      logSkippedTerminalShed(deviceId, name, command.reasonCode);
+      return false;
+    case 'set_temperature':
+      return applySetTemperatureShed(deviceId, command, observed, transport);
+    case 'set_step':
+      return applySetStepShed(deviceId, command, observed, transport);
+    case 'binary_off':
+      return applyBinaryOffShed(deviceId, command, observed, transport);
+    default: {
+      const exhaustive: never = command;
+      return exhaustive;
+    }
+  }
+};
+
+const logSkippedTerminalShed = (deviceId: string, name: string, reasonCode: string): void => {
+  logger.debug({
+    event: 'terminal_shed_skipped',
+    reasonCode,
+    deviceId,
+    deviceName: name,
+  });
+};
+
+const applySetTemperatureShed = async (
+  deviceId: string,
+  command: Extract<ShedActuationCommand, { kind: 'set_temperature' }>,
+  observed: ShedActuationObservedState,
+  transport: ShedActuationTransport,
+): Promise<boolean> => {
+  // Idempotent: only write when the observed target differs from the shed
+  // setpoint. A missing observed target means no trusted evidence — skip.
+  if (typeof observed.targetValue !== 'number') return false;
+  if (observed.targetValue === command.targetValue) return false;
+  await transport.applyDeviceTargets({ [deviceId]: command.targetValue }, 'smart-task-terminal-release');
+  return true;
+};
+
+const applySetStepShed = async (
+  deviceId: string,
+  command: Extract<ShedActuationCommand, { kind: 'set_step' }>,
+  observed: ShedActuationObservedState,
+  transport: ShedActuationTransport,
+): Promise<boolean> => {
+  if (command.stepCommandPending === true) return false;
+  if (typeof command.nextStepCommandRetryAtMs === 'number' && command.nextStepCommandRetryAtMs > Date.now()) {
     return false;
   }
-  if (command.kind === 'set_temperature') {
-    // Idempotent: only write when the observed target differs from the shed
-    // setpoint. A missing observed target means no trusted evidence — skip.
-    if (typeof observed.targetValue !== 'number') return false;
-    if (observed.targetValue === command.targetValue) return false;
-    await transport.applyDeviceTargets({ [deviceId]: command.targetValue }, 'smart-task-terminal-release');
-    return true;
-  }
-  // binary_off (turn_off / EV pause / set_step on a binary-capable device).
+  const requestStep = transport.requestSteppedLoadStep;
+  if (!requestStep) return false;
+  const targetStep = getSteppedLoadStep(command.profile, command.targetStepId);
+  const observedStepId = observed.stepId;
+  if (!targetStep || !observedStepId) return false;
+  if (observedStepId === targetStep.id) return false;
+  const observedStep = getSteppedLoadStep(command.profile, observedStepId);
+  if (!observedStep) return false;
+  // Terminal release must never step a load up. If the device is already at
+  // or below the configured shed target, it is in an acceptable posture.
+  if (observedStep.planningPowerW <= targetStep.planningPowerW) return false;
+  const result = await requestStep({
+    deviceId,
+    profile: command.profile,
+    desiredStepId: targetStep.id,
+    planningPowerW: targetStep.planningPowerW,
+    planningCurrentA: command.planningCurrentA,
+    actuationMode: 'plan',
+    previousStepId: command.previousStepId ?? observedStepId,
+  });
+  if (!result.requested) return false;
+  transport.markSteppedLoadDesiredStepIssued?.({
+    deviceId,
+    desiredStepId: targetStep.id,
+    previousStepId: command.previousStepId ?? observedStepId,
+    issuedAtMs: Date.now(),
+  });
+  return true;
+};
+
+const applyBinaryOffShed = async (
+  deviceId: string,
+  command: Extract<ShedActuationCommand, { kind: 'binary_off' }>,
+  observed: ShedActuationObservedState,
+  transport: ShedActuationTransport,
+): Promise<boolean> => {
+  // turn_off / EV pause / set_step on a binary-capable device.
   // Trusted-evidence gate: only fire when the device is observed `on`. Treat
   // `off` as already-shed and `unknown`/missing as "wait for real evidence".
   if (observed.binaryState !== 'on') return false;

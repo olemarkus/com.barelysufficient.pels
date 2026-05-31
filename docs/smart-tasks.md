@@ -21,7 +21,7 @@ If you only want the whole home to spend more energy during cheap hours, use [Da
 
 ## How a Task Is Created
 
-Smart tasks are created from Homey Flow action cards:
+Smart tasks are created from Homey Flow action cards or from the **New smart task** dashboard widget:
 
 | Action card | Use for |
 | --- | --- |
@@ -31,7 +31,7 @@ Smart tasks are created from Homey Flow action cards:
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
-You can also create a Smart task without a Flow from the **New smart task** dashboard widget: pick a device, set the goal and a **Ready by** time, preview the plan, and confirm. See [Dashboard Widgets](/widgets) for the full widget set.
+The **New smart task** widget is for one-off dashboard creation without a Flow. It offers managed heating devices and EV chargers, previews the scheduled hours and cost estimate, then creates the task. If the preview says **Cannot finish**, the widget blocks creation for that ready-by time instead of creating a task that already cannot meet its target. See [Dashboard Widgets](/widgets) for the full widget set.
 
 ## What PELS Plans
 
@@ -108,6 +108,8 @@ A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked
 - **limit lower-priority devices** so it can claim power from loads you care about less.
 
 You can grant the leeway as a standing setting once the task exists, or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
+
+The **Held-back devices** dashboard widget uses the same create engine for a narrower case: a device currently limited by today's daily budget can get **Let it run now**, which creates a short Smart task with budget leeway. Devices waiting for available power, manual control, or an external service do not get that button because the widget cannot bypass the hard cap or another controller.
 
 ## Different Targets Can Be Useful
 

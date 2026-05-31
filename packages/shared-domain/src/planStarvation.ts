@@ -127,7 +127,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
   // Preview couldn't be projected (no prices yet, missing reading, price
   // optimisation off). Distinct from a hard error.
-  previewUnavailable: 'Can’t preview this yet — no prices published for this window yet.',
+  previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',
   rescuePending: 'Setting up…',
   // Two honest success flashes, branched on whether the projected plan actually
   // runs the device now. The rescue grants the device priority over lower-

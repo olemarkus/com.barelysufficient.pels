@@ -25,7 +25,7 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       planMetaLabel: null,
       confidenceLabel: null,
       whyLabel: 'Today’s daily budget runs out before the deadline.',
-      recourseHint: 'Lower the daily budget so future days reserve power earlier.',
+      recourseHint: 'Budget settings show whether future days need power reserved earlier.',
     },
     {
       deviceId: 'preview-hot-water',

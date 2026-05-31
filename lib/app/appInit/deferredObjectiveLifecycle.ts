@@ -19,6 +19,11 @@ import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
 } from '../../utils/targetCapabilities';
+import {
+  getSteppedLoadLowestActiveStep,
+  getSteppedLoadOffStep,
+  getSteppedLoadStep,
+} from '../../utils/deviceControlProfiles';
 import type { ShedActuationTransport } from '../../device/shedBehaviorActuation';
 import {
   disableDeferredObjectiveInSettings,
@@ -32,16 +37,17 @@ const terminalReleaseLogger = getLogger('app/deferred-terminal-release');
 // Resolve the device's configured fallback posture into a flat shed command.
 // EV tasks pause the charger; everything else uses the device's `getShedBehavior`
 // (set_temperature → shed setpoint; turn_off / set_step → binary off via the
-// device's control capability). `flowBackedCapabilityIds` (from the snapshot)
-// marks a binary capability that must be driven via its Homey Flow trigger rather
-// than a direct capability write. A `set_step` shed on a stepped-only device with
-// no binary handle is skipped here — that niche keeps its plan-path release for
-// now (the direct stepped command needs executor-side current/power resolution;
-// tracked as a follow-up).
+// device's control capability, or a stepped command when no binary handle exists).
+// `flowBackedCapabilityIds` (from the snapshot) marks a binary capability that
+// must be driven via its Homey Flow trigger rather than a direct capability write.
 export const resolveTerminalShedCommand = (
   device: PlanInputDevice,
   objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
-  behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null },
+  behavior: {
+    action: 'turn_off' | 'set_temperature' | 'set_step';
+    temperature: number | null;
+    stepId?: string | null;
+  },
   flowBackedCapabilityIds: readonly string[],
 ): ShedActuationCommand => {
   if (objectiveKind === 'ev_soc') {
@@ -85,7 +91,38 @@ export const resolveTerminalShedCommand = (
   if (capabilityId) {
     return { kind: 'binary_off', capabilityId, flowBacked: flowBackedCapabilityIds.includes(capabilityId) };
   }
+  const stepped = resolveTerminalSteppedShedCommand(device, behavior);
+  if (stepped) return stepped;
   return { kind: 'skip', reasonCode: 'no_binary_handle_for_terminal_release' };
+};
+
+const resolveTerminalSteppedShedCommand = (
+  device: PlanInputDevice,
+  behavior: { stepId?: string | null },
+): ShedActuationCommand | null => {
+  const profile = device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
+    ? device.steppedLoadProfile
+    : null;
+  if (!profile) return null;
+  const preferred = behavior.stepId ? getSteppedLoadStep(profile, behavior.stepId) : null;
+  const target = preferred ?? getSteppedLoadLowestActiveStep(profile) ?? getSteppedLoadOffStep(profile);
+  if (!target) return null;
+  return {
+    kind: 'set_step',
+    profile,
+    targetStepId: target.id,
+    planningCurrentA: resolvePlanningCurrentA(device, target.planningPowerW),
+    previousStepId: resolveTrustedStepId(device) ?? device.selectedStepId ?? device.previousStepId,
+    stepCommandPending: device.stepCommandPending,
+    nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
+  };
+};
+
+const resolvePlanningCurrentA = (device: PlanInputDevice, planningPowerW: number): number => {
+  if (device.targetPowerConfig?.enabled === false) return 0;
+  if (device.targetPowerConfig?.preset === 'ev_charger_1_phase') return planningPowerW / 230;
+  if (device.targetPowerConfig?.preset === 'ev_charger_3_phase') return planningPowerW / (230 * 3);
+  return 0;
 };
 
 // Compose the actuation transport the thin primitive needs: the device-manager
@@ -93,12 +130,21 @@ export const resolveTerminalShedCommand = (
 // whose binary capability is flow-backed. Mirrors the executor's
 // `triggerFlowBackedBinaryControlRequest` (planExecutor) but reachable from the
 // app wiring without the plan→executor actuation surface.
-const buildShedActuationTransport = (ctx: AppContext): ShedActuationTransport | null => {
+export const buildShedActuationTransport = (ctx: AppContext): ShedActuationTransport | null => {
   const transport = ctx.deviceManager;
   if (!transport) return null;
+  const requestSteppedLoadStep = transport.requestSteppedLoadStep?.bind(transport);
   return {
     setCapability: (deviceId, capabilityId, value) => transport.setCapability(deviceId, capabilityId, value),
     applyDeviceTargets: (targets, contextInfo) => transport.applyDeviceTargets(targets, contextInfo),
+    ...(requestSteppedLoadStep === undefined
+      ? {}
+      : {
+        requestSteppedLoadStep: (
+          params: Parameters<NonNullable<ShedActuationTransport['requestSteppedLoadStep']>>[0],
+        ) => requestSteppedLoadStep(params),
+      }),
+    markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
     triggerFlowBackedBinaryControl: async (deviceId, capabilityId, desired) => {
       const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
       const triggerCard = ctx.homey.flow?.getTriggerCard?.(triggerCardId);
@@ -146,7 +192,24 @@ const readTerminalObserved = (
   return {
     binaryState: resolveBinaryState(device.binaryControlObservation),
     targetValue: typeof primaryTarget?.value === 'number' ? primaryTarget.value : null,
+    stepId: resolveTrustedStepId(device),
   };
+};
+
+const resolveTrustedStepId = (device: PlanInputDevice): string | undefined => (
+  device.actualStepSource === 'reported' && device.actualStepId
+    ? device.actualStepId
+    : device.reportedStepId
+);
+
+const isAtOrBelowStep = (
+  command: Extract<ShedActuationCommand, { kind: 'set_step' }>,
+  stepId: string,
+): boolean => {
+  const target = getSteppedLoadStep(command.profile, command.targetStepId);
+  const observed = getSteppedLoadStep(command.profile, stepId);
+  if (!target || !observed) return false;
+  return observed.planningPowerW <= target.planningPowerW;
 };
 
 // True when the device is already in the command's shed posture (off, or at the
@@ -154,6 +217,7 @@ const readTerminalObserved = (
 const isInShedPosture = (command: ShedActuationCommand, observed: ShedActuationObservedState): boolean => {
   if (command.kind === 'binary_off') return observed.binaryState === 'off';
   if (command.kind === 'set_temperature') return observed.targetValue === command.targetValue;
+  if (command.kind === 'set_step') return observed.stepId ? isAtOrBelowStep(command, observed.stepId) : false;
   return true; // skip: nothing to actuate
 };
 
