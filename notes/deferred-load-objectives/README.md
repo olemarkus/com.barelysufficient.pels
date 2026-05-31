@@ -241,10 +241,13 @@ so slow drift in `energyNeededKWh` is absorbed into the existing committed hours
 instead of spilling sliver allocations into new hours via phase-2 expansion.
 `mergeHoursPreservingCommitment` (`activePlanSchedule.ts`) preserves the floor by taking
 `Math.max(committed.plannedKWh, live.plannedKWh)` on overlap, so a transient shrink in
-`live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds new
-uncommitted future hours only when even the committed hours filled to the stacked
-ceiling cannot absorb the demand (e.g. a hot-water draw drops the tank ~38 °C and the
-remaining horizon at the floor step cannot cover the new kWh requirement).
+`live.plannedKWh` cannot rewrite the persisted floor downward. Phase-2 expansion adds
+uncommitted hours — future hours, and the current hour when it is uncommitted — when even
+the committed hours filled to the stacked ceiling cannot absorb the demand (e.g. a hot-water
+draw drops the tank ~38 °C and the remaining horizon at the floor step cannot cover the new
+kWh requirement). Filling the uncommitted current hour keeps the device on instead of
+stranding it at 0 kWh once a task outlives its committed window; a *committed* current hour
+is left to phase-1 (its settled budget is the contract for the hour).
 
 The recorder treats the per-cycle horizon plan as advisory and only writes a new revision on
 these triggers:

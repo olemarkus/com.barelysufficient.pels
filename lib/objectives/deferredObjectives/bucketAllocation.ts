@@ -188,12 +188,14 @@ export const allocateCommittedEnergyToBuckets = (params: {
   //
   //   (i)  Empty commitment (satisfied-then-drifted task — created with the
   //        tank already above target, then a hot-water draw made the need
-  //        positive). Phase-1 has nothing to fill; expansion books backup
-  //        hours against the uncommitted horizon. The `!bucket.current`
-  //        filter inside `expandCommittedAllocation` preserves the
-  //        current-bucket settled budget; brief shed-induced cannot_meet
-  //        flips self-resolve via the executor's step-climb without
-  //        triggering a permanent expansion.
+  //        positive). Phase-1 has nothing to fill; expansion books hours
+  //        against the uncommitted horizon, INCLUDING the current hour —
+  //        an uncommitted current hour has no settled budget to protect, so
+  //        it is filled cheapest-first rather than stranded (keeping the
+  //        device on while behind). Stability comes from `energyNeededKWh`
+  //        being slow-moving (target minus measured progress, so brief sheds
+  //        don't spike it) plus the executor's within-hour step-climb and the
+  //        served hour self-committing — not from skipping the current bucket.
   //   (ii) Non-empty commitment that genuinely cannot absorb the new need
   //        even at step capacity (e.g. shower crash dropped tank ~38 °C,
   //        need now exceeds committed step capacity × committed hours).
@@ -225,16 +227,29 @@ export const allocateCommittedEnergyToBuckets = (params: {
 // Phase-2 expansion for the committed-plan path. Three load-bearing
 // invariants the design rides on:
 //
-//   (a) The current bucket's commitment is the contract for the hour. Its
-//       per-bucket budget cap has settled and any partial consumption is
-//       already in flight. Expansion adds *future* hours only — the
-//       `!bucket.current` filter below enforces this.
+//   (a) A *committed* current hour's allocation is the contract for the hour:
+//       its per-bucket budget cap has settled and any partial consumption is
+//       already in flight, so expansion must not re-claim against it. That is
+//       enforced by the `committedHourSet` skip below — a committed current
+//       hour is in the set and is left to phase-1. An *uncommitted* current
+//       hour has no settled budget to protect, so expansion DOES fill it
+//       (cheapest-first, like any other hour). Without that, a task that
+//       outlives its committed window strands its current hour at 0 kWh and
+//       the device is turned off while still behind target (see
+//       `test/deferredObjectiveCommitmentRolloverSimulation.test.ts`). The
+//       cheapest-first sort still defers an expensive current hour behind
+//       cheaper future hours, so "wait for a cheaper hour" is preserved; the
+//       current hour is only filled when it is among the cheapest hours still
+//       needed (last resort near a deadline, or the genuine strand).
 //   (b) Within-hour delivery is the executor / climbed-probe layer's job,
 //       not the allocator's. A bucket commits an integral (kWh), not a
 //       rate; the executor can climb step level to deliver the integral by
 //       hour-end even after brief 60-300 s sheds. So status flutter from
 //       stepped-load oscillation or brief sheds must NOT trigger plan
-//       expansion — they self-resolve at the runtime layer.
+//       expansion — they self-resolve at the runtime layer. An uncommitted
+//       current hour filled here self-stabilises: it appears in the live plan,
+//       the recorder merges it into the commitment, and the next cycle serves
+//       it from phase-1 (committed) rather than re-deciding it.
 //   (c) Policy buckets stay hour-aligned. The committed-hour skip set is
 //       keyed by `floor(startMs / HOUR_MS)`; relaxing the hour alignment
 //       (sub-hour segments outside the existing reserve split) would
@@ -273,13 +288,13 @@ const expandCommittedAllocation = (params: {
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
     if (plannedByBucketId.has(bucket.id)) continue;
-    // Skip the current bucket — its per-bucket budget cap has settled and
-    // within-hour delivery is the executor's job (invariants (a) and (b)
-    // above). Expansion adds future hours only.
-    if (bucket.current) continue;
     // Skip any bucket whose hour was part of the original commitment —
     // phase-1 already filled those up to step capacity. Expansion adds
     // *new* hours, never duplicating allocation against a committed slot.
+    // This also protects a *committed* current hour (its settled budget is
+    // phase-1's; invariant (a)). An *uncommitted* current hour is NOT skipped:
+    // it has no settled budget, so expansion fills it cheapest-first like any
+    // other hour rather than stranding it at 0 kWh (invariant (a)).
     if (committedHourSet.has(Math.floor(bucket.startMs / HOUR_MS) * HOUR_MS)) continue;
     const plannedKWh = Math.min(
       remainingKWh,

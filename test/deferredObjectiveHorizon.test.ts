@@ -154,15 +154,16 @@ describe('planDeferredObjectiveHorizon', () => {
     // with a now-positive energyNeededKWh. The previous behaviour treated the
     // empty commitment as a "stale cannot_meet decision must not silently
     // recover" signal and left the task to fail. New behaviour: expansion
-    // fires against the remaining horizon and books backup hours.
+    // fires against the remaining horizon and books hours.
     //
-    // Stability against transient flips comes from two existing layers:
-    // (1) the current-bucket commitment is locked (see `!bucket.current` skip
-    //     in `expandCommittedAllocation`), so brief sheds within the current
-    //     hour never claim its budget;
-    // (2) the executor's within-hour step climbing delivers the committed
-    //     kWh integral even if a single snapshot looks short — so status
-    //     flutter from stepped-load oscillation never causes lasting churn.
+    // The current hour (h0) is uncommitted, so expansion fills it cheapest-first
+    // like any other hour — the device runs now rather than idling while behind
+    // target. A committed current hour would instead be left to phase-1
+    // (`committedHourSet` skip); only the uncommitted current hour is filled
+    // here. Stability against transient flips comes from the executor's
+    // within-hour step climbing (it delivers the committed kWh integral even if
+    // a single snapshot looks short) and from the filled current hour
+    // self-committing for subsequent cycles.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -179,25 +180,26 @@ describe('planDeferredObjectiveHorizon', () => {
       committedHours: [],
     });
 
-    // Current bucket (h0) is locked by `!bucket.current`; expansion fills h1
-    // and h2 (both preferred, ascending order from sort).
+    // Cheapest-first expansion (equal price → ascending time) fills h0 then h1.
     expect(plan.status).toBe('on_track');
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
   });
 
-  it('stays cannot_meet when expansion has no future buckets to claim', () => {
+  it('reports cannot_meet while still running the only available hour when the target is physically out of reach', () => {
     // Replacement regression for the old "no silent recovery" invariant: the
-    // genuinely unrecoverable case is "no eligible future bucket in the
-    // horizon", not "empty commitment". With only the current bucket left,
-    // the `!bucket.current` filter blocks expansion and the task honestly
-    // reports cannot_meet.
+    // genuinely unrecoverable case is one the horizon physically cannot deliver
+    // — here a single hour (deadline NOW+1h) against a need (5 kWh) that exceeds
+    // even the top step's one-hour capacity (max = 3 kW → 3 kWh). The task
+    // honestly reports cannot_meet AND still runs the available current hour at
+    // the floor step (delivering what it can) rather than idling — `cannot_meet`
+    // drives the device, see `admission.PLANNABLE_STATUSES`.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
-        energyNeededKWh: 2,
+        energyNeededKWh: 5,
         deadlineAtMs: NOW_MS + HOUR_MS,
       }),
       steps: defaultSteps,
@@ -209,22 +211,24 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('cannot_meet');
-    expect(plan.plannedUsefulEnergyKWh).toBe(0);
-    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(2);
+    // The current hour is served at the floor step (1 kWh) instead of stranded.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(1);
+    expect(plan.unplannedUsefulEnergyKWh).toBeCloseTo(4);
   });
 
-  it('expansion never claims the current bucket even when it is the cheapest preferred', () => {
-    // The current bucket's commitment is the contract for the hour: settled
-    // budget cap, partial consumption already in flight, and within-hour
-    // delivery is the executor's job via step climbing. Expansion must add
-    // *future* hours only — claiming the current bucket via the expansion
-    // path would re-claim against a settled cap.
+  it('expansion fills an uncommitted current bucket cheapest-first instead of stranding it', () => {
+    // An UNCOMMITTED current bucket has no settled budget to protect, so
+    // expansion fills it like any other hour rather than leaving the device off
+    // while behind target (the production strand fix — see
+    // `bucketAllocation.expandCommittedAllocation`). The cheapest-first sort
+    // still defers an expensive current hour behind cheaper future hours, so
+    // "wait for a cheaper hour" is preserved; here all hours are equal price so
+    // the current hour (h0) is filled first by the ascending-time tiebreak.
     //
-    // Setup: current bucket (h0) is the cheapest preferred and uncommitted,
-    // making it the comparator's first pick by price. Committed hour is h2.
-    // Need exceeds the committed allocation. Without the filter, expansion
-    // would book h0; with the filter, h0 is skipped and h1 absorbs the
-    // residual.
+    // Setup: current bucket (h0) is preferred and uncommitted. Committed hour is
+    // h2. Need exceeds the committed allocation, so expansion books the residual
+    // into h0.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({
@@ -245,9 +249,41 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.status).toBe('on_track');
     expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBe(0);
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
+  });
+
+  it('expansion never re-claims a COMMITTED current bucket (phase-1 owns its settled budget)', () => {
+    // The protected half of the invariant: when the current hour IS committed,
+    // its budget is the settled contract for the hour (partial consumption in
+    // flight). Phase-1 fills it; expansion must not augment it via the
+    // `committedHourSet` skip. Here h0 is the committed current hour at 1 kWh and
+    // h1 is an uncommitted future hour. The residual beyond h0's floor capacity
+    // spills into h1, never re-claiming h0 beyond its phase-1 fill.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({
+        energyNeededKWh: 2,
+        deadlineAtMs: NOW_MS + (2 * HOUR_MS),
+      }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'preferred'),
+        bucket(1, 'preferred'),
+      ],
+      committed: true,
+      committedHours: [
+        { startsAtMs: NOW_MS, plannedKWh: 1 },
+      ],
+    });
+
+    expect(plan.status).toBe('on_track');
+    expect(plan.plannedUsefulEnergyKWh).toBeCloseTo(2);
+    // h0 (committed current) stays at its phase-1 floor fill of 1 kWh; the
+    // residual goes to the uncommitted future hour h1, not back into h0.
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
 
   it('expands a committed plan when residual energy is needed and uncommitted preferred buckets remain', () => {
@@ -353,11 +389,12 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.status).toBe('on_track');
     // h0 absorbs all 0.9 kWh (well below the 1 kWh step capacity); no spill.
-    // h0 is the current bucket — phase-1 deliberately fills it because
-    // the `!bucket.current` skip lives only in phase-2 expansion. The
-    // committed kWh is the contract for the hour; phase-1 honouring the
-    // current bucket is what lets drift absorb into primary instead of
-    // forking into new uncommitted hours.
+    // h0 is the COMMITTED current bucket — phase-1 fills it, and phase-2
+    // expansion leaves it alone via the `committedHourSet` skip (its settled
+    // budget is the contract for the hour). That's what lets drift absorb into
+    // the primary committed hour instead of forking into new uncommitted hours.
+    // (An *uncommitted* current hour would instead be filled by expansion — see
+    // 'expansion fills an uncommitted current bucket cheapest-first…'.)
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.9);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);

@@ -7,22 +7,24 @@
 // model so the test isolates the schedule pipeline (planner allocator +
 // commitment merge + committed read-back).
 //
-// It reproduces a production miss (Connected 300 water heater, 2026-05-31):
+// It guards against a production miss (Connected 300 water heater, 2026-05-31):
 // the heater climbed to ~target inside its cheap committed window, the heater's
 // own thermostat then cut the element, and the tank cooled afterwards. Once the
 // committed hours had elapsed, the first hour in which the need REGREW was the
-// current hour, and the current hour is excluded from phase-2 expansion
-// (`bucketAllocation.expandCommittedAllocation`, `if (bucket.current) continue`)
-// while only ever being adoptable by the commitment merge as a FUTURE hour. So
-// that hour is stranded at 0 kWh and the device is turned off while behind
-// target.
+// current hour. That hour USED to be stranded at 0 kWh — phase-2 expansion
+// skipped the current bucket and the commitment merge could only adopt an hour
+// while it was still a FUTURE hour, so the device was turned off while behind
+// target. The fix (`bucketAllocation.expandCommittedAllocation`) fills an
+// UNCOMMITTED current bucket cheapest-first, so the device stays on and the
+// served hour self-commits. "Commit the upcoming hour at the boundary" could
+// not have caught this case: the need regrows only once the hour is current.
 //
 // Two cases:
 //  1. Regression pin for `f9809995` (commitment extends forward after an early
 //     committed hour elapses) — a still-needy task keeps getting its current
 //     hour served and the committed set keeps growing.
-//  2. The residual single-hour boundary strand that the "commit the upcoming
-//     hour just before it becomes current" follow-up is meant to close.
+//  2. Regression for the strand fix — the first regrown hour after the committed
+//     window is served (not stranded), and self-commits.
 import {
   DeferredObjectiveActivePlanRecorder,
   type ActivePlanFlowCardSeed,
@@ -208,16 +210,19 @@ describe('smart-task commitment rollover simulation', () => {
     expect(lastCommitted.length).toBeGreaterThan(records[0]!.committedHourIndexes.length);
   });
 
-  // Residual boundary strand (the production miss shape): the device satisfies
-  // inside its committed window, then stalls and the need REGROWS in the first
-  // hour after the window. That hour is current-and-uncommitted, so it is
-  // stranded at 0 kWh and the device is turned off while behind target.
+  // Regression for the current-hour strand fix (the production miss shape): the
+  // device satisfies inside its committed window, then stalls and the need
+  // REGROWS in the first hour after the window has elapsed. That hour is
+  // current-and-uncommitted — it was never planned ahead (need was ~0 when it
+  // was still a future hour), so committing the upcoming hour at the boundary
+  // could not have caught it; the regrowth only appears once it is current.
   //
-  // This test PINS the current (buggy) behaviour: the assertion `=== 0` marks
-  // the strand. When the "commit the upcoming hour just before it becomes
-  // current" follow-up lands, the stranded hour will be served and this should
-  // flip to `> 0` (and the strandHour lookup will find none).
-  it('strands the first regrown hour after the committed window elapses', () => {
+  // Before the fix, phase-2 expansion skipped the current bucket
+  // (`if (bucket.current) continue`), so this hour was stranded at 0 kWh and the
+  // device was turned off while still behind target. The fix lets expansion fill
+  // an UNCOMMITTED current bucket, so the hour is served and the device stays on
+  // (and the served hour self-commits for subsequent cycles).
+  it('serves — does not strand — the first regrown hour after the committed window elapses', () => {
     let stalled = false;
     const records = runSimulation({
       hours: 8,
@@ -235,25 +240,21 @@ describe('smart-task commitment rollover simulation', () => {
       },
     });
 
-    // The committed window settled on the early cheap hours (~0-3). The first
-    // hour after the window in which the need has regrown is stranded.
-    const strand = records.find(
-      (r) => r.hourIndex >= 4
-        && r.needKWh > 0.2
-        && !r.committedHourIndexes.includes(r.hourIndex)
-        && r.currentBucketKWh === 0,
-    );
-    expect(strand).toBeDefined();
-    // It is stranded, not honestly given up on: still on_track with energy left.
-    expect(strand!.status).toBe('on_track');
-    expect(strand!.needKWh).toBeGreaterThan(0.2);
+    // The committed window settled on the early cheap hours (~0-3). Identify the
+    // first hour after the window in which the need has regrown.
+    const boundaryHour = records.find((r) => r.hourIndex >= 4 && r.needKWh > 0.2);
+    expect(boundaryHour).toBeDefined();
 
-    // Confirm the merge fix is still doing its job around the strand: a later
-    // hour does get committed and served (the strand is a single boundary hour,
-    // not a permanent freeze).
-    const recoveredAfterStrand = records.some(
-      (r) => r.hourIndex > strand!.hourIndex && r.currentBucketKWh > 0,
+    // No hour with remaining need is left stranded at 0 kWh while on_track — the
+    // pre-fix strand is gone.
+    const stranded = records.filter(
+      (r) => r.needKWh > 0.2 && r.status === 'on_track' && r.currentBucketKWh === 0,
     );
-    expect(recoveredAfterStrand).toBe(true);
+    expect(stranded).toEqual([]);
+
+    // The boundary hour is served (device kept on) and self-commits so later
+    // cycles serve it from the committed phase-1.
+    expect(boundaryHour!.currentBucketKWh).toBeGreaterThan(0);
+    expect(boundaryHour!.committedHourIndexes).toContain(boundaryHour!.hourIndex);
   });
 });
