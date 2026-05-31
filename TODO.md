@@ -375,26 +375,22 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Host-CSS bleed: `<label>` / `<input>` are still exposed (buttons fixed).**
-      Homey's host `_base.css` restyles bare native elements via `:not(.hy-nostyle)`
-      rules. The `<button>` case was fixed in PR #1352 (every native button now
-      carries `hy-nostyle`, an ESLint guard enforces it, and a render-gate
-      regression injects the captured prod host CSS over the mobile-DARK render to
-      assert no button wears the host grey). The SAME mechanism still hits forms:
-      `label:not(.hy-nostyle)` (specificity (0,1,1)) force-greys + uppercases +
-      10px-shrinks every bare `<label>`, and `.pels-text-settings-label` (0,1,0)
-      loses to it; `input[type=text|search|password|email|checkbox]:not(.hy-nostyle)`
-      likewise restyle bare inputs; `hr` / `fieldset` / `legend` too. PELS ships
-      bare `<label class="field">` (e.g. `index.html:149,454+`,
-      `ElectricityPricesView.tsx`) with no opt-out, so on-device dark theme these
-      lose their `--pels-text-primary` colour and get host chrome. Fix: either add
-      `hy-nostyle` to the form primitives (mirroring the button fix, plus a sibling
-      ESLint guard on `<label>`/`<input>`) OR add a PELS host-defence
-      `label, input, hr, fieldset, legend { … }` reset block at winning specificity.
-      Then broaden the render-gate regression to assert no PELS-owned `<label>` /
-      `<input>` inherits a host colour / text-transform. Real-device verification
-      warranted (chromium can't reproduce the bleed without the injected fixture).
-      Source: PR #1352 m3-critic, 2026-05-31.
+- [x] **Host-CSS bleed on `<label>` / `<input>` — investigated, already defended
+      (m3-critic false positive).** m3-critic flagged that `label:not(.hy-nostyle)`
+      (0,1,1) would beat `.pels-text-settings-label` (0,1,0) and grey/uppercase bare
+      `<label>`s. Reasoning was specificity-only; the actual render disproves it:
+      PELS already carries a global `label { text-transform: none !important; color:
+      inherit !important; font-size: inherit !important; font-weight: inherit
+      !important; }` override (style.css:146), plus `!important` resets for
+      `fieldset` / `legend` / `hr`, which beat the host rule for EVERY label (static
+      or dynamic) regardless of specificity. Confirmed by injecting the full prod
+      host bundle over the mobile-dark render: bare `.field` labels compute PELS
+      styling (`text-transform: none`, light text, 15px), not host chrome. Inputs
+      are immune anyway — PELS form fields are `md-*` Web Components whose `<input>`
+      lives in shadow DOM, which the host sheet can't reach. No fix needed; the
+      `homey-button-bleed` render-gate regression now also asserts the label
+      override still holds (fails if it's ever dropped). Source: PR #1352 m3-critic
+      → verified false positive, 2026-05-31.
 
 - [ ] **Budget-adjust captures aren't host-faithful — and host CSS breaks the
       sticky footer under test.** `budget-adjust-ux.spec.ts` is a functional spec

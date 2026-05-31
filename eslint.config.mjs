@@ -340,6 +340,10 @@ export default tseslint.config(
         // forgotten on the filter chips + hero sub-line — this guard makes the
         // opt-out impossible to forget). Static class string required.
         { selector: "JSXOpeningElement[name.name='button']:not(:has(JSXAttribute[name.name=/^(class|className)$/] :matches(Literal[value=/(^| )hy-nostyle( |$)/], TemplateElement[value.cooked=/(^| )hy-nostyle( |$)/])))", message: "Native <button> must include the `hy-nostyle` class so Homey's host button stylesheet can't bleed light-grey chrome onto it in dark theme (see style.css host-bleed notes)." },
+        // NB: <label> needs no such guard — unlike buttons, PELS already carries a
+        // global `label { … !important }` override (style.css:146) that beats the
+        // host `label:not(.hy-nostyle)` rule for every label, static or dynamic.
+        // The regression in homey-button-bleed.spec.ts guards that override.
       ],
     },
   },
