@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test as base, type Page } from '@playwright/test';
+import { type Browser, expect, type Locator, test as base, type Page } from '@playwright/test';
 import { resolveE2EBaseURL } from './baseUrl';
 
 export const test = base.extend({
@@ -86,3 +86,59 @@ export const renderTest = test.extend({
     await use(page);
   },
 });
+
+// --- Theme/viewport capture matrix ------------------------------------------
+//
+// Users meet the settings UI in more than one context, and PELS picks the theme
+// off the POINTER (not the width): coarse/touch → the mobile DARK theme; fine +
+// hover → the desktop LIGHT theme (`@media (hover:hover) and (pointer:fine)`).
+// A single light capture is therefore a third of the story. `captureThemes`
+// renders a surface across the contexts users actually see, all with the Homey
+// host CSS injected:
+//   • light-desktop — fine pointer, full app width (480) → light theme
+//   • dark-mobile   — touch, tall mobile viewport       → dark theme
+//   • light-mobile  — fine pointer, narrow (360)         → light theme, narrow
+// chromium-only (the dark variant needs `isMobile`, which Firefox rejects); the
+// caller guards with `test.skip(browserName !== 'chromium', …)`.
+export const CAPTURE_THEMES = [
+  { suffix: 'light-desktop', viewport: { width: 480, height: 1600 }, mobile: false },
+  { suffix: 'dark-mobile', viewport: { width: 480, height: 3400 }, mobile: true },
+  { suffix: 'light-mobile', viewport: { width: 360, height: 1600 }, mobile: false },
+] as const;
+
+export const captureThemes = async (opts: {
+  browser: Browser;
+  baseURL?: string;
+  name: string;
+  outDir: string;
+  // Runs on the fresh page BEFORE navigation — register `addInitScript` stubs,
+  // pin the clock, etc. (anything that must precede the app's first load).
+  prepare?: (page: Page) => Promise<void>;
+  // Navigates to and readies the surface. Return a Locator to screenshot just
+  // that element (e.g. a panel); return nothing to screenshot the page.
+  open: (page: Page) => Promise<Locator | undefined | void>;
+}): Promise<void> => {
+  fs.mkdirSync(opts.outDir, { recursive: true });
+  for (const theme of CAPTURE_THEMES) {
+    const context = await opts.browser.newContext({
+      baseURL: opts.baseURL,
+      viewport: theme.viewport,
+      // Touch (coarse pointer / no hover) is what flips PELS to the dark theme.
+      // Do NOT `setViewportSize`/`fullPage` on the dark variant — both reset the
+      // device metrics mid-test and silently drop back to the light canvas.
+      ...(theme.mobile ? { isMobile: true, hasTouch: true } : {}),
+    });
+    try {
+      const page = await context.newPage();
+      await injectHomeyHostCss(page);
+      await opts.prepare?.(page);
+      const target = await opts.open(page);
+      await page.waitForTimeout(300);
+      const dest = path.join(opts.outDir, `${opts.name}.${theme.suffix}.png`);
+      if (target) await target.screenshot({ path: dest });
+      else await page.screenshot({ path: dest, fullPage: !theme.mobile });
+    } finally {
+      await context.close();
+    }
+  }
+};
