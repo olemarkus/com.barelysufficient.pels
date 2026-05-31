@@ -2027,14 +2027,6 @@ for the 5 s throttle, cooldown-card countdown, reconcile window, and
 recent-shed restore backoff. See
 `notes/state-management/deferred-objective-lifecycle-carveout.md`.*
 
-- [ ] P2: dedup `isNonSteppedDeviceRecovering`. Byte-identical copies live in
-      `lib/plan/shedding/candidates.ts` and `lib/plan/planSteppedShedResolution.ts`
-      (both now read `shedDecidedMs`). Extract one canonical helper so the two
-      can't drift. Kept separate in increment 1 to hold the diff to the field
-      move; the only friction is the upward `planSteppedShedResolution →
-      shedding/candidates` import direction — pick a neutral home (e.g. a small
-      `planShedRecovery.ts`). Source: pels-layering-guardian, 2026-05-30.
-
 - [ ] P2: feed the recent-shed restore backoff off the decision-time clock.
       `restore/support.ts:67` (`RECENT_SHED_RESTORE_BACKOFF_MS`) still reads the
       actuation-time `lastDeviceShedMs`, so a decided-but-write-skipped shed is
