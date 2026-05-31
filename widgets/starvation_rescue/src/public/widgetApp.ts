@@ -174,7 +174,9 @@ const submitRescue = async (
   // the user saw (not a fresh now+3h) — see StarvationRescueRequest.
   deadlineAtMs: number,
 ): Promise<StarvationRescueCreateResponse> => {
-  if (usePreviewData) return { ok: true };
+  // Design preview: the fixture schedules from the next hour on (all future), so
+  // the honest flash is "queued".
+  if (usePreviewData) return { ok: true, runsCurrentHour: false };
   if (!homeyRef) return { ok: false, reason: 'unavailable' };
   try {
     return await homeyRef.api('POST', '/rescue', { deviceId, deadlineAtMs }) as StarvationRescueCreateResponse;
@@ -251,7 +253,7 @@ export const createWidgetController = (params: {
     // Success → the done flash (success label only after `ok:true`). Otherwise
     // stay on the confirm view with a retryable error line.
     view = result.ok
-      ? { kind: 'done' }
+      ? { kind: 'done', ranNow: result.runsCurrentHour }
       : { ...view, submitting: false, error: resolveStarvationRescueRejectCopy(result.reason) };
     render();
     if (result.ok) scheduleDoneReset();

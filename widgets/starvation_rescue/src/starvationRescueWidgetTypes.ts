@@ -42,6 +42,12 @@ export type StarvationRescuePreviewResponse = {
 
 export type StarvationRescueCreateResponse = {
   ok: true;
+  // Server-resolved against the JUST-PERSISTED plan at create time: does it run
+  // the device in the CURRENT clock hour (vs only later, cheaper hours)? Drives
+  // the honest success flash. Resolved on the create response — not the preview —
+  // so a confirm left open across an hour boundary flashes the live truth, never
+  // a stale preview-time value.
+  runsCurrentHour: boolean;
 } | {
   ok: false;
   reason: StarvationRescueRejectReason;

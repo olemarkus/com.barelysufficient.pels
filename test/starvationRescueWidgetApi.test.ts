@@ -220,7 +220,9 @@ describe('createStarvationRescue', () => {
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
       body: { deviceId: 'heater-1', deadlineAtMs },
     });
-    expect(result).toEqual({ ok: true });
+    // No previewStarvationRescuePlan stub in this context → the create can't
+    // re-derive the post-persist plan, so the honest-conservative flash is queued.
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
     expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledWith('heater-1', {
       kind: 'temperature',
       enforcement: 'soft',
@@ -228,7 +230,7 @@ describe('createStarvationRescue', () => {
       deadlineAtMs,
       rescue: { exemptFromBudget: 'always' },
     });
-    // The exemption is on the candidate that reaches the merge-not-replace path.
+    // The exemption rides the candidate; priority is added server-side for stepped devices.
     expect(received!.rescue).toEqual({ exemptFromBudget: 'always' });
   });
 
@@ -255,7 +257,7 @@ describe('createStarvationRescue', () => {
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
       body: { deviceId: 'heater-1', deadlineAtMs: previewedDeadline },
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
     expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledWith(
       'heater-1',
       expect.objectContaining({ deadlineAtMs: previewedDeadline }),
@@ -304,7 +306,7 @@ describe('createStarvationRescue', () => {
       }),
       body: { deviceId: 'heater-1', deadlineAtMs: existingDeadline },
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
     expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledOnce();
   });
 
@@ -334,7 +336,7 @@ describe('createStarvationRescue', () => {
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
       body: { deviceId: 'heater-1' },
     });
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
     expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledWith(
       'heater-1',
       expect.objectContaining({ deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS }),
@@ -356,5 +358,43 @@ describe('createStarvationRescue', () => {
       body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
     });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('flashes runsCurrentHour=true when the just-persisted plan runs the current hour', async () => {
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
+    // Post-persist re-derivation schedules the CURRENT hour → honest "on the way".
+    const previewStarvationRescuePlan = freshPreviewPlan(
+      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }] }),
+    );
+    const result = await createStarvationRescue({
+      ...buildContext({
+        getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
+        rescueDeviceWithBudgetExemption,
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: true, runsCurrentHour: true });
+  });
+
+  it('recomputes the flash at CREATE time: a confirm across an hour boundary flashes queued, not stale on-the-way', async () => {
+    // Preview happened at 04:xx with the 04:00 bucket planned; the user confirms
+    // at 05:xx. The create re-derives the plan against the NEW current hour (05:00),
+    // which the schedule (04:00 only) no longer covers → the flash must be queued,
+    // not the stale preview-time "on the way".
+    vi.setSystemTime(NOW_MS + 60 * 60 * 1000); // advance one hour → current hour is now 05:00
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
+    const previewStarvationRescuePlan = freshPreviewPlan(
+      buildEstimate({ scheduledHours: [{ startsAtMs: NOW_MS, plannedKWh: 1.5 }] }), // 04:00 bucket only
+    );
+    const result = await createStarvationRescue({
+      ...buildContext({
+        getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
+        rescueDeviceWithBudgetExemption,
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: true, runsCurrentHour: false });
   });
 });

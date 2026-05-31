@@ -78,13 +78,24 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   // optimisation off). Distinct from a hard error.
   previewUnavailable: "Can\u2019t preview this yet \u2014 no prices published for this window yet.",
   rescuePending: "Setting up\u2026",
+  // Two honest success flashes, branched on whether the projected plan actually
+  // runs the device now. The rescue grants the device priority over lower-
+  // priority loads (within the physical hard cap) AND lifts today's budget, but
+  // if the house is already at the cap with nothing lower-priority to displace,
+  // power isn't instant — so don't promise "on the way" unconditionally.
   rescueDone: "Power on the way",
+  rescueDoneQueued: "Running as soon as there\u2019s room",
   rescueError: "Could not set up the rescue. Try again.",
   // The previewed deadline slipped past while the user lingered — retryable.
   deadlinePassed: "That timing just passed. Try again."
 };
 var STARVATION_RESCUE_DANGER_THRESHOLD_MS = 30 * 6e4;
 var starvationRowOffersRescue = (cause) => cause === "budget";
+var ONE_HOUR_MS = 60 * 60 * 1e3;
+var scheduledHoursIncludeCurrentHour = (scheduledHours, nowMs) => {
+  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  return scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+};
 
 // packages/shared-domain/src/smartTaskDeadlineFormat.ts
 var HOUR_MS = 60 * 60 * 1e3;
@@ -269,8 +280,12 @@ var createStarvationRescue = async ({ homey, body }) => {
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
   const result = homey.app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
-  if (result.ok) return { ok: true };
-  return createReject(mapAppReason(result.reason));
+  if (!result.ok) return createReject(mapAppReason(result.reason));
+  const post = homey.app.previewStarvationRescuePlan?.(request.deviceId, candidate);
+  return {
+    ok: true,
+    runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false
+  };
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

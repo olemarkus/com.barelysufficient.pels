@@ -28,7 +28,8 @@ const evEntry: DeferredObjectiveSettingsEntry = {
 };
 
 // The rescue objective the widget would CREATE when no objective exists: the
-// device's intended normal target + a near-term deadline + the budget exemption.
+// device's intended normal target + a near-term deadline + BOTH rescue
+// permissions (budget exemption AND limit-lower-priority/boost).
 const RESCUE_DEADLINE_MS = NOW_MS + 3 * 60 * 60 * 1000;
 const rescueTempEntry: DeferredObjectiveSettingsEntry = {
   enabled: true,
@@ -171,7 +172,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     store.raw.set(keyFor('heater-1'), undefined); // flaky read of an existing objective
     const h = buildDeviceDeps(store);
     const outcome = addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
     // The fresh rescue was NOT written over the (flaky-read) existing objective.
@@ -191,7 +192,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const flaky = { ...store, getKeys: () => [], get: () => undefined };
     const h = buildDeviceDeps(flaky);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(store.raw.get(keyFor('heater-1'))).toEqual(existing); // untouched
     expect(h.rebuildPlan).not.toHaveBeenCalled();
@@ -209,10 +210,13 @@ describe('device-scoped objective ops (per-device-key)', () => {
     store.raw.set(DEFERRED_OBJECTIVES_SETTINGS, { version: 1, objectivesByDeviceId: { 'heater-1': existing } });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
-    // Migrated from the blob, then the exemption merged in — original target/deadline kept.
-    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({ ...existing, rescue: { exemptFromBudget: 'always' } });
+    // Migrated from the blob, then both rescue permissions merged in — original target/deadline kept.
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({
+      ...existing,
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+    });
     expect(store.raw.get(DEFERRED_OBJECTIVES_SETTINGS)).toBeUndefined(); // blob consumed by the migration
   });
 
@@ -253,15 +257,15 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
-    expect(readObjectiveForDevice(store, 'heater-1')).toEqual(rescueTempEntry);
+    expect(readObjectiveForDevice(store, 'heater-1')).toEqual({ ...rescueTempEntry, rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' } });
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.rebuildPlan).toHaveBeenCalledOnce();
   });
 
-  it('rescue PRESERVES an existing objective\'s target/deadline and only adds the exemption', () => {
+  it('rescue PRESERVES an existing objective\'s target/deadline and adds both rescue permissions', () => {
     const existing: DeferredObjectiveSettingsEntry = {
       enabled: true,
       kind: 'temperature',
@@ -272,17 +276,17 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'heater-1': existing });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(readObjectiveForDevice(store, 'heater-1')).toEqual({
       ...existing,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     });
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
     expect(h.activePlanRecorder.clearForDevice).not.toHaveBeenCalled();
   });
 
-  it('rescue PRESERVES a standing limitLowerPriorityDevices permission, adding the exemption beside it', () => {
+  it('rescue PROMOTES a standing at_risk priority permission to always (power-now overrides defer)', () => {
     const existing: DeferredObjectiveSettingsEntry = {
       ...evEntry,
       rescue: { limitLowerPriorityDevices: 'at_risk' },
@@ -290,10 +294,10 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'ev-1': existing });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
+      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(readObjectiveForDevice(store, 'ev-1')!.rescue).toEqual({
-      limitLowerPriorityDevices: 'at_risk',
+      limitLowerPriorityDevices: 'always',
       exemptFromBudget: 'always',
     });
     expect(readObjectiveForDevice(store, 'ev-1')).toMatchObject({
@@ -312,26 +316,26 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'heater-1': existing });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(readObjectiveForDevice(store, 'heater-1')).toEqual({
       ...existing,
       enabled: true,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     });
     // prev disabled ⇒ inactive, next enabled ⇒ active: a fresh run is seeded.
     expect(h.activePlanRecorder.markPending).toHaveBeenCalledOnce();
   });
 
-  it('rescue is a no-op write when the device already carries the exemption', () => {
+  it('rescue is a no-op write when the device already carries both rescue permissions', () => {
     const existing: DeferredObjectiveSettingsEntry = {
       ...evEntry,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     };
     const store = buildStore({ 'ev-1': existing });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry,
+      deviceId: 'ev-1', deviceName: 'Driveway', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(readObjectiveForDevice(store, 'ev-1')).toEqual(existing);
     expect(h.planHistoryRecorder.finalizeForUserChange).not.toHaveBeenCalled();
@@ -348,10 +352,10 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'heater-1': existing });
     const h = buildDeviceDeps(store);
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(readObjectiveForDevice(store, 'heater-1'))
-      .toEqual(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry));
+      .toEqual(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry, true));
   });
 
   // ── Outcome contract: persisted vs refused (the false-success fix) ──────────
@@ -367,7 +371,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     const h = buildDeviceDeps(store);
     const outcome = addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(outcome).toEqual({ persisted: true });
   });
@@ -395,7 +399,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const flaky = { ...store, getKeys: () => [] };
     const h = buildDeviceDeps(flaky);
     const outcome = addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
     expect(h.rebuildPlan).not.toHaveBeenCalled();
@@ -419,7 +423,7 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'heater-1': rescueTempEntry });
     const h = buildDeviceDeps({ ...store, getKeys: () => [] });
     addBudgetExemptionRescueForDevice(h.deps, {
-      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry,
+      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry, grantLimitLowerPriority: true,
     });
     expect(h.debugStructured).toHaveBeenCalledWith({
       event: 'objective_write_refused', op: 'rescue', deviceId: 'heater-2', reason: 'migration_deferred',
@@ -451,10 +455,10 @@ describe('device-scoped objective ops (per-device-key)', () => {
 // from, so the plan/cost the user confirms can never diverge from what persists.
 describe('resolveBudgetExemptionRescueEntry', () => {
   it('returns the FRESH rescue entry verbatim when the device has no objective', () => {
-    expect(resolveBudgetExemptionRescueEntry(undefined, rescueTempEntry)).toEqual(rescueTempEntry);
+    expect(resolveBudgetExemptionRescueEntry(undefined, rescueTempEntry, true)).toEqual({ ...rescueTempEntry, rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' } });
   });
 
-  it('PRESERVES an existing objective\'s target/deadline, only adding the exemption + enabling', () => {
+  it('PRESERVES an existing objective\'s target/deadline, adding both rescue permissions + enabling', () => {
     const existing: DeferredObjectiveSettingsEntry = {
       enabled: false, // a disabled task's exemption is ignored by the planner ⇒ force enabled
       kind: 'temperature',
@@ -462,20 +466,34 @@ describe('resolveBudgetExemptionRescueEntry', () => {
       targetTemperatureC: 70, // user's own target — kept, NOT the rescue's 65°
       deadlineAtMs: DEADLINE_MS, // user's own deadline — kept, NOT the rescue's +3h
     };
-    expect(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry)).toEqual({
+    expect(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry, true)).toEqual({
       ...existing,
       enabled: true,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     });
   });
 
-  it('PROMOTES an existing at_risk exemption to always and keeps sibling permissions', () => {
+  it('PROMOTES both at_risk rescue permissions to always (power-now overrides defer)', () => {
     const existing: DeferredObjectiveSettingsEntry = {
       ...evEntry,
       rescue: { exemptFromBudget: 'at_risk', limitLowerPriorityDevices: 'at_risk' },
     };
-    const resolved = resolveBudgetExemptionRescueEntry(existing, rescueTempEntry);
-    expect(resolved.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' });
+    const resolved = resolveBudgetExemptionRescueEntry(existing, rescueTempEntry, true);
+    expect(resolved.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
     expect(resolved).toMatchObject({ kind: 'ev_soc', targetPercent: 80, deadlineAtMs: DEADLINE_MS });
+  });
+
+  it('does NOT grant limitLowerPriorityDevices when the device is ineligible (non-stepped)', () => {
+    // Fresh case: only the budget exemption, never the boost permission.
+    expect(resolveBudgetExemptionRescueEntry(undefined, rescueTempEntry, false).rescue)
+      .toEqual({ exemptFromBudget: 'always' });
+    // Merge case: adds the exemption and leaves a standing (non-granted) priority
+    // permission untouched — neither promoted nor stripped.
+    const existing: DeferredObjectiveSettingsEntry = {
+      ...evEntry,
+      rescue: { limitLowerPriorityDevices: 'at_risk' },
+    };
+    expect(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry, false).rescue)
+      .toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' });
   });
 });

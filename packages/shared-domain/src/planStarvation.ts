@@ -125,7 +125,13 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // optimisation off). Distinct from a hard error.
   previewUnavailable: 'Can’t preview this yet — no prices published for this window yet.',
   rescuePending: 'Setting up…',
+  // Two honest success flashes, branched on whether the projected plan actually
+  // runs the device now. The rescue grants the device priority over lower-
+  // priority loads (within the physical hard cap) AND lifts today's budget, but
+  // if the house is already at the cap with nothing lower-priority to displace,
+  // power isn't instant — so don't promise "on the way" unconditionally.
   rescueDone: 'Power on the way',
+  rescueDoneQueued: 'Running as soon as there’s room',
   rescueError: 'Could not set up the rescue. Try again.',
   // The previewed deadline slipped past while the user lingered — retryable.
   deadlinePassed: 'That timing just passed. Try again.',
@@ -244,6 +250,22 @@ export const starvationRowIsRescuable = (
   && intendedNormalTargetC !== null
   && Number.isFinite(intendedNormalTargetC)
 );
+
+// Whether the scheduled plan actually runs the device in the CURRENT clock hour
+// (vs only in a later, cheaper hour). Drives the rescue success flash: "Power on
+// the way" only when the current hour is planned, otherwise "Running as soon as
+// there's room". `startsAtMs` values are epoch-hour-floored absolute ms (the same
+// basis the preview joins price/scheduled hours on), so we compare against the
+// epoch-hour floor of `nowMs` — never the plan's earliest hour, which is the
+// cheapest scheduled hour and is routinely in the future.
+const ONE_HOUR_MS = 60 * 60 * 1000;
+export const scheduledHoursIncludeCurrentHour = (
+  scheduledHours: readonly { startsAtMs: number }[],
+  nowMs: number,
+): boolean => {
+  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  return scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+};
 
 // Map a rescue-create rejection reason to the user-facing widget error line.
 // Mirrors the create widget's resolver: only the retryable deadline-passed case

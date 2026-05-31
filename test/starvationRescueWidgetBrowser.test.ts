@@ -87,7 +87,8 @@ const buildHomey = (overrides: Partial<Record<string, unknown>> = {}): WidgetHom
   api: vi.fn(async (method: string, path: string) => {
     if (path === '/devices') return READY_PAYLOAD;
     if (path === '/preview') return OK_PREVIEW;
-    if (path === '/rescue') return { ok: true };
+    // Create resolves the honest flash: the default happy path runs the current hour.
+    if (path === '/rescue') return { ok: true, runsCurrentHour: true };
     throw new Error(`unexpected ${method} ${path}`);
   }),
   ...overrides,
@@ -254,6 +255,34 @@ describe('starvation rescue widget browser', () => {
     expect((homey.api as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith(
       'POST', '/rescue', { deviceId: 'budget-1', deadlineAtMs: OK_PREVIEW.deadlineAtMs },
     );
+  });
+
+  test('a still-queued create confirms to the honest "queued" flash, not "on the way"', async () => {
+    // The create response (authoritative, post-persist) reports the device is NOT
+    // running in the current hour — still queued behind cheaper later hours — so
+    // the flash must not promise power is on the way. The flash reads the CREATE
+    // response, never the (possibly stale) preview-time value.
+    const homey = buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') return OK_PREVIEW;
+        if (path === '/rescue') return { ok: true, runsCurrentHour: false };
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+    click('[data-confirm-btn]');
+    await flushPromises();
+
+    const root = document.getElementById('widget-root') as HTMLElement;
+    expect(root.dataset.view).toBe('done');
+    expect((document.querySelector('[data-done-msg]') as HTMLElement).textContent)
+      .toBe(STARVATION_RESCUE_WIDGET_COPY.rescueDoneQueued);
   });
 
   test('does not render the list when an in-flight /devices load resolves after destroy()', async () => {
