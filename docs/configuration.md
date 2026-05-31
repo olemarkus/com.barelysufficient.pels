@@ -52,12 +52,13 @@ Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting u
 
 ## Smart Tasks
 
-Smart tasks show devices with an active target and ready-by time. Tasks are created from Homey Flow cards, then shown in the settings UI so you can inspect the current plan and history.
+Smart tasks show devices with an active target and ready-by time. Tasks are created from Homey Flow cards or the **New smart task** dashboard widget, then shown in the settings UI so you can inspect the current plan and history.
 
 | Card or view | What it does |
 | --- | --- |
 | **Add charging task** | Plans EV charging toward a target battery percentage by a ready-by time. |
 | **Add heating task** | Plans heating toward a target temperature by a ready-by time. |
+| **New smart task widget** | Creates a task from a Homey dashboard, without a Flow. |
 | **Smart tasks list** | Shows current tasks, targets, and ready-by times. |
 | **Task plan page** | Shows selected hours, price context, expected work, background usage, and progress. |
 | **History** | Shows previous task outcomes. |
