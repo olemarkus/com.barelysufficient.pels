@@ -82,7 +82,7 @@ Smart tasks compose with the rest of PELS: the hard cap, priorities, and daily b
 
 Mode targets, boost settings, and Smart task targets can be different on purpose. See [Different Targets Can Be Useful](/smart-tasks#different-targets-can-be-useful).
 
-See [Smart Tasks](/smart-tasks) for the full guide.
+See [Smart Tasks](/smart-tasks) for the full guide, or [Deadline Charging With State of Charge](/how-to-deadline-charging-soc) for the EV charging walkthrough.
 
 ## Flow-Booked Hours
 

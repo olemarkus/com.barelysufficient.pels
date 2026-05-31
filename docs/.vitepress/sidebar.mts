@@ -43,6 +43,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Compare Cost-Saving Functions', link: '/cost-saving-functions' },
       { text: 'Daily Energy Budget', link: '/daily-budget' },
       { text: 'Smart Tasks', link: '/smart-tasks' },
+      { text: 'Deadline Charging With SoC', link: '/how-to-deadline-charging-soc' },
       { text: 'Book Cheap Hours With Flows', link: '/how-to-book-cheap-hours-with-flows' },
       { text: 'Price Tags in Flow & HomeyScript', link: '/price-tags' },
     ],
