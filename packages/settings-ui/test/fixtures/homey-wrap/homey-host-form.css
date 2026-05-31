@@ -1,0 +1,346 @@
+/******************************
+ * Homey Form
+ *
+ * @WARNING FOR APP DEVELOPERS: Don't overwrite these classes, this may break your app in the future.
+ ******************************/
+
+.homey-form {
+  width: 100%;
+}
+
+.homey-form > *:first-child {
+  margin-top: 0;
+}
+
+.homey-form > *:last-child {
+  margin-bottom: 0;
+}
+
+/**
+ * homey-form-label
+ */
+label.homey-form-label {
+  all: unset; /* Remove legacy css layout */
+  display: block;
+  margin-top: var(--homey-su-3);
+  margin-bottom: 4px;
+  font-size: var(--homey-font-size-small);
+  color: var(--homey-color-text-light);
+}
+
+/**
+ * homey-form-input
+ */
+input.homey-form-input[type='text'],
+input.homey-form-input[type='number'],
+input.homey-form-input[type='password'],
+input.homey-form-input[type='url'],
+input.homey-form-input-large[type],
+textarea.homey-form-textarea,
+select.homey-form-select {
+  all: unset; /* Remove legacy css layout */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: block;
+  box-sizing: border-box;
+  margin: 0 1px; /* Compensate box-shadow solution for border causing to breakout layout */
+  background: var(--homey-color-component);
+  padding: var(--homey-su-1);
+  border-radius: var(--homey-border-radius-small);
+  font-size: var(--homey-font-size-default);
+  line-height: 24px;
+  color: var(--homey-color-text);
+  border: none;
+  box-shadow: 0 0 0 1px var(--homey-color-line);
+  transition: var(--homey-duration-fast) var(--homey-curve-fast-in);
+  transition-property: box-shadow, color;
+  -webkit-tap-highlight-color: transparent;
+  text-align: start;
+}
+
+select.homey-form-select {
+  padding-inline-end: var(--homey-su-6);
+}
+
+input.homey-form-input-large[type] {
+  padding: 12px var(--homey-su-2);
+}
+
+/* Remove arrows Webkit browser */
+input.homey-form-input[type='number']::-webkit-outer-spin-button,
+input.homey-form-input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Remove arrows for Mozilla browsers  */
+input.homey-form-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+input.homey-form-input[type='text'],
+input.homey-form-input[type='number'],
+input.homey-form-input[type='password'],
+input.homey-form-input[type='url'],
+input.homey-form-input-large[type],
+textarea.homey-form-textarea,
+select.homey-form-select {
+  width: calc(
+    100% - 2px
+  ); /* Compensate box-shadow solution for border causing to breakout layout */
+}
+
+input.homey-form-input[type='text']::placeholder,
+input.homey-form-input[type='number']::placeholder,
+input.homey-form-input[type='password']::placeholder,
+input.homey-form-input[type='url']::placeholder,
+input.homey-form-input-large[type]::placeholder,
+textarea.homey-form-textarea::placeholder,
+select.homey-form-select::placeholder {
+  color: var(--homey-color-text-placeholder);
+  font-weight: var(--homey-font-weight-regular);
+  opacity: 1;
+}
+
+input.homey-form-input[type='text']:hover,
+input.homey-form-input[type='number']:hover,
+input.homey-form-input[type='password']:hover,
+input.homey-form-input[type='url']:hover,
+input.homey-form-input-large[type]:hover,
+textarea.homey-form-textarea:hover,
+select.homey-form-select:hover {
+  box-shadow: 0 0 0 1px var(--homey-color-line-hover);
+}
+
+input.homey-form-input[type='text']:hover::placeholder,
+input.homey-form-input[type='number']:hover::placeholder,
+input.homey-form-input[type='password']:hover::placeholder,
+input.homey-form-input[type='url']:hover::placeholder,
+input.homey-form-input-large[type]:hover::placeholder,
+textarea.homey-form-textarea:hover::placeholder,
+select.homey-form-select:hover::placeholder {
+  color: var(--homey-color-text-placeholder-hover);
+}
+
+input.homey-form-input[type='text']:active,
+input.homey-form-input[type='number']:active,
+input.homey-form-input[type='password']:active,
+input.homey-form-input[type='url']:active,
+input.homey-form-input-large[type]:active,
+textarea.homey-form-textarea:active,
+select.homey-form-select:active {
+  box-shadow: 0 0 0 1px var(--homey-color-line-active);
+}
+
+input.homey-form-input[type='text']:active::placeholder,
+input.homey-form-input[type='number']:active::placeholder,
+input.homey-form-input[type='password']:active::placeholder,
+input.homey-form-input[type='url']:active::placeholder,
+input.homey-form-input-large[type]:active::placeholder,
+textarea.homey-form-textarea:active::placeholder,
+select.homey-form-select:active::placeholder {
+  color: var(--homey-color-text-placeholder-active);
+}
+
+input.homey-form-input[type='text']:focus,
+input.homey-form-input[type='number']:focus,
+input.homey-form-input[type='password']:focus,
+input.homey-form-input[type='url']:focus,
+input.homey-form-input-large[type]:focus,
+textarea.homey-form-textarea:focus,
+select.homey-form-select:focus {
+  box-shadow: 0 0 0 2px var(--homey-color-highlight);
+}
+
+select.homey-form-select {
+  background-image: url('../icons/chevron-down-regular.svg');
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px 16px;
+}
+
+select.homey-form-select:lang(ar) {
+  background-position: left 16px center;
+}
+
+/* Checkbox & RadioButton */
+label.homey-form-radio,
+label.homey-form-checkbox {
+  all: unset;
+  display: grid;
+  justify-content: start;
+  grid-auto-flow: column;
+  grid-gap: var(--homey-su-1);
+  font-size: var(--homey-font-size-default);
+  line-height: 24px;
+  margin: 12px 0;
+  cursor: pointer;
+}
+
+label.homey-form-radio:hover,
+label.homey-form-checkbox:hover {
+  color: var(--homey-color-black);
+}
+
+input.homey-form-radio-input,
+input.homey-form-checkbox-input {
+  display: none;
+}
+
+.homey-form-radio-checkmark,
+.homey-form-checkbox-checkmark {
+  box-sizing: border-box;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--homey-color-mono-40);
+  position: relative;
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.homey-form-radio-checkmark {
+  border-radius: 50%;
+  padding: 2px;
+  background-clip: content-box;
+}
+
+.homey-form-checkbox-checkmark {
+  border-radius: 4px;
+}
+
+.homey-form-checkbox-checkmark::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  bottom: 2px;
+  left: 2px;
+  opacity: 0;
+  -webkit-mask-image: url('../icons/checkmark.svg');
+  mask-image: url('../icons/checkmark.svg');
+  -webkit-mask-size: 100%;
+  mask-size: 100%;
+  background-color: var(--homey-icon-color-white);
+}
+
+label.homey-form-radio:hover .homey-form-radio-checkmark,
+label.homey-form-checkbox:hover .homey-form-checkbox-checkmark {
+  border-color: var(--homey-color-mono-50);
+}
+
+input.homey-form-radio-input:checked ~ .homey-form-radio-checkmark,
+input.homey-form-checkbox-input:checked ~ .homey-form-checkbox-checkmark {
+  border-color: var(--homey-color-highlight);
+  border-width: 2px;
+  background-color: var(--homey-color-highlight);
+}
+
+input.homey-form-checkbox-input:checked ~ .homey-form-checkbox-checkmark::before {
+  opacity: 1;
+}
+
+.homey-form-radio-text,
+.homey-form-checkbox-text {
+  /* placeholder */
+}
+
+input.homey-form-input[type='radio'] + label.homey-form-radiobutton-label::before,
+input.homey-form-input[type='checkbox'] + label.homey-form-radiobutton-label::before {
+  content: '';
+  position: absolute;
+}
+
+/**
+ * homey-form-radio-set
+ * homey-form-checkbox-set
+ */
+fieldset.homey-form-radio-set,
+fieldset.homey-form-checkbox-set {
+  all: unset;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+fieldset.homey-form-radio-set > *:last-child,
+fieldset.homey-form-checkbox-set > *:last-child {
+  margin-bottom: 0 !important;
+}
+
+.homey-form-radio-set-title,
+.homey-form-checkbox-set-title {
+  all: unset;
+  width: 100%;
+  font-size: var(--homey-font-size-small);
+  color: var(--homey-color-text-light);
+}
+
+/**
+ * homey-form-group
+ */
+.homey-form-group {
+  margin-top: var(--homey-su-3);
+  margin-bottom: var(--homey-su-3);
+}
+
+.homey-form-group-large {
+  margin-top: var(--homey-su-4);
+  margin-bottom: var(--homey-su-4);
+}
+
+/**
+ * .homey-form-pincode
+ */
+.homey-form-pincode {
+  display: grid;
+  grid-auto-flow: column;
+  justify-content: center;
+}
+
+.homey-form-pincode input.homey-form-input {
+  width: var(--homey-su-5);
+  height: var(--homey-su-6);
+  line-height: var(--homey-su-6);
+  text-align: center;
+  padding: 0;
+  font-size: 24px;
+  font-weight: var(--homey-font-weight-bold);
+  margin: 0 6px;
+}
+
+.homey-form-pincode input.homey-form-input:nth-last-child(8):first-child,
+.homey-form-pincode input.homey-form-input:nth-last-child(8):first-child ~ input.homey-form-input {
+  width: var(--homey-su-4);
+  height: var(--homey-su-5);
+  line-height: var(--homey-su-5);
+  margin: 0 4px;
+}
+
+/**
+ * homey-form-fieldset
+ */
+fieldset.homey-form-fieldset {
+  all: unset; /* Remove legacy css layout */
+  width: 100%;
+  border-color: var(--homey-color-line);
+  margin-top: var(--homey-su-2);
+  margin-bottom: var(--homey-su-2);
+}
+
+fieldset.homey-form-fieldset > :first-child {
+  margin-top: 0;
+}
+
+fieldset.homey-form-fieldset > :last-child {
+  margin-bottom: 0;
+}
+
+legend.homey-form-legend {
+  all: unset; /* Remove legacy css layout */
+  color: var(--homey-color-text);
+  font-size: var(--homey-font-size-medium);
+  font-weight: var(--homey-font-weight-bold);
+  width: 100%;
+}

@@ -1,0 +1,43 @@
+/******************************
+ * Homey Icons
+ *
+ * @WARNING FOR APP DEVELOPERS: Don't overwrite these classes, this may break your app in the future.
+ ******************************/
+
+[class^='homey-icon-'],
+[class*=' homey-icon-'] {
+  display: var(--homey-icon-display, inline-block);
+  -webkit-mask-size: var(--homey-icon-size, var(--homey-icon-size-regular));
+  mask-size: var(--homey-icon-size, var(--homey-icon-size-regular));
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+
+  width: var(--homey-icon-size, var(--homey-icon-size-regular));
+  height: var(--homey-icon-size, var(--homey-icon-size-regular));
+
+  background: var(--homey-icon-color, var(--homey-icon-color-current));
+}
+
+.homey-icon-arrow-right {
+  -webkit-mask-image: url('../icons/arrow-right.svg');
+  mask-image: url('../icons/arrow-right.svg');
+}
+
+/* Flip the arrow for RTL languages */
+.homey-icon-arrow-right:lang(ar) {
+  -webkit-mask-image: url('../icons/arrow-left.svg');
+  mask-image: url('../icons/arrow-left.svg');
+}
+
+.homey-icon-arrow-left {
+  -webkit-mask-image: url('../icons/arrow-left.svg');
+  mask-image: url('../icons/arrow-left.svg');
+}
+
+/* Flip the arrow for RTL languages */
+.homey-icon-arrow-left:lang(ar) {
+  -webkit-mask-image: url('../icons/arrow-right.svg');
+  mask-image: url('../icons/arrow-right.svg');
+}
