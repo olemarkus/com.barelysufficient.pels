@@ -1474,6 +1474,13 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
   });
 
   it('keeps the committed hour count through optimizer hour-count churn', () => {
+    // Seed at nowMs=1h committing [2h, 3h, 4h]. At nowMs=2h the optimizer
+    // reprices and emits live [4h, 5h] — but 2h is the CURRENT hour and 3h is
+    // still FUTURE (neither has elapsed). The allocator dropped 3h (repriced to
+    // 0 kWh / `avoid`) and tacked on a cheaper 5h. That is genuine optimizer
+    // thrash, not an elapse: dropping committed 3h would shrink the contract
+    // and adopting 5h would grow it on thrash. The merge must FREEZE to the
+    // full commitment [2h, 3h, 4h] — no growth revision, 5h not adopted.
     const events: Array<{ reason: string; hours: number }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
@@ -1489,8 +1496,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Seed at nowMs=1h with three planned hours [2h, 3h, 4h]. No event.
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
 
-    // Replan at nowMs=2h shrinks future allocation to [4h, 5h] (count 3 → 2
-    // fires the trigger).
+    // Replan at nowMs=2h: live = [4h, 5h]. 3h (future) dropped, 5h (future)
+    // added — pure optimizer churn while 2h is current.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
@@ -1500,22 +1507,69 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       ]),
     })], 2 * HOUR_MS);
 
-    // Replan at nowMs=4h shrinks to a single remaining hour [5h] — the
-    // emitted hour count must drop with the schedule, not stay latched at
-    // its peak.
+    // No growth revision: the commitment froze.
+    expect(events).toEqual([]);
+    // Schedule unchanged; 5h not adopted, 3h retained.
+    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+      { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+    ]);
+  });
+
+  it('adopts a newly-planned future hour once early committed hours genuinely elapse', () => {
+    // Seed at nowMs=1h committing [2h, 3h, 4h]. At nowMs=4h the clock has
+    // advanced: 2h and 3h are strictly before the current hour (4h), so they
+    // have TRULY elapsed (settled history, not optimizer churn). The live plan
+    // is [4h, 5h] — 4h is the current committed hour and 5h is a freshly-planned
+    // future hour. With the elapsed hours excluded from the coverage check, the
+    // live plan covers the still-pending committed hour ([4h]), so the 5h
+    // expansion is adopted. Elapsed hours are preserved as floors. Adopting an
+    // extra hour (count 3 → 4) is a schedule growth and fires exactly one
+    // revision.
+    const events: Array<{ reason: string; hours: number }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          reason: event.reason,
+          hours: event.revision.hours.length,
+        });
+      },
+    });
+
+    // Seed at nowMs=1h with three planned hours [2h, 3h, 4h]. No event.
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+
+    // Replan at nowMs=4h: 2h/3h truly elapsed; live = [4h, 5h] (5h is new).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]),
+    })], 4 * HOUR_MS);
+
+    // Replan again at nowMs=5h: live = [5h] only. 4h has elapsed and 5h is
+    // already committed, so nothing grows — no further event.
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 6 * HOUR_MS,
       horizonPlan: makeHorizon([
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 4 * HOUR_MS);
+    })], 5 * HOUR_MS);
 
-    expect(events).toEqual([]);
+    // Exactly one growth event from the 5h adoption at nowMs=4h.
+    expect(events).toEqual([{ reason: 'prices_revised', hours: 4 }]);
+    // Elapsed hours preserved as floors; the new future hour adopted.
     expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
+      { startsAtMs: 5 * HOUR_MS, plannedKWh: 1.5 },
     ]);
   });
 

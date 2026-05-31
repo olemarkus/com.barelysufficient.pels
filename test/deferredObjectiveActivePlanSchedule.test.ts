@@ -3,18 +3,30 @@ import {
   shouldFireNotification,
 } from '../lib/objectives/deferredObjectives/activePlanSchedule';
 
+const HOUR_MS = 60 * 60 * 1000;
+// Anchor the hour constants on real hour boundaries so the partition keys
+// (`floor(nowMs / HOUR_MS)`) land cleanly. TEN/ELEVEN/TWELVE/THIRTEEN are
+// consecutive hour-aligned `startsAtMs` values; a `nowMs` "in hour N" is N's
+// boundary plus a sub-hour offset.
+const TEN = 10 * HOUR_MS;
+const ELEVEN = 11 * HOUR_MS;
+const TWELVE = 12 * HOUR_MS;
+const THIRTEEN = 13 * HOUR_MS;
+const SUB_HOUR = 30 * 60 * 1000; // 30 min into an hour
+
 describe('mergeHoursPreservingCommitment', () => {
   it('returns the live hours when the commitment is empty (satisfied-then-drift)', () => {
     const merged = mergeHoursPreservingCommitment(
       [],
       [
-        { startsAtMs: 5_000, plannedKWh: 0.75 },
-        { startsAtMs: 8_000, plannedKWh: 0.5 },
+        { startsAtMs: TEN, plannedKWh: 0.75 },
+        { startsAtMs: ELEVEN, plannedKWh: 0.5 },
       ],
+      TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: 5_000, plannedKWh: 0.75 },
-      { startsAtMs: 8_000, plannedKWh: 0.5 },
+      { startsAtMs: TEN, plannedKWh: 0.75 },
+      { startsAtMs: ELEVEN, plannedKWh: 0.5 },
     ]);
   });
 
@@ -24,17 +36,19 @@ describe('mergeHoursPreservingCommitment', () => {
     // must not be allowed to rewrite the commitment downward — otherwise
     // the persisted `commitment.hours[].plannedKWh` floor would shrink and
     // silently weaken the guarantee against further cycles' optimizer
-    // thrash.
+    // thrash. now is in the committed hour (TEN), so TEN is current (gated)
+    // and covered by live; the new ELEVEN expansion is adopted.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: 2_000, plannedKWh: 0.65 }],
+      [{ startsAtMs: TEN, plannedKWh: 0.65 }],
       [
-        { startsAtMs: 2_000, plannedKWh: 0.4 },
-        { startsAtMs: 7_000, plannedKWh: 0.3 },
+        { startsAtMs: TEN, plannedKWh: 0.4 },
+        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
       ],
+      TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: 2_000, plannedKWh: 0.65 },
-      { startsAtMs: 7_000, plannedKWh: 0.3 },
+      { startsAtMs: TEN, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
     ]);
   });
 
@@ -44,63 +58,175 @@ describe('mergeHoursPreservingCommitment', () => {
     // re-fill now claims more for the same hour), the live value wins
     // because it represents the larger contract.
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: 2_000, plannedKWh: 0.4 }],
+      [{ startsAtMs: TEN, plannedKWh: 0.4 }],
       [
-        { startsAtMs: 2_000, plannedKWh: 0.65 },
-        { startsAtMs: 7_000, plannedKWh: 0.3 },
+        { startsAtMs: TEN, plannedKWh: 0.65 },
+        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
       ],
+      TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: 2_000, plannedKWh: 0.65 },
-      { startsAtMs: 7_000, plannedKWh: 0.3 },
+      { startsAtMs: TEN, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
     ]);
   });
 
   it('preserves committed hours that the live plan no longer fills (commitment cannot shrink)', () => {
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: 2_000, plannedKWh: 0.65 },
-        { startsAtMs: 4_000, plannedKWh: 0.3 },
+        { startsAtMs: TEN, plannedKWh: 0.65 },
+        { startsAtMs: ELEVEN, plannedKWh: 0.3 },
       ],
       [],
+      TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: 2_000, plannedKWh: 0.65 },
-      { startsAtMs: 4_000, plannedKWh: 0.3 },
+      { startsAtMs: TEN, plannedKWh: 0.65 },
+      { startsAtMs: ELEVEN, plannedKWh: 0.3 },
     ]);
   });
 
   it('preserves the commitment when live disagrees (optimizer churn, not expansion)', () => {
-    // Live is missing a committed hour — that is NOT expansion, it is the
-    // committed-replan path producing a different set of hours than the
-    // commitment. Preserve the commitment as-is so the schedule does not
-    // churn from optimizer thrash.
+    // Live is missing the still-current TEN committed hour — that is NOT
+    // expansion, it is the committed-replan path producing a different set of
+    // hours than the commitment. now is in TEN, so TEN is current and gates
+    // coverage; live drops it, so freeze.
     const merged = mergeHoursPreservingCommitment(
       [
-        { startsAtMs: 2_000, plannedKWh: 1.0 },
-        { startsAtMs: 4_000, plannedKWh: 1.0 },
+        { startsAtMs: TEN, plannedKWh: 1.0 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.0 },
       ],
       [
-        { startsAtMs: 1_000, plannedKWh: 1.0 },
-        { startsAtMs: 5_000, plannedKWh: 1.0 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.0 },
+        { startsAtMs: TWELVE, plannedKWh: 1.0 },
       ],
+      TEN + SUB_HOUR,
     );
     expect(merged).toEqual([
-      { startsAtMs: 2_000, plannedKWh: 1.0 },
-      { startsAtMs: 4_000, plannedKWh: 1.0 },
+      { startsAtMs: TEN, plannedKWh: 1.0 },
+      { startsAtMs: ELEVEN, plannedKWh: 1.0 },
+    ]);
+  });
+
+  it('adopts a new future hour once an early committed hour has elapsed (freeze-forever fix)', () => {
+    // Regression: commit [TEN, ELEVEN]; later the task extends and the live
+    // plan is [ELEVEN, TWELVE]. now is in hour ELEVEN, so TEN has truly
+    // elapsed (TEN < currentHourStart) and ELEVEN is the current hour. The
+    // elapsed TEN must not gate coverage (otherwise the schedule freezes
+    // forever after the first hour passes): live ⊇ the current/future
+    // committed hours ([ELEVEN]), so we adopt the expansion. TEN and ELEVEN
+    // are preserved as floors and TWELVE is added.
+    const merged = mergeHoursPreservingCommitment(
+      [
+        { startsAtMs: TEN, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      ],
+      [
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, plannedKWh: 1.2 },
+      ],
+      ELEVEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([
+      { startsAtMs: TEN, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, plannedKWh: 1.2 },
+    ]);
+    // The new future hour is present (the freeze-forever bug dropped it).
+    expect(merged.some((h) => h.startsAtMs === TWELVE)).toBe(true);
+  });
+
+  it('preserves the committed kWh floor on an overlapping hour after an elapse', () => {
+    // Same elapsed-hour shape, but the live re-fill for the still-current
+    // overlapping hour (ELEVEN) claims LESS than the commitment. The committed
+    // kWh must survive as a floor.
+    const merged = mergeHoursPreservingCommitment(
+      [
+        { startsAtMs: TEN, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      ],
+      [
+        { startsAtMs: ELEVEN, plannedKWh: 0.8 },
+        { startsAtMs: TWELVE, plannedKWh: 1.2 },
+      ],
+      ELEVEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([
+      { startsAtMs: TEN, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, plannedKWh: 1.2 },
+    ]);
+  });
+
+  it('freezes when a still-future committed hour is dropped BEFORE the earliest live hour (the P0 case)', () => {
+    // The case the old live-earliest-hour partition missed. commit
+    // [ELEVEN, TWELVE, THIRTEEN]; the optimizer reprices and emits live
+    // [THIRTEEN, ...] — ELEVEN and TWELVE are repriced to 0 kWh and vanish
+    // from the live set. now is in hour TEN (before ELEVEN), so ELEVEN and
+    // TWELVE are still FUTURE (>= currentHourStart), not elapsed. The old
+    // code keyed off the live earliest hour (THIRTEEN), misclassified ELEVEN
+    // and TWELVE as "elapsed", found live covered the remaining ([THIRTEEN]),
+    // and ADOPTED — dropping committed TWELVE and growing on optimizer thrash.
+    // Keying off nowMs, ELEVEN/TWELVE are current/future and missing from
+    // live, so this is genuine churn → FREEZE.
+    const merged = mergeHoursPreservingCommitment(
+      [
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, plannedKWh: 1.5 },
+        { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
+      ],
+      [
+        { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
+        { startsAtMs: 14 * HOUR_MS, plannedKWh: 1.5 },
+      ],
+      TEN + SUB_HOUR,
+    );
+    // Frozen to the full commitment.
+    expect(merged).toEqual([
+      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, plannedKWh: 1.5 },
+      { startsAtMs: THIRTEEN, plannedKWh: 1.5 },
+    ]);
+    // The dropped future hour is retained and the optimizer-thrash expansion
+    // (14:00) is NOT adopted.
+    expect(merged.some((h) => h.startsAtMs === TWELVE)).toBe(true);
+    expect(merged.some((h) => h.startsAtMs === 14 * HOUR_MS)).toBe(false);
+  });
+
+  it('still freezes on genuine future-hour churn (dropped hour after the earliest live hour)', () => {
+    // Pure churn: every committed hour is current/future, and live drops the
+    // TWELVE future hour. now is in TEN, so nothing has elapsed; the gap is
+    // genuine churn, so the commitment must freeze (no shrink).
+    const merged = mergeHoursPreservingCommitment(
+      [
+        { startsAtMs: TEN, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+        { startsAtMs: TWELVE, plannedKWh: 1.5 },
+      ],
+      [
+        { startsAtMs: TEN, plannedKWh: 1.5 },
+        { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      ],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([
+      { startsAtMs: TEN, plannedKWh: 1.5 },
+      { startsAtMs: ELEVEN, plannedKWh: 1.5 },
+      { startsAtMs: TWELVE, plannedKWh: 1.5 },
     ]);
   });
 
   it('returns live sorted by startsAtMs when expansion adds out-of-order new hours', () => {
     const merged = mergeHoursPreservingCommitment(
-      [{ startsAtMs: 10_000, plannedKWh: 0.5 }],
+      [{ startsAtMs: ELEVEN, plannedKWh: 0.5 }],
       [
-        { startsAtMs: 15_000, plannedKWh: 0.4 },
-        { startsAtMs: 10_000, plannedKWh: 0.5 },
-        { startsAtMs: 5_000, plannedKWh: 0.3 },
+        { startsAtMs: TWELVE, plannedKWh: 0.4 },
+        { startsAtMs: ELEVEN, plannedKWh: 0.5 },
+        { startsAtMs: TEN, plannedKWh: 0.3 },
       ],
+      ELEVEN + SUB_HOUR,
     );
-    expect(merged.map((h) => h.startsAtMs)).toEqual([5_000, 10_000, 15_000]);
+    expect(merged.map((h) => h.startsAtMs)).toEqual([TEN, ELEVEN, TWELVE]);
   });
 });
 
