@@ -507,6 +507,17 @@
   font-weight: var(--pw-weight-medium, 500);
 }
 
+/* A real planner verdict that the deadline may be missed (cannot_meet / at_risk).
+   The most prominent line in the preview — a warning-toned banner above the cost
+   so the user can't miss it before committing an unreachable ready-by. */
+.preview-line--feasibility {
+  color: var(--pw-text-warning, #b9770e);
+  background: color-mix(in srgb, var(--pw-warning, #f5a623) 14%, transparent);
+  border-radius: var(--pw-radius-small, 6px);
+  padding: var(--pw-su-2, 8px);
+  font-weight: var(--pw-weight-medium, 500);
+}
+
 /* ----- Preview price chart ----- */
 
 /* The compact price curve sits between the cost headline and the when-line. A
