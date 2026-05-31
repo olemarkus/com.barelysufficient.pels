@@ -1,7 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from './fixtures/test';
+import { expect, HOMEY_HOST_CSS, test, type Page } from './fixtures/test';
 
 // Regression gate for the Homey host-stylesheet button bleed.
 //
@@ -17,10 +14,6 @@ import { expect, test, type Page } from './fixtures/test';
 // native <button> ends up wearing the host's grey. Self-contained (injects the
 // committed fixture itself), so it runs in the normal chromium-mobile CI project
 // with no special server mode.
-const FIXTURE_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'test', 'fixtures', 'homey-wrap');
-const HOST_CSS = ['homey-host-base.css', 'homey-host-button.css']
-  .map((f) => fs.readFileSync(path.join(FIXTURE_DIR, f), 'utf8'))
-  .join('\n');
 
 const HOST_GREY = 'rgb(231, 231, 231)'; // #e7e7e7 — the host legacy-button background
 
@@ -60,7 +53,7 @@ test('Homey host stylesheet does not bleed onto any native <button> in dark them
   // Reproduce the real iframe: inject the captured Homey host CSS AFTER our sheet.
   // `addStyleTag` resolves once the sheet is applied and `getComputedStyle`
   // below forces a synchronous style recalc, so no settle wait is needed.
-  await page.addStyleTag({ content: HOST_CSS });
+  await page.addStyleTag({ content: HOMEY_HOST_CSS });
 
   const bleeders = await page.evaluate((grey) => {
     const out: { cls: string; bg: string }[] = [];

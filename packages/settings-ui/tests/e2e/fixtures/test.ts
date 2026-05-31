@@ -36,7 +36,19 @@ const HOST_FIXTURE_DIR = path.join(
   'fixtures',
   'homey-wrap',
 );
-const HOMEY_HOST_CSS = ['homey-host-base.css', 'homey-host-button.css']
+// The full host bundle, in the SAME order Homey's `homey.css` manifest @imports
+// it (variables → base → typography → button → form → icon). Injecting only a
+// subset (e.g. base + button) would miss bleed from the rest — most notably the
+// form sheet, which restyles bare `<input>`s — so captures wouldn't equal the
+// real iframe. Exported so the host-bleed regression shares one source of truth.
+export const HOMEY_HOST_CSS = [
+  'homey-host-variables.css',
+  'homey-host-base.css',
+  'homey-host-typography.css',
+  'homey-host-button.css',
+  'homey-host-form.css',
+  'homey-host-icon.css',
+]
   .map((f) => fs.readFileSync(path.join(HOST_FIXTURE_DIR, f), 'utf8'))
   .join('\n');
 
