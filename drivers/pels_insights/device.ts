@@ -134,7 +134,7 @@ class PelsInsightsDevice extends Homey.Device {
 
     this.registerCapabilityListener('mode_indicator', async (value: unknown) => {
       if (typeof value !== 'string' || !value.trim()) return;
-      this.homey.settings.set(OPERATING_MODE_SETTING, value);
+      await this.commitModeSelection(value.trim());
     });
 
     this.homey.settings.on('set', async (key: string) => {
@@ -150,6 +150,34 @@ class PelsInsightsDevice extends Homey.Device {
         await this.updateFromStatus();
       }
     });
+  }
+
+  private modeSelectionSeq = 0;
+
+  private async commitModeSelection(mode: string): Promise<void> {
+    // Sequence each selection so a stale failed write cannot revert the tile
+    // over a newer tap. Rapid taps trigger overlapping read-modify-write cycles;
+    // the async revert below must only fire when this is still the latest one.
+    const requestSeq = ++this.modeSelectionSeq;
+    // Capture the mode the runtime is currently committed to *before* writing,
+    // so we can roll the tile back if the settings write is rejected. The
+    // settings store still holds the old value on failure (the write did not
+    // land), so this is the value the runtime will keep acting on.
+    const committedMode = this.getActiveMode();
+    try {
+      // `ManagerSettings.set` is typed as returning `void`; resolving through a
+      // Promise turns any synchronous throw into a catchable rejection without
+      // awaiting a non-thenable.
+      await Promise.resolve(this.homey.settings.set(OPERATING_MODE_SETTING, mode));
+    } catch (error) {
+      this.error('Failed to commit mode selection', error);
+      // Revert the tile to the runtime's true mode so it cannot silently
+      // display a mode the controller never adopted — but only if no newer
+      // selection has started, so we don't clobber a later successful tap.
+      if (requestSeq === this.modeSelectionSeq) {
+        await this.updateMode(committedMode);
+      }
+    }
   }
 
   private getActiveMode(): string {
