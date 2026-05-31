@@ -1,0 +1,29 @@
+name: Setup Node and dependencies
+description: Install the pinned Node.js + npm toolchain and the workspace dependencies via npm ci.
+
+inputs:
+  node-version:
+    description: Node.js version to install
+    default: "22.22.0"
+  npm-version:
+    description: npm version to pin globally
+    default: "10.9.4"
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - name: Pin npm ${{ inputs.npm-version }}
+      shell: bash
+      env:
+        NPM_VERSION: ${{ inputs.npm-version }}
+      run: npm install --global "npm@$NPM_VERSION"
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
