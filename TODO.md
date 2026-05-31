@@ -85,13 +85,22 @@ copy) are untouched by that pass and remain open.*
       open question whether it satisfies any persona as built, or needs an action
       / re-scope (harness: `smart_tasks-480`). Walk-through pending.
 
-- [ ] **Get power now / Held-back devices (`starvation_rescue`) not loveable.**
-      Styling looks home-made, not Homey-token idiom: it reintroduces the
-      coloured left state-rail the owner already rejected (#1343/#1351,
-      `[[feedback_no_card_colour_rail]]`) plus a custom filled-green button. The
-      per-cause status copy leaks the engine's model at the owner — "Waiting on
-      an external service", "Under manual control", "On hold · 0 min" mean nothing
-      actionable (harness: `starvation_rescue-480-all`). Walk-through pending.
+- [ ] **Get power now / Held-back devices (`starvation_rescue`) — rescue rework
+      in progress; copy + create-screen consolidation remain.** Rail removed in
+      the CSS pass (#1372). Rescue rework (see `project_starvation_rescue_boost_direction`
+      memory): **PR1 delivered** — "Let it run now" now grants the device the
+      limit-lower-priority permission (boost) alongside the budget exemption — gated
+      on stepped-load eligibility (only stepped/EV devices can honour it) — so it
+      actually claims capacity (within the hard cap), plus an honest "Running as
+      soon as there's room" flash when there's no runnable plan. **Remaining:**
+      PR2 (a collapsed "Extra permissions" disclosure on the create_smart_task
+      compose screen — `May go over daily budget` / `May limit lower-priority
+      devices`, off by default); PR3 (rescue reuses the `/create` engine while
+      keeping its bespoke confirm sheet — do NOT route the panic path through the
+      full create panel). Also: a real at-cap honesty signal (the in-isolation
+      preview overstates, so the flash branch only catches the no-plan case, not
+      the at-cap case); and the per-cause status copy still leaks the engine model
+      ("Waiting on an external service", "Under manual control", "On hold · 0 min").
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
@@ -873,6 +882,17 @@ the renderer can land.*
       `lib/objectives/deferredObjectives/rescueReplan.ts`,
       `lib/dailyBudget/dailyBudgetBreakdown.ts` (forecast input).
       Source: `pels-runtime-reality` P1 on PR #983, 2026-05-23.
+      Update (2026-05-31, PR #1373): the budget-exemption rescue now also GRANTS
+      `limitLowerPriorityDevices: 'always'` to eligible (stepped-load) devices, but
+      that grant is inert in the plan for non-priority-1 devices for the same
+      `fullyReserved === 1` reason above — so a default-priority (e.g. 100) stepped
+      device's rescue is effectively budget-exemption-only until this lands. User
+      confirmed (2026-05-31) the right design is to let non-top devices use it too:
+      it would still only shed devices STRICTLY lower-priority than the rescued one
+      (exactly the `hardCap − uncontrolled − higherPriorityControlled` forecast),
+      which is safe. Deferred for now by user decision; pick up with this item.
+      The success flash already stays honest meanwhile (`runsCurrentHour` reflects
+      the actual resolved plan, not the granted permission).
 
 - [ ] **Validate the v2.9 train against retained prod logs.** (Carried forward from the v2.9 train P0
       closeout.) Confirm the live `cannot_meet`

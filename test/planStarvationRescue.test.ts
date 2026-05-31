@@ -10,6 +10,7 @@ import {
   resolveStarvationRowNote,
   resolveStarvationRowSubtext,
   resolveStarvationRowTone,
+  scheduledHoursIncludeCurrentHour,
   starvationDurationMinutes,
   starvationRowIsRescuable,
   starvationRowOffersRescue,
@@ -122,6 +123,35 @@ describe('starvation-rescue shared helpers', () => {
       expect(resolveStarvationRescueRejectCopy('deadline_passed')).toBe(STARVATION_RESCUE_WIDGET_COPY.deadlinePassed);
       expect(resolveStarvationRescueRejectCopy('write_conflict')).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueError);
       expect(resolveStarvationRescueRejectCopy(undefined)).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueError);
+    });
+  });
+
+  describe('scheduledHoursIncludeCurrentHour', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = Date.UTC(2026, 0, 1, 4, 30, 0); // 04:30 — mid-hour, floors to 04:00
+
+    it('is true when a scheduled hour matches the epoch-hour floor of now', () => {
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0) }], nowMs)).toBe(true);
+    });
+
+    it('is false when the only scheduled hour is a later (cheaper) hour', () => {
+      // The exact case the naive "has any scheduled hour" check got wrong.
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: Date.UTC(2026, 0, 1, 7, 0, 0) }], nowMs)).toBe(false);
+    });
+
+    it('matches the current hour even when other future hours are also scheduled', () => {
+      expect(scheduledHoursIncludeCurrentHour(
+        [{ startsAtMs: Date.UTC(2026, 0, 1, 4, 0, 0) }, { startsAtMs: Date.UTC(2026, 0, 1, 6, 0, 0) }],
+        nowMs,
+      )).toBe(true);
+    });
+
+    it('is false for an empty schedule', () => {
+      expect(scheduledHoursIncludeCurrentHour([], nowMs)).toBe(false);
+    });
+
+    it('ignores a past hour (a stale earlier bucket never counts as now)', () => {
+      expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: nowMs - HOUR }], nowMs)).toBe(false);
     });
   });
 });

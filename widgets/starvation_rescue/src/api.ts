@@ -3,7 +3,10 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { StarvationRescueDevice } from '../../../packages/contracts/src/starvationRescue';
-import { starvationRowOffersRescue } from '../../../packages/shared-domain/src/planStarvation';
+import {
+  scheduledHoursIncludeCurrentHour,
+  starvationRowOffersRescue,
+} from '../../../packages/shared-domain/src/planStarvation';
 import {
   formatScheduledHoursWindow,
   formatSmartTaskDeadlineLong,
@@ -126,11 +129,14 @@ const resolveRescuableDevice = (
   };
 };
 
-// Build the budget-exempt rescue candidate: a soft temperature objective aimed
-// at the device's intended normal target, with `rescue.exemptFromBudget:
-// 'always'` so it bypasses daily-budget admission while it's scheduled to run.
-// 'always' (not 'at_risk') because the user is explicitly asking for power NOW
-// on an already-starved device — there is no "wait until at risk" to defer to.
+// Build the rescue candidate: a soft temperature objective aimed at the device's
+// intended normal target, carrying `exemptFromBudget: 'always'` to bypass
+// daily-budget admission while it's scheduled. The OTHER rescue permission —
+// `limitLowerPriorityDevices` (the boost) — is added SERVER-SIDE only for
+// stepped-eligible devices (see `App.deviceSupportsLimitLowerPriority`); the
+// widget can't see the device profile, so it never grants it here. 'always' (not
+// 'at_risk') because the user is explicitly asking for power NOW on an already-
+// starved device — there is no "wait until at risk" to defer to.
 const buildRescueCandidate = (
   targetTemperatureC: number,
   deadlineAtMs: number,
@@ -239,6 +245,15 @@ export const createStarvationRescue = async (
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
   const result = homey.app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
-  if (result.ok) return { ok: true };
-  return createReject(mapAppReason(result.reason));
+  if (!result.ok) return createReject(mapAppReason(result.reason));
+  // Resolve the success flash against the JUST-PERSISTED plan at THIS moment, not
+  // the preview-time value: a confirm left open across an hour boundary must
+  // flash the live truth. `previewStarvationRescuePlan` is a pure re-derivation
+  // (no persist) of the now-persisted objective; absent it, fall back to the
+  // honest-conservative "queued".
+  const post = homey.app.previewStarvationRescuePlan?.(request.deviceId, candidate);
+  return {
+    ok: true,
+    runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false,
+  };
 };

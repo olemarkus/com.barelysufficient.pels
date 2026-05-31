@@ -158,39 +158,50 @@ export const upsertObjectiveForDevice = (
  * (the widget's preview handler) derive `(target, deadline, rescue)` from here,
  * so the plan/cost the user confirms can never diverge from what is persisted:
  *
- * - When the device ALREADY has an objective, only `rescue.exemptFromBudget:
- *   'always'` is added to it and `enabled: true` is ensured. Its target,
- *   deadline, enforcement, and any OTHER rescue permission are preserved
- *   verbatim. An existing `exemptFromBudget: 'at_risk'` is PROMOTED to
- *   `'always'` (the user explicitly asked for power now on an already-starved
- *   device — there is no "wait until at risk" left to defer to).
- * - When the device has NO objective, the caller-built `rescueEntry` (the
- *   device's intended normal target, a near-term deadline, and
- *   `rescue.exemptFromBudget: 'always'`) is used as-is.
+ * Always grants `exemptFromBudget: 'always'`; grants `limitLowerPriorityDevices:
+ * 'always'` only when `grantLimitLowerPriority` is true — that permission engages
+ * the device's boost, which only stepped-load devices (EV + stepped thermal) can
+ * honour (`isSteppedLoad`), so the caller gates it on device eligibility and we
+ * never persist a permission the device can't use.
+ *
+ * - When the device ALREADY has an objective, the granted permission(s) are added
+ *   to it and `enabled: true` is ensured; its target, deadline, and enforcement
+ *   are preserved verbatim. Existing `'at_risk'` permissions among those granted
+ *   are PROMOTED to `'always'` (the user explicitly asked for power now); a
+ *   non-granted standing permission is left untouched.
+ * - When the device has NO objective, the caller-built `rescueEntry` gets the
+ *   granted permission(s).
  */
 export const resolveBudgetExemptionRescueEntry = (
   prevEntry: DeferredObjectiveSettingsEntry | undefined,
   rescueEntry: DeferredObjectiveSettingsEntry,
-): DeferredObjectiveSettingsEntry => (
-  prevEntry === undefined
-    ? rescueEntry
-    : { ...prevEntry, enabled: true, rescue: { ...prevEntry.rescue, exemptFromBudget: 'always' } }
-);
+  grantLimitLowerPriority: boolean,
+): DeferredObjectiveSettingsEntry => {
+  const grantedPermissions = {
+    exemptFromBudget: 'always' as const,
+    ...(grantLimitLowerPriority ? { limitLowerPriorityDevices: 'always' as const } : {}),
+  };
+  // `!prevEntry` rather than `=== undefined`: `readObjectiveForDevice` already
+  // normalizes a missing/`null` SDK read to `undefined` (`?? undefined`), but a
+  // truthiness guard is defensive against a stray `null` and never narrows away a
+  // real entry (always a truthy object).
+  return !prevEntry
+    ? { ...rescueEntry, rescue: { ...rescueEntry.rescue, ...grantedPermissions } }
+    : { ...prevEntry, enabled: true, rescue: { ...prevEntry.rescue, ...grantedPermissions } };
+};
 
 /**
  * Grant a device a budget-exempt rescue (the starvation-rescue widget's lane),
  * with MERGE-not-replace semantics:
  *
- * - When the device ALREADY has an objective, only `rescue.exemptFromBudget:
- *   'always'` is added to it (and `enabled: true` is ensured — see below). Its
- *   target, deadline, enforcement, and any OTHER rescue permission (e.g. a
- *   standing `limitLowerPriorityDevices`) are preserved verbatim — the rescue
- *   grants a budget exemption, it does not overwrite the user's objective. Note
- *   this unconditionally sets `exemptFromBudget: 'always'`, so an existing
- *   `exemptFromBudget: 'at_risk'` is PROMOTED to `'always'` (the user explicitly
- *   asked for power now on an already-starved device — there is no "wait until at
- *   risk" left to defer to). A
- *   device already carrying the exemption AND enabled is a no-op write (the same
+ * - When the device ALREADY has an objective, the granted rescue permission(s)
+ *   are added to it (and `enabled: true` is ensured — see below): always the
+ *   budget exemption, plus `limitLowerPriorityDevices` when
+ *   `grantLimitLowerPriority` is true (the caller gates that on stepped-load
+ *   eligibility). Its target, deadline, and enforcement are preserved verbatim.
+ *   Existing `'at_risk'` permissions among those granted are PROMOTED to
+ *   `'always'` (the user explicitly asked for power now). A device already
+ *   carrying the granted permission(s) AND enabled is a no-op write (the same
  *   entry), so the run is not finalized/re-seeded.
  *
  *   `enabled: true` is forced because the budget exemption is ignored by the
@@ -214,8 +225,11 @@ export const addBudgetExemptionRescueForDevice = (
     deviceName: string | null;
     // The rescue objective to CREATE when the device has no existing objective.
     // Ignored (except for kind/target/deadline validation done by the caller)
-    // when an objective already exists — that path only adds the exemption.
+    // when an objective already exists — that path only adds the granted perms.
     rescueEntry: DeferredObjectiveSettingsEntry;
+    // Whether to also grant `limitLowerPriorityDevices` (the boost). The caller
+    // gates this on stepped-load eligibility — only stepped devices can honour it.
+    grantLimitLowerPriority: boolean;
   },
 ): ObjectiveWriteOutcome => {
   if (!ensureMigrated(deps)) return refuse(deps, 'rescue', params.deviceId, 'migration_deferred');
@@ -233,7 +247,7 @@ export const addBudgetExemptionRescueForDevice = (
   // so preview ≡ persist (see `resolveBudgetExemptionRescueEntry`). Preserves
   // the existing objective; ensures it is enabled (a disabled task's exemption
   // is ignored by the planner) and the budget exemption is on.
-  const nextEntry = resolveBudgetExemptionRescueEntry(prevEntry, params.rescueEntry);
+  const nextEntry = resolveBudgetExemptionRescueEntry(prevEntry, params.rescueEntry, params.grantLimitLowerPriority);
 
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
   notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });

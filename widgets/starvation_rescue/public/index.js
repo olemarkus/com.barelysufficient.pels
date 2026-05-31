@@ -52,7 +52,13 @@
     // optimisation off). Distinct from a hard error.
     previewUnavailable: "Can\u2019t preview this yet \u2014 no prices published for this window yet.",
     rescuePending: "Setting up\u2026",
+    // Two honest success flashes, branched on whether the projected plan actually
+    // runs the device now. The rescue grants the device priority over lower-
+    // priority loads (within the physical hard cap) AND lifts today's budget, but
+    // if the house is already at the cap with nothing lower-priority to displace,
+    // power isn't instant — so don't promise "on the way" unconditionally.
     rescueDone: "Power on the way",
+    rescueDoneQueued: "Running as soon as there\u2019s room",
     rescueError: "Could not set up the rescue. Try again.",
     // The previewed deadline slipped past while the user lingered — retryable.
     deadlinePassed: "That timing just passed. Try again."
@@ -93,6 +99,7 @@
   };
   var starvationRowOffersRescue = (cause) => cause === "budget";
   var starvationRowIsRescuable = (cause, intendedNormalTargetC) => starvationRowOffersRescue(cause) && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+  var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => reason === "deadline_passed" ? STARVATION_RESCUE_WIDGET_COPY.deadlinePassed : STARVATION_RESCUE_WIDGET_COPY.rescueError;
 
   // widgets/starvation_rescue/src/public/previewPayloads.ts
@@ -397,7 +404,7 @@
   var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
   var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
   var ONE_MINUTE_MS = 60 * 1e3;
-  var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
+  var ONE_HOUR_MS2 = 60 * ONE_MINUTE_MS;
   var formatEnergyEstimateKWh = (params) => {
     const planned = params.energyPlannedKWh;
     const expected = typeof params.energyExpectedKWh === "number" ? params.energyExpectedKWh : planned;
@@ -576,7 +583,7 @@
       renderConfirm(targets, view);
       return;
     }
-    doneMsgEl.textContent = C.rescueDone;
+    doneMsgEl.textContent = view.ranNow ? C.rescueDone : C.rescueDoneQueued;
   };
 
   // widgets/starvation_rescue/src/public/widgetApp.ts
@@ -685,7 +692,7 @@
     }
   };
   var submitRescue = async (homeyRef, usePreviewData, deviceId, deadlineAtMs) => {
-    if (usePreviewData) return { ok: true };
+    if (usePreviewData) return { ok: true, runsCurrentHour: false };
     if (!homeyRef) return { ok: false, reason: "unavailable" };
     try {
       return await homeyRef.api("POST", "/rescue", { deviceId, deadlineAtMs });
@@ -742,7 +749,7 @@
       render();
       const result = await submitRescue(homeyRef, usePreviewData, device.deviceId, deadlineAtMs);
       if (token !== requestSeq || view.kind !== "confirm") return;
-      view = result.ok ? { kind: "done" } : { ...view, submitting: false, error: resolveStarvationRescueRejectCopy(result.reason) };
+      view = result.ok ? { kind: "done", ranNow: result.runsCurrentHour } : { ...view, submitting: false, error: resolveStarvationRescueRejectCopy(result.reason) };
       render();
       if (result.ok) scheduleDoneReset();
     };

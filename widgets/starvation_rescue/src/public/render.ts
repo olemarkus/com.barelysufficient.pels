@@ -34,7 +34,9 @@ export type ViewState =
     submitting: boolean;
     error: string | null;
   }
-  | { kind: 'done' };
+  // `ranNow` = the projected plan actually runs the device now (vs queued behind
+  // the hard cap); branches the success flash so it never over-promises.
+  | { kind: 'done'; ranNow: boolean };
 
 export type RenderTargets = {
   root: HTMLElement;
@@ -178,7 +180,7 @@ const renderList = (targets: RenderTargets, payload: StarvationRescueDevicesPayl
 
 type OkPreview = Extract<StarvationRescuePreviewResponse, { ok: true }>;
 
-const isProjectable = (response: OkPreview): boolean => (
+export const isProjectable = (response: OkPreview): boolean => (
   response.estimate.status !== 'unavailable' && response.estimate.scheduledHours.length > 0
 );
 
@@ -281,5 +283,5 @@ export const renderWidget = (
     renderConfirm(targets, view);
     return;
   }
-  doneMsgEl.textContent = C.rescueDone;
+  doneMsgEl.textContent = view.ranNow ? C.rescueDone : C.rescueDoneQueued;
 };

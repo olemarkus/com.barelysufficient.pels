@@ -1956,26 +1956,38 @@ class PelsApp extends Homey.App {
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
     return this.readDeferredObjectiveEntry(deviceId) !== undefined;
   }
+  // Only stepped-load devices (EV chargers + stepped thermal) can honour the
+  // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
+  // which the boost resolvers gate on `isSteppedLoad`; a binary on/off device has
+  // no higher step to promote to. The rescue gates the grant on this so it never
+  // persists (nor surfaces) a permission the device can't use.
+  private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot): boolean {
+    return device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load';
+  }
   // Preview the plan the starvation rescue would actually produce, accounting
   // for the merge-not-replace persistence: when the device ALREADY has an
-  // objective, the rescue only adds `exemptFromBudget: 'always'` and preserves
-  // that objective's target/deadline, so the preview must project THAT entry —
-  // not the fresh now+3h rescue candidate the widget supplies. When no objective
-  // exists, the fresh candidate is previewed as-is. The resolved (persisted)
-  // deadline is returned so the widget labels and echoes the right value. This
-  // is the preview≡persist guarantee: both lanes derive `(target, deadline,
-  // rescue)` from `resolveBudgetExemptionRescueEntry`.
+  // objective, the rescue adds the budget exemption (+ `limitLowerPriorityDevices`
+  // for stepped devices) and preserves that objective's target/deadline, so the
+  // preview must project THAT entry — not the fresh now+3h rescue candidate the
+  // widget supplies. When no objective exists, the fresh candidate is previewed.
+  // The resolved (persisted) deadline is returned so the widget labels and echoes
+  // the right value. This is the preview≡persist guarantee: both lanes derive
+  // `(target, deadline, rescue)` from `resolveBudgetExemptionRescueEntry` with the
+  // same eligibility gate.
   public previewStarvationRescuePlan(
     deviceId: string,
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
   ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
     const existing = this.readDeferredObjectiveEntry(deviceId);
+    const device = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
+    const grantLimitLowerPriority = device ? this.deviceSupportsLimitLowerPriority(device) : false;
     // `freshRescueCandidate` carries `enabled`-less candidate fields; rebuild a
     // settings entry (enabled: true — a rescue is implicitly live) so the shared
     // resolver merges against the existing objective exactly as the write does.
     const resolvedEntry = resolveBudgetExemptionRescueEntry(
       existing,
       { ...freshRescueCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
+      grantLimitLowerPriority,
     );
     const { enabled: _enabled, ...resolvedCandidate } = resolvedEntry;
     return {
@@ -2158,22 +2170,24 @@ class PelsApp extends Homey.App {
   // with MERGE-not-replace semantics so an existing smart task is never
   // clobbered:
   //
-  //  - if the device ALREADY has an objective (its own deadline/target, or a
-  //    standing rescue permission such as `limitLowerPriorityDevices`), only
-  //    `rescue.exemptFromBudget: 'always'` is added — target, deadline, and any
-  //    other rescue permission are preserved verbatim;
+  //  - if the device ALREADY has an objective (its own deadline/target), the
+  //    granted rescue permission(s) are added — always `exemptFromBudget`, plus
+  //    `limitLowerPriorityDevices` for stepped-eligible devices
+  //    (`deviceSupportsLimitLowerPriority`) — target, deadline, and enforcement
+  //    preserved verbatim;
   //  - if the device has NO objective, the rescue objective is created (the
-  //    device's intended normal target, the caller's near-term deadline,
-  //    `rescue.exemptFromBudget: 'always'`).
+  //    device's intended normal target, the caller's near-term deadline, the
+  //    granted permission(s)).
   //
   // Shares the SAME eligibility/kind/bounds validation + hardened write
   // primitive as `createDeferredObjective`; only the merge op differs. The
-  // caller (the rescue widget API) is responsible for the budget-cause guardrail
-  // — this method only emancipates from the DAILY BUDGET, never capacity (the
-  // hard cap is physical), so a non-budget device gaining the exemption would be
-  // a no-op against capacity, but we assert the candidate is exemption-shaped as
-  // defence-in-depth so the invariant doesn't rest solely on the widget API
-  // being the only caller.
+  // caller (the rescue widget API) is responsible for the budget-cause guardrail.
+  // This method lifts the DAILY BUDGET and (for stepped devices) grants priority
+  // over lower-priority devices, but NEVER raises the physical capacity cap (the
+  // hard cap is physical): the priority permission only displaces lower-priority
+  // load WITHIN the cap. We assert the candidate carries the budget exemption as
+  // defence-in-depth so it can't be smuggled through a generic create — that
+  // invariant doesn't rest solely on the widget API being the only caller.
   public rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -2207,7 +2221,12 @@ class PelsApp extends Homey.App {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:starvation_rescue_widget',
       }),
-      { deviceId, deviceName: device.name ?? null, rescueEntry },
+      {
+        deviceId,
+        deviceName: device.name ?? null,
+        rescueEntry,
+        grantLimitLowerPriority: this.deviceSupportsLimitLowerPriority(device),
+      },
     );
     if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
     return { ok: true };
