@@ -3,7 +3,7 @@
  * Skipped in CI — run locally with:
  *   npx playwright test device-detail-screenshots.spec.ts --project=chromium-mobile-width
  */
-import { expect, test, type Page } from './fixtures/test';
+import { expect, renderTest as test, type Page } from './fixtures/test';
 
 const OUT = '../../docs/public/screenshots/device-detail';
 
