@@ -11,7 +11,7 @@
      * dynamic safe pace from the static "Hard cap"; reads parallel with "Power now".
      */
     safePaceLabel: "Safe pace now",
-    /** Screen-reader prefix for the price chip in the aria-label ("Price cheap"). */
+    /** Screen-reader prefix for the price chip in the aria-label ("Price Cheap"). */
     priceAriaPrefix: "Price",
     /** Shown when there is no status to render yet. */
     noDataSubtitle: "No data yet",
@@ -19,9 +19,9 @@
     loadErrorSubtitle: "Unable to load"
   };
   var PRICE_CHIP_LABELS = {
-    cheap: "cheap",
-    normal: "normal",
-    expensive: "expensive",
+    cheap: "Cheap",
+    normal: "Normal",
+    expensive: "Expensive",
     unknown: "\u2014"
   };
   var LIMIT_STATE_LABELS = {

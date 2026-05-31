@@ -1,0 +1,85 @@
+/* PELS dashboard-widget semantic token layer.
+ *
+ * One shared vocabulary for ALL five widgets, composed EXCLUSIVELY from Homey's
+ * own `--homey-*` base design tokens (which adapt to the dashboard's light/dark
+ * theme). Widget CSS consumes `--pw-*` only — never a raw font size/weight/line
+ * height or a bare `--homey-*` reference — so every widget is (1) consistent
+ * with native Homey widgets, because every value still resolves to a Homey base
+ * token, and (2) consistent with the other PELS widgets, because they all read
+ * the same semantic names.
+ *
+ * This is the WIDGET system. It is deliberately separate from the settings-UI
+ * design system (`--pels-*` / `--color-*` in `settings/`): do not import this
+ * into settings UI, and do not reference settings-UI tokens here.
+ *
+ * Build: `scripts/build-widgets.mjs` prepends this file to each widget's authored
+ * `src/public/index.css` and emits the generated `public/index.css`. Edit the
+ * tokens here; never edit the generated copy.
+ *
+ * Fallbacks: every token carries the same fallback the widgets historically used,
+ * so a `var(--pw-x, …)` reference resolves even if a Homey base token is ever
+ * absent — and so stylelint's `value-no-unknown-custom-properties` rule accepts
+ * the reference (a `var()` with a fallback is treated as resolved).
+ */
+
+:root {
+  /* ---- Type scale (size + paired line-height) ---- */
+  /* body = small, title = default, display = large. Names describe ROLE so a
+     widget picks "body/title/display", not a raw Homey size token. */
+  --pw-font-size-body: var(--homey-font-size-small, 14px);
+  --pw-font-size-title: var(--homey-font-size-default, 17px);
+  --pw-font-size-display: var(--homey-font-size-large, 20px);
+
+  --pw-line-body: var(--homey-line-height-small, 20px);
+  --pw-line-title: var(--homey-line-height-default, 24px);
+  --pw-line-display: var(--homey-line-height-large, 28px);
+
+  /* ---- Weights ---- */
+  --pw-weight-regular: var(--homey-font-weight-regular, 400);
+  --pw-weight-medium: var(--homey-font-weight-medium, 500);
+  --pw-weight-bold: var(--homey-font-weight-bold, 700);
+
+  /* ---- Numeric alignment ---- */
+  /* The ONE font property with no Homey base-token equivalent. Homey ships no
+     `--homey-font-variant*` / numeric-alignment token, so this cannot be
+     "composed from a Homey base token" — it is the single, deliberate exception
+     to the all-text-from-tokens rule. Kept because live-updating numeric columns
+     (kW readouts, ETAs, %, stepper values) jitter horizontally as digits change
+     width without tabular figures. Named so the intent is explicit at call sites
+     and the stylelint guard can allow `var(--pw-numeric)` while still banning a
+     raw `font-variant-numeric`. */
+  --pw-numeric: tabular-nums;
+
+  /* ---- Text colours ---- */
+  --pw-text: var(--homey-text-color, #1f252a);
+  --pw-text-muted: var(--homey-text-color-light, #6d7680);
+  --pw-text-success: var(--homey-text-color-success, #2f8f47);
+  --pw-text-warning: var(--homey-text-color-warning, #b9770e);
+  --pw-text-danger: var(--homey-text-color-danger, #f0696c);
+  --pw-on-accent: var(--homey-color-white, #ffffff);
+
+  /* ---- Accent base hues ---- */
+  /* The saturated brand hues — used directly for solid fills (e.g. primary
+     button) and as the base of `color-mix()` tonal tints/borders. */
+  --pw-success: var(--homey-color-success, #58c56a);
+  --pw-warning: var(--homey-color-warning, #f5a623);
+  --pw-danger: var(--homey-color-danger, #f0696c);
+  --pw-info: var(--homey-color-blue, #3f9fff);
+  --pw-green: var(--homey-color-green, #58c56a);
+  --pw-blue: var(--homey-color-blue, #3f9fff);
+  --pw-red: var(--homey-color-red, #f0696c);
+
+  /* ---- Surfaces & lines ---- */
+  --pw-background: var(--homey-background-color, #ffffff);
+  --pw-line: var(--homey-line-color, rgba(15, 23, 28, 0.12));
+  --pw-line-light: var(--homey-line-color-light, rgba(15, 23, 28, 0.08));
+
+  /* ---- Spacing ---- */
+  --pw-su-1: var(--homey-su-1, 4px);
+  --pw-su-2: var(--homey-su-2, 8px);
+  --pw-su-3: var(--homey-su-3, 12px);
+
+  /* ---- Radii ---- */
+  --pw-radius-small: var(--homey-border-radius-small, 6px);
+  --pw-radius-default: var(--homey-border-radius-default, 10px);
+}
