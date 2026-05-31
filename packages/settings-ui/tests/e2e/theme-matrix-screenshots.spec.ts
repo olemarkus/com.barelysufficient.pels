@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { captureThemes, test, type Page } from './fixtures/test';
+import { captureThemes, test, type Locator, type Page } from './fixtures/test';
 
 // Whole-surface capture matrix. Not a CI assertion — a reusable review harness.
 // Each main surface is rendered in the three contexts users actually meet
@@ -49,7 +49,24 @@ const tab = (name: string) => async (page: Page) => {
   await page.getByRole('tab', { name }).click();
 };
 
-const SURFACES: { name: string; prepare?: (page: Page) => Promise<void>; open: (page: Page) => Promise<void> }[] = [
+// Open a device's detail overlay and return the panel for an element capture.
+// (Navigation mirrors device-detail-screenshots.spec.ts, but here it feeds the
+// theme matrix instead of a single committed docs PNG.)
+const openDeviceDetail = (deviceId: string) => async (page: Page): Promise<Locator> => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  await page.locator('.settings-nav-card[data-settings-target="devices"]').click();
+  const row = page.locator(`#devices-panel [data-device-id="${deviceId}"]`).first();
+  await row.waitFor();
+  await row.locator('.pels-device-card__detail-button').click();
+  const panel = page.locator('#device-detail-panel');
+  await panel.waitFor();
+  await page.waitForTimeout(300);
+  return panel;
+};
+
+const SURFACES: { name: string; prepare?: (page: Page) => Promise<void>; open: (page: Page) => Promise<Locator | void> }[] = [
   { name: 'overview', open: async (page) => { await page.goto('/', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(700); } },
   { name: 'budget', open: async (page) => { await tab('Budget')(page); await page.locator('#budget-redesign-surface').waitFor(); await page.waitForTimeout(500); } },
   { name: 'usage', open: async (page) => { await tab('Usage')(page); await page.waitForTimeout(1000); } },
@@ -66,6 +83,21 @@ const SURFACES: { name: string; prepare?: (page: Page) => Promise<void>; open: (
     open: async (page) => { await tab('Smart tasks')(page); await page.locator('.deadlines-history__heading').waitFor(); await page.waitForTimeout(400); },
   },
   { name: 'settings', open: async (page) => { await tab('Settings')(page); await page.waitForTimeout(500); } },
+  // Detail surfaces (element captures of the device panel). Dense with native
+  // button/chip/slider primitives — the exact place host-CSS bleed shows — so the
+  // DARK variant here is the one that would catch a device-card bleed regression.
+  { name: 'device-detail-thermostat', open: openDeviceDetail('dev_heatpump') },
+  { name: 'device-detail-stepped', open: openDeviceDetail('dev_zaptec') },
+  {
+    name: 'deadline-plan',
+    open: async (page) => {
+      await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+      const panel = page.locator('#deadline-plan-panel');
+      await panel.locator('.plan-hero__headline').waitFor();
+      await page.waitForTimeout(400);
+      return panel;
+    },
+  },
 ];
 
 test.describe('Theme matrix captures', () => {
