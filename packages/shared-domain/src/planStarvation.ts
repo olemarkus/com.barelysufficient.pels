@@ -105,6 +105,10 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   capacityNote: 'Waiting for available power.',
   manualNote: 'Under manual control.',
   externalNote: 'Waiting on an external service.',
+  // A budget-held device that already has a smart task: shown in the list (so the
+  // user sees it is held back) but with no rescue button — its own task is what
+  // brings it to target, so a one-shot rescue would only get in the way.
+  smartTaskNote: 'Its smart task will bring it back.',
   // Rescue confirm sheet.
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
@@ -219,10 +223,15 @@ export const resolveStarvationRowSubtext = (
   return 'Waiting on an external service';
 };
 
-// The informational note (capacity/manual/external rows that get no rescue).
+// The informational note for a row that gets no rescue button: capacity/manual/
+// external rows, plus a budget row whose device already has a smart task (the
+// task handles it). The `hasSmartTask` note wins for budget rows so the user sees
+// WHY the otherwise-rescuable row has no button.
 export const resolveStarvationRowNote = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
+  hasSmartTask = false,
 ): string | null => {
+  if (cause === 'budget') return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
   if (cause === 'capacity') return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
   if (cause === 'manual') return STARVATION_RESCUE_WIDGET_COPY.manualNote;
   if (cause === 'external') return STARVATION_RESCUE_WIDGET_COPY.externalNote;
@@ -245,8 +254,10 @@ export const starvationRowOffersRescue = (
 export const starvationRowIsRescuable = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
   intendedNormalTargetC: number | null,
+  hasSmartTask = false,
 ): boolean => (
   starvationRowOffersRescue(cause)
+  && !hasSmartTask // a device with its own task is shown but not rescuable
   && intendedNormalTargetC !== null
   && Number.isFinite(intendedNormalTargetC)
 );

@@ -22,6 +22,7 @@ const budgetDevice: StarvationRescueDevice = {
   cause: 'budget',
   accumulatedMs: 42 * 60 * 1000,
   intendedNormalTargetC: 65,
+  hasSmartTask: false,
 };
 
 const capacityDevice: StarvationRescueDevice = {
@@ -30,6 +31,13 @@ const capacityDevice: StarvationRescueDevice = {
   cause: 'capacity',
   accumulatedMs: 11 * 60 * 1000,
   intendedNormalTargetC: 21,
+  hasSmartTask: false,
+};
+
+// A budget-held device that already has its own smart task: shown in the list,
+// but NOT rescuable (the existing task handles it).
+const taskOwningBudgetDevice: StarvationRescueDevice = {
+  ...budgetDevice, deviceId: 'heater-2', deviceName: 'Cabin water', hasSmartTask: true,
 };
 
 const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> = {}): DeferredObjectivePlanPreviewEstimate => ({
@@ -124,6 +132,16 @@ describe('previewStarvationRescue', () => {
     expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 
+  it('GUARDRAIL: rejects a budget device that already has its own smart task with not_rescuable', async () => {
+    const previewStarvationRescuePlan = freshPreviewPlan();
+    const result = await previewStarvationRescue({
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [taskOwningBudgetDevice]), previewStarvationRescuePlan }),
+      body: { deviceId: 'heater-2' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'not_rescuable' });
+    expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
+  });
+
   it('rejects a device that is no longer starved with not_rescuable', async () => {
     const result = await previewStarvationRescue({
       ...buildContext({ getStarvedRescueDevices: vi.fn(() => []), previewStarvationRescuePlan: freshPreviewPlan() }),
@@ -155,38 +173,15 @@ describe('previewStarvationRescue', () => {
     expect(result.deadlineAtMs).toBe(NOW_MS + RESCUE_HORIZON_MS);
     expect(received).not.toBeNull();
     expect(received!.deviceId).toBe('heater-1');
-    // The widget hands the app a FRESH now+3h candidate at the intended target.
+    // The widget hands the app a FRESH now+3h candidate at the intended target,
+    // requesting BOTH rescue permissions (the create engine gates the limit one).
     expect(received!.candidate).toEqual({
       kind: 'temperature',
       enforcement: 'soft',
       targetTemperatureC: 65,
       deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     });
-  });
-
-  it('PREVIEW≡PERSIST: surfaces the existing objective\'s resolved deadline, not the fresh now+3h', async () => {
-    // When an objective already exists, the app's merge preserves its deadline.
-    // The preview must echo THAT resolved deadline (here: well outside the rescue
-    // horizon) so the user confirms what actually persists.
-    const existingDeadline = NOW_MS + 20 * 60 * 60 * 1000; // tomorrow-ish, far past now+3h
-    const previewStarvationRescuePlan = vi.fn(() => ({
-      estimate: buildEstimate(),
-      deadlineAtMs: existingDeadline,
-      hasExistingObjective: true,
-    }));
-    const result = await previewStarvationRescue({
-      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), previewStarvationRescuePlan }),
-      body: { deviceId: 'heater-1' },
-    });
-    if (!result.ok) throw new Error('expected ok preview');
-    expect(result.deadlineAtMs).toBe(existingDeadline);
-    // The widget still hands the app a fresh now+3h candidate; the app decides the
-    // merge outcome and returns the resolved (existing) deadline.
-    expect(previewStarvationRescuePlan).toHaveBeenCalledWith(
-      'heater-1',
-      expect.objectContaining({ deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS }),
-    );
   });
 
   it('reports unavailable when the preview app method is missing', async () => {
@@ -228,10 +223,11 @@ describe('createStarvationRescue', () => {
       enforcement: 'soft',
       targetTemperatureC: 65,
       deadlineAtMs,
-      rescue: { exemptFromBudget: 'always' },
+      rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
     });
-    // The exemption rides the candidate; priority is added server-side for stepped devices.
-    expect(received!.rescue).toEqual({ exemptFromBudget: 'always' });
+    // The widget requests both permissions; the create engine keeps the budget
+    // exemption for any device and gates the limit-lower-priority grant.
+    expect(received!.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
   });
 
   it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
@@ -292,37 +288,16 @@ describe('createStarvationRescue', () => {
     expect(rescueDeviceWithBudgetExemption).not.toHaveBeenCalled();
   });
 
-  it('PREVIEW≡PERSIST: accepts an out-of-horizon echoed deadline when an objective already exists', async () => {
-    // The preview surfaced the existing objective's deadline (far past now+3h);
-    // the merge preserves it and ignores the candidate's, so the create must NOT
-    // reject it on the rescue-horizon guard — that guard is fresh-only.
-    const existingDeadline = NOW_MS + 20 * 60 * 60 * 1000;
-    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
-    const result = await createStarvationRescue({
-      ...buildContext({
-        getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
-        rescueDeviceWithBudgetExemption,
-        hasDeferredObjectiveForDevice: vi.fn(() => true),
-      }),
-      body: { deviceId: 'heater-1', deadlineAtMs: existingDeadline },
-    });
-    expect(result).toEqual({ ok: true, runsCurrentHour: false });
-    expect(rescueDeviceWithBudgetExemption).toHaveBeenCalledOnce();
-  });
-
-  it('rejects a PAST echoed deadline even when an objective already exists', async () => {
-    // The existing-objective exception relaxes only the upper now+3h horizon, not
-    // the past-deadline floor: the echoed deadline IS the existing objective's
-    // preserved deadline, and a passed one can never schedule (the active-plan
-    // recorder drops it). Persisting it would report a false success instead of
-    // the retryable re-preview path, so the create must still reject it.
+  it('rejects a PAST echoed deadline as deadline_passed (a passed deadline can never schedule)', async () => {
+    // A rescue is always a fresh now+3h task; a passed echoed deadline can never
+    // schedule (the active-plan recorder drops it). Persisting it would report a
+    // false success instead of the retryable re-preview path, so reject it.
     const passedDeadline = NOW_MS - 60 * 1000;
     const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: true as const }));
     const result = await createStarvationRescue({
       ...buildContext({
         getStarvedRescueDevices: vi.fn(() => [budgetDevice]),
         rescueDeviceWithBudgetExemption,
-        hasDeferredObjectiveForDevice: vi.fn(() => true),
       }),
       body: { deviceId: 'heater-1', deadlineAtMs: passedDeadline },
     });

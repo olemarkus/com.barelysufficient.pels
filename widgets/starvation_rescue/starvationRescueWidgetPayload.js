@@ -56,6 +56,10 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   capacityNote: "Waiting for available power.",
   manualNote: "Under manual control.",
   externalNote: "Waiting on an external service.",
+  // A budget-held device that already has a smart task: shown in the list (so the
+  // user sees it is held back) but with no rescue button — its own task is what
+  // brings it to target, so a one-shot rescue would only get in the way.
+  smartTaskNote: "Its smart task will bring it back.",
   // Rescue confirm sheet.
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.

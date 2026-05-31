@@ -101,12 +101,19 @@ copy) are untouched by that pass and remain open.*
       `May limit lower-priority devices` (gated ON EFFECT — offered only for a
       stepped-load device at top priority, and only enabled once budget exemption
       is on, since it is inert otherwise). Server re-gates both (defence-in-depth).
-      **Remaining:** PR3 (rescue reuses the `/create` engine while
-      keeping its bespoke confirm sheet — do NOT route the panic path through the
-      full create panel). Also: a real at-cap honesty signal (the in-isolation
-      preview overstates, so the flash branch only catches the no-plan case, not
-      the at-cap case); and the per-cause status copy still leaks the engine model
-      ("Waiting on an external service", "Under manual control", "On hold · 0 min").
+      **PR3 delivered** — the rescue now REUSES the create engine: a device that
+      already has a smart task is excluded from the rescue (so a rescue is always a
+      fresh create, never a merge), `App.previewStarvationRescuePlan` /
+      `rescueDeviceWithBudgetExemption` delegate to `previewDeferredObjectivePlan` /
+      `createDeferredObjective`, and the bespoke merge machinery
+      (`resolveBudgetExemptionRescueEntry` / `addBudgetExemptionRescueForDevice`)
+      is retired. The rescue keeps its bespoke confirm sheet. **Remaining (follow-up
+      polish, not blocking):** inherit the create widget's plan-graph chart +
+      canonical "Extra permissions" read-only display on the rescue confirm sheet;
+      a real at-cap honesty signal (the in-isolation preview overstates, so the
+      flash branch only catches the no-plan case, not the at-cap case); and the
+      per-cause status copy still leaks the engine model ("Waiting on an external
+      service", "Under manual control", "On hold · 0 min").
     - **P3 (from PR2 review): create-screen "Extra permissions" opt-out is
       additive-only.** `createDeferredObjective` uses the `preserve` rescue policy,
       and the compose screen always seeds both toggles OFF without reflecting a

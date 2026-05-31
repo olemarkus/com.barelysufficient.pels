@@ -20,6 +20,12 @@ export type StarvationRescueDevice = {
   cause: SettingsUiPlanStarvationCause;
   accumulatedMs: number;
   intendedNormalTargetC: number | null;
+  // Whether the device already has a smart task (deferred objective). Such a
+  // device is STILL shown in the held-back list (so the user sees it is
+  // struggling), but its rescue button is suppressed — the rescue is a fresh
+  // one-shot task and must never replace the device's own task; the existing task
+  // is what should bring it to target. Producer-resolved, like `cause`.
+  hasSmartTask: boolean;
 };
 
 export type StarvationRescueDevicesPayload = {

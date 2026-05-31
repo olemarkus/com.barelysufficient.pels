@@ -100,11 +100,14 @@ const renderDeviceRow = (
   const li = fragment.querySelector('.row');
   if (!(li instanceof HTMLElement)) throw new Error('device template missing .row');
 
-  // Offer the rescue ONLY when the row is actually rescuable: budget-caused AND
-  // a known target to aim at. Mirrors the API guardrail (`resolveRescuableDevice`
-  // rejects `no_target`), so the button is never shown for a request the API
-  // would then reject.
-  const offersRescue = starvationRowIsRescuable(device.cause, device.intendedNormalTargetC);
+  // Offer the rescue ONLY when the row is actually rescuable: budget-caused, a
+  // known target to aim at, AND the device has no smart task of its own (a
+  // task-having device is shown but not rescuable — its task brings it back).
+  // Mirrors the API guardrail (`resolveRescuableDevice`), so the button is never
+  // shown for a request the API would then reject.
+  const offersRescue = starvationRowIsRescuable(
+    device.cause, device.intendedNormalTargetC, device.hasSmartTask,
+  );
   // Tone escalates with duration (warn → danger); both render as a coloured
   // chip. Stamped on the row so CSS can tint the chip/border.
   li.dataset.tone = resolveStarvationRowTone(device.accumulatedMs);
@@ -143,7 +146,7 @@ const renderDeviceRow = (
     // available power" vs "Waiting for available power.") — printing both reads
     // as a doubled line, so drop the note when it duplicates the subtext
     // (compared case-insensitively, ignoring a trailing period).
-    const note = offersRescue ? null : resolveStarvationRowNote(device.cause);
+    const note = offersRescue ? null : resolveStarvationRowNote(device.cause, device.hasSmartTask);
     setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
   }
   return li;

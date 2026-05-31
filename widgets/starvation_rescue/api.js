@@ -58,6 +58,10 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   capacityNote: "Waiting for available power.",
   manualNote: "Under manual control.",
   externalNote: "Waiting on an external service.",
+  // A budget-held device that already has a smart task: shown in the list (so the
+  // user sees it is held back) but with no rescue button — its own task is what
+  // brings it to target, so a one-shot rescue would only get in the way.
+  smartTaskNote: "Its smart task will bring it back.",
   // Rescue confirm sheet.
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
@@ -209,7 +213,7 @@ var resolveRescuableDevice = (app) => {
   const byId = new Map(devices.map((device) => [device.deviceId, device]));
   return (deviceId) => {
     const device = byId.get(deviceId);
-    if (!device || !starvationRowOffersRescue(device.cause)) {
+    if (!device || !starvationRowOffersRescue(device.cause) || device.hasSmartTask) {
       return { ok: false, reason: "not_rescuable" };
     }
     const target = device.intendedNormalTargetC;
@@ -224,7 +228,11 @@ var buildRescueCandidate = (targetTemperatureC, deadlineAtMs) => ({
   enforcement: "soft",
   targetTemperatureC,
   deadlineAtMs,
-  rescue: { exemptFromBudget: "always" }
+  // The rescue requests BOTH permissions; the create engine's
+  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
+  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
+  // + top priority), so the widget never needs the device profile here.
+  rescue: { exemptFromBudget: "always", limitLowerPriorityDevices: "always" }
 });
 var previewReject = (reason) => ({
   ok: false,
@@ -271,11 +279,7 @@ var createStarvationRescue = async ({ homey, body }) => {
   if (!rescuable.ok) return createReject(rescuable.reason);
   const nowMs = Date.now();
   const deadlineAtMs = request.deadlineAtMs ?? nowMs + RESCUE_DEADLINE_HORIZON_MS;
-  if (deadlineAtMs <= nowMs) {
-    return createReject("deadline_passed");
-  }
-  const hasExistingObjective = homey.app?.hasDeferredObjectiveForDevice?.(request.deviceId) ?? false;
-  if (!hasExistingObjective && deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
+  if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
     return createReject("deadline_passed");
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
