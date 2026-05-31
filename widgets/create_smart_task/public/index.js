@@ -400,35 +400,145 @@
   };
 
   // widgets/create_smart_task/src/public/previewPayloads.ts
-  var PREVIEW_CREATE_SMART_TASK_DEVICES = {
-    state: "ready",
-    devices: [
-      {
-        deviceId: "preview-hot-water",
-        deviceName: "Hot water",
-        kind: "temperature",
-        group: "heating",
-        unitSymbol: "\xB0C",
-        goalMin: 5,
-        goalMax: 85,
-        goalStep: 0.5,
-        defaultGoal: 65,
-        currentValue: 48
-      },
-      {
-        deviceId: "preview-ev",
-        deviceName: "Driveway charger",
-        kind: "ev_soc",
-        group: "ev_charger",
-        unitSymbol: "%",
-        goalMin: 1,
-        goalMax: 100,
-        goalStep: 1,
-        defaultGoal: 80,
-        currentValue: 42
-      }
-    ]
+  var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
+    // Gallery thumbnail: one temperature device and one EV charger so the gallery
+    // shows both goal kinds (°C stepper and % stepper).
+    default: {
+      state: "ready",
+      devices: [
+        {
+          deviceId: "preview-hot-water",
+          deviceName: "Hot water",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 65,
+          currentValue: 48
+        },
+        {
+          deviceId: "preview-ev",
+          deviceName: "Driveway charger",
+          kind: "ev_soc",
+          group: "ev_charger",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 42
+        }
+      ]
+    },
+    // A longer list (eight eligible devices, grouped thermostats → water heaters →
+    // EV) so the picker overflows the widget's fixed height — the harness can then
+    // show how the cut-off list reads with no visible scroll affordance.
+    overflow: {
+      state: "ready",
+      devices: [
+        {
+          deviceId: "preview-living",
+          deviceName: "Living room",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 21,
+          currentValue: 19.5
+        },
+        {
+          deviceId: "preview-bedroom",
+          deviceName: "Bedroom",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 18,
+          currentValue: 17.2
+        },
+        {
+          deviceId: "preview-bathroom-floor",
+          deviceName: "Bathroom floor",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 35,
+          goalStep: 0.5,
+          defaultGoal: 24,
+          currentValue: 22.1
+        },
+        {
+          deviceId: "preview-office",
+          deviceName: "Office",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 30,
+          goalStep: 0.5,
+          defaultGoal: 20,
+          currentValue: 20.4
+        },
+        {
+          deviceId: "preview-hot-water",
+          deviceName: "Hot water",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 65,
+          currentValue: 48
+        },
+        {
+          deviceId: "preview-cabin-water",
+          deviceName: "Cabin water heater",
+          kind: "temperature",
+          group: "heating",
+          unitSymbol: "\xB0C",
+          goalMin: 5,
+          goalMax: 85,
+          goalStep: 0.5,
+          defaultGoal: 60,
+          currentValue: 55
+        },
+        {
+          deviceId: "preview-ev",
+          deviceName: "Driveway charger",
+          kind: "ev_soc",
+          group: "ev_charger",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 42
+        },
+        {
+          deviceId: "preview-ev-guest",
+          deviceName: "Guest charger",
+          kind: "ev_soc",
+          group: "ev_charger",
+          unitSymbol: "%",
+          goalMin: 1,
+          goalMax: 100,
+          goalStep: 1,
+          defaultGoal: 80,
+          currentValue: 30
+        }
+      ]
+    }
   };
+  var PREVIEW_CREATE_SMART_TASK_DEVICES = PREVIEW_CREATE_SMART_TASK_PAYLOADS.default;
+  var resolveCreateSmartTaskPreviewPayload = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_CREATE_SMART_TASK_PAYLOADS, state) ? PREVIEW_CREATE_SMART_TASK_PAYLOADS[state] : PREVIEW_CREATE_SMART_TASK_DEVICES;
 
   // packages/shared-domain/src/smartTaskDeadlineFormat.ts
   var HOUR_MS = 60 * 60 * 1e3;
@@ -521,6 +631,112 @@
   var GROUP_RANK = Object.fromEntries(
     SMART_TASK_DEVICE_GROUP_ORDER.map((group, index) => [group, index])
   );
+
+  // widgets/create_smart_task/src/public/previewChart.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var VIEW = { width: 480, height: 132 };
+  var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
+  var X_LABEL_Y = 124;
+  var PLOT_WIDTH = PLOT.right - PLOT.left;
+  var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
+  var createSvg = (doc, tag, attrs, text) => {
+    const el = doc.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+    if (text !== void 0) el.textContent = text;
+    return el;
+  };
+  var bucketWidth = (count) => PLOT_WIDTH / Math.max(1, count);
+  var bucketLeft = (index, count) => PLOT.left + bucketWidth(count) * index;
+  var bucketCenter = (index, count) => bucketLeft(index, count) + bucketWidth(count) / 2;
+  var makeYScale = (prices) => {
+    const finite = prices.filter((p) => Number.isFinite(p));
+    const min = Math.min(...finite);
+    const max = Math.max(...finite);
+    const pad = max > min ? (max - min) * 0.14 : Math.max(1, Math.abs(max) * 0.1);
+    const lo = min - pad;
+    const span = max + pad - lo;
+    return (price) => PLOT.bottom - (price - lo) / span * PLOT_HEIGHT;
+  };
+  var hourLabel = (startsAtMs) => String(new Date(startsAtMs).getHours()).padStart(2, "0");
+  var scheduledRuns = (scheduledIndexes) => {
+    const sorted = [...scheduledIndexes].sort((a, b) => a - b);
+    const runs = [];
+    for (const index of sorted) {
+      const last = runs[runs.length - 1];
+      if (last && index === last.end + 1) last.end = index;
+      else runs.push({ start: index, end: index });
+    }
+    return runs;
+  };
+  var buildStepPath = (ys, count) => {
+    let path = "";
+    let penDown = false;
+    ys.forEach((y, index) => {
+      if (y === null) {
+        penDown = false;
+        return;
+      }
+      const left = bucketLeft(index, count);
+      const right = left + bucketWidth(count);
+      path += `${penDown ? "L" : "M"}${left.toFixed(1)} ${y.toFixed(1)} L${right.toFixed(1)} ${y.toFixed(1)} `;
+      penDown = true;
+    });
+    return path.trim();
+  };
+  var renderPreviewChart = (container, { priceSeries, scheduledHours }) => {
+    const doc = container.ownerDocument;
+    while (container.firstChild) container.removeChild(container.firstChild);
+    const count = priceSeries.length;
+    const prices = priceSeries.map((point) => point.price).filter((p) => Number.isFinite(p));
+    if (count < 2 || prices.length === 0) return false;
+    const yScale = makeYScale(prices);
+    const ys = priceSeries.map((point) => Number.isFinite(point.price) ? yScale(point.price) : null);
+    const scheduledStarts = new Set(scheduledHours.map((hour) => hour.startsAtMs));
+    const scheduledIndexes = priceSeries.map((point, index) => scheduledStarts.has(point.startsAtMs) ? index : -1).filter((index) => index >= 0);
+    const svg = createSvg(doc, "svg", {
+      class: "pchart",
+      viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
+      preserveAspectRatio: "none",
+      role: "img"
+    });
+    for (const run of scheduledRuns(scheduledIndexes)) {
+      const x1 = bucketLeft(run.start, count);
+      const x2 = bucketLeft(run.end, count) + bucketWidth(count);
+      svg.appendChild(createSvg(doc, "rect", {
+        class: "pchart__band",
+        x: x1,
+        y: PLOT.top,
+        width: Math.max(0, x2 - x1),
+        height: PLOT_HEIGHT,
+        rx: 3
+      }));
+    }
+    const stepPath = buildStepPath(ys, count);
+    if (stepPath) svg.appendChild(createSvg(doc, "path", { class: "pchart__line", d: stepPath }));
+    for (const index of scheduledIndexes) {
+      const y = ys[index];
+      if (y !== null) {
+        svg.appendChild(createSvg(doc, "circle", {
+          class: "pchart__dot",
+          cx: bucketCenter(index, count),
+          cy: y,
+          r: 4
+        }));
+      }
+    }
+    priceSeries.forEach((point, index) => {
+      const show = index === 0 || index === count - 1 || index % 3 === 0 && count - 1 - index >= 2;
+      if (!show) return;
+      svg.appendChild(createSvg(doc, "text", {
+        class: "pchart__axis",
+        x: bucketCenter(index, count),
+        y: X_LABEL_Y,
+        "text-anchor": "middle"
+      }, hourLabel(point.startsAtMs)));
+    });
+    container.appendChild(svg);
+    return true;
+  };
 
   // widgets/create_smart_task/src/public/render.ts
   var C = CREATE_SMART_TASK_WIDGET_COPY;
@@ -675,14 +891,20 @@
       targets.previewCostSubtextEl,
       costLine !== null ? formatCheapestHoursSubtext(response.deadlineLabel) : null
     );
+    const charted = projectable && response.estimate.priceSeries !== void 0 && renderPreviewChart(targets.previewChartEl, {
+      priceSeries: response.estimate.priceSeries,
+      scheduledHours: response.estimate.scheduledHours
+    });
+    setVisible(targets.previewChartEl, charted);
     setLine(targets.previewWhenEl, formatWhenLine(response));
-    setLine(targets.previewEnergyEl, projectable ? formatEnergyLine(response.estimate) : null);
+    setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
     setLine(targets.previewUnavailableEl, projectable ? null : C.previewUnavailable);
     setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
   };
   var hidePreviewLines = (targets) => {
     hide(targets.previewCostEl);
     hide(targets.previewCostSubtextEl);
+    hide(targets.previewChartEl);
     hide(targets.previewWhenEl);
     hide(targets.previewEnergyEl);
     hide(targets.previewCaveatEl);
@@ -743,24 +965,34 @@
     }
   };
   var HOUR_MS2 = 60 * 60 * 1e3;
-  var PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS2) * HOUR_MS2;
+  var PREVIEW_NEXT_HOUR_MS = (() => {
+    const base = /* @__PURE__ */ new Date();
+    base.setHours(19, 0, 0, 0);
+    return base.getTime();
+  })();
+  var PREVIEW_PRICE_CURVE = [92, 79, 74, 63, 59, 66, 51, 44, 48, 69, 81, 107, 119];
+  var PREVIEW_SCHEDULED_INDEX = [7, 8];
   var PREVIEW_RESPONSE = {
     ok: true,
-    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 20 * HOUR_MS2,
+    deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 12 * HOUR_MS2,
     deadlineLabel: "Tomorrow 07:00",
     // Server-formatted in real responses; a fixed demo window here.
     scheduledWindowLabel: "02:00\u201304:00",
     estimate: {
       status: "on_track",
-      scheduledHours: [
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 2 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2, plannedKWh: 2 }
-      ],
-      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS2,
+      scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
+        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS2,
+        plannedKWh: 2
+      })),
+      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS2,
       energyEstimateKWh: 4,
       energyExpectedKWh: 3.6,
       costEstimate: 4.2,
-      costUnit: "kr"
+      costUnit: "kr",
+      priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
+        startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS2,
+        price
+      }))
     }
   };
   var resolveTargets = (d) => {
@@ -786,6 +1018,7 @@
       previewTitle: "[data-preview-title]",
       previewCostEl: "[data-preview-cost]",
       previewCostSubtextEl: "[data-preview-cost-subtext]",
+      previewChartEl: "[data-preview-chart]",
       previewWhenEl: "[data-preview-when]",
       previewEnergyEl: "[data-preview-energy]",
       previewCaveatEl: "[data-preview-caveat]",
@@ -849,8 +1082,8 @@
     const el = target.closest(selector);
     return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
   };
-  var fetchDevices = async (homeyRef, usePreviewData) => {
-    if (usePreviewData) return PREVIEW_CREATE_SMART_TASK_DEVICES;
+  var fetchDevices = async (homeyRef, usePreviewData, previewState) => {
+    if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
     if (!homeyRef) return { state: "empty", subtitle: C2.notReady, hint: null };
     try {
       return await homeyRef.api("GET", "/devices");
@@ -995,11 +1228,10 @@
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       usePreviewData = searchParams.get("preview") === "1";
       maybeApplyPreviewTheme(widgetDocument, searchParams);
-      const payload = await fetchDevices(homeyRef, usePreviewData);
-      if (loadId === loadSequence) {
-        devicesPayload = payload;
-        if (view.kind === "picker" || payload.state === "ready") render();
-      }
+      const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get("state"));
+      if (destroyed || loadId !== loadSequence) return;
+      devicesPayload = payload;
+      if (view.kind === "picker" || payload.state === "ready") render();
       if (!initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();
         initialRenderDone = true;

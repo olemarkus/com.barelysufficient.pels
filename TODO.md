@@ -27,8 +27,62 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 
 ## P0 Release Blockers
 
-*(none open — recent closures shipped on the v2.9 train via PRs #975,
-#977, #978, #980, #982, #983; surviving follow-ups demoted to P1/P2.)*
+*(prior closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
+#982, #983; surviving follow-ups demoted to P1/P2.)*
+
+### P0 — Widget loveability pass (2026-05-31)
+
+*Source: owner walked the live dashboard with all five PELS widgets stacked
+(real-device screenshots) and rejected the "shippable polish" verdict of the
+2026-05-30 widget-polish train (`notes/widget-review.md` § Shipped) — "the
+potential for improvement is immense." This is a fresh, blunter pass: each
+widget gets re-examined against whether it is actually loveable and lives up to
+its job, not merely truthful. Every state (incl. the confusing ones) is
+reproducible offline via the interactive dashboard harness — `npm run
+widget-harness` → open the printed URL — which mounts each widget in an iframe
+against mocked endpoints (`tests/widget-harness/mockData.mjs`), so the widgets
+run their real data path with editable data and per-widget scenario switches. We
+walk them one at a time, delivering each as its own PR.*
+
+- [ ] **New smart task (`create_smart_task`) — plan-graph + structural fixes
+      delivered; picker/feasibility polish remains.** Shipped: a real plan-graph
+      preview (a stepped spot-price curve with the scheduled hours highlighted),
+      backed by a new `priceSeries`/`priceAxisUnit` on the preview estimate
+      (`planPreview.ts` → `buildDeferredObjectivePolicyWindowPrices`); the compose
+      CTA is no longer clipped (widget grown 240→380); the "Ready by" chips are
+      de-pilled to the flat Homey radius. **Remaining:** the device picker still
+      has no scroll affordance / type-ahead when many devices are eligible
+      (harness `create_smart_task` `overflow` scenario); no feasibility signal
+      when a ready-by time is unreachable (the preview returns `cannot_meet` but
+      the widget doesn't surface it — harness `cannot_meet` scenario); the chart's
+      hour-tick labels are formatted client-side from `startsAtMs` (DST risk)
+      rather than backend-provided like `scheduledWindowLabel`.
+
+- [ ] **Available power (`headroom`) not loveable.** The tile screams / reads
+      noisy: a giant current-kW number, a coloured price pill ("Cheap"), and
+      twin all-caps headers ("POWER NOW" / "SAFE PACE NOW") sitting over a single
+      bar with a single value — the labels read as two columns but only one
+      number exists, so it's unparseable at a glance. Tone/red-at-limit semantics
+      also need a second look (harness: `headroom-480`, `-at_pace`, `-over_cap`).
+      Walk-through pending.
+
+- [ ] **Budget and Price (`plan_budget`) not loveable.** The "Projected …"
+      summary line renders at header scale and dominates the tile whose real
+      content is the chart; the truncation ("On tra…") on a real device loses the
+      status word (harness: `plan_budget-480`). Walk-through pending.
+
+- [ ] **Smart tasks (`smart_tasks`) not loveable.** Read-only status list whose
+      rows ("Cannot finish", "At risk", "Building plan…") offer no recourse —
+      open question whether it satisfies any persona as built, or needs an action
+      / re-scope (harness: `smart_tasks-480`). Walk-through pending.
+
+- [ ] **Get power now / Held-back devices (`starvation_rescue`) not loveable.**
+      Styling looks home-made, not Homey-token idiom: it reintroduces the
+      coloured left state-rail the owner already rejected (#1343/#1351,
+      `[[feedback_no_card_colour_rail]]`) plus a custom filled-green button. The
+      per-cause status copy leaks the engine's model at the owner — "Waiting on
+      an external service", "Under manual control", "On hold · 0 min" mean nothing
+      actionable (harness: `starvation_rescue-480-all`). Walk-through pending.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 

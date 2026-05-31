@@ -1605,7 +1605,7 @@
       "name": {
         "en": "New smart task"
       },
-      "height": 240,
+      "height": 380,
       "api": {
         "getCreateSmartTaskDevices": {
           "method": "GET",

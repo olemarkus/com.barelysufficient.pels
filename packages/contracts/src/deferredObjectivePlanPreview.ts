@@ -57,6 +57,21 @@ export type DeferredObjectivePlanPreviewHour = {
   plannedKWh: number;
 };
 
+// One hour on the preview's price curve. `startsAtMs` is an EPOCH-hour-aligned
+// UTC timestamp on the SAME basis as `scheduledHours[].startsAtMs`, so the widget
+// can join the two by `startsAtMs` and highlight the chosen hours against the
+// line. `price` is that hour's per-kWh rate (the same per-bucket price the cost
+// estimate sums), or `null` for an interior hour with no published price — the
+// series is DENSE (one slot per hour across its span), so a gap is a `null` slot
+// the chart breaks the line across, never a dropped element (dropping would skew
+// the index-laid-out x-axis). Intentionally carries no `scheduled` flag: the
+// widget intersects by `startsAtMs` with `scheduledHours`, keeping this a pure
+// price curve with no duplicated state to drift.
+export type DeferredObjectivePlanPreviewPricePoint = {
+  startsAtMs: number;
+  price: number | null;
+};
+
 export type DeferredObjectivePlanPreviewEstimate = {
   // Projected planner verdict for the candidate. `unavailable` means the
   // projection could not run (see the status union doc); the numeric fields
@@ -90,4 +105,12 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // pairing it with a rate label would mislabel the value. Absent when the unit
   // is unknown or `costEstimate` is null.
   costUnit?: string;
+  // Hourly price curve across the preview window (now → deadline), ascending by
+  // `startsAtMs`. Lets the widget draw the price line and highlight the
+  // `scheduledHours` against it. Absent when no price horizon is available
+  // (the projection is then `unavailable`, or has no priced buckets to show).
+  // No `priceAxisUnit` is published here: the create-task chart renders the curve
+  // as a shape (no y-axis values), so a rate label has nothing to label. Add one
+  // when/if the chart grows axis values.
+  priceSeries?: DeferredObjectivePlanPreviewPricePoint[];
 };
