@@ -94,7 +94,9 @@ export const getDerivedHourlyAverages = (buckets: Record<string, number> | undef
 // into `hourlyAverages`, so no hour is counted twice (same invariant as
 // `mergeDailyTotals`).
 export const mergeHourlyAverages = (
-  persisted: Record<string, { sum: number; count: number }> | undefined,
+  // Homey SDK settings can return `null` for an unset key; `persisted || {}`
+  // already handles it at runtime, so accept it in the signature too.
+  persisted: Record<string, { sum: number; count: number }> | null | undefined,
   buckets: Record<string, number> | undefined,
   timeZone: string,
 ): Record<string, { sum: number; count: number }> => {
