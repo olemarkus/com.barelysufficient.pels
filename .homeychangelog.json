@@ -385,5 +385,8 @@
   },
   "2.10.0": {
     "en": "Adds widgets for available power and smart tasks. Also adds a mode selector to the PELS insights app."
+  },
+  "2.11.0": {
+    "en": "New dashboard widgets to create a smart task (with plan + cost preview) and rescue held-back devices. Smart tasks now switch their device off cleanly when finished, and rescued devices get priority to claim power. Native stepped control is on by default for Høiax heaters, with a warning when a Flow conflicts with PELS. Refreshed settings design throughout."
   }
 }
