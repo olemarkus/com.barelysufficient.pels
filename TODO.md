@@ -2216,6 +2216,39 @@ prod walk that didn't warrant a P2 slot.*
       Files: `lib/objectives/deferredObjectives/horizonPlanner.ts:resolveStatus`,
       possibly `activePlanSchedule.ts` for emit gating.
 
+- [ ] Smart-task current-hour strand at the committed-window boundary — P1 (real
+      missed deadline in prod). When a task satisfies inside its committed window
+      and then the device stalls so the need REGROWS in the first hour AFTER the
+      window has elapsed, that hour is the current hour and is uncommitted. It is
+      stranded at 0 kWh: phase-2 expansion skips the current bucket
+      (`bucketAllocation.expandCommittedAllocation`, `if (bucket.current) continue`),
+      and the commitment merge can only adopt an hour while it is still a FUTURE
+      hour of the live plan (`activePlanSchedule.mergeHoursPreservingCommitment`) —
+      a current hour never appears there. So the device is turned off for that
+      hour while behind target. `f9809995` fixed the worse, permanent freeze
+      (commitment now extends forward across elapsed hours), leaving this single
+      boundary hour. Observed on Connected 300 (water heater) 2026-05-31: heater
+      climbed to ~64.4 °C inside 22h–02h, the heater's own thermostat cut the
+      element, the tank cooled, and 03h (current, regrown need, uncommitted) was
+      stranded at 0 — the device stayed off into the 06:00 deadline (missed at
+      57 °C). NB the heater's own overshoot/hysteresis is why it drew 0 W at max
+      and refused to reheat — PELS controls it via `onoff` + `max_power_3000` only
+      and never writes a temperature setpoint, so PELS cannot force a reheat; that
+      is a separate device-control question, not part of this fix.
+      Fix direction (preferred): commit the UPCOMING hour just before it becomes
+      current, on the smart-task controller's clock (a "~5 min before the hour
+      boundary, extend the commitment to the next hour if energy remains" tick),
+      so the "current hour is always committed" invariant the phase-2 skip-current
+      relies on is restored by construction rather than patched in the allocator.
+      Reproduced by `test/deferredObjectiveCommitmentRolloverSimulation.test.ts`
+      (the `strands the first regrown hour…` case pins `currentBucketKWh === 0`;
+      flip it to `> 0` when the fix lands).
+      Files: `lib/objectives/deferredObjectives/bucketAllocation.ts`,
+      `lib/objectives/deferredObjectives/activePlanSchedule.ts`,
+      `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
+      smart-task controller clock in `setup/backgroundTasksController.ts`.
+      Source: prod log audit `start.main.0a4464c3` (build 1f9d34f1), 2026-05-31.
+
 - [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
 
 - [ ] Symmetric phantom-shed filter for the shed-side keep-invariant clamp.

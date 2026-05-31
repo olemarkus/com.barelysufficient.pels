@@ -266,3 +266,19 @@ discriminator), plus the marker-ownership decomposition (`shedDecidedMs` decisio
    capacity fact had to cross as data — the planner imports nothing smart-task.
 5. **Peer dep-cruiser rule** — RESOLVED differently: the subsystem stayed in `lib/objectives` (no new
    `lib/smartTasks/` peer), covered by the existing `no-objectives-to-peer-except-power` rule.
+
+## Open follow-up: current-hour strand at the committed-window boundary
+
+The clock owns lifecycle emission + terminal disable, but the **commitment cadence** is still
+plan-cycle-driven, and that leaves one schedule gap. When a task satisfies inside its committed
+window and the device then stalls so the need REGROWS in the first hour *after* the window has
+elapsed, that hour is the current hour and is uncommitted — phase-2 expansion skips the current
+bucket (`bucketAllocation.expandCommittedAllocation`) and the merge only adopts an hour while it is
+still a future hour (`activePlanSchedule.mergeHoursPreservingCommitment`), so the hour is stranded
+at 0 kWh and the device is turned off while behind target. `f9809995` removed the worse permanent
+freeze (the commitment now extends forward across elapsed hours); this single boundary hour remains.
+The fix that fits this design is for the **controller to commit the upcoming hour just before it
+becomes current** (a clock tick ~5 min before the hour boundary that extends the commitment to the
+next hour when energy remains), restoring the "current hour is always committed" invariant the
+phase-2 skip-current relies on. Tracked in `TODO.md`; reproduced by
+`test/deferredObjectiveCommitmentRolloverSimulation.test.ts`.
