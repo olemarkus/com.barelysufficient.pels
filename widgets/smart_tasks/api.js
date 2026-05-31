@@ -98,7 +98,7 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
     recourseHint: null
   };
 };
-var SMART_TASK_WIDGET_EMPTY_HINT = "Add a smart task from a Flow card to see it here.";
+var SMART_TASK_WIDGET_EMPTY_HINT = "Add one from a Flow card or the New smart task widget to see it here.";
 var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
 var SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = "Estimate";
 var resolveBuildingPlanChipTone = () => "info";
