@@ -1964,6 +1964,36 @@ class PelsApp extends Homey.App {
   private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot): boolean {
     return device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load';
   }
+  // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
+  // device BEFORE it is previewed or persisted — defence-in-depth, since the
+  // widget's toggle visibility is client-side and not trusted. Only
+  // `limitLowerPriorityDevices` is gated; `exemptFromBudget` is ungated (any
+  // device can exceed the soft daily budget). The limit grant is dropped unless
+  // it would ACTUALLY change the plan — i.e. it matches every conjunct of the
+  // planner's `fullyReserved` floor (`rescueReplan.ts`): the device is
+  // stepped-load eligible (a binary device has no higher step to promote to) AND
+  // at top priority (`priority === 1`) AND `exemptFromBudget` is granted as
+  // `'always'`. Anything weaker is inert at the planner, so we never persist it.
+  // This matches the widget's gate-on-effect visibility exactly, and runs on BOTH
+  // lanes so preview ≡ persist. Returns the candidate unchanged when it carries
+  // no limit-lower-priority grant.
+  private gateCandidateExtraPermissions(
+    device: TargetDeviceSnapshot | undefined,
+    candidate: DeferredObjectivePlanPreviewCandidate,
+  ): DeferredObjectivePlanPreviewCandidate {
+    const rescue = candidate.rescue;
+    if (!rescue?.limitLowerPriorityDevices) return candidate;
+    const eligible = device !== undefined
+      && this.deviceSupportsLimitLowerPriority(device)
+      && device.priority === 1
+      && rescue.exemptFromBudget === 'always';
+    if (eligible) return candidate;
+    const { limitLowerPriorityDevices: _dropped, ...keptRescue } = rescue;
+    return {
+      ...candidate,
+      rescue: Object.keys(keptRescue).length > 0 ? keptRescue : undefined,
+    };
+  }
   // Preview the plan the starvation rescue would actually produce, accounting
   // for the merge-not-replace persistence: when the device ALREADY has an
   // objective, the rescue adds the budget exemption (+ `limitLowerPriorityDevices`
@@ -2028,11 +2058,14 @@ class PelsApp extends Homey.App {
     // every new-smart-task preview would come back `unavailable`.
     const snapshotDevice = this.latestTargetSnapshot.find((device) => device.id === deviceId)
       ?? this.getUiPickerDevices().find((device) => device.id === deviceId);
+    // Gate opt-in extra permissions the same way the create lane does, so the
+    // preview reflects exactly what would persist (preview ≡ persist).
+    const gatedCandidate = this.gateCandidateExtraPermissions(snapshotDevice, candidate);
     return previewDeferredObjectivePlan({
       nowMs: this.getNow().getTime(),
       timeZone: this.getTimeZone(),
       deviceId,
-      candidate,
+      candidate: gatedCandidate,
       // Convert through the same `toPlanDevice` producer the plan cycle uses so
       // the projected steps/power match the live planner — but via
       // `projectPreviewPlanDevice`, which isolates the producer's grace-window
@@ -2123,11 +2156,16 @@ class PelsApp extends Homey.App {
     if (!Number.isFinite(targetValue) || targetValue < bounds.min || targetValue > bounds.max) {
       return { ok: false, reason: 'invalid_candidate' };
     }
+    // Gate opt-in extra permissions against the resolved device before the entry
+    // is normalised/persisted (drops an ineligible/inert limit-lower-priority
+    // grant), so a tampered or stale client can never persist a permission this
+    // device can't honour. Matches the gate the preview applies.
+    const gatedCandidate = this.gateCandidateExtraPermissions(device, candidate);
     // Re-validate via the canonical normalizer with `enabled: true`; a creation
     // is implicitly an enabled objective. This rejects malformed deadlines and
     // the generic target envelope exactly as the Flow-card / settings paths do.
     const entry = normalizeDeferredObjectiveSettingsEntry(
-      { ...candidate, enabled: true } as DeferredObjectiveSettingsEntry,
+      { ...gatedCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
     );
     if (!entry) return { ok: false, reason: 'invalid_candidate' };
     return { ok: true, device, entry };
@@ -2149,13 +2187,14 @@ class PelsApp extends Homey.App {
     }
 
     // Per-device-key write: touches only this device's settings key, so it
-    // cannot drop a sibling task. The create-smart-task widget never carries a
-    // rescue permission (the budget-exempt rescue has its own merge-not-replace
-    // lane, `rescueDeviceWithBudgetExemption`), so the default `preserve` policy
-    // keeps a standing permission set elsewhere intact rather than wiping it.
-    // The write can still REFUSE on a transient un-confirmable migration or an
-    // untrustworthy absence read; surface that as a retryable failure instead of
-    // a false success so the widget can re-offer the create.
+    // cannot drop a sibling task. When the candidate carries opt-in "Extra
+    // permissions" (already eligibility-gated above), the entry's own `rescue` is
+    // persisted as-is. When it does not, the default `preserve` policy keeps a
+    // standing permission set elsewhere (e.g. by the budget-exempt rescue lane,
+    // `rescueDeviceWithBudgetExemption`) intact rather than wiping it. The write
+    // can still REFUSE on a transient un-confirmable migration or an untrustworthy
+    // absence read; surface that as a retryable failure instead of a false
+    // success so the widget can re-offer the create.
     const outcome = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),

@@ -92,15 +92,27 @@ copy) are untouched by that pass and remain open.*
       limit-lower-priority permission (boost) alongside the budget exemption — gated
       on stepped-load eligibility (only stepped/EV devices can honour it) — so it
       actually claims capacity (within the hard cap), plus an honest "Running as
-      soon as there's room" flash when there's no runnable plan. **Remaining:**
-      PR2 (a collapsed "Extra permissions" disclosure on the create_smart_task
-      compose screen — `May go over daily budget` / `May limit lower-priority
-      devices`, off by default); PR3 (rescue reuses the `/create` engine while
+      soon as there's room" flash when there's no runnable plan. **PR2 delivered** —
+      a collapsed, off-by-default "Extra permissions" disclosure on the
+      create_smart_task compose screen: `May go over daily budget` (any device) and
+      `May limit lower-priority devices` (gated ON EFFECT — offered only for a
+      stepped-load device at top priority, and only enabled once budget exemption
+      is on, since it is inert otherwise). Server re-gates both (defence-in-depth).
+      **Remaining:** PR3 (rescue reuses the `/create` engine while
       keeping its bespoke confirm sheet — do NOT route the panic path through the
       full create panel). Also: a real at-cap honesty signal (the in-isolation
       preview overstates, so the flash branch only catches the no-plan case, not
       the at-cap case); and the per-cause status copy still leaks the engine model
       ("Waiting on an external service", "Under manual control", "On hold · 0 min").
+    - **P3 (from PR2 review): create-screen "Extra permissions" opt-out is
+      additive-only.** `createDeferredObjective` uses the `preserve` rescue policy,
+      and the compose screen always seeds both toggles OFF without reflecting a
+      device's existing standing permission (set via Flow / the rescue lane). So a
+      fresh create with both toggles visibly off does NOT remove a standing
+      permission — surprising, though not data loss, and the preserve-on-opt-out
+      contract is now pinned by a test. Fix when worthwhile: surface the device's
+      current standing permission in the compose view (seed the toggles from it) so
+      the screen reads as authoritative.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 

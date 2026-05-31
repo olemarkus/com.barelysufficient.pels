@@ -1,6 +1,7 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
   CREATE_SMART_TASK_READY_BY_PRESETS,
+  SMART_TASK_EXTRA_PERMISSION_LABELS,
   formatEnergyEstimateKWh,
   formatDeadlineCostMetaLine,
   formatSmartTaskGoalValue,
@@ -30,12 +31,26 @@ const C = CREATE_SMART_TASK_WIDGET_COPY;
 // is a brief success flash before the controller resets to `picker`.
 export type ViewState =
   | { kind: 'picker' }
-  | { kind: 'compose'; device: CreateSmartTaskDevice; goal: number; readyById: string }
+  | {
+    kind: 'compose';
+    device: CreateSmartTaskDevice;
+    goal: number;
+    readyById: string;
+    // Opt-in "Extra permissions", both default off and carried through
+    // compose → preview → create so the user's choice survives a re-render and
+    // the preview/create reflect it. `limitLowerPriorityDevices` is forced off
+    // whenever `exemptFromBudget` is off (it is inert alone) or the device
+    // can't use it (`device.supportsLimitLowerPriority`).
+    exemptFromBudget: boolean;
+    limitLowerPriorityDevices: boolean;
+  }
   | {
     kind: 'preview';
     device: CreateSmartTaskDevice;
     goal: number;
     readyById: string;
+    exemptFromBudget: boolean;
+    limitLowerPriorityDevices: boolean;
     response: CreateSmartTaskPreviewResponse;
     submitting: boolean;
     error: string | null;
@@ -64,6 +79,15 @@ export type RenderTargets = {
   readyByLabel: HTMLElement;
   readyByList: HTMLElement;
   readyByEchoEl: HTMLElement;
+  // Extra permissions disclosure
+  extraPermsTitle: HTMLElement;
+  extraPermsHint: HTMLElement;
+  permBudgetInput: HTMLInputElement;
+  permBudgetLabel: HTMLElement;
+  permLimitToggle: HTMLElement;
+  permLimitInput: HTMLInputElement;
+  permLimitLabel: HTMLElement;
+  permLimitNote: HTMLElement;
   previewBtn: HTMLButtonElement;
   readyByTemplate: HTMLTemplateElement;
   // Preview — cost leads, the when-window pairs with it, energy is demoted.
@@ -222,6 +246,32 @@ const resolveReadyByEcho = (readyById: string): string | null => {
   return `${C.readyByLabel} ${formatSmartTaskDeadlineLong(next.getTime(), now.getTime(), null)}`;
 };
 
+// The collapsed "Extra permissions" disclosure. Both toggles reflect the view's
+// opt-in state; the limit-lower-priority toggle is only OFFERED for a device that
+// can use it (`supportsLimitLowerPriority`, gated on effect server-side) and only
+// ENABLED once budget exemption is on — inert alone, so a one-line note explains
+// the gate when it is disabled.
+const renderExtraPermissions = (
+  targets: RenderTargets,
+  view: Extract<ViewState, { kind: 'compose' }>,
+): void => {
+  const {
+    extraPermsTitle, extraPermsHint,
+    permBudgetInput, permBudgetLabel,
+    permLimitToggle, permLimitInput, permLimitLabel, permLimitNote,
+  } = targets;
+  extraPermsTitle.textContent = C.extraPermissionsTitle;
+  extraPermsHint.textContent = C.extraPermissionsHint;
+  permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
+  permBudgetInput.checked = view.exemptFromBudget;
+  permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
+  const offerLimit = view.device.supportsLimitLowerPriority;
+  setVisible(permLimitToggle, offerLimit);
+  permLimitInput.checked = view.limitLowerPriorityDevices;
+  permLimitInput.disabled = !view.exemptFromBudget;
+  setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
+};
+
 const renderCompose = (
   targets: RenderTargets,
   view: Extract<ViewState, { kind: 'compose' }>,
@@ -234,6 +284,7 @@ const renderCompose = (
   goalLabel.textContent = C.goalLabel;
   readyByLabel.textContent = C.readyByLabel;
   previewBtn.textContent = C.previewButton;
+  renderExtraPermissions(targets, view);
   // Back-label is the plain device name — the kind-aware "Charge to" / "Heat to"
   // verb is built to PRECEDE a value, so pairing it with a bare device name
   // ("Charge to Driveway charger") reads as broken English. The goal value lives

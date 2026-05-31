@@ -5,6 +5,7 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import {
   normalizeDeferredObjectiveSettingsEntry,
+  type DeferredObjectiveRescuePermissions,
   type DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
@@ -91,7 +92,21 @@ const parseCandidateRequest = (body: unknown): CreateSmartTaskCandidateRequest |
   const deadlineAtMs = typeof candidate.deadlineAtMs === 'number' && Number.isFinite(candidate.deadlineAtMs)
     ? candidate.deadlineAtMs
     : undefined;
-  return { deviceId, kind: candidate.kind, target: candidate.target, readyByLocalTime, deadlineAtMs };
+  // Opt-in "Extra permissions": accept only literal `true` (anything else is
+  // off). Eligibility for limit-lower-priority is re-gated server-side against
+  // the device, so a tampered `true` here can never persist a permission the
+  // device can't honour.
+  const exemptFromBudget = candidate.exemptFromBudget === true ? true : undefined;
+  const limitLowerPriorityDevices = candidate.limitLowerPriorityDevices === true ? true : undefined;
+  return {
+    deviceId,
+    kind: candidate.kind,
+    target: candidate.target,
+    readyByLocalTime,
+    deadlineAtMs,
+    exemptFromBudget,
+    limitLowerPriorityDevices,
+  };
 };
 
 // Resolve the request's local ready-by time to a future absolute deadline.
@@ -143,13 +158,30 @@ const resolveCreateDeadline = (
 // sees an optimistic preview for a candidate the create would reject. Returns
 // null when the per-kind target is out of range. The runtime create path
 // re-validates and additionally checks device-kind eligibility.
+// Map the request's opt-in permission booleans to the candidate's `rescue`
+// shape (`'always'` mode). Returns undefined when neither is on, so a task with
+// no extra permissions carries NO `rescue` — and the create path's `preserve`
+// policy then leaves any standing permission set elsewhere intact. The server
+// re-gates `limitLowerPriorityDevices` against the device.
+const buildCandidateRescue = (
+  request: CreateSmartTaskCandidateRequest,
+): DeferredObjectiveRescuePermissions | undefined => {
+  const rescue: DeferredObjectiveRescuePermissions = {
+    ...(request.exemptFromBudget ? { exemptFromBudget: 'always' as const } : {}),
+    ...(request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: 'always' as const } : {}),
+  };
+  return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : undefined;
+};
+
 const buildValidCandidate = (
   request: CreateSmartTaskCandidateRequest,
   deadlineAtMs: number,
 ): DeferredObjectivePlanPreviewCandidate | null => {
-  const candidate: DeferredObjectivePlanPreviewCandidate = request.kind === 'ev_soc'
+  const base: DeferredObjectivePlanPreviewCandidate = request.kind === 'ev_soc'
     ? { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs }
     : { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
+  const rescue = buildCandidateRescue(request);
+  const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
 };
 

@@ -9,6 +9,12 @@ import type { CreateSmartTaskDevicesPayload } from '../createSmartTaskWidgetType
 // The `overflow` state exists so the offline screenshot harness can exercise a
 // device list longer than the widget's fixed height — the "list looks cut, no
 // scroll" case the two-device default never renders.
+//
+// `supportsLimitLowerPriority` follows the gate-on-effect rule: true only for a
+// stepped-load device at top priority. The EV chargers carry it so the preview
+// exercises the limit-lower-priority toggle; thermostats/water heaters leave it
+// off (the common non-stepped case) so the preview also shows the budget-only
+// disclosure.
 export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskDevicesPayload> = {
   // Gallery thumbnail: one temperature device and one EV charger so the gallery
   // shows both goal kinds (°C stepper and % stepper).
@@ -26,6 +32,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 65,
         currentValue: 48,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-ev',
@@ -38,6 +45,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 1,
         defaultGoal: 80,
         currentValue: 42,
+        supportsLimitLowerPriority: true,
       },
     ],
   },
@@ -58,6 +66,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 21,
         currentValue: 19.5,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-bedroom',
@@ -70,6 +79,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 18,
         currentValue: 17.2,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-bathroom-floor',
@@ -82,6 +92,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 24,
         currentValue: 22.1,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-office',
@@ -94,6 +105,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 20,
         currentValue: 20.4,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-hot-water',
@@ -106,6 +118,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 65,
         currentValue: 48,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-cabin-water',
@@ -118,6 +131,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 0.5,
         defaultGoal: 60,
         currentValue: 55,
+        supportsLimitLowerPriority: false,
       },
       {
         deviceId: 'preview-ev',
@@ -130,6 +144,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 1,
         defaultGoal: 80,
         currentValue: 42,
+        supportsLimitLowerPriority: true,
       },
       {
         deviceId: 'preview-ev-guest',
@@ -142,6 +157,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         goalStep: 1,
         defaultGoal: 80,
         currentValue: 30,
+        supportsLimitLowerPriority: true,
       },
     ],
   },
