@@ -1,6 +1,6 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice, ShedAction } from './planTypes';
-import { isObservedOff } from '../observer/observedState';
+import { isNonSteppedDeviceRecovering } from './planShedRecovery';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -61,21 +61,4 @@ function shouldForceLowestActiveStep(params: {
   const { dev, devices, state, shedBehaviorAction } = params;
   return shedBehaviorAction === 'set_step'
     && devices.some((candidate) => candidate.id !== dev.id && isNonSteppedDeviceRecovering(candidate, state));
-}
-
-function isNonSteppedDeviceRecovering(
-  candidate: PlanInputDevice,
-  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
-): boolean {
-  const observedOff = isObservedOff(candidate);
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !observedOff) {
-    return false;
-  }
-  if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
-    return true;
-  }
-  const shedDecidedMs = state.shedDecidedMs[candidate.id];
-  if (shedDecidedMs == null) return false;
-  const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
-  return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;
 }
