@@ -61,6 +61,7 @@ const WIDGET_MARKUP = `
         </button>
       </header>
       <div class="preview-body">
+        <p class="preview-line preview-line--feasibility" data-preview-feasibility hidden></p>
         <p class="preview-line preview-line--cost" data-preview-cost hidden></p>
         <p class="preview-line preview-line--cost-subtext" data-preview-cost-subtext hidden></p>
         <div class="preview-chart" data-preview-chart hidden></div>
@@ -377,6 +378,54 @@ describe('create smart task widget browser', () => {
       await flushPromises();
       expect(root.dataset.view).toBe('compose');
       expect(composeTitle.textContent).toBe(DEVICE_B.deviceName);
+    });
+  });
+
+  describe('feasibility warning', () => {
+    const buildHomeyWithPreview = (preview: unknown): WidgetHomey => ({
+      api: async (method: string, path: string) => {
+        if (method === 'GET' && path === '/devices') return { state: 'ready', devices: [DEVICE_A] };
+        if (method === 'POST' && path === '/preview') return preview;
+        throw new Error(`unexpected api ${method} ${path}`);
+      },
+      ready: () => undefined,
+    });
+
+    test('a cannot_meet verdict surfaces the warning, not the missing-price line, and still allows create', async () => {
+      const cannotMeetPreview = {
+        ...OK_PREVIEW,
+        estimate: { ...OK_PREVIEW.estimate, status: 'cannot_meet' as const },
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(cannotMeetPreview));
+      await flushPromises();
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const feasibility = document.querySelector('[data-preview-feasibility]') as HTMLElement;
+      expect(feasibility.hidden).toBe(false);
+      expect(feasibility.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.cannotMeet);
+      // The "no prices published" line must NOT also show — a cannot_meet is a
+      // feasibility verdict, not a missing-price gap.
+      const unavailable = document.querySelector('[data-preview-unavailable]') as HTMLElement;
+      expect(unavailable.hidden).toBe(true);
+      // Surfacing the risk is the fix; create stays reachable (the estimate
+      // understates cannot_meet risk, so the user decides).
+      const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
+      expect(createBtn.disabled).toBe(false);
+    });
+
+    test('an on_track verdict shows no feasibility warning', async () => {
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(OK_PREVIEW));
+      await flushPromises();
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+
+      const feasibility = document.querySelector('[data-preview-feasibility]') as HTMLElement;
+      expect(feasibility.hidden).toBe(true);
     });
   });
 

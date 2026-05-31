@@ -176,6 +176,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     permLimitNote: '[data-perm-limit-note]',
     previewView: '[data-preview-view]',
     previewTitle: '[data-preview-title]',
+    previewFeasibilityEl: '[data-preview-feasibility]',
     previewCostEl: '[data-preview-cost]',
     previewCostSubtextEl: '[data-preview-cost-subtext]',
     previewChartEl: '[data-preview-chart]',
