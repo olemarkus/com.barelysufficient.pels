@@ -56,9 +56,6 @@ body.homey-dark-mode,
   line-height: var(--homey-line-height-default, 24px);
   font-weight: var(--homey-font-weight-medium, 500);
   color: var(--pels-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .summary:empty {
