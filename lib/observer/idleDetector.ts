@@ -202,7 +202,16 @@ const classifyByGapAndDuration = (
   durationMs: number,
   previous: IdleClassification | undefined,
 ): IdleClassification => {
-  if (gap === undefined) return 'active';
+  // No live temperature reading. Eligibility has already established the
+  // device is commanded on, has a setpoint, and is drawing ~0 W. A heater in
+  // that shape whose temperature sensor has gone dark is exactly the fault
+  // this module exists to surface — once it has been idle past the long
+  // window, treating it as `active` would silently swallow the warning. Below
+  // the window we stay `active`, matching the "not idle long enough yet"
+  // behaviour of the gap-known unresponsive branch.
+  if (gap === undefined) {
+    return durationMs >= IDLE_UNRESPONSIVE_MIN_DURATION_MS ? 'unresponsive' : 'active';
+  }
 
   const inHoldWindow = previous === 'near_target_idle'
     ? gap <= NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C

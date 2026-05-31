@@ -295,6 +295,52 @@ describe('classifyIdleState — unresponsive', () => {
   });
 });
 
+describe('classifyIdleState — temperature sensor stopped reporting', () => {
+  // A heater commanded on with a setpoint, drawing ~0 W, whose temperature
+  // sensor has gone dark (no currentTemperature → undefined gap). This is the
+  // exact fault the module exists to surface; it must not short-circuit to
+  // `active` once the device has been idle past the unresponsive window.
+  const sensorDark = (): IdleDetectorInput => baseInput({ currentTemperature: undefined });
+
+  it('reports unresponsive when the temperature sensor is absent past the unresponsive window', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState({ ...sensorDark(), now: t0 }, state);
+    const result = classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS },
+      state,
+    );
+    expect(result.classification).toBe('unresponsive');
+    expect(result.temperatureGapC).toBeUndefined();
+  });
+
+  it('stays active before the unresponsive window elapses when temperature is absent', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState({ ...sensorDark(), now: t0 }, state);
+    const early = classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_HOLD_MIN_DURATION_MS + 10_000 },
+      state,
+    );
+    expect(early.classification).toBe('active');
+  });
+
+  it('clears back to active when the device starts drawing again', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    classifyIdleState({ ...sensorDark(), now: t0 }, state);
+    classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS },
+      state,
+    );
+    const resumed = classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 1_000, measuredPowerKw: 1.5 },
+      state,
+    );
+    expect(resumed.classification).toBe('active');
+  });
+});
+
 describe('classifyIdleState — capped_idle', () => {
   // Drives the rolling window with alternating on/off ticks so the cycling
   // detector sees both halves of the device's internal duty cycle. Each
