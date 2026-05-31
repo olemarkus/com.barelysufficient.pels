@@ -754,8 +754,10 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   outro: 'to schedule a device for a specific ready-by time.',
   // Second route: the "New smart task" dashboard widget
   // (widgets/create_smart_task) creates a task directly, without the Flow
-  // editor. Widget name wrapped in <strong> to match the Flow-action emphasis.
-  widgetLead: 'Or add the',
+  // editor. Rendered as its own trailing paragraph in `EmptyBody`, so the lead
+  // is phrased to stand alone (not "Or …", which would dangle off a separate
+  // block). Widget name wrapped in <strong> to match the Flow-action emphasis.
+  widgetLead: 'You can also add the',
   widgetName: 'New smart task',
   widgetOutro: 'widget to a dashboard and create one there.',
 } as const;
