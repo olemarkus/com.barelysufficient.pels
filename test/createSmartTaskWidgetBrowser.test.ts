@@ -334,6 +334,62 @@ describe('create smart task widget browser', () => {
     });
   });
 
+  // An unavailable preview must explain WHY honestly: a device with no learned
+  // profile yet (`unavailableReason: 'needs_observation'`) gets the bespoke
+  // "observe this device first" copy, never the (false) "no prices" line.
+  describe('unavailable preview message reflects the backend reason', () => {
+    const previewWith = (estimate: Record<string, unknown>) => ({
+      ok: true as const,
+      deadlineAtMs: Date.now() + 60 * 60 * 1000,
+      deadlineLabel: 'Today 07:00',
+      scheduledWindowLabel: '',
+      estimate: { scheduledHours: [], projectedFinishAtMs: null, energyEstimateKWh: null, energyExpectedKWh: null, costEstimate: null, ...estimate },
+    });
+
+    const renderUnavailablePreview = async (estimate: Record<string, unknown>): Promise<HTMLElement> => {
+      const homey: WidgetHomey = {
+        api: async (method: string, path: string) => {
+          if (method === 'GET' && path === '/devices') return { state: 'ready', devices: [DEVICE_A] };
+          if (method === 'POST' && path === '/preview') return previewWith(estimate);
+          throw new Error(`unexpected api ${method} ${path}`);
+        },
+        ready: () => undefined,
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey);
+      await flushPromises();
+      click('[data-device-button]');
+      click('[data-preview-btn]');
+      await flushPromises();
+      return document.querySelector('[data-preview-unavailable]') as HTMLElement;
+    };
+
+    test('needs_observation shows the observe-the-device copy, not the no-prices line', async () => {
+      const el = await renderUnavailablePreview({ status: 'unavailable', unavailableReason: 'needs_observation' });
+      expect(el.hidden).toBe(false);
+      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation);
+      expect(el.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+      // The Create button stays enabled — an unprojectable candidate is still creatable.
+      const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
+      expect(createBtn.disabled).toBe(false);
+    });
+
+    test('an unavailable preview with no reason keeps the generic line', async () => {
+      const el = await renderUnavailablePreview({ status: 'unavailable' });
+      expect(el.hidden).toBe(false);
+      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+    });
+
+    test('an already-met goal (satisfied, zero hours) shows the goal-met copy, not the no-prices line', async () => {
+      // `satisfied` is projectable=false (zero scheduled hours) but is NOT an
+      // unavailable cause — it must read as "already met", never "no prices".
+      const el = await renderUnavailablePreview({ status: 'satisfied' });
+      expect(el.hidden).toBe(false);
+      expect(el.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.previewSatisfied);
+      expect(el.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.previewUnavailable);
+    });
+  });
+
   // FIX Fu-Ey: a slow preview/create that resolves AFTER the user backed out or
   // switched devices must be ignored (latest-request-wins) so it can't replace
   // the current view with a stale preview the user could then Create from.

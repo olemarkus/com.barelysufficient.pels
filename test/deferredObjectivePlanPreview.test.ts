@@ -328,6 +328,65 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.projectedFinishAtMs).not.toBeNull();
   });
 
+  it('tags unavailable as needs_observation when the device has no learned profile yet', () => {
+    const ctx: PreviewContext = {
+      // Prices ARE available and optimisation is on — the only thing missing is a
+      // learned energy profile for this thermostat (no temperature bootstrap),
+      // so resolveProfileEnergy returns objective_missing_capacity.
+      device: buildTemperatureDevice(),
+      powerTracker: { objectiveProfiles: {} } as PowerTrackerState,
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('needs_observation');
+    expect(estimate.scheduledHours).toEqual([]);
+    expect(estimate.energyEstimateKWh).toBeNull();
+  });
+
+  it('tags unavailable as needs_observation for a thermal learned-rate device with no executable step', () => {
+    const ctx: PreviewContext = {
+      // Learned kWh/°C is present, but the device has no stepped profile and no
+      // measured/planning power, so resolveObjectiveSteps is empty →
+      // objective_missing_charge_rate. For a thermal device that is the same
+      // "not observed yet" cold-start as missing_capacity.
+      device: buildTemperatureDevice({
+        steppedLoadProfile: undefined,
+        measuredPowerKw: undefined,
+        expectedPowerKw: undefined,
+        powerKw: undefined,
+        planningPowerKw: undefined,
+      }),
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'heater-1', candidate: temperatureCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('needs_observation');
+  });
+
+  it('leaves unavailableReason absent for a price-horizon unavailable (not an observation gap)', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      // Optimisation off → policy horizon unavailable → the cause is NOT a missing
+      // profile, so the widget must keep the generic "no prices" message.
+      priceOptimizationEnabled: false,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBeUndefined();
+  });
+
   it('returns at_risk when the deadline forces the plan into its safety reserve', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),

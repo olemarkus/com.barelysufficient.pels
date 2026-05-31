@@ -328,6 +328,20 @@ const isProjectable = (response: OkPreview): boolean => (
   response.estimate.status !== 'unavailable' && response.estimate.scheduledHours.length > 0
 );
 
+// The non-projectable line, chosen by what the backend actually reported. An
+// already-met goal (`satisfied`, zero scheduled hours) says so; a device with no
+// learned profile yet gets the honest "observe this device first" copy; every
+// other cause keeps the generic message. Takes the whole estimate because two
+// distinct fields (status, unavailableReason) drive the choice.
+const resolvePreviewUnavailableCopy = (
+  estimate: OkPreview['estimate'],
+): string => {
+  if (estimate.status === 'satisfied') return C.previewSatisfied;
+  return estimate.unavailableReason === 'needs_observation'
+    ? C.previewNeedsObservation
+    : C.previewUnavailable;
+};
+
 // Energy is the demoted secondary line — kept (it answers "how much will it
 // pull") but muted below the cost headline + when-window.
 const formatEnergyLine = (estimate: OkPreview['estimate']): string | null => {
@@ -391,13 +405,15 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // estimate caveat un-clipped. Energy stays as the text fallback when there's
   // no chart.
   setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
-  // The "no prices to project" line is only for a genuine `unavailable` /
+  // The non-projectable line is only for a genuine `unavailable` /
   // nothing-to-show projection — NOT for a real `cannot_meet` / `at_risk` verdict
-  // (which now carries its own feasibility warning above), so it never mislabels
-  // a feasibility miss as a missing-price gap.
+  // (which carries its own feasibility warning above), so it never mislabels a
+  // feasibility miss as a missing-price gap. Within that, pick the bespoke copy
+  // so an already-met goal or a not-yet-observed device reads honestly instead of
+  // (falsely) being told prices are missing.
   setLine(
     targets.previewUnavailableEl,
-    !projectable && feasibilityWarning === null ? C.previewUnavailable : null,
+    !projectable && feasibilityWarning === null ? resolvePreviewUnavailableCopy(response.estimate) : null,
   );
   setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
 };
