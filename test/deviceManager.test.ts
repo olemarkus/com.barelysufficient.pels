@@ -83,6 +83,28 @@ const buildRealtimeDevices = () => ({
     },
 });
 
+// Shared fixtures for the transient-empty-read abandon-grace tests. Kept at
+// module scope so the assertions stay flat (no extra describe/callback nesting).
+const GRACE_POPULATED_PAYLOAD = {
+    dev1: {
+        id: 'dev1', name: 'Heater', class: 'heater',
+        capabilities: ['measure_power', 'onoff'],
+        capabilitiesObj: {
+            measure_power: { value: 1000, id: 'measure_power' },
+            onoff: { value: true, id: 'onoff' },
+        },
+    },
+};
+
+const snapshotDeviceId = (device: { id: string }): string => device.id;
+
+async function populateSnapshotForGrace(transport: DeviceTransport): Promise<void> {
+    await transport.init();
+    mockApiGet.mockResolvedValue(GRACE_POPULATED_PAYLOAD);
+    await transport.refreshSnapshot();
+    expect(transport.getSnapshot()).toHaveLength(1);
+}
+
 describe('DeviceTransport', () => {
     let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
@@ -90,7 +112,7 @@ describe('DeviceTransport', () => {
         log: vi.Mock;
         debug: vi.Mock;
         error: vi.Mock;
-        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock };
+        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock; warn: vi.Mock };
     };
     let debugStructuredMock: vi.Mock;
 
@@ -118,6 +140,7 @@ describe('DeviceTransport', () => {
                 info: vi.fn(),
                 error: vi.fn(),
                 debug: vi.fn(),
+                warn: vi.fn(),
             },
         };
         debugStructuredMock = vi.fn();
@@ -545,6 +568,28 @@ describe('DeviceTransport', () => {
             dm.destroy();
         });
 
+        it('does not empty the picker on a single transient empty SDK read', async () => {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            mockApiGet.mockResolvedValue({
+                dev1: buildDevice('dev1', true),
+                dev2: buildDevice('dev2', true),
+            });
+            await dm.refreshSnapshot();
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+
+            // A transient empty read is deferred by abandon-grace: the raw-device
+            // cache backing the picker must survive the blip, not collapse to [].
+            mockApiGet.mockResolvedValue({});
+            await dm.refreshSnapshot();
+
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+            dm.destroy();
+        });
+
         it('treats an all-false managedDevices map as filter-inactive so implicit-managed devices stay visible', async () => {
             // Regression: when `disableUnsupportedDevices` writes `{id: false}`
             // entries on first boot, the filter must NOT activate from those
@@ -645,6 +690,128 @@ describe('DeviceTransport', () => {
             expect(heater?.currentOn).toBe(true);
             expect(light?.deviceType).toBe('onoff');
             expect(light?.targets).toEqual([]);
+        });
+
+        it('abandon-grace: does not clobber a populated snapshot on a single transient empty read', async () => {
+            await populateSnapshotForGrace(deviceManager);
+
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+
+            const ids = deviceManager.getSnapshot().map(snapshotDeviceId);
+            expect(ids).toEqual(['dev1']);
+            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_empty_deferred',
+                reasonCode: 'empty_snapshot_transient',
+                consecutiveEmptyReads: 1,
+                previousDevicesTotal: 1,
+            }));
+        });
+
+        it('abandon-grace: keeps the populated snapshot across several empty reads within grace', async () => {
+            await populateSnapshotForGrace(deviceManager);
+
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+            await deviceManager.refreshSnapshot();
+
+            const ids = deviceManager.getSnapshot().map(snapshotDeviceId);
+            expect(ids).toEqual(['dev1']);
+        });
+
+        it('abandon-grace: eventually commits the empty snapshot after the consecutive-read threshold', async () => {
+            await populateSnapshotForGrace(deviceManager);
+
+            mockApiGet.mockResolvedValue({});
+            // Threshold is 3 consecutive empty reads.
+            await deviceManager.refreshSnapshot();
+            await deviceManager.refreshSnapshot();
+            expect(deviceManager.getSnapshot()).toHaveLength(1);
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()).toHaveLength(0);
+            expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_empty_grace_exceeded',
+                reasonCode: 'empty_snapshot_committed',
+                consecutiveEmptyReads: 3,
+                previousDevicesTotal: 1,
+            }));
+        });
+
+        it('abandon-grace: resets the grace counter once a populated read returns', async () => {
+            await populateSnapshotForGrace(deviceManager);
+
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+            await deviceManager.refreshSnapshot();
+
+            // Recovery: a populated read clears the run so the next empty read
+            // is treated as the first miss again, not the third.
+            mockApiGet.mockResolvedValue(GRACE_POPULATED_PAYLOAD);
+            await deviceManager.refreshSnapshot();
+            expect(deviceManager.getSnapshot()).toHaveLength(1);
+
+            mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+            expect(deviceManager.getSnapshot()).toHaveLength(1);
+            expect(loggerMock.structuredLog.warn).toHaveBeenLastCalledWith(expect.objectContaining({
+                event: 'device_snapshot_empty_deferred',
+                consecutiveEmptyReads: 1,
+            }));
+        });
+
+        it('abandon-grace: commits an empty snapshot immediately when there was nothing to protect', async () => {
+            await deviceManager.init();
+            mockApiGet.mockResolvedValue({});
+
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()).toHaveLength(0);
+            expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_empty_deferred',
+            }));
+        });
+
+        it('abandon-grace: commits immediately when the SDK returned devices that all filtered out', async () => {
+            await populateSnapshotForGrace(deviceManager);
+
+            // The SDK returns a device, but it has no usable capabilities so it
+            // parses to an empty managed snapshot. That is an INTENTIONAL empty
+            // (e.g. the last managed device became ineligible), not a transient
+            // SDK blip — it must commit immediately, not be held under grace.
+            mockApiGet.mockResolvedValue({
+                ignored: { id: 'ignored', name: 'Ignored', class: 'other', capabilities: [], capabilitiesObj: {} },
+            });
+            await deviceManager.refreshSnapshot();
+
+            expect(deviceManager.getSnapshot()).toHaveLength(0);
+            expect(loggerMock.structuredLog.warn).not.toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_snapshot_empty_deferred',
+            }));
+        });
+
+        it('abandon-grace: eventually commits the empty snapshot after the grace window elapses', async () => {
+            vi.useFakeTimers();
+            try {
+                await populateSnapshotForGrace(deviceManager);
+
+                mockApiGet.mockResolvedValue({});
+                await deviceManager.refreshSnapshot();
+                // First empty read is deferred (under both the read and time limits).
+                expect(deviceManager.getSnapshot()).toHaveLength(1);
+
+                // Cross the time-based grace window without hitting the read threshold.
+                vi.advanceTimersByTime(5 * 60 * 1000);
+                await deviceManager.refreshSnapshot();
+
+                expect(deviceManager.getSnapshot()).toHaveLength(0);
+                expect(loggerMock.structuredLog.warn).toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'device_snapshot_empty_grace_exceeded',
+                    reasonCode: 'empty_snapshot_committed',
+                }));
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('includes the normalized error in the structured refresh failure log', async () => {
@@ -1980,7 +2147,11 @@ describe('DeviceTransport', () => {
             }]);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeDefined();
 
+            // A single empty read is held under abandon-grace; drive past the
+            // consecutive-read threshold so the genuinely-gone device commits.
             mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+            await deviceManager.refreshSnapshot();
             await deviceManager.refreshSnapshot();
 
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
@@ -2313,7 +2484,11 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
             expect(deviceManager.getDebugObservedSources('dev1')?.snapshotRefresh).toBeDefined();
 
+            // A single empty read is held under abandon-grace; drive past the
+            // consecutive-read threshold so the genuinely-gone device commits.
             mockApiGet.mockResolvedValue({});
+            await deviceManager.refreshSnapshot();
+            await deviceManager.refreshSnapshot();
             await deviceManager.refreshSnapshot();
 
             expect(deviceManager.getDebugObservedSources('dev1')).toBeNull();
