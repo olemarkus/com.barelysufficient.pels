@@ -94,6 +94,7 @@ export type RenderTargets = {
   previewView: HTMLElement;
   previewBackBtn: HTMLButtonElement;
   previewTitle: HTMLElement;
+  previewFeasibilityEl: HTMLElement;
   previewCostEl: HTMLElement;
   previewCostSubtextEl: HTMLElement;
   previewChartEl: HTMLElement;
@@ -349,12 +350,26 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
   });
 };
 
+// A real planner verdict that the candidate may miss its deadline, surfaced as a
+// prominent warning so the user never commits an unreachable ready-by believing
+// it is fine. `cannot_meet` is the hard "won't make it"; `at_risk` is the softer
+// "might not". The in-isolation estimate UNDERSTATES this risk (see the preview
+// contract), so a verdict here is worth heeding. Null for the healthy verdicts.
+const resolveFeasibilityWarning = (status: OkPreview['estimate']['status']): string | null => {
+  if (status === 'cannot_meet') return C.cannotMeet;
+  if (status === 'at_risk') return C.atRisk;
+  return null;
+};
+
 // Render a successfully-projected (or zero-hour) preview. Cost leads; the
 // when-window pairs with it; energy is the muted secondary line. The
 // "cheapest hours before HH:MM" subtext rides under the cost only when there is
-// a cost figure to explain.
+// a cost figure to explain. A `cannot_meet` / `at_risk` verdict also raises a
+// feasibility warning above the figures.
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
+  const feasibilityWarning = resolveFeasibilityWarning(response.estimate.status);
+  setLine(targets.previewFeasibilityEl, feasibilityWarning);
   const costLine = projectable ? formatCostLine(response.estimate) : null;
   setLine(targets.previewCostEl, costLine);
   setLine(
@@ -376,13 +391,19 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   // estimate caveat un-clipped. Energy stays as the text fallback when there's
   // no chart.
   setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
-  // Show the unavailable line when the projection couldn't run; otherwise the
-  // honest "estimate" caveat sits under the figures.
-  setLine(targets.previewUnavailableEl, projectable ? null : C.previewUnavailable);
+  // The "no prices to project" line is only for a genuine `unavailable` /
+  // nothing-to-show projection — NOT for a real `cannot_meet` / `at_risk` verdict
+  // (which now carries its own feasibility warning above), so it never mislabels
+  // a feasibility miss as a missing-price gap.
+  setLine(
+    targets.previewUnavailableEl,
+    !projectable && feasibilityWarning === null ? C.previewUnavailable : null,
+  );
   setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
 };
 
 const hidePreviewLines = (targets: RenderTargets): void => {
+  hide(targets.previewFeasibilityEl);
   hide(targets.previewCostEl);
   hide(targets.previewCostSubtextEl);
   hide(targets.previewChartEl);

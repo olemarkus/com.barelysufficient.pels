@@ -89,7 +89,17 @@
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
     // Shown under the limit-lower-priority toggle when it is disabled: that
     // permission only has any effect alongside the budget one, so it is gated on it.
-    limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this."
+    limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
+    // Shown in the preview when the in-isolation projection returns a real planner
+    // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
+    // `at_risk` (might not). Surfaced as a prominent warning so a user never
+    // commits an unreachable ready-by believing it is fine. The estimate
+    // UNDERSTATES this risk (it projects the candidate in isolation — see the
+    // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
+    // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
+    // projection gap rather than a feasibility verdict.
+    cannotMeet: "May not be ready by this time. Try an earlier goal or a later ready-by time.",
+    atRisk: "This might not be ready in time \u2014 a later ready-by time or lower goal is safer."
   };
   var resolveCreateSmartTaskRejectCopy = (reason) => {
     if (reason === "deadline_passed") return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
@@ -931,8 +941,15 @@
       costUnit: estimate.costUnit
     });
   };
+  var resolveFeasibilityWarning = (status) => {
+    if (status === "cannot_meet") return C.cannotMeet;
+    if (status === "at_risk") return C.atRisk;
+    return null;
+  };
   var renderOkPreview = (targets, response) => {
     const projectable = isProjectable(response);
+    const feasibilityWarning = resolveFeasibilityWarning(response.estimate.status);
+    setLine(targets.previewFeasibilityEl, feasibilityWarning);
     const costLine = projectable ? formatCostLine(response.estimate) : null;
     setLine(targets.previewCostEl, costLine);
     setLine(
@@ -946,10 +963,14 @@
     setVisible(targets.previewChartEl, charted);
     setLine(targets.previewWhenEl, formatWhenLine(response));
     setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
-    setLine(targets.previewUnavailableEl, projectable ? null : C.previewUnavailable);
+    setLine(
+      targets.previewUnavailableEl,
+      !projectable && feasibilityWarning === null ? C.previewUnavailable : null
+    );
     setLine(targets.previewCaveatEl, projectable ? C.estimateCaveat : null);
   };
   var hidePreviewLines = (targets) => {
+    hide(targets.previewFeasibilityEl);
     hide(targets.previewCostEl);
     hide(targets.previewCostSubtextEl);
     hide(targets.previewChartEl);
@@ -1095,6 +1116,7 @@
       permLimitNote: "[data-perm-limit-note]",
       previewView: "[data-preview-view]",
       previewTitle: "[data-preview-title]",
+      previewFeasibilityEl: "[data-preview-feasibility]",
       previewCostEl: "[data-preview-cost]",
       previewCostSubtextEl: "[data-preview-cost-subtext]",
       previewChartEl: "[data-preview-chart]",

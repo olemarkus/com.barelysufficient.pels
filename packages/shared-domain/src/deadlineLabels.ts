@@ -301,6 +301,16 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // Shown under the limit-lower-priority toggle when it is disabled: that
   // permission only has any effect alongside the budget one, so it is gated on it.
   limitLowerPriorityNeedsBudget: 'Turn on “May go over daily budget” to use this.',
+  // Shown in the preview when the in-isolation projection returns a real planner
+  // verdict that the deadline may not be met — `cannot_meet` (won't make it) or
+  // `at_risk` (might not). Surfaced as a prominent warning so a user never
+  // commits an unreachable ready-by believing it is fine. The estimate
+  // UNDERSTATES this risk (it projects the candidate in isolation — see the
+  // `DeferredObjectivePlanPreview` contract), so the copy is a plain warning, not
+  // a soft hint. Distinct from `previewUnavailable`, which is a missing-price /
+  // projection gap rather than a feasibility verdict.
+  cannotMeet: 'May not be ready by this time. Try an earlier goal or a later ready-by time.',
+  atRisk: 'This might not be ready in time — a later ready-by time or lower goal is safer.',
 } as const;
 
 // Map a create rejection reason to the user-facing widget error line. Two cases
