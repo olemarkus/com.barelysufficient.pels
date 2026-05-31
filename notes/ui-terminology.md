@@ -178,7 +178,7 @@ Past tasks archive below has any finished runs. Headlines come from
 
 | State | Headline | When |
 |---|---|---|
-| First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty — the headline pairs with the `No smart tasks yet` body intro + Flow-setup invitation. |
+| First run (no history) | `Add your first smart task` | No active cards and the Past tasks archive is empty — the headline pairs with the `No smart tasks yet` body intro, which names both creation routes: the Flow-card actions and the separate "New smart task" widget. |
 | Between runs (history exists) | `No smart tasks scheduled` | No active cards but the archive has finished runs — the calmer present-tense headline; the body (`DEADLINES_LIST_BETWEEN_RUNS_BODY`) points down to Past tasks. Never `first` / `yet` here — that framing would erase a returning user's history. |
 
 ### Past-task outcome chips

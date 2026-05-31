@@ -355,7 +355,10 @@ const EmptyBody = () => (
     <strong>{SMART_TASK_LIST_EMPTY_COPY.chargingAction}</strong>{' '}
     {SMART_TASK_LIST_EMPTY_COPY.actionWord}{' '}
     <em>{SMART_TASK_LIST_EMPTY_COPY.chargingExample}</em>{' '}
-    {SMART_TASK_LIST_EMPTY_COPY.outro}
+    {SMART_TASK_LIST_EMPTY_COPY.outro}{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.widgetLead}{' '}
+    <strong>{SMART_TASK_LIST_EMPTY_COPY.widgetName}</strong>{' '}
+    {SMART_TASK_LIST_EMPTY_COPY.widgetOutro}
   </p>
 );
 
