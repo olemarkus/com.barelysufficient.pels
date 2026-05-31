@@ -182,6 +182,9 @@ describe('smart-task list card copy constants', () => {
       chargingAction: 'Add charging task',
       chargingExample: '(charge a device to a target percent by a time)',
       outro: 'to schedule a device for a specific ready-by time.',
+      widgetLead: 'Or add the',
+      widgetName: 'New smart task',
+      widgetOutro: 'widget to a dashboard and create one there.',
     });
   });
 

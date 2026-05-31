@@ -200,9 +200,10 @@ export const resolveSmartTaskWidgetDetailCopy = (
 
 // Compressed empty-state pointer for the widget. The settings-UI variant
 // (`SMART_TASK_LIST_EMPTY_COPY`) wraps Flow-action names in rich markup the
-// widget can't render at 320–480 px; this is the one-sentence form.
+// widget can't render at 320–480 px; this is the one-sentence form. Names both
+// creation routes: a Flow card or the separate "New smart task" widget.
 export const SMART_TASK_WIDGET_EMPTY_HINT
-  = 'Add a smart task from a Flow card to see it here.';
+  = 'Add one from a Flow card or the New smart task widget to see it here.';
 
 // Widget empty-state subtitle. Lives here (not inlined in the widget package)
 // so runtime logging and the widget render the same string per
@@ -751,6 +752,12 @@ export const SMART_TASK_LIST_EMPTY_COPY = {
   chargingAction: 'Add charging task',
   chargingExample: '(charge a device to a target percent by a time)',
   outro: 'to schedule a device for a specific ready-by time.',
+  // Second route: the "New smart task" dashboard widget
+  // (widgets/create_smart_task) creates a task directly, without the Flow
+  // editor. Widget name wrapped in <strong> to match the Flow-action emphasis.
+  widgetLead: 'Or add the',
+  widgetName: 'New smart task',
+  widgetOutro: 'widget to a dashboard and create one there.',
 } as const;
 
 // Banner copy for the Smart-tasks list when the bootstrap fetch fails. Lifted
