@@ -375,26 +375,22 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Host-CSS bleed: `<label>` / `<input>` are still exposed (buttons fixed).**
-      Homey's host `_base.css` restyles bare native elements via `:not(.hy-nostyle)`
-      rules. The `<button>` case was fixed in PR #1352 (every native button now
-      carries `hy-nostyle`, an ESLint guard enforces it, and a render-gate
-      regression injects the captured prod host CSS over the mobile-DARK render to
-      assert no button wears the host grey). The SAME mechanism still hits forms:
-      `label:not(.hy-nostyle)` (specificity (0,1,1)) force-greys + uppercases +
-      10px-shrinks every bare `<label>`, and `.pels-text-settings-label` (0,1,0)
-      loses to it; `input[type=text|search|password|email|checkbox]:not(.hy-nostyle)`
-      likewise restyle bare inputs; `hr` / `fieldset` / `legend` too. PELS ships
-      bare `<label class="field">` (e.g. `index.html:149,454+`,
-      `ElectricityPricesView.tsx`) with no opt-out, so on-device dark theme these
-      lose their `--pels-text-primary` colour and get host chrome. Fix: either add
-      `hy-nostyle` to the form primitives (mirroring the button fix, plus a sibling
-      ESLint guard on `<label>`/`<input>`) OR add a PELS host-defence
-      `label, input, hr, fieldset, legend { … }` reset block at winning specificity.
-      Then broaden the render-gate regression to assert no PELS-owned `<label>` /
-      `<input>` inherits a host colour / text-transform. Real-device verification
-      warranted (chromium can't reproduce the bleed without the injected fixture).
-      Source: PR #1352 m3-critic, 2026-05-31.
+- [x] **Host-CSS bleed on `<label>` / `<input>` — investigated, already defended
+      (m3-critic false positive).** m3-critic flagged that `label:not(.hy-nostyle)`
+      (0,1,1) would beat `.pels-text-settings-label` (0,1,0) and grey/uppercase bare
+      `<label>`s. Reasoning was specificity-only; the actual render disproves it:
+      PELS already carries a global `label { text-transform: none !important; color:
+      inherit !important; font-size: inherit !important; font-weight: inherit
+      !important; }` override (style.css:146), plus `!important` resets for
+      `fieldset` / `legend` / `hr`, which beat the host rule for EVERY label (static
+      or dynamic) regardless of specificity. Confirmed by injecting the full prod
+      host bundle over the mobile-dark render: bare `.field` labels compute PELS
+      styling (`text-transform: none`, light text, 15px), not host chrome. Inputs
+      are immune anyway — PELS form fields are `md-*` Web Components whose `<input>`
+      lives in shadow DOM, which the host sheet can't reach. No fix needed; the
+      `homey-button-bleed` render-gate regression now also asserts the label
+      override still holds (fails if it's ever dropped). Source: PR #1352 m3-critic
+      → verified false positive, 2026-05-31.
 
 - [ ] **Budget-adjust captures aren't host-faithful — and host CSS breaks the
       sticky footer under test.** `budget-adjust-ux.spec.ts` is a functional spec
@@ -2071,65 +2067,36 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       `npm run build:settings`. Files: `settings/style.css`. Source:
       bot-review audit + gemini confirmation on PR #1242, 2026-05-28.
 
-## P2 M3 alignment pass (post desktop-light-mode-fix)
+## M3 alignment pass — closed (2026-05-30 / 2026-05-31)
 
-Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
-change scoped itself strictly to the colour palette — the items below are the
-broader Material 3 / Homey-look alignment direction surfaced during that review
-but explicitly out of scope for the patch landing. Each is a separate effort,
-should not be folded into the same PR.
+The desktop-light theme-model review (2026-05-17) surfaced a broader Material 3 /
+Homey-look alignment direction. It is now resolved — no open items remain.
 
-**Shipped 2026-05-30 (design train, independent PRs):** calmer accent green-600
-`#16a34a` (#1339); reduce-orange-weight 4px left state-rail + calmer device-card
-defaults (#1343, was two items); Homey-native dividerised Settings nav with row
-icons (#1340); drop-eyebrow + numeric-first metric hero typography (#1346); M3
-underline tab strip (#1342); meter dark-tick re-tone (#1345, partial — remaining
-marker work tracked under "Progress markers" below). The items left below were
-out of scope of that train.
+**Shipped** (settings-ui, independent rebase-merged PRs):
+- Calmer accent green-600 `#16a34a` (#1339).
+- Reduce-orange-weight + calmer device-card defaults (#1343), then the follow-up
+  that dropped the off-pattern left state-rail for plain cards + chip-carried tone
+  (#1351) — a leading colour bar read as the Material-2 / iOS accent-list idiom.
+- Homey-native dividerised Settings nav with row icons (#1340), + dead-rule and
+  icon-stroke cleanup (m3-cleanup follow-up).
+- Drop-eyebrow + numeric-first metric hero typography (#1346).
+- M3 underline tab strip (#1342).
+- Meter marker semantics — dark-tick re-tone (#1345), then always-on legend for
+  single-marker bars + a surface-toned ring so the marker stays legible over the
+  amber over-threshold fill (m3-cleanup follow-up).
 
-- [ ] Real M3 token layer: migrate PELS from its current mixed
-      `--color-base-*` / `--color-role-*` / `--md-sys-color-*` graph to a strict
-      M3 `--md-sys-color-*` role layer. Components consume roles only — no raw
-      hex, no opacity stacks, no one-off colours. Touches every component CSS
-      file, every `--md-*` binding in `packages/settings-ui/public/style.css`,
-      every chart palette consumer (the flat ECharts modules at
-      `packages/settings-ui/src/ui/*Echarts.ts` plus `budgetRedesignChart.ts` /
-      `dayViewChart.ts` — there is no `src/ui/charts/` dir). NOTE: overlaps the
-      settings-ui unification train, which already introduced a
-      base → semantic → component tier; sequence with that rather than parallel.
-
-- [ ] Progress markers — finish item #6. The bare near-black "dark tick" is gone
-      (re-toned to `--pels-text-secondary`, #1345), but markers are not yet
-      genuinely self-explanatory: (a) single-marker bars (the "Safe pace" power
-      meter) have no always-on key — the meaning lives only in a hover tooltip
-      (non-discoverable on mobile) + aria-label; add a compact always-visible
-      micro-legend mirroring the multi-marker `.plan-hero__legend` swatch
-      geometry. (b) Over-threshold contrast (Codex, #1345): when the bar crosses
-      safe-pace/budget the target marker sits on the `--pels-status-warning`
-      (`#f59e0b`) fill where the grey marker is ~2:1 — give it a contrasting ring
-      so it stays visible on the empty track AND the amber/green fill in both
-      themes. Files: `packages/settings-ui/public/style.css`
-      (`.pels-meter-track__marker--target`, legend swatch rules).
-
-- [ ] Settings-nav follow-ups (from #1340 pels-m3-critic, 2026-05-30): remove the
-      dead `.settings-nav-card__content` rule in
-      `packages/settings-ui/public/style.css` (the markup composes title/
-      description via `md-list-item` headline/supporting-text slots, so the
-      `__content` grid rule never applies); and normalise the row-icon stroke
-      widths — the price-aware bolt-in-circle is `1.4` while its six siblings are
-      `1.6`, so it reads optically lighter.
-
-- [ ] Architectural debt — saturated semantics drift under Homey's invert.
-      Amber warn pills become pink/magenta and `Missed` / `Succeeded` chips
-      drift inconsistently when Homey's dark-mode `filter: invert(1)
-      hue-rotate(180deg)` lands on PELS. Not fixable from PELS alone: needs
-      either a Homey-side theme signal we can read at runtime, or source values
-      whose post-invert form preserves the same role tone. Park until Homey
-      ships a signal or until we move to a theme-handshake protocol.
-
-*Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
-#882, #884), 2026-05-18. Items 2–5, 7–8 shipped via the design train
-(#1339/#1343/#1340/#1346/#1342/#1345), 2026-05-30.*
+**Dropped** (2026-05-31, both fail the "does it advance token/design consistency?"
+test):
+- *Strict `--md-sys-color-*` token migration.* Component CSS already consumes
+  tokens (stylelint-enforced — the only raw hex is the base-palette definition
+  block + desktop-override defs), and `--md-sys-color-*` is a LIVE theming bridge
+  for the 90 `md-*` Material-Web components (bound via `--pels-md-*`), not cruft.
+  A full rename of PELS CSS onto canonical M3 names is pure churn with no
+  consistency or user-visible gain. Would only make sense as part of retiring
+  Material-Web entirely (the abandoned unification train's goal).
+- *Homey invert-drift.* Saturated semantics flip under Homey's dark-mode
+  `filter: invert(1) hue-rotate(180deg)`; not fixable from PELS alone — needs a
+  Homey-side theme signal. Revisit only if Homey ships one.
 
 ## P3 Future and Exploratory Work
 

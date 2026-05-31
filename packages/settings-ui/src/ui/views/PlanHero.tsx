@@ -379,13 +379,15 @@ const PelsMeterTrack = ({
   </div>
 );
 
-// Sublegend rendered below a meter when it carries more than one marker — a
-// single labeled dot reads fine from its `aria-label`, but two or more dots
-// need a sighted-user legend so the colors map to meaning. Hidden from screen
-// readers (`aria-hidden`) because the per-marker `aria-label` already
-// describes each marker.
+// Sublegend rendered below a meter for every marker it carries. A marker's
+// meaning otherwise lives only in its `aria-label` + a tippy.js tooltip, and
+// the tooltip is non-discoverable on touch (no hover) — so even a SINGLE
+// marker (e.g. the safe-pace tick on a power bar with no hard cap) needs a
+// visible key, not just a colour cue. Hidden from screen readers
+// (`aria-hidden`) because the per-marker `aria-label` already describes each
+// marker.
 const MeterLegend = ({ markers }: { markers: MeterMarker[] }) => {
-  if (markers.length < 2) return null;
+  if (markers.length < 1) return null;
   return (
     <div class="plan-hero__legend" aria-hidden="true">
       {markers.map((marker) => (

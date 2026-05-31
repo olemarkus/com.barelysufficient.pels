@@ -316,6 +316,7 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     planHistoryRecorder,
     rebuildPlan: () => ctx.requestFlowPlanRebuild(params.rebuildReason),
     nowMs: params.nowMs,
+    debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
   };
 };
 

@@ -373,6 +373,35 @@ describe('Redesign plan UI', () => {
       expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour']);
     });
 
+    it('renders a legend for a single-marker meter so the lone marker is self-explanatory', async () => {
+      // No hard cap above safe pace -> the power bar carries ONLY the safe-pace
+      // marker. A marker's meaning otherwise lives only in a hover tooltip
+      // (non-discoverable on touch) + aria-label, so a single-marker bar must
+      // still render a visible legend (progress-markers follow-up).
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 1.5,
+          softLimitKw: 2.3,
+          headroomKw: 0.8,
+          controlledKw: 1.0,
+          uncontrolledKw: 0.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.3,
+          hourBudgetKWh: 4.5,
+          minutesRemaining: 40,
+        },
+        devices: [],
+      });
+
+      const sections = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')) as HTMLElement[];
+      const powerMarkers = Array.from(sections[0]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
+      expect(powerMarkers, 'power bar carries only the safe-pace marker (no hard cap)').toHaveLength(1);
+      const powerLegend = sections[0]!.querySelector('.plan-hero__legend');
+      expect(powerLegend, 'single-marker power bar still renders a legend').not.toBeNull();
+      const labels = Array.from(powerLegend!.querySelectorAll('.plan-hero__legend-label')).map((el) => el.textContent?.trim());
+      expect(labels).toEqual(['Safe pace']);
+    });
+
     it('uses only the explicit backend hour budget for the energy hero', async () => {
       await renderPlanSnapshot({
         meta: {

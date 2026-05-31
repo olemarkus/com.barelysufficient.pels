@@ -11,6 +11,7 @@ import {
   type ObjectiveSettingsStore,
 } from './objectiveStore';
 import type { DeferredObjectiveSettingsEntry } from './settings';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
 
 // Device-scoped writes only proceed once the per-key migration is COMPLETE. Until
@@ -54,6 +55,32 @@ export type DeferredObjectiveDeviceWriteDeps = {
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
   rebuildPlan: () => void;
   nowMs: number;
+  // Topic-gated structured debug sink (gated on the `deferred_objectives` debug
+  // topic), wired by `buildDeferredObjectiveDeviceWriteDeps`. Optional so test
+  // harnesses can omit it. Used only to surface refusals (see `refuse`).
+  debugStructured?: StructuredDebugEmitter;
+};
+
+// A device-scoped write op = 'upsert' | 'rescue' | 'clear', carried on the
+// refusal event so a `deferred_objectives`-debug trace can tell which lane
+// refused.
+type ObjectiveWriteOp = 'upsert' | 'rescue' | 'clear';
+
+// Emit a topic-gated debug breadcrumb for a refused write and return the
+// outcome. A refusal is a self-healing transient (the guards leave persisted
+// state intact and the caller surfaces a retry), so it is a diagnostic payload
+// — the project's `debugStructured` emitter (info/error go through the prose
+// logger; structured debug goes here) is the right sink, NOT an error-sink log.
+// Without this, a transient refusal was visible only as the user-facing card
+// error and left no server-side trace to correlate against.
+const refuse = (
+  deps: DeferredObjectiveDeviceWriteDeps,
+  op: ObjectiveWriteOp,
+  deviceId: string,
+  reason: 'migration_deferred' | 'untrusted_absence',
+): ObjectiveWriteOutcome => {
+  deps.debugStructured?.({ event: 'objective_write_refused', op, deviceId, reason });
+  return { persisted: false, reason };
 };
 
 // Notify both recorders, flush them, and request a plan rebuild. This is the
@@ -97,7 +124,7 @@ export const upsertObjectiveForDevice = (
     rescue?: 'preserve' | 'replace';
   },
 ): ObjectiveWriteOutcome => {
-  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
+  if (!ensureMigrated(deps)) return refuse(deps, 'upsert', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   const rescuePolicy = params.rescue ?? 'preserve';
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
@@ -106,7 +133,7 @@ export const upsertObjectiveForDevice = (
   // OR a store-wide empty `getKeys()` both mean "can't trust this is objective-less",
   // so refuse rather than overwrite the user's objective / drop a preserved rescue.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
-    return { persisted: false, reason: 'untrusted_absence' };
+    return refuse(deps, 'upsert', deviceId, 'untrusted_absence');
   }
   // Preserve a standing rescue permission unless the caller is authoritative
   // about rescue or the new entry already sets its own.
@@ -191,7 +218,7 @@ export const addBudgetExemptionRescueForDevice = (
     rescueEntry: DeferredObjectiveSettingsEntry;
   },
 ): ObjectiveWriteOutcome => {
-  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
+  if (!ensureMigrated(deps)) return refuse(deps, 'rescue', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   // Flaky-read guard: only CREATE a fresh rescue when the absence is TRUSTWORTHY
@@ -200,7 +227,7 @@ export const addBudgetExemptionRescueForDevice = (
   // no-objective branch and OVERWRITE the user's objective (target/deadline) with
   // a fresh rescue — refuse instead; the rescue retries on a clean read.
   if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
-    return { persisted: false, reason: 'untrusted_absence' };
+    return refuse(deps, 'rescue', deviceId, 'untrusted_absence');
   }
   // Single source of truth for the merge outcome, shared with the preview path
   // so preview ≡ persist (see `resolveBudgetExemptionRescueEntry`). Preserves
@@ -226,7 +253,7 @@ export const clearObjectiveForDevice = (
   deps: DeferredObjectiveDeviceWriteDeps,
   params: { deviceId: string; deviceName: string | null },
 ): ObjectiveWriteOutcome => {
-  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
+  if (!ensureMigrated(deps)) return refuse(deps, 'clear', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
   // a genuine no-op worth avoiding the plan rebuild for. A present key OR a
