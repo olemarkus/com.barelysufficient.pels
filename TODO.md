@@ -375,24 +375,53 @@ remains from this subsection.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Reusable real-device DARK capture harness (host-bleed verification gap).**
-      The green-reservation concern flagged after PR #1347 was investigated by
-      pixel-sampling both the local render and the LIVE device webview
-      (`homeylocal.com`, reached via Configure on my.homey.app). Conclusion: the
-      brand green is NOT overloaded — the three on-screen greens are already
-      distinct tones (saturated `#22c55e` for actions, the tonal selected-container
-      `~#255d42`/`#97c9ab` for nav selection, mint `#9ef3d0` text for success), and
-      the hero border is a dark teal, not brand green. The selected nav tab renders
-      the intended tonal token on the real device, not a saturated fill. Host-CSS
-      bleed also came back clean: on the live webview `appearance:none` and PELS's
-      own surface tokens are the COMPUTED values on chips/buttons, so PELS rules win
-      the cascade over Homey's host `button{}` (theme-independent). The one residual
-      is tooling: Firefox can't trigger the touch-gated mobile-DARK theme and
-      breaks my.homey.app's Configure→iframe flow when `hasTouch` is set, so the
-      DARK device theme (where a light-button bleed would be most visible) was not
-      captured end-to-end. Build a small chromium harness that injects the
-      `homeylocal.com` session cookie + `isMobile/hasTouch` to capture the real
-      device UI in mobile-dark, so future host-bleed checks are reproducible.
+- [ ] **Host-CSS bleed: `<label>` / `<input>` are still exposed (buttons fixed).**
+      Homey's host `_base.css` restyles bare native elements via `:not(.hy-nostyle)`
+      rules. The `<button>` case was fixed in PR #1352 (every native button now
+      carries `hy-nostyle`, an ESLint guard enforces it, and a render-gate
+      regression injects the captured prod host CSS over the mobile-DARK render to
+      assert no button wears the host grey). The SAME mechanism still hits forms:
+      `label:not(.hy-nostyle)` (specificity (0,1,1)) force-greys + uppercases +
+      10px-shrinks every bare `<label>`, and `.pels-text-settings-label` (0,1,0)
+      loses to it; `input[type=text|search|password|email|checkbox]:not(.hy-nostyle)`
+      likewise restyle bare inputs; `hr` / `fieldset` / `legend` too. PELS ships
+      bare `<label class="field">` (e.g. `index.html:149,454+`,
+      `ElectricityPricesView.tsx`) with no opt-out, so on-device dark theme these
+      lose their `--pels-text-primary` colour and get host chrome. Fix: either add
+      `hy-nostyle` to the form primitives (mirroring the button fix, plus a sibling
+      ESLint guard on `<label>`/`<input>`) OR add a PELS host-defence
+      `label, input, hr, fieldset, legend { … }` reset block at winning specificity.
+      Then broaden the render-gate regression to assert no PELS-owned `<label>` /
+      `<input>` inherits a host colour / text-transform. Real-device verification
+      warranted (chromium can't reproduce the bleed without the injected fixture).
+      Source: PR #1352 m3-critic, 2026-05-31.
+
+- [ ] **Budget-adjust captures aren't host-faithful — and host CSS breaks the
+      sticky footer under test.** `budget-adjust-ux.spec.ts` is a functional spec
+      that also writes review screenshots via `shot()`, but it stays on the bare
+      `test` (not `renderTest`), so its budget plan / adjust / preview captures
+      render WITHOUT Homey's host CSS. Migrating it whole-hog fails: under the
+      injected host CSS the sticky-footer offset assertion blew up (received
+      221px vs the expected <12), i.e. Homey's `_base.css` (`html{height:100%;
+      overflow:auto}` / `body{min-height:100%}` / `html>body{padding:8px
+      !important}`) perturbs the budget redesign's sticky-bottom layout. Two
+      things to settle: (1) whether that sticky-footer break is a REAL on-device
+      regression (host CSS is present in prod) or just a test-measurement artefact
+      of the injection — verify on the real device; (2) give the budget surface a
+      faithful capture path — likely a dedicated `budget-screenshots.spec.ts` on
+      `renderTest` for the visuals, leaving the functional walkthrough on bare
+      `test`. Source: PR #1356 codex, 2026-05-31.
+
+- [ ] **Reusable real-device DARK capture harness (Firefox touch-gate gap).**
+      The host-bleed reproduction is now solved in chromium: the captured prod
+      host CSS lives in `test/fixtures/homey-wrap/` and the render-gate fixture
+      (`renderTest` / `injectHomeyHostCss`) injects it into every screenshot spec,
+      so bleed shows up in review. The remaining gap is the LIVE device walk:
+      Firefox can't trigger the touch-gated mobile-DARK theme and breaks
+      my.homey.app's Configure→iframe flow when `hasTouch` is set. A small chromium
+      harness that injects the `homeylocal.com` session cookie + `isMobile/hasTouch`
+      would let us spot-check the real device in mobile-dark when the fixture needs
+      re-capturing. Lower priority now that the fixture-based reproduction exists.
       Source: PR #1347 follow-up real-device walk, 2026-05-30.
 
 - [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274

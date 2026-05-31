@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from './fixtures/test';
+import { expect, renderTest as test, type Page } from './fixtures/test';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.resolve(SCRIPT_DIR, '../../../../docs/screenshots/deadline-plan');

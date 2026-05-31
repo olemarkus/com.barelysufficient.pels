@@ -1,0 +1,140 @@
+:root {
+  /**
+   * Color Palette
+   */
+  --homey-color-mono-0: #ffffff;
+  --homey-color-mono-01: #fafbfd;
+  --homey-color-mono-02: #f1f2f6;
+  --homey-color-mono-05: #e9eaee;
+  --homey-color-mono-10: #dddee2;
+  --homey-color-mono-15: #d1d2d5;
+  --homey-color-mono-20: #c4c5c8;
+  --homey-color-mono-30: #acadb0;
+  --homey-color-mono-40: #939496;
+  --homey-color-mono-50: #7a7b7d;
+  --homey-color-mono-60: #626264;
+  --homey-color-mono-70: #49494a;
+  --homey-color-mono-80: #313132;
+  --homey-color-mono-90: #181818;
+  --homey-color-mono-95: #0c0c0c;
+  --homey-color-mono-100: #000000;
+
+  --homey-color-white: #ffffff;
+  --homey-color-white-o-0: rgba(255, 255, 255, 0);
+  --homey-color-white-o-50: rgba(255, 255, 255, 0.5);
+  --homey-color-black: #000000;
+  --homey-color-ice-white: #f6f7fb;
+
+  --homey-color-blue: rgba(0, 130, 250, 1);
+  --homey-color-blue-hover: #1f93ff;
+  --homey-color-blue-active: #0075e0;
+  --homey-color-blue-o-05: rgba(0, 130, 250, 0.05);
+
+  --homey-color-green: #3fc700;
+
+  --homey-color-red: rgba(216, 28, 29, 1);
+  --homey-color-red-hover: #ea2425;
+  --homey-color-red-active: #c2191a;
+
+  --homey-color-gradient-blue-active: #005cd5;
+  --homey-color-gradient-blue-start: #367cff;
+  --homey-color-gradient-blue-end: #52baff;
+  --homey-color-gradient-blue-hover: #52deff;
+
+  /**
+    * Semantic Colors
+    */
+  --homey-color-body: var(--homey-color-ice-white);
+  --homey-color-component: var(--homey-color-white);
+  --homey-color-highlight: var(--homey-color-blue);
+  --homey-color-highlight-hover: var(--homey-color-blue-hover);
+  --homey-color-highlight-active: var(--homey-color-blue-active);
+
+  --homey-color-line: var(--homey-color-mono-10);
+  --homey-color-line-hover: var(--homey-color-mono-20);
+  --homey-color-line-active: var(--homey-color-mono-20);
+
+  --homey-color-text: var(--homey-color-mono-90);
+  --homey-color-text-light: var(--homey-color-mono-40);
+  --homey-color-text-placeholder: var(--homey-color-mono-20);
+  --homey-color-text-placeholder-hover: var(--homey-color-mono-30);
+  --homey-color-text-placeholder-active: var(--homey-color-mono-30);
+  --homey-color-text-danger: var(--homey-color-red);
+  --homey-color-text-danger-hover: var(--homey-color-red-hover);
+  --homey-color-text-danger-active: var(--homey-color-red-active);
+
+  /**
+   * Font Sizes
+   */
+  --homey-font-size-xlarge: 32px;
+  --homey-font-size-large: 24px;
+  --homey-font-size-medium: 20px;
+  --homey-font-size-default: 17px;
+  --homey-font-size-small: 14px;
+
+  /**
+   * Font Weights
+   */
+  --homey-font-weight-light: 300;
+  --homey-font-weight-regular: 400;
+  --homey-font-weight-medium: 500;
+  --homey-font-weight-bold: 700;
+
+  /**
+   * Transitions
+   */
+  --homey-duration-fast: 200ms;
+  --homey-duration-normal: 350ms;
+  --homey-duration-slow: 500ms;
+
+  --homey-curve-fast-in: cubic-bezier(0.25, 0, 0.5, 1);
+
+  /**
+   * Icons
+   */
+  --homey-icon-size-regular: 17px;
+  --homey-icon-color-current: currentColor;
+  --homey-icon-color-white: var(--homey-color-white);
+  --homey-icon-color-dark: var(--homey-color-mono-80);
+
+  /**
+   * Interactive gradients
+   */
+  --homey-interactive-gradient-position-default: 33% top;
+  --homey-interactive-gradient-position-hover: 66% top;
+  --homey-interactive-gradient-position-active: 15% top;
+  --homey-interactive-gradient-size: 200% 100%;
+  --homey-interactive-gradient-blue: linear-gradient(
+    30deg,
+    var(--homey-color-gradient-blue-active),
+    var(--homey-color-gradient-blue-start) 33%,
+    var(--homey-color-gradient-blue-end) 66%,
+    var(--homey-color-gradient-blue-hover)
+  );
+
+  /**
+   * Other Variables
+   */
+  --homey-box-shadow:
+    0 10px 44px 0 rgba(0, 0, 0, 0.07), 0 2px 12px 0 rgba(0, 0, 0, 0.1),
+    0 2px 4px 0 rgba(0, 0, 0, 0.04);
+  --homey-box-shadow-light:
+    0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 5px 0 rgba(0, 0, 0, 0.05),
+    0 2px 2px 0 rgba(0, 0, 0, 0.02);
+  --homey-box-shadow-selected:
+    0 5px 22px 0 rgba(0, 0, 0, 0.04), 0 2px 6px 0 rgba(0, 0, 0, 0.05),
+    0 2px 2px 0 rgba(0, 0, 0, 0.02);
+  --homey-border-radius: 10px;
+  --homey-border-radius-small: 5px;
+
+  /**
+   * Space Unit
+   */
+  --homey-su: 8px;
+  --homey-su-1: var(--homey-su);
+  --homey-su-2: calc(var(--homey-su) * 2);
+  --homey-su-3: calc(var(--homey-su) * 3);
+  --homey-su-4: calc(var(--homey-su) * 4);
+  --homey-su-5: calc(var(--homey-su) * 5);
+  --homey-su-6: calc(var(--homey-su) * 6);
+}
