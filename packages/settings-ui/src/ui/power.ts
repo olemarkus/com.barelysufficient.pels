@@ -46,13 +46,13 @@ import {
 import {
   buildDailyHistory,
   buildHourlyPattern,
-  getDerivedHourlyAverages,
   getEmptyPowerStats,
   getHourlyPatternMeta,
   getPowerTimeContext,
   getWeekdayWeekendAverages,
   getWeekMonthTotals,
   mergeDailyTotals,
+  mergeHourlyAverages,
   type DailyHistoryPoint,
   type HourlyPatternPoint,
   type PowerStatsSummary,
@@ -302,9 +302,11 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   });
   const today = dayContext.usedNowKWh;
   const derivedDailyTotals = mergeDailyTotals(tracker.dailyTotals, tracker.buckets, timeZone);
-  const derivedHourlyAverages = Object.keys(tracker.hourlyAverages || {}).length
-    ? tracker.hourlyAverages as Record<string, { sum: number; count: number }>
-    : getDerivedHourlyAverages(tracker.buckets, timeZone);
+  const derivedHourlyAverages = mergeHourlyAverages(
+    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | undefined,
+    tracker.buckets,
+    timeZone,
+  );
   const totals = getWeekMonthTotals(derivedDailyTotals, timeContext, today, timeZone);
   const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeContext.todayKey, timeZone);
   const hourlyPatternAll = buildHourlyPattern(derivedHourlyAverages);
