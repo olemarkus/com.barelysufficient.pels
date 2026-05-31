@@ -78,14 +78,16 @@ describe('device-scoped objective ops (per-device-key)', () => {
       flushIfDirty: vi.fn(),
     } as unknown as DeferredObjectivePlanHistoryRecorder;
     const rebuildPlan = vi.fn();
+    const debugStructured = vi.fn();
     const deps: DeferredObjectiveDeviceWriteDeps = {
       store,
       activePlanRecorder,
       planHistoryRecorder,
       rebuildPlan,
       nowMs: NOW_MS,
+      debugStructured,
     };
-    return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan };
+    return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan, debugStructured };
   };
 
   it('upsert writes the device key and runs notify→flush→rebuild for a fresh create', () => {
@@ -397,6 +399,47 @@ describe('device-scoped objective ops (per-device-key)', () => {
     });
     expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
     expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  // ── Refusal observability: a topic-gated `deferred_objectives` debug trace ──
+  // so a transient refusal is correlatable server-side, not only visible as the
+  // user-facing card error.
+
+  it('upsert emits objective_write_refused on an untrusted-absence refusal', () => {
+    const store = buildStore();
+    store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
+    const h = buildDeviceDeps(store);
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused', op: 'upsert', deviceId: 'ev-1', reason: 'untrusted_absence',
+    });
+  });
+
+  it('rescue emits objective_write_refused with its own op on a migration-deferred refusal', () => {
+    const store = buildStore({ 'heater-1': rescueTempEntry });
+    const h = buildDeviceDeps({ ...store, getKeys: () => [] });
+    addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry,
+    });
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused', op: 'rescue', deviceId: 'heater-2', reason: 'migration_deferred',
+    });
+  });
+
+  it('clear emits objective_write_refused on a migration-deferred refusal', () => {
+    const store = buildStore({ 'ev-1': evEntry });
+    const h = buildDeviceDeps({ ...store, getKeys: () => [] });
+    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused', op: 'clear', deviceId: 'ev-1', reason: 'migration_deferred',
+    });
+  });
+
+  it('does NOT emit objective_write_refused on a successful write', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(h.debugStructured).not.toHaveBeenCalled();
   });
 });
 
