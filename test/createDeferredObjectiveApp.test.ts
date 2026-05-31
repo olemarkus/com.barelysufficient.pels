@@ -6,6 +6,10 @@ import {
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectiveSettingsV1,
 } from '../lib/objectives/deferredObjectives';
+import {
+  DEFERRED_OBJECTIVES_SETTINGS,
+  DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
+} from '../lib/utils/settingsKeys';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 
 // A managed temperature device in the runtime-planned snapshot, with a 30..75 °C
@@ -223,7 +227,7 @@ describe('createDeferredObjective (app)', () => {
     });
   });
 
-  describe('rescueDeviceWithBudgetExemption (merge-not-replace)', () => {
+  describe('rescueDeviceWithBudgetExemption (fresh create — reuses the create engine)', () => {
     it('creates the rescue objective when the device has none', async () => {
       const app = await initApp();
       const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
@@ -237,7 +241,7 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
-    it('PRESERVES an existing objective\'s target/deadline and only adds the exemption', async () => {
+    it('REJECTS a device that already has a smart task (device_not_eligible — never clobbers it)', async () => {
       const app = await initApp();
       // The user already has their own task: target 70 °C, a later deadline.
       const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
@@ -246,16 +250,43 @@ describe('createDeferredObjective (app)', () => {
       });
       expect(created).toEqual({ ok: true });
 
-      // Rescue aims at 65 °C with a +3h deadline — but must NOT overwrite the user's.
+      // A task-having device is excluded from the rescue (no merge); the lane
+      // re-asserts it so a stale/tampered request can never replace the user's task.
       const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
-      expect(result).toEqual({ ok: true });
-      const stored = readStored().objectivesByDeviceId['heater-1'];
-      expect(stored).toMatchObject({
-        kind: 'temperature',
-        targetTemperatureC: 70, // user's target preserved
-        deadlineAtMs: ownDeadline, // user's deadline preserved
-        rescue: { exemptFromBudget: 'always' }, // only the exemption added
+      expect(result).toEqual({ ok: false, reason: 'device_not_eligible' });
+      // The user's task is untouched — target, deadline, and no rescue grant added.
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
+        targetTemperatureC: 70,
+        deadlineAtMs: ownDeadline,
       });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
+      await app.onUninit?.();
+    });
+
+    it('REJECTS (no clobber) a device whose task is still only in the unmigrated legacy blob', async () => {
+      const app = await initApp();
+      // Simulate the un-migrated state Codex flagged: the user's task lives ONLY in
+      // the legacy blob, the per-key migration marker is unset, and no per-key
+      // exists. The per-key `hasDeferredObjectiveForDevice` would miss it — so the
+      // rescue must migrate FIRST, then see the task and refuse, never clobber it.
+      const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
+      const existing = {
+        enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: ownDeadline,
+      };
+      mockHomeyInstance.settings.set(DEFERRED_OBJECTIVES_SETTINGS, {
+        version: 1, objectivesByDeviceId: { 'heater-1': existing },
+      });
+      mockHomeyInstance.settings.unset(DEFERRED_OBJECTIVES_PERKEY_MIGRATED);
+
+      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
+      expect(result).toEqual({ ok: false, reason: 'device_not_eligible' });
+      // The user's task survived (migrated to per-key, target/deadline intact, no
+      // rescue grant written over it).
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
+        targetTemperatureC: 70,
+        deadlineAtMs: ownDeadline,
+      });
+      expect(readStored().objectivesByDeviceId['heater-1'].rescue).toBeUndefined();
       await app.onUninit?.();
     });
 
@@ -279,43 +310,18 @@ describe('createDeferredObjective (app)', () => {
     });
   });
 
-  // The preview must reflect what `rescueDeviceWithBudgetExemption` will PERSIST
-  // (merge-not-replace), not the fresh rescue candidate. Both derive the
-  // (target, deadline) from the same shared resolver, so they cannot diverge.
+  // A rescue is always a FRESH task (task-having devices are excluded), so the
+  // preview simply reuses the create engine's preview of the fresh candidate —
+  // the same projection the create persists (preview ≡ persist via the shared
+  // `gateCandidateExtraPermissions`). There is no merge case.
   describe('previewStarvationRescuePlan (preview ≡ persist)', () => {
-    it('WITHOUT an existing objective: previews the FRESH rescue candidate (target + now+3h)', async () => {
+    it('previews the FRESH rescue candidate (target + now+3h), never merging an existing objective', async () => {
       const app = await initApp();
       const candidate = rescueCandidate(65);
       const preview = app.previewStarvationRescuePlan('heater-1', candidate);
       expect(preview.hasExistingObjective).toBe(false);
-      // Fresh case: the resolved deadline is the candidate's own (now+3h).
+      // The resolved deadline is the candidate's own (now+3h).
       expect(preview.deadlineAtMs).toBe(candidate.deadlineAtMs);
-      await app.onUninit?.();
-    });
-
-    it('WITH an existing objective: previews THAT objective\'s deadline, not the fresh now+3h', async () => {
-      const app = await initApp();
-      // The user's own task: target 70 °C, a later deadline (well past now+3h).
-      const ownDeadline = Date.now() + 6 * 60 * 60 * 1000;
-      const created = app.createDeferredObjective('heater-1', {
-        kind: 'temperature', enforcement: 'soft', targetTemperatureC: 70, deadlineAtMs: ownDeadline,
-      });
-      expect(created).toEqual({ ok: true });
-
-      // The widget supplies a fresh now+3h / 65 °C candidate, but the merge will
-      // preserve the user's task, so the preview must surface ITS deadline.
-      const preview = app.previewStarvationRescuePlan('heater-1', rescueCandidate(65));
-      expect(preview.hasExistingObjective).toBe(true);
-      expect(preview.deadlineAtMs).toBe(ownDeadline);
-
-      // And it must match exactly what the create path persists.
-      const result = app.rescueDeviceWithBudgetExemption('heater-1', rescueCandidate(65));
-      expect(result).toEqual({ ok: true });
-      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({
-        targetTemperatureC: 70,
-        deadlineAtMs: ownDeadline,
-        rescue: { exemptFromBudget: 'always' },
-      });
       await app.onUninit?.();
     });
 

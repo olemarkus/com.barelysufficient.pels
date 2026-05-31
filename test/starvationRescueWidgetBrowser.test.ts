@@ -61,8 +61,10 @@ const click = (selector: string): void => {
 const READY_PAYLOAD: StarvationRescueDevicesPayload = {
   state: 'ready',
   devices: [
-    { deviceId: 'budget-1', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65 },
-    { deviceId: 'cap-1', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21 },
+    { deviceId: 'budget-1', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, hasSmartTask: false },
+    { deviceId: 'cap-1', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, hasSmartTask: false },
+    // Budget-held, but it already has its own smart task → shown, no rescue button.
+    { deviceId: 'task-1', deviceName: 'Cabin water', cause: 'budget', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, hasSmartTask: true },
   ],
 };
 
@@ -148,9 +150,9 @@ describe('starvation rescue widget browser', () => {
     expect(title.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.headerTitle);
 
     const rows = document.querySelectorAll('[data-device-list] .row');
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
 
-    const [budgetRow, capacityRow] = Array.from(rows) as HTMLElement[];
+    const [budgetRow, capacityRow, taskRow] = Array.from(rows) as HTMLElement[];
     // Budget row: 42 min ⇒ danger tone, offers a rescue button, no muted note.
     expect(budgetRow.dataset.tone).toBe('danger');
     expect((budgetRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Held back · 42 min');
@@ -174,6 +176,13 @@ describe('starvation rescue widget browser', () => {
     const note = capacityRow.querySelector('[data-device-note]') as HTMLElement;
     expect(note.hidden).toBe(true);
     expect(note.textContent).toBe('');
+
+    // Task-owning budget row: SHOWN (visibility preserved) but NO rescue button —
+    // and an explanatory note so the missing button isn't a mystery.
+    expect((taskRow.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
+    const taskNote = taskRow.querySelector('[data-device-note]') as HTMLElement;
+    expect(taskNote.hidden).toBe(false);
+    expect(taskNote.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
   });
 
   test('a manual row also suppresses its near-duplicate note (only the reason once)', async () => {
@@ -187,7 +196,7 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [
-              { deviceId: 'manual-1', deviceName: 'Office heat', cause: 'manual', accumulatedMs: 5 * 60_000, intendedNormalTargetC: 20 },
+              { deviceId: 'manual-1', deviceName: 'Office heat', cause: 'manual', accumulatedMs: 5 * 60_000, intendedNormalTargetC: 20, hasSmartTask: false },
             ],
           } satisfies StarvationRescueDevicesPayload;
         }
@@ -212,7 +221,7 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [
-              { deviceId: 'budget-no-target', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null },
+              { deviceId: 'budget-no-target', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, hasSmartTask: false },
             ],
           } satisfies StarvationRescueDevicesPayload;
         }

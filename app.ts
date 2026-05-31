@@ -115,12 +115,11 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
+  migrateBlobToPerKeyIfNeeded,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
   readObjectiveForDevice,
-  resolveBudgetExemptionRescueEntry,
   upsertObjectiveForDevice,
-  addBudgetExemptionRescueForDevice,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
@@ -1873,6 +1872,11 @@ class PelsApp extends Homey.App {
         cause: entry.starvation.cause,
         accumulatedMs: entry.starvation.accumulatedMs,
         intendedNormalTargetC: entry.intendedNormalTargetC,
+        // A device that already has a smart task stays VISIBLE in the held-back
+        // list but is not rescuable (the widget suppresses its button): the rescue
+        // is a fresh one-shot task and must never replace the device's own task —
+        // its existing task is what should bring it to target.
+        hasSmartTask: this.hasDeferredObjectiveForDevice(entry.deviceId),
       });
     }
     return devices;
@@ -1943,16 +1947,15 @@ class PelsApp extends Homey.App {
     return this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
   }
   // Read the device's currently-persisted deferred objective, or undefined when
-  // none is stored. Used by the starvation-rescue preview/create lanes so they
-  // can resolve the SAME merge outcome `addBudgetExemptionRescueForDevice`
-  // persists (see `resolveBudgetExemptionRescueEntry`).
+  // none is stored. Backs `hasDeferredObjectiveForDevice`.
   private readDeferredObjectiveEntry(deviceId: string): DeferredObjectiveSettingsEntry | undefined {
     return readObjectiveForDevice(this.homey.settings, deviceId);
   }
-  // Whether the device currently has a persisted deferred objective. The
-  // starvation-rescue CREATE path uses this to decide deadline validation:
-  // when an objective exists the merge preserves ITS deadline (the candidate's
-  // is ignored), so the widget's now+3h horizon guard must not reject it.
+  // Whether the device currently has a persisted deferred objective (a smart
+  // task), enabled or not. The starvation rescue uses this to EXCLUDE task-having
+  // devices: a rescue is a fresh one-shot task for a held-back device, so it must
+  // never replace an existing task. Excluding them is also what lets the rescue
+  // reuse the create engine directly (it is always a fresh create, never a merge).
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
     return this.readDeferredObjectiveEntry(deviceId) !== undefined;
   }
@@ -1994,36 +1997,23 @@ class PelsApp extends Homey.App {
       rescue: Object.keys(keptRescue).length > 0 ? keptRescue : undefined,
     };
   }
-  // Preview the plan the starvation rescue would actually produce, accounting
-  // for the merge-not-replace persistence: when the device ALREADY has an
-  // objective, the rescue adds the budget exemption (+ `limitLowerPriorityDevices`
-  // for stepped devices) and preserves that objective's target/deadline, so the
-  // preview must project THAT entry — not the fresh now+3h rescue candidate the
-  // widget supplies. When no objective exists, the fresh candidate is previewed.
-  // The resolved (persisted) deadline is returned so the widget labels and echoes
-  // the right value. This is the preview≡persist guarantee: both lanes derive
-  // `(target, deadline, rescue)` from `resolveBudgetExemptionRescueEntry` with the
-  // same eligibility gate.
+  // Preview the plan the starvation rescue would actually persist. A rescue only
+  // ever runs on a device WITHOUT an existing smart task (`getStarvedRescueDevices`
+  // excludes task-having devices), so there is no merge: the fresh candidate IS
+  // what persists. This therefore just REUSES the create engine's preview
+  // (`previewDeferredObjectivePlan`), which applies the same
+  // `gateCandidateExtraPermissions` the create write does — so preview ≡ persist
+  // for the rescue's opt-in permissions without any rescue-specific merge logic.
+  // `hasExistingObjective` is always false (kept on the return for the widget's
+  // stable shape).
   public previewStarvationRescuePlan(
     deviceId: string,
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
   ): { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean } {
-    const existing = this.readDeferredObjectiveEntry(deviceId);
-    const device = this.latestTargetSnapshot.find((entry) => entry.id === deviceId);
-    const grantLimitLowerPriority = device ? this.deviceSupportsLimitLowerPriority(device) : false;
-    // `freshRescueCandidate` carries `enabled`-less candidate fields; rebuild a
-    // settings entry (enabled: true — a rescue is implicitly live) so the shared
-    // resolver merges against the existing objective exactly as the write does.
-    const resolvedEntry = resolveBudgetExemptionRescueEntry(
-      existing,
-      { ...freshRescueCandidate, enabled: true } as DeferredObjectiveSettingsEntry,
-      grantLimitLowerPriority,
-    );
-    const { enabled: _enabled, ...resolvedCandidate } = resolvedEntry;
     return {
-      estimate: this.previewDeferredObjectivePlan(deviceId, resolvedCandidate as DeferredObjectivePlanPreviewCandidate),
-      deadlineAtMs: resolvedEntry.deadlineAtMs,
-      hasExistingObjective: existing !== undefined,
+      estimate: this.previewDeferredObjectivePlan(deviceId, freshRescueCandidate),
+      deadlineAtMs: freshRescueCandidate.deadlineAtMs,
+      hasExistingObjective: false,
     };
   }
   // Instant, in-isolation estimate of the plan the planner WOULD produce for a
@@ -2205,28 +2195,20 @@ class PelsApp extends Homey.App {
     if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
     return { ok: true };
   }
-  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue,
-  // with MERGE-not-replace semantics so an existing smart task is never
-  // clobbered:
-  //
-  //  - if the device ALREADY has an objective (its own deadline/target), the
-  //    granted rescue permission(s) are added — always `exemptFromBudget`, plus
-  //    `limitLowerPriorityDevices` for stepped-eligible devices
-  //    (`deviceSupportsLimitLowerPriority`) — target, deadline, and enforcement
-  //    preserved verbatim;
-  //  - if the device has NO objective, the rescue objective is created (the
-  //    device's intended normal target, the caller's near-term deadline, the
-  //    granted permission(s)).
-  //
-  // Shares the SAME eligibility/kind/bounds validation + hardened write
-  // primitive as `createDeferredObjective`; only the merge op differs. The
-  // caller (the rescue widget API) is responsible for the budget-cause guardrail.
-  // This method lifts the DAILY BUDGET and (for stepped devices) grants priority
+  // Grant a device the starvation-rescue widget's bounded budget-exempt rescue.
+  // A rescue is always a FRESH task: `getStarvedRescueDevices` only offers a
+  // device that has no smart task yet (and this method re-asserts it), so there
+  // is no merge — the rescue REUSES the create engine (`createDeferredObjective`).
+  // The candidate carries the rescue permissions (`exemptFromBudget` always, plus
+  // `limitLowerPriorityDevices`); `createDeferredObjective`'s
+  // `gateCandidateExtraPermissions` then keeps the budget exemption for any device
+  // and the limit-lower-priority grant only where it has effect (stepped + top
+  // priority). This lifts the DAILY BUDGET and (where effective) grants priority
   // over lower-priority devices, but NEVER raises the physical capacity cap (the
   // hard cap is physical): the priority permission only displaces lower-priority
-  // load WITHIN the cap. We assert the candidate carries the budget exemption as
-  // defence-in-depth so it can't be smuggled through a generic create — that
-  // invariant doesn't rest solely on the widget API being the only caller.
+  // load WITHIN the cap. The budget-exemption assertion is defence-in-depth so it
+  // can't be smuggled through a generic create — it doesn't rest solely on the
+  // widget API being the only caller.
   public rescueDeviceWithBudgetExemption(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -2241,34 +2223,21 @@ class PelsApp extends Homey.App {
     if (candidate.rescue?.exemptFromBudget !== 'always') {
       return { ok: false, reason: 'invalid_candidate' };
     }
-    const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
-    if (!validated.ok) return validated;
-    const { device, entry: rescueEntry } = validated;
-
-    if (!this.deferredObjectivePlanHistoryRecorder || !this.deferredObjectiveActivePlanRecorder) {
-      return { ok: false, reason: 'invalid_candidate' };
+    // Migrate any legacy-blob objective to per-keys BEFORE the eligibility check:
+    // a task still only in the un-migrated blob is invisible to the per-key
+    // `hasDeferredObjectiveForDevice`, so without this the delegated create would
+    // migrate-then-REPLACE it, losing the user's target/deadline. (A transient-
+    // empty store defers the migration; the device then still looks task-free
+    // here, but `createDeferredObjective`'s own `ensureMigrated` guard refuses the
+    // write rather than clobbering — so the user's task is safe either way.)
+    migrateBlobToPerKeyIfNeeded(this.homey.settings);
+    // A device that already has a smart task is not rescuable. Re-assert here (the
+    // list already excludes it) so this lane can never REPLACE a user's task: the
+    // rescue is strictly a fresh create.
+    if (this.hasDeferredObjectiveForDevice(deviceId)) {
+      return { ok: false, reason: 'device_not_eligible' };
     }
-
-    // The merge op uses `rescueEntry` only when no objective exists yet; when one
-    // does, it preserves that objective and just adds the budget exemption.
-    // Per-device-key write — touches only this device's key, no clobber risk. A
-    // transient un-confirmable migration or untrustworthy absence read refuses
-    // the write; surface that as a retryable failure rather than a false success
-    // so the rescue widget can re-offer the grant.
-    const outcome = addBudgetExemptionRescueForDevice(
-      buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
-        nowMs: this.getNow().getTime(),
-        rebuildReason: 'flow_card:starvation_rescue_widget',
-      }),
-      {
-        deviceId,
-        deviceName: device.name ?? null,
-        rescueEntry,
-        grantLimitLowerPriority: this.deviceSupportsLimitLowerPriority(device),
-      },
-    );
-    if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
-    return { ok: true };
+    return this.createDeferredObjective(deviceId, candidate);
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();

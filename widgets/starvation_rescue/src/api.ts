@@ -30,17 +30,18 @@ import type {
 //    device gets the budget-exempt rescue (capacity is physical, manual/external
 //    are outside PELS's control — see feedback_hard_cap_is_physical).
 //
-// PREVIEW ≡ PERSIST: the persistence is MERGE-not-replace — when the device
-// already has an objective, the rescue preserves THAT objective's target/deadline
-// and only adds the budget exemption. So the preview must reflect the merge, not
-// the fresh candidate. Both lanes route through the app, which resolves the
-// persisted entry from a single shared source (`resolveBudgetExemptionRescueEntry`):
-//  - preview → `App.previewStarvationRescuePlan` (projects the resolved entry and
-//    returns the resolved deadline so the widget labels/echoes the right value);
-//  - create → `App.rescueDeviceWithBudgetExemption` (the merge write), with the
-//    now+3h horizon guard applied ONLY to the fresh case (an existing objective's
-//    preserved deadline may legitimately sit outside the rescue horizon).
-// The fresh rescue candidate simply carries `rescue.exemptFromBudget: 'always'`.
+// PREVIEW ≡ PERSIST: a rescue is always a FRESH task — task-having devices are
+// excluded from the rescue (`App.getStarvedRescueDevices`), so there is no merge.
+// Both lanes REUSE the create engine, which resolves the candidate's opt-in
+// permissions through one shared gate (`gateCandidateExtraPermissions`), so the
+// preview and the persisted plan can never diverge:
+//  - preview → `App.previewStarvationRescuePlan` (delegates to
+//    `previewDeferredObjectivePlan`; the fresh candidate's now+3h deadline IS what
+//    persists, so the widget labels/echoes it directly);
+//  - create → `App.rescueDeviceWithBudgetExemption` (delegates to
+//    `createDeferredObjective`), with the now+3h horizon guard always applied.
+// The fresh rescue candidate carries both rescue permissions; the create engine
+// keeps the budget exemption for any device and gates the limit-lower-priority one.
 
 // Near-term deadline for an active rescue: 3 hours gives a thermal device room
 // to recover toward its normal target without promising an instant fix, while
@@ -49,26 +50,22 @@ const RESCUE_DEADLINE_HORIZON_MS = 3 * 60 * 60 * 1000;
 
 type StarvationRescueApiApp = {
   getStarvedRescueDevices?: () => StarvationRescueDevice[];
-  // Preview the plan the rescue WOULD actually persist. When the device already
-  // has an objective, the merge preserves that objective's target/deadline and
-  // only adds the budget exemption, so this projects THAT entry (not the fresh
-  // candidate) and returns the resolved deadline. See
+  // Preview the plan the rescue would persist. A rescue only runs on a device
+  // with NO existing smart task (the list excludes task-having devices), so the
+  // fresh candidate IS what persists — this just reuses the create engine's
+  // preview. `hasExistingObjective` is always false. See
   // `App.previewStarvationRescuePlan`.
   previewStarvationRescuePlan?: (
     deviceId: string,
     freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
   ) => { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean };
-  // Merge-not-replace rescue: adds the budget exemption to an existing objective,
-  // or creates the rescue objective when none exists. See
-  // `App.rescueDeviceWithBudgetExemption`.
+  // Persist the rescue as a fresh task via the create engine (the candidate
+  // carries the rescue permissions; the engine gates them). Rejects a device that
+  // already has a task. See `App.rescueDeviceWithBudgetExemption`.
   rescueDeviceWithBudgetExemption?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ) => { ok: true } | { ok: false; reason: string };
-  // Whether the device already has a persisted objective. The create path uses
-  // this to skip the now+3h horizon guard when the merge will preserve an
-  // existing objective's deadline (the candidate's deadline is then ignored).
-  hasDeferredObjectiveForDevice?: (deviceId: string) => boolean;
 };
 
 type WidgetApiContext = {
@@ -117,7 +114,10 @@ const resolveRescuableDevice = (
   const byId = new Map(devices.map((device) => [device.deviceId, device]));
   return (deviceId: string) => {
     const device = byId.get(deviceId);
-    if (!device || !starvationRowOffersRescue(device.cause)) {
+    // Not rescuable when the cause isn't budget OR the device already has its own
+    // smart task (shown in the list but button-suppressed; the app re-asserts this
+    // and would reject a stale/tampered request anyway).
+    if (!device || !starvationRowOffersRescue(device.cause) || device.hasSmartTask) {
       return { ok: false, reason: 'not_rescuable' };
     }
     const target = device.intendedNormalTargetC;
@@ -145,7 +145,11 @@ const buildRescueCandidate = (
   enforcement: 'soft',
   targetTemperatureC,
   deadlineAtMs,
-  rescue: { exemptFromBudget: 'always' },
+  // The rescue requests BOTH permissions; the create engine's
+  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
+  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
+  // + top priority), so the widget never needs the device profile here.
+  rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
 });
 
 const previewReject = (reason: StarvationRescueRejectReason): StarvationRescuePreviewResponse => ({
@@ -192,10 +196,9 @@ export const previewStarvationRescue = async (
 
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
-  // The fresh candidate's deadline is the now+3h rescue horizon. The app resolves
-  // the ACTUAL persisted outcome: when the device already has an objective, the
-  // merge preserves that objective's deadline, so `deadlineAtMs` below reflects
-  // what will be persisted (preview ≡ persist), not necessarily now+3h.
+  // A rescue is always a fresh task (task-having devices are excluded), so the
+  // deadline is simply the now+3h rescue horizon — the fresh candidate IS what
+  // persists (preview ≡ persist).
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, nowMs + RESCUE_DEADLINE_HORIZON_MS);
   const { estimate, deadlineAtMs } = homey.app.previewStarvationRescuePlan(request.deviceId, candidate);
   return {
@@ -227,20 +230,12 @@ export const createStarvationRescue = async (
   // falls back to a fresh near-term horizon so the rescue still works.
   const nowMs = Date.now();
   const deadlineAtMs = request.deadlineAtMs ?? nowMs + RESCUE_DEADLINE_HORIZON_MS;
-  // A deadline already in the past can never schedule — the active-plan recorder
-  // drops plans whose deadline has passed — so reject it on BOTH lanes, including
-  // the existing-objective case where the echoed deadline IS that objective's
-  // preserved deadline. Persisting an expired deadline would report a clean
-  // "success" that silently can't run, instead of the retryable re-preview path.
-  if (deadlineAtMs <= nowMs) {
-    return createReject('deadline_passed');
-  }
-  // The upper now+3h horizon bound applies only to a FRESH rescue. When the
-  // device already has an objective, the merge preserves THAT objective's
-  // deadline (the candidate's is ignored), which may legitimately sit further
-  // out, so it must not be rejected on the horizon.
-  const hasExistingObjective = homey.app?.hasDeferredObjectiveForDevice?.(request.deviceId) ?? false;
-  if (!hasExistingObjective && deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
+  // A rescue is always a fresh task on the now+3h horizon, so the echoed deadline
+  // must be strictly future AND within that horizon. A deadline that slipped into
+  // the past (the active-plan recorder drops it) or was tampered beyond the
+  // horizon is rejected to the retryable re-preview path rather than persisted as
+  // a clean "success" that silently can't run.
+  if (deadlineAtMs <= nowMs || deadlineAtMs > nowMs + RESCUE_DEADLINE_HORIZON_MS) {
     return createReject('deadline_passed');
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);

@@ -32,6 +32,10 @@
     capacityNote: "Waiting for available power.",
     manualNote: "Under manual control.",
     externalNote: "Waiting on an external service.",
+    // A budget-held device that already has a smart task: shown in the list (so the
+    // user sees it is held back) but with no rescue button — its own task is what
+    // brings it to target, so a one-shot rescue would only get in the way.
+    smartTaskNote: "Its smart task will bring it back.",
     // Rescue confirm sheet.
     // Names the consequence honestly per the money-action guardrail: the rescue
     // lets this device go over today's budget so it reaches its normal target.
@@ -91,14 +95,15 @@
     if (cause === "manual") return "Under manual control";
     return "Waiting on an external service";
   };
-  var resolveStarvationRowNote = (cause) => {
+  var resolveStarvationRowNote = (cause, hasSmartTask = false) => {
+    if (cause === "budget") return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
     if (cause === "capacity") return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
     if (cause === "manual") return STARVATION_RESCUE_WIDGET_COPY.manualNote;
     if (cause === "external") return STARVATION_RESCUE_WIDGET_COPY.externalNote;
     return null;
   };
   var starvationRowOffersRescue = (cause) => cause === "budget";
-  var starvationRowIsRescuable = (cause, intendedNormalTargetC) => starvationRowOffersRescue(cause) && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+  var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false) => starvationRowOffersRescue(cause) && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
   var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => reason === "deadline_passed" ? STARVATION_RESCUE_WIDGET_COPY.deadlinePassed : STARVATION_RESCUE_WIDGET_COPY.rescueError;
 
@@ -111,14 +116,24 @@
         deviceName: "Hot water",
         cause: "budget",
         accumulatedMs: 42 * 60 * 1e3,
-        intendedNormalTargetC: 65
+        intendedNormalTargetC: 65,
+        hasSmartTask: false
       },
       {
         deviceId: "preview-radiator",
         deviceName: "Living room",
         cause: "capacity",
         accumulatedMs: 11 * 60 * 1e3,
-        intendedNormalTargetC: 21
+        intendedNormalTargetC: 21,
+        hasSmartTask: false
+      },
+      {
+        deviceId: "preview-ev",
+        deviceName: "Driveway charger",
+        cause: "budget",
+        accumulatedMs: 18 * 60 * 1e3,
+        intendedNormalTargetC: 80,
+        hasSmartTask: true
       }
     ]
   };
@@ -457,7 +472,11 @@
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
     if (!(li instanceof HTMLElement)) throw new Error("device template missing .row");
-    const offersRescue = starvationRowIsRescuable(device.cause, device.intendedNormalTargetC);
+    const offersRescue = starvationRowIsRescuable(
+      device.cause,
+      device.intendedNormalTargetC,
+      device.hasSmartTask
+    );
     li.dataset.tone = resolveStarvationRowTone(device.accumulatedMs);
     const nameEl = li.querySelector("[data-device-name]");
     const chipEl = li.querySelector("[data-device-chip]");
@@ -481,7 +500,7 @@
       }
     }
     if (noteEl instanceof HTMLElement) {
-      const note = offersRescue ? null : resolveStarvationRowNote(device.cause);
+      const note = offersRescue ? null : resolveStarvationRowNote(device.cause, device.hasSmartTask);
       setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
     }
     return li;

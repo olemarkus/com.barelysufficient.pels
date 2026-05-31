@@ -38,8 +38,6 @@ export {
 } from './objectiveChange';
 export {
   upsertObjectiveForDevice,
-  addBudgetExemptionRescueForDevice,
-  resolveBudgetExemptionRescueEntry,
   clearObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
   type ObjectiveWriteOutcome,

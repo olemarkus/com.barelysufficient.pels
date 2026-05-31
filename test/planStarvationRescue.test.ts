@@ -94,6 +94,13 @@ describe('starvation-rescue shared helpers', () => {
     it('never suggests raising the hard cap (capacity is physical)', () => {
       expect(STARVATION_RESCUE_WIDGET_COPY.capacityNote.toLowerCase()).not.toMatch(/cap|limit|raise|increase/);
     });
+
+    it('explains a budget row that has no rescue button because the device has its own task', () => {
+      // A plain budget row gets no note (it has a rescue button); a budget row
+      // whose device already has a smart task gets the explanatory smart-task note.
+      expect(resolveStarvationRowNote('budget', false)).toBeNull();
+      expect(resolveStarvationRowNote('budget', true)).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
+    });
   });
 
   describe('starvationRowOffersRescue (budget-only guardrail)', () => {
@@ -115,6 +122,12 @@ describe('starvation-rescue shared helpers', () => {
       expect(starvationRowIsRescuable('capacity', 21)).toBe(false);
       expect(starvationRowIsRescuable('manual', 21)).toBe(false);
       expect(starvationRowIsRescuable('external', 21)).toBe(false);
+    });
+
+    it('is NOT rescuable when the device already has its own smart task', () => {
+      // Shown in the list but button-suppressed — its existing task handles it.
+      expect(starvationRowIsRescuable('budget', 65, true)).toBe(false);
+      expect(starvationRowIsRescuable('budget', 65, false)).toBe(true);
     });
   });
 
