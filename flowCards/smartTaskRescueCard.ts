@@ -8,6 +8,7 @@ import {
   requireSettingsRead,
   type DropdownArg,
 } from './deadlineObjectiveCards';
+import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
 import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import {
@@ -82,12 +83,16 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     // kind/deadline/target, so the recorder notification no-ops; the plan
     // rebuild applies the new permission. A per-key write touches only this
     // device's key, so it cannot clobber a sibling task.
-    deps.upsertDeferredObjectiveForDevice({
+    const outcome = deps.upsertDeferredObjectiveForDevice({
       deviceId,
       deviceName: null,
       entry: withRescuePermission(prevEntry, key, mode),
       rescue: 'replace',
     });
+    // A refused write (transient un-confirmable migration / untrustworthy
+    // settings read) must surface as a retryable failure, not a silent success
+    // that leaves the rescue permission unchanged.
+    if (!outcome.persisted) throw new Error(OBJECTIVE_WRITE_REFUSED_RETRY);
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

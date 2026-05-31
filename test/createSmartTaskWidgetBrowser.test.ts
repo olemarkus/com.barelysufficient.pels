@@ -305,13 +305,14 @@ describe('create smart task widget browser', () => {
       const root = document.getElementById('widget-root') as HTMLElement;
       expect(root.dataset.view).toBe('preview');
       const createBtn = document.querySelector('[data-create-btn]') as HTMLButtonElement;
-      // write_conflict collapses to the retryable generic create error (shared
-      // copy), and the button reverts to its create label — never "created".
+      // write_conflict (transient save refusal — goal was valid) shows the
+      // bespoke retry line, not the goal-blaming generic createError, and the
+      // button reverts to its create label — never "created".
       expect(createBtn.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.createButton);
       expect(createBtn.textContent).not.toBe(CREATE_SMART_TASK_WIDGET_COPY.created);
       const errorEl = document.querySelector('[data-preview-error]') as HTMLElement;
       expect(errorEl.hidden).toBe(false);
-      expect(errorEl.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.createError);
+      expect(errorEl.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.writeConflict);
     });
   });
 

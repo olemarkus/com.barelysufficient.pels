@@ -1,3 +1,4 @@
+import { registerAllowSmartTaskRescueCard } from '../flowCards/smartTaskRescueCard';
 import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from './mocks/homey';
@@ -122,6 +123,37 @@ describe('allow_smart_task_rescue flow card', () => {
     const app = await initApp();
     await expect(listener()({ property: 'exempt_from_budget', when: 'always' })).rejects.toThrow(/device/i);
     await app.onUninit?.();
+  });
+
+  it('THROWS (retryable) when the underlying write refuses (no silent success)', async () => {
+    // The read finds the device's task (so the card reaches the write), but the
+    // device-scoped write refuses to persist (transient un-confirmable migration
+    // / untrustworthy settings read). The card must throw a retryable error so
+    // Homey surfaces the failure instead of reporting success while the rescue
+    // permission never changed.
+    const existing: DeferredObjectiveSettingsEntry = {
+      enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 65, deadlineAtMs: Date.now() + 3.6e6,
+    };
+    const cardListeners: Record<string, (args: unknown) => Promise<boolean>> = {};
+    const upsertDeferredObjectiveForDevice = vi.fn(() => ({ persisted: false as const, reason: 'untrusted_absence' as const }));
+    const deps = {
+      homey: {
+        flow: {
+          getActionCard: () => ({
+            registerRunListener: (fn: (args: unknown) => Promise<boolean>) => { cardListeners.run = fn; },
+            registerArgumentAutocompleteListener: () => {},
+          }),
+        },
+        settings: { get: () => undefined, set: () => {}, unset: () => {}, getKeys: () => [] },
+      },
+      getDeferredObjectiveSettings: () => ({ version: 1 as const, objectivesByDeviceId: { 'dev-1': existing } }),
+      getSnapshot: async () => [],
+      upsertDeferredObjectiveForDevice,
+    } as unknown as Parameters<typeof registerAllowSmartTaskRescueCard>[0];
+    registerAllowSmartTaskRescueCard(deps);
+    await expect(cardListeners.run({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' }))
+      .rejects.toThrow(/try again/i);
+    expect(upsertDeferredObjectiveForDevice).toHaveBeenCalledOnce();
   });
 
   it('lists smart-task-capable devices in the autocomplete even with no active task', async () => {

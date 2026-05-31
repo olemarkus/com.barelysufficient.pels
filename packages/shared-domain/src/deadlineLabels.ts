@@ -279,6 +279,11 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   created: 'Smart task created',
   // Generic submit failure (rejected candidate / transient SDK miss).
   createError: 'Could not create the smart task. Check the goal and try again.',
+  // A transient settings-write refusal (`write_conflict`): the goal was valid,
+  // the persist just flaked, so the data is safe and a plain retry resolves it.
+  // Distinct from `createError` so we never tell the user to "check the goal"
+  // for a failure that has nothing to do with their input.
+  writeConflict: 'Could not save the smart task just now. Try again.',
   // The previewed "Ready by" time slipped into the past between previewing and
   // confirming (the user lingered past the chosen minute). The create is
   // rejected rather than silently rolled to the next day so the created task
@@ -287,18 +292,19 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   deadlinePassed: 'That ready-by time just passed. Preview again to pick a fresh time.',
 } as const;
 
-// Map a create rejection reason to the user-facing widget error line. Only the
-// "the deadline you previewed has passed" case gets bespoke copy (it tells the
-// user the specific, retryable next step — re-preview); every other rejection
-// collapses to the generic submit-failure line. Lives in shared-domain so the
-// widget never inlines the strings and runtime log breadcrumbs can reuse the
-// same wording (`feedback_ui_text_shared_with_logs.md`). The argument is the
-// widget reject-reason slug; an unknown slug falls through to `createError`.
-export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): string => (
-  reason === 'deadline_passed'
-    ? CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed
-    : CREATE_SMART_TASK_WIDGET_COPY.createError
-);
+// Map a create rejection reason to the user-facing widget error line. Two cases
+// get bespoke copy: the previewed deadline passing (tells the user to re-preview)
+// and a transient write refusal (`write_conflict` — tells the user to retry,
+// NOT to check a goal that was already valid). Every other rejection collapses
+// to the generic submit-failure line. Lives in shared-domain so the widget never
+// inlines the strings and runtime log breadcrumbs can reuse the same wording
+// (`feedback_ui_text_shared_with_logs.md`). The argument is the widget
+// reject-reason slug; an unknown slug falls through to `createError`.
+export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): string => {
+  if (reason === 'deadline_passed') return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
+  if (reason === 'write_conflict') return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
+  return CREATE_SMART_TASK_WIDGET_COPY.createError;
+};
 
 // Ready-by presets for the light, preset-driven deadline input. Each preset is
 // a fixed local 24-hour "HH:mm" the server resolves to the next future

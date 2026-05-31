@@ -232,6 +232,18 @@ describe('createStarvationRescue', () => {
     expect(received!.rescue).toEqual({ exemptFromBudget: 'always' });
   });
 
+  it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
+    // The app refused to persist on a transient un-confirmable migration /
+    // untrustworthy read. The widget must surface the retryable write_conflict
+    // reason, not report `ok: true` while the exemption never landed.
+    const rescueDeviceWithBudgetExemption = vi.fn(() => ({ ok: false as const, reason: 'write_refused' }));
+    const result = await createStarvationRescue({
+      ...buildContext({ getStarvedRescueDevices: vi.fn(() => [budgetDevice]), rescueDeviceWithBudgetExemption }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: false, reason: 'write_conflict' });
+  });
+
   it('persists the previewed deadline verbatim across an hour boundary (no fresh now+3h)', async () => {
     // Confirm left open: "now" advances 1h past the preview, but the echoed
     // deadline is still in-horizon, so the create persists the EXACT previewed

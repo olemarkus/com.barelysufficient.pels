@@ -42,6 +42,7 @@ export {
   resolveBudgetExemptionRescueEntry,
   clearObjectiveForDevice,
   type DeferredObjectiveDeviceWriteDeps,
+  type ObjectiveWriteOutcome,
 } from './objectiveWrite';
 export {
   migrateBlobToPerKeyIfNeeded,

@@ -94,6 +94,11 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   created: "Smart task created",
   // Generic submit failure (rejected candidate / transient SDK miss).
   createError: "Could not create the smart task. Check the goal and try again.",
+  // A transient settings-write refusal (`write_conflict`): the goal was valid,
+  // the persist just flaked, so the data is safe and a plain retry resolves it.
+  // Distinct from `createError` so we never tell the user to "check the goal"
+  // for a failure that has nothing to do with their input.
+  writeConflict: "Could not save the smart task just now. Try again.",
   // The previewed "Ready by" time slipped into the past between previewing and
   // confirming (the user lingered past the chosen minute). The create is
   // rejected rather than silently rolled to the next day so the created task

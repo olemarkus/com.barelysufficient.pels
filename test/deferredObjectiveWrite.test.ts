@@ -148,7 +148,8 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore({ 'ev-1': evEntry });
     const flaky = { ...store, getKeys: () => [] }; // store-wide getKeys flake
     const h = buildDeviceDeps(flaky);
-    clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
     expect(store.raw.has(keyFor('ev-1'))).toBe(true); // NOT unset — refused
     expect(h.rebuildPlan).not.toHaveBeenCalled();
   });
@@ -157,7 +158,8 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     store.raw.set(keyFor('ev-1'), undefined); // flaky read of an existing key
     const h = buildDeviceDeps(store);
-    upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
     expect(store.raw.get(keyFor('ev-1'))).toBeUndefined(); // NOT overwritten
     expect(h.rebuildPlan).not.toHaveBeenCalled();
   });
@@ -166,9 +168,10 @@ describe('device-scoped objective ops (per-device-key)', () => {
     const store = buildStore();
     store.raw.set(keyFor('heater-1'), undefined); // flaky read of an existing objective
     const h = buildDeviceDeps(store);
-    addBudgetExemptionRescueForDevice(h.deps, {
+    const outcome = addBudgetExemptionRescueForDevice(h.deps, {
       deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
     });
+    expect(outcome).toEqual({ persisted: false, reason: 'untrusted_absence' });
     // The fresh rescue was NOT written over the (flaky-read) existing objective.
     expect(store.raw.get(keyFor('heater-1'))).toBeUndefined();
     expect(h.rebuildPlan).not.toHaveBeenCalled();
@@ -347,6 +350,53 @@ describe('device-scoped objective ops (per-device-key)', () => {
     });
     expect(readObjectiveForDevice(store, 'heater-1'))
       .toEqual(resolveBudgetExemptionRescueEntry(existing, rescueTempEntry));
+  });
+
+  // ── Outcome contract: persisted vs refused (the false-success fix) ──────────
+
+  it('upsert returns { persisted: true } on a successful write', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway', entry: evEntry });
+    expect(outcome).toEqual({ persisted: true });
+  });
+
+  it('rescue returns { persisted: true } on a successful create', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    const outcome = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-1', deviceName: 'Hot water', rescueEntry: rescueTempEntry,
+    });
+    expect(outcome).toEqual({ persisted: true });
+  });
+
+  it('clear returns { persisted: true } for a trustworthy-absent no-op', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store);
+    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'ev-1', deviceName: 'Driveway' });
+    expect(outcome).toEqual({ persisted: true });
+  });
+
+  it('upsert REFUSES with migration_deferred on an empty-getKeys flake (marker unconfirmable)', () => {
+    // Empty getKeys() leaves the one-shot migration unable to complete, so the
+    // marker stays unset and the write must refuse rather than fork a per-key.
+    const store = buildStore({ 'ev-1': evEntry });
+    const flaky = { ...store, getKeys: () => [] };
+    const h = buildDeviceDeps(flaky);
+    const outcome = upsertObjectiveForDevice(h.deps, { deviceId: 'ev-2', deviceName: 'Garage', entry: evEntry });
+    expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('rescue REFUSES with migration_deferred on an empty-getKeys flake (marker unconfirmable)', () => {
+    const store = buildStore({ 'heater-1': rescueTempEntry });
+    const flaky = { ...store, getKeys: () => [] };
+    const h = buildDeviceDeps(flaky);
+    const outcome = addBudgetExemptionRescueForDevice(h.deps, {
+      deviceId: 'heater-2', deviceName: 'Other', rescueEntry: rescueTempEntry,
+    });
+    expect(outcome).toEqual({ persisted: false, reason: 'migration_deferred' });
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
   });
 });
 

@@ -2600,17 +2600,13 @@ prod walk that didn't warrant a P2 slot.*
       that unsets any lingering empty `deferred_objectives` key. Source:
       per-device-key cutover, 2026-05-30.
 
-- [ ] **Propagate refused per-key writes to callers.** The device-scoped write ops
-      (`upsertObjectiveForDevice` / `addBudgetExemptionRescueForDevice`) return
-      `void`, so when their flaky-read guard REFUSES (key present-but-unreadable, or
-      store-wide empty `getKeys()`), callers — the deadline Flow cards,
-      `createDeferredObjective`, the rescue widget path — can't tell a refusal from
-      a persisted update and report success. The DATA is safe (the guard prevents
-      overwriting the user's objective), but a transient read during an edit can
-      silently leave the old state while the caller reports success instead of a
-      retryable failure. Fix: return a persisted/refused result from the write ops
-      and have callers surface a retryable error on refusal. Source: codex (P2) on
-      PR #1294, 2026-05-30.
+- [x] **Propagate refused per-key writes to callers.** SHIPPED: the device-scoped
+      write ops now return an `ObjectiveWriteOutcome`
+      (`{ persisted: true } | { persisted: false; reason }`); `createDeferredObjective`
+      / `rescueDeviceWithBudgetExemption` return `{ ok: false, reason: 'write_refused' }`,
+      the deadline + rescue Flow cards throw a retryable error, and the create / rescue
+      widgets map the refusal onto the existing retryable `write_conflict` lane. Source:
+      codex (P2) on PR #1294, 2026-05-30.
 
 - [ ] **Run the startup back-fill after an in-session migration retry.** The
       one-shot `runStartupBackfill` is gated on the migration marker, so if a

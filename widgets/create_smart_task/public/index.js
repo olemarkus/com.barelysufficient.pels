@@ -68,6 +68,11 @@
     created: "Smart task created",
     // Generic submit failure (rejected candidate / transient SDK miss).
     createError: "Could not create the smart task. Check the goal and try again.",
+    // A transient settings-write refusal (`write_conflict`): the goal was valid,
+    // the persist just flaked, so the data is safe and a plain retry resolves it.
+    // Distinct from `createError` so we never tell the user to "check the goal"
+    // for a failure that has nothing to do with their input.
+    writeConflict: "Could not save the smart task just now. Try again.",
     // The previewed "Ready by" time slipped into the past between previewing and
     // confirming (the user lingered past the chosen minute). The create is
     // rejected rather than silently rolled to the next day so the created task
@@ -75,7 +80,11 @@
     // resolves a fresh future deadline. Retryable, not a hard failure.
     deadlinePassed: "That ready-by time just passed. Preview again to pick a fresh time."
   };
-  var resolveCreateSmartTaskRejectCopy = (reason) => reason === "deadline_passed" ? CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed : CREATE_SMART_TASK_WIDGET_COPY.createError;
+  var resolveCreateSmartTaskRejectCopy = (reason) => {
+    if (reason === "deadline_passed") return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
+    if (reason === "write_conflict") return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
+    return CREATE_SMART_TASK_WIDGET_COPY.createError;
+  };
   var CREATE_SMART_TASK_READY_BY_PRESETS = [
     { id: "morning", label: "07:00", localTime: "07:00" },
     { id: "midday", label: "12:00", localTime: "12:00" },

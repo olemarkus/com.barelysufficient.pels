@@ -2125,7 +2125,8 @@ class PelsApp extends Homey.App {
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): { ok: true } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate'
+      | 'write_refused';
   } {
     const validated = this.resolveValidatedObjectiveEntry(deviceId, candidate);
     if (!validated.ok) return validated;
@@ -2136,18 +2137,21 @@ class PelsApp extends Homey.App {
     }
 
     // Per-device-key write: touches only this device's settings key, so it
-    // cannot drop a sibling task and cannot fail-as-clobber (there is no
-    // refusal branch). The create-smart-task widget never carries a rescue
-    // permission (the budget-exempt rescue has its own merge-not-replace lane,
-    // `rescueDeviceWithBudgetExemption`), so the default `preserve` policy keeps
-    // a standing permission set elsewhere intact rather than wiping it.
-    upsertObjectiveForDevice(
+    // cannot drop a sibling task. The create-smart-task widget never carries a
+    // rescue permission (the budget-exempt rescue has its own merge-not-replace
+    // lane, `rescueDeviceWithBudgetExemption`), so the default `preserve` policy
+    // keeps a standing permission set elsewhere intact rather than wiping it.
+    // The write can still REFUSE on a transient un-confirmable migration or an
+    // untrustworthy absence read; surface that as a retryable failure instead of
+    // a false success so the widget can re-offer the create.
+    const outcome = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:create_smart_task_widget',
       }),
       { deviceId, deviceName: device.name ?? null, entry },
     );
+    if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
     return { ok: true };
   }
   // Grant a device the starvation-rescue widget's bounded budget-exempt rescue,
@@ -2175,7 +2179,8 @@ class PelsApp extends Homey.App {
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): { ok: true } | {
     ok: false;
-    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate';
+    reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate'
+      | 'write_refused';
   } {
     // Defence-in-depth (feedback_hard_cap_is_physical): this lane exists only to
     // grant a budget exemption; reject any candidate that does not carry one so
@@ -2193,14 +2198,18 @@ class PelsApp extends Homey.App {
 
     // The merge op uses `rescueEntry` only when no objective exists yet; when one
     // does, it preserves that objective and just adds the budget exemption.
-    // Per-device-key write — touches only this device's key, no clobber risk.
-    addBudgetExemptionRescueForDevice(
+    // Per-device-key write — touches only this device's key, no clobber risk. A
+    // transient un-confirmable migration or untrustworthy absence read refuses
+    // the write; surface that as a retryable failure rather than a false success
+    // so the rescue widget can re-offer the grant.
+    const outcome = addBudgetExemptionRescueForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
         rebuildReason: 'flow_card:starvation_rescue_widget',
       }),
       { deviceId, deviceName: device.name ?? null, rescueEntry },
     );
+    if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
     return { ok: true };
   }
   public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {

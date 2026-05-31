@@ -38,6 +38,16 @@ const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
 // objective for that one device for a single cycle with NO persisted damage,
 // and self-heals on the next clean read.
 
+// The outcome of a device-scoped write. A write either PERSISTED, or REFUSED a
+// retryable transient condition (an un-confirmable per-key migration, or an
+// untrustworthy absence read — see the guards below). The two refusal reasons
+// are kept distinct so callers can log/diagnose, but both map to the same
+// user-facing "couldn't save just now, retry" framing. The old `void` return
+// hid these refusals, so callers reported success while nothing was written.
+export type ObjectiveWriteOutcome =
+  | { persisted: true }
+  | { persisted: false; reason: 'migration_deferred' | 'untrusted_absence' };
+
 export type DeferredObjectiveDeviceWriteDeps = {
   store: ObjectiveSettingsStore;
   planHistoryRecorder: DeferredObjectivePlanHistoryRecorder;
@@ -86,8 +96,8 @@ export const upsertObjectiveForDevice = (
     entry: DeferredObjectiveSettingsEntry;
     rescue?: 'preserve' | 'replace';
   },
-): void => {
-  if (!ensureMigrated(deps)) return;
+): ObjectiveWriteOutcome => {
+  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
   const { deviceId, deviceName } = params;
   const rescuePolicy = params.rescue ?? 'preserve';
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
@@ -95,7 +105,9 @@ export const upsertObjectiveForDevice = (
   // TRUSTWORTHY (key list readable AND key absent). A present-but-unreadable key
   // OR a store-wide empty `getKeys()` both mean "can't trust this is objective-less",
   // so refuse rather than overwrite the user's objective / drop a preserved rescue.
-  if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return;
+  if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
+    return { persisted: false, reason: 'untrusted_absence' };
+  }
   // Preserve a standing rescue permission unless the caller is authoritative
   // about rescue or the new entry already sets its own.
   const nextEntry: DeferredObjectiveSettingsEntry = rescuePolicy === 'preserve'
@@ -106,6 +118,7 @@ export const upsertObjectiveForDevice = (
 
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
   notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
+  return { persisted: true };
 };
 
 /**
@@ -177,8 +190,8 @@ export const addBudgetExemptionRescueForDevice = (
     // when an objective already exists — that path only adds the exemption.
     rescueEntry: DeferredObjectiveSettingsEntry;
   },
-): void => {
-  if (!ensureMigrated(deps)) return;
+): ObjectiveWriteOutcome => {
+  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
   const { deviceId, deviceName } = params;
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   // Flaky-read guard: only CREATE a fresh rescue when the absence is TRUSTWORTHY
@@ -186,7 +199,9 @@ export const addBudgetExemptionRescueForDevice = (
   // store-wide empty `getKeys()` would otherwise make the merge take the
   // no-objective branch and OVERWRITE the user's objective (target/deadline) with
   // a fresh rescue — refuse instead; the rescue retries on a clean read.
-  if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return;
+  if (prevEntry === undefined && !objectiveAbsenceIsTrustworthy(deps.store, deviceId)) {
+    return { persisted: false, reason: 'untrusted_absence' };
+  }
   // Single source of truth for the merge outcome, shared with the preview path
   // so preview ≡ persist (see `resolveBudgetExemptionRescueEntry`). Preserves
   // the existing objective; ensures it is enabled (a disabled task's exemption
@@ -195,24 +210,32 @@ export const addBudgetExemptionRescueForDevice = (
 
   writeObjectiveForDevice(deps.store, deviceId, nextEntry);
   notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry, nowMs: deps.nowMs });
+  return { persisted: true };
 };
 
 /**
  * Clear a device's deferred objective.
+ *
+ * Returns the same `ObjectiveWriteOutcome` as the write primitives. Two distinct
+ * `persisted: true` outcomes collapse into one: the key was unset, OR it was a
+ * genuine trustworthy-absent no-op (nothing to clear). Both leave the user's
+ * intent satisfied, so both report success. Only the un-confirmable migration
+ * guard is a retryable refusal.
  */
 export const clearObjectiveForDevice = (
   deps: DeferredObjectiveDeviceWriteDeps,
   params: { deviceId: string; deviceName: string | null },
-): void => {
-  if (!ensureMigrated(deps)) return;
+): ObjectiveWriteOutcome => {
+  if (!ensureMigrated(deps)) return { persisted: false, reason: 'migration_deferred' };
   const { deviceId, deviceName } = params;
   // Skip ONLY when the absence is TRUSTWORTHY (key list readable AND key absent) —
   // a genuine no-op worth avoiding the plan rebuild for. A present key OR a
   // store-wide empty `getKeys()` flake both fall through to the (idempotent) unset,
   // so a transient/malformed read can't make the clear silently no-op while the
   // objective stays persisted and reappears on the next clean cycle.
-  if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return;
+  if (objectiveAbsenceIsTrustworthy(deps.store, deviceId)) return { persisted: true };
   const prevEntry = readObjectiveForDevice(deps.store, deviceId);
   clearObjectiveKey(deps.store, deviceId);
   notifyAndRebuild(deps, { deviceId, deviceName, prevEntry, nextEntry: undefined, nowMs: deps.nowMs });
+  return { persisted: true };
 };

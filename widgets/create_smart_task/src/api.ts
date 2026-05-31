@@ -167,7 +167,11 @@ const mapAppReason = (reason: string): CreateSmartTaskRejectReason => {
   if (reason === 'device_not_found') return 'device_not_found';
   if (reason === 'device_not_planned') return 'device_not_planned';
   if (reason === 'device_not_eligible') return 'device_not_eligible';
-  if (reason === 'write_conflict') return 'write_conflict';
+  // The per-key write refused to persist (transient un-confirmable migration /
+  // untrustworthy settings read). Map onto the widget's existing retryable
+  // `write_conflict` lane so the user gets the "try again" copy rather than a
+  // false success.
+  if (reason === 'write_conflict' || reason === 'write_refused') return 'write_conflict';
   return 'invalid_candidate';
 };
 
