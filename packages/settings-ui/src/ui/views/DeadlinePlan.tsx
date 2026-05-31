@@ -262,7 +262,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
         <div class="plan-hero__recourse">
           <button
             type="button"
-            class="pels-button"
+            class="pels-button hy-nostyle"
             data-deadline-recourse-tab={payload.hero.recourse.targetTab}
             data-deadline-recourse-device-id={payload.hero.recourse.deviceId ?? ''}
           >
@@ -1020,7 +1020,7 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
         <div class="plan-hero__recourse">
           <button
             type="button"
-            class="pels-button"
+            class="pels-button hy-nostyle"
             data-deadline-recourse-tab={pending.hero.recourse.targetTab}
             data-deadline-recourse-device-id={pending.hero.recourse.deviceId ?? ''}
           >

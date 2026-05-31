@@ -79,7 +79,7 @@ export const bindSegmentedToSelect = (params: {
     const createButton = (option: SegmentedOptionElement): SegmentedButtonElement => {
         const button = document.createElement('button') as SegmentedButtonElement;
         button.type = 'button';
-        button.className = 'segmented__option';
+        button.className = 'segmented__option hy-nostyle';
         button.setAttribute('role', 'radio');
         button.dataset.value = option.value;
         button.addEventListener('click', () => {

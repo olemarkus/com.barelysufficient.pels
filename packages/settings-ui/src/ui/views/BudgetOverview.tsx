@@ -147,7 +147,7 @@ const ToggleGroup = <T extends string>({
       <button
         key={opt.value}
         type="button"
-        class="segmented__option"
+        class="segmented__option hy-nostyle"
         aria-pressed={value === opt.value}
         aria-label={opt.shortLabel ? opt.label : undefined}
         disabled={opt.disabled}
