@@ -114,6 +114,17 @@ const moduleLogger = getLogger('device/transport');
 
 const MIN_SIGNIFICANT_POWER_W = 5;
 const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
+
+// Homey SDK device reads can transiently return an empty list without throwing
+// (see lib/device/transport/managerFetch.ts, which normalizes `[]`/`{}` into an
+// empty list and returns successfully — so the fetch retry loop never engages).
+// Treating a single empty read as authoritative would clobber a populated
+// snapshot. Mirror the abandon-grace pattern in
+// lib/objectives/deferredObjectives/planHistory.ts: only accept an empty
+// snapshot once it has persisted for a grace window OR across enough consecutive
+// reads, so a genuinely-emptied home still commits but a transient blip does not.
+const EMPTY_SNAPSHOT_ABANDON_GRACE_MS = 5 * 60 * 1000;
+const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = 3;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
@@ -293,6 +304,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private homey: Homey.App;
     private latestSnapshot: TargetDeviceSnapshot[] = [];
     private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
+    // Tracks a run of transient empty SDK reads while a populated snapshot is held,
+    // so we only abandon the populated snapshot after the grace window/read count.
+    private emptySnapshotGrace: { firstSeenMs: number; reads: number } | null = null;
     private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
     private latestRawDevices: HomeyDeviceLike[] = [];
     private latestHomePowerW: number | null = null;
@@ -1100,14 +1114,77 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         }
     };
 
+    /**
+     * Guards against a transient empty SDK read clobbering a populated snapshot.
+     *
+     * `fetchDevicesWithFallback` normalizes an empty `getRawDevices` result into a
+     * successful empty list, so the retry loop never engages. If we committed that
+     * unconditionally, `setSnapshot([])` would wipe a previously-populated snapshot.
+     *
+     * Returns `true` (defer the commit) while the empty result is still within the
+     * abandon-grace window AND under the consecutive-read threshold. Once either is
+     * exceeded — a genuinely-emptied home — the empty snapshot is allowed through.
+     */
+    private shouldDeferEmptySnapshotCommit(
+        snapshot: readonly TargetDeviceSnapshot[],
+        previousSnapshot: readonly TargetDeviceSnapshot[],
+        rawWasEmpty: boolean,
+        nowMs: number,
+    ): boolean {
+        // Only an empty *raw* SDK read is the transient blip worth masking. If the
+        // SDK returned devices but they all parsed/filtered out (e.g. nothing is
+        // managed/eligible anymore), that is an intentional empty snapshot and must
+        // commit immediately — deferring it would keep controlling a now-stale device
+        // until the grace window or read threshold elapses.
+        if (snapshot.length > 0 || previousSnapshot.length === 0 || !rawWasEmpty) {
+            this.emptySnapshotGrace = null;
+            return false;
+        }
+        const grace = this.emptySnapshotGrace ?? { firstSeenMs: nowMs, reads: 0 };
+        grace.reads += 1;
+        this.emptySnapshotGrace = grace;
+        const elapsedMs = nowMs - grace.firstSeenMs;
+        if (elapsedMs >= EMPTY_SNAPSHOT_ABANDON_GRACE_MS
+            || grace.reads >= EMPTY_SNAPSHOT_ABANDON_GRACE_READS) {
+            (this.logger.structuredLog ?? moduleLogger).warn({
+                component: 'devices',
+                event: 'device_snapshot_empty_grace_exceeded',
+                reasonCode: 'empty_snapshot_committed',
+                consecutiveEmptyReads: grace.reads,
+                graceElapsedMs: elapsedMs,
+                previousDevicesTotal: previousSnapshot.length,
+            });
+            this.emptySnapshotGrace = null;
+            return false;
+        }
+        (this.logger.structuredLog ?? moduleLogger).warn({
+            component: 'devices',
+            event: 'device_snapshot_empty_deferred',
+            reasonCode: 'empty_snapshot_transient',
+            consecutiveEmptyReads: grace.reads,
+            graceElapsedMs: elapsedMs,
+            previousDevicesTotal: previousSnapshot.length,
+        });
+        return true;
+    }
+
+    /**
+     * Commits a refreshed snapshot unless the abandon-grace guard defers it.
+     * Returns `true` when committed, `false` when a transient empty read was held
+     * back so the caller can skip the post-commit recording/logging.
+     */
     private commitRefreshedSnapshot(params: {
         snapshot: TargetDeviceSnapshot[];
         previousSnapshot: readonly TargetDeviceSnapshot[];
-    }): void {
-        const { snapshot, previousSnapshot } = params;
+        rawWasEmpty: boolean;
+        nowMs: number;
+    }): boolean {
+        const { snapshot, previousSnapshot, rawWasEmpty, nowMs } = params;
+        if (this.shouldDeferEmptySnapshotCommit(snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
         this.setSnapshot(snapshot);
         this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
         this.fireSnapshotMutatedForRefresh(snapshot, previousSnapshot);
+        return true;
     }
 
     private fireSnapshotMutatedForRefresh(
@@ -1707,7 +1784,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 : await this.fetchLivePowerReport();
             this.updateHomePowerFromReport(livePowerReport);
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
-            if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
             const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
@@ -1717,7 +1793,17 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 logger: this.logger,
             });
             this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
-            this.commitRefreshedSnapshot({ snapshot, previousSnapshot });
+            // Skip both the snapshot commit AND the raw-device cache update when the
+            // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
+            // doesn't briefly report zero devices during the blip we're masking.
+            const committed = this.commitRefreshedSnapshot({
+                snapshot,
+                previousSnapshot,
+                rawWasEmpty: effectiveList.length === 0,
+                nowMs: start,
+            });
+            if (!committed) return;
+            if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
             recordSnapshotRefreshObservations({
                 state: this.observationState,
                 snapshot,
