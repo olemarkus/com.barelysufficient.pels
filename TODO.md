@@ -44,10 +44,19 @@ against mocked endpoints (`tests/widget-harness/mockData.mjs`), so the widgets
 run their real data path with editable data and per-widget scenario switches. We
 walk them one at a time, delivering each as its own PR.*
 
+*Homey-CSS-standards pass (separate PR, 2026-05-31): de-pilled the chips /
+state-labels and converged them onto one Homey-native soft-tag recipe (medium
+weight, `border-radius-small`, faint tonal border over a light fill) across
+`headroom` + `smart_tasks`, and removed the rejected coloured left state-rail
+from `starvation_rescue` (plain tonal cards now). `plan_budget` audited clean
+(no pills / no raw values). The deeper per-widget loveability items below
+(headroom's twin labels, smart_tasks recourse/persona, starvation per-cause
+copy) are untouched by that pass and remain open.*
+
 - [ ] **New smart task (`create_smart_task`) — plan-graph + structural fixes
       delivered; picker/feasibility polish remains.** Shipped: a real plan-graph
       preview (a stepped spot-price curve with the scheduled hours highlighted),
-      backed by a new `priceSeries`/`priceAxisUnit` on the preview estimate
+      backed by a new `priceSeries` on the preview estimate
       (`planPreview.ts` → `buildDeferredObjectivePolicyWindowPrices`); the compose
       CTA is no longer clipped (widget grown 240→380); the "Ready by" chips are
       de-pilled to the flat Homey radius. **Remaining:** the device picker still
