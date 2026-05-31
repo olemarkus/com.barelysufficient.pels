@@ -1,30 +1,36 @@
 ---
 title: Dashboard Widgets
-description: Pin PELS widgets to a Homey dashboard to glance at available power and Smart task progress without opening the app.
+description: Pin PELS widgets to a Homey dashboard to watch available power, today's budget, and Smart task progress — and to start or release a device — without opening the app.
 ---
 
 # Dashboard Widgets
 
-PELS ships two small widgets you can pin to a Homey dashboard for at-a-glance status. They sit next to your other tiles and refresh on their own — no taps needed to read them.
+PELS ships five small widgets you can pin to a Homey dashboard. Most show status at a glance and refresh on their own; two are interactive — **New smart task** lets you create a task and **Held-back devices** lets you release one — straight from the dashboard.
 
-Add either widget from your Homey dashboard's widget picker, then place it where you want.
+Add any widget from your Homey dashboard's widget picker, then place it where you want.
 
 ## Available power
 
-Answers the question **"how much room do I have right now?"**
+Answers **"how much room do I have right now?"**
 
 The widget shows:
 
 - Current draw against the current effective hour budget, with a coloured bar that turns warning at 85 % and danger at 100 %.
 - Available power remaining in the current hour.
-- The number of PELS-paused devices, when any are paused.
+- The number of devices PELS is holding back, when any are.
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
 
 It refreshes about every 10 seconds and keeps showing the last known reading (dimmed) if Homey briefly misses a measurement, so the widget never blanks during a transient hiccup.
 
+## Budget and Price
+
+Answers **"where will today land?"**
+
+The widget shows today's hourly plan as a chart — managed and background usage against the daily budget — with the cheaper and more expensive hours marked, a now-line, and a projected end-of-day total in kWh and money. Use it to see at a glance whether the day is tracking to plan and which hours are the cheap ones.
+
 ## Smart tasks
 
-Answers the question **"are my deadlines on track?"**
+Answers **"are my deadlines on track?"**
 
 The widget lists up to three active Smart tasks, ranked by how much attention they need: tasks PELS expects to miss first, then at-risk, then pending, then on-track. Satisfied tasks drop off automatically.
 
@@ -38,9 +44,26 @@ If you have more than three active Smart tasks, a small `+N in Smart tasks` line
 
 The widget refreshes about every 60 seconds.
 
+## New smart task
+
+Answers **"get this device ready by a time — without building a Flow."**
+
+An interactive widget that creates a Smart task in a few taps: pick an eligible device (thermostat, water heater, or EV charger), set the goal and a **Ready by** time, then preview and confirm. The preview shows the hours PELS would pick, the estimated cost, and a price curve with the chosen hours highlighted. An optional **Extra permissions** section lets a task go over the daily budget or limit lower-priority devices — both still stay within the hard cap.
+
+This is the dashboard equivalent of the **Add charging task** / **Add heating task** Flow cards; see [Smart Tasks](/smart-tasks) for how a task behaves once it exists.
+
+## Held-back devices
+
+Answers **"why isn't this running — and can I let it now?"**
+
+The widget lists devices PELS is currently holding back (paused or limited) and the reason. For an eligible device you can tap **Let it run now** to release it: it claims capacity within the hard cap, so it starts as soon as there is room. Use it when you want a specific device to run sooner than PELS would otherwise allow.
+
 ## When to use which
 
-- Pin **Available power** if you want a constant read on capacity pressure — useful when you're running heavy loads (an EV charger, a sauna, a wallbox heater) and want to know at a glance whether PELS is keeping up.
-- Pin **Smart tasks** if you depend on deadlines — overnight EV charging, water heater ready by morning, room warm by a set time. The widget turns red before you'd otherwise notice a miss.
+- **Available power** — a constant read on capacity pressure when you run heavy loads (an EV charger, a sauna, a wallbox heater).
+- **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
+- **Smart tasks** — when you depend on deadlines; the widget turns red before you'd otherwise notice a miss.
+- **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
+- **Held-back devices** — to understand, and optionally override, why something isn't running right now.
 
-Both widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in terms of additional polling or device traffic.
+All widgets read from the same data PELS already maintains for the app itself, so adding them costs nothing in extra polling or device traffic.

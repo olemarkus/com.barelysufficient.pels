@@ -31,6 +31,8 @@ Smart tasks are created from Homey Flow action cards:
 
 The ready-by value is written as local time, for example `07:00`. PELS stores the next matching future time when the Flow runs. It does not automatically repeat the same task every day unless your Flow runs again.
 
+You can also create a Smart task without a Flow from the **New smart task** dashboard widget: pick a device, set the goal and a **Ready by** time, preview the plan, and confirm. See [Dashboard Widgets](/widgets) for the full widget set.
+
 ## What PELS Plans
 
 For each active task, PELS evaluates:
