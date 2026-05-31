@@ -14,6 +14,11 @@ import { expect, HOMEY_HOST_CSS, test, type Page } from './fixtures/test';
 // native <button> ends up wearing the host's grey. Self-contained (injects the
 // committed fixture itself), so it runs in the normal chromium-mobile CI project
 // with no special server mode.
+//
+// It ALSO guards the sibling label defence: the same host sheet has a
+// `label:not(.hy-nostyle)` rule that would uppercase/grey bare <label>s, but PELS
+// neutralises it globally with `label { … !important }` (style.css). Labels need
+// no per-element opt-out — this test just confirms that override still holds.
 
 const HOST_GREY = 'rgb(231, 231, 231)'; // #e7e7e7 — the host legacy-button background
 
@@ -40,7 +45,7 @@ const openSmartTasks = async (page: Page) => {
   await expect(page.locator('.deadlines-history__heading')).toBeVisible();
 };
 
-test('Homey host stylesheet does not bleed onto any native <button> in dark theme', async ({ browser, browserName, baseURL }) => {
+test('Homey host stylesheet does not bleed onto native <button> or <label> in dark theme', async ({ browser, browserName, baseURL }) => {
   test.skip(browserName !== 'chromium', 'Mobile dark capture needs chromium isMobile emulation.');
   // A manually-created context does NOT inherit the fixture baseURL, so pass it
   // explicitly or `openSmartTasks`'s `page.goto('/')` has no base to resolve
@@ -55,8 +60,8 @@ test('Homey host stylesheet does not bleed onto any native <button> in dark them
   // below forces a synchronous style recalc, so no settle wait is needed.
   await page.addStyleTag({ content: HOMEY_HOST_CSS });
 
-  const bleeders = await page.evaluate((grey) => {
-    const out: { cls: string; bg: string }[] = [];
+  const { buttonBleeders, labelBleeders } = await page.evaluate((grey) => {
+    const buttons: { cls: string; bg: string }[] = [];
     for (const btn of Array.from(document.querySelectorAll('button'))) {
       // Skip Homey's OWN button classes (intentionally host-styled, not ours).
       // Do NOT skip `hy-nostyle`: those are exactly our opt-out buttons, and the
@@ -65,11 +70,31 @@ test('Homey host stylesheet does not bleed onto any native <button> in dark them
       // it shows up here.
       if (/(^| )(homey-button|hy-button)/.test(btn.className)) continue;
       const bg = getComputedStyle(btn).backgroundColor;
-      if (bg === grey) out.push({ cls: btn.className || '(no class)', bg });
+      if (bg === grey) buttons.push({ cls: btn.className || '(no class)', bg });
     }
-    return out;
+    // Sibling guard for the EXISTING label defence. The host `label:not(.hy-nostyle)`
+    // rule force-uppercases bare <label>s, but PELS already neutralises it globally
+    // with `label { text-transform: none !important; … }` (style.css:146) — so
+    // unlike buttons, labels need no per-element opt-out. This asserts that defence
+    // still holds: if the override is ever dropped, the host rule wins and a PELS
+    // <label> computes `text-transform: uppercase`, which shows up here. The static
+    // field labels live in `.panel hidden` (display:none) sections and Chromium's
+    // getComputedStyle does NOT resolve the cascade for display:none subtrees, so
+    // un-hide every panel first to make all static labels checkable from any tab.
+    for (const panel of Array.from(document.querySelectorAll<HTMLElement>('.panel'))) {
+      panel.classList.remove('hidden');
+      panel.hidden = false;
+    }
+    const labels: { cls: string; transform: string }[] = [];
+    for (const label of Array.from(document.querySelectorAll('label'))) {
+      if (/(^| )(homey-|hy-label)/.test(label.className)) continue;
+      const t = getComputedStyle(label).textTransform;
+      if (t === 'uppercase') labels.push({ cls: label.className || '(no class)', transform: t });
+    }
+    return { buttonBleeders: buttons, labelBleeders: labels };
   }, HOST_GREY);
 
   await ctx.close();
-  expect(bleeders, `native <button>s wearing the Homey host grey (${HOST_GREY}) — they need the hy-nostyle class`).toEqual([]);
+  expect(buttonBleeders, `native <button>s wearing the Homey host grey (${HOST_GREY}) — they need the hy-nostyle class`).toEqual([]);
+  expect(labelBleeders, 'native <label>s host-uppercased — the global `label{}!important` override (style.css) was dropped').toEqual([]);
 });
