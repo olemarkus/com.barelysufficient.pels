@@ -965,12 +965,6 @@ md-primary-tab.tab[active] {
   color: var(--muted);
 }
 
-.settings-nav-card__content {
-  display: grid;
-  min-width: 0;
-  gap: var(--spacing-1);
-}
-
 /* `.settings-nav-card__title` now composes `.pels-text-card-title` in markup;
    no per-block type needed. */
 
@@ -2337,7 +2331,14 @@ md-filled-button.is-busy {
   height: 14px;
   border-radius: var(--radius-full);
   background: var(--pels-text-secondary);
-  box-shadow: 0 0 0 0.5px var(--pels-text-secondary);
+  /* Ring in the track-surface tone (not the marker tone) so the neutral grey
+     "stay under here" tick stays separated from whatever fill sits under it.
+     In the over-threshold state the fill behind the marker is
+     `--pels-status-warning` (amber), where a bare grey tick is only ~2:1; the
+     surface-toned halo carves a gap on both the mobile-dark and desktop-light
+     canvases so the marker reads against the amber (and the managed-green)
+     fill. On the empty track the halo matches the track and is invisible. */
+  box-shadow: 0 0 0 1px var(--pels-surface-container-highest);
 }
 
 .pels-meter-track__marker--cap {
