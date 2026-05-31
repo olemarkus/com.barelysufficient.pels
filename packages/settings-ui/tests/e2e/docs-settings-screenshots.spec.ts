@@ -5,7 +5,7 @@
  * Use PELS_E2E_CHROMIUM_EXECUTABLE_PATH=/path/to/chrome if Playwright's
  * bundled Chromium is unavailable on the local platform.
  */
-import { expect, test, type Page } from './fixtures/test';
+import { expect, renderTest as test, type Page } from './fixtures/test';
 
 const OUT = '../../docs/public/screenshots/settings';
 

@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test, type Page } from './fixtures/test';
+import { expect, injectHomeyHostCss, test, type Page } from './fixtures/test';
 
 // Baseline whole-surface render of the Smart tasks tab. Not a CI assertion — a
 // reusable capture harness for the periodic render-gate. Skipped unless
@@ -152,6 +152,9 @@ for (const width of [480, 360] as const) {
         });
         try {
           const page = await context.newPage();
+          // Render with Homey's host stylesheet present, exactly as the on-device
+          // app-settings iframe does, so the capture shows real host-CSS bleed.
+          await injectHomeyHostCss(page);
           // Pin the clock so seeded dates + relative week labels are stable.
           await page.clock.setFixedTime(FIXED_NOW_MS);
           const history = state.withHistory ? buildHistory(FIXED_NOW_MS) : { version: 1, entriesByDeviceId: {} };
