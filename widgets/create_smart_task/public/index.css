@@ -312,7 +312,8 @@
   padding: var(--homey-su-1, 4px) var(--homey-su-3, 12px);
   /* Primary compose input on a touch tile — keep the 48px Material hit target. */
   min-height: 48px;
-  border-radius: 999px;
+  /* Flat Homey radius, not a pill — matches the Homey-native tag/button shape. */
+  border-radius: var(--homey-border-radius-default, 10px);
   border: 1px solid var(--homey-line-color, rgba(15, 23, 28, 0.12));
   background: transparent;
   color: var(--homey-text-color, inherit);
@@ -413,6 +414,53 @@
 .preview-line--error {
   color: var(--homey-text-color-danger, #f0696c);
   font-weight: var(--homey-font-weight-medium, 500);
+}
+
+/* ----- Preview price chart ----- */
+
+/* The compact price curve sits between the cost headline and the when-line. A
+   fixed band so the surrounding lines don't reflow as the SVG scales to width;
+   `flex: none` stops the flex column from stretching it. */
+.preview-chart {
+  flex: none;
+  width: 100%;
+  height: 132px;
+  margin: var(--homey-su-1, 4px) 0;
+}
+
+.pchart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Shaded band over the scheduled hours — the "runs here" window. A translucent
+   success tint so the chosen hours read as the good/cheap part of the curve. */
+.pchart__band {
+  fill: color-mix(in srgb, var(--homey-color-success, #58c56a) 15%, transparent);
+}
+
+/* The price line — price/danger tone (matches the plan_budget price series),
+   stroked only, never filled. `stroke-width` is a raw SVG geometry value (Homey
+   ships no stroke-width token); colour stays tokenised. */
+.pchart__line {
+  fill: none;
+  stroke: var(--homey-color-red, #f0696c);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Dots marking the scheduled points on the price line. */
+.pchart__dot {
+  fill: var(--homey-color-success, #58c56a);
+}
+
+/* Sparse hour ticks along the bottom. */
+.pchart__axis {
+  fill: var(--homey-text-color-light, #6d7680);
+  font-size: var(--homey-font-size-small, 14px);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ----- Created flash ----- */

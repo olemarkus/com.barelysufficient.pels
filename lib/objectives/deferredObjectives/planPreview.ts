@@ -11,7 +11,10 @@ import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
 import { buildDeferredObjectiveDiagnostic, type DeferredObjectiveDiagnostic } from './diagnosticsBridge';
-import { buildDeferredObjectivePolicyBucketPrices } from './policyHorizon';
+import {
+  buildDeferredObjectivePolicyBucketPrices,
+  buildDeferredObjectivePolicyWindowPrices,
+} from './policyHorizon';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 
 export type PreviewDeferredObjectivePlanParams = {
@@ -74,6 +77,8 @@ export const previewDeferredObjectivePlan = (
     diag,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
     priceRateLabel: params.priceRateLabel,
+    nowMs: params.nowMs,
+    deadlineAtMs: params.candidate.deadlineAtMs,
   });
 };
 
@@ -110,8 +115,10 @@ const buildEstimateFromDiagnostic = (params: {
   diag: DeferredObjectiveDiagnostic;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   priceRateLabel: string | undefined;
+  nowMs: number;
+  deadlineAtMs: number;
 }): DeferredObjectivePlanPreviewEstimate => {
-  const { diag, dailyBudgetSnapshot, priceRateLabel } = params;
+  const { diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs } = params;
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
   // null numerics rather than inventing a plan.
@@ -132,6 +139,11 @@ const buildEstimateFromDiagnostic = (params: {
   const costUnit = priceRateLabel !== undefined
     ? priceRateLabelToAmountUnit(priceRateLabel)
     : undefined;
+  // Hourly price curve across the now→deadline window for the preview chart.
+  // Same snapshot prices the cost above is summed from, and epoch-hour-floored on
+  // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
+  const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
+    .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
   return {
     status: resolvePreviewStatus(diag.horizonPlan.status),
     scheduledHours,
@@ -142,6 +154,7 @@ const buildEstimateFromDiagnostic = (params: {
     energyExpectedKWh: resolveEnergyExpectedKWh(diag),
     costEstimate: cost,
     ...(cost !== null && costUnit ? { costUnit } : {}),
+    ...(priceSeries.length > 0 ? { priceSeries } : {}),
   };
 };
 

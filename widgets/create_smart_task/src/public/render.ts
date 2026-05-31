@@ -16,6 +16,7 @@ import {
   SMART_TASK_DEVICE_PICKER_COPY,
   resolveSmartTaskDeviceGroupIconLabel,
 } from '../../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
+import { renderPreviewChart } from './previewChart';
 import type {
   CreateSmartTaskDevice,
   CreateSmartTaskDevicesPayload,
@@ -71,6 +72,7 @@ export type RenderTargets = {
   previewTitle: HTMLElement;
   previewCostEl: HTMLElement;
   previewCostSubtextEl: HTMLElement;
+  previewChartEl: HTMLElement;
   previewWhenEl: HTMLElement;
   previewEnergyEl: HTMLElement;
   previewCaveatEl: HTMLElement;
@@ -308,8 +310,21 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
     targets.previewCostSubtextEl,
     costLine !== null ? formatCheapestHoursSubtext(response.deadlineLabel) : null,
   );
+  // The price curve with the scheduled hours highlighted — shown only when the
+  // projection is usable and the backend supplied a price series. Falls back to
+  // the text lines (when/energy) when there's nothing chartable.
+  const charted = projectable && response.estimate.priceSeries !== undefined
+    && renderPreviewChart(targets.previewChartEl, {
+      priceSeries: response.estimate.priceSeries,
+      scheduledHours: response.estimate.scheduledHours,
+    });
+  setVisible(targets.previewChartEl, charted);
   setLine(targets.previewWhenEl, formatWhenLine(response));
-  setLine(targets.previewEnergyEl, projectable ? formatEnergyLine(response.estimate) : null);
+  // When the chart is shown, drop the muted energy line: the chart + cost are
+  // the stars and the tile's vertical budget is better spent keeping the honest
+  // estimate caveat un-clipped. Energy stays as the text fallback when there's
+  // no chart.
+  setLine(targets.previewEnergyEl, projectable && !charted ? formatEnergyLine(response.estimate) : null);
   // Show the unavailable line when the projection couldn't run; otherwise the
   // honest "estimate" caveat sits under the figures.
   setLine(targets.previewUnavailableEl, projectable ? null : C.previewUnavailable);
@@ -319,6 +334,7 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
 const hidePreviewLines = (targets: RenderTargets): void => {
   hide(targets.previewCostEl);
   hide(targets.previewCostSubtextEl);
+  hide(targets.previewChartEl);
   hide(targets.previewWhenEl);
   hide(targets.previewEnergyEl);
   hide(targets.previewCaveatEl);

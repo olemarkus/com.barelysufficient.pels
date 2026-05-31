@@ -125,6 +125,62 @@ export const buildDeferredObjectivePolicyBucketPrices = (
   return prices;
 };
 
+// One hour on the preview price curve: an EPOCH-hour-aligned UTC start and that
+// hour's per-kWh spot price, or `null` when no price is published for the hour.
+export type DeferredObjectivePolicyWindowPrice = {
+  startMs: number;
+  price: number | null;
+};
+
+// Epoch-hour floor — the SAME basis `buildHoursFromHorizonPlan` floors scheduled
+// hours to (activePlanSchedule.ts). Keeping both on this basis is what lets the
+// widget join `priceSeries` against `scheduledHours` by `startsAtMs`; a
+// fractional-offset timezone (UTC+5:30/+5:45) starts its local-day buckets at
+// :30/:45 past the UTC hour, so emitting the raw bucket start would never match
+// the floored scheduled hours and the chart would highlight nothing.
+const PRICE_WINDOW_HOUR_MS = 60 * 60 * 1000;
+const floorToHourMs = (ms: number): number => Math.floor(ms / PRICE_WINDOW_HOUR_MS) * PRICE_WINDOW_HOUR_MS;
+
+// Hourly spot prices across the preview window `[nowMs, deadlineAtMs)`, as a
+// DENSE, ascending, epoch-hour-floored series — the SAME snapshot price buckets
+// the policy horizon and cost estimate consume, sliced to the window. Powers the
+// create-task preview chart's price curve. Imposes NO horizon-coverage
+// requirement (a partial curve is still informative). An interior hour with no
+// published price is emitted as a `null`-price slot (so the chart breaks the line
+// across the gap and the time axis stays true), NOT dropped — dropping would
+// collapse the array indices the chart lays out by and skew the x-axis. Returns
+// an empty array when no priced buckets fall in the window.
+export const buildDeferredObjectivePolicyWindowPrices = (
+  dailyBudgetSnapshot: DailyBudgetUiPayload | null,
+  nowMs: number,
+  deadlineAtMs: number,
+): DeferredObjectivePolicyWindowPrice[] => {
+  if (!dailyBudgetSnapshot) return [];
+  // Buckets arrive ascending by start (today then tomorrow, each in hour order).
+  const priceByHour = new Map<number, number>();
+  for (const bucket of collectSnapshotPriceBuckets(dailyBudgetSnapshot)) {
+    if (bucket.endMs <= nowMs || bucket.startMs >= deadlineAtMs) continue;
+    // Clip the start to `nowMs` for the in-progress bucket — the SAME basis
+    // `buildHoursFromHorizonPlan` floors (the planner normalises a straddling
+    // bucket to `max(startMs, nowMs)`). Without the clip, in a fractional-offset
+    // timezone the current bucket keys to the PREVIOUS epoch hour and the
+    // current scheduled hour would never highlight.
+    const hour = floorToHourMs(Math.max(bucket.startMs, nowMs));
+    // First-write wins: in a fractional-offset zone the clipped in-progress
+    // bucket and the next bucket can floor to the SAME epoch hour. Keep the
+    // earlier (current) one — the bucket the planner is actually drawing from at
+    // `nowMs` — so the hour shows the price being paid now, not the next bucket's.
+    if (!priceByHour.has(hour)) priceByHour.set(hour, bucket.price);
+  }
+  if (priceByHour.size === 0) return [];
+  const hours = [...priceByHour.keys()].sort((left, right) => left - right);
+  const series: DeferredObjectivePolicyWindowPrice[] = [];
+  for (let hour = hours[0]; hour <= hours[hours.length - 1]; hour += PRICE_WINDOW_HOUR_MS) {
+    series.push({ startMs: hour, price: priceByHour.get(hour) ?? null });
+  }
+  return series;
+};
+
 const countDailyBudgetExhausted = (buckets: PolicyBucketSource[]): number => (
   buckets.reduce((count, bucket) => count + (bucket.dailyBudgetExhausted ? 1 : 0), 0)
 );

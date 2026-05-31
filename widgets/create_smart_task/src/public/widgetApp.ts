@@ -3,7 +3,7 @@ import {
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
-import { PREVIEW_CREATE_SMART_TASK_DEVICES } from './previewPayloads';
+import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
   CreateSmartTaskCandidateRequest,
@@ -54,24 +54,44 @@ const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearc
 // the top of the hour so the rendered window reads as a clean "HH:00–HH:00"
 // range in the demo, matching how real hour-aligned plan buckets render.
 const HOUR_MS = 60 * 60 * 1000;
-const PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS) * HOUR_MS;
+// Fixed narrative evening (today 19:00 local) so the demo chart's hour ticks
+// read coherently with the fixed "Scheduled 02:00–04:00" / "before 07:00" copy,
+// regardless of when the preview is captured. Real responses carry
+// backend-resolved (DST-safe) timestamps; this is `?preview=1`-only demo data.
+const PREVIEW_NEXT_HOUR_MS = (() => {
+  const base = new Date();
+  base.setHours(19, 0, 0, 0);
+  return base.getTime();
+})();
+// Demo price curve across the preview window (narratively 19:00 → 07:00): an
+// evening level, an overnight trough, then the morning climb to the deadline.
+// The two scheduled hours sit at the bottom of the trough (02:00–03:00) so the
+// preview chart visibly "picked the cheap hours". øre/kWh; obviously fictional,
+// confined to the `?preview=1` path. Index 0 = now (top of the next hour).
+const PREVIEW_PRICE_CURVE = [92, 79, 74, 63, 59, 66, 51, 44, 48, 69, 81, 107, 119];
+// Scheduled at the trough (indices 7 & 8 → "02:00" / "03:00").
+const PREVIEW_SCHEDULED_INDEX = [7, 8];
 const PREVIEW_RESPONSE: CreateSmartTaskPreviewResponse = {
   ok: true,
-  deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 20 * HOUR_MS,
+  deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 12 * HOUR_MS,
   deadlineLabel: 'Tomorrow 07:00',
   // Server-formatted in real responses; a fixed demo window here.
   scheduledWindowLabel: '02:00–04:00',
   estimate: {
     status: 'on_track',
-    scheduledHours: [
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 2 },
-      { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS, plannedKWh: 2 },
-    ],
-    projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS,
+    scheduledHours: PREVIEW_SCHEDULED_INDEX.map((index) => ({
+      startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+      plannedKWh: 2,
+    })),
+    projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 9 * HOUR_MS,
     energyEstimateKWh: 4,
     energyExpectedKWh: 3.6,
     costEstimate: 4.2,
     costUnit: 'kr',
+    priceSeries: PREVIEW_PRICE_CURVE.map((price, index) => ({
+      startsAtMs: PREVIEW_NEXT_HOUR_MS + index * HOUR_MS,
+      price,
+    })),
   },
 };
 
@@ -98,6 +118,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     previewTitle: '[data-preview-title]',
     previewCostEl: '[data-preview-cost]',
     previewCostSubtextEl: '[data-preview-cost-subtext]',
+    previewChartEl: '[data-preview-chart]',
     previewWhenEl: '[data-preview-when]',
     previewEnergyEl: '[data-preview-energy]',
     previewCaveatEl: '[data-preview-caveat]',
@@ -221,8 +242,9 @@ const closestDataValue = (target: Element, selector: string, key: string): strin
 const fetchDevices = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
+  previewState: string | null,
 ): Promise<CreateSmartTaskDevicesPayload> => {
-  if (usePreviewData) return PREVIEW_CREATE_SMART_TASK_DEVICES;
+  if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
   // Real boot, bridge not ready yet: a transient "connecting" state, never the
   // canned sample devices. Shared copy (not an inlined literal) per
   // `feedback_ui_text_shared_with_logs`.
@@ -302,10 +324,8 @@ export const createWidgetController = (params: {
   let usePreviewData = false;
   let createdResetTimer: number | null = null;
   let destroyed = false;
-  // Latest-request-wins token for in-flight preview/create round-trips. Every
-  // view change bumps it (via `setView`), so a slow response that resolves
-  // after the user backed out / switched devices is dropped instead of
-  // clobbering the current view with a stale preview. See runPreview/runCreate.
+  // Latest-request-wins token (bumped on `setView`): a stale preview/create that
+  // resolves after the user moved on is dropped, not applied. See runPreview.
   let requestSeq = 0;
 
   const render = (): void => {
@@ -405,13 +425,13 @@ export const createWidgetController = (params: {
     const searchParams = new URLSearchParams(widgetWindow.location.search);
     usePreviewData = searchParams.get('preview') === '1';
     maybeApplyPreviewTheme(widgetDocument, searchParams);
-    const payload = await fetchDevices(homeyRef, usePreviewData);
-    if (loadId === loadSequence) {
-      devicesPayload = payload;
-      // Only the picker view depends on the device list; in-progress compose/
-      // preview keep their captured device, so don't reset the user mid-flow.
-      if (view.kind === 'picker' || payload.state === 'ready') render();
-    }
+    const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get('state'));
+    // Drop a torn-down or superseded load before touching the DOM (latest-wins).
+    if (destroyed || loadId !== loadSequence) return;
+    devicesPayload = payload;
+    // Only the picker view depends on the device list; in-progress compose/
+    // preview keep their captured device, so don't reset the user mid-flow.
+    if (view.kind === 'picker' || payload.state === 'ready') render();
     if (!initialRenderDone && homeyRef?.ready) {
       homeyRef.ready();
       initialRenderDone = true;
