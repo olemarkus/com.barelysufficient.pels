@@ -48,23 +48,27 @@ import type {
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
   DeferredObjectiveStatusBus,
+  ObjectiveWriteOutcome,
 } from '../lib/objectives/deferredObjectives';
 
 // Device-scoped objective writes the Flow cards delegate to. Both write the
 // target device's OWN settings key + run the shared notify/flush/rebuild
 // chokepoint in `lib/objectives/deferredObjectives/objectiveWrite.ts` (wired with the
 // app's recorders in appInit). A per-key write touches only that one device, so
-// it cannot clobber a sibling task — there is no refusal/conflict to report.
+// it cannot clobber a sibling task. It can still REFUSE on a transient
+// un-confirmable migration or untrustworthy absence read, so the wrappers
+// forward the `ObjectiveWriteOutcome`; the Flow cards throw on a refusal so
+// Homey surfaces a retryable failure rather than a silent (false) success.
 export type UpsertDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
   entry: DeferredObjectiveSettingsEntry;
   rescue?: 'preserve' | 'replace';
-}) => void;
+}) => ObjectiveWriteOutcome;
 export type ClearDeferredObjectiveForDevice = (params: {
   deviceId: string;
   deviceName: string | null;
-}) => void;
+}) => ObjectiveWriteOutcome;
 
 const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;

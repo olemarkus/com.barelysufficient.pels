@@ -217,6 +217,18 @@ describe('createCreateSmartTask', () => {
     expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
   });
 
+  it('maps a refused write to the retryable write_conflict reason (no false success)', async () => {
+    // The app primitive refused to persist on a transient un-confirmable
+    // migration / untrustworthy read. The widget must surface the retryable
+    // write_conflict reason rather than reporting `ok: true` while nothing wrote.
+    const createDeferredObjective = vi.fn(() => ({ ok: false as const, reason: 'write_refused' }));
+    const result = await createCreateSmartTask({
+      ...buildContext({ createDeferredObjective }),
+      body: { deviceId: 'ev-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'write_conflict' });
+  });
+
   it('persists the previewed deadline verbatim when the client echoes it back', async () => {
     let received: DeferredObjectivePlanPreviewCandidate | null = null;
     const createDeferredObjective = vi.fn((_deviceId: string, candidate: DeferredObjectivePlanPreviewCandidate) => {

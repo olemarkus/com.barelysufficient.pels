@@ -5,7 +5,9 @@ import {
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusSnapshot,
 } from '../lib/objectives/deferredObjectives';
+import type { ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
 import {
@@ -53,6 +55,14 @@ export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjective
   deps.getDeferredObjectiveSettings
     ?? (() => readAllObjectives(deps.homey.settings))
 );
+
+// A device-scoped write can refuse to persist on a transient un-confirmable
+// migration / untrustworthy settings read. The Flow-card run listeners are
+// async, so throwing here lets Homey surface a retryable failure to the user
+// instead of the card reporting a (false) success while nothing was written.
+const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
+  if (!outcome.persisted) throw new Error(OBJECTIVE_WRITE_REFUSED_RETRY);
+};
 
 const validateReadyBy = (raw: unknown): string => {
   const value = typeof raw === 'string' ? raw.trim() : '';
@@ -220,7 +230,9 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
     // permission across this update by default (the rescue card promises it
     // sticks until changed/cleared). A per-key write touches only this device,
     // so it cannot clobber a sibling task.
-    deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry });
+    throwIfWriteRefused(
+      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -266,7 +278,9 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
     // notify/flush/rebuild chokepoint, preserving any standing rescue permission
     // by default. A per-key write touches only this device, so it cannot clobber
     // a sibling task.
-    deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry });
+    throwIfWriteRefused(
+      deps.upsertDeferredObjectiveForDevice({ deviceId, deviceName: device.name ?? null, entry }),
+    );
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -310,10 +324,13 @@ function registerClearDeadlineCard(
     // Device-scoped op unsets this device's own settings key plus runs the
     // shared notify/flush/rebuild chokepoint. A per-key unset cannot drop a
     // sibling task, so there is no refusal branch.
-    deps.clearDeferredObjectiveForDevice({
+    // Throw on a refused clear BEFORE the forget side effects below — dropping
+    // the bus / hours-tracker memory while the objective is still persisted
+    // would desync the UI from a task that never actually cleared.
+    throwIfWriteRefused(deps.clearDeferredObjectiveForDevice({
       deviceId,
       deviceName: hadEntry ? await resolveDeviceName(deps, deviceId) : null,
-    });
+    }));
     // Flow-card-only side effects of forgetting a task: drop the bus / hours
     // tracker memory and the trigger's per-device suppression cache so a later
     // re-added task is a fresh observation, not a continuation of stale state.

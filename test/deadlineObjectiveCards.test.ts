@@ -294,6 +294,40 @@ describe('deadline objective flow cards', () => {
       .rejects.toThrow(/was not found/);
   });
 
+  it('set_temperature_deadline THROWS (retryable) when the write refuses on an empty-getKeys flake', async () => {
+    // A store-wide empty getKeys() leaves the one-shot migration unable to
+    // complete (marker unconfirmable), so the write refuses. The card must throw
+    // so Homey surfaces a retryable failure instead of reporting success while
+    // nothing persisted.
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    mock.homey.settings.getKeys = () => []; // transient store-wide flake
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'heater-1', target_c: 55, ready_by: '07:00' }))
+      .rejects.toThrow(/try again/i);
+    expect(readObjective(mock.settings, 'heater-1')).toBeUndefined(); // nothing persisted
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('clear_deadline THROWS (retryable) when the clear refuses on an empty-getKeys flake', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      rebuildPlan: vi.fn(),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': { enabled: true, kind: 'temperature', enforcement: 'soft', targetTemperatureC: 55, deadlineAtMs: HH_MM_TO_UTC_MS(7, 0) },
+    });
+    mock.homey.settings.getKeys = () => []; // transient store-wide flake
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('clear_deadline')!;
+    await expect(card.run!({ device: 'heater-1' })).rejects.toThrow(/try again/i);
+    expect(readObjective(mock.settings, 'heater-1')).toBeDefined(); // still persisted — not falsely cleared
+    expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
   it('writes an EV objective on set_ev_charge_deadline with normal task behavior', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Charger', deviceClass: 'evcharger' })],
