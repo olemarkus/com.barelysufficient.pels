@@ -2021,6 +2021,10 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       idle-bucket holds, Fork A); (c) the same "task disabled → cap-off device stranded" shape exists
       for a user/Flow disable mid-run, not just deadline-passed. Source: investigation + Codex review
       on PR-E, 2026-05-30.
+      NOTE (2026-05-31): the distinct `set_temperature`-with-missing-target case (stale behavior or a
+      target cap dropped from the snapshot → set_temperature command no-ops until grace, leaving the
+      device running) is now FIXED — `resolveTerminalShedCommand` falls back to binary-off when there
+      is no trusted primary target. This is NOT (a) (which is the no-binary-handle `set_step` niche).
 
 - [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
       value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`

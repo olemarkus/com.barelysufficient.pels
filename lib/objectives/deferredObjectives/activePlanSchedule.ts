@@ -89,38 +89,93 @@ export const sameHourSchedule = (
   return true;
 };
 
-// Merge live horizon hours into the existing commitment. Two branches,
-// distinguished by the set-inclusion test `committed.every(h => live has h)`:
+// Merge live horizon hours into the existing commitment.
 //
-// **live ⊇ committed**: adopt the live hour set; for each overlapping
-// hour take `Math.max(committed.plannedKWh, live.plannedKWh)` so the
-// historical kWh is preserved as a contract floor. A shrinking live kWh
+// The committed schedule is the task's contract (which hour-aligned hours it
+// will run). Each plan cycle the live horizon plan is merged in.
+//
+// We split `committed` relative to the ACTUAL current hour
+// (`floor(nowMs / ONE_HOUR_MS)`), NOT relative to the live plan's earliest
+// hour. The horizon allocator is a price/policy optimizer
+// (`bucketAllocation.ts` sorts by reserve→preference→policyScore→time, and
+// `buildHoursFromHorizonPlan` DROPS every bucket with
+// `plannedUsefulEnergyKWh <= 0`), so when near-term hours are expensive or
+// carry an `avoid` price level they are allocated 0 kWh and vanish from the
+// live set. The live plan's earliest populated hour can therefore be a FUTURE
+// hour while the current hour is still pending — keying the partition off the
+// live earliest hour would misclassify still-pending committed hours as
+// "elapsed" and let optimizer thrash silently drop them from the coverage
+// contract. We key off wall-clock `nowMs` instead.
+//
+//   • ELAPSED committed hours (`startsAtMs < currentHourStart`) are settled
+//     history — the hour they describe is strictly in the past. They are
+//     preserved as floors in the result but MUST NOT gate the coverage check,
+//     otherwise the merge would freeze permanently after the task's first
+//     committed hour elapses and could never adopt a newly-planned future hour
+//     again.
+//
+//   • CURRENT/FUTURE committed hours (`startsAtMs >= currentHourStart`) are the
+//     part of the contract that is still pending (current hour onward). The
+//     coverage check runs over these only. A committed current/future hour
+//     missing from the live plan is genuine optimizer churn (the allocator
+//     repriced it to 0 kWh or dropped it), NOT an elapsed hour.
+//
+// Two branches on that current/future coverage:
+//
+// **live ⊇ current/future committed**: adopt the live hour set. For each
+// overlapping hour take `Math.max(committed.plannedKWh, live.plannedKWh)` so
+// the historical kWh is preserved as a contract floor — a shrinking live kWh
 // (per-cycle re-fill against a smaller current need) must not rewrite a
-// committed hour downward — otherwise the persisted floor would weaken
-// the guarantee against future optimizer churn. When committed is empty
-// the inclusion check is vacuously true → live becomes the first real
-// commitment.
+// committed hour downward. Elapsed committed hours are added back as floors.
+// This lets per-cycle growth (within-hour drift or phase-2 expansion) extend
+// the commitment with brand-new future hours, but only once the earlier hours
+// have TRULY elapsed. When committed is empty the inclusion check is vacuously
+// true → live becomes the first real commitment.
 //
-// **live ⊉ committed**: preserve the commitment as-is. A committed hour
-// has fallen out of the live allocation; the commitment is the contract,
-// and "committed schedule cannot shrink mid-task and cannot churn from
-// optimizer thrash" is the long-standing invariant.
+// **live ⊉ current/future committed**: a still-pending committed hour is
+// genuinely missing from the live allocation (real optimizer churn). Preserve
+// the full commitment as-is — "committed schedule cannot shrink mid-task and
+// cannot churn from optimizer thrash" is the long-standing invariant.
+//
+// Pure: no mutation of the inputs. Hour math is UTC-millisecond floor/compare
+// of `nowMs` and the already-hour-floored `startsAtMs` values, so a 23/25-hour
+// DST day does not perturb the elapsed/future partition (no local-time
+// assumption).
 export const mergeHoursPreservingCommitment = (
   committed: readonly DeferredObjectiveActivePlanHourV1[],
   live: readonly DeferredObjectiveActivePlanHourV1[],
+  nowMs: number,
 ): DeferredObjectiveActivePlanHourV1[] => {
   if (committed.length === 0) return [...live];
+  // With no live plan there is nothing to adopt — preserve the commitment
+  // (no-shrink invariant).
+  if (live.length === 0) return [...committed];
+
+  const currentHourStart = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  const currentOrFutureCommitted = committed.filter((h) => h.startsAtMs >= currentHourStart);
+
   const liveByStart = new Map(live.map((h) => [h.startsAtMs, h] as const));
-  const liveCoversCommitment = committed.every((h) => liveByStart.has(h.startsAtMs));
+  const liveCoversCommitment = currentOrFutureCommitted.every((h) => liveByStart.has(h.startsAtMs));
+  // Genuine churn: a still-pending committed hour vanished from the allocation.
   if (!liveCoversCommitment) return [...committed];
+
   const committedByStart = new Map(committed.map((h) => [h.startsAtMs, h] as const));
-  return [...live]
-    .map((liveHour) => {
-      const c = committedByStart.get(liveHour.startsAtMs);
-      if (!c) return liveHour;
-      return c.plannedKWh > liveHour.plannedKWh
-        ? { ...liveHour, plannedKWh: c.plannedKWh }
-        : liveHour;
-    })
-    .sort((left, right) => left.startsAtMs - right.startsAtMs);
+  const mergedLive = live.map((liveHour) => {
+    const c = committedByStart.get(liveHour.startsAtMs);
+    if (!c) return liveHour;
+    return c.plannedKWh > liveHour.plannedKWh
+      ? { ...liveHour, plannedKWh: c.plannedKWh }
+      : liveHour;
+  });
+  // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as floors. In
+  // production the planner trims the live plan's current bucket start to
+  // `nowMs`, so its earliest hour is >= currentHourStart and elapsed hours do
+  // not appear in `live`. Guard against a live plan that still carries a
+  // sub-current hour anyway: any elapsed hour already present in `live` was
+  // folded into `mergedLive` (with the committed kWh floor applied), so exclude
+  // it here to avoid duplicating its `startsAtMs`.
+  const elapsedCommitted = committed.filter(
+    (h) => h.startsAtMs < currentHourStart && !liveByStart.has(h.startsAtMs),
+  );
+  return [...elapsedCommitted, ...mergedLive].sort((left, right) => left.startsAtMs - right.startsAtMs);
 };

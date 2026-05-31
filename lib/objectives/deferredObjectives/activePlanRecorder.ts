@@ -602,7 +602,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // see `mergeHoursPreservingCommitment` for the merge rules.
     const effectiveHours = objectiveChanged
       ? hours
-      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours);
+      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);

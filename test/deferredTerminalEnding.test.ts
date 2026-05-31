@@ -1,5 +1,10 @@
 import { planTerminalEnding, resolveTerminalShedCommand } from '../lib/app/appInit/deferredObjectiveLifecycle';
-import type { ShedActuationCommand, ShedActuationObservedState } from '../lib/device/shedBehaviorActuation';
+import { applyShedBehavior } from '../lib/device/shedBehaviorActuation';
+import type {
+  ShedActuationCommand,
+  ShedActuationObservedState,
+  ShedActuationTransport,
+} from '../lib/device/shedBehaviorActuation';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 
 const binaryOff: ShedActuationCommand = { kind: 'binary_off', capabilityId: 'onoff', flowBacked: false };
@@ -81,5 +86,133 @@ describe('resolveTerminalShedCommand — set_temperature setpoint normalization'
       [],
     );
     expect(command).toEqual({ kind: 'set_temperature', targetValue: 7.5 });
+  });
+
+  it('emits a set_temperature command when a present primary target exists (no regression)', () => {
+    const command = resolveTerminalShedCommand(
+      thermostat(),
+      'temperature',
+      { action: 'set_temperature', temperature: 18 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'set_temperature', targetValue: 18 });
+  });
+});
+
+describe('resolveTerminalShedCommand — missing-target falls back to binary-off', () => {
+  // A cap-off non-EV device whose persisted shed behavior says `set_temperature`
+  // but whose primary target capability is absent from the snapshot (stale
+  // behavior, or a thermostat/target cap that dropped out). Without the fallback
+  // this resolved a `set_temperature` command that `applyShedBehavior` no-ops
+  // every tick (no numeric observed target) until the disarm grace elapsed,
+  // leaving the device running. It must use the binary handle instead.
+  const deviceWithoutTarget = (
+    overrides: Partial<PlanInputDevice> = {},
+  ): PlanInputDevice => ({
+    id: 'd1',
+    name: 'Panel heater',
+    currentOn: true,
+    targets: [],
+    controlCapabilityId: 'onoff',
+    ...overrides,
+  } as PlanInputDevice);
+
+  it('falls back to binary_off via controlCapabilityId when set_temperature has no present target', () => {
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget(),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'binary_off', capabilityId: 'onoff', flowBacked: false });
+  });
+
+  it('falls back to binary_off via binaryControlObservation when controlCapabilityId is absent', () => {
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget({
+        controlCapabilityId: undefined,
+        binaryControlObservation: {
+          valid: true,
+          capabilityId: 'onoff',
+          observedValue: true,
+          observedCapabilityIds: ['onoff'],
+          observedAtMs: 0,
+          source: 'snapshot_refresh',
+        },
+      }),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'binary_off', capabilityId: 'onoff', flowBacked: false });
+  });
+
+  it('actuates the binary handle off given an observed-on state (end-to-end via applyShedBehavior)', async () => {
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget(),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    const setCapability = vi.fn(async () => undefined);
+    const transport: ShedActuationTransport = {
+      setCapability,
+      applyDeviceTargets: vi.fn(async () => undefined),
+      triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
+    };
+    const wrote = await applyShedBehavior({
+      deviceId: 'd1',
+      name: 'Panel heater',
+      command,
+      observed: { binaryState: 'on', targetValue: null },
+      transport,
+    });
+    expect(wrote).toBe(true);
+    expect(setCapability).toHaveBeenCalledWith('d1', 'onoff', false);
+  });
+
+  it('skips when set_temperature has no target AND no binary handle', () => {
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget({ controlCapabilityId: undefined }),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'skip', reasonCode: 'no_binary_handle_for_terminal_release' });
+  });
+
+  it('still emits set_temperature when the primary target exists but its value is transiently absent', () => {
+    // A PRESENT target whose `value` is only temporarily unreadable must keep its
+    // setpoint command: `applyShedBehavior` no-ops while the observation is
+    // non-numeric and the disarm grace keeps the task alive, so the setpoint
+    // self-heals on the next snapshot. Falling through to binary-off (or skip)
+    // here would abandon the configured setpoint shed — the guard keys on
+    // capability PRESENCE, not on the value being readable this tick.
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget({
+        targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+      }),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'set_temperature', targetValue: 5 });
+  });
+
+  it('emits set_temperature (not skip) for a target-only device whose value is transiently absent', () => {
+    // The regression guard: a target-only thermostat (no binary handle) with a
+    // present capability but a transiently-missing value must NOT resolve to
+    // `skip` — `planTerminalEnding` disarms skip commands immediately, which would
+    // drop the diagnostic before the value reappears and never apply the setpoint.
+    const command = resolveTerminalShedCommand(
+      deviceWithoutTarget({
+        controlCapabilityId: undefined,
+        targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+      }),
+      'temperature',
+      { action: 'set_temperature', temperature: 5 },
+      [],
+    );
+    expect(command).toEqual({ kind: 'set_temperature', targetValue: 5 });
   });
 });
