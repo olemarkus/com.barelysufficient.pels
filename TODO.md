@@ -2067,65 +2067,36 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       `npm run build:settings`. Files: `settings/style.css`. Source:
       bot-review audit + gemini confirmation on PR #1242, 2026-05-28.
 
-## P2 M3 alignment pass (post desktop-light-mode-fix)
+## M3 alignment pass — closed (2026-05-30 / 2026-05-31)
 
-Deferred from the desktop-light theme-model review (2026-05-17). The theme-model
-change scoped itself strictly to the colour palette — the items below are the
-broader Material 3 / Homey-look alignment direction surfaced during that review
-but explicitly out of scope for the patch landing. Each is a separate effort,
-should not be folded into the same PR.
+The desktop-light theme-model review (2026-05-17) surfaced a broader Material 3 /
+Homey-look alignment direction. It is now resolved — no open items remain.
 
-**Shipped 2026-05-30 (design train, independent PRs):** calmer accent green-600
-`#16a34a` (#1339); reduce-orange-weight 4px left state-rail + calmer device-card
-defaults (#1343, was two items); Homey-native dividerised Settings nav with row
-icons (#1340); drop-eyebrow + numeric-first metric hero typography (#1346); M3
-underline tab strip (#1342); meter dark-tick re-tone (#1345, partial — remaining
-marker work tracked under "Progress markers" below). The items left below were
-out of scope of that train.
+**Shipped** (settings-ui, independent rebase-merged PRs):
+- Calmer accent green-600 `#16a34a` (#1339).
+- Reduce-orange-weight + calmer device-card defaults (#1343), then the follow-up
+  that dropped the off-pattern left state-rail for plain cards + chip-carried tone
+  (#1351) — a leading colour bar read as the Material-2 / iOS accent-list idiom.
+- Homey-native dividerised Settings nav with row icons (#1340), + dead-rule and
+  icon-stroke cleanup (m3-cleanup follow-up).
+- Drop-eyebrow + numeric-first metric hero typography (#1346).
+- M3 underline tab strip (#1342).
+- Meter marker semantics — dark-tick re-tone (#1345), then always-on legend for
+  single-marker bars + a surface-toned ring so the marker stays legible over the
+  amber over-threshold fill (m3-cleanup follow-up).
 
-- [ ] Real M3 token layer: migrate PELS from its current mixed
-      `--color-base-*` / `--color-role-*` / `--md-sys-color-*` graph to a strict
-      M3 `--md-sys-color-*` role layer. Components consume roles only — no raw
-      hex, no opacity stacks, no one-off colours. Touches every component CSS
-      file, every `--md-*` binding in `packages/settings-ui/public/style.css`,
-      every chart palette consumer (the flat ECharts modules at
-      `packages/settings-ui/src/ui/*Echarts.ts` plus `budgetRedesignChart.ts` /
-      `dayViewChart.ts` — there is no `src/ui/charts/` dir). NOTE: overlaps the
-      settings-ui unification train, which already introduced a
-      base → semantic → component tier; sequence with that rather than parallel.
-
-- [ ] Progress markers — finish item #6. The bare near-black "dark tick" is gone
-      (re-toned to `--pels-text-secondary`, #1345), but markers are not yet
-      genuinely self-explanatory: (a) single-marker bars (the "Safe pace" power
-      meter) have no always-on key — the meaning lives only in a hover tooltip
-      (non-discoverable on mobile) + aria-label; add a compact always-visible
-      micro-legend mirroring the multi-marker `.plan-hero__legend` swatch
-      geometry. (b) Over-threshold contrast (Codex, #1345): when the bar crosses
-      safe-pace/budget the target marker sits on the `--pels-status-warning`
-      (`#f59e0b`) fill where the grey marker is ~2:1 — give it a contrasting ring
-      so it stays visible on the empty track AND the amber/green fill in both
-      themes. Files: `packages/settings-ui/public/style.css`
-      (`.pels-meter-track__marker--target`, legend swatch rules).
-
-- [ ] Settings-nav follow-ups (from #1340 pels-m3-critic, 2026-05-30): remove the
-      dead `.settings-nav-card__content` rule in
-      `packages/settings-ui/public/style.css` (the markup composes title/
-      description via `md-list-item` headline/supporting-text slots, so the
-      `__content` grid rule never applies); and normalise the row-icon stroke
-      widths — the price-aware bolt-in-circle is `1.4` while its six siblings are
-      `1.6`, so it reads optically lighter.
-
-- [ ] Architectural debt — saturated semantics drift under Homey's invert.
-      Amber warn pills become pink/magenta and `Missed` / `Succeeded` chips
-      drift inconsistently when Homey's dark-mode `filter: invert(1)
-      hue-rotate(180deg)` lands on PELS. Not fixable from PELS alone: needs
-      either a Homey-side theme signal we can read at runtime, or source values
-      whose post-invert form preserves the same role tone. Park until Homey
-      ships a signal or until we move to a theme-handshake protocol.
-
-*Bot-review findings carried forward from the v2.7.2 BOU train (PRs #881,
-#882, #884), 2026-05-18. Items 2–5, 7–8 shipped via the design train
-(#1339/#1343/#1340/#1346/#1342/#1345), 2026-05-30.*
+**Dropped** (2026-05-31, both fail the "does it advance token/design consistency?"
+test):
+- *Strict `--md-sys-color-*` token migration.* Component CSS already consumes
+  tokens (stylelint-enforced — the only raw hex is the base-palette definition
+  block + desktop-override defs), and `--md-sys-color-*` is a LIVE theming bridge
+  for the 90 `md-*` Material-Web components (bound via `--pels-md-*`), not cruft.
+  A full rename of PELS CSS onto canonical M3 names is pure churn with no
+  consistency or user-visible gain. Would only make sense as part of retiring
+  Material-Web entirely (the abandoned unification train's goal).
+- *Homey invert-drift.* Saturated semantics flip under Homey's dark-mode
+  `filter: invert(1) hue-rotate(180deg)`; not fixable from PELS alone — needs a
+  Homey-side theme signal. Revisit only if Homey ships one.
 
 ## P3 Future and Exploratory Work
 
@@ -2211,6 +2182,39 @@ prod walk that didn't warrant a P2 slot.*
       this as a low-priority observation, not actionable yet.
       Files: `lib/objectives/deferredObjectives/horizonPlanner.ts:resolveStatus`,
       possibly `activePlanSchedule.ts` for emit gating.
+
+- [ ] Smart-task current-hour strand at the committed-window boundary — P1 (real
+      missed deadline in prod). When a task satisfies inside its committed window
+      and then the device stalls so the need REGROWS in the first hour AFTER the
+      window has elapsed, that hour is the current hour and is uncommitted. It is
+      stranded at 0 kWh: phase-2 expansion skips the current bucket
+      (`bucketAllocation.expandCommittedAllocation`, `if (bucket.current) continue`),
+      and the commitment merge can only adopt an hour while it is still a FUTURE
+      hour of the live plan (`activePlanSchedule.mergeHoursPreservingCommitment`) —
+      a current hour never appears there. So the device is turned off for that
+      hour while behind target. `f9809995` fixed the worse, permanent freeze
+      (commitment now extends forward across elapsed hours), leaving this single
+      boundary hour. Observed on Connected 300 (water heater) 2026-05-31: heater
+      climbed to ~64.4 °C inside 22h–02h, the heater's own thermostat cut the
+      element, the tank cooled, and 03h (current, regrown need, uncommitted) was
+      stranded at 0 — the device stayed off into the 06:00 deadline (missed at
+      57 °C). NB the heater's own overshoot/hysteresis is why it drew 0 W at max
+      and refused to reheat — PELS controls it via `onoff` + `max_power_3000` only
+      and never writes a temperature setpoint, so PELS cannot force a reheat; that
+      is a separate device-control question, not part of this fix.
+      Fix direction (preferred): commit the UPCOMING hour just before it becomes
+      current, on the smart-task controller's clock (a "~5 min before the hour
+      boundary, extend the commitment to the next hour if energy remains" tick),
+      so the "current hour is always committed" invariant the phase-2 skip-current
+      relies on is restored by construction rather than patched in the allocator.
+      Reproduced by `test/deferredObjectiveCommitmentRolloverSimulation.test.ts`
+      (the `strands the first regrown hour…` case pins `currentBucketKWh === 0`;
+      flip it to `> 0` when the fix lands).
+      Files: `lib/objectives/deferredObjectives/bucketAllocation.ts`,
+      `lib/objectives/deferredObjectives/activePlanSchedule.ts`,
+      `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
+      smart-task controller clock in `setup/backgroundTasksController.ts`.
+      Source: prod log audit `start.main.0a4464c3` (build 1f9d34f1), 2026-05-31.
 
 - [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
 
