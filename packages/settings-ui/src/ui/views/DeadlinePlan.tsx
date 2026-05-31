@@ -9,6 +9,7 @@ import type {
 import {
   deadlineLabels,
   formatLastSampleValue,
+  REVISION_PANEL_TITLE,
   REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
@@ -1215,7 +1216,7 @@ const RevisionHistoryPanel = ({ payload }: { payload: DeadlinePlanPayload }) => 
       )}
       <details class="plan-revision-panel">
         <summary class="plan-revision-panel__summary">
-          <span class="plan-card__title">Recent plan changes</span>
+          <span class="plan-card__title">{REVISION_PANEL_TITLE}</span>
           <ExpandMoreIcon class="disclosure-chevron" />
         </summary>
         <ol class="plan-revision-log">

@@ -1,6 +1,10 @@
 import { render } from 'preact';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
-import { SMART_TASK_PAST_EMPTY_COPY } from '../../../../shared-domain/src/deadlineLabels.ts';
+import {
+  SMART_TASK_PAST_EMPTY_COPY,
+  SMART_TASK_PAST_HEADING,
+  SMART_TASK_PAST_LOADING_LABEL,
+} from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
   filterPlanHistoryByDevice,
@@ -146,19 +150,19 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
         aria-labelledby="deadlines-history-title"
         aria-busy="true"
       >
-        <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
+        <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
         <div class="pels-skeleton-stack" aria-hidden="true">
           <span class="pels-skeleton pels-skeleton--card"></span>
           <span class="pels-skeleton pels-skeleton--card"></span>
         </div>
-        <span class="visually-hidden">Loading past tasks…</span>
+        <span class="visually-hidden">{SMART_TASK_PAST_LOADING_LABEL}</span>
       </section>
     );
   }
   if (state.status === 'empty') {
     return (
       <section class="deadlines-history" aria-labelledby="deadlines-history-title">
-        <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
+        <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
         {/* Supporting (secondary) tier, not the dimmest `.muted` metadata tier:
             on the first-run screen this is the only Past-tasks copy, so the spec
             (invariant 6) requires it stay legible — at least
@@ -206,7 +210,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   );
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">
-      <h3 id="deadlines-history-title" class="deadlines-history__heading">Past tasks</h3>
+      <h3 id="deadlines-history-title" class="deadlines-history__heading">{SMART_TASK_PAST_HEADING}</h3>
       {/* The 7-day hit-rate strip leads: it's the aggregate "how have my
           deadlines been doing this week?" answer the recovering-from-mistake
           persona lands for. The per-device miss-streak badges are the

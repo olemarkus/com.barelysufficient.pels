@@ -544,6 +544,18 @@ export const formatSmartTaskCurrentValueLine = (params: {
 // for the user-facing schedule entity.
 export const SMART_TASK_HISTORY_EYEBROW = 'Smart task';
 
+// Section heading for the Smart-tasks history archive ("Past tasks"). Shared
+// across the loading / empty / ready states of the history list so the heading
+// wording can't drift between the three render branches, and runtime log
+// breadcrumbs render the identical string (per
+// `feedback_ui_text_shared_with_logs.md`).
+export const SMART_TASK_PAST_HEADING = 'Past tasks';
+
+// Visually-hidden loading label announced while the history archive fetches.
+// Sits beside the heading so the announced wording stays in step with the
+// section title.
+export const SMART_TASK_PAST_LOADING_LABEL = 'Loading past tasks…';
+
 export const SMART_TASK_PAST_EMPTY_COPY = 'No completed tasks yet — they\'ll appear here after a smart task finishes.';
 
 // Lead label for the past-tasks 7-day hit-rate strip (PR-10). Sits above the
@@ -1040,6 +1052,15 @@ const REVISION_REASON_FALLBACK = 'Plan refreshed';
 // row carries no `+/−Nh` chip. Per `feedback_ui_text_shared_with_logs.md`,
 // view layers consume it from shared-domain rather than inlining the copy.
 export const REVISION_REASON_FALLBACK_WITH_DETAIL = 'Plan refreshed (details unavailable)';
+
+// Title for the live-task revision panel `<summary>` on the smart-task detail
+// page. The "plan" noun is intentional here — this is the planning-layer
+// revision panel, which `notes/ui-terminology.md` § "Plan vs deadline" sanctions
+// (the reservation governs the user-facing schedule entity, not the planner's
+// own surfaces). Sourced from shared-domain so the heading and runtime log
+// breadcrumbs render the identical string (per
+// `feedback_ui_text_shared_with_logs.md`).
+export const REVISION_PANEL_TITLE = 'Recent plan changes';
 
 // Optional disambiguation signals for `schedule_revised`. When the live-task
 // surface passes these in, `revisionReason` returns a more specific label
