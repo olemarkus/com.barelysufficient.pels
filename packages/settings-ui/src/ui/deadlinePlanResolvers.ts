@@ -6,8 +6,13 @@ import type {
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type {
+  DeferredObjectiveActivePlanRevisionV1,
+  DeferredObjectiveActivePlanSpeedMode,
+  DeferredObjectiveActivePlanV1,
+} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
+import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
 import { isFiniteNumber } from './deadlinePlanData.ts';
 
 
@@ -82,6 +87,41 @@ export const resolveProfile = (
 ): DeviceObjectiveProfile | null => {
   const profile = powerTracker?.objectiveProfiles?.[deviceId];
   return profile?.kind === objectiveKind ? profile : null;
+};
+
+// Reads the producer-resolved flat display fields (`rateMean` / `speedMode`)
+// off the latest revision, with a back-compat fallback for legacy revisions
+// persisted before the recorder shipped them. The fallback reproduces what the
+// retired `resolveKwhPerUnitDisplayRate` / `resolveSpeedModeLabel` helpers did:
+//   - `speedMode`: absent → derive from `kwhPerUnitSource` (bootstrap →
+//     `learning`, else `auto`). Old revisions carry `kwhPerUnitSource`.
+//   - `rateMean`: absent → bootstrap constant when the (derived) mode is
+//     `learning` for an EV objective, else the live learned-profile mean.
+// `usingBootstrap` (drives the "Estimated — refining…" note) equals
+// `speedMode === 'learning'`: bootstrap source is EV-cold-start only.
+export const resolveDisplayRateAndSpeedMode = (params: {
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  profile: DeviceObjectiveProfile | null;
+  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
+}): { rateMean: number | null; usingBootstrap: boolean; speedMode: DeferredObjectiveActivePlanSpeedMode } => {
+  const speedMode: DeferredObjectiveActivePlanSpeedMode = params.latest.speedMode
+    ?? (params.latest.kwhPerUnitSource === 'bootstrap' ? 'learning' : 'auto');
+  const usingBootstrap = speedMode === 'learning';
+  if (params.latest.rateMean !== undefined) {
+    return { rateMean: params.latest.rateMean, usingBootstrap, speedMode };
+  }
+  // Legacy revision without the flat rate: reconstruct it the way the old UI
+  // resolver did, so pre-upgrade plans keep rendering the right rate until the
+  // next replan re-records the producer field.
+  if (usingBootstrap && params.objectiveKind === 'ev_soc') {
+    return { rateMean: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT, usingBootstrap, speedMode };
+  }
+  const learnedMean = params.profile?.kwhPerUnit?.mean;
+  return {
+    rateMean: typeof learnedMean === 'number' && Number.isFinite(learnedMean) ? learnedMean : null,
+    usingBootstrap,
+    speedMode,
+  };
 };
 
 export const resolveEnergyNeededKWh = (params: {

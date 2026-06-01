@@ -1,4 +1,7 @@
-import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type {
+  DeferredObjectiveActivePlanSpeedMode,
+  DeferredObjectiveActivePlanStatusV1,
+} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
@@ -235,11 +238,15 @@ const formatMetaLine = (params: {
   return `Needs ${energy} · ${params.hoursLeft} ${hourWord} left · ${params.speedModeLabel}`;
 };
 
-// `Manual` / `Conservative` are future modes (per the speed-mode design
-// note) and would route through this same resolver if/when they ship.
-const resolveSpeedModeLabel = (
-  kwhPerUnitSource: 'learned' | 'bootstrap' | undefined,
-): string => (kwhPerUnitSource === 'bootstrap' ? 'Learning…' : 'Auto');
+// Presentation copy for each producer-resolved speed-mode enum. The enum is
+// resolved in the recorder (`activePlanRecorder.ts:resolveSpeedMode`); only the
+// human strings live here per `feedback_ui_text_shared_with_logs`. `Manual` /
+// `Conservative` are future enum members (per the speed-mode design note) and
+// would extend this map if/when they ship.
+const SPEED_MODE_LABELS: Record<DeferredObjectiveActivePlanSpeedMode, string> = {
+  auto: 'Auto',
+  learning: 'Learning…',
+};
 
 export type BuildHeroInput = {
   device: TargetDeviceSnapshot;
@@ -277,7 +284,10 @@ export type BuildHeroInput = {
   computedFromPricesUpTo: number | null;
   planningSpeedKw: number | null;
   estimatedDurationText: string | null;
-  kwhPerUnitSource: 'learned' | 'bootstrap' | undefined;
+  // Producer-resolved presentation-speed mode enum off the latest revision.
+  // The caller (`deadlinePlan.ts`) supplies the back-compat fallback for
+  // legacy revisions that predate the field.
+  speedMode: DeferredObjectiveActivePlanSpeedMode;
   // Producer-resolved CSS rim tone, derived from the latest revision's
   // `planStatus`. Carried through the payload so the view layer never branches
   // on planner internals.
@@ -363,7 +373,7 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
   const subline = `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`;
-  const speedModeLabel = resolveSpeedModeLabel(params.kwhPerUnitSource);
+  const speedModeLabel = SPEED_MODE_LABELS[params.speedMode];
   const baseMetaLine = formatMetaLine({
     energyNeededKWh: params.energyNeededKWh,
     energyExpectedKWh: params.energyExpectedKWh,

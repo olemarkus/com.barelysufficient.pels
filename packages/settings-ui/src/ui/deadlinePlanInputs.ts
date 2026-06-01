@@ -6,13 +6,9 @@ import {
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
-import type {
-  DeferredObjectiveActivePlanRevisionV1,
-  DeferredObjectiveKwhPerUnitProvenanceV1,
-} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
+import type { DeferredObjectiveKwhPerUnitProvenanceV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { formatAcceptedAt } from './deadlinePlanFormatters.ts';
-import { resolveLowestActiveStepKw, type resolveProfile } from './deadlinePlanResolvers.ts';
+import { resolveLowestActiveStepKw } from './deadlinePlanResolvers.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 const formatPerUnitRateLabel = (
@@ -35,37 +31,6 @@ const resolvePlanInputPowerKw = (params: {
   planningSpeedKw: number | null;
   device: TargetDeviceSnapshot;
 }): number | null => params.planningSpeedKw ?? resolveLowestActiveStepKw(params.device);
-
-// Producer-side resolver: collapses the per-unit-rate provenance branching
-// (bootstrap-source EV vs learned profile vs legacy null-source revisions)
-// into a flat `{ rateMean, usingBootstrap }` payload so `buildPlanInputs`
-// never has to branch on `kwhPerUnitSource` or `objectiveKind` directly.
-//
-// Per `feedback_layering_resolution_in_producer.md` — the producing layer
-// resolves to flat values; consumers never branch on provenance / source.
-//
-// EV bootstrap fallback: when the latest revision came from the bootstrap
-// kWh/% rate (recorder set `kwhPerUnitSource === 'bootstrap'` because no
-// learned profile existed yet), the displayed rate must be the bootstrap
-// constant rather than the absent profile mean. Thermal kinds never ship a
-// bootstrap rate (they sit pending until a learned profile lands), so the
-// bootstrap branch is EV-only.
-export const resolveKwhPerUnitDisplayRate = (params: {
-  latest: DeferredObjectiveActivePlanRevisionV1;
-  profile: ReturnType<typeof resolveProfile>;
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
-}): { rateMean: number | null; usingBootstrap: boolean } => {
-  const usingBootstrap = params.latest.kwhPerUnitSource === 'bootstrap'
-    && params.objectiveKind === 'ev_soc';
-  if (usingBootstrap) {
-    return { rateMean: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT, usingBootstrap: true };
-  }
-  const learnedMean = params.profile?.kwhPerUnit?.mean;
-  return {
-    rateMean: typeof learnedMean === 'number' && Number.isFinite(learnedMean) ? learnedMean : null,
-    usingBootstrap: false,
-  };
-};
 
 export const buildPlanInputs = (params: {
   labels: DeadlineLabels;

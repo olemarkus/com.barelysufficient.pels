@@ -181,6 +181,27 @@ const createPlanFromDiagnostic = (
   };
 };
 
+// Producer-resolved display rate (kWh per °C / %) for the plan-inputs row.
+// Collapses the bootstrap-vs-learned branching the settings UI used to do
+// (`resolveKwhPerUnitDisplayRate`): the diagnostic carries the same value the
+// UI displayed — the learned profile mean for `learned`, or the EV bootstrap
+// constant for `bootstrap` — on `kWhPerPercent` (EV) / `kWhPerDegreeC`
+// (thermal). `null` when the resolver short-circuited (no source) or the value
+// isn't a usable positive number.
+const resolveRateMean = (diag: DeferredObjectiveDiagnostic): number | null => {
+  if (diag.kwhPerUnitSource === null) return null;
+  const rate = diag.kWhPerPercent ?? diag.kWhPerDegreeC;
+  return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
+};
+
+// Producer-resolved presentation-speed mode. `bootstrap` source (EV cold-start,
+// no learned profile yet) maps to `learning`; everything else is `auto`. The
+// settings UI keeps the enum->human-string map ("Auto" / "Learning…") per
+// `feedback_ui_text_shared_with_logs`; the recorder persists only the enum.
+const resolveSpeedMode = (
+  source: NonNullable<DeferredObjectiveDiagnostic['kwhPerUnitSource']>,
+): 'auto' | 'learning' => (source === 'bootstrap' ? 'learning' : 'auto');
+
 const buildRevision = (params: {
   diag: DeferredObjectiveDiagnostic;
   hours: DeferredObjectiveActivePlanHourV1[];
@@ -196,6 +217,10 @@ const buildRevision = (params: {
   // circuited (e.g. target already met) — omit the field rather than write
   // a misleading value.
   const source = params.diag.kwhPerUnitSource;
+  // Producer-resolved flat display rate (kWh/°C or kWh/%). Suppressed (left
+  // null) when the resolver short-circuited or the value isn't usable; see
+  // `resolveRateMean`.
+  const rateMean = resolveRateMean(params.diag);
   // Only persist `dailyBudgetExhaustedBucketCount` when non-zero so older
   // persisted plans without the field stay byte-stable across revisions and
   // consumers that haven't been updated keep falling back to zero.
@@ -233,6 +258,15 @@ const buildRevision = (params: {
       : {}),
     planStatus: horizonPlan.status,
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
+    // Producer-resolved flat display fields (see `resolveRateMean` /
+    // `resolveSpeedMode`). Gated on `source !== null` alongside
+    // `kwhPerUnitSource` so revisions where the resolver short-circuited
+    // (target already met) stay byte-stable and the UI keeps falling back to
+    // the live learned-profile mean. `rateMean` is further suppressed when it
+    // didn't resolve to a usable positive number so we don't persist a
+    // misleading `null`.
+    ...(source !== null ? { speedMode: resolveSpeedMode(source) } : {}),
+    ...(rateMean !== null ? { rateMean } : {}),
     ...(exhaustedBuckets > 0 ? { dailyBudgetExhaustedBucketCount: exhaustedBuckets } : {}),
     ...(floorShortfallCause !== 'none' ? { floorShortfallCause } : {}),
     ...(typeof planningSpeedKw === 'number' && planningSpeedKw > 0 ? { planningSpeedKw } : {}),

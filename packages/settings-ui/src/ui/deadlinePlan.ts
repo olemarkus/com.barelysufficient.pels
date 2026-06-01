@@ -14,7 +14,7 @@ import {
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import { buildPlanInputs, resolveKwhPerUnitDisplayRate } from './deadlinePlanInputs.ts';
+import { buildPlanInputs } from './deadlinePlanInputs.ts';
 import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
 import {
   formatDeadlineShort,
@@ -35,6 +35,7 @@ import {
   type HorizonHour,
 } from './deadlinePlanData.ts';
 import {
+  resolveDisplayRateAndSpeedMode,
   resolveEnergyNeededKWh,
   resolveProfile,
   resolveProgress,
@@ -466,6 +467,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       && latest.planStatus === 'at_risk'
       && dailyBudgetExhaustedAnywhere);
   const planningSpeedKw = resolvePositiveNumber(activePlan!.initialPlanningSpeedKw ?? latest.planningSpeedKw);
+  const displayRate = resolveDisplayRateAndSpeedMode({ latest, profile, objectiveKind: objective.kind });
 
   const revisionPanelFeed = buildRevisionPanelFeed({
     latest,
@@ -509,7 +511,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       estimatedDurationText: resolveNonEmptyString(
         activePlan!.initialEstimatedDurationText ?? latest.estimatedDurationText,
       ),
-      kwhPerUnitSource: latest.kwhPerUnitSource,
+      speedMode: displayRate.speedMode,
       tone: resolveDeadlineHeroTone(latest.planStatus),
       plannedTotalCost: costAndDelivery.plannedTotalCost,
       deliveredCostSoFar: costAndDelivery.deliveredCostSoFar,
@@ -539,7 +541,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       objective,
       planningSpeedKw,
       nowMs,
-      ...resolveKwhPerUnitDisplayRate({ latest, profile, objectiveKind: objective.kind }),
+      rateMean: displayRate.rateMean,
+      usingBootstrap: displayRate.usingBootstrap,
     }),
     // Inline revision-log panel feed. The view's `<RevisionHistoryPanel>`
     // consults `revisionSummary.shouldShowPanel` (producer-resolved) to
