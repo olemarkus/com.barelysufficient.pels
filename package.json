@@ -30,6 +30,7 @@
     "lint:css": "stylelint \"packages/settings-ui/public/**/*.css\" \"widgets/_shared/*.css\" \"widgets/*/src/public/*.css\" --max-warnings=0",
     "lint:html": "html-validate \"packages/settings-ui/public/**/*.html\" \"widgets/**/*.html\" --max-warnings=0",
     "arch:check": "dependency-cruiser --config .dependency-cruiser.cjs app.ts flowCards drivers lib setup \"widgets/*/src\" packages/settings-ui/src packages/contracts/src packages/shared-domain/src packages/planner-types/src",
+    "arch:grep": "node scripts/check-plan-objectives-edge.mjs",
     "deadcode:check": "knip",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",
     "package:check": "node scripts/check-homey-packaging.mjs",

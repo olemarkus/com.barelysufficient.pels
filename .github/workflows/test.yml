@@ -31,6 +31,9 @@ jobs:
       - name: Run lint, typecheck, and static checks
         run: npm run ci:checks
 
+      - name: Enforce lib/plan -> objectives type-edge boundary
+        run: npm run arch:grep
+
       - name: Build app bundle
         run: npm run build
 

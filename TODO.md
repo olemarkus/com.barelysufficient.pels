@@ -1885,19 +1885,23 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       device running) is now FIXED — `resolveTerminalShedCommand` falls back to binary-off when there
       is no trusted primary target. This is NOT (a) (which is the no-binary-handle `set_step` niche).
 
-- [ ] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
-      value-edge guard.** `.dependency-cruiser.cjs` runs post-compilation (`tsPreCompilationDeps`
-      unset), so `import type` edges are invisible to every rule. The PR-D2 flip of
-      `no-plan-to-smarttasks` to `error` was gated on a **manual grep audit**
-      (`grep -rn "from .*objectives" lib/plan/` → zero edges, value AND type), NOT cruiser-green
-      alone — and that grep, not the rule, is the real finish-line proof. Standing risk: a future
-      `lib/plan` `import type` from `lib/objectives` would compile and pass arch:check silently. The
-      `no-objectives-to-peer-except-power` gate has the same blind spot. Durable fix options:
-      (a) burn down the **~18 pre-existing repo-wide violations** that `tsPreCompilationDeps: true`
-      surfaces (mostly `no-circular`, plus `no-domain-to-app`, `no-device-to-peer`) then enable the
-      flag globally; (b) add a small custom grep-based decoupling check script to CI as the real
-      meter. Source: pels-layering-guardian on `feat/smarttask-lifecycle-producer`, 2026-05-30;
-      downgraded P1→P2 after PR-D2 reached the value-edge finish line.
+- [x] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
+      value-edge guard.** DONE (option b): `.dependency-cruiser.cjs` runs post-compilation
+      (`tsPreCompilationDeps` unset), so `import type` edges are invisible to every rule. The manual
+      `grep -rn "from .*objectives" lib/plan/` audit is now an enforced check — `npm run arch:grep`
+      (`scripts/check-plan-objectives-edge.mjs`), wired into `ci:checks` (so the pre-push hook and
+      the CI checks job cover it — NOT the pre-commit hook, which only runs lint-staged +
+      `scripts/pre-commit-extra-checks.mjs`) and an explicit workflow step. The scanner uses the
+      TypeScript compiler API (AST walk over module specifiers), so it ignores comments and catches
+      every import shape — value/type `import ... from`, `export ... from`, `import x = require(...)`,
+      and `import(...)`/`require(...)` with string OR template-literal args — naming the offending
+      file:line.
+      Scoped to the boundary the rule comment names (`no-plan-to-smarttasks`); the
+      `no-objectives-to-peer-except-power` gate was left out of scope as its comment documents no
+      type-edge audit. Option (a) — flipping `tsPreCompilationDeps: true` — was deliberately NOT
+      taken: it surfaces ~18 pre-existing type-only `no-circular` violations and doubles the cruised
+      graph (out of scope). Source: pels-layering-guardian on `feat/smarttask-lifecycle-producer`,
+      2026-05-30.
 
 - [ ] P3: `ObjectiveDeviceInput.stepPowerCalibration` is narrowed to `{ deliveryPowerKw: number }`
       (`lib/objectives/types.ts`) — the one field the controller reads. It is the only field

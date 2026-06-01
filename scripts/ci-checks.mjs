@@ -9,5 +9,6 @@ await runParallel([
   { label: 'lint:css', command: 'npm', args: ['run', 'lint:css'] },
   { label: 'lint:html', command: 'npm', args: ['run', 'lint:html'] },
   { label: 'arch', command: 'npm', args: ['run', 'arch:check'] },
+  { label: 'arch:grep', command: 'npm', args: ['run', 'arch:grep'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
 ]);
