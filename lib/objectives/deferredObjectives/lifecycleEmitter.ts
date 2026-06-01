@@ -78,6 +78,18 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     activePlans: DeferredObjectiveActivePlansV1 | null,
     getStallClassification?: (deviceId: string) => StallClassification,
   ) => void;
+  /**
+   * Active-plan commitment RECORD. Settles replan revisions on the clock — the
+   * recorder gates them to once per hour at the `:58` mark (a first revision is
+   * immediate). The planner READS the committed plan every power cycle (via
+   * `resolveCommittedHours`) for its decoration; only the WRITE rides the clock,
+   * so it can never be starved by power-reading timing. See
+   * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
+   */
+  observeDeferredObjectiveActivePlans?: (
+    diagnostics: DeferredObjectiveDiagnostic[],
+    nowMs: number,
+  ) => void;
   getStallClassification?: (deviceId: string) => StallClassification;
 };
 
@@ -91,10 +103,12 @@ export class DeferredObjectiveLifecycleEmitter {
     const settings = this.deps.getDeferredObjectiveSettings();
     if (!settings) return;
 
-    // Read the active-plan recorder snapshot ONCE per tick and reuse it for both
-    // the diagnostics build and the plan-history observe callback. The snapshot is
-    // an in-memory recorder read (no SDK call) and nothing mutates the recorder
-    // within this synchronous tick, so the single read is behavior-identical.
+    // Read the active-plan recorder snapshot ONCE per tick and reuse it for the
+    // diagnostics build and the plan-history observe. NOTE: the active-plan WRITE
+    // below mutates the recorder later in this same tick, so the snapshot
+    // forwarded to plan-history is the PRE-write state — plan-history correlates
+    // against the previous tick's commitment (a ≤30 s lag, immaterial for the
+    // history record). The read itself is in-memory (no SDK call).
     const activePlans = this.deps.getDeferredObjectiveActivePlans();
 
     const diagnostics = buildDeferredObjectiveDiagnostics({
@@ -110,17 +124,23 @@ export class DeferredObjectiveLifecycleEmitter {
       concurrentEligibleTracker: this.concurrentEligibleTracker,
     });
 
-    // Plan-history recording is pure lifecycle/UI state (the planner does not
-    // read it), so it rides the clock. Active-plan COMMITMENT stays on the plan
-    // cycle in planBuilder — the planner reads committed plans via
-    // resolveCommittedHours for its decoration, so that promotion must stay
-    // synchronous with planning, not lag up to a clock tick.
+    // Plan-history record, using this tick's (pre-write) snapshot.
     this.deps.observeDeferredObjectivePlanHistory?.(
       diagnostics,
       nowMs,
       activePlans,
       this.deps.getStallClassification,
     );
+
+    // Active-plan commitment WRITE, on the clock. The recorder gates replan
+    // revisions to once per hour at the :58 mark (a first revision is immediate).
+    // The planner only READS the committed plan (resolveCommittedHours) every
+    // power cycle for its decoration, so the write need not be synchronous with
+    // planning — driving it off the reliable 30 s clock means it can never be
+    // starved by power-reading timing. Written after the plan-history observe
+    // above, which intentionally uses the pre-write snapshot (see note above).
+    // See notes/state-management/deferred-objective-lifecycle-carveout.md.
+    this.deps.observeDeferredObjectiveActivePlans?.(diagnostics, nowMs);
 
     // Emission to the UI / Flow buses + deadline-passed disable.
     const debugStructured = this.deps.getDeferredObjectiveDebugStructured?.();

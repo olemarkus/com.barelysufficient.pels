@@ -65,4 +65,46 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
 
     expect(observeDeferredObjectivePlanHistory).not.toHaveBeenCalled();
   });
+
+  it('forwards each tick to the active-plan recorder (the write rides the clock)', () => {
+    const observeDeferredObjectiveActivePlans = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      observeDeferredObjectiveActivePlans,
+    }));
+
+    emitter.tick(1_000_000_000_000);
+
+    expect(observeDeferredObjectiveActivePlans).toHaveBeenCalledTimes(1);
+    const [diagnostics, nowMs] = observeDeferredObjectiveActivePlans.mock.calls[0]!;
+    expect(Array.isArray(diagnostics)).toBe(true);
+    expect(nowMs).toBe(1_000_000_000_000);
+  });
+
+  it('does not write active plans when no settings are returned', () => {
+    const observeDeferredObjectiveActivePlans = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveSettings: () => undefined,
+      observeDeferredObjectiveActivePlans,
+    }));
+
+    emitter.tick(Date.now());
+
+    expect(observeDeferredObjectiveActivePlans).not.toHaveBeenCalled();
+  });
+
+  it('observes plan history before writing the active-plan commitment', () => {
+    // The emitter reads the active-plan snapshot ONCE per tick and forwards it to
+    // plan-history; the active-plan WRITE then mutates the recorder afterwards.
+    // So history runs first and intentionally correlates against the pre-write
+    // (previous-tick) commitment — a ≤30 s lag, immaterial for the history record.
+    const order: string[] = [];
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      observeDeferredObjectiveActivePlans: () => { order.push('active-plan'); },
+      observeDeferredObjectivePlanHistory: () => { order.push('history'); },
+    }));
+
+    emitter.tick(1_000_000_000_000);
+
+    expect(order).toEqual(['history', 'active-plan']);
+  });
 });

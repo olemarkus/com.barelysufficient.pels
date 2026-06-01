@@ -52,6 +52,19 @@ const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | nul
 // objective abandoned.
 const ABANDON_GRACE_MS = 60 * 60 * 1000;
 
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
+// Replan revisions settle once per clock hour, near the end (the `:58` mark), not
+// on every plan cycle. By `:58` the elapsed hour's outcome is known and the
+// upcoming hour can be scheduled in; settling earlier would churn the persisted
+// record on the current hour's capacity trimming (the device may still climb to
+// deliver before the hour ends — "we don't know until the end of the hour"). The
+// planner's per-cycle live allocation is unaffected (it still reacts every cycle,
+// e.g. `expandCommittedAllocation`'s current-hour fill); only the RECORD waits.
+// A user objective edit (`objectiveChanged`) is an external event and revises
+// immediately. See notes/deferred-load-objectives/execution-adaptation.md.
+const SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1000;
+
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;
   save: (plans: DeferredObjectiveActivePlansV1) => void;
@@ -399,6 +412,12 @@ export class DeferredObjectiveActivePlanRecorder {
   // restart does not delete persisted plans.
   private lastSeenAtMs: Map<string, number>;
 
+  // In-memory only. Records the clock hour (floored ms) in which each device last
+  // settled a replan revision, so the `:58` settle fires at most once per hour.
+  // Not persisted: after a restart the first observe past `:58` simply re-settles,
+  // which is a legitimate re-evaluation point.
+  private lastScheduleSettledHourMs = new Map<string, number>();
+
   private dirty = false;
 
   constructor(private readonly deps: ActivePlanPersistDeps) {
@@ -422,6 +441,9 @@ export class DeferredObjectiveActivePlanRecorder {
     }
     this.plans[seed.deviceId] = createPlanFromSeed(seed, nowMs);
     this.lastSeenAtMs.set(seed.deviceId, nowMs);
+    // Fresh plan (different deadline/signature): drop the prior settle marker so
+    // the replacement is not wrongly treated as "already settled this hour".
+    this.lastScheduleSettledHourMs.delete(seed.deviceId);
     this.dirty = true;
   }
 
@@ -430,6 +452,7 @@ export class DeferredObjectiveActivePlanRecorder {
     if (this.plans[deviceId] === undefined) return;
     delete this.plans[deviceId];
     this.lastSeenAtMs.delete(deviceId);
+    this.lastScheduleSettledHourMs.delete(deviceId);
     this.dirty = true;
   }
 
@@ -451,6 +474,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // A previous record for a different deadline is stale — replace it.
     if (existing && existing.deadlineAtMs !== diag.deadlineAtMs) {
       delete this.plans[diag.deviceId];
+      this.lastScheduleSettledHourMs.delete(diag.deviceId);
     }
     const candidateHours = buildHoursFromHorizonPlan(diag);
     if (candidateHours === null) {
@@ -478,7 +502,18 @@ export class DeferredObjectiveActivePlanRecorder {
       return;
     }
     const backfilled = this.backfillCommitmentIfMissing(current, signature, nowMs);
-    this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs);
+    // End-of-hour settle gate: a replan revision settles at most once per clock
+    // hour (at/after :58); a user objective edit bypasses it. The planner's
+    // per-cycle live allocation is unaffected — only the persisted RECORD is
+    // gated, so the device stays controlled while the record waits for the hour's
+    // outcome. The hour's settle slot is consumed only when a revision is actually
+    // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
+    // doesn't starve a real change later in the same `:58` window.
+    const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
+    if (!this.isReplanDueThisCycle(diag.deviceId, objectiveChanged, nowMs)) return;
+    if (this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs)) {
+      this.markReplanSettled(diag.deviceId, nowMs);
+    }
   }
 
   // Plans persisted before the stable-schedule commitment shipped (v2.7.3 and
@@ -613,13 +648,44 @@ export class DeferredObjectiveActivePlanRecorder {
     });
   }
 
+  // The once-per-hour `:58` settle gate (see SCHEDULE_SETTLE_OFFSET_MS). True when
+  // a replan revision MAY be written this cycle: an external objective edit
+  // (immediate) OR the first cycle at/after `:58` of this clock hour that has not
+  // yet settled a write. PURE — the settle marker is advanced by
+  // `markReplanSettled` only after a revision is ACTUALLY written, so a no-op
+  // `:58` cycle (no schedule/metadata/source drift) does not consume the hour's
+  // slot and a real change later in the `:58` window still lands. Within the hour
+  // the persisted plan is otherwise frozen; the planner's per-cycle live
+  // allocation still reacts (device stays controlled) — only the RECORD waits.
+  private isReplanDueThisCycle(
+    deviceId: string,
+    objectiveChanged: boolean,
+    nowMs: number,
+  ): boolean {
+    if (objectiveChanged) return true;
+    const currentHourMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+    const pastSettleMark = nowMs - currentHourMs >= SCHEDULE_SETTLE_OFFSET_MS;
+    return pastSettleMark && this.lastScheduleSettledHourMs.get(deviceId) !== currentHourMs;
+  }
+
+  // Advance the settle marker after an actual `:58` write so the next cycle in the
+  // same hour is frozen. Objective-edit writes that land mid-hour (before the
+  // mark) do NOT consume the hour's settle slot — the end-of-hour settle still
+  // runs to record the hour's outcome.
+  private markReplanSettled(deviceId: string, nowMs: number): void {
+    const currentHourMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+    if (nowMs - currentHourMs >= SCHEDULE_SETTLE_OFFSET_MS) {
+      this.lastScheduleSettledHourMs.set(deviceId, currentHourMs);
+    }
+  }
+
   private maybeWriteReplanRevision(
     diag: DeferredObjectiveDiagnostic,
     signature: string,
     hours: DeferredObjectiveActivePlanHourV1[],
     current: DeferredObjectiveActivePlanV1,
     nowMs: number,
-  ): void {
+  ): boolean {
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
@@ -669,7 +735,7 @@ export class DeferredObjectiveActivePlanRecorder {
       scheduleChanged,
       metadataDriftedWithinSchedule,
       sourceChanged,
-    })) return;
+    })) return false;
     const reason = resolveReplanReason({
       objectiveChanged,
       rescuePermissionOnlyChanged: sigDiff.rescueOnly,
@@ -766,6 +832,7 @@ export class DeferredObjectiveActivePlanRecorder {
         projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
       });
     }
+    return true;
   }
 
   private dropExpiredAndAbandoned(nowMs: number): void {
@@ -773,6 +840,7 @@ export class DeferredObjectiveActivePlanRecorder {
       if (plan.deadlineAtMs <= nowMs) {
         delete this.plans[deviceId];
         this.lastSeenAtMs.delete(deviceId);
+        this.lastScheduleSettledHourMs.delete(deviceId);
         this.dirty = true;
         this.emit({ event: 'active_plan_dropped', deviceId, reason: 'deadline_passed' });
         continue;
@@ -787,6 +855,7 @@ export class DeferredObjectiveActivePlanRecorder {
       if (nowMs - lastSeen >= ABANDON_GRACE_MS) {
         delete this.plans[deviceId];
         this.lastSeenAtMs.delete(deviceId);
+        this.lastScheduleSettledHourMs.delete(deviceId);
         this.dirty = true;
         this.emit({ event: 'active_plan_dropped', deviceId, reason: 'objective_inactive' });
       }
@@ -818,6 +887,7 @@ export class DeferredObjectiveActivePlanRecorder {
   resetForTests(): void {
     this.plans = {};
     this.lastSeenAtMs.clear();
+    this.lastScheduleSettledHourMs.clear();
     this.dirty = false;
   }
 

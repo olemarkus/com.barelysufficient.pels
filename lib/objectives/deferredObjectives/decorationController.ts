@@ -26,17 +26,6 @@ export type DeferredObjectiveDecorationControllerDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getHardCapKw: () => number;
   getLearnedThermostatDeadbandC?: (deviceId: string) => number;
-  /**
-   * Synchronous active-plan commitment. The planner reads committed plans
-   * (`resolveCommittedHours`) for its decoration, so this promotion must run
-   * inline with decoration, NOT lag a clock tick. Pure emission (status
-   * transitions, hours-remaining, diagnostics, plan history, deadline-passed
-   * disable) is owned by the clock-driven `DeferredObjectiveLifecycleEmitter`.
-   */
-  observeDeferredObjectiveActivePlans?: (
-    diagnostics: DeferredObjectiveDiagnostic[],
-    nowMs: number,
-  ) => void;
 };
 
 /**
@@ -44,8 +33,10 @@ export type DeferredObjectiveDecorationControllerDeps = {
  * concurrent-eligibility tracker and turns the raw planner input into a
  * `DeferredDecorationBundle` the planner consumes while staying
  * smart-task-agnostic. This is the input-mutation half of the controller
- * extraction: it evaluates objectives, commits active plans synchronously, and
- * applies admission / target-overrides / release-intents to the device list.
+ * extraction: it evaluates objectives and applies admission / target-overrides /
+ * release-intents to the device list. The active-plan RECORD (revisions) is
+ * written on the lifecycle clock, not here; this stage only reads the committed
+ * plan to decorate.
  *
  * Construction-time getters supply the live household context (power tracker,
  * price-optimization flag, hard cap, time zone, settings, active plans, learned
@@ -69,10 +60,11 @@ export class DeferredObjectiveDecorationController {
   public decorate(input: DeferredDecorationInput): DeferredDecorationBundle {
     const { devices, dailyBudgetSnapshot, nowTs } = input;
     const evaluations = this.evaluate(devices, dailyBudgetSnapshot, nowTs);
-    // Commit the active-plan recorder synchronously with planning: the planner
-    // reads committed plans (resolveCommittedHours) for its decoration, so this
-    // promotion must not lag a clock tick.
-    this.deps.observeDeferredObjectiveActivePlans?.(evaluations, nowTs);
+    // The active-plan RECORD (revisions) is written on the lifecycle clock
+    // (`DeferredObjectiveLifecycleEmitter`), not here. This stage only READS the
+    // committed plan (via the diagnostics build above, which consults
+    // `resolveCommittedHours`) to decorate the device inputs — reading is free
+    // every cycle; only the write rides the clock. See the carve-out note.
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
     const targetOverrides = buildDeferredTargetOverrides(
       evaluations,

@@ -27,6 +27,7 @@ import {
 import type { ShedActuationTransport } from '../../lib/device/shedBehaviorActuation';
 import {
   disableDeferredObjectiveInSettings,
+  requireDeferredObjectiveActivePlanRecorder,
   requireDeferredObjectivePlanHistoryRecorder,
   WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
@@ -305,14 +306,14 @@ export const handleDeferredDeadlineReached = (
  * persistence bookkeeping) are moved verbatim from `createPlanEngine`; the
  * emitter owns the `lastWatermarkPersistMs` state via the closure below.
  *
- * INVARIANT: after PR-C this emitter is the sole writer to the plan-history
- * recorder (`planBuilder` no longer records history). The active-plan recorder
- * stays committed synchronously by `planBuilder` (the planner reads committed
- * plans via `resolveCommittedHours` for its decoration); the clock only CLEARS
- * an ended task's plan via `onDeadlinePassed → disableDeferredObjectiveInSettings`
- * (phase-separated from planBuilder's commit). PR-D's decoration relocation must
- * keep the active-plan commitment synchronous and not introduce a third
- * `ConcurrentEligibleTaskTracker`.
+ * INVARIANT: this emitter is the sole WRITER to BOTH the plan-history recorder
+ * AND the active-plan commitment recorder (`observeDeferredObjectiveActivePlans`
+ * below). The planner/decoration only READS committed plans via
+ * `resolveCommittedHours`; reads are free every power cycle, so the writes ride
+ * this clock — the recorder gates replan revisions to once per hour at `:58`
+ * (a first revision is immediate). The clock also CLEARS an ended task's plan via
+ * `onDeadlinePassed → disableDeferredObjectiveInSettings`. Do not reintroduce a
+ * second `ConcurrentEligibleTaskTracker` on the decoration side.
  *
  * See notes/state-management/deferred-objective-lifecycle-carveout.md.
  */
@@ -366,6 +367,16 @@ export function createDeferredObjectiveLifecycleEmitter(
       if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
       writeWatermark(ctx, nowMs);
       lastWatermarkPersistMs = nowMs;
+    },
+    // Active-plan commitment WRITE, on the clock. The recorder gates replan
+    // revisions to once per hour at :58 (first revision immediate); the planner
+    // READS the committed plan every power cycle for its decoration. Driving the
+    // write off the reliable 30 s clock means it can never be starved by
+    // power-reading timing (the prior power-cycle commit could, in theory).
+    observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
+      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
+      recorder.observe(diagnostics, nowMs);
+      recorder.flushIfDirty();
     },
     getStallClassification: (deviceId) => ctx.planService?.getStallClassification(deviceId),
   });
