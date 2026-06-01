@@ -150,9 +150,9 @@ const formatCurrentStarvationStatus = (params: {
 }): string => {
   const duration = formatStarvationDuration(params.starvedMs);
   if (params.isStarved) {
-    return params.starvedMs > 0 ? `Starved for ${duration}` : 'Starved';
+    return params.starvedMs > 0 ? `Held back for ${duration}` : 'Held back';
   }
-  return 'Not starved';
+  return 'Not held back';
 };
 
 const createDiagnosticsMetric = (label: string, value: string) => {
@@ -230,13 +230,13 @@ const renderDeviceDiagnosticsSummary = (summary: DeviceDiagnosticsSummary | unde
   starvationCard.className = 'pels-surface-card detail-diagnostics-card';
 
   const starvationTitle = document.createElement('h4');
-  starvationTitle.textContent = 'Starvation details';
+  starvationTitle.textContent = 'Held-back details';
 
   const starvationList = document.createElement('dl');
   starvationList.className = 'detail-diagnostics-list';
   starvationList.append(
     createDiagnosticsMetric('State', starvationStatus),
-    createDiagnosticsMetric('Starved time', formatStarvationDuration(starvation.starvedAccumulatedMs)),
+    createDiagnosticsMetric('Held-back time', formatStarvationDuration(starvation.starvedAccumulatedMs)),
     createDiagnosticsMetric('Temperature / target', formatStarvationTemperatureTarget(starvation)),
     createDiagnosticsMetric(
       'Current reason',

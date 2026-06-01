@@ -124,23 +124,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
         `widgets/headroom/src/public/render.ts` + `headroomWidgetCopy.ts` (copy helper).
         Source: widget-polish round 2, 2026-05-30.
 
-- [ ] **Align (or deliberately keep) "Starved" in device-detail diagnostics.** The
-      Held-back-devices widget now says "Held back"; `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts`
-      still says "Starved" / "Starved for {duration}" / "Not starved" / "Starvation
-      details" / "Starved time" for the same condition. `notes/ui-terminology.md` now
-      documents this as a deliberate fork (Starved = advanced-diagnostics term), so
-      it's defensible — but decide explicitly: either align diagnostics to "Held back"
-      or keep "Starved" as the advanced term. Those strings are also inlined literals
-      (a pre-existing shared-domain-origin gap). Source: copy lens on PR #1313, 2026-05-30.
-
-- [ ] Insights mode picker — `await this.homey.settings.set(...)` on tile-tap;
-      surface `device.error()` on rejection; revert the capability value on
-      failure. Today the listener is fire-and-forget so a rejected settings
-      write leaves the tile showing the tapped mode but the runtime on the
-      previous one. Files: `drivers/pels_insights/device.ts:135-138`.
-      Source: release-review pels-ux-fit + pels-runtime-reality, 2026-05-26.
-      *(In flight on the v2.11 correctness train — removed by its fix PR.)*
-
 - [ ] Insights mode picker — throttle / coalesce `refreshModeOptions` so a
       bulk priority edit doesn't issue one `setCapabilityOptions` per
       setting write. A 10-device priority reorder currently fires 10
@@ -149,243 +132,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
       the effective mode-options set differs. Files:
       `drivers/pels_insights/device.ts:140-152`. Source: release-review
       pels-runtime-reality, 2026-05-26.
-
-- [ ] Rename capability `mode_indicator` title from "Mode" to "PELS mode"
-      for device-tile scan consistency with the rest of the PELS capability
-      family. Today the tile reads as a generic "Mode" with no PELS anchor.
-      Files: `.homeycompose/capabilities/mode_indicator.json`; regenerate
-      `app.json` via `homey app validate`; verify any Insights-graph
-      headers that previously rendered "PELS Status" still parse on
-      existing user dashboards. Source: release-review
-      pels-copy-and-terminology, 2026-05-26.
-
-- [ ] Revisit the **check-dead-code allowlist exception** for
-      `StarvationRescueDevicesPayload`
-      (`packages/contracts/src/starvationRescue.ts`, allowlisted in
-      `scripts/check-dead-code.mjs`). It is needed only because madge runs
-      against the runtime tsconfig that excludes `widgets/`, so the widget
-      bundle's consumption of the type is invisible. If widget bundling/tsconfig
-      coverage changes so `widgets/**` is traversed, drop the exception. Source:
-      starvation-rescue widget PR (#1281).
-
-*v2.7.1 release-review findings (2026-05-17). Six items below from the
-six-agent fan-out pass on `v2.7.0..HEAD`; safe for the next patch
-release, not v2.7.1 merge-blockers.*
-
-*Pro Homey runtime-log audit (2026-05-17, log
-`/tmp/pels/start.main.0a4464c3.stdout.log`, 2h40m window).*
-
-- [ ] Consolidate the remaining duplicated card / button / segmented-control /
-      ripple / elevation primitives across every settings-UI surface.
-      The hero + section-label rebind phase of the original "unify the hero primitive" P1
-      now ships in full — Overview hero, Budget header, Usage header, Smart tasks header,
-      Settings header, Advanced header, AND the deadline-plan hero all render through the
-      shared `.plan-hero` / `.pels-hero` primitive with the canonical `.eyebrow` +
-      `.plan-hero__headline` cascade and the same `data-tone="good|warn|alert|info"`
-      bindings. Regression coverage at `packages/settings-ui/test/heroPrimitiveRebind.test.ts`
-      pins every surface to the canonical shell + eyebrow + headline shape so a future
-      refactor can't silently revert.
-      The chip primitive rebind phase also ships now (batch 9, this PR): the
-      legacy `.chip` shell with `chip--ok` / `chip--boost` / `chip--neutral` /
-      `chip--alert` tonal variants is retired, and the two remaining consumers
-      (device-list state chip in `deviceListPresentation.ts`, mode-row
-      `.priority-badge` companion class) rebind onto the canonical `.plan-chip`
-      primitive (or drop the redundant class entirely, in the priority-badge
-      case where the pill fully overrides every chip style). `.plan-chip` now
-      carries both the BEM tonal modifiers (`--good|--warn|--alert|--info|
-      --muted|--limited`) AND the canonical `data-tone="…"` attribute API used
-      by `.plan-hero` — both resolve onto the same tonal style so new consumers
-      pick the data-attribute form without forcing a mass migration. Regression
-      coverage at `packages/settings-ui/test/chipPrimitiveRebind.test.ts` pins
-      the no-legacy-`.chip` invariant + canonical-shell-on-every-surface
-      contract. Dead-but-styled selectors (`.plan-row__chip`,
-      `.price-row .chip.price-normal`) are gone.
-      What remains: nothing — once the card sweep PR (MM) lands the
-      remaining card-consumer rebind (`.plan-card` / `.deadline-list-card`
-      / `.detail-diagnostics-card` / `.plan-history-card` onto the
-      canonical `.pels-surface-card`) ships in the same 2026-05-24 batch
-      11 train as segmented / ripple / elevation (phases 4-6 below). The
-      one carve-out is `.settings-form-card`, a cross-container shared
-      form panel with its own override cascade — routed to a follow-up
-      sub-PR (see the Card-phase bullet below).
-      Acceptance: one shared CSS class / JSX wrapper per primitive type, every consumer
-      rebound, no inline overrides beyond data-attribute state. Implementation may use the
-      existing custom primitives or `@material/web` — that choice stays with the P2 entry
-      below.
-      Why P1 (demoted from P0 in release-review pass): refactor-for-coherence — the surfaces
-      render today, just with subtle per-page differences. No user-visible incorrectness, so
-      does not gate the release.
-      *Remaining primitive-type phases (one PR each, lowest blast first):*
-      - **Button — native primitive consolidated (2026-05-24 batch 10 PR).** The
-        per-page `.plan-hero__recourse-button` (scoped + doubled-class hack
-        under `#deadline-plan-panel`) was retired in favour of a canonical
-        `.pels-button` native-button class shared by all three native recourse
-        CTAs (DeadlinePlan ready hero, DeadlinePlan pending hero, history-
-        detail hero). Canonical choice was Option A: keep MD Web wrappers
-        (`<md-text-button>`, `<md-filled-button>`, `<md-outlined-button>`) as
-        the source of truth for MD Web buttons -- they already ship M3-correct
-        focus rings, state-layer ripples, ARIA, and the 48 px touch-target
-        floor; `.pels-button` only exists for the small set of CTAs that need
-        a real `<button>` (event delegation, no shadow DOM). Regression
-        coverage at `packages/settings-ui/test/buttonPrimitiveRebind.test.ts`
-        pins the no-legacy-`.plan-hero__recourse-button` invariant + canonical
-        shell + 48 px floor + focus ring + disabled state contract.
-        *Still open for follow-up sub-PRs:*
-        - **`.plan-history-detail__chart-toggle` ghost button — done
-          (2026-05-24 batch 12 PR).** The trajectory-chart toggle now
-          chains the canonical `.pels-button` primitive with a
-          `.plan-history-detail__chart-toggle` decorator that keeps
-          the page-local ghost-button visual (transparent background,
-          narrower padding, lighter hover/focus tint, font-weight
-          inherit). Going filled would have visually competed with the
-          H2 chart-card title it sits beside, so the decorator wins.
-          The e2e at
-          `packages/settings-ui/tests/e2e/deadline-recorder-to-history.spec.ts`
-          was rebound onto `button.pels-button.plan-history-detail__chart-toggle`
-          and the rebind regression at
-          `packages/settings-ui/test/buttonPrimitiveRebind.test.ts` now
-          pins both ends of the chain (primitive + decorator) plus the
-          doubled-class cascade that beats the panel-scoped `.pels-button`
-          fill.
-        - **Per-page MD Web layout helpers** (`.budget-context-action`,
-          `.budget-page-header__action`, `.dry-run-banner__action`) stay --
-          they're legit positioning / MD-Web-custom-property overrides on top
-          of the MD Web button, not duplicate primitive shells.
-      - **Card — primitive consolidated (2026-05-24 batch 11 PR).** The joint
-        `.plan-card, .pels-surface-card { … }` rule was split: the canonical
-        primitive `.pels-surface-card` now owns the surface contract
-        (padding / gap / border / radius / bg / overflow / isolation / M3
-        elevation) on its own, and `.plan-card` keeps only the device-row-
-        specific add-ons (chip-border padding offset, min-height rhythm,
-        `--dim` modifier, `data-state-kind` aliases that resolve onto the
-        same `--color-state-*-bg/-border` tokens). The canonical primitive
-        gained two new attribute APIs that mirror the chip / hero patterns:
-        `data-tone="good|warn|alert|info|muted"` for tonal surface and
-        `data-interactive` for the M3 hover-elevation + focus-outline
-        contract clickable cards opt into.
-        Per-page forked surface rules retired in the rebind: `.plan-history-
-        card` (was forking surface-tier + radius), `.deadline-list-card`
-        (was forking padding + radius + box-shadow), `.detail-diagnostics-
-        card` (was forking surface + bypassing the token system with a
-        hardcoded `10px` radius + `12px` padding). Each now walks the
-        canonical surface and keeps only its layout / hover / link-anchor
-        decorator on top.
-        Rebound markup sites (7 total):
-        - `.plan-card`: three JSX consumers (PlanDeviceCards binary +
-          temperature variants, PlanSteppedCard) and one imperative
-          (`devices.ts` device-group card, already chained) now all chain
-          `pels-surface-card` on the host.
-        - `.plan-history-card`: `DeadlinePlanHistory` past-plan card chains
-          `pels-surface-card` + `data-interactive` so the link variant
-          inherits the canonical hover-elevation + focus-outline.
-        - `.deadline-list-card`: `DeadlinesList` smart-task card same.
-        - `.detail-diagnostics-card`: two imperative hosts in
-          `deviceDetail/diagnostics.ts` (per-window summary + starvation
-          detail) chain `pels-surface-card`.
-        Kept as legitimate decorators on the canonical (no rebind needed —
-        already paired in markup): `.budget-redesign-card`, `.budget-chart-
-        card`, `.budget-confidence-card`, `.deadline-horizon-card`,
-        `.usage-card`, `.pels-device-card`. Kept separate (distinct
-        primitive shape, NOT a card-surface fork): `.settings-nav-card`
-        (MD-list-item internals), `.settings-form-card` (cross-container
-        shared form panel — its own audit, route below).
-        Dead-but-styled selectors gone: `.usage-summary`, `.summary-card`,
-        `.summary-label`, `.summary-value` (v1 layout, never emitted in
-        current markup); the live `.summary-value--empty` marker that
-        `power.ts` + `usageDayView.ts` still toggle survives.
-        Regression coverage at `packages/settings-ui/test/
-        cardPrimitiveRebind.test.ts` pins the canonical-shell-on-every-
-        surface contract + no-forked-base-rule invariant + dead-rule
-        cleanup + per-surface rebind shape so a future refactor can't
-        silently revert.
-        *Still open for follow-up sub-PRs:*
-        - **`.settings-form-card` cross-container audit.** The base rule
-          (line ~979 of `style.css`) and the `:where(#limits-panel,
-          #simulation-panel, #electricity-prices-panel, #price-aware-
-          devices-panel) .settings-form-card` override (line ~6806) declare
-          two different visual contracts for the same class, depending on
-          which panel the host renders inside. The settings-current-mode
-          section (`#settings-panel`) hits the base; everything else hits
-          the override. The override paints a near-canonical surface
-          (border + radius + surface-2 + shadow-sm). Decide whether to
-          collapse onto `.pels-surface-card` or accept the two-tier
-          contract as legit "form-panel sub-variant" — separate PR to
-          keep this batch focused on the visual surface primitive.
-      - **Segmented control — landed (2026-05-24 batch 11 PR, phase 4).** `.segmented`
-        + `.segmented__option` are the single canonical shell across every consumer
-        (Plan/Adjust toggle, day-toggle, Progress/Hourly plan, 7d/14d,
-        All/Weekday/Weekend, Current/History plan, device-detail When-limiting).
-        Leaky `.segmented--power-limiting` per-page modifier was retired; the
-        narrow-viewport rule now scopes to `#device-detail-panel .segmented` under
-        the existing `@media (max-width: 430px)` gate so the primitive itself
-        carries no panel-specific variant. Both renderers (imperative
-        `createToggleGroup` in `components.ts` and preact `ToggleGroup` in
-        `BudgetOverview.tsx`) build the same DOM shape. Regression coverage at
-        `packages/settings-ui/test/narrowPrimitiveRebind.test.ts` (phase 4 section)
-        pins the canonical shell + bans `.segmented--…` modifiers + verifies
-        both renderers produce identical DOM.
-      - **Ripple — landed (2026-05-24 batch 11 PR, phase 5).** `<md-ripple>` (via
-        `MdRipple` JSX wrapper from `materialWebJSX.tsx` or the raw element in
-        `index.html`) is the single source of truth for the state-layer ripple.
-        Every consumer mounts it with the canonical
-        `<MdRipple aria-hidden="true" />` shape — no `attached` prop, no custom
-        colour override, no event handlers. The ripple-tint tokens
-        (`--md-ripple-hover-color`, `--md-ripple-pressed-color`) live on the
-        shared `.plan-card` / `.pels-surface-card` cascade. No custom `.ripple`
-        / `.has-ripple` shell exists. Regression coverage at the same test file
-        (phase 5 section).
-      - **Elevation — landed (2026-05-24 batch 11 PR, phase 6).** `<md-elevation>`
-        (via `MdElevation` JSX wrapper or raw element in `index.html`) is the
-        single source of truth for card surface lift. Every consumer mounts it
-        with the canonical `<MdElevation aria-hidden="true" />` shape. The
-        elevation cascade (resting `--md-elevation-level: 1`, hover/focus `3`,
-        active `2`) lives on `.plan-card` + `.pels-surface-card` so every card
-        surface picks the same lift from the same source. Every `box-shadow`
-        declaration in `style.css` either resolves to a shared `var(--shadow-*)`
-        token, an explicit `none` reset, a 1 px inset hairline, a 1-3 px
-        contrast/focus outline, or the chart-tone glow — no raw card
-        elevation. Regression coverage at the same test file (phase 6 section).
-      *Reference — sub-bullets from the original M3 visual pass that are now closed:*
-      - **Overview hero side landed (hero-rework PR):** headline tone no longer flips to
-        warning/critical, the redundant `"X kW above hard cap"` subline was dropped, the
-        power bar now renders segmented [managed][background] blocks on a single track,
-        and the section labels reuse the shared `.eyebrow` primitive.
-      - **Budget / Usage / Settings / Advanced headers rebound (2026-05-23 batch 7
-        partial PR):** all four now render via `.plan-hero` / `.pels-hero` with the
-        shared `.eyebrow` + `.plan-hero__headline` cascade; the per-surface
-        `.budget-page-header__title` one-off was dropped.
-      - **Tonal-gradient mobile-media-query duplicates folded (same partial PR):**
-        the four `data-tone="good|warn|alert|info"` overrides previously declared
-        twice — once in the main `.plan-hero[data-tone="…"]` block and once in a
-        mobile media query — now consolidate to a single declaration site.
-      - **Deadline-plan hero rebound (2026-05-23 batch 8 follow-up PR):** both the
-        ready (`DeadlineHero`) and pending (`PendingHero`) variants now render the
-        eyebrow as `<p class="eyebrow plan-hero__section-label">` and the headline
-        as `<h2 class="plan-hero__headline">`, matching the four sibling panels.
-        Tonal cascade (good/warn/alert/info) flows through `data-tone` on the shared
-        primitive; no per-surface tonal CSS remains.
-      - **Chip primitive rebind landed (2026-05-24 batch 9 PR):** `.plan-chip` is
-        the single canonical chip shell; legacy `.chip` + `chip--{ok|boost|neutral|
-        alert}` retired; `data-tone="…"` API added alongside the BEM modifiers for
-        consistency with `.plan-hero`; per-page chip wrappers
-        (`.device-row__state-chip`, `.plan-history-detail__outcome-chip`,
-        `.plan-history-detail__cost-narrative-chip`, `.plan-history-detail__
-        shortfall-chip`, `.pels-device-card__count-chip`,
-        `.hourly-strip__legend-item`, `.budget-page-header__chips`) stay as
-        localized layout / typography overrides on top of the canonical shell —
-        they don't fork the tonal vocabulary so they don't violate the "one
-        chip family" invariant.
-      - **Info as a role is sparse on Overview** — only the Smart-task chip and the
-        info-tinted histogram on Budget/Usage tabs. That's M3-appropriate (info is for
-        neutral explanation), but worth confirming during chip/card consolidation that
-        we're not artificially restraining it; if there's a natural "Price low / Price
-        high" hint for the hero meta-row, use info there.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/public/style.css`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/power.ts`, generated `settings/`, screenshot suite under
-      `packages/settings-ui/tests/e2e/`.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -406,53 +152,6 @@ release, not v2.7.1 merge-blockers.*
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Extend the review theme-matrix to the DETAIL surfaces.** The dark-capable
-      capture variant the m3-critic light-theme P2 (#1366) asked for now exists —
-      `captureThemes` (PR #1369), driven by `theme-matrix-screenshots.spec.ts` over
-      the five main tabs (overview/budget/usage/smart-tasks/settings) in
-      light-desktop + dark-mobile + light-mobile. Correction to that P2's framing:
-      the `device-detail` / `docs-settings` / `deadline-plan` / `landing` specs it
-      named are NOT review captures — they write COMMITTED docs assets to
-      `docs/public/screenshots/**` (and `docs/screenshots/**`) and are intentionally
-      single light theme; do NOT migrate those (it would corrupt the docs site).
-      The real gap is that the matrix covers tab landings but not the DETAIL views:
-      the per-device detail panel, the deadline-plan detail, the Settings
-      sub-sections (limits/devices/modes). Highest value is **device detail in
-      DARK** — that panel is dense with native button/chip/slider primitives, the
-      exact place host-CSS bleed (the #1352 class) shows, and it's currently only
-      ever captured light (where bleed hides). The device-detail (thermostat +
-      stepped/Zaptec) and deadline-plan detail surfaces are now in the matrix
-      (element captures via `captureThemes`, all three themes). Residual, low
-      value: the Settings sub-sections (limits & safety / devices / modes) — their
-      primitives are the form controls already covered by the global label
-      override, so add them only if a forms-surface review wants the dark variant.
-      Source: PR #1366 m3-critic → reframed + device-detail/deadline-plan done
-      2026-05-31.
-
-- [ ] **Real-device mobile-DARK capture — LOW VALUE, mostly superseded.** The
-      original idea was a chromium harness (inject the `homeylocal.com` session +
-      `isMobile/hasTouch`) to capture the live device in mobile-dark. Investigated:
-      it's blocked (Firefox can't touch-gate dark; chromium can't reach the device
-      settings URL without the my.homey.app session+Configure flow, not just a
-      cookie) AND largely unnecessary — a LOCAL mobile-dark render + the committed
-      `test/fixtures/homey-wrap/` host bundle, which was verified byte-identical to
-      prod, already gives a prod-faithful dark review surface; the device would
-      only add real data, irrelevant to visual/bleed review. The one residual need
-      is re-capturing the host fixture if Homey ships a new `homey.css` — served by
-      the proven Firefox-profile walk (Configure → dump the iframe's stylesheet
-      links), which is reproducible ad-hoc. Keep deprioritised unless a fixture
-      refresh is needed. Source: PR #1347 walk → reassessed 2026-05-31.
-
-- [ ] **Create-smart-task preview — decide the energy line's fate.** PR #1274
-      promoted cost to the headline and demoted the energy estimate
-      ("Energy: 3.6–4.0 kWh") to a muted secondary line under the when-window
-      (`widgets/create_smart_task/public/index.html` preview body,
-      `render.ts` `formatEnergyLine`). Open product call: keep it muted, fold the
-      figure into the cost subtext ("≈4 kWh · cheapest hours before 07:00"), or
-      drop it entirely so the tile reads cost-and-when only. User-visible
-      outcome: how much numeric detail the pre-commit preview carries. Source:
-      PR #1274 fix-up, 2026-05-29.
-
 - [ ] **Create-smart-task load-error — add a tap-to-retry affordance.** When the
       device fetch fails, the picker shows `CREATE_SMART_TASK_WIDGET_COPY.loadError`
       ("Could not load devices. Try again later.") as static text with no way to
@@ -461,18 +160,6 @@ PRs. Items below are later polish.*
       the error state a retry tap target that re-runs `loadAndRender`. User-visible
       outcome: a stuck load can be recovered in place. Source: PR #1274 fix-up,
       2026-05-29.
-
-- [ ] **Bring `widgets/create_smart_task/src` into `arch:check` scope.** The
-      widget source (`widgets/create_smart_task/src/**`) imports backend types
-      (`widgets/create_smart_task/src/api.ts` reaches into `lib/plan/**` /
-      contracts) but is NOT in the `.dependency-cruiser.cjs` cruise scope, so the
-      widget→`lib/plan` edges are currently unenforced — a widget could grow an
-      illegal runtime-backend import without `arch:check` failing. Add the widget
-      `src` to the cruise (mirroring how `packages/settings-ui/src` is scoped) and
-      add the boundary rules the settings-UI gets (widget may consume shared
-      contracts / shared-domain, never runtime backend internals directly).
-      Internal correctness only; no user-visible outcome. Source: PR #1274
-      pels-layering-guardian, 2026-05-29.
 
 - [ ] **Smart-tasks widget — `at_risk` dark-theme contrast.** The `data-tone="warn"` row paints a 12%-mixed warning
       wash (`widgets/smart_tasks/public/index.css:72-74`, eta recolor
@@ -642,13 +329,6 @@ the renderer can land.*
       `widgets/headroom/src/public/render.ts:39`. Source: release-review
       pels-ux-fit, 2026-05-26.
 
-- [ ] **Headroom widget — reconcile widget compose name `"Available power"`
-      with the rendered headline (current draw).** A user who taps the
-      widget expecting "how much room" sees power-used-now instead. Either
-      rename the widget compose entry or invert the headline to lead with
-      available kW (e.g. `5 kW free · 7 of 12 used`). Source: release-review
-      pels-ux-fit, 2026-05-26.
-
 - [ ] **Smart-tasks widget — detail-panel polish follow-ups (interactive-widget
       PR P2/P3).** Carry the lower-priority findings from the four review
       subagents on the interactive widget:
@@ -757,26 +437,6 @@ the renderer can land.*
       `plan/binary-*` module loggers to debug; everything else stays at info.
       Mapping topic → module-name-glob lives in lib/logging (not the call sites).
       Source: `chatgpt-codex-connector` P1 on PR #1037 (chip 4.1d), 2026-05-24.
-
-- [ ] **Move `delete state.pendingBinaryCommands[deviceId]` to try/finally
-      in `executeBinaryCommand`.** Today the failure branch (catch) deletes
-      the pending entry. If a newer command for the same device is issued
-      while the first is in-flight and that older request fails, the catch
-      could delete the newer pending entry that already replaced it.
-      Restructure with a per-request token gate (the success path leaves
-      the pending entry alive for `syncPendingBinaryCommands` to confirm —
-      not a simple `finally`). Source: `gemini-code-assist` medium on PR
-      #1037 (lib/plan/planBinaryControl.ts:~191), 2026-05-24.
-
-- [ ] **Pass `snapshot` to `executeBinaryCommand` instead of re-fetching via
-      `deviceManager.getSnapshot().find()`.** The EV-action success branch
-      currently does `formatEvSnapshot(deviceManager.getSnapshot().find((entry) => entry.id === deviceId))`
-      to log post-actuation state. This is O(N) per call and the caller
-      already has the original snapshot (pre-actuation). Either accept losing
-      post-actuation freshness (use the original snapshot) or have
-      DeviceManager expose `getSnapshotByDeviceId(id)`. Source:
-      `gemini-code-assist` medium on PR #1037
-      (lib/plan/planBinaryControl.ts:~259), 2026-05-24.
 
 - [ ] **P3** — Extend Slice 2 floor promotion beyond priority 1. (Demoted from the v2.9 train P0
       closeout.) Slice 2 (PR #983) gates floor promotion on
@@ -1062,25 +722,6 @@ were rolled back before they could land.*
       wiring. Contract documented in `planHistoryV4Helpers.ts:detectHourRollover`.
       Source: `pels-runtime-reality` agent, v2.8.0 PR1 review pass.
 
-- [ ] Reduce `lib/objectives/deferredObjectives/planHistory.ts` `max-lines`
-      override (currently 720, was 620 pre-v2.8.0). Bumped to host the
-      hour-rollover detector and finalize-time flush. Target: lower once the
-      in-progress record + finalize paths split into their own module.
-      Source: `pels-layering-guardian` agent, v2.8.0 PR1 review pass.
-
-*v2.8.0 release-review findings (2026-05-19). Four items from the
-five-agent fan-out pass on `v2.7.4..origin/main`.*
-
-- [ ] ~~Flatten the deferred-objective diagnostic to expose flat `currentValue`
-      + `kWhPerUnit`.~~ **CUT (layering review, 2026-05-31): do not do this.** The
-      `objectiveKind` branches are not gratuitous re-resolution — the persisted V4
-      history schema stores °C and % as distinct typed fields under a discriminated
-      union, and the branches read whichever field the union carries. Collapsing to one
-      `currentValue` erases the unit distinction in persisted history and forces a
-      contract + persisted-state migration for no behavioural gain. Producer already
-      splits `kWhPerDegreeC`/`kWhPerPercent` correctly. Kept here annotated so it isn't
-      re-raised. Source: `pels-runtime-reality` (orig), `pels-layering-guardian` (cut).
-
 - [ ] Add explicit backup-hour reservations for committed smart-task schedules.
       Day-zero committed schedules now keep the first full-horizon allocation
       stable and ignore later optimizer hour swaps. There is still no separate
@@ -1105,25 +746,6 @@ five-agent fan-out pass on `v2.7.4..origin/main`.*
       vocabulary (see `feedback_ui_text_shared_with_logs`). Out of scope for any single release —
       full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
-
-- [ ] iOS Homey chrome inset may exceed 56 px (PWA + status bar + nav bar);
-      confirm via screenshot from user, then split `--pels-homey-mobile-chrome` per
-      pointer/platform if needed. Deferred from v2.7.2 PR7 fixup.
-
-- [ ] Overview device-card stack still spans 128–163 px after the v2.7.2
-      `min-height: calc(var(--spacing-8) * 4)` floor on `.plan-card` — the
-      floor only raises the short cards; tall cards keep their natural
-      height. If the audit re-flags rhythm, the next step is to convert the
-      conditional rows (reason line, stepped controls, ev state) into a
-      reserved-slot grid so card heights converge.
-      Files: `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`.
-
-*Prod walk follow-ups, 2026-05-27. Six review lenses (live prod state,
-prod logs, pels-copy-and-terminology, pels-m3-critic, internal UX
-critique, and pels-ux-fit walkthrough) on the Marie Michelets household
-flagged ten findings; eight landed as the train PRs #1207–#1211, #1220,
-and #1222. Remaining: the persona expansions below.*
 
 - [ ] **Move BudgetOverview confidence strings to shared-domain.**
       PR #1211 renamed "Plan confidence" → "Budget confidence"
@@ -1163,62 +785,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Source: `pels-m3-critic` agent.
       Files: `settings/style.css` `.tippy-box[data-theme~='pels']` rule
       block.
-
-- [ ] Add `deliveredKWh` and `totalCost` to `DeferredObjectivePlanHistoryEntry`.
-      The History detail page is supposed to answer "how much did it cost?" and "by how much
-      did it succeed?" — but the contract has neither `deliveredKWh` nor `totalCost`, so the UI
-      cannot show them. The runtime recorder needs to capture these (sum observed kWh per hour,
-      multiply by hourly price), the contract needs the fields, and the view needs the
-      corresponding rows in the header card (e.g. "Delivered 5.4 kWh • 6.50 kr").
-      Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `lib/plan/deadlineRecorder.ts` (or equivalent),
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-
-- [ ] v2.7.1: Switch `report_evcharger_battery_level.json` `battery_percent` argument from
-      `type: "number"` to `type: "range"` for a slider-style picker. The card shipped in
-      v2.6.0, so changing the arg type is a pre-2.7.0 breaking change — defer to a release
-      where breaking pre-2.7.0 flow-card surfaces is in scope. Step is currently `0.1`
-      (not all Homey clients render fractional steps on `range`); evaluate whether to keep
-      0.1 (slider with float step) or coarsen to `1` (typical battery-percent precision)
-      when this lands. Surfaced by the v2.7.0 PR 4.1 audit.
-      Files: `.homeycompose/flow/actions/report_evcharger_battery_level.json`, `app.json`.
-
-      **Acceptance bar — fix all three of these consolidation candidates (or
-      explicitly close each with a one-line "rejected because…" in the PR):**
-      1. **Daily-budget header tile collapses out of its own card.** Today the
-         "BUDGET / Daily budget" eyebrow + headline occupy a full card holding
-         nothing else, with another full card immediately below for the segmented
-         `Plan / Adjust` row. Move the headline into a header row of the segmented
-         card, or use a section-eyebrow pattern that doesn't claim a card-tier
-         surface, so one card's worth of vertical chrome (border + padding × 2 +
-         gap) is removed.
-      2. **`Plan / Adjust` and `Yesterday / Today / Tomorrow` stop stacking as two
-         independent 50 px-tall segmented controls.** At 480 px there's room to
-         either render them inline on one row (one segmented per axis), reduce
-         their heights/gaps, or rebuild as a single 2D selector. Either keep both
-         50 px high or both ≤36 px high — not the current mix.
-      3. **`Plan confidence` card stack collapses at 480 px.** Today: title row,
-         two-line body copy, `What this means` expander — each on its own line
-         with generous gap. Collapse the expander affordance + label onto the
-         title row (or into a single line that summarises both the level and the
-         "what this means" affordance) at the dialog width.
-
-      **Baseline / rhythm sweep (do once after the three above land):** confirm
-      section gaps use a consistent `--spacing-*` step across cards and tiles
-      (no ad-hoc pixels), and that the baseline grid implied by
-      `--font-line-height-*` doesn't drift across stat values, body copy, and
-      chip labels on this page.
-
-      **Quantitative aim:** cut at least one fold-worth of vertical scroll on the
-      Budget tab at both 480 px and 320 px without sacrificing tap-target sizes
-      (≥48 px per `--pels-touch-target-min`).
-
-      Cross-reference: the Overview hero spec at `notes/overview-hero-spec.md`
-      for the typographic rhythm the redesign targets.
-      Files: `packages/settings-ui/public/style.css` (segmented spacing, card
-      padding, section gaps), `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
-      (markup consolidation for #1 and #3), `settings/style.css` (regen).
 
 *Phantom-design items removed (2026-05-31 m3-critic merit pass): the
 "Electricity-prices two-select contrast" and "inconsistent active-vs-history chart
@@ -1269,43 +835,6 @@ live-walk screenshots.*
       in place; remaining work is Usage history cleanup, per-device price behavior ownership,
       Material primitive consolidation, and final polish.
       Files: `packages/settings-ui/**`, generated `settings/`, relevant settings UI tests.
-- [ ] Evaluate migrating shared PELS primitives to `@material/web` components.
-      Once the consistency P0 above lands and every chip / card / button reads one primitive,
-      decide whether the shared primitive should be replaced by `@material/web` components
-      (`md-filled-button`, `md-elevated-card`, etc.) for standard Material semantics, or whether
-      the custom primitive remains. Out of scope for v1.
-      Files: `packages/settings-ui/src/ui/materialWeb.ts`,
-      `packages/settings-ui/src/ui/views/materialWebJSX.tsx`,
-      `packages/settings-ui/public/style.css`, focused visual/e2e coverage.
-- [ ] Make the device-detail "When limiting" selection explicit for stepped loads.
-      The action segmented control shows `Set to step "<lowest active step>"` via
-      `updateSetStepOptionLabel()`, but the dedicated `Limited step` row is always hidden
-      (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts:332-352`) and saving `set_step`
-      stores only `{ action: 'set_step' }` rather than a visible `stepId`
-      (`packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts:365-371`,
-      `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts:302-315`). That means users
-      cannot inspect the current limited step as its own setting; they must infer it from the
-      segmented label and the stepped-load profile.
-      Minimum acceptable completion: the Power limiting section clearly displays the effective
-      limited step for stepped-load devices, updates when the profile draft changes, and keeps the
-      runtime behavior of using the lowest active step unless an explicit product decision
-      reintroduces a configurable limited-step selector.
-      Files: `packages/settings-ui/src/ui/deviceDetail/shedBehavior.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/steppedLoadDraft.ts`,
-      `packages/settings-ui/public/index.html`, device-detail tests.
-- [ ] Consider moving Temperature boost into its own device-detail card.
-      `device-detail-temperature-boost` currently renders inside the Stepped load profile section,
-      after the step editor and save/reset controls (`packages/settings-ui/public/index.html:925-943`).
-      The setting is a runtime behavior rule and can be more operationally important than editing
-      the stepped-load profile itself, so testing feedback suggests it is too easy to miss when it
-      sits below the profile editor.
-      Minimum acceptable completion: decide whether Temperature boost remains grouped with stepped
-      loads or becomes a separate, higher-priority card; if moved, keep it visible only for
-      eligible stepped temperature devices, preserve existing persistence behavior, and update
-      screenshots/tests.
-      Files: `packages/settings-ui/public/index.html`,
-      `packages/settings-ui/src/ui/deviceDetail/temperatureBoost.ts`,
-      `packages/settings-ui/src/ui/deviceDetail/index.ts`, device-detail tests/screenshots.
 - [ ] Rework device detail into focused sections or a dedicated setup page.
       The current device detail side sheet is a long mixed surface: mode targets, smart task,
       price response, power limiting, stepped-load profile, boost controls, setup toggles,
@@ -1319,35 +848,9 @@ live-walk screenshots.*
       keep the common operational controls reachable without long scrolling, move advanced setup
       controls and diagnostics out of the primary path, preserve lazy diagnostics loading, and
       update mobile screenshots/e2e coverage.
+      This rework also covers surfacing the effective limited step for stepped-load devices on the device-detail surface.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e tests/screenshots.
-- [ ] Evaluate whether Usage needs both 7-day and 14-day daily-history views.
-      The Usage history card defaults to "Last 14 days" and exposes a 7 / 14 day segmented
-      range toggle (`packages/settings-ui/public/index.html:408-412`,
-      `packages/settings-ui/src/ui/power.ts:45,48,242,400-413`). Daily history is already capped
-      at 14 days in the UI, so this is mainly a product and layout question: whether the 14-day
-      option adds enough value over a simpler 7-day view to justify the extra control.
-      Minimum acceptable completion: decide whether to keep both ranges, make 7 days the only
-      daily-history view, or keep 14 days as an advanced/secondary option; update the title, range
-      hint, toggle, chart tests, and screenshots to match.
-      Files: `packages/settings-ui/public/index.html`, `packages/settings-ui/src/ui/power.ts`,
-      usage chart tests/screenshots.
-- [ ] Improve dropdown menu UX in the redesigned Settings UI.
-      The Planning behavior card still uses compact `md-filled-select` controls for short option
-      sets (`packages/settings-ui/src/ui/views/BudgetOverview.tsx:560-599`). In the Homey-sized
-      WebView, the opened menu can feel cramped and visually ambiguous: the popup is nearly the
-      same width as the field, overlaps the next row, and the selected/current value is not clearly
-      distinguished from hovered or adjacent options. Existing select coverage only checks theme
-      tokens/readability for the price-source dropdown
-      (`packages/settings-ui/tests/e2e/material-select.spec.ts`) and does not assert budget-card
-      menu geometry, selected-state clarity, or mobile screenshots.
-      Minimum acceptable completion: evaluate replacing these short dropdowns with segmented
-      controls/radio rows or improve the shared Material select styling so menus have clear
-      selected and hover states, adequate width, predictable overlay placement, and no confusing
-      overlap in 320px / 480px Homey WebView screenshots.
-      Files: `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      `packages/settings-ui/public/style.css`,
-      `packages/settings-ui/tests/e2e/material-select.spec.ts`, budget/settings screenshots.
 - [ ] Apply the `md-select-option` `displayText` / `typeaheadText` fix outside the mode selects.
       `packages/settings-ui/src/ui/modes.ts:createModeOption` now sets both properties so the
       closed select field reliably shows a non-empty label on first paint, but the same option
@@ -1378,13 +881,6 @@ live-walk screenshots.*
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `packages/settings-ui/tests/e2e/charts-layout.spec.ts`,
       screenshot/audit Playwright coverage.
-- [ ] Promote the Price-aware devices value adjuster or replace it with a Material Web control.
-      `PriceAwareDevicesView` currently owns a page-local `ValueAdjuster` for cheap-hour boost and
-      expensive-hour reduction. If the +/- stepper UX remains the right product shape, promote it
-      to one token-driven shared PELS primitive; otherwise use `md-filled-text-field` or another
-      suitable Material Web component.
-      Files: `packages/settings-ui/src/ui/views/PriceAwareDevicesView.tsx`,
-      `packages/settings-ui/public/style.css`, shared settings UI component primitives.
 - [ ] Add a reusable audit-state Playwright matrix for the redesigned Settings UI.
       Current screenshot specs are docs/capture oriented. Add an audit-only suite that renders the
       main surfaces and important states at 320px and 480px from the Homey SDK boundary, writes
@@ -1410,10 +906,6 @@ live-walk screenshots.*
       Files: `packages/shared-domain/src/deviceOverview.ts`,
       `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/**` rendering call sites.
-- [ ] Investigate Settings UI bundle growth. Current start logs show an esbuild warning on
-      `dist/script.js` (now ~1.3 MB); decide whether the settings script needs an explicit
-      size budget and trim if so.
-      Files: `packages/settings-ui/package.json`, settings build/sync scripts.
 - [ ] Update public deadline documentation once the feature enters testing. Keep
       `docs/technical.md`, `docs/flow-cards.md`, and any deadline-plan docs aligned with the
       runtime semantics for EV and heater objectives: already-met targets are live `satisfied`
@@ -1507,38 +999,6 @@ live-walk screenshots.*
       Type references (executor): `planExecutor.ts:297`,
       `planExecutorPredicates.ts:17`. Source: post-merge cumulative
       review on 2026-05-25.
-- [ ] Sweep file renames + logger tags + structured-event identifiers that still
-      carry the `manager`/`DeviceManager`/`device_manager` name post-rename
-      (PR #3 of the observer/transport split, #1140). Three buckets, each
-      operator-visible:
-      (a) **Filenames**: `lib/device/managerRuntime.ts`,
-          `lib/device/managerNativeEv.ts`, `lib/device/managerNativeSteppedCommand.ts`,
-          `lib/device/managerControl.ts`, `lib/device/managerBinarySettle.ts`,
-          `lib/device/managerMeasuredPower.ts`, `lib/device/managerEnergy.ts`,
-          `lib/device/managerFlowSupport.ts`, plus everything under
-          `lib/device/transport/manager*.ts`
-          (`managerObservation`, `managerParse*`, `managerFreshness`,
-          `managerRealtimeHandlers`, `managerRealtimeSupport`, `managerFetch`,
-          `managerHomeyApi`, `managerManagedFilter`, `managerHelpers`).
-          Rename to drop the `manager` prefix (or `transport` prefix as
-          appropriate) so the file tree matches the class rename.
-      (b) **Logger tags**: `getLogger('device/manager-runtime')` and
-          `getLogger('device/manager-fetch')` (and any others derived from the
-          filenames above). Aligns operator log queries with the `DeviceTransport`
-          identity. The matching `deviceTransport.ts` logger is already
-          `device/transport`.
-      (c) **Structured event identifiers**: `reasonCode: 'device_manager_write_failed'`
-          (`lib/executor/binaryControlDispatch.ts`, `lib/executor/targetExecutor.ts`)
-          and the `DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id'`
-          union (`lib/device/transport/managerFetch.ts`). These are external grep
-          targets for log dashboards / alerts — renaming is a breaking change for
-          any tooling that pins them. Decide explicitly: rename + bump (and
-          document migration), or keep verbatim with an in-code comment naming
-          the back-compat constraint.
-      Source: `pels-layering-guardian` P2 + `pels-runtime-reality` P2 on
-      PR #1140, 2026-05-25.
-      Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
-      `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
       remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
       one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
@@ -1707,12 +1167,12 @@ live-walk screenshots.*
       `packages/contracts/src/deferredObjectivePlanHistory.ts` (only if the budget-exhaustion
       flag needs to be persisted), six-variant resolver tests.
 - [ ] Render `Cost ≈ X kr` on the smart-task live hero, past-task list rows, and history detail.
-      The existing P1 entry "Add `deliveredKWh` and `totalCost` to
-      `DeferredObjectivePlanHistoryEntry`" lands the contract; this is the rendering follow-up.
-      For the live hero, derive `Σ priceValue × deviceKwh` over the planned hours each cycle
-      (no persistence needed). For past entries, use `totalCost` once persisted. The single
-      biggest hole on a price-optimization product's most-visited pages.
-      Why P2: depends on the upstream contract change. Sequence after.
+      The `deliveredKWh` / `totalCost` fields already exist on
+      `DeferredObjectivePlanHistoryEntry` (the contract dependency shipped); this is the
+      rendering follow-up. For the live hero, derive `Σ priceValue × deviceKwh` over the
+      planned hours each cycle (no persistence needed). For past entries, use the persisted
+      `totalCost`. The single biggest hole on a price-optimization product's most-visited pages.
+      Why P2: rendering-only; the contract is in place.
       Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (live cost derivation),
       `packages/settings-ui/src/ui/deadlinePlanHero.ts` (meta line),
       `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row),
@@ -1730,18 +1190,6 @@ live-walk screenshots.*
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts` (new label string),
       live-plan chart caption tests.
-- [ ] Add a "delivered so far" strip to the smart-task live hero for queued / active /
-      cannot-meet plans. Today the live page tells the user the *plan* but tells them very
-      little about *actual delivery so far in this run*. The dotted `Measured Heating` /
-      `Measured Charging` line in the chart is the only acknowledgement and easy to miss.
-      Render `Delivered 1.8 of 4.2 kWh · 35 → 42 °C of 65 °C target · on plan / 0.3 kWh behind`
-      in the hero meta or as a third subline. The cannot-meet branch should show the same strip
-      reframed: `Delivered 1.8 of 4.2 kWh · still 35 °C of 65 °C target · won't reach by 16:00`.
-      Why P2: matches the live page emphasis "what's next" with the missing emphasis "what's
-      happened so far"; closes the live-during-run history gap discussed in
-      `notes/smart-task-ui/README.md`.
-      Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`, live-hero unit tests.
 - [ ] Reuse one chart vocabulary for past-hours-in-a-live-run and past-hours-in-history.
       Today the live chart paints planned bars + a dotted measured line; the eye treats them
       as separate. After a run, the history chart shows planned bars + (eventually, when the
@@ -1757,14 +1205,6 @@ live-walk screenshots.*
 *v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
-
-- [ ] Snapshot-empty guard before `commitRefreshedSnapshot` in
-      `lib/device/deviceTransport.ts` (~1683-1720). If
-      `previousSnapshot.length > 0 && snapshot.length === 0`, log warn + skip
-      the commit. Mirror the `planHistory.ts` abandon-grace pattern. On
-      recovery one cycle is otherwise lost to first-cycle pessimism via the
-      producer-cache eviction. Source: release-review pels-runtime-reality,
-      2026-05-28. *(In flight on the v2.11 correctness train — removed by its fix PR.)*
 
 - [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
       `currentTemperature` reading. `lib/observer/idleDetector.ts` allows `currentTemperature`
@@ -1933,20 +1373,6 @@ prod walk that didn't warrant a P2 slot.*
       formatter), `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
       Source: 2026-05-27 prod walk.
 
-- [ ] **Overview's held device should stand out at 14-card density.**
-      The Marie Michelets prod state renders 14 device cards uniformly
-      on Overview. The single held device (Connected 300) has the
-      correct warning-tone background per the M3 device-card state
-      tokens, but at this list length the eye still has to scan to
-      find it. Two cheap options: pin the held device above the
-      running cards (sort by `stateKind === 'held'`), or render a
-      single-line "1 device limited" rail between the hero and the
-      device stack with a link to the held card. Files:
-      `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`,
-      `packages/settings-ui/src/ui/views/PlanOverview.tsx`,
-      `notes/overview-hero-spec.md` (document the chosen behaviour).
-      Source: 2026-05-27 prod walk first-glance-time observation.
-
 - [ ] Persistence-hardening backlog: normalize `power_tracker_state` at the
       Settings UI/API boundary. `lib/app/settingsUiApi.ts` still casts raw
       `homey.settings.get('power_tracker_state')` to `PowerTrackerState`; the
@@ -2089,9 +1515,6 @@ prod walk that didn't warrant a P2 slot.*
       pre-run settings on completion regardless of pass/fail. Keep the runner out of the
       pre-commit CI path; treat it as an on-demand validation tool for release prep.
       Files: new top-level `scripts/` runner, supporting fixtures, possibly Playwright helpers.
-- [ ] Keep the remaining future feature ideas small and design-driven: configurable per-device
-      cooldowns, explicit available-power reservations, richer price explainability,
-      weather-aware budget context, and small per-device action history in the UI.
 - [ ] Add EV deadline automation: per-charger defaults and plug-in auto-trigger.
       Per-charger automation profile (enabled, target percent or kWh, ready-by time,
       enforcement, speed mode, optional manual kW and derating) plus a hook on the
@@ -2156,43 +1579,6 @@ prod walk that didn't warrant a P2 slot.*
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts` (recent-miss query against
       `DeferredObjectivePlanHistoryEntry`).
-- [ ] Extract the shared `start` / `start:local` / `install-app` shell preamble into a
-      single wrapper script (e.g. `scripts/run-with-logging.mjs`) so `log_dir`, `branch`,
-      and `homey_id` derivation lives in one place instead of three near-identical zsh
-      one-liners in `package.json`. Surfaced by gemini-code-assist on PR #818; deferred
-      because three occurrences is still on the right side of premature abstraction and
-      the wrapper would need to preserve `tee`-to-both-streams behavior and zsh-only
-      parameter expansion (`${PWD:t}`).
-      Files: `package.json` (scripts: `start`, `install-app`, `start:local`),
-      `scripts/resolve-homey-id.mjs`.
-- [ ] Consider single-pass `resolveLiveCostAndDelivery` in `packages/settings-ui/src/ui/deadlinePlan.ts`.
-      Surfaced by gemini-code-assist on v2.7.2 PR 2 as Medium. Current implementation iterates
-      `hours` twice (once in `resolveLiveCostAndDelivery`, once in `buildTimeline`'s
-      `resolveActualDeviceKwh` per-hour) and divides per-hour rather than accumulating raw and
-      dividing once. Gemini's proposed shape: cache `deviceBuckets` lookup once, accumulate raw
-      totals, single division at end, optionally fold `allocatedKWh` into the same loop.
-      Deferred because: (a) horizon is ≤24 hours so the ~24 extra hash lookups + Date conversions
-      are negligible; (b) the two passes today separate the chart data path from the cost summary
-      path, and merging them tangles two concerns that read cleanly as-is; (c) PR 2's own
-      adversarial-review pre-emptively assessed and skipped this exact change with the same
-      reasoning. If a future PR adds expensive work inside the hour loop (e.g. PR 4's hourly
-      delivered overlay), revisit then.
-      Why P3: micro-optimization on a bounded loop; no observed performance issue.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (`resolveLiveCostAndDelivery`,
-      `buildTimeline`).
-- [ ] Split `packages/shared-domain/src/deadlineLabels.ts` so the file drops back under the
-      500-LOC ESLint ceiling without an override.
-      Added a `/* eslint-disable max-lines */` header on v2.7.2 PR 2.5 (pending-hero headlineReason
-      + recourse). Natural split: pull the smart-task list status helpers
-      (`SMART_TASK_LIST_STATUS_LABELS`, `SMART_TASK_LIST_STATUS_CHIP_VARIANT`,
-      `resolveSmartTaskListReadyByTone`, `resolveSmartTaskListStatus`) into
-      `smartTaskListStatus.ts`, and/or the EV-card state-line helpers
-      (`resolveEvCardStateLine`) into `evCardState.ts`. Both groups have stable callers and read
-      independently from the kind-aware copy bundle.
-      Why P3: maintenance hygiene; the override is documented with the colocation rationale
-      (`feedback_ui_text_shared_with_logs` keeps runtime logging + UI reading the same strings).
-      Files: `packages/shared-domain/src/deadlineLabels.ts`,
-      `packages/shared-domain/src/smartTaskListStatus.ts` (new), `packages/shared-domain/src/evCardState.ts` (new).
 - [ ] Hoist the `useEchartsMount` helper from `DeadlinePlanHistoryDetail.tsx` to a shared
       module in `echartsRegistry.ts`. PR 4 introduced the helper file-locally, but the
       same init/dispose/resize pattern exists in `powerWeekChartEcharts.ts`,
@@ -2208,21 +1594,6 @@ prod walk that didn't warrant a P2 slot.*
       `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
       `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
-- [ ] v2.7.2/PR10 audit: `.deadline-page-close` (icon-only fixed X on the
-      full-page deadline overlay) and `.settings-back-button` (M3 text button
-      labelled "Back to devices" inside the slide-panel header) already consume
-      the shared global tokens `--pels-touch-target-min` (touch target) and
-      `--color-focus-ring` (focus ring) — no token consolidation was needed.
-      The remaining differences (icon-only circular fixed-position chrome vs
-      labeled in-flow text button) are intentional visual contracts. If a third
-      close/back affordance is introduced and starts duplicating per-element
-      `min-height` / `padding` / `border-radius` literals, revisit and extract
-      a scoped `--pels-page-close-*` or `--pels-overlay-close-*` token group
-      then. Source: PR10 owner-walk follow-up.
-      Why P3: no defect; documented so a future reviewer doesn't re-open the
-      consolidation question.
-      Files: `packages/settings-ui/public/style.css`.
-
 - [ ] Salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
 
 - [ ] `replanReason.ts`'s `resolveHorizonPriceWatermark`
@@ -2255,18 +1626,6 @@ prod walk that didn't warrant a P2 slot.*
         thrown strings were moved to `packages/shared-domain/src/smartTaskRescueStrings.ts`.)
       - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
         unchanged mode).
-
-- [ ] Mode-indicator picker follow-ups (from `feat/mode-indicator-picker`):
-      - **Flow card duplication.** Adding `mode_indicator` as a setable enum
-        capability gives Homey auto-generated cards (`mode_indicator changed to`,
-        `set mode_indicator`) that overlap with the bespoke `operating_mode_changed`
-        trigger and `set_capacity_mode` action. Decide whether to deprecate the
-        bespoke cards (breaking change for existing user Flows; needs release
-        notes) or keep both indefinitely.
-      - **Regression test for settings→refresh wiring.** `refreshModeOptions()` is
-        triggered by `capacity_priorities` / `mode_device_targets` /
-        `operating_mode` settings events. The pure builder is tested, the wiring
-        is not. Add a focused test once a lightweight `Homey.Device` mock exists.
 
 - [ ] Idle-classifier eligibility follow-ups (from the `shedAction → plannedState`
       fix):
@@ -2327,35 +1686,6 @@ prod walk that didn't warrant a P2 slot.*
 *v2.10.0..main release-review findings (2026-05-28, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
-
-- [ ] Gate `DeadlinePlan.tsx` `console.warn` (around line 1173, fires when
-      an unmapped recorder reason arrives) behind
-      `process.env.NODE_ENV !== 'production'` OR convert to a silent
-      logging breadcrumb. Defensive instrumentation is fine but the message
-      ("Update REVISION_REASON_LABEL in deadlineLabels.ts.") talks to a
-      developer in a user's devtools. Source: release-review pels-ux-fit,
-      2026-05-28.
-
-- [ ] Extract the `5ch` revision-time column width in `settings/style.css`
-      (lines ~1893/1898/1906) to a `--pels-revision-time-col` token, only
-      if a future change touches the file. Not a self-standing PR — pick
-      this up the next time the file is edited. Source: release-review
-      pels-m3-critic, 2026-05-28.
-
-- [ ] **25-cycle revision-history FIFO test under-exercises by 2 cycles.**
-      In `test/deferredObjectiveActivePlan.test.ts` (around line 460), the
-      loop builds `cycle + 1` buckets per iteration on a plan that was
-      seeded with 3 buckets. Cycles 1–2 don't actually grow the schedule
-      (their `live` ⊊ `committed`, so `mergeHoursPreservingCommitment`
-      keeps the commitment as-is and no revision is written); only cycle
-      3+ triggers `schedule_revised`. The 20-entry FIFO cap is still
-      validated (23 revisions ≥ 20), but the test name and comments
-      overstate what's exercised. Fix: start the loop with `cycle + 3`
-      buckets so all 25 cycles fire revisions (`cycle + 2` still produces
-      a 3-bucket live schedule on cycle 1, which doesn't exceed the
-      3-bucket commitment, per gemini math on PR #1242). Pick up the next
-      time the file is touched — cosmetic-only. Source: gemini reviews
-      of PRs #1227 + #1242, 2026-05-28.
 
 - [ ] **Retire the migration scaffolding once per-key has proven out.** Per-device-key
       storage shipped (objectives now live under `deferred_objective.<deviceId>`

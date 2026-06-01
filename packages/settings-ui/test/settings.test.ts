@@ -1398,7 +1398,7 @@ describe('settings script', () => {
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.querySelector('#device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
     expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
-    expect(getDiagnosticsMetricValue('Starved time')).toBe('23m');
+    expect(getDiagnosticsMetricValue('Held-back time')).toBe('23m');
   });
 
   it('shows a diagnostics unavailable state when the Homey API route fails', async () => {

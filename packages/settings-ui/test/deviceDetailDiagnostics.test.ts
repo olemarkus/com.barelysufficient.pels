@@ -199,14 +199,14 @@ describe('device detail diagnostics', () => {
     ]));
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent).toContain('Current penalty level: L2');
     expect(document.getElementById('device-detail-diagnostics-status')?.textContent)
-      .toContain('Status: Starved for 23m - Waiting for available power');
+      .toContain('Status: Held back for 23m - Waiting for available power');
     expect(document.getElementById('device-detail-diagnostics-cards')?.children).toHaveLength(4);
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('21 days');
     expect(getDiagnosticsMetricValue('Time not served')).toBe('2.0h');
-    expect(getDiagnosticsMetricValue('Starved time')).toBe('23m');
+    expect(getDiagnosticsMetricValue('Held-back time')).toBe('23m');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Failed activations');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Penalty history');
-    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Starvation details');
+    expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('Held-back details');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('18.2C / 22.0C');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:00:00');
     expect(document.getElementById('device-detail-diagnostics-cards')?.textContent).toContain('2026-04-20 11:15:00');
