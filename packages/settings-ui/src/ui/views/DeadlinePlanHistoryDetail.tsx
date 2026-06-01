@@ -1,5 +1,4 @@
-import type { RefObject } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
@@ -30,8 +29,7 @@ import {
   type DeadlinePlanHistoryHeroPayload,
 } from '../deadlinePlanHistoryDetailHero.ts';
 import { buildUsageDayHref } from '../deadlineUrls.ts';
-import { encodeHtml, initEcharts, type EChartsOption } from '../echartsRegistry.ts';
-import { attachTabShownResize } from '../chartVisibilityResize.ts';
+import { encodeHtml, useEchartsMount, type EChartsOption } from '../echartsRegistry.ts';
 
 type Props = {
   entry: DeferredObjectivePlanHistoryEntry;
@@ -645,39 +643,12 @@ export const buildHistoryDetailTrajectoryOption = (
 };
 
 // ─── Chart React wrapper ──────────────────────────────────────────────────────
-
-// Shared ECharts mount: builds the option lazily (so the closure captures the
-// fresh palette), wires the ResizeObserver + tab-shown resize, and disposes on
-// unmount. `deps` controls when the chart re-renders; legacy vs trajectory
-// callers pass their own data shape.
-const useEchartsMount = (
-  buildOption: (palette: Palette) => EChartsOption,
-  deps: ReadonlyArray<unknown>,
-): RefObject<HTMLDivElement> => {
-  const chartRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const container = chartRef.current;
-    if (!container) return undefined;
-    const chart = initEcharts(container, undefined, {
-      renderer: 'svg',
-      ...resolveChartSize(container),
-    });
-    chart.setOption(buildOption(resolvePalette(container)), { notMerge: true });
-    const resizeObserver = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => chart.resize(resolveChartSize(container)))
-      : null;
-    resizeObserver?.observe(container);
-    const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
-    return () => {
-      resizeObserver?.disconnect();
-      detachTabShown();
-      chart.dispose();
-    };
-    // `buildOption` closes over the caller-supplied deps already; including
-    // it here would re-mount on every render because the arrow recreates.
-  }, deps);
-  return chartRef;
-};
+//
+// Both chart wrappers route through the shared `useEchartsMount` primitive in
+// `echartsRegistry.ts` — it owns the init/setOption/ResizeObserver/tab-shown/
+// dispose lifecycle. The option builders run lazily inside `buildOption` so the
+// closure captures the fresh palette read off the live container at mount time;
+// `resolveChartSize` is this view's container-specific sizer.
 
 const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSeriesName }: {
   rows: HourRow[];
@@ -685,16 +656,17 @@ const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSerie
   hasFinalSeries: boolean;
   observedSeriesName: string;
 }) => {
-  const chartRef = useEchartsMount(
-    (palette) => buildHistoryDetailChartOption(
+  const chartRef = useEchartsMount({
+    buildOption: (container) => buildHistoryDetailChartOption(
       rows,
-      palette,
+      resolvePalette(container),
       hasOriginalSeries,
       hasFinalSeries,
       observedSeriesName,
     ),
-    [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName],
-  );
+    resolveSize: resolveChartSize,
+    deps: [rows, hasOriginalSeries, hasFinalSeries, observedSeriesName],
+  });
   return (
     <div
       ref={chartRef}
@@ -711,10 +683,16 @@ const TrajectoryChart = ({ data, timeZone, observedSeriesName, ariaLabel }: {
   observedSeriesName: string;
   ariaLabel: string;
 }) => {
-  const chartRef = useEchartsMount(
-    (palette) => buildHistoryDetailTrajectoryOption(data, palette, timeZone, observedSeriesName),
-    [data, timeZone, observedSeriesName],
-  );
+  const chartRef = useEchartsMount({
+    buildOption: (container) => buildHistoryDetailTrajectoryOption(
+      data,
+      resolvePalette(container),
+      timeZone,
+      observedSeriesName,
+    ),
+    resolveSize: resolveChartSize,
+    deps: [data, timeZone, observedSeriesName],
+  });
   return (
     <div
       ref={chartRef}
