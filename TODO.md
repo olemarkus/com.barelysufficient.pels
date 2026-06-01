@@ -930,17 +930,19 @@ live-walk screenshots.*
       `flowCards/deadlineObjectiveCards.ts`,
       `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
-- [ ] Close the EV deadline observability loop: measured deviation and richer trigger tokens.
-      Two connected items: (a) emit the `measured_deviation` revision reserved in
-      `activePlanRecorder.ts:379-380` by comparing observed delivery (read from the calibration
-      EMA via `getDeliveryPowerKw`) against the planned bucket allocation; (b) expand
-      `buildTriggerTokens` (`flowCards/deadlineObjectiveCards.ts:161-179`) with
+- [ ] Close the EV deadline observability loop: richer trigger tokens.
+      ~~(a) emit the `measured_deviation` revision reserved in `activePlanRecorder.ts` by
+      comparing observed delivery (read from the calibration EMA via `getDeliveryPowerKw`)
+      against the planned bucket allocation~~ — DONE: the recorder now emits
+      `measured_deviation` when the observed per-active-hour delivery speed (calibration-EMA
+      driven `diag.planningSpeedKw`) drifts ≥15% from the committed `initialPlanningSpeedKw`,
+      debounced against `latest.planningSpeedKw` and guarded for cold start. Remaining work:
+      (b) expand `buildTriggerTokens` (`flowCards/deadlineObjectiveCards.ts:161-179`) with
       `planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
       `estimated_duration_text`, and `risk_reason`. The active-plan recorder already carries
       `energyNeededKWh`, `planStatus`, `kwhPerUnitSource`, and the bucket allocation needed.
       Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
-      `flowCards/deadlineObjectiveCards.ts`,
+      Files: `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 - [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
       The headroom-for-device path now credits configured load for stale-on devices on the

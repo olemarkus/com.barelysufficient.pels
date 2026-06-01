@@ -3257,4 +3257,198 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(replan.revision as number).toBeGreaterThan(1);
     });
   });
+
+  describe('measured_deviation revision', () => {
+    // The committed plan freezes `initialPlanningSpeedKw` at first-revision
+    // time. On later cycles the diagnostic recomputes `planningSpeedKw` from
+    // the calibration EMA (via `resolveStepDeliveryUsefulKw` →
+    // `getDeliveryPowerKw`). When observed delivery drifts materially away from
+    // the committed speed on the SAME schedule, the recorder emits a
+    // `measured_deviation` revision so the user sees the plan's energy
+    // assumption shifted. Most scenarios here keep the horizon buckets identical
+    // to revision 1 so the measured deviation is the only candidate cause; the
+    // final scenario deliberately grows the schedule alongside the deviation to
+    // assert the deviation still wins the reason label (the common
+    // slow-delivery case: rate drifts → planner adds later buckets).
+
+    const sameSchedule = () => makeHorizon([
+      makeBucket(2 * HOUR_MS, 1.5),
+      makeBucket(3 * HOUR_MS, 1.5),
+      makeBucket(4 * HOUR_MS, 1.5),
+    ]);
+
+    it('emits exactly one measured_deviation revision when observed delivery diverges beyond the threshold', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // First revision freezes the committed speed at 1.5 kW.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.5,
+      })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.initialPlanningSpeedKw).toBe(1.5);
+
+      // Calibration EMA now reports the charger delivering at 1.0 kW — a 33%
+      // shortfall vs the committed 1.5 kW. Same buckets, same objective, so the
+      // only trigger is the measured deviation.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.0,
+        horizonPlan: sameSchedule(),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.reason).toBe('measured_deviation');
+      expect(plan?.latest?.revision).toBe(2);
+      // The committed-plan baseline stays frozen — the deviation revision does
+      // not reshape it.
+      expect(plan?.initialPlanningSpeedKw).toBe(1.5);
+    });
+
+    it('does not re-emit a measured_deviation revision while the same deviation persists (debounce)', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.5,
+      })], HOUR_MS);
+
+      // First divergence to 1.0 kW emits revision 2.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.0,
+        horizonPlan: sameSchedule(),
+      })], 2 * HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+
+      // The deviation persists at 1.0 kW: still 33% below the committed 1.5 kW,
+      // but within threshold of what revision 2 already recorded (1.0 kW). No
+      // new revision — the trigger debounces against `latest.planningSpeedKw`.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.0,
+        horizonPlan: sameSchedule(),
+      })], 3 * HOUR_MS);
+
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    });
+
+    it('does not emit a measured_deviation revision when observed delivery stays within the threshold', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.5,
+      })], HOUR_MS);
+
+      // Observed delivery dips to 1.4 kW — a ~6.7% drift, under the 15%
+      // threshold. No revision; EMA noise must not replan.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.4,
+        horizonPlan: sameSchedule(),
+      })], 2 * HOUR_MS);
+
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+    });
+
+    it('does not emit a measured_deviation revision when there is no observed delivery yet (cold start)', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.5,
+      })], HOUR_MS);
+
+      // The calibration EMA hasn't produced a confident reading this cycle, so
+      // the diagnostic carries no usable planning speed. Absence of an
+      // observation must NOT be treated as a 100% deviation — no revision.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: null,
+        horizonPlan: sameSchedule(),
+      })], 2 * HOUR_MS);
+
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+    });
+
+    it('does not emit a measured_deviation revision when the committed plan has no frozen speed baseline', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // First revision with no planning speed → `initialPlanningSpeedKw` is
+      // never frozen, so there's no committed baseline to deviate from.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: null,
+      })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.initialPlanningSpeedKw).toBeUndefined();
+
+      // A later confident reading of 1.0 kW has nothing to compare against, so
+      // no measured-deviation revision fires off the missing baseline alone.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.0,
+        horizonPlan: sameSchedule(),
+      })], 2 * HOUR_MS);
+
+      expect(recorder.getPlanForTests('dev')?.latest?.reason).not.toBe('measured_deviation');
+    });
+
+    it('labels a deviation that also grows the committed schedule as measured_deviation, not schedule_revised', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // First revision freezes the committed speed at 1.5 kW over three hours.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.5,
+      })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.initialPlanningSpeedKw).toBe(1.5);
+      expect(recorder.getPlanForTests('dev')?.latest?.hours.length).toBe(3);
+
+      // The charger now delivers at 1.0 kW (33% slow), so the planner adds a
+      // fourth bucket to still hit the target by the deadline. Both a measured
+      // deviation AND a schedule change fire in the same revision — the
+      // deviation is the ROOT CAUSE and must win the label.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        planningSpeedKw: 1.0,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      // Reason names the deviation, not the resulting schedule shift.
+      expect(plan?.latest?.reason).toBe('measured_deviation');
+      expect(plan?.latest?.revision).toBe(2);
+      // Control-flow neutrality: the committed hours still follow the existing
+      // schedule logic (grew to four hours via the merge); the deviation code
+      // only changed the label, not the commitment.
+      expect(plan?.latest?.hours.length).toBe(4);
+      expect(plan?.commitment?.hours.length).toBe(4);
+      // Baseline stays frozen — the deviation revision does not reshape it.
+      expect(plan?.initialPlanningSpeedKw).toBe(1.5);
+    });
+  });
 });

@@ -54,18 +54,31 @@ export const hasPriceHorizonAdvanced = (
 // (i.e. the user toggled a smart-task rescue Flow card) — the history detail
 // then names the Flow permission change instead of the broader
 // "smart-task settings / target changed" copy. `objective_changed` and
-// `rate_refined` are the next specific named causes; otherwise the split
-// between `prices_revised` and `schedule_revised` depends on whether the price
-// horizon actually advanced.
+// `rate_refined` are the next specific named causes; `measured_deviation` ranks
+// just below them and ABOVE the generic prices/schedule split so a rate drift
+// that also reshapes the schedule is labelled by its root cause rather than the
+// resulting schedule change. Otherwise the split between `prices_revised` and
+// `schedule_revised` depends on whether the price horizon actually advanced.
 export const resolveReplanReason = (params: {
   objectiveChanged: boolean;
   rescuePermissionOnlyChanged: boolean;
   sourceRefined: boolean;
   pricesAdvanced: boolean;
+  // The observed delivery speed (calibration-EMA driven) diverged from the
+  // committed plan's planning speed. Ranked below the objective/permission/
+  // source-refinement causes (which name a stronger, distinct event) but ABOVE
+  // the generic prices/schedule split. This ordering is load-bearing: the
+  // common slow-delivery case is "rate drifts → planner adds later buckets →
+  // schedule changes," so the deviation AND a schedule change frequently fire
+  // in the same revision. The deviation is the ROOT CAUSE, so it must win the
+  // label — otherwise the most common delivery-driven replan would be
+  // mislabelled `schedule_revised` and hide the real reason from the user.
+  measuredDeviation: boolean;
 }): DeferredObjectiveActivePlanRevisionReason => {
   if (params.rescuePermissionOnlyChanged) return 'flow_permission_changed';
   if (params.objectiveChanged) return 'objective_changed';
   if (params.sourceRefined) return 'rate_refined';
+  if (params.measuredDeviation) return 'measured_deviation';
   if (params.pricesAdvanced) return 'prices_revised';
   return 'schedule_revised';
 };

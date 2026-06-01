@@ -344,14 +344,92 @@ const resolveSourceTransition = (params: {
   };
 };
 
+// Relative drift between the observed delivery speed and the speed the
+// committed plan was built against, above which we treat the device as
+// delivering materially slower/faster than planned and emit a
+// `measured_deviation` revision. 15% balances "honest enough to warn the user
+// the plan's energy assumption shifted" against "don't replan on EMA noise."
+const MEASURED_DEVIATION_RELATIVE_THRESHOLD = 0.15;
+
+const isUsableSpeedKw = (value: number | null | undefined): value is number => (
+  typeof value === 'number' && Number.isFinite(value) && value > 0
+);
+
+const relativeSpeedDeviation = (observedKw: number, baselineKw: number): number => (
+  Math.abs(observedKw - baselineKw) / baselineKw
+);
+
+// True when the observed per-active-hour delivery speed (recomputed each cycle
+// from the calibration EMA via `resolveStepDeliveryUsefulKw` →
+// `getDeliveryPowerKw`, surfaced as `diag.planningSpeedKw`) has drifted beyond
+// the threshold away from the speed the committed plan was built against
+// (`initialPlanningSpeedKw`, frozen at first revision). That divergence means
+// the committed bucket allocation no longer reflects how fast the device is
+// actually delivering, so the plan's energy assumption is stale.
+//
+// Detection is deliberately INDEPENDENT of `scheduleChanged`: the common
+// slow-delivery case is exactly "rate drifts → planner adds later buckets →
+// schedule changes," and that replan's ROOT CAUSE is the measured deviation,
+// not the schedule shift. We still detect it here so `resolveReplanReason` can
+// rank it above the generic `schedule_revised`/`prices_revised` split and the
+// history detail names the real reason. This only affects the revision REASON
+// LABEL — the committed hours are resolved entirely by the existing
+// schedule/objective logic (`resolveCommitment` / `mergeHoursPreservingCommitment`),
+// which this predicate never touches.
+//
+// `objectiveChanged` IS still a suppressor: a cross-objective speed comparison
+// is invalid (the baseline belongs to a different target/deadline/device), and
+// the objective change is a stronger, distinct named cause.
+//
+// Cold-start / transient-read guards (no observation → no revision, never a
+// bogus "0 deviation"):
+//   - No observed speed yet (`diag.planningSpeedKw` null / non-positive — the
+//     calibration EMA hasn't produced a confident reading): skip.
+//   - No committed baseline (`initialPlanningSpeedKw` absent on legacy plans or
+//     objective_changed resets that dropped it): skip.
+//
+// Debounce: compare the observed speed against the speed the *last* revision
+// already recorded (`latest.planningSpeedKw`). Once a `measured_deviation`
+// revision lands, `latest.planningSpeedKw` becomes the observed value, so the
+// trigger stays quiet until the EMA drifts a further threshold-sized step —
+// it does not re-fire every cycle while the deviation merely persists.
+const hasMeasuredDeliveryDeviated = (params: {
+  current: DeferredObjectiveActivePlanV1;
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  diag: DeferredObjectiveDiagnostic;
+  // An objective change reshapes the hours for a stronger, distinct reason and
+  // invalidates the cross-objective speed comparison; don't also claim a
+  // measured deviation in the same revision. A schedule change is NOT a
+  // suppressor — see the header comment.
+  objectiveChanged: boolean;
+}): boolean => {
+  if (params.objectiveChanged) return false;
+  const observedKw = params.diag.planningSpeedKw;
+  const baselineKw = params.current.initialPlanningSpeedKw;
+  if (!isUsableSpeedKw(observedKw) || !isUsableSpeedKw(baselineKw)) return false;
+  if (relativeSpeedDeviation(observedKw, baselineKw) < MEASURED_DEVIATION_RELATIVE_THRESHOLD) {
+    return false;
+  }
+  // Debounce against what the last revision already recorded so a sustained
+  // deviation doesn't replan every cycle.
+  const lastRecordedKw = params.latest.planningSpeedKw;
+  if (isUsableSpeedKw(lastRecordedKw)
+    && relativeSpeedDeviation(observedKw, lastRecordedKw) < MEASURED_DEVIATION_RELATIVE_THRESHOLD) {
+    return false;
+  }
+  return true;
+};
+
 const shouldWriteReplanRevision = (params: {
   objectiveChanged: boolean;
   scheduleChanged: boolean;
   metadataDriftedWithinSchedule: boolean;
   sourceChanged: boolean;
+  measuredDeviation: boolean;
 }): boolean => (
   params.objectiveChanged || params.scheduleChanged
     || params.metadataDriftedWithinSchedule || params.sourceChanged
+    || params.measuredDeviation
 );
 
 // Bounded most-recent-first log of past revisions kept on the active plan
@@ -662,19 +740,38 @@ export class DeferredObjectiveActivePlanRecorder {
     // revision followed by a satisfied diagnostic would spuriously fire
     // `rate_refined` even though nothing was learned.
     const { sourceChanged, sourceRefined } = resolveSourceTransition({ latest, diag });
-    // TODO: device_unavailable + measured_deviation triggers — wired here once
-    // device-level metering exists. For now those reasons are not used.
-    if (!shouldWriteReplanRevision({
+    // Observed delivery speed (calibration-EMA driven `diag.planningSpeedKw`)
+    // drifted away from the speed the committed plan was built against — the
+    // device is delivering materially faster/slower than planned, so the
+    // committed bucket allocation's energy assumption is stale. Detected
+    // independently of `scheduleChanged`: a rate drift that also grows the
+    // schedule is STILL a measured deviation at root, and `resolveReplanReason`
+    // ranks it above the generic schedule/prices split so the label names the
+    // real cause. This flag feeds only the reason label; the committed hours
+    // come solely from `resolveCommitment` below.
+    // TODO: device_unavailable trigger — wired here once device-level metering
+    // distinguishes "unreachable" from a slow reading. For now that reason is
+    // not used.
+    const measuredDeviation = hasMeasuredDeliveryDeviated({
+      current,
+      latest,
+      diag,
+      objectiveChanged,
+    });
+    const triggers = {
       objectiveChanged,
       scheduleChanged,
       metadataDriftedWithinSchedule,
       sourceChanged,
-    })) return;
+      measuredDeviation,
+    };
+    if (!shouldWriteReplanRevision(triggers)) return;
     const reason = resolveReplanReason({
       objectiveChanged,
       rescuePermissionOnlyChanged: sigDiff.rescueOnly,
       sourceRefined,
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
+      measuredDeviation,
     });
     const nextRevision = latest.revision + 1;
     const revision = buildRevision({ diag, hours: effectiveHours, revision: nextRevision, reason, nowMs });
