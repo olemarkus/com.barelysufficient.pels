@@ -159,7 +159,7 @@ export function toPlanRemainingSheddableDevice(device: DevicePlanDevice): Remain
 /**
  * Output-side residualKw.shed re-resolution (chunk 3 of the planner-detype
  * refactor). Mirrors the input-side `toPlanDevice` wiring in
- * `lib/app/appInit.ts`, but reads from a post-plan `DevicePlanDevice` whose
+ * `setup/appInit.ts`, but reads from a post-plan `DevicePlanDevice` whose
  * shed action / setpoint / step state are already materialised by the
  * planner. Lets `sumRemainingSheddableLoadKw` collapse to the producer-
  * resolved number for the output recompute path too.

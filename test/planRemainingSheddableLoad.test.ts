@@ -119,7 +119,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
 
     // Producer-resolved path — populate residualKw with what the producer
     // would emit for a turn_off shed. The shape mirrors `toPlanDevice` in
-    // `lib/app/appInit.ts`.
+    // `setup/appInit.ts`.
     const producerDevices = [
       { ...simpleOn, residualKw: { shed: 1.4 } },
       { ...steppedMax, residualKw: { shed: 2.9 } },
@@ -239,7 +239,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     });
 
     // Producer-resolved path — populate `residualKw.shed` using the same
-    // resolver wired by `lib/app/appInit/residualKwForPlanDevice.ts`. We
+    // resolver wired by `setup/appInit/residualKwForPlanDevice.ts`. We
     // compute it inline rather than importing the wiring helper because the
     // helper takes a `TargetDeviceSnapshot`, not a `PlanInputDevice`.
     const producerDevices = fixtures.map((device): PlanInputDevice => {

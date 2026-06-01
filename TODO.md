@@ -105,18 +105,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 *Widget-polish train shipped across PRs #1313–#1317 (lint enforcement #1305; see
 `notes/widget-review.md` § Shipped). Remaining widget follow-ups, deferred / low urgency:*
 
-  - [ ] **Widget price-chip vocabulary divergence** — the headroom "Available power" chip says
-        `Cheap`/`Expensive` while the sibling shared-domain helper `priceLevelChips.ts` says
-        `Price low`/`Price high` for the same cheap/expensive signal. Pre-existing (the token PR
-        only moved the casing out of CSS into the copy). Align both onto one vocabulary, or document
-        the widget-scoped synonym in `notes/ui-terminology.md`. Also: `headroomPriceChipLabel`'s
-        aria path yields "Price Cheap" / "Price Normal" (and "Price —" for unknown, which the chip
-        hides) — reconsider the aria construction when aligning. Source: pels-copy-and-terminology
-        P2/P3, widget token-strategy train 2026-05-31.
-  - [ ] **No unit test pins the widget chip casing** — add a direct assertion that
-        `headroomPriceChipLabel('cheap') === 'Cheap'` (etc.) so a revert to lowercase — which would
-        silently reintroduce the removed CSS `text-transform` dependency — is caught. Source:
-        adversarial-review (low), widget token-strategy train 2026-05-31.
   - [ ] **No CI guard that committed widget bundles match source** — generated
         `widgets/*/public/index.css` (and `index.js`) are committed but nothing fails CI if they
         drift from `src/`. Add a post-`build:widgets` `git diff --exit-code widgets/*/public`
@@ -515,19 +503,20 @@ PRs. Items below are later polish.*
       may need per-device step granularity). Source: pels-runtime-reality
       review of PR #1214, 2026-05-28.
 
-- [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
-      `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
-      `appContext.ts` as the long-term inhabitant, but new wiring continues
-      to land under `lib/app/appInit/` (chunk 3 added
-      `residualKwForPlanDevice.ts` next to the pre-existing
-      `calibrationViews.ts` + `deferredRecorders.ts`). The blocker for the
-      proper migration is `no-lib-to-setup` (dep-cruiser): `lib/app/appInit.ts`
-      cannot import from `setup/**`. Real fix: either move `appInit.ts`
-      itself to `setup/` (then its wiring siblings follow), or relax the
-      dep-cruiser rule with a narrow `pathNot` exception for `lib/app/**`
-      while the migration completes. Source: pels-layering-guardian review
-      of PR #1190 flagged chunk 3's new file as misplaced; root cause is
-      the un-finished sunsetting, not chunk 3.
+- [ ] **Migrate the remaining `lib/app/**` inhabitants to `setup/`.**
+      `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
+      as the long-term inhabitant. The `appInit` surface (`appInit.ts` +
+      `appInit/**`) has been relocated to `setup/appInit/` — that move
+      proved `no-lib-to-setup` is NOT a blocker (the arrow stays
+      `setup -> lib`; nothing in `lib/**` imports the moved wiring, only
+      `app.ts` did). The still-pending inhabitants are the other wiring
+      helpers (`appDebugHelpers.ts`, `appSnapshotHelpers.ts`,
+      `appSettingsHelpers.ts`, `appDeviceSupport.ts`,
+      `appDeviceControl*.ts`, `appRealtimeDeviceReconcile*.ts`,
+      `appLifecycleHelpers.ts`, `settingsUiApi*.ts`, etc.). Each follows
+      the same pattern: confirm only entry-layer code imports it, then
+      `git mv` to `setup/` and rewrite import depths. `appContext.ts`
+      stays in `lib/app/`.
 
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
@@ -652,13 +641,6 @@ the renderer can land.*
       looks orphaned. Files: `widgets/headroom/public/index.css:~13`,
       `widgets/headroom/src/public/render.ts:39`. Source: release-review
       pels-ux-fit, 2026-05-26.
-
-- [ ] **Headroom widget — switch `"N paused"` to canonical `"N limited"`
-      vocabulary per `notes/ui-terminology.md`.** The widget uses
-      "paused" while the rest of the PELS UI labels PELS-acted-on devices
-      as "Limited". Files: `widgets/headroom/src/public/render.ts:~70`.
-      Source: release-review pels-ux-fit + pels-copy-and-terminology,
-      2026-05-26.
 
 - [ ] **Headroom widget — reconcile widget compose name `"Available power"`
       with the rendered headline (current draw).** A user who taps the
@@ -1576,10 +1558,10 @@ live-walk screenshots.*
       Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
       `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
-      deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
-      keep trimming any delegates that no longer buy readability or testability.
-      Files: `app.ts`, `lib/app/**`.
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
+      one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
+      it stays shared, and keep trimming any delegates that no longer buy readability or testability.
+      Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -1885,7 +1867,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] P3 tidy: `lib/app/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
+- [ ] P3 tidy: `setup/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
       twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
       pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 

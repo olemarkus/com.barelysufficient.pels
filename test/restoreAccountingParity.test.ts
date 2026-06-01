@@ -59,7 +59,7 @@ const zeroPowerSteppedProfile: SteppedLoadProfile = {
 };
 
 function withProducerResolvedRestore(dev: DevicePlanDevice): DevicePlanDevice {
-  // Mirror the wiring in `lib/app/appInit/residualKwForPlanDevice.ts`. The
+  // Mirror the wiring in `setup/appInit/residualKwForPlanDevice.ts`. The
   // wiring layer is what the real runtime uses; this test recomputes it from
   // the plan-device snapshot directly so we can compare legacy vs producer
   // path on the same fixture.

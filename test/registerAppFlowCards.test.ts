@@ -6,7 +6,7 @@ vi.mock('../flowCards/registerFlowCards', () => ({
   registerFlowCards: registerFlowCards,
 }));
 
-import { registerAppFlowCards } from '../lib/app/appInit';
+import { registerAppFlowCards } from '../setup/appInit';
 import type { AppContext } from '../lib/app/appContext';
 
 describe('registerAppFlowCards', () => {
