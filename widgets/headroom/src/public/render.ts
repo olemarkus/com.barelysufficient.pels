@@ -1,8 +1,9 @@
 import {
   HEADROOM_WIDGET_COPY,
   headroomAvailableLabel,
+  headroomHeldBackLabel,
   headroomLimitStateLabel,
-  headroomPausedLabel,
+  headroomPriceAriaLabel,
   headroomPriceChipLabel,
   type HeadroomWidgetLimitState,
 } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
@@ -89,31 +90,31 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
   setStateLabel(stateLabelEl, payload.limitState);
 
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
-  const pausedLabel = headroomPausedLabel(payload.shedCount);
+  const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
   // Over the hard cap there is no available power, so the clamped
   // "0 kW available" would be misleading. The "Over hard cap" state pill + red
-  // bar carry the severity; the meta line shows just the paused count (empty
-  // when nothing is paused). The actual overage isn't on the payload yet —
+  // bar carry the severity; the meta line shows just the held-back count (empty
+  // when nothing is held back). The actual overage isn't on the payload yet —
   // tracked in TODO.md to surface "X kW over hard cap" later. The aria-label
   // reuses this same text so assistive tech never hears the dropped figure.
   const resolveMetaText = (): string => {
     if (payload.limitState === 'over_cap') {
-      return payload.shedCount > 0 ? pausedLabel : '';
+      return payload.shedCount > 0 ? heldBackLabel : '';
     }
-    return payload.shedCount > 0 ? `${availableLabel} · ${pausedLabel}` : availableLabel;
+    return payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
   };
   const metaText = resolveMetaText();
   metaEl.textContent = metaText;
   metaEl.dataset.tone = tone === 'danger' ? 'danger' : 'ok';
 
   const stateSummary = headroomLimitStateLabel(payload.limitState);
-  const priceLabel = headroomPriceChipLabel(payload.priceLevel);
+  const priceAria = headroomPriceAriaLabel(payload.priceLevel);
   const ariaParts = [
     `${HEADROOM_WIDGET_COPY.powerNowLabel} ${currentLabel} kW`,
     `${HEADROOM_WIDGET_COPY.safePaceLabel} ${budgetLabelKw} kW`,
     ...(stateSummary ? [stateSummary] : []),
     ...(metaText ? [metaText] : []),
-    `${HEADROOM_WIDGET_COPY.priceAriaPrefix} ${priceLabel}`,
+    ...(priceAria ? [priceAria] : []),
   ];
   root.setAttribute('aria-label', `${ariaParts.join('. ')}.`);
 };
