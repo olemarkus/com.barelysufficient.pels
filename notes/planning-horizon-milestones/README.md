@@ -21,12 +21,6 @@ policy PELS already uses to decide when spending energy is acceptable. Soft
 objective should prefer cheap or budget-friendly windows when that does not
 create deadline risk.
 
-For hard objectives (see `notes/hard-deadlines/README.md`), the same horizon
-exists, but deadline feasibility outranks budget and normal priority policy.
-Hard objective should still prefer cheaper or budget-friendly windows when
-there is enough margin, but it should not miss the deadline merely because
-the remaining feasible window is expensive.
-
 ## Priority-adjusted horizon
 
 Priority should affect horizon planning through admission risk, not by
@@ -40,8 +34,7 @@ dependable energy, while a lower-priority device should need more time or
 more margin to be considered on track.
 
 This risk adjustment is still a planning estimate. Actual admission remains a
-runtime decision made by normal PELS policy for soft objectives and by the
-hard-objective admission lane for hard objectives. If the current bucket's
+runtime decision made by normal PELS policy. If the current bucket's
 requested minimum step is blocked, the next evaluations should consume
 deadline margin, replan remaining energy, and eventually move the objective
 toward `at_risk` or `cannot_be_met`.

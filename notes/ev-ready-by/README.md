@@ -65,7 +65,9 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   allocation immediately and refine when learning matures; the active-plan recorder emits a
   `rate_refined` revision when the source flips bootstrap → learned.
 - Versioned objective settings (`packages/contracts/src/deferredObjectiveSettings.ts`) with
-  `kind: 'ev_soc' | 'temperature'`, `enforcement: 'soft' | 'hard'`, keyed per device, absolute
+  `kind: 'ev_soc' | 'temperature'`, `enforcement: 'soft' | 'hard'` (deadlines are soft-only — no
+  flow card sets `'hard'`; a persisted `'hard'` still widens the planner variance buffer, so it is
+  preserved rather than treated as dead), keyed per device, absolute
   `deadlineAtMs`.
 - Public flow cards in `flowCards/deadlineObjectiveCards.ts`: `set_ev_charge_deadline`,
   `set_temperature_deadline`, `clear_deadline`; conditions `deadline_status_is`,
@@ -107,8 +109,7 @@ feature extensions — kWh target mode, expanded observability — described fur
 down.
 
 Feature extensions (kWh target, observability) are stand-alone work that broadens
-coverage and adds user agency. Hard enforcement is deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+coverage and adds user agency.
 
 ## Topic map
 
@@ -181,12 +182,6 @@ bridge tests.
 
 Tracked in `TODO.md` (EV deadline kWh target).
 
-#### Hard-enforcement headroom math
-
-Deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the
-design and the EV-specific headroom math originally drafted here.
-
 #### Observability: measured deviation and expanded trigger tokens
 
 The expanded tokens are the mechanism PELS uses to feed
@@ -246,9 +241,7 @@ Files: new `packages/contracts/src/evChargerDefaults.ts`, new
 - Deadline-imminent emergency rule: when
   `(deadline − now) < requiredHours + 1h buffer`, force the EV into the
   planned set regardless of price or budget signals (still hard-cap-
-  bound). Open shape questions: the threshold value, interaction with the
-  deferred hard-enforcement headroom (see
-  [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)),
+  bound). Open shape questions: the threshold value and the
   user-visible explanation.
 
 Files: new flow action JSONs and registrations.
@@ -273,8 +266,7 @@ This note describes design topics; sequencing and priority live in `TODO.md`.
 The shipped EV admission slice is in v1. Trust-surface follow-ups (device-card
 state, planning speed / duration), feature extensions (kWh target,
 observability tokens), and the open-shape automation/override slices are
-tracked there. Hard enforcement is deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+tracked there.
 
 ## Acceptance Criteria
 

@@ -196,6 +196,3 @@ the redesign work.
 - `notes/ev-ready-by/README.md` §P2.3 — the original source of the
   extended-tokens proposal (the notification-text portion is deliberately
   not in scope; see Rule 4).
-- `notes/hard-deadlines/README.md` — when hard enforcement ships, the cards
-  will need an `enforcement_id` token and possibly an `enforcement` arg on
-  the set actions.

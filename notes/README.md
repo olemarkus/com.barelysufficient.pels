@@ -59,8 +59,6 @@ below.
   (both slices shipped).
 - `ev-ready-by/README.md` — EV charging deadline feature (admission + trust surfaces shipped; kWh
   target mode + expanded observability deferred).
-- `hard-deadlines/README.md` — deferred hard-enforcement admission lane (soft ships today; hard only
-  widens the variance buffer so far).
 - `planning-horizon-milestones/README.md` — deferred energy-milestone / horizon-scheduling design.
 - `status-hysteresis/README.md` — deferred status-transition hysteresis (revisit on real flapping
   telemetry).

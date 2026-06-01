@@ -8,9 +8,7 @@ normal budget, capacity, priority, cooldown, and admission gates. EV pause/resum
 actuation are also shipped (`admission.ts` emits `ev_resume`/`ev_pause` intents;
 `lib/executor/binaryExecutor.ts` applies them) — see `notes/ev-ready-by/README.md` for the user-
 facing slice. Multi-objective contention and richer step escalation remain future work in this
-note. Hard deadlines and
-hard-boost rebalancing are deferred and moved to
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md); energy-based milestones and the
+note. Energy-based milestones and the
 priority-adjusted horizon-planning detail are deferred and moved to
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md).
 
@@ -55,7 +53,7 @@ type DeferredObjectiveSettingsV1 = {
     {
       enabled: boolean;
       kind: 'ev_soc';
-      enforcement: 'soft' | 'hard';
+      enforcement: 'soft' | 'hard'; // soft-only to users; no card sets 'hard' (still tweaks the planner buffer if persisted)
       targetPercent: number;
       deadlineAtMs: number; // absolute UTC timestamp
     }
@@ -87,11 +85,15 @@ Storage rules:
   rolls forward on its own. When the deadline passes, the runtime auto-disables the entry
   (`enabled: false`) via the `deadlineJustPassed` hook in `statusTransitions.ts` so the same
   deadline never replans for the next day. Users re-arm by firing the flow card again.
-- Temperature objectives are soft-only for now. The Settings UI must not expose hard temperature
-  deadlines until runtime semantics are explicitly designed.
-- `enforcement` is persisted on EV entries (`'soft' | 'hard'`), but only `'soft'` has runtime
-  effect today and the EV flow card hardcodes `'soft'`. Hard enforcement is deferred — see
-  [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the design.
+- Deadlines are soft-only. The Settings UI must not expose a `'hard'` enforcement mode.
+- `enforcement` is persisted on EV entries (`'soft' | 'hard'`), but no flow card sets `'hard'` (the
+  EV card hardcodes `'soft'`) and there is no deadline-first admission mode — so deadlines are
+  soft-only from the user's perspective. A persisted `'hard'` value is not a complete no-op: it
+  still widens the planner's variance buffer (`BUFFER_K_HARD` vs `BUFFER_K_SOFT` in
+  `profileEnergyResolution.ts`) and skips the `planned_using_policy_avoid` at-risk downgrade in
+  `horizonPlanner.ts`. Cleanup must preserve those semantics for any existing `'hard'` entry rather
+  than treat the field as dead. The "push past the daily budget" need is met by rescue /
+  exempt-from-budget, not by promoting `'hard'`.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
 enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
@@ -149,9 +151,7 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
   in the shed-set.
 
 Cap-on temperature admission and contention across multiple deferred objectives are still future
-work. EV pause/resume admission shipped — see `notes/ev-ready-by/README.md`. Hard deadlines and
-hard-boost rebalancing are deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+work. EV pause/resume admission shipped — see `notes/ev-ready-by/README.md`.
 
 EV admission has one additional safety gate beyond the temperature path: `ev_resume` intents
 are dropped by `planBuilder.attachDeferredEvCommandIntents` when
@@ -437,8 +437,7 @@ be collapsed into one object.
 > aspirational and may never ship as named. **Shipped status enum is `cannot_meet`**, not the
 > aspirational `cannot_be_met` shown below; the Flow-card surface adds a third translation —
 > the deadline-status trigger emits `unachievable` (with legacy `cannot_meet` still accepted by
-> the runlistener for backward compat). Mode-related fields have moved with the deferred
-> mode-override design to [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
+> the runlistener for backward compat).
 
 The original forward-design `DeviceObjectiveState` / `DeviceObjectiveEvaluation` /
 `ObjectiveRateEstimate` type sketches have been removed from this note — they never shipped as
@@ -451,9 +450,7 @@ named and were drifting from reality. The shipped equivalents are:
 
 The enduring design rule still holds: the planner consumes a generic objective evaluation in
 conservative-energy/rate/time terms, never raw EV or water-heater semantics, and uses a derated
-(conservative net gain) rate for feasibility, not raw electrical power. Mode-related request
-fields live with the deferred mode-override design in
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) §"Mode override".
+(conservative net gain) rate for feasibility, not raw electrical power.
 
 ## Native vs Flow-Backed Inputs
 
@@ -585,13 +582,6 @@ The baseline would need to be explicit in the adapter/profile (minimum useful te
 reserve temperature, or another device-specific comfort/safety baseline). When a device reports
 stored energy directly, prefer that over a temperature-derived estimate. Temperature can still
 be used for UX, diagnostics, and fallback mapping. None of this ships today.
-
-### Mode-dependent capacity and mode override
-
-Deferred — see [`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)
-§"Mode override (water heaters and similar)" for the design (mode-aware
-capacity, override rules, request fields). The shipped runtime has no
-mode-change path.
 
 ### Step Selection
 
@@ -818,15 +808,13 @@ Hysteresis and confidence-scaled margin are deferred — see
 [`notes/status-hysteresis/README.md`](../status-hysteresis/README.md). Picked up only if real
 telemetry shows user-observable status flapping.
 
-## Soft and Hard Deadlines
+## Deadline Enforcement
 
-Soft enforcement is shipped v1 and respects normal PELS policy (effective soft limit, daily
-budget, priority, cooldowns, stepped progression, safety failsafes). Soft objective can use
-existing boost behavior; it must not shed a higher-priority device solely to meet the deadline.
-
-Hard enforcement is deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the design contract
-(admission lane, hard-objective admission headroom, hard-boost rebalancing).
+Deadlines are soft-only. Soft enforcement is shipped v1 and respects normal PELS policy
+(effective soft limit, daily budget, priority, cooldowns, stepped progression, safety failsafes).
+A soft objective can use existing boost behavior; it must not shed a higher-priority device solely
+to meet the deadline. The "push past the daily budget to make the deadline" need is served by the
+smart-task rescue permissions below (and exempt-from-budget), not by a separate hard mode.
 
 ### Smart-task rescue permissions
 
@@ -1035,10 +1023,6 @@ Planner behavior:
 - `none` or `likely_to_meet`: current behavior.
 - `soft`: normal restore lane; optional ordering pressure only.
 
-Hard enforcement is deferred — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md) for the planner behavior under
-`hard` admission mode and the constraints around step progression and stale-data handling.
-
 ## Flow Triggers
 
 ### Shipped today
@@ -1143,9 +1127,6 @@ cover their cases (or because the slice they belong to is deferred):
 - `objective_target_met`, `objective_deadline_missed` — lifecycle codes; today covered by status
   transitions and the `deadline_ended` outcome rather than a reason code.
 
-Hard-deadline reason codes are reserved separately — see
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md).
-
 ## Status and remaining scope
 
 **Shipped (v1):** learned objective profiling, versioned EV-SoC + soft-temperature settings,
@@ -1158,8 +1139,7 @@ creation/clearing. The freshness doctrine — credit aged-out temperature (therm
 setpoint) but require strictly-fresh EV SoC — lives in `lib/observer/observationFreshness.ts` and
 `lib/objectives/deferredObjectives/diagnosticProgress.ts`.
 
-**Deferred to dedicated notes:** hard admission, hard-boost rebalancing, and mode override
-([`notes/hard-deadlines/README.md`](../hard-deadlines/README.md)); confidence-adjusted status
+**Deferred to dedicated notes:** confidence-adjusted status
 margin and transition hysteresis ([`notes/status-hysteresis/README.md`](../status-hysteresis/README.md));
 energy-milestone logging ([`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md)).
 
@@ -1189,7 +1169,6 @@ cover this surface:
   `deferredPlanHistoryAttribution.test.ts`, `deferredObjectivePlanPreview.test.ts`.
 - **Flow cards**: `deadlineObjectiveCards.test.ts`.
 
-Hard-objective admission tests are tracked in
-[`notes/hard-deadlines/README.md`](../hard-deadlines/README.md). Hysteresis-related transition
+Hysteresis-related transition
 tests (stable recovery, consecutive-evaluation gates) are deferred — see
 [`notes/status-hysteresis/README.md`](../status-hysteresis/README.md).
