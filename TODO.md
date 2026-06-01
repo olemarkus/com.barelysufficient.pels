@@ -355,14 +355,6 @@ the renderer can land.*
       the SVG sources. Source: release-review pels-m3-critic + commit
       7dbb7cef notes, 2026-05-26.
 
-- [ ] **Smart Tasks outcomes table — surface "abandoned is usually not a
-      failure" inline on the row, not two paragraphs below.** The
-      `docs/smart-tasks.md` Outcomes table defines `abandoned` matter-of-
-      factly; the reassurance ("usually not a planning failure") sits two
-      paragraphs later. A panicked user reading the table cell will skim
-      past the reassurance. Files: `docs/smart-tasks.md:137-152`. Source:
-      release-review pels-ux-fit, 2026-05-26.
-
 - [ ] **Extract a shared widget runtime — trigger event reached.** The
       smart_tasks widget (added 2026-05-26) is now the 3rd verbatim copy of
       ~150 LOC of widget runtime: `WidgetWindow`/`WidgetHomey`/`WidgetController`
@@ -691,20 +683,6 @@ were rolled back before they could land.*
       full externalization is a separate sweep across all of
       `packages/shared-domain/src/**`.
 
-- [ ] **Move BudgetOverview confidence strings to shared-domain.**
-      PR #1211 renamed "Plan confidence" → "Budget confidence"
-      inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      but the strings stay in the view rather than in
-      `packages/shared-domain/**`. Per memory
-      `feedback_ui_text_shared_with_logs`, UI text shared with logs
-      should come from shared-domain helpers. These specific strings
-      aren't currently logged so this is a P3 follow-up, not a parity
-      bug; if budget-confidence logging is added later, promote to P2
-      and land alongside the logger call. Files:
-      `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
-      new `packages/shared-domain/src/budgetConfidenceStrings.ts`.
-      Source: 2026-05-27 prod walk, scoped out of PR-4.
-
 *Smart-task history-detail trio below was demoted from P1 in the v2.7.1
 release-review pass (2026-05-17). All three depend on the history schema
 v3 → v4 migration, which is out of scope for v2.7.1; sequence them together
@@ -712,17 +690,6 @@ in v2.7.2+.*
 
 *v2.7.1 release-review P2 batch (2026-05-17). Eight items from the
 six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
-
-- [ ] Light-canvas tooltip contrast spot-check on Homey light. The
-      `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to
-      `color: var(--text)` on `background: var(--color-surface-elevated)`
-      (resolves `#181818` on `#ffffff` — clean). Verify warn/critical
-      tippy variants if they inherit `--text` still meet AA contrast on
-      `--color-surface-elevated`. Visual QA only; no code evidence of
-      breakage.
-      Source: `pels-m3-critic` agent.
-      Files: `settings/style.css` `.tippy-box[data-theme~='pels']` rule
-      block.
 
 *Phantom-design items removed (2026-05-31 m3-critic merit pass): the
 "Electricity-prices two-select contrast" and "inconsistent active-vs-history chart
@@ -789,36 +756,6 @@ live-walk screenshots.*
       This rework also covers surfacing the effective limited step for stepped-load devices on the device-detail surface.
       Files: `packages/settings-ui/public/index.html`,
       `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e tests/screenshots.
-- [ ] Apply the `md-select-option` `displayText` / `typeaheadText` fix outside the mode selects.
-      `packages/settings-ui/src/ui/modes.ts:createModeOption` now sets both properties so the
-      closed select field reliably shows a non-empty label on first paint, but the same option
-      construction pattern still appears in
-      `packages/settings-ui/src/ui/advanced.ts:createSelectOption` and
-      `packages/settings-ui/src/ui/components.ts:createSelectInput`. They are vulnerable to the
-      same Material Web first-render race (the slot-walk for the headline can read empty before
-      the option's own first update). Extract a shared `createMdSelectOption(value, label,
-      selected?)` helper in `components.ts`, set `displayText` and `typeaheadText` explicitly,
-      and route the three callers through it. Extend the regression test in
-      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts` (or add focused specs) to assert
-      non-empty headline text for Advanced and components-driven selects on first paint.
-      Files: `packages/settings-ui/src/ui/advanced.ts`,
-      `packages/settings-ui/src/ui/components.ts`,
-      `packages/settings-ui/src/ui/modes.ts`,
-      `packages/settings-ui/tests/e2e/settings-smoke.spec.ts`.
-- [ ] Finish chart-test hardening from the first-impression UI audit. The colour-token subset
-      landed (charts now read `--pels-chart-*` role-token aliases, no remaining hex literals).
-      This P2 entry covers the remaining non-colour test surface: deterministic visual assertions
-      for legend text matching rendered series, explicit axis/tooltip units, price-unit
-      normalization, SVG bounds, and no deadline legend/axis overlap at 320 / 480 px. A
-      token-resolution regression test that asserts `--pels-chart-plan` resolves to the same hex
-      as the on-page Plan legend swatch would also belong here.
-      Files: `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
-      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/tests/e2e/charts-layout.spec.ts`,
-      screenshot/audit Playwright coverage.
 - [ ] Add a reusable audit-state Playwright matrix for the redesigned Settings UI.
       Current screenshot specs are docs/capture oriented. Add an audit-only suite that renders the
       main surfaces and important states at 320px and 480px from the Homey SDK boundary, writes
@@ -1127,14 +1064,6 @@ live-walk screenshots.*
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit` + adversarial-review).*
 
-- [ ] Idle classifier: surface a signal when a device has a temperature setpoint but no
-      `currentTemperature` reading. `lib/observer/idleDetector.ts` allows `currentTemperature`
-      to be absent — `gap` resolves to `undefined` and `classifyByGapAndDuration`
-      short-circuits to `active`, so a sensor that stops reporting on a heater that should
-      be heating produces no `unresponsive` signal. Files: `lib/observer/idleDetector.ts`,
-      `lib/observer/idleClassifier.ts`. Source: v2.7.1 release-review.
-      *(In flight on the v2.11 correctness train — removed by its fix PR.)*
-
 - [ ] Fold `capabilities.includes('evcharger_charging')` into `isEvDevice`
       (`lib/device/deviceActionProjection.ts`). Post-detype refactor the
       predicate checks `deviceClass === 'evcharger'` or
@@ -1241,13 +1170,6 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       taken: it surfaces ~18 pre-existing type-only `no-circular` violations and doubles the cruised
       graph (out of scope). Source: pels-layering-guardian on `feat/smarttask-lifecycle-producer`,
       2026-05-30.
-
-- [ ] P3: `ObjectiveDeviceInput.stepPowerCalibration` is narrowed to `{ deliveryPowerKw: number }`
-      (`lib/objectives/types.ts`) — the one field the controller reads. It is the only field
-      structurally narrowed rather than copied whole. If the controller ever takes on
-      admission/feasibility sizing that needs `admissionPowerKw`, restore it here (the failure mode
-      is a clean compile error at the read site, so it is self-announcing). Source:
-      pels-layering-guardian, 2026-05-30.
 
 - [ ] P3: pin `@pels/planner-types` as a strict leaf with a dedicated dep-cruiser rule
       (`planner-types-is-a-leaf`). Today `shared-packages-no-runtime` forbids `planner-types/src ->
