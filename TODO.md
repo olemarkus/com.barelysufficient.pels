@@ -1210,10 +1210,6 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] P3 tidy: `setup/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
-      twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
-      pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
-
 - [ ] PR-E follow-ups (not blocking): (a) fully retire the *terminal*
       `deferredReleaseIntent` from the plan path so it isn't double-covered (the
       path stays for idle-bucket holds, Fork A); (b) the same "task disabled →
