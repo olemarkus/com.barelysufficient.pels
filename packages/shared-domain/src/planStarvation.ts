@@ -11,34 +11,24 @@ export type PlanStarvationBadgeView = {
   tooltip: string;
 };
 
-const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarvationTone => {
-  if (cause === 'capacity') return 'warn';
-  if (cause === 'budget') return 'info';
-  return 'muted';
-};
+// Two starvation buckets only: capacity (physically held — the hard cap is not a
+// tuning knob) and budget (releasable). A device PELS merely keeps below its
+// target is not starved, so there is no "manual"/"external" badge.
+const resolveTone = (cause: SettingsUiPlanDeviceStarvation['cause']): PlanStarvationTone => (
+  cause === 'budget' ? 'info' : 'warn'
+);
 
-const resolveBadgeLabel = (cause: SettingsUiPlanDeviceStarvation['cause']): string => {
-  if (cause === 'capacity') return 'Low power';
-  if (cause === 'budget') return 'Budget limited';
-  if (cause === 'manual') return 'Manual hold';
-  return 'Waiting';
-};
+const resolveBadgeLabel = (cause: SettingsUiPlanDeviceStarvation['cause']): string => (
+  cause === 'budget' ? 'Budget limited' : 'Low power'
+);
 
 const resolveStarvationMessage = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
-  options: { manualSubject: 'the device' | 'this device' },
-): string => {
-  if (cause === 'capacity') {
-    return 'Waiting for available power';
-  }
-  if (cause === 'budget') {
-    return "Limited to stay within today's budget";
-  }
-  if (cause === 'manual') {
-    return `Manual control is holding ${options.manualSubject}`;
-  }
-  return 'Waiting on external service';
-};
+): string => (
+  cause === 'budget'
+    ? "Limited to stay within today's budget"
+    : 'Waiting for available power'
+);
 
 export const formatStarvationBadge = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
@@ -47,7 +37,7 @@ export const formatStarvationBadge = (
   return {
     label: resolveBadgeLabel(starvation.cause),
     tone: resolveTone(starvation.cause),
-    tooltip: resolveStarvationMessage(starvation.cause, { manualSubject: 'the device' }),
+    tooltip: resolveStarvationMessage(starvation.cause),
   };
 };
 
@@ -55,7 +45,7 @@ export const formatStarvationReason = (
   starvation: SettingsUiPlanDeviceStarvation | null | undefined,
 ): string | null => {
   if (!starvation?.isStarved) return null;
-  return resolveStarvationMessage(starvation.cause, { manualSubject: 'this device' });
+  return resolveStarvationMessage(starvation.cause);
 };
 
 // ─── Held-back-devices widget vocabulary ─────────────────────────────────────
@@ -87,24 +77,21 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   loadError: 'Could not load devices. Try again later.',
   // Row status-chip word. The widget appends "· N min". Cause-specific so the
   // chip never overclaims: only budget rows (the releasable "Let it run now"
-  // state) say "Held back"; capacity/external say "Waiting" (physically held —
-  // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
-  // says "On hold". User-facing register only — no "starvation" jargon.
+  // state) say "Held back"; capacity rows say "Waiting" (physically held — the
+  // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
+  // register only — no "starvation" jargon.
   starvedChip: 'Held back',
   waitingChip: 'Waiting',
-  manualChip: 'On hold',
   // Rescue affordance (budget-caused rows only). "Let it run now" is device-
   // scoped — it releases THIS device from the daily budget so it runs now,
   // rather than promising house power. The rescue is a bounded near-term run
   // (the confirm sheet surfaces the "By {time}" timing prominently).
   rescueButton: 'Let it run now',
-  // Informational note on capacity / manual / external rows — they get NO rescue
-  // affordance. Honest about why, without implying the user can raise the cap.
-  // Matches the canonical "Waiting for available power" wording the overview and
-  // the row subtext use, so the capacity story reads the same everywhere.
+  // Informational note on capacity rows — they get NO rescue affordance. Honest
+  // about why, without implying the user can raise the cap. Matches the canonical
+  // "Waiting for available power" wording the overview and the row subtext use,
+  // so the capacity story reads the same everywhere.
   capacityNote: 'Waiting for available power.',
-  manualNote: 'Under manual control.',
-  externalNote: 'Waiting on an external service.',
   // A budget-held device that already has a smart task: shown in the list (so the
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
@@ -149,19 +136,17 @@ export const starvationDurationMinutes = (accumulatedMs: number): number => (
 );
 
 // Status-chip word per cause: only budget rows are the releasable "Held back"
-// state; capacity/external are "Waiting" (physically held — the hard cap is not
-// a tuning knob) and manual is "On hold". Keeps the chip honest per-cause so a
-// capacity row is never mislabeled as the budget-releasable "Held back" state.
+// state; capacity rows are "Waiting" (physically held — the hard cap is not a
+// tuning knob). Keeps the chip honest per-cause so a capacity row is never
+// mislabeled as the budget-releasable "Held back" state.
 const resolveStarvationRowChipWord = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
-): string => {
-  if (cause === 'budget') return STARVATION_RESCUE_WIDGET_COPY.starvedChip;
-  if (cause === 'manual') return STARVATION_RESCUE_WIDGET_COPY.manualChip;
-  return STARVATION_RESCUE_WIDGET_COPY.waitingChip; // capacity + external
-};
+): string => (
+  cause === 'budget' ? STARVATION_RESCUE_WIDGET_COPY.starvedChip : STARVATION_RESCUE_WIDGET_COPY.waitingChip
+);
 
-// "Held back · 24 min" (budget) / "Waiting · 24 min" (capacity, external) /
-// "On hold · 24 min" (manual) status label for a held-back row.
+// "Held back · 24 min" (budget) / "Waiting · 24 min" (capacity) status label for
+// a held-back row.
 export const formatStarvationRowChip = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
   accumulatedMs: number,
@@ -218,29 +203,24 @@ export const resolveStarvationRowSubtext = (
     const degrees = formatTargetDegrees(intendedNormalTargetC);
     return degrees ? `Held below ${degrees} by today’s budget` : "Held by today’s budget";
   }
-  if (cause === 'capacity') return 'Waiting for available power';
-  if (cause === 'manual') return 'Under manual control';
-  return 'Waiting on an external service';
+  return 'Waiting for available power';
 };
 
-// The informational note for a row that gets no rescue button: capacity/manual/
-// external rows, plus a budget row whose device already has a smart task (the
-// task handles it). The `hasSmartTask` note wins for budget rows so the user sees
-// WHY the otherwise-rescuable row has no button.
+// The informational note for a row that gets no rescue button: capacity rows,
+// plus a budget row whose device already has a smart task (the task handles it).
+// The `hasSmartTask` note wins for budget rows so the user sees WHY the otherwise-
+// rescuable row has no button.
 export const resolveStarvationRowNote = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
   hasSmartTask = false,
 ): string | null => {
   if (cause === 'budget') return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
-  if (cause === 'capacity') return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
-  if (cause === 'manual') return STARVATION_RESCUE_WIDGET_COPY.manualNote;
-  if (cause === 'external') return STARVATION_RESCUE_WIDGET_COPY.externalNote;
-  return null;
+  return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
 };
 
 // Whether a starved row may offer the budget-exempt rescue. ONLY budget-caused
 // rows: capacity is physical (the hard cap is not a tuning knob —
-// feedback_hard_cap_is_physical) and manual/external are outside PELS's control.
+// feedback_hard_cap_is_physical).
 export const starvationRowOffersRescue = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
 ): boolean => cause === 'budget';

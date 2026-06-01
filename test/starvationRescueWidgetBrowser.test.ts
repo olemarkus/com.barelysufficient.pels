@@ -188,34 +188,6 @@ describe('starvation rescue widget browser', () => {
     expect(taskNote.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.smartTaskNote);
   });
 
-  test('a manual row also suppresses its near-duplicate note (only the reason once)', async () => {
-    // The manual subtext ("Under manual control") and note ("Under manual
-    // control.") differ only by a trailing period, so the dedup suppresses the
-    // note here too — the reason reads once, like the capacity row.
-    const controller = installWidget(window as WidgetWindow, document);
-    controller!.bootstrap(buildHomey({
-      api: vi.fn(async (_method: string, path: string) => {
-        if (path === '/devices') {
-          return {
-            state: 'ready',
-            devices: [
-              { deviceId: 'manual-1', deviceName: 'Office heat', cause: 'manual', accumulatedMs: 5 * 60_000, intendedNormalTargetC: 20, hasSmartTask: false },
-            ],
-          } satisfies StarvationRescueDevicesPayload;
-        }
-        throw new Error(`unexpected ${path}`);
-      }),
-    }));
-    await flushPromises();
-
-    const row = document.querySelector('[data-device-list] .row') as HTMLElement;
-    expect((row.querySelector('[data-device-subtext]') as HTMLElement).textContent)
-      .toBe('Under manual control');
-    const note = row.querySelector('[data-device-note]') as HTMLElement;
-    expect(note.hidden).toBe(true);
-    expect(note.textContent).toBe('');
-  });
-
   test('budget row with no known target hides the rescue button (API would reject no_target)', async () => {
     const controller = installWidget(window as WidgetWindow, document);
     controller!.bootstrap(buildHomey({

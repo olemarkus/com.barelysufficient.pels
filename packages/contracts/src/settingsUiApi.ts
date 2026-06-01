@@ -94,7 +94,7 @@ export type SettingsUiPlanPendingTargetCommand = {
   lastObservedSource?: string;
 };
 
-export type SettingsUiPlanStarvationCause = 'capacity' | 'budget' | 'manual' | 'external';
+export type SettingsUiPlanStarvationCause = 'capacity' | 'budget';
 
 export type SettingsUiPlanDeviceStarvation = {
   isStarved: boolean;

@@ -127,9 +127,9 @@ const renderDeviceRow = (
     subtextEl.textContent = subtext;
   }
 
-  // Budget rows: a rescue button (the only interactive affordance). Other
-  // causes: a muted informational note, no button (the guardrail — capacity is
-  // physical, manual/external are outside PELS's control).
+  // Budget rows: a rescue button (the only interactive affordance). Capacity
+  // rows: a muted informational note, no button (the guardrail — capacity is
+  // physical, the hard cap is not a tuning knob).
   if (rescueBtn instanceof HTMLButtonElement) {
     if (offersRescue) {
       rescueBtn.hidden = false;
@@ -142,11 +142,11 @@ const renderDeviceRow = (
   }
   if (noteEl instanceof HTMLElement) {
     // The note is suppressed for rescuable (budget) rows, and otherwise only
-    // shown when it adds information beyond the subtext. For capacity/manual/
-    // external rows the note and subtext are near-identical (e.g. "Waiting for
-    // available power" vs "Waiting for available power.") — printing both reads
-    // as a doubled line, so drop the note when it duplicates the subtext
-    // (compared case-insensitively, ignoring a trailing period).
+    // shown when it adds information beyond the subtext. For capacity rows the
+    // note and subtext are near-identical (e.g. "Waiting for available power" vs
+    // "Waiting for available power.") — printing both reads as a doubled line, so
+    // drop the note when it duplicates the subtext (compared case-insensitively,
+    // ignoring a trailing period).
     const note = offersRescue ? null : resolveStarvationRowNote(device.cause, device.hasSmartTask);
     setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
   }

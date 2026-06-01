@@ -30,7 +30,6 @@ import {
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
-import { buildStarvationThresholds, type StarvationThresholds } from './starvationThresholds';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
@@ -65,6 +64,12 @@ export type DeviceDiagnosticsPlanObservation = {
   eligibleForStarvation: boolean;
   currentTemperatureC: number | null;
   intendedNormalTargetC: number | null;
+  // The effective target PELS is currently COMMANDING the device toward (the
+  // applied/held setpoint, quantized to the device's target step). A device is
+  // starved only when PELS holds this BELOW `intendedNormalTargetC` — i.e. PELS
+  // is actively limiting the device, not merely waiting for it to reach a target
+  // it is already commanding in full.
+  commandedTargetC: number | null;
   targetStepC: number | null;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
@@ -164,19 +169,27 @@ type LiveStarvationObservation = {
   observationFresh: boolean;
   currentTemperatureC: number | null;
   intendedNormalTargetC: number | null;
+  commandedTargetC: number | null;
   targetStepC: number | null;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-  thresholds: StarvationThresholds | null;
+  // True when PELS is commanding the device BELOW its intended/mode target —
+  // the sole entry signal for starvation. `commandedTargetC < intendedNormalTargetC`
+  // (by at least the target step), meaning PELS is actively limiting the device.
+  pelsHoldsBelowTarget: boolean;
 };
 
 type StarvationEvaluation = {
   validObservation: boolean;
-  suppressed: boolean;
+  // PELS is actively limiting the device (a real capacity/budget/shortfall
+  // suppression) AND commanding it below its intended/mode target.
   counting: boolean;
+  // Starvation may ENTER or keep ACCUMULATING: PELS holds the device below its
+  // mode target right now. A device PELS commands in full (`keep`) never starves,
+  // regardless of how far its physical temperature sits below target.
   entryQualified: boolean;
-  belowExitThreshold: boolean;
+  // PELS no longer holds the device below its mode target — clear the episode.
   clearQualified: boolean;
   pauseReason: DeviceDiagnosticsStarvationPauseReason;
 };
@@ -266,43 +279,37 @@ const buildStarvationSummary = (
   };
 };
 
-const OVERVIEW_CAPACITY_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
-  'capacity',
-  'insufficient_headroom',
-  'shedding_active',
-  'shortfall',
-  'swap_pending',
-  'swapped_out',
-]);
-
 const OVERVIEW_BUDGET_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
   'daily_budget',
   'hourly_budget',
 ]);
 
-const OVERVIEW_MANUAL_STARVATION_PAUSE_REASONS = new Set<DeviceDiagnosticsStarvationPauseReason>([
-  'inactive',
-  'keep',
-  'restore',
-]);
+// Every starvation episode now carries a real counting cause (capacity/budget):
+// PELS only starves a device it is actively holding below its mode target, so a
+// starved device always has a `countingCause` (retained across pauses). The
+// overview surfaces exactly two buckets — budget (releasable) vs capacity
+// (physical). There is no manual or external bucket: a below-target device PELS
+// merely keeps is not starved. The null fallback is defensive only and maps to
+// the physical-capacity bucket (the non-actionable default).
+const resolveOverviewStarvationCause = (
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null,
+): SettingsUiPlanStarvationCause => (
+  countingCause !== null && OVERVIEW_BUDGET_STARVATION_CAUSES.has(countingCause) ? 'budget' : 'capacity'
+);
 
-const resolveOverviewStarvationCause = (params: {
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-}): SettingsUiPlanStarvationCause => {
-  const { countingCause, pauseReason } = params;
-  if (countingCause && OVERVIEW_CAPACITY_STARVATION_CAUSES.has(countingCause)) {
-    return 'capacity';
-  }
-  if (countingCause && OVERVIEW_BUDGET_STARVATION_CAUSES.has(countingCause)) {
-    return 'budget';
-  }
-  if (pauseReason && OVERVIEW_MANUAL_STARVATION_PAUSE_REASONS.has(pauseReason)) {
-    return 'manual';
-  }
-  return 'external';
+// PELS is holding the device below its intended/mode target when the target it
+// is COMMANDING sits at least a target step under the intended target. The
+// half-step epsilon keeps float quantization noise from reading equal commands as
+// "below". A device PELS commands in full (commanded == intended) is never below.
+const pelsCommandsBelowTarget = (
+  intendedNormalTargetC: number | null,
+  commandedTargetC: number | null,
+  targetStepC: number | null,
+): boolean => {
+  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
+  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
+  return commandedTargetC < intendedNormalTargetC - epsilon;
 };
-
 
 const normalizeStarvationObservation = (
   observation: DeviceDiagnosticsPlanObservation,
@@ -311,12 +318,14 @@ const normalizeStarvationObservation = (
   observationFresh: observation.observationFresh,
   currentTemperatureC: observation.currentTemperatureC,
   intendedNormalTargetC: observation.intendedNormalTargetC,
+  commandedTargetC: observation.commandedTargetC,
   targetStepC: observation.targetStepC,
   suppressionState: observation.suppressionState,
   countingCause: observation.countingCause,
   pauseReason: observation.pauseReason,
-  thresholds: buildStarvationThresholds(
+  pelsHoldsBelowTarget: pelsCommandsBelowTarget(
     observation.intendedNormalTargetC,
+    observation.commandedTargetC,
     observation.targetStepC,
   ),
 });
@@ -324,8 +333,8 @@ const normalizeStarvationObservation = (
 const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
   observation.eligibleForStarvation
   && observation.observationFresh
-  && isFiniteNumber(observation.currentTemperatureC)
-  && observation.thresholds !== null
+  && isFiniteNumber(observation.intendedNormalTargetC)
+  && isFiniteNumber(observation.commandedTargetC)
 );
 
 const isCountingStarvationObservation = (observation: LiveStarvationObservation): boolean => (
@@ -346,10 +355,7 @@ const evaluateStarvationObservation = (
   observation: LiveStarvationObservation,
 ): StarvationEvaluation => {
   const validObservation = isValidStarvationObservation(observation);
-  const currentTemperatureC = observation.currentTemperatureC ?? Number.NaN;
-  const thresholds = observation.thresholds;
   const counting = isCountingStarvationObservation(observation);
-  const suppressed = validObservation && observation.suppressionState !== 'none';
   const pauseReason = !validObservation
     ? 'invalid_observation'
     : observation.pauseReason ?? (
@@ -357,15 +363,16 @@ const evaluateStarvationObservation = (
     );
   return {
     validObservation,
-    suppressed,
     counting,
-    entryQualified: suppressed && thresholds !== null && currentTemperatureC <= thresholds.entryThresholdC,
-    belowExitThreshold: validObservation
-      && thresholds !== null
-      && currentTemperatureC < thresholds.exitThresholdC,
-    clearQualified: validObservation
-      && thresholds !== null
-      && currentTemperatureC >= thresholds.exitThresholdC,
+    // ENTER / ACCUMULATE only when PELS is actively limiting the device (a real
+    // counting suppression) AND commanding it below its mode target. A device PELS
+    // commands in full (`keep`) never enters, however cold it physically is.
+    entryQualified: counting && observation.pelsHoldsBelowTarget,
+    // CLEAR only when PELS has restored the device to its full mode target
+    // (commanded == intended). A still-below device under a transient pause
+    // (cooldown/keep/suppression_none) stays latched-and-paused — not cleared —
+    // so a brief non-counting blip never resets an episode mid-hold.
+    clearQualified: validObservation && !observation.pelsHoldsBelowTarget,
     pauseReason,
   };
 };
@@ -542,10 +549,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     return {
       isStarved: true,
       accumulatedMs: live.starvation.starvedAccumulatedMs,
-      cause: resolveOverviewStarvationCause({
-        countingCause: live.starvation.starvationCause,
-        pauseReason: live.starvation.starvationPauseReason,
-      }),
+      cause: resolveOverviewStarvationCause(live.starvation.starvationCause),
       startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
     };
   }
@@ -695,11 +699,11 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       return;
     }
     if (evaluation.clearQualified) {
-      this.applyStarvationClearProgress(deviceId, observation, evaluation, { startTs, endTs });
+      this.applyStarvationClearProgress(deviceId, { startTs, endTs });
       return;
     }
-    if (evaluation.suppressed && evaluation.belowExitThreshold) {
-      this.applyStarvationAccumulationProgress(deviceId, observation, evaluation, startTs, endTs);
+    if (evaluation.entryQualified) {
+      this.applyStarvationAccumulationProgress(deviceId, observation, startTs, endTs);
       return;
     }
     this.pauseStarvation(deviceId, evaluation.pauseReason, startTs);
@@ -765,9 +769,9 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     live.starvation.pendingEntryStartedAt = pendingEntryStartedAt;
     if (endTs < entryAt) return;
 
-    const accumulatedMs = endTs > entryAt && evaluation.belowExitThreshold
-      ? endTs - entryAt
-      : 0;
+    // `entryQualified` implies a real counting cause (PELS holds the device below
+    // its mode target), so every starting episode carries a capacity/budget cause.
+    const accumulatedMs = endTs > entryAt ? endTs - entryAt : 0;
     live.starvation = {
       isStarved: true,
       pendingEntryStartedAt: undefined,
@@ -775,27 +779,25 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvedAccumulatedMs: accumulatedMs,
       starvationEpisodeStartedAt: entryAt,
       starvationLastResumedAt: entryAt,
-      starvationCause: evaluation.counting ? observation.countingCause : null,
-      starvationPauseReason: evaluation.counting ? null : evaluation.pauseReason,
+      starvationCause: observation.countingCause,
+      starvationPauseReason: null,
     };
     (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_started',
       deviceId,
       deviceName: live.name,
-      cause: observation.countingCause ?? evaluation.pauseReason,
+      cause: observation.countingCause,
       starvationEpisodeStartedAtMs: entryAt,
       starvedDurationMs: accumulatedMs,
     });
     this.deps.logDebug(
       `Diagnostics: starvation started ${formatDeviceRef(deviceId, live.name)} `
-      + `cause=${observation.countingCause ?? evaluation.pauseReason} at=${new Date(entryAt).toISOString()}`,
+      + `cause=${observation.countingCause} at=${new Date(entryAt).toISOString()}`,
     );
   }
 
   private applyStarvationClearProgress(
     deviceId: string,
-    observation: LiveStarvationObservation,
-    evaluation: StarvationEvaluation,
     span: { startTs: number; endTs: number },
   ): void {
     const live = this.getLiveDeviceState(deviceId);
@@ -806,8 +808,9 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const clearAt = clearQualifiedStartedAt + DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS;
     live.starvation.clearQualifiedStartedAt = clearQualifiedStartedAt;
     live.starvation.starvationLastResumedAt = undefined;
-    live.starvation.starvationCause = evaluation.counting ? observation.countingCause : null;
-    live.starvation.starvationPauseReason = evaluation.counting ? null : evaluation.pauseReason;
+    // Hold the original capacity/budget cause through the clear-hysteresis window
+    // so the overview badge stays attributed until the episode fully resets.
+    live.starvation.starvationPauseReason = null;
     if (endTs < clearAt) return;
     (this.deps.structuredLog ?? moduleLogger).info({
       event: 'device_starvation_cleared',
@@ -826,7 +829,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private applyStarvationAccumulationProgress(
     deviceId: string,
     observation: LiveStarvationObservation,
-    evaluation: StarvationEvaluation,
     startTs: number,
     endTs: number,
   ): void {
@@ -836,13 +838,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         event: 'device_starvation_resumed',
         deviceId,
         deviceName: live.name,
-        cause: observation.countingCause ?? evaluation.pauseReason,
+        cause: observation.countingCause,
         transitionAtMs: startTs,
         starvedDurationMs: live.starvation.starvedAccumulatedMs,
       });
       this.deps.logDebug(
         `Diagnostics: starvation resumed ${formatDeviceRef(deviceId, live.name)} `
-        + `cause=${observation.countingCause ?? evaluation.pauseReason} at=${new Date(startTs).toISOString()}`,
+        + `cause=${observation.countingCause} at=${new Date(startTs).toISOString()}`,
       );
     }
     live.starvation.clearQualifiedStartedAt = undefined;
@@ -850,8 +852,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       live.starvation.starvationLastResumedAt = startTs;
     }
     live.starvation.starvedAccumulatedMs += Math.max(0, endTs - startTs);
-    live.starvation.starvationCause = evaluation.counting ? observation.countingCause : null;
-    live.starvation.starvationPauseReason = evaluation.counting ? null : evaluation.pauseReason;
+    // Accumulation runs only while `entryQualified` (a real counting hold), so the
+    // cause stays the capacity/budget cause; it is never a pause reason.
+    live.starvation.starvationCause = observation.countingCause;
+    live.starvation.starvationPauseReason = null;
   }
 
   private pauseStarvation(
@@ -876,7 +880,9 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     }
     live.starvation.clearQualifiedStartedAt = undefined;
     live.starvation.starvationLastResumedAt = undefined;
-    live.starvation.starvationCause = null;
+    // Keep the original capacity/budget cause so a paused-but-latched episode
+    // still reports its true cause to the overview badge (capacity vs budget) —
+    // a pause does not change WHY the device became starved.
     live.starvation.starvationPauseReason = pauseReason;
   }
 

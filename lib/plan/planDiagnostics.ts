@@ -97,6 +97,16 @@ const resolveIntendedNormalTemperatureTarget = (params: {
   return Number.isFinite(desired) ? Number(desired) : null;
 };
 
+// The effective target PELS is currently COMMANDING the device toward: the
+// planned setpoint this cycle when PELS is applying one, otherwise the held
+// current setpoint. Starvation compares this against the intended/mode target —
+// a device PELS commands in full (`keep`) is not starved, however cold it is.
+const resolveCommandedTargetC = (device: DevicePlanDevice): number | null => {
+  if (isFiniteNumber(device.plannedTarget)) return device.plannedTarget;
+  if (isFiniteNumber(device.currentTarget)) return device.currentTarget;
+  return null;
+};
+
 const resolveTargetStepC = (
   inputDevice: PlanInputDevice | undefined,
   intendedNormalTargetC: number | null,
@@ -224,6 +234,7 @@ const buildDiagnosticsObservation = (params: {
     inputDevice,
   });
   const currentTemperatureC = resolveCurrentTemperatureC(device, inputDevice);
+  const commandedTargetC = resolveCommandedTargetC(device);
   const targetStepC = resolveTargetStepC(inputDevice, intendedNormalTargetC);
   const observationFresh = resolveObservationFresh(device, inputDevice);
   const eligibleForStarvation = resolveEligibleForStarvation({
@@ -260,6 +271,7 @@ const buildDiagnosticsObservation = (params: {
     eligibleForStarvation,
     currentTemperatureC,
     intendedNormalTargetC,
+    commandedTargetC,
     targetStepC,
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,

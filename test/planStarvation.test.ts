@@ -32,25 +32,23 @@ describe('planStarvation', () => {
     expect(formatStarvationReason(starvation)).toBe('Waiting for available power');
   });
 
-  it('maps budget/manual/external starvation to softer tones', () => {
+  it('formats a budget-starvation badge with a softer info tone', () => {
     expect(formatStarvationBadge({
       isStarved: true,
       accumulatedMs: 12 * 60 * 1000,
       cause: 'budget',
       startedAtMs: null,
-    })?.tone).toBe('info');
-    expect(formatStarvationBadge({
-      isStarved: true,
-      accumulatedMs: 12 * 60 * 1000,
-      cause: 'manual',
-      startedAtMs: null,
-    })?.tone).toBe('muted');
+    })).toEqual({
+      label: 'Budget limited',
+      tone: 'info',
+      tooltip: "Limited to stay within today's budget",
+    });
     expect(formatStarvationReason({
       isStarved: true,
       accumulatedMs: 12 * 60 * 1000,
-      cause: 'external',
+      cause: 'budget',
       startedAtMs: null,
-    })).toBe('Waiting on external service');
+    })).toBe("Limited to stay within today's budget");
   });
 
   it('summarizes all starved devices in the hero', () => {

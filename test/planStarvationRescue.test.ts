@@ -32,14 +32,10 @@ describe('starvation-rescue shared helpers', () => {
     it('says "Held back" only for the budget-releasable cause', () => {
       expect(formatStarvationRowChip('budget', 24 * 60_000)).toBe('Held back · 24 min');
     });
-    it('says "Waiting" for physically-held causes (capacity, external)', () => {
+    it('says "Waiting" for the physically-held capacity cause', () => {
       // The hard cap is not a tuning knob — a capacity row is never mislabeled
       // as the budget-releasable "Held back" state.
       expect(formatStarvationRowChip('capacity', 24 * 60_000)).toBe('Waiting · 24 min');
-      expect(formatStarvationRowChip('external', 5 * 60_000)).toBe('Waiting · 5 min');
-    });
-    it('says "On hold" for the manual cause', () => {
-      expect(formatStarvationRowChip('manual', 12 * 60_000)).toBe('On hold · 12 min');
     });
   });
 
@@ -58,8 +54,6 @@ describe('starvation-rescue shared helpers', () => {
       expect(resolveStarvationRowSubtext('budget')).toBe('Held by today’s budget');
       // Capacity reuses the canonical overview wording.
       expect(resolveStarvationRowSubtext('capacity')).toBe('Waiting for available power');
-      expect(resolveStarvationRowSubtext('manual')).toBe('Under manual control');
-      expect(resolveStarvationRowSubtext('external')).toBe('Waiting on an external service');
     });
 
     it('names the held-below target on budget rows when known (felt symptom)', () => {
@@ -84,11 +78,9 @@ describe('starvation-rescue shared helpers', () => {
   });
 
   describe('resolveStarvationRowNote', () => {
-    it('returns an informational note for non-budget causes only', () => {
+    it('returns an informational note for capacity rows only', () => {
       expect(resolveStarvationRowNote('budget')).toBeNull();
       expect(resolveStarvationRowNote('capacity')).toBe(STARVATION_RESCUE_WIDGET_COPY.capacityNote);
-      expect(resolveStarvationRowNote('manual')).toBe(STARVATION_RESCUE_WIDGET_COPY.manualNote);
-      expect(resolveStarvationRowNote('external')).toBe(STARVATION_RESCUE_WIDGET_COPY.externalNote);
     });
 
     it('never suggests raising the hard cap (capacity is physical)', () => {
@@ -107,8 +99,6 @@ describe('starvation-rescue shared helpers', () => {
     it('offers a rescue only for budget starvation', () => {
       expect(starvationRowOffersRescue('budget')).toBe(true);
       expect(starvationRowOffersRescue('capacity')).toBe(false);
-      expect(starvationRowOffersRescue('manual')).toBe(false);
-      expect(starvationRowOffersRescue('external')).toBe(false);
     });
   });
 
@@ -118,10 +108,8 @@ describe('starvation-rescue shared helpers', () => {
       // Budget but no target — API would reject `no_target`, so the row is not rescuable.
       expect(starvationRowIsRescuable('budget', null)).toBe(false);
       expect(starvationRowIsRescuable('budget', Number.NaN)).toBe(false);
-      // Non-budget causes are never rescuable regardless of target.
+      // Capacity is never rescuable regardless of target.
       expect(starvationRowIsRescuable('capacity', 21)).toBe(false);
-      expect(starvationRowIsRescuable('manual', 21)).toBe(false);
-      expect(starvationRowIsRescuable('external', 21)).toBe(false);
     });
 
     it('is NOT rescuable when the device already has its own smart task', () => {
