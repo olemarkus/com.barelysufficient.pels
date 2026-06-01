@@ -45,6 +45,9 @@ import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredO
 
 const HOUR_MS = 60 * 60 * 1000;
 const BASE_HOUR = Date.UTC(2026, 4, 30, 20); // 22:00 local-ish; absolute, DST-agnostic
+// The recorder settles a replan revision once per clock hour, at/after :58, so
+// each simulated cycle ticks at the :58 mark of its hour to exercise the settle.
+const SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1000;
 const STEP: DeferredObjectiveStep = { id: 'low', usefulPowerKw: 1.25 };
 
 const TARGET_TEMPERATURE_C = 65;
@@ -149,7 +152,7 @@ const runSimulation = (params: {
   const records: HourRecord[] = [];
   let needKWh = params.initialNeedKWh;
   for (let hourIndex = 0; hourIndex < params.hours; hourIndex += 1) {
-    const nowMs = BASE_HOUR + hourIndex * HOUR_MS + 60_000;
+    const nowMs = BASE_HOUR + hourIndex * HOUR_MS + SCHEDULE_SETTLE_OFFSET_MS;
     const committedHours = resolveCommittedHours({
       activePlans: recorder.getActivePlansSnapshot(),
       deviceId: DEVICE_ID,

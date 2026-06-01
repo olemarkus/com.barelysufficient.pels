@@ -290,3 +290,40 @@ hour self-commits for subsequent cycles. The cheapest-first sort still defers an
 hour behind cheaper future hours, so price-shaped waiting is preserved. Regression:
 `test/deferredObjectiveCommitmentRolloverSimulation.test.ts` plus the `expandCommittedAllocation`
 cases in `test/deferredObjectiveHorizon.test.ts`.
+
+## Update (2026-06-01): the active-plan WRITE moves to the clock; revisions settle once per hour at `:58`
+
+This **supersedes PR-C's "active-plan COMMITMENT stays synchronous on the plan cycle" call.**
+PR-C kept the recorder's `observe()` on the ~10 s power plan cycle. That coupled *when the plan
+is recorded* to power-reading timing and churned `schedule_revised` / `deadline_plan_changed`
+mid-hour: whenever a held-off device (price-deferred or capacity-shed) under-delivers, the current
+hour's capacity is trimmed to the remaining clock time, so the still-owing residual repeatedly
+spilled a sliver into a future hour *before the hour even ended* — a revision per cycle for a plan
+that had not meaningfully changed. We cannot know until the hour closes whether the schedule needs
+to change.
+
+Two changes, on the principle **write on a schedule, read freely**:
+
+1. **The WRITE rides the clock.** `observe()` is now called from `DeferredObjectiveLifecycleEmitter`
+   (the 30 s lifecycle clock), not from `DecorationController` on the power cycle. The decoration
+   controller only **reads** the committed plan (via the diagnostics build → `resolveCommittedHours`)
+   to decorate device inputs. Reads are free every power cycle; only the write is scheduled. The 30 s
+   clock reliably ticks inside any minute, so the settle can never be starved by power-reading timing.
+2. **The recorder gates the write to once per hour at `:58`** (`isReplanDueThisCycle` +
+   `markReplanSettled`, `activePlanRecorder.ts`) — when the elapsed hour's outcome is known and the upcoming (still-full)
+   hour can be scheduled in. A user objective edit (`objectiveChanged`) bypasses the gate (external
+   event, revise now); the first revision and pending records are immediate (so a newly-enabled task
+   shows its plan within one clock tick, not at the next `:58`).
+
+Why PR-C's caution no longer applies: it kept the write synchronous so the planner's decoration
+would not read a stale commitment. But the commitment only *changes* once an hour (at `:58`), so the
+planner picking up a new commitment one power cycle (≤10 s) after the clock writes it is negligible
+— the committed plan is stable for the whole hour either way.
+
+This does **not** reintroduce the current-hour strand above. Only the persisted RECORD is gated; the
+planner's per-cycle live allocation is untouched, so `expandCommittedAllocation` still fills the
+uncommitted current hour every cycle and a behind-target device stays on. The note above says the
+filled hour "self-commits for subsequent cycles" — under the gate it instead re-fills via phase-2
+each cycle until the next `:58` settle records it; the device is controlled identically either way.
+Foundation for mid-execution price deferral (a `:58` scheduling decision, not a per-cycle override):
+see `notes/deferred-load-objectives/execution-adaptation.md`.

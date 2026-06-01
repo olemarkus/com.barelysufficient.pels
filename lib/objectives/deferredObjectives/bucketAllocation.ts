@@ -194,8 +194,9 @@ export const allocateCommittedEnergyToBuckets = (params: {
   //        it is filled cheapest-first rather than stranded (keeping the
   //        device on while behind). Stability comes from `energyNeededKWh`
   //        being slow-moving (target minus measured progress, so brief sheds
-  //        don't spike it) plus the executor's within-hour step-climb and the
-  //        served hour self-committing — not from skipping the current bucket.
+  //        don't spike it) plus the executor's within-hour step-climb — the
+  //        served hour re-fills via phase-2 each cycle until the once-per-hour
+  //        `:58` settle records it — not from skipping the current bucket.
   //   (ii) Non-empty commitment that genuinely cannot absorb the new need
   //        even at step capacity (e.g. shower crash dropped tank ~38 °C,
   //        need now exceeds committed step capacity × committed hours).
@@ -247,9 +248,12 @@ export const allocateCommittedEnergyToBuckets = (params: {
 //       hour-end even after brief 60-300 s sheds. So status flutter from
 //       stepped-load oscillation or brief sheds must NOT trigger plan
 //       expansion — they self-resolve at the runtime layer. An uncommitted
-//       current hour filled here self-stabilises: it appears in the live plan,
-//       the recorder merges it into the commitment, and the next cycle serves
-//       it from phase-1 (committed) rather than re-deciding it.
+//       current hour filled here appears in the live plan EVERY cycle, so the
+//       device stays controlled. The recorder folds it into the persisted
+//       commitment only at the once-per-hour settle
+//       (`activePlanRecorder.isReplanDueThisCycle`); until that settle it
+//       re-fills via this phase-2 path each cycle rather than being served from
+//       phase-1 (committed). Live control is identical either way.
 //   (c) Policy buckets stay hour-aligned. The committed-hour skip set is
 //       keyed by `floor(startMs / HOUR_MS)`; relaxing the hour alignment
 //       (sub-hour segments outside the existing reserve split) would

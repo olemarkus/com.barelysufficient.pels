@@ -30,7 +30,6 @@ import {
 } from '../lib/utils/learnedThermostatDeadbandStore';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
-  requireDeferredObjectiveActivePlanRecorder,
 } from './appInit/deferredRecorders';
 import {
   buildStepPowerCalibrationView,
@@ -139,14 +138,6 @@ export function createPlanEngine(ctx: AppContext) {
         normaliseLearnedThermostatDeadbandMap(raw),
         deviceId,
       );
-    },
-    // Active-plan commitment stays on the plan cycle (the planner reads
-    // committed plans for its decoration). Only the lifecycle EMISSION moved to
-    // the clock (DeferredObjectiveLifecycleEmitter); see createDeferredObjectiveLifecycleEmitter.
-    observeDeferredObjectiveActivePlans: (diagnostics, nowMs) => {
-      const recorder = requireDeferredObjectiveActivePlanRecorder(ctx);
-      recorder.observe(diagnostics, nowMs);
-      recorder.flushIfDirty();
     },
   });
 

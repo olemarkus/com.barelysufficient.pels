@@ -181,10 +181,11 @@ export class PlanBuilder {
     // produce their normal reasons.
     const dailyBudgetSnapshot = this.dailyBudgetSnapshot;
     // Hand the device list to the smart-task controller for decoration. The
-    // controller evaluates objectives, commits active plans synchronously, and
-    // applies admission / target-overrides / release-intents, returning a
-    // smart-task-agnostic bundle. When no controller is wired the planner uses
-    // the identity bundle and ignores smart tasks entirely.
+    // controller evaluates objectives and applies admission / target-overrides /
+    // release-intents, returning a smart-task-agnostic bundle. It only READS the
+    // committed plan here; the active-plan RECORD (revisions) is written on the
+    // lifecycle clock, not on this plan cycle. When no controller is wired the
+    // planner uses the identity bundle and ignores smart tasks entirely.
     const {
       admittedDevices,
       forceShedSet,

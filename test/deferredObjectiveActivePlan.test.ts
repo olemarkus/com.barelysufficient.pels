@@ -16,6 +16,11 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
+// The recorder settles a replan revision only once per clock hour, at/after the
+// :58 mark (SCHEDULE_SETTLE_OFFSET_MS). A first revision is immediate, but every
+// SUBSEQUENT (replan) observe must land past :58 of a distinct hour to settle —
+// so replan observe times below are `N * HOUR_MS + SETTLE_OFFSET_MS`.
+const SETTLE_OFFSET_MS = 58 * 60 * 1000;
 
 const makeBucket = (
   startMs: number,
@@ -303,7 +308,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const horizonMissing = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
     delete (horizonMissing as { horizonPlan?: unknown }).horizonPlan;
     horizonMissing.reasonCode = 'objective_missing_price_horizon';
-    recorder.observe([horizonMissing], 2 * HOUR_MS);
+    recorder.observe([horizonMissing], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     recorder.flushIfDirty();
     const plan = saved()!.plansByDeviceId.dev;
@@ -380,7 +385,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const horizonMissingDiag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
     delete (horizonMissingDiag as { horizonPlan?: unknown }).horizonPlan;
     horizonMissingDiag.reasonCode = 'objective_missing_price_horizon';
-    recorder.observe([horizonMissingDiag], 2 * HOUR_MS);
+    recorder.observe([horizonMissingDiag], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
 
     const plan = saved()!.plansByDeviceId.dev;
@@ -418,7 +423,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
 
     // Next cycle: plan resolves with actual hours.
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
 
     const plan = saved()!.plansByDeviceId.dev;
@@ -473,7 +478,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deviceId: 'dev',
         deadlineAtMs: 30 * HOUR_MS,
         horizonPlan: makeHorizon(buckets),
-      })], (1 + cycle) * HOUR_MS);
+      })], (1 + cycle) * HOUR_MS + SETTLE_OFFSET_MS);
     }
 
     const plan = recorder.getPlanForTests('dev');
@@ -503,7 +508,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], HOUR_MS);
     // Drive 10 identical observations — none should produce a revision write.
     for (let cycle = 1; cycle <= 10; cycle += 1) {
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], (1 + cycle) * HOUR_MS);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 30 * HOUR_MS })], (1 + cycle) * HOUR_MS + SETTLE_OFFSET_MS);
     }
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.revision).toBe(1);
@@ -516,7 +521,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     const firstRevision = recorder.getPlanForTests('dev')?.latest?.revision;
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     const secondRevision = recorder.getPlanForTests('dev')?.latest?.revision;
 
     expect(firstRevision).toBe(1);
@@ -559,7 +564,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1),
         makeBucket(5 * HOUR_MS, 1),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     const expanded = recorder.getPlanForTests('dev');
 
     expect(expanded?.latest?.revision).toBe(2);
@@ -567,7 +572,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(expanded?.latest?.hours.map((h) => h.startsAtMs)).toEqual([4 * HOUR_MS, 5 * HOUR_MS]);
     // Single source of truth: commitment now contains the expansion hours.
     expect(expanded?.commitment?.hours.map((h) => h.startsAtMs)).toEqual([4 * HOUR_MS, 5 * HOUR_MS]);
-    expect(expanded?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
+    expect(expanded?.commitment?.committedAtMs).toBe(2 * HOUR_MS + SETTLE_OFFSET_MS);
   });
 
   it('grows an existing commitment with expansion-added hours while preserving committed plannedKWh as a floor on overlap', () => {
@@ -596,7 +601,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.0),
         makeBucket(5 * HOUR_MS, 0.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     const expanded = recorder.getPlanForTests('dev');
 
     expect(expanded?.latest?.revision).toBe(2);
@@ -634,7 +639,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met' }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     const preserved = recorder.getPlanForTests('dev');
 
     // Commitment hours unchanged. A revision may be written for the
@@ -684,7 +689,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deadlineAtMs: 6 * HOUR_MS,
         energyNeededKWh: kWh,
         horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, kWh)]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     }
 
     const stable = recorder.getPlanForTests('dev');
@@ -715,7 +720,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 2.0),
         makeBucket(4 * HOUR_MS, 2.0),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('objective_changed');
@@ -767,7 +772,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.observe([makeDiag({
       deviceId: 'dev',
       deadlineAtMs: 8 * HOUR_MS,
@@ -778,7 +783,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(5 * HOUR_MS, 1.5),
         makeBucket(6 * HOUR_MS, 1.5),
       ]),
-    })], 3 * HOUR_MS);
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const beforeChange = recorder.getPlanForTests('dev');
     expect(beforeChange?.latest?.revision).toBe(3);
@@ -794,7 +799,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 2.0),
         makeBucket(4 * HOUR_MS, 2.0),
       ]),
-    })], 4 * HOUR_MS);
+    })], 4 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const afterChange = recorder.getPlanForTests('dev');
     expect(afterChange?.latest?.reason).toBe('objective_changed');
@@ -818,7 +823,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 2.0),
         makeBucket(5 * HOUR_MS, 2.0),
       ]),
-    })], 5 * HOUR_MS);
+    })], 5 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const afterNext = recorder.getPlanForTests('dev');
     expect(afterNext?.latest?.revision).toBe(5);
@@ -855,7 +860,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 1.5),
           makeBucket(5 * HOUR_MS, 1.5),
         ]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('flow_permission_changed');
@@ -896,7 +901,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(4 * HOUR_MS, 1.5),
           makeBucket(5 * HOUR_MS, 1.5),
         ]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const beforeToggle = recorder.getPlanForTests('dev');
       expect(beforeToggle?.latest?.revision).toBe(2);
@@ -914,7 +919,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(4 * HOUR_MS, 1.5),
           makeBucket(5 * HOUR_MS, 1.5),
         ]),
-      })], 3 * HOUR_MS);
+      })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const afterToggle = recorder.getPlanForTests('dev');
       expect(afterToggle?.latest?.reason).toBe('flow_permission_changed');
@@ -948,7 +953,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 1.5),
           makeBucket(5 * HOUR_MS, 1.5),
         ]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('flow_permission_changed');
@@ -971,7 +976,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 2.0),
           makeBucket(4 * HOUR_MS, 2.0),
         ]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('objective_changed');
@@ -996,7 +1001,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 2.0),
           makeBucket(4 * HOUR_MS, 2.0),
         ]),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('objective_changed');
@@ -1019,7 +1024,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 1.5),
           makeBucket(4 * HOUR_MS, 1.5),
         ], { status: 'at_risk', statusDetail: 'planned_using_deadline_reserve' }),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('schedule_revised');
@@ -1058,7 +1063,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deviceId: 'dev',
         deadlineAtMs: 6 * HOUR_MS,
         rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('flow_permission_changed');
@@ -1094,7 +1099,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           makeBucket(3 * HOUR_MS, 1.5),
           makeBucket(4 * HOUR_MS, 1.5),
         ], { status: 'at_risk', statusDetail: 'planned_using_deadline_reserve' }),
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('flow_permission_changed');
@@ -1138,7 +1143,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 1.125),
         makeBucket(4 * HOUR_MS, 1.125),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const replannedPlan = recorder.getPlanForTests('dev');
     expect(replannedPlan?.latest?.revision).toBe(1);
@@ -1174,7 +1179,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 3),
         makeBucket(4 * HOUR_MS, 3),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('objective_changed');
@@ -1215,7 +1220,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 3),
         makeBucket(4 * HOUR_MS, 3),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('objective_changed');
@@ -1285,7 +1290,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         statusDetail: 'planned_using_deadline_reserve',
         energyNeededKWh: 4.5,
       }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.revision).toBe(2);
@@ -1331,7 +1336,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.0),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(events).toHaveLength(0);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
@@ -1344,7 +1349,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.0),
       ]),
-    })], 3 * HOUR_MS);
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
     expect(events).toHaveLength(0);
   });
 
@@ -1448,7 +1453,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 1.5),
         makeBucket(4 * HOUR_MS, 1.5),
       ], { status: 'at_risk' }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
 
     expect(saveCount()).toBe(2);
@@ -1467,7 +1472,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     const firstRevision = recorder.getPlanForTests('dev')?.latest?.revision;
-    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(events).toEqual([]);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(firstRevision);
@@ -1505,7 +1510,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     // No growth revision: the commitment froze.
     expect(events).toEqual([]);
@@ -1550,7 +1555,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 4 * HOUR_MS);
+    })], 4 * HOUR_MS + SETTLE_OFFSET_MS);
 
     // Replan again at nowMs=5h: live = [5h] only. 4h has elapsed and 5h is
     // already committed, so nothing grows — no further event.
@@ -1560,7 +1565,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       horizonPlan: makeHorizon([
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 5 * HOUR_MS);
+    })], 5 * HOUR_MS + SETTLE_OFFSET_MS);
 
     // Exactly one growth event from the 5h adoption at nowMs=4h.
     expect(events).toEqual([{ reason: 'prices_revised', hours: 4 }]);
@@ -1594,7 +1599,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(events).toEqual([]);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
@@ -1626,7 +1631,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         energyNeededKWh: 0,
         plannedUsefulEnergyKWh: 0,
       }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(events).toEqual([]);
     // Revision is still persisted so the Settings UI reflects the satisfied
@@ -1687,7 +1692,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1),
         makeBucket(5 * HOUR_MS, 1),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       reason: 'schedule_revised',
@@ -1706,7 +1711,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(4 * HOUR_MS, 1),
         makeBucket(5 * HOUR_MS, 1),
       ]),
-    })], 3 * HOUR_MS);
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
     expect(events).toHaveLength(1);
   });
 
@@ -1746,7 +1751,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         energyNeededKWh: 4.5,
         plannedUsefulEnergyKWh: 0,
       }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     // The committed schedule does not collapse, so the plan-changed bus stays
     // quiet. A metadata revision still persists the degraded status.
@@ -1776,7 +1781,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('flow_card');
@@ -1805,7 +1810,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // Same horizon, same charging hours — only the daily-budget signal
       // shifted. Triggers a metadata-only revision write.
       dailyBudgetExhaustedBucketCount: 2,
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('schedule_revised');
@@ -1835,7 +1840,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 0.5),
         makeBucket(4 * HOUR_MS, 0.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('rate_refined');
@@ -1861,7 +1866,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('flow_card');
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
@@ -1887,7 +1892,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(2 * HOUR_MS, 1.5),
         makeBucket(5 * HOUR_MS, 1.5),
       ]),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('prices_revised');
   });
@@ -1926,7 +1931,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
       horizonPlan: makeHorizon([], { status: 'satisfied', statusDetail: 'energy_already_met', energyNeededKWh: 0, plannedUsefulEnergyKWh: 0 }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('schedule_revised');
@@ -1962,7 +1967,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         plannedUsefulEnergyKWh: 0,
         unplannedUsefulEnergyKWh: 4.5,
       }),
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
     const exhausted = saved()!.plansByDeviceId.dev;
     expect(exhausted.latest?.planStatus).toBe('cannot_meet');
@@ -2146,7 +2151,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       status: 'at_risk',
       reasonCode: 'limited_by_daily_budget',
       horizonPlan: { ...sharedPlan, status: 'at_risk', statusDetail: 'limited_by_daily_budget' },
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('schedule_revised');
@@ -2184,7 +2189,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 6 * HOUR_MS,
       kwhPerUnitSource: 'bootstrap',
       horizonPlan: sharedPlan,
-    })], 2 * HOUR_MS);
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('schedule_revised');
@@ -2220,7 +2225,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 10 * HOUR_MS })], HOUR_MS);
     // 1h ABANDON_GRACE_MS — at exactly 1h after last seen, drop fires.
-    recorder.observe([], 2 * HOUR_MS);
+    recorder.observe([], 2 * HOUR_MS + SETTLE_OFFSET_MS);
     recorder.flushIfDirty();
 
     expect(saved()!.plansByDeviceId.dev).toBeUndefined();
@@ -2268,7 +2273,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         makeBucket(3 * HOUR_MS, 2.0),
         makeBucket(4 * HOUR_MS, 2.0),
       ]),
-    })], 3 * HOUR_MS);
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.reason).toBe('prices_arrived');
@@ -2418,7 +2423,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const { deps } = buildPersistDeps(persisted);
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       // The pending plan should transition into a fresh first revision
@@ -2426,7 +2431,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // legacy-backfill path. The committedAtMs therefore matches the
       // observe timestamp regardless; the test below pins the contract.
       expect(plan?.pending).toBe(false);
-      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
+      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS + SETTLE_OFFSET_MS);
       expect(plan?.original?.revision).toBe(1);
     });
 
@@ -2459,7 +2464,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
       const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
-      recorder.observe([diag], 2 * HOUR_MS);
+      recorder.observe([diag], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       // Commitment hours come from the live diagnostic (the default 3-bucket
@@ -2467,7 +2472,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(plan?.commitment?.hours.map((h) => h.startsAtMs)).toEqual([
         2 * HOUR_MS, 3 * HOUR_MS, 4 * HOUR_MS,
       ]);
-      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS);
+      expect(plan?.commitment?.committedAtMs).toBe(2 * HOUR_MS + SETTLE_OFFSET_MS);
     });
 
     it('writes a fresh commitment when the persisted signature mismatches the current diagnostic', () => {
@@ -2486,12 +2491,12 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deadlineAtMs: 6 * HOUR_MS,
         targetTemperatureC: 70,
       });
-      recorder.observe([diag], 2 * HOUR_MS);
+      recorder.observe([diag], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.latest?.reason).toBe('objective_changed');
       expect(plan?.commitment).toEqual({
-        committedAtMs: 2 * HOUR_MS,
+        committedAtMs: 2 * HOUR_MS + SETTLE_OFFSET_MS,
         hours: plan?.latest?.hours,
       });
     });
@@ -2509,7 +2514,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       const { deps } = buildPersistDeps(persisted);
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);
 
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 5 * HOUR_MS);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 5 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const plan = recorder.getPlanForTests('dev');
       expect(plan?.commitment).toEqual(existingCommitment);
@@ -3245,7 +3250,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deviceId: 'dev',
         deadlineAtMs,
         dailyBudgetExhaustedBucketCount: 2,
-      })], 2 * HOUR_MS);
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
       const writes = events.filter((e) => e.event === 'active_plan_revision_written');
       expect(writes.length).toBeGreaterThanOrEqual(2);
@@ -3255,6 +3260,119 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         deadlineAtMs,
       });
       expect(replan.revision as number).toBeGreaterThan(1);
+    });
+  });
+
+  describe('end-of-hour (:58) settle gate', () => {
+    const MID_HOUR_MS = 30 * 60 * 1000; // :30 — within the hour, before the :58 mark
+
+    it('freezes mid-hour schedule growth, then settles it at :58', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      // Rev 1 (the first revision is immediate, not gated).
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // A grown schedule observed MID-hour (2:30) must NOT write a revision — we
+      // can't know until the hour ends whether the plan needs to change (the
+      // device may still climb to deliver). This is the churn we are killing.
+      const grown = makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+        makeBucket(5 * HOUR_MS, 1.5),
+      ]);
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS, horizonPlan: grown })],
+        2 * HOUR_MS + MID_HOUR_MS,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // The SAME grown schedule at :58 settles → revision 2.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS, horizonPlan: grown })],
+        2 * HOUR_MS + SETTLE_OFFSET_MS,
+      );
+      // Settled at :58 → revision advances. (Reason classification —
+      // schedule_revised vs prices_revised — is covered by the reason tests.)
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+    });
+
+    it('settles at most once per clock hour (a later :58+ cycle in the same hour is frozen)', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+
+      const grow = (n: number): DeferredObjectiveHorizonPlan => makeHorizon(
+        Array.from({ length: n }, (_, i) => makeBucket((2 + i) * HOUR_MS, 1.5)),
+      );
+      // First settle of hour 2 (at :58) → revision 2.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS, horizonPlan: grow(4) })],
+        2 * HOUR_MS + SETTLE_OFFSET_MS,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+      // A further-grown schedule LATER in the same hour (2:59) is frozen.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS, horizonPlan: grow(5) })],
+        2 * HOUR_MS + SETTLE_OFFSET_MS + 60_000,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+      // The next hour's :58 settles again → revision 3.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS, horizonPlan: grow(5) })],
+        3 * HOUR_MS + SETTLE_OFFSET_MS,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(3);
+    });
+
+    it('revises a user objective edit immediately, even mid-hour (bypasses the gate)', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+
+      // A target edit (65 → 70) observed mid-hour (2:30) must revise NOW — an
+      // external user change is not churn and should not wait for :58.
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        targetTemperatureC: 70,
+        horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 2), makeBucket(3 * HOUR_MS, 2)]),
+      })], 2 * HOUR_MS + MID_HOUR_MS);
+
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.latest?.revision).toBe(2);
+      expect(plan?.latest?.reason).toBe('objective_changed');
+    });
+
+    it('a no-op :58 cycle does not consume the hour slot — a real change later in the window still lands', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // First :58 cycle of hour 2: identical hours → nothing written → the hour's
+      // settle slot must NOT be consumed.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })],
+        2 * HOUR_MS + SETTLE_OFFSET_MS,
+      );
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+
+      // Later in the SAME :58 window, a real schedule growth still settles
+      // (it wasn't starved by the earlier no-op).
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 8 * HOUR_MS,
+        horizonPlan: makeHorizon([
+          makeBucket(2 * HOUR_MS, 1.5),
+          makeBucket(3 * HOUR_MS, 1.5),
+          makeBucket(4 * HOUR_MS, 1.5),
+          makeBucket(5 * HOUR_MS, 1.5),
+        ]),
+      })], 2 * HOUR_MS + SETTLE_OFFSET_MS + 30_000);
+      expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     });
   });
 });
