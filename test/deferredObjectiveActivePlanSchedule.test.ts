@@ -52,6 +52,46 @@ describe('mergeHoursPreservingCommitment', () => {
     ]);
   });
 
+  it('clears coversFromMs when a full-hour committed floor wins the overlap', () => {
+    // A future hour was committed full (no coversFromMs) and is now current,
+    // where the live plan re-allocates it trimmed (coversFromMs, smaller
+    // post-trim kWh). The floor wins the Math.max, so the merged hour is the
+    // FULL hour — coversFromMs must drop so the history chart prorates it rather
+    // than treating it as an already-trimmed sub-hour span.
+    const merged = mergeHoursPreservingCommitment(
+      [{ startsAtMs: TEN, plannedKWh: 0.65 }],
+      [{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.65 }]);
+  });
+
+  it('keeps coversFromMs for a freshly trimmed current hour with no committed floor', () => {
+    // Satisfied-then-drift: no prior commitment, the live current hour is the
+    // first booking and is already trimmed. Its coversFromMs survives so the
+    // chart adds its energy whole rather than prorating it.
+    const merged = mergeHoursPreservingCommitment(
+      [],
+      [{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.4, coversFromMs: TEN + SUB_HOUR }]);
+  });
+
+  it('prefers the committed full-hour coverage on an equal-energy overlap (tie)', () => {
+    // A trimmed live current-hour bucket rounds back to the committed full-hour
+    // kWh (or the device made no measurable progress). The energies tie, so the
+    // committed full-hour coverage must win (`>=`) — keeping the live trimmed
+    // coversFromMs would mislabel the full hour as already-trimmed and suppress
+    // the chart's proration of the elapsed part.
+    const merged = mergeHoursPreservingCommitment(
+      [{ startsAtMs: TEN, plannedKWh: 0.5 }],
+      [{ startsAtMs: TEN, plannedKWh: 0.5, coversFromMs: TEN + SUB_HOUR }],
+      TEN + SUB_HOUR,
+    );
+    expect(merged).toEqual([{ startsAtMs: TEN, plannedKWh: 0.5 }]);
+  });
+
   it('adopts the live plannedKWh on overlap when live exceeds the committed kWh (growth case)', () => {
     // Mirror of the floor test: when live's plannedKWh exceeds committed
     // (e.g. drift made the original commitment under-deliver and the

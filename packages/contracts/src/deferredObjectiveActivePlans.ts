@@ -66,6 +66,17 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;
+  // Actual coverage start of this hour's booked energy, when it is a sub-hour
+  // span `[coversFromMs, hourEnd]` rather than the full hour. Set only for the
+  // current hour at a mid-hour revision: the horizon planner trims that
+  // bucket's start to `nowMs` (see `buildHoursFromHorizonPlan`), so its
+  // `plannedKWh` is already only the post-revision remainder. Absent ⇒ the
+  // energy covers the full hour `[startsAtMs, startsAtMs+1h]` (a freshly-booked
+  // full hour or a full-hour commitment floor). Consumed by the history-detail
+  // chart to decide whether the revised-trajectory riser is prorated
+  // (full-hour floor) or added whole (already-trimmed). Optional/back-compatible:
+  // legacy entries persisted without it read as full-hour. Added 2026-06-01.
+  coversFromMs?: number;
 };
 
 export type DeferredObjectiveActivePlanCommitmentV1 = {

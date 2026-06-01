@@ -2,9 +2,12 @@
 //
 // Resolves the actual-vs-plan trajectory chart series the detail page renders:
 // a stepped planned-staircase derived from each revision's
-// `hours × kwhPerUnitMean` integrated from the recorded start progress, an
-// observed-progress line from `progressSamples[]`, a target reference line,
-// and a marker at `metAtMs` for succeeded runs.
+// `hours × kwhPerUnitMean`, an observed-progress line from `progressSamples[]`,
+// a target reference line, and a marker at `metAtMs` for succeeded runs. The
+// original staircase integrates from the recorded start progress; the revised
+// staircase re-anchors at the measured progress when that revision was computed
+// so a mid-run replan does not read as "still climbing from the start
+// temperature" (see `notes/deferred-load-objectives/execution-adaptation.md`).
 //
 // Lives in its own file (alongside `deferredPlanHistory.ts`) so the legacy
 // hero-formatter helpers stay browse-able under the 500-LOC cap. Per
@@ -49,10 +52,12 @@ export type DeferredPlanHistoryChartData = {
   // `kwhPerUnitMean` integrated from `startProgress*`. Empty when the mode
   // is `legacy_kwh` or when the original plan was never recorded.
   plannedOriginal: DeferredPlanHistoryChartPoint[];
-  // Planned staircase derived from `finalPlan`. Only populated when the run
-  // replanned (different from `originalPlan`); the view overlays it as a
-  // second stepped line. Null when the planner never wrote a second revision
-  // or when the original and final staircases coincide.
+  // Planned staircase derived from `finalPlan`, re-anchored at the measured
+  // progress when that revision was computed (`revisedAtMs`) — drawn forward
+  // from there rather than from the task-start progress. Only populated when the
+  // run replanned (different from `originalPlan`); the view overlays it as a
+  // second stepped line. Null when the planner never wrote a second revision or
+  // when the original and final staircases coincide.
   plannedFinal: DeferredPlanHistoryChartPoint[] | null;
   // Observed progress samples in unit space (°C / %). Empty on `legacy_kwh`.
   // The recorder caps the persisted samples at 48/run, so the line is
@@ -79,21 +84,28 @@ const HOUR_MS = 60 * 60 * 1000;
 
 const integratePlannedStaircase = (
   snapshot: DeferredObjectivePlanHistoryRevisionSnapshot,
-  startProgress: number,
-  windowStartMs: number,
+  anchorValue: number,
+  anchorAtMs: number,
   windowEndMs: number,
 ): DeferredPlanHistoryChartPoint[] => {
-  // Stepped line: one anchor at the window start (progress = startProgress),
-  // plus a pair of anchors per planned hour — one at the hour's *start*
-  // carrying the previous cumulative value, one at the hour's *end* carrying
-  // the new value. With ECharts' `step: 'end'`, that draws a horizontal
-  // segment from the previous anchor to the hour's start, then a vertical
-  // riser across the hour itself, landing on the new level by hour-end. This
-  // matters for non-contiguous schedules: a plan with allocations at T0 +
-  // T+4h (idle hours between) must read as flat from windowStart → T0, riser
-  // at T0, flat at the new level until T+4h, second riser, then flat. Without
-  // the hour-start anchor, the staircase would imply a smooth climb across
-  // the idle gap.
+  // Stepped line: one anchor at `anchorAtMs` (progress = `anchorValue`), plus a
+  // pair of anchors per planned hour — one at the hour's *start* carrying the
+  // previous cumulative value, one at the hour's *end* carrying the new value.
+  // With ECharts' `step: 'end'`, that draws a horizontal segment from the
+  // previous anchor to the hour's start, then a vertical riser across the hour
+  // itself, landing on the new level by hour-end. This matters for
+  // non-contiguous schedules: a plan with allocations at T0 + T+4h (idle hours
+  // between) must read as flat from the anchor → T0, riser at T0, flat at the
+  // new level until T+4h, second riser, then flat. Without the hour-start
+  // anchor, the staircase would imply a smooth climb across the idle gap.
+  //
+  // The anchor is the window start + recorded start progress for the original
+  // staircase, but the *revised* staircase re-anchors at the measured progress
+  // when the revision was computed (`revisedAtMs`) so it reads as "from where
+  // the device had actually reached at re-plan time" rather than re-climbing
+  // from the task-start temperature. Hours that fully elapsed before the anchor
+  // are dropped (they're already reflected in the observed line); for the
+  // original staircase the anchor is the window start so nothing is dropped.
   //
   // `kwhPerUnitMean` is "kWh per unit" (kWh/°C or kWh/%) per
   // `notes/objective-profile-bands.md` — so the planned progress rise for
@@ -104,12 +116,40 @@ const integratePlannedStaircase = (
   if (kwhPerUnitMean <= 0) return [];
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points: DeferredPlanHistoryChartPoint[] = [
-    { atMs: windowStartMs, value: startProgress },
+    { atMs: anchorAtMs, value: anchorValue },
   ];
-  let cumulativeProgress = startProgress;
-  let lastAnchorAtMs = windowStartMs;
+  let cumulativeProgress = anchorValue;
+  let lastAnchorAtMs = anchorAtMs;
   for (const hour of sortedHours) {
+    // Anchor end-of-hour at `startsAtMs + 1h` so the stepped line draws a
+    // horizontal segment across the hour's full duration. Clamp to the
+    // deadline so a plan that overshoots the window doesn't push the last
+    // point past the chart's right edge.
+    const endOfHour = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    // Drop hours that fully elapsed before the anchor (only possible on a
+    // re-anchored revised staircase). The original staircase anchors at the
+    // window start, so every hour ends after it and nothing is dropped.
+    if (endOfHour <= anchorAtMs) continue;
     const plannedKWh = Number.isFinite(hour.plannedKWh) ? Math.max(0, hour.plannedKWh) : 0;
+    // Credit only the portion of this hour's booked energy that falls after the
+    // anchor — the pre-anchor portion is already on the observed line. The energy
+    // covers `[coverStart, endOfHour]`, where `coverStart` is the trim point for
+    // an already-trimmed current hour (`coversFromMs`) or the hour boundary for a
+    // full-hour floor. Prorate by the post-anchor fraction of that covered span:
+    //   • full-hour floor straddling the anchor → prorated by the post-anchor
+    //     fraction of the hour;
+    //   • trimmed hour whose trim point is at/after the anchor → fraction 1
+    //     (added whole; prorating an already-trimmed value would double-trim);
+    //   • trimmed hour carried forward with a trim point BEFORE the anchor (an
+    //     earlier same-hour revision's floor) → prorated over its covered span,
+    //     dropping the `[coverStart, anchor]` sliver that predates the anchor.
+    // Hours fully after the anchor (`coverStart >= anchorAtMs`) keep fraction 1,
+    // so the original staircase and the deadline-clamp behaviour are unchanged.
+    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
+    const coveredSpanMs = endOfHour - coverStartMs;
+    const postAnchorFraction = coveredSpanMs > 0
+      ? Math.max(0, Math.min(1, (endOfHour - Math.max(anchorAtMs, coverStartMs)) / coveredSpanMs))
+      : 1;
     // Insert an extra hour-start anchor (carrying the *previous* cumulative
     // value) only when the hour starts after the last anchor — i.e. when
     // there's a real idle gap before this hour. For contiguous schedules
@@ -119,16 +159,67 @@ const integratePlannedStaircase = (
     if (hour.startsAtMs > lastAnchorAtMs) {
       points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
     }
-    cumulativeProgress += plannedKWh / kwhPerUnitMean;
-    // Anchor end-of-hour at `startsAtMs + 1h` so the stepped line draws a
-    // horizontal segment across the hour's full duration. Clamp to the
-    // deadline so a plan that overshoots the window doesn't push the last
-    // point past the chart's right edge.
-    const endOfHour = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    cumulativeProgress += (plannedKWh * postAnchorFraction) / kwhPerUnitMean;
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
   return points;
+};
+
+// Observed progress value at `atMs`, linearly interpolated between the samples
+// bracketing it. The recorder keeps only the latest progress sample per hour
+// (`recordProgressSample` buckets by hour), so a mid-hour `revisedAtMs` usually
+// has no sample exactly at it — interpolating between the nearest earlier and
+// later samples recovers an accurate anchor instead of snapping to a stale
+// prior-hour reading. Returns the last sample's value when `atMs` is at/after
+// the final sample, and `null` when `atMs` precedes the first sample (no
+// measured progress yet to anchor on → caller falls back to the start anchor).
+// `observed` is sorted ascending by `atMs` (see `pickObservedSamples`).
+const observedValueAt = (
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  atMs: number,
+): number | null => {
+  let before: DeferredPlanHistoryChartPoint | null = null;
+  for (const point of observed) {
+    if (point.atMs <= atMs) {
+      before = point;
+      continue;
+    }
+    // First sample after `atMs`: interpolate from the bracketing `before`.
+    if (before === null) return null;
+    if (point.atMs === before.atMs) return before.value;
+    const fraction = (atMs - before.atMs) / (point.atMs - before.atMs);
+    return before.value + (point.value - before.value) * fraction;
+  }
+  return before === null ? null : before.value;
+};
+
+// Builds the revised (final-plan) staircase, re-anchored at the measured
+// progress when that revision was computed (`revisedAtMs`) so a mid-run replan
+// reads as "from where the device actually was" instead of re-climbing from the
+// recorded task-start progress. The recorded start progress is seeded as the
+// first interpolation bracket (`[windowStartMs, startProgress]`) so a replan in
+// the task's first hour — whose seeded start sample the recorder may have
+// overwritten with a later same-hour reading — still interpolates from start
+// rather than losing the anchor. Falls back to the start-anchored plan only when
+// the revision is at/before the window start (no real replan to re-anchor on).
+// See `notes/deferred-load-objectives/execution-adaptation.md` work item 1.
+const buildRevisedStaircase = (
+  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot,
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  startProgress: number,
+  windowStartMs: number,
+  windowEndMs: number,
+): DeferredPlanHistoryChartPoint[] => {
+  const revisedAtMs = snapshot.revisedAtMs;
+  if (Number.isFinite(revisedAtMs) && revisedAtMs > windowStartMs) {
+    const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
+    const anchorValue = observedValueAt(bracketed, revisedAtMs);
+    if (anchorValue !== null) {
+      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs);
+    }
+  }
+  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs);
 };
 
 const staircasesDiffer = (
@@ -280,19 +371,35 @@ const composeTrajectoryData = (
   const plannedOriginal = entry.originalPlan !== null && startProgress !== null
     ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs)
     : [];
-  const plannedFinalCandidate = entry.finalPlan !== null && startProgress !== null
+  // Start-anchored final staircase. Used as the no-original primary fallback AND
+  // as the replan-detection baseline. Detecting a replan by comparing the
+  // original against a *like-anchored* final means a re-anchor alone never reads
+  // as a replan — only a genuinely different schedule does. (Comparing the
+  // start-anchored original against the re-anchored final would spuriously
+  // overlay a "Revised trajectory" on a single-revision task whose one revision
+  // happens to sit after the window start.)
+  const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null
     ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs)
     : [];
-  const plannedFinal = plannedFinalCandidate.length > 0
-      && plannedOriginal.length > 0
-      && staircasesDiffer(plannedOriginal, plannedFinalCandidate)
-    ? plannedFinalCandidate
-    : null;
-  // When only the final plan was recorded (no original), surface it as the
-  // primary staircase so the view still renders the planner's intent.
+  // A real replan = the original and final plans differ when anchored the same
+  // way. Only then overlay a "Revised trajectory", rendered re-anchored at the
+  // measured progress when the revision was computed so a mid-run replan stops
+  // reading as "still climbing from the task-start temperature". The original
+  // staircase keeps the start anchor as the original-intent reference; a
+  // single-revision task (original === final) shows just that, no overlay.
+  const replanned = plannedOriginal.length > 0
+    && plannedFinalStartAnchored.length > 0
+    && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
+  const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null
+    ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, windowStartMs, windowEndMs)
+    : [];
+  const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
+  // When only the final plan was recorded (no original), surface the
+  // start-anchored final as the primary staircase so the view still renders the
+  // planner's intent from the window start (not re-anchored mid-window).
   const resolvedOriginal = plannedOriginal.length > 0
     ? plannedOriginal
-    : plannedFinalCandidate;
+    : plannedFinalStartAnchored;
   return {
     mode: 'trajectory',
     unit: entry.objectiveKind === 'temperature' ? '°C' : '%',
