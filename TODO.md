@@ -1592,9 +1592,9 @@ live-walk screenshots.*
       Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
       `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to decide whether the now-thin `setup/appInit.ts` adapter should be
-      deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
-      keep trimming any delegates that no longer buy readability or testability.
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
+      one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
+      it stays shared, and keep trimming any delegates that no longer buy readability or testability.
       Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
