@@ -189,6 +189,22 @@ describe('formatPlanHistoryCostNarrative', () => {
     )).toBeNull();
     expect(formatPlanHistoryCostNarrative(buildEntry({ totalCost: 5 }), '')).toBeNull();
   });
+
+  it('strips a rate-shaped Flow/Homey unit so the TOTAL chip reads "kr", not "kr/kWh"', () => {
+    // Equals the bare-`kr` chip (same NBSP glyph spacing) — the only difference
+    // from the source `kr/kWh` unit must be the dropped `/kWh` rate suffix.
+    const rateUnit = formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 12, deliveredKWh: 4 }),
+      'kr/kWh',
+    );
+    const amountUnit = formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 12, deliveredKWh: 4 }),
+      'kr',
+    );
+    expect(rateUnit).toBe(amountUnit);
+    expect(rateUnit).not.toContain('kr/kWh');
+    expect(rateUnit).toContain('kr');
+  });
 });
 
 describe('formatPlanHistoryAbandonedDetails', () => {

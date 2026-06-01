@@ -596,6 +596,12 @@ type HistoryView = Parameters<typeof renderDeadlinePlan>[1] extends { history?: 
 export const resolveDeadlinePlanLoadState = (
   renderInput: DeadlineRenderInput,
   history: HistoryView | undefined,
+  // Display currency (unit + divisor) for the device-scoped `PriorRunsHistory`
+  // past-run cost lines + week roll-up. Resolved by the caller from the same
+  // price source the live hero uses so the past rows scale øre→kr identically.
+  // Only the `pending` / `ready` states render history cost; omitted by callers
+  // that don't surface cost (and by tests that don't assert on it).
+  costDisplay?: CostDisplay,
 ): DeadlinePlanLoadState => {
   if (renderInput.status === 'absent') {
     // Genuinely unknown device or feature gated off — keep the legacy error
@@ -607,7 +613,7 @@ export const resolveDeadlinePlanLoadState = (
     return { status: 'completed', objectiveKind: renderInput.kind, history };
   }
   if (renderInput.status === 'ready') {
-    return { status: 'ready', payload: renderInput.payload, history };
+    return { status: 'ready', payload: renderInput.payload, history, costDisplay };
   }
   if (renderInput.status === 'unavailable') {
     return {
@@ -617,7 +623,7 @@ export const resolveDeadlinePlanLoadState = (
       history,
     };
   }
-  return { status: 'pending', pending: renderInput.pending, history };
+  return { status: 'pending', pending: renderInput.pending, history, costDisplay };
 };
 
 export const testExports = {

@@ -7,6 +7,8 @@
 // Imported DIRECTLY by file path (no barrel/index), so sibling chips touching
 // shared-domain don't collide on an index edit.
 
+import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
+
 // --- Static copy --------------------------------------------------------
 
 export const PLAN_PRICE_WIDGET_TITLE = 'Budget and Price';
@@ -87,10 +89,9 @@ const normalizeUnitWithKwh = (unit: string): string => (
 // Inverse of `normalizeUnitWithKwh`, for the TOTAL cost figure: a total is an
 // amount, not a rate, so a rate-shaped source unit like `kr/kWh` must drop its
 // trailing `/kWh` to read `kr` (otherwise the projected total renders as e.g.
-// `12.3 kr/kWh`). Leaves an already amount-shaped unit (`kr`) untouched.
-const stripKwhRateSuffix = (unit: string): string => (
-  unit.replace(KWH_RATE_SUFFIX, '').trim()
-);
+// `12.3 kr/kWh`). Single-sourced from `priceRateLabelToAmountUnit` so the
+// past-task receipt producers and this widget agree on what "rate-shaped" means.
+const stripKwhRateSuffix = priceRateLabelToAmountUnit;
 
 /**
  * Resolve the cost/axis units for the widget from the persisted price store

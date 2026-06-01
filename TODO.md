@@ -126,6 +126,18 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] Persist price-display provenance on smart-task history entries so archived cost survives a
+      price-scheme/currency change. `DeferredObjectivePlanHistoryEntry` stores `totalCost` /
+      `deliveredKWh` but NOT the scheme/unit/divisor it was recorded with, and the archive
+      (past-task list rows + ISO-week roll-up — both surfaces wired by PR #1417) formats them with
+      the CURRENTLY-bootstrapped `CostDisplay`. Correct for users who never change scheme; but a
+      Norway run recorded as 150 øre later renders ~"150 EUR" instead of "≈ 2 kr" after switching to
+      a Flow/Homey scheme (divisor 1, different unit). Fix: persist the `CostDisplay`
+      (scheme + divisor + unit) on the entry at record time + a migration/fallback for legacy
+      entries (absent → assume the recording-era default øre/kr scheme). Contract + persistence
+      change (part of the deferred plan-device/provenance theme — do deliberately, not as a quick
+      win). Source: codex P2 on PR #1417, 2026-06-01.
+
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
@@ -1052,18 +1064,6 @@ live-walk screenshots.*
       `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
       `packages/contracts/src/deferredObjectivePlanHistory.ts` (only if the budget-exhaustion
       flag needs to be persisted), six-variant resolver tests.
-- [ ] Render `Cost ≈ X kr` on the smart-task live hero, past-task list rows, and history detail.
-      The `deliveredKWh` / `totalCost` fields already exist on
-      `DeferredObjectivePlanHistoryEntry` (the contract dependency shipped); this is the
-      rendering follow-up. For the live hero, derive `Σ priceValue × deviceKwh` over the
-      planned hours each cycle (no persistence needed). For past entries, use the persisted
-      `totalCost`. The single biggest hole on a price-optimization product's most-visited pages.
-      Why P2: rendering-only; the contract is in place.
-      Files: `packages/settings-ui/src/ui/deadlinePlan.ts` (live cost derivation),
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts` (meta line),
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistory.tsx` (past list row),
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx` (history hero),
-      price/cost rendering tests.
 - [ ] Add a "Picked the N cheapest hours of next M (avg P kr/kWh vs Q baseline)" caption under
       the live deadline-plan chart. The chart today is honest — price bars are tone-coded,
       planned hours stack on the same x-axis — but a skeptical user can't tell at a glance
