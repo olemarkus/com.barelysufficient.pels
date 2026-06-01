@@ -75,6 +75,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   observeDeferredObjectivePlanHistory?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
+    activePlans: DeferredObjectiveActivePlansV1 | null,
     getStallClassification?: (deviceId: string) => StallClassification,
   ) => void;
   getStallClassification?: (deviceId: string) => StallClassification;
@@ -90,6 +91,11 @@ export class DeferredObjectiveLifecycleEmitter {
     const settings = this.deps.getDeferredObjectiveSettings();
     if (!settings) return;
 
+    // Read the active-plan snapshot once per tick and reuse it for both the
+    // diagnostics build and the plan-history observation, so both see the same
+    // value and the recorder isn't queried twice.
+    const activePlans = this.deps.getDeferredObjectiveActivePlans();
+
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),
@@ -98,7 +104,7 @@ export class DeferredObjectiveLifecycleEmitter {
       powerTracker: this.deps.getPowerTracker(),
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-      activePlans: this.deps.getDeferredObjectiveActivePlans(),
+      activePlans,
       hardCapKw: this.deps.getHardCapKw(),
       concurrentEligibleTracker: this.concurrentEligibleTracker,
     });
@@ -111,6 +117,7 @@ export class DeferredObjectiveLifecycleEmitter {
     this.deps.observeDeferredObjectivePlanHistory?.(
       diagnostics,
       nowMs,
+      activePlans,
       this.deps.getStallClassification,
     );
 
