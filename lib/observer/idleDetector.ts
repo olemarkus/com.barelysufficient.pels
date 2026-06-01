@@ -210,6 +210,13 @@ const classifyByGapAndDuration = (
   // the window we stay `active`, matching the "not idle long enough yet"
   // behaviour of the gap-known unresponsive branch.
   if (gap === undefined) {
+    // `durationMs` is the idle streak, not how long the sensor has been dark, so
+    // a single momentary `measure_temperature` dropout right after a long
+    // legitimate hold would otherwise fire `unresponsive` immediately. Give one
+    // cycle of grace to a device leaving a healthy near-target hold: only escalate
+    // once the sensor stays dark (next tick `previous` is no longer the hold
+    // state) or the device wasn't holding to begin with.
+    if (previous === 'near_target_idle') return 'active';
     return durationMs >= IDLE_UNRESPONSIVE_MIN_DURATION_MS ? 'unresponsive' : 'active';
   }
 
