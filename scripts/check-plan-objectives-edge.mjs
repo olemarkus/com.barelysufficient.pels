@@ -22,6 +22,9 @@
 //   - export ... from '...'            (ExportDeclaration with moduleSpecifier)
 //   - import X = require('...')         (ImportEqualsDeclaration)
 //   - import('...') / require('...')    (CallExpression; string OR template literal)
+//   - type X = import('...').Foo        (ImportTypeNode; type-position import)
+// Template literals with substitutions (`import(\`../objectives/${x}\`)`) are
+// matched on their STATIC quasi text, which still carries the detectable prefix.
 // A specifier is an offender when its text contains "objectives".
 //
 // This guard runs in `ci:checks` (the pre-push hook and the CI checks job),
@@ -44,12 +47,20 @@ function isObjectivesSpecifier(text) {
 }
 
 // Extract the literal/template specifier text from a node, or null if it isn't
-// a static string we can inspect.
+// a static string we can inspect. For template literals with substitutions
+// (`import(\`../objectives/${x}\`)`), the substituted values are unknowable at
+// parse time, so we concatenate only the STATIC quasi text (head + each span's
+// literal). That preserves the detectable static prefix (e.g. `../objectives/`)
+// while dropping the variable holes.
 function specifierText(node) {
   if (node === undefined) return null;
   if (ts.isStringLiteralLike(node)) return node.text;
   // No-substitution template literal: `import(\`...\`)`
   if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  // Template literal WITH substitutions: `import(\`../objectives/${x}\`)`
+  if (ts.isTemplateExpression(node)) {
+    return node.head.text + node.templateSpans.map((span) => span.literal.text).join('');
+  }
   return null;
 }
 
@@ -77,6 +88,15 @@ function collectOffenders(sourceFile, relPath, offenders) {
     ) {
       const arg = node.moduleReference.expression;
       record(arg, specifierText(arg));
+    }
+
+    // TYPE-position import: `type X = import('...').Foo` / `let v: import('...').Bar`
+    // (ImportTypeNode). Its `argument` is a LiteralTypeNode wrapping a string
+    // literal — NOT a CallExpression, so the dynamic-import branch below misses
+    // it. This is the exact `import type`-erased edge this guard exists to catch.
+    if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      const literal = node.argument.literal;
+      record(literal, specifierText(literal));
     }
 
     // import('...') / require('...')  (string OR template-literal argument)
