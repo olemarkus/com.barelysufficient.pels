@@ -635,6 +635,67 @@ describe('formatPlanHistoryProgressLine', () => {
     }))).toBe('50.0 °C → 65.0 °C  ·  target 65.0 °C');
   });
 
+  it('floors the displayed end at target on a met-then-cooled Succeeded run', () => {
+    // Lived prod walk: a tank met its 06:00 deadline early (reached at 03:42)
+    // then cooled to 39.2 °C by the window end. The raw `64.0 → 39.2 · target
+    // 65.0` arrow read as a drop next to "Succeeded"; the run did reach target,
+    // so the honest summary lifts the end to the target.
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      startProgressC: 64,
+      finalProgressC: 39.2,
+      targetTemperatureC: 65,
+    }))).toBe('64.0 °C → 65.0 °C  ·  target 65.0 °C');
+  });
+
+  it('does NOT floor a stall-promoted met (the plateau below target is intentional)', () => {
+    // `metReason: 'stalled'` means the device plateaued below target and we
+    // accepted it as met; the detail postmortem leads with that accepted
+    // plateau, so flooring the list row to target would invent a reading the
+    // device never hit. The real final is preserved.
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      metReason: 'stalled',
+      startProgressC: 50,
+      finalProgressC: 61.8,
+      targetTemperatureC: 65,
+    }))).toBe('50.0 °C → 61.8 °C  ·  target 65.0 °C');
+  });
+
+  it('does NOT floor a device-capped met (setpoint cap plateau is intentional)', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      metReason: 'stalled_device_capped',
+      startProgressC: 50,
+      finalProgressC: 58,
+      targetTemperatureC: 65,
+    }))).toBe('50.0 °C → 58.0 °C  ·  target 65.0 °C');
+  });
+
+  it('leaves an overshoot final untouched on Succeeded runs (only sub-target finals lift)', () => {
+    // `final > target` is meaningful (the overshoot line surfaces the magnitude
+    // separately), so the displayed end stays at the real reading.
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      startProgressC: 29.3,
+      finalProgressC: 77.7,
+      targetTemperatureC: 65,
+    }))).toBe('29.3 °C → 77.7 °C  ·  target 65.0 °C');
+  });
+
+  it('floors the displayed end at target on a met-then-discharged EV run', () => {
+    expect(formatPlanHistoryProgressLine(buildEntry({
+      outcome: 'met',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      startProgressC: null,
+      startProgressPercent: 60,
+      finalProgressC: null,
+      finalProgressPercent: 72,
+    }))).toBe('60 % → 80 %  ·  target 80 %');
+  });
+
   it('keeps the arrow on Missed runs (final reading is meaningful)', () => {
     expect(formatPlanHistoryProgressLine(buildEntry({
       outcome: 'missed',

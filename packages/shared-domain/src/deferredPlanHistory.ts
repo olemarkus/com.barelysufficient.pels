@@ -3,6 +3,7 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
@@ -65,11 +66,41 @@ const formatPercent = (value: number | null): string | null => (
 // Producer-resolves the suppression so the view layer never branches on
 // outcome; mirrors the same rule used by `formatPlanHistoryReachedAtLine`
 // (suppressed on every outcome except `'met'`).
+// On a true target-reached `met` run the deadline was reached — often early —
+// after which the reading can drift back below target before the window closes:
+// a water tank that hit 65 °C at 03:42 then cooled to 39.2 °C by the 06:00
+// deadline. Showing the raw end-of-window `finalProgressC` then renders
+// `64.0 → 39.2 · target 65.0` next to a "Succeeded" chip — a drop that reads as
+// a contradiction, even though the separate "reached at HH:MM" line already
+// records when target was met. For those runs we floor the displayed end at the
+// target: the run did reach it, so `start → target` is the honest summary.
+//
+// Stall-promoted mets (`metReason` set — `stalled` / `stalled_device_capped`)
+// are the opposite case: the device plateaued *below* target and we accepted
+// that as success, and the detail postmortem leads with that accepted plateau
+// (e.g. "settled at 61.8 °C"). Flooring those to target would invent a reading
+// the device never hit, so we leave their real final untouched — the floor
+// applies only to the legacy (absent `metReason`) reached-the-target shape.
+// Overshoot (`final > target`) is likewise preserved untouched — the dedicated
+// overshoot line surfaces that magnitude. Resolved producer-side so the view
+// never branches on outcome.
+const resolveDisplayedEndValue = (
+  outcome: DeferredObjectivePlanOutcome,
+  metReason: DeferredObjectivePlanMetReason | undefined,
+  finalValue: number | null,
+  targetValue: number | null,
+): number | null => (
+  outcome === 'met' && metReason === undefined
+    && finalValue !== null && targetValue !== null && finalValue < targetValue
+    ? targetValue
+    : finalValue);
+
 export const formatPlanHistoryProgressLine = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
     'objectiveKind'
     | 'outcome'
+    | 'metReason'
     | 'targetTemperatureC'
     | 'targetPercent'
     | 'startProgressC'
@@ -81,17 +112,23 @@ export const formatPlanHistoryProgressLine = (
   const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
   if (entry.objectiveKind === 'temperature') {
     const start = formatTemperature(entry.startProgressC);
-    const end = formatTemperature(entry.finalProgressC);
     const target = formatTemperature(entry.targetTemperatureC);
     if (!start || !target) return null;
     if (suppressArrow) return `${start}  ·  target ${target}`;
+    const endC = resolveDisplayedEndValue(
+      entry.outcome, entry.metReason, entry.finalProgressC, entry.targetTemperatureC,
+    );
+    const end = formatTemperature(endC);
     return `${start} → ${end ?? '—'}  ·  target ${target}`;
   }
   const start = formatPercent(entry.startProgressPercent);
-  const end = formatPercent(entry.finalProgressPercent);
   const target = formatPercent(entry.targetPercent);
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  ·  target ${target}`;
+  const endPct = resolveDisplayedEndValue(
+    entry.outcome, entry.metReason, entry.finalProgressPercent, entry.targetPercent,
+  );
+  const end = formatPercent(endPct);
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
 };
 

@@ -53,11 +53,6 @@ rows no longer render bare units, smart-task recourse copy is non-imperative, an
 public docs now describe all five widgets. Remaining work is desirability polish,
 not a release gate.*
 
-- [ ] **New smart task (`create_smart_task`) picker scale + DST polish.** The
-      feasibility-honesty gap is fixed; remaining work is type-ahead/filtering for
-      many eligible devices and backend-provided hour labels for the plan graph
-      instead of client-side formatting from `startsAtMs`.
-
 - [ ] **Available power (`headroom`) not loveable.** Re-check hierarchy, the price
       chip's visual weight, and at-limit/over-cap tone in the harness
       (`headroom-480`, `-at_pace`, `-over_cap`).
@@ -65,10 +60,6 @@ not a release gate.*
 - [ ] **Budget and Price (`plan_budget`) not loveable.** The projected summary can
       dominate the chart and still truncates status on real device widths
       (`plan_budget-480`).
-
-- [ ] **Smart tasks (`smart_tasks`) not loveable.** The read-only status list still
-      needs a product pass for whether it should offer action/routing or remain a
-      pure glance surface.
 
 - [ ] **Held-back devices (`starvation_rescue`) confirm-sheet polish.** Remaining
       non-blocking work: inherit the create widget's plan-graph chart, show a
@@ -134,17 +125,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
       pels-runtime-reality, 2026-05-26.
 
 ## P2 Product, Observability, and Maintainability
-
-- [ ] **Migrate or reset legacy `hourlyAverages` produced by the pre-fix dense aggregation.**
-      Before the `processDayHourBuckets` over-count fix, persisted `hourlyAverages` counts
-      were inflated (count incremented for all 24 weekday/hour slots per aged-out day,
-      plus +2 for boundary days). The typical-day merge now folds those legacy entries in
-      with correctly-counted recent buckets, so existing installs still carry a downward
-      bias on the >30-day-old slice. The inflation isn't reversible in place; the clean fix
-      is a one-time reset of persisted `hourlyAverages` on upgrade (chart rebuilds correctly
-      from the 30-day bucket window) — a data-loss-vs-accuracy product call. Files:
-      `lib/power/tracker.ts` (migration marker + reset), `packages/contracts/src/powerTrackerTypes.ts`.
-      Source: codex P2 on PR #1393, 2026-06-01.
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -618,21 +598,6 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
 
 *Variance-buffer follow-ups (2026-05-22, PR #965 — `mean + k·SE` planning buffer).*
 
-- [ ] Verdict basis: `at_risk` / `cannot_meet` and the shortfall text in
-      `statusTransitions.ts` evaluate the *buffered* `energyNeededKWh`, so a
-      still-learning device can show a slightly more pessimistic chip than the
-      measured mean justifies. Current behaviour is intentional (reserve *and*
-      judge against the buffer so an optimistic `on_track` can't silently miss);
-      product question is whether the chip should instead judge against
-      `energyExpectedKWh` while the planner keeps reserving the buffer.
-      Decision can now be made: the expected…planned range UI + cold-start
-      chip have shipped (PR #970, commit `969395c6`), so the range exists
-      to back a "judge against expected" change. Compose with the Cause #1
-      Step 3 margin design (`feasibility-confidence.md`) — there should be
-      ONE margin definition shared between sizing (B's `k·SE`) and verdict
-      (within-margin shortfall → `at_risk`), not two parallel notions.
-      Source: `pels-runtime-reality` review of PR #965.
-
 - [ ] Multi-band aggregate cap: the 2× `MAX_BUFFER_MULTIPLIER` clamp is applied
       per band/slice inside `integrateBands`, then summed, so a profile with
       several high-SE bands can total up to ~2× the mean-expected figure across
@@ -640,14 +605,6 @@ five-agent fan-out pass on `refs/tags/v2.8.0..origin/main`.*
       aggregate is acceptable for multi-band EV profiles (interacts with the
       conservative-high EV bootstrap constant). Source: `pels-runtime-reality`
       review of PR #965.
-
-- [ ] Calm-list discoverability of "what PELS has learned" (PR #970). Gating the
-      confidence chip to cold-start + silencing it on `on_track` is correct for
-      the list mission ("on track?"), but it removes the chip that
-      `notes/smart-task-ui/README.md` treated as the doorway into the learned-rate
-      explanation. Healthy tasks now expose that only via the detail page. Consider
-      a non-chip affordance if users expect to discover learned-rate info from a
-      calm list. Source: `pels-ux-fit` review of PR #970.
 
 - [ ] `learning` floor vs volatile rates (PR #970). `MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP = 4`
       classifies a device with ≥4 samples as "learned", so a volatile low-confidence
@@ -683,19 +640,6 @@ were rolled back before they could land.*
       add a repeatable perf check/benchmark before changing planner code.
       Files: `lib/plan/planBuilder.ts`, `lib/plan/planService.ts`, `lib/diagnostics/perfLogging.ts`,
       perf tests. Source: `/tmp/pels` `[perf]` cpuwarn context, 2026-05-13 + 2026-05-22.
-
-- [ ] Smart-task "met early then cooled" history row reads as a
-      contradiction. Live prod walk: `Tue 12 May 06:00 · Succeeded · 64.0
-      → 39.2 °C · target 65.0 °C · reached at 03:42` — the run met the
-      06:00 deadline early (03:42) then the tank cooled to 39.2 °C by the
-      window end, so `start → final` shows a *drop* below target on a
-      Succeeded row. The data is internally consistent (deadline label +
-      `metAtMs`), but the `64.0 → 39.2` arrow next to "Succeeded · target
-      65" reads as wrong. Consider showing the peak/`metAtMs` value rather
-      than the end-of-window final on met runs, or annotating "met at
-      03:42, cooled afterwards". P3-ish polish, not a data bug.
-      Files: `packages/shared-domain/src/deferredPlanHistory.ts`.
-      Source: live prod UI walk, 2026-05-22.
 
 - [ ] Persist `currentHourOpening` / `lastKWhPerUnit` across PELS restarts.
       The v2.8.0 `recordHourlyDelivery` wiring tracks these on the in-memory
@@ -768,12 +712,6 @@ in v2.7.2+.*
 
 *v2.7.1 release-review P2 batch (2026-05-17). Eight items from the
 six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
-
-- [ ] **deadline-hero-speed-duration-split** — EV deadline detail hero today uses a single
-      dot-separated meta line ("Needs 12.4 kWh · 3.2 kW · 3h 50m · Auto"). The earlier P1
-      spec asked for split labeled rows ("Planning speed: 3.2 kW" / "Estimated time: 3h 50m").
-      Function is identical, this is a copy/layout preference. Pick one direction and document
-      in `notes/ev-ready-by/README.md`.
 
 - [ ] Light-canvas tooltip contrast spot-check on Homey light. The
       `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to
@@ -1490,10 +1428,6 @@ prod walk that didn't warrant a P2 slot.*
       Files: future device-level step-change tracker; usage-history UI.
 - [ ] Add a per-device usage history page showing measured kWh over time with step-change context.
       Files: future device-level usage-history route and chart.
-- [ ] Consider allowing Homey Energy-backed `powerKw` as a fallback for stepped restore
-      post-confirmation settlement when `measure_power` is missing, but keep manual overrides and
-      other derived power sources non-authoritative for that release check.
-      Files: `lib/plan/planSteppedRestorePending.ts`, stepped restore settlement tests.
 - [ ] Remove the remaining `lib/utils/** -> lib/{core,plan}` imports, then make the architecture
       check strict instead of advisory.
       Files: `lib/utils/**`, architecture checks.
