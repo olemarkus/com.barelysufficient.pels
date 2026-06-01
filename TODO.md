@@ -389,6 +389,17 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Migrate or reset legacy `hourlyAverages` produced by the pre-fix dense aggregation.**
+      Before the `processDayHourBuckets` over-count fix, persisted `hourlyAverages` counts
+      were inflated (count incremented for all 24 weekday/hour slots per aged-out day,
+      plus +2 for boundary days). The typical-day merge now folds those legacy entries in
+      with correctly-counted recent buckets, so existing installs still carry a downward
+      bias on the >30-day-old slice. The inflation isn't reversible in place; the clean fix
+      is a one-time reset of persisted `hourlyAverages` on upgrade (chart rebuilds correctly
+      from the 30-day bucket window) — a data-loss-vs-accuracy product call. Files:
+      `lib/power/tracker.ts` (migration marker + reset), `packages/contracts/src/powerTrackerTypes.ts`.
+      Source: codex P2 on PR #1393, 2026-06-01.
+
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
@@ -492,19 +503,20 @@ PRs. Items below are later polish.*
       may need per-device step granularity). Source: pels-runtime-reality
       review of PR #1214, 2026-05-28.
 
-- [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
-      `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
-      `appContext.ts` as the long-term inhabitant, but new wiring continues
-      to land under `lib/app/appInit/` (chunk 3 added
-      `residualKwForPlanDevice.ts` next to the pre-existing
-      `calibrationViews.ts` + `deferredRecorders.ts`). The blocker for the
-      proper migration is `no-lib-to-setup` (dep-cruiser): `lib/app/appInit.ts`
-      cannot import from `setup/**`. Real fix: either move `appInit.ts`
-      itself to `setup/` (then its wiring siblings follow), or relax the
-      dep-cruiser rule with a narrow `pathNot` exception for `lib/app/**`
-      while the migration completes. Source: pels-layering-guardian review
-      of PR #1190 flagged chunk 3's new file as misplaced; root cause is
-      the un-finished sunsetting, not chunk 3.
+- [ ] **Migrate the remaining `lib/app/**` inhabitants to `setup/`.**
+      `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
+      as the long-term inhabitant. The `appInit` surface (`appInit.ts` +
+      `appInit/**`) has been relocated to `setup/appInit/` — that move
+      proved `no-lib-to-setup` is NOT a blocker (the arrow stays
+      `setup -> lib`; nothing in `lib/**` imports the moved wiring, only
+      `app.ts` did). The still-pending inhabitants are the other wiring
+      helpers (`appDebugHelpers.ts`, `appSnapshotHelpers.ts`,
+      `appSettingsHelpers.ts`, `appDeviceSupport.ts`,
+      `appDeviceControl*.ts`, `appRealtimeDeviceReconcile*.ts`,
+      `appLifecycleHelpers.ts`, `settingsUiApi*.ts`, etc.). Each follows
+      the same pattern: confirm only entry-layer code imports it, then
+      `git mv` to `setup/` and rewrite import depths. `appContext.ts`
+      stays in `lib/app/`.
 
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
@@ -1204,27 +1216,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       0.1 (slider with float step) or coarsen to `1` (typical battery-percent precision)
       when this lands. Surfaced by the v2.7.0 PR 4.1 audit.
       Files: `.homeycompose/flow/actions/report_evcharger_battery_level.json`, `app.json`.
-- [ ] "Typical day" hourly-pattern chart ignores the most recent 30 days of
-      data. `derivedHourlyAverages` in `packages/settings-ui/src/ui/power.ts`
-      still falls back to bucket-derived values only when persisted
-      `hourlyAverages` is empty; once it has any entry, the chart shows only
-      the >30-day-old slice that `aggregateAndPruneHistory` has rotated in.
-      The Daily-usage merge fix did not extend here because the persisted
-      `hourlyAverages` count is per-day (incremented for all 24 slots once per
-      processed day) while the bucket-derived count is per-hour, so additive
-      merge would mis-weight the average. Either rework the persisted format
-      to per-hour counts, or compute a unified pattern by grouping merged
-      day-hour entries before averaging.
-      Files: `packages/settings-ui/src/ui/power.ts`,
-      `lib/power/tracker.ts` (`processDayHourBuckets`).
-- [ ] `processDayHourBuckets` in `lib/power/tracker.ts` over-counts the
-      day count for boundary days that have their hours moved into
-      `hourlyAverages` across multiple prune runs. Each prune that moves at
-      least one hour of a given day calls the helper for that day, which
-      increments count by 1 for all 24 weekday-hour slots. A day whose hours
-      cross the threshold across two prune ticks therefore contributes count
-      +2 instead of +1, biasing the typical-day averages slightly low.
-      Files: `lib/power/tracker.ts` (`aggregateAndPruneHistory`).
 
       **Acceptance bar — fix all three of these consolidation candidates (or
       explicitly close each with a one-line "rejected because…" in the PR):**
@@ -1582,10 +1573,10 @@ live-walk screenshots.*
       Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
       `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
-      deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
-      keep trimming any delegates that no longer buy readability or testability.
-      Files: `app.ts`, `lib/app/**`.
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
+      one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
+      it stays shared, and keep trimming any delegates that no longer buy readability or testability.
+      Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -1891,7 +1882,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] P3 tidy: `lib/app/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
+- [ ] P3 tidy: `setup/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
       twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
       pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 

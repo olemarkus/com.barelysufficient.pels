@@ -1,8 +1,8 @@
-import { flattenAllHours, readPriceStore } from '../../price/priceStore';
+import { flattenAllHours, readPriceStore } from '../../lib/price/priceStore';
 import {
   resolvePostmortemTone,
   type PostmortemTone,
-} from '../../../packages/shared-domain/src/postmortemTone';
+} from '../../packages/shared-domain/src/postmortemTone';
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
@@ -13,23 +13,23 @@ import {
   writeObjectiveForDevice,
   type DeferredObjectiveBackfillConfig,
   type DeferredObjectiveDeviceWriteDeps,
-} from '../../objectives/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../../objectives/deferredObjectives/settings';
+} from '../../lib/objectives/deferredObjectives';
+import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
 import {
   DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   LEARNED_THERMOSTAT_DEADBAND_C,
-} from '../../utils/settingsKeys';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
+} from '../../lib/utils/settingsKeys';
+import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import {
   LEARNED_THERMOSTAT_DEADBAND_MAX_C,
   getLearnedThermostatDeadbandC,
   normaliseLearnedThermostatDeadbandMap,
   updateLearnedThermostatDeadband,
-} from '../../utils/learnedThermostatDeadbandStore';
-import type { AppContext } from '../appContext';
+} from '../../lib/utils/learnedThermostatDeadbandStore';
+import type { AppContext } from '../../lib/app/appContext';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
 // during normal observe ticks. Without this idle advance the watermark only moves forward
