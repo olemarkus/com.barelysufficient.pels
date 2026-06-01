@@ -199,9 +199,12 @@ pelsHoldsBelowTarget = commandedTargetC < intendedNormalTargetC - epsilon
 
 ## Observation Freshness And Continuity
 
-Starvation is evaluated from observed temperature, not from commanded or assumed temperature.
-
-Do not treat local target writes as proof that temperature has changed.
+Starvation is evaluated from the commanded vs. intended target: PELS starves a device
+only when the target it commands sits below the device's intended (mode) target.
+Observed temperature is telemetry/display only — it does not gate entry, accumulation,
+or clear. (Earlier versions gated on observed temperature vs. the intended target; that
+flagged a device as starved whenever it was physically below target, even when PELS was
+commanding the full target and simply not the reason it was cold.)
 
 A sample is valid only when all are true:
 
