@@ -1,8 +1,11 @@
 # Execution Adaptation: trajectory rebase + mid-execution price deferral
 
-Status (2026-06-01): **work item 1 (trajectory rebase) shipped** in this PR; **work item 2
-(price-driven limit) is design-only**, not yet implemented. Builds on the active-plan replan
-policy in [`README.md`](./README.md) §"Active plan persistence and replan policy".
+Status (2026-06-01): **both work items shipped.** WI-1 (trajectory rebase) merged earlier; WI-2
+(mid-execution price deferral) ships on top of the **hourly-settle foundation** (the active-plan
+recorder now writes once per hour at `:58`, driven by the lifecycle clock), which is what makes
+the per-cycle release clean — admission's override is structurally insulated from the
+clock-driven recorder. Builds on the active-plan replan policy in
+[`README.md`](./README.md) §"Active plan persistence and replan policy".
 
 ## Motivating evidence (prod, Connected 300, night of 2026-05-31)
 
@@ -124,15 +127,26 @@ no-`originalPlan` fallback cases stay start-anchored. `activePlanSchedule`:
 clears it when a full-hour floor wins / keeps it for a fresh trimmed hour. The existing
 identical-staircase / replan overlay cases still hold.
 
-## Work item 2 — Mid-execution price deferral (limit when a cheaper hour can do it)
+## Work item 2 — Mid-execution price deferral (limit when a cheaper hour can do it) — DONE
 
-Stop drawing real power in an `avoid` hour when the remaining work fits in cheaper hours by
-the deadline. Expressed through the **existing floor channel**: resolve the current bucket to
-0 booked energy so `requestedMinimumStepId` falls to `null`
-(`stepSelection.selectMinimumStepForEnergy` returns `null` at ≤ ε energy), which the admission
-path already turns into "keep the cap-off device off / seed it into the shed-set" (README
-§"Soft Temperature Runtime Semantics"). No executor change — limiting is "request nothing this
-hour."
+Stop drawing real power in an `avoid` hour when the remaining work fits in cheaper hours by the
+deadline. Shipped as a producer-resolved flag + a per-cycle admission release:
+
+- The horizon planner resolves a live `priceDeferralEligible` flag
+  (`resolvePriceDeferralEligible`, `horizonPlanner.ts`) — true when the current hour is an
+  `avoid` bucket carrying booked energy AND a fresh re-allocation of the buffered-floor residual
+  over the remaining (cheaper, non-`avoid`) hours alone lands `on_track`.
+- The decoration controller's admission reads the flag (`isReleasedCurrentHour`, `admission.ts`)
+  and idles the device this cycle (ev_pause / shed_release / plain idle by device kind),
+  reusing the existing release posture. No executor change — limiting is "request nothing."
+
+**Why it's clean now (the foundation made it so):** the original sketch below worried the
+per-cycle release would churn the recorder. On the hourly-settle foundation it can't: admission
+runs on the **decoration controller's** diagnostics (power cycle); the recorder runs on the
+**emitter's separate** diagnostics (clock, settles once per hour at `:58`). The release override
+lives only on the admission path, so it **structurally** never reaches the recorder. The device's
+idling (no progress) is what re-books the cheaper hours at the next `:58` settle — one honest
+revision, not churn.
 
 ### Release test (evaluated each cycle, only while `currentBucket.preference === 'avoid'`)
 
@@ -179,13 +193,16 @@ the test passes, makes the current `avoid` hour's *effective* contribution 0 →
 
 1. **Conservative estimate.** Release on the buffered floor, never the mean. `rateConfidence`
    was pinned `low` all night; releasing on the optimistic mean risks deferring into a miss.
-2. **Minimum price gap.** Only release when the cheaper hours are *enough* cheaper (a
-   `minDiff`-style threshold). The motivating night's `avoid`-vs-cheap spread was ~13 øre
-   (~0.13 kr at stake) — not worth a cooldown cycle.
-3. **Sticky / no control flap.** Limiting the device incurs the restore cooldown (60–300 s),
-   so once released, stay released for the remainder of the hour. The min-price-gap also damps
-   flip-flopping on near-flat curves. (Revision flap is not a concern here — it is eliminated
-   structurally by the live-only design; see Governing invariant.)
+2. **Price gap via banding, not a tuned threshold.** No `minDiff` knob shipped. The release
+   only fires off an `avoid`-banded current hour and only when the residual re-allocates onto
+   hours that are *not* `avoid` (and not the deadline reserve) — for soft AND hard alike. The
+   band boundary is the price gap; a flat curve does not band hours as `avoid`, so it never fires.
+3. **No explicit stickiness — stable by construction.** Within an `avoid` hour the flag is
+   stable (preference is constant, the committed floor is constant, and idling makes no progress
+   so the residual doesn't shrink), so it doesn't flap. The actuator-level shed/restore cooldowns
+   (60–300 s) are the backstop against any residual control flap; a separate sticky latch would be
+   redundant state. (Revision flap is a non-issue — the recorder is insulated by construction; see
+   above.)
 4. **Headroom already respected.** The re-allocation honors each bucket's `reservedHeadroomKw`
    forecast (`resolveBucketStepCapacityKWh`), so it won't defer into hours with no physical room.
 

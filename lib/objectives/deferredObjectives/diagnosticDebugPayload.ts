@@ -11,6 +11,7 @@ const horizonPlanFields = (
   unplannedUsefulEnergyKWh: horizonPlan?.unplannedUsefulEnergyKWh ?? null,
   usesDeadlineReserve: horizonPlan?.usesDeadlineReserve ?? null,
   usesPolicyAvoid: horizonPlan?.usesPolicyAvoid ?? null,
+  priceDeferralEligible: horizonPlan?.priceDeferralEligible ?? null,
   plannedBuckets: horizonPlan?.plannedBuckets.map((bucket) => ({
     id: bucket.id, startMs: bucket.startMs, endMs: bucket.endMs,
     preference: bucket.preference, reserve: bucket.reserve, current: bucket.current,

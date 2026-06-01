@@ -1,6 +1,7 @@
 import type { PlanInputDevice } from '../../../packages/planner-types/src/planInputDevice';
 import type { DeferredReleaseIntent } from '../../../packages/planner-types/src/deferredDecoration';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { DeferredObjectiveHorizonPlan } from './types';
 import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostatDeadbandStore';
 
 export type { DeferredReleaseIntent };
@@ -48,6 +49,20 @@ const resolveReleaseIntentForCapOff = (
   objectiveKind === 'ev_soc' ? 'ev_pause' : 'shed_release'
 );
 
+// A deferred current hour is "released" when the device is idled this cycle rather
+// than run. Three causes: there is no current bucket, the current bucket carries no
+// booked energy, or the producer flagged the hour price-deferral-eligible (an
+// expensive `avoid` hour whose load a cheaper hour can carry). Single source of
+// truth shared by `resolveDecision` (which idles the device) and
+// `buildDeferredTargetOverrides` (which must NOT stamp a deadline floor target on a
+// released device — otherwise `resolvePlannedTarget` would command it to run
+// despite the release).
+const isReleasedCurrentHour = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
+  !horizonPlan.currentBucket
+  || horizonPlan.currentBucket.plannedUsefulEnergyKWh <= 0
+  || horizonPlan.priceDeferralEligible === true
+);
+
 const resolveDecision = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
@@ -67,10 +82,15 @@ const resolveDecision = (
   }
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
-  const currentBucket = horizonPlan.currentBucket;
   const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
-  if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) {
-    // Idle bucket: hold the device in its configured release posture.
+  if (isReleasedCurrentHour(horizonPlan)) {
+    // Released bucket: hold the device in its configured release posture. Besides
+    // genuine idle hours (no current bucket / no booked energy), this also fires
+    // when the producer flagged the hour price-deferral-eligible — the current hour
+    // is an expensive `avoid` hour whose load a cheaper hour can carry, so release
+    // the device this cycle. This is a live per-cycle control decision on the
+    // admission path; the clock-driven recorder is insulated, so no revision is
+    // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //
     // EV chargers (cap-on or cap-off): always pause. Off-peak hours have no capacity
     // pressure, so the planner's normal shed/restore lane would never command the cap-on
@@ -92,7 +112,7 @@ const resolveDecision = (
     kind: 'planned',
     budgetExempt,
     engageBoost,
-    requestedMinimumStepId: currentBucket.requestedMinimumStepId,
+    requestedMinimumStepId: horizonPlan.currentBucket?.requestedMinimumStepId ?? null,
     ...(isEvObjective ? { releaseIntent: 'ev_resume' as const } : {}),
   };
 };
@@ -191,8 +211,12 @@ export const buildDeferredTargetOverrides = (
   for (const diag of diagnostics) {
     if (diag.objectiveKind !== 'temperature') continue;
     if (!PLANNABLE_STATUSES.has(diag.status)) continue;
-    const currentBucket = diag.horizonPlan?.currentBucket;
-    if (!currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0) continue;
+    const horizonPlan = diag.horizonPlan;
+    // Skip released hours (mirrors `resolveDecision`'s idle gate via the shared
+    // `isReleasedCurrentHour`): an idle / price-deferred device must not be
+    // commanded to the deadline floor, or `resolvePlannedTarget` would lift the
+    // setpoint and run it in the very hour we released it from.
+    if (!horizonPlan || isReleasedCurrentHour(horizonPlan)) continue;
     // Defensive: persisted settings can yield NaN/Infinity on corrupt reads; the type-level
     // `number` invariant does not survive Homey settings drift. See feedback_homey_sdk_unreliable.
     if (!Number.isFinite(diag.targetTemperatureC)) continue;

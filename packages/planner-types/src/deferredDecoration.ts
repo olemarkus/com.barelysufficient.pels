@@ -37,9 +37,11 @@ export type DeferredDecorationInput = {
  *   forced boost, deadline thermostat floors stamped on as flat fields).
  * - `forceShedSet`: device ids the shedding lane must seed into its shed-set
  *   (idle-hour holds).
- * - `deferredAvoidDeviceIds`: on-track devices with no allocated energy this
- *   hour, so the planner renders the "Waiting for cheaper hours" reason instead
- *   of a capacity/daily-budget fallback.
+ * - `deferredAvoidDeviceIds`: devices paused this hour because a cheaper hour can
+ *   carry the load — on-track devices with no allocated energy this hour, AND
+ *   price-deferral releases (a booked `avoid` current hour whose residual the
+ *   producer proved fits cheaper later hours). The planner renders the "Waiting
+ *   for cheaper hours" reason instead of a capacity/daily-budget fallback.
  * - `deferredReleaseIntentByDeviceId`: terminal/idle release intents for the
  *   executor.
  */

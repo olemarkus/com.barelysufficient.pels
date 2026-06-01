@@ -507,8 +507,14 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   };
 };
 
+// "Is the current bucket actually running this cycle?" — gates the
+// `budgetExemptApplied` diagnostic. A price-deferral-eligible hour is released
+// (admission idles the device), so the budget exemption is NOT active even though
+// the committed bucket still carries booked energy; report it false so the
+// structured log matches what the device is actually doing.
 const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
-  (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
+  !horizonPlan.priceDeferralEligible
+  && (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
 );
 
 const buildDiagnosticBase = (params: {

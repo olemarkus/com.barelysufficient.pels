@@ -64,6 +64,7 @@ const makeHorizon = (
     plannedBuckets: buckets,
     usesDeadlineReserve: false,
     usesPolicyAvoid: false,
+    priceDeferralEligible: false,
     ...overrides,
   };
 };
@@ -3473,5 +3474,35 @@ describe('measured_deviation (learned energy-rate drift)', () => {
       horizonPlan: steadySchedule(),
     })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
     expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('measured_deviation');
+  });
+
+  it('records the committed plan identically regardless of priceDeferralEligible (recorder insulation)', () => {
+    // The price-deferral release is an admission-path control override; the recorder
+    // must NEVER read priceDeferralEligible (or the device's idling would churn
+    // revisions). Pin it: the same committed plan with the flag flipped produces an
+    // identical recorded revision + commitment. A future edit that wired the flag
+    // into the recorder (e.g. buildHoursFromHorizonPlan) would break this.
+    const buckets = (): DeferredObjectivePlannedBucket[] => [
+      makeBucket(2 * HOUR_MS, 1.5),
+      makeBucket(3 * HOUR_MS, 1.5),
+    ];
+    const deferred = buildPersistDeps();
+    const rDeferred = new DeferredObjectiveActivePlanRecorder(deferred.deps);
+    rDeferred.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon(buckets(), { priceDeferralEligible: true }),
+    })], HOUR_MS);
+
+    const plain = buildPersistDeps();
+    const rPlain = new DeferredObjectiveActivePlanRecorder(plain.deps);
+    rPlain.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon(buckets(), { priceDeferralEligible: false }),
+    })], HOUR_MS);
+
+    expect(rDeferred.getPlanForTests('dev')?.latest).toEqual(rPlain.getPlanForTests('dev')?.latest);
+    expect(rDeferred.getPlanForTests('dev')?.commitment).toEqual(rPlain.getPlanForTests('dev')?.commitment);
   });
 });

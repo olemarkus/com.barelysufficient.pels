@@ -137,6 +137,13 @@ export const planDeferredObjectiveHorizon = (
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
     feasibleOnClimbedBand,
   });
+  const priceDeferralEligible = resolvePriceDeferralEligible({
+    allocation,
+    buckets,
+    stepForBucket,
+    energyNeededKWh,
+    epsilonKWh,
+  });
   return buildPlanFromAllocation({
     input,
     deadlineMarginMs,
@@ -147,6 +154,7 @@ export const planDeferredObjectiveHorizon = (
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetBound,
+    priceDeferralEligible,
   });
 };
 
@@ -350,6 +358,47 @@ const resolveBudgetBoundFeasibility = (params: {
   return uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh;
 };
 
+// Price-deferral release probe (mid-execution price deferral). Eligible only when
+// the current hour is an `avoid` (expensive) bucket carrying booked energy —
+// typically a commitment-floor artifact, since a fresh cheapest-first plan would
+// not put energy into an expensive current hour while cheaper hours still have
+// room — AND a fresh re-allocation of the buffered-floor residual over the
+// *remaining* (non-current) hours alone lands `on_track` (no shortfall, no
+// deadline reserve, and no other `avoid` hour — for soft AND hard alike: if the
+// residual only fits by using another avoid hour there is no cheaper hour to
+// defer into). When true the decoration controller's admission idles the device
+// this cycle so a cheaper hour carries the load. Classification only, exactly like
+// the climbed-band / budget-bound probes; the `avoid` banding doubles as the
+// meaningful-price-gap gate (a flat price curve does not band hours as `avoid`).
+const resolvePriceDeferralEligible = (params: {
+  allocation: BucketAllocationResult;
+  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  stepForBucket: StepForBucket;
+  energyNeededKWh: number;
+  epsilonKWh: number;
+}): boolean => {
+  const current = params.allocation.plannedBuckets.find((bucket) => bucket.current);
+  if (
+    !current
+    || current.preference !== 'avoid'
+    || current.plannedUsefulEnergyKWh <= params.epsilonKWh
+  ) {
+    return false;
+  }
+  const remainingBuckets = params.buckets.filter((bucket) => !bucket.current);
+  if (remainingBuckets.length === 0) return false;
+  const deferred = allocateEnergyToBuckets({
+    buckets: remainingBuckets,
+    stepForBucket: params.stepForBucket,
+    energyNeededKWh: params.energyNeededKWh,
+    epsilonKWh: params.epsilonKWh,
+  });
+  if (deferred.unplannedUsefulEnergyKWh > params.epsilonKWh) return false;
+  if (deferred.usesDeadlineReserve) return false;
+  if (deferred.usesPolicyAvoid) return false;
+  return true;
+};
+
 const buildPlanFromAllocation = (params: {
   input: DeferredObjectiveHorizonInput;
   deadlineMarginMs: number;
@@ -360,6 +409,7 @@ const buildPlanFromAllocation = (params: {
   feasibleOnClimbedBand: boolean;
   budgetBound: boolean;
   varianceMarginKWh: number;
+  priceDeferralEligible: boolean;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -371,6 +421,7 @@ const buildPlanFromAllocation = (params: {
     feasibleOnClimbedBand,
     budgetBound,
     varianceMarginKWh,
+    priceDeferralEligible,
   } = params;
   const statusResult = resolveStatus({
     allocation,
@@ -404,6 +455,7 @@ const buildPlanFromAllocation = (params: {
     plannedBuckets: allocation.plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
     usesPolicyAvoid: allocation.usesPolicyAvoid,
+    priceDeferralEligible,
   };
 };
 
@@ -521,6 +573,7 @@ const buildEmptyPlan = (params: {
     plannedBuckets: [],
     usesDeadlineReserve: false,
     usesPolicyAvoid: false,
+    priceDeferralEligible: false,
   };
 };
 
