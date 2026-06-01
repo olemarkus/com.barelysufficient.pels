@@ -199,10 +199,12 @@ module.exports = {
         + 'the injected `decorateDeferredObjectives` seam, constructed in the app-wiring layer '
         + '(lib/app/appInit.ts). CAVEAT (still true): this config runs post-compilation '
         + '(tsPreCompilationDeps unset), so `import type` edges are INVISIBLE — this rule counts only '
-        + 'VALUE imports. The flip to `error` was gated on a manual type-edge audit '
-        + '(`grep -rn "from .*objectives" lib/plan/` → zero edges, value AND type), not dep-cruiser '
-        + 'green alone. Keep that audit in mind before adding any lib/plan import that the cruiser '
-        + 'might wave through as type-only.',
+        + 'VALUE imports. The type-edge gap is now closed by an enforced grep guard '
+        + '(`npm run arch:grep` → scripts/check-plan-objectives-edge.mjs), wired into ci:checks and '
+        + 'the CI checks job, which fails on ANY lib/plan -> objectives from-specifier (value OR type). '
+        + 'tsPreCompilationDeps was deliberately NOT flipped (it surfaces ~18 pre-existing type-only '
+        + 'no-circular violations and doubles the cruised graph — see TODO.md). Run `npm run arch:grep` '
+        + 'before adding any lib/plan import that the cruiser might wave through as type-only.',
       severity: 'error',
       from: { path: '^lib/plan/' },
       to: { path: '^lib/objectives/deferredObjectives/' },
