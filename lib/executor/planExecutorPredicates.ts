@@ -12,13 +12,13 @@ import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
+import { resolveBinaryShedReasonCode } from './lifecycleReleaseRecording';
 
 export function resolveConfirmedBinaryCommandReasonCode(
   pending: PlanEngineState['pendingBinaryCommands'][string],
 ): string {
   if (!pending.desired) {
-    if (pending.lifecycleRelease) return 'lifecycle_release';
-    return pending.reason ? 'shed_with_reason' : 'shedding';
+    return resolveBinaryShedReasonCode(pending.reason, pending.lifecycleRelease);
   }
   if (pending.logContext === 'capacity_control_off') {
     return 'capacity_control_off_restore';

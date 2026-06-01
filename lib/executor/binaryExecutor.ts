@@ -23,6 +23,11 @@ import {
   type BinaryControlTransport,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
+import {
+  resolveBinaryShedReasonCode,
+  selectShedActuationRecorder,
+  shedActuationStampsCapacityMarkers,
+} from './lifecycleReleaseRecording';
 import type { PlanEngineState } from '../plan/planState';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
@@ -489,17 +494,11 @@ const clearPendingSwapTarget = (ctx: PlanExecutorBinaryContext, deviceId: string
   }
 };
 
-const resolveDirectShedReasonCode = (
-  reason: string | undefined,
-  lifecycleRelease: boolean | undefined,
-): 'lifecycle_release' | 'shed_with_reason' | 'shedding' => {
-  if (lifecycleRelease) return 'lifecycle_release';
-  return reason ? 'shed_with_reason' : 'shedding';
-};
-
-// Records a directly-applied (non-flow-backed) binary off. A smart-task lifecycle-end
-// disable routes through the diagnostic-only release recorder so it does NOT stamp the
-// capacity cooldown markers; a capacity shed stamps them via recordShedActuation.
+// Records a directly-applied (non-flow-backed) binary off. The lifecycle-vs-capacity
+// recorder selection and reason-code label come from the shared lifecycleReleaseRecording
+// helper so the direct and deferred (confirmed) paths cannot drift: a smart-task
+// lifecycle-end disable routes through the diagnostic-only release recorder (no capacity
+// cooldown markers); a capacity shed stamps them via recordShedActuation.
 const recordDirectBinaryShedActuation = (
   ctx: PlanExecutorBinaryContext,
   params: {
@@ -519,13 +518,13 @@ const recordDirectBinaryShedActuation = (
     capabilityId,
     desired: false,
     mode: 'plan',
-    reasonCode: resolveDirectShedReasonCode(reason, lifecycleRelease),
+    reasonCode: resolveBinaryShedReasonCode(reason, lifecycleRelease),
   });
-  if (lifecycleRelease) {
-    ctx.recordReleaseShedActuation(deviceId, name, now);
-    return;
-  }
-  ctx.recordShedActuation(deviceId, name, now);
+  selectShedActuationRecorder({
+    lifecycleRelease,
+    recordShedActuation: ctx.recordShedActuation,
+    recordReleaseShedActuation: ctx.recordReleaseShedActuation,
+  })(deviceId, name, now);
 };
 
 /* eslint-disable complexity --
@@ -559,7 +558,7 @@ const turnOffDevice = async (
   }
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
-    if (!lifecycleRelease) {
+    if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {
       const now = Date.now();
       // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
       ctx.state.lastDeviceShedMs[deviceId] = now;
