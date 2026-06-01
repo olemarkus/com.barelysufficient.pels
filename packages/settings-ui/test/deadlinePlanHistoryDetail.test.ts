@@ -1,17 +1,33 @@
 import { h, render } from 'preact';
+import { useEffect, useRef } from 'preact/hooks';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 
+// Mock the ECharts registry to avoid mounting real ECharts in JSDOM. The
+// `useEchartsMount` stub mirrors the production hook's shape — it still runs
+// `buildOption(container)` inside an effect so the option-builder code paths
+// the view depends on are exercised — but binds to a stub chart instead of a
+// real instance.
 vi.mock('../src/ui/echartsRegistry.ts', () => ({
-  initEcharts: vi.fn(() => ({
-    setOption: vi.fn(),
-    resize: vi.fn(),
-    dispose: vi.fn(),
-  })),
   encodeHtml: (value: string) => value,
+  useEchartsMount: (params: {
+    buildOption: (container: HTMLDivElement) => unknown;
+    onAfterRender?: (chart: unknown, container: HTMLDivElement) => void;
+    deps: ReadonlyArray<unknown>;
+  }) => {
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const container = ref.current;
+      if (!container) return;
+      const chart = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() };
+      chart.setOption(params.buildOption(container));
+      params.onAfterRender?.(chart, container);
+    }, params.deps);
+    return ref;
+  },
 }));
 
 const HOUR_MS = 60 * 60 * 1000;

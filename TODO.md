@@ -1432,21 +1432,6 @@ prod walk that didn't warrant a P2 slot.*
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts` (recent-miss query against
       `DeferredObjectivePlanHistoryEntry`).
-- [ ] Hoist the `useEchartsMount` helper from `DeadlinePlanHistoryDetail.tsx` to a shared
-      module in `echartsRegistry.ts`. PR 4 introduced the helper file-locally, but the
-      same init/dispose/resize pattern exists in `powerWeekChartEcharts.ts`,
-      `usageStatsChartsEcharts.ts`, `budgetRedesignChart.ts`, `usageDayChartEcharts.ts`,
-      `DeadlinePlan.tsx`. Hoisting to `mountEcharts(container, buildOption, deps)` is the
-      actual primitive-consolidation win that PR 4 claimed; as-is it remains a parallel
-      pattern. Surfaced by pels-m3-critic as P3.
-      Why P3: maintenance hygiene; current pattern works but doesn't dedupe across charts.
-      Files: `packages/settings-ui/src/ui/echartsRegistry.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx`,
-      `packages/settings-ui/src/ui/powerWeekChartEcharts.ts`,
-      `packages/settings-ui/src/ui/usageStatsChartsEcharts.ts`,
-      `packages/settings-ui/src/ui/budgetRedesignChart.ts`,
-      `packages/settings-ui/src/ui/usageDayChartEcharts.ts`,
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`.
 - [ ] Salvage from closed PR #883 (`v2.7.3/budget-usage-loveable`) — Budget half superseded by `dd92fa42`; Usage-half items remain undelivered: "Your typical Sunday runs X kWh" day-aware voice (`usageHero.ts` + `usageVoice.ts`), drop the 7d toggle in `power.ts` (keep 14d only), NBSP between number and `kr` in any Usage money copy, NOK money line on Usage (deferred). Small focused PR.
 
 - [ ] `replanReason.ts`'s `resolveHorizonPriceWatermark`

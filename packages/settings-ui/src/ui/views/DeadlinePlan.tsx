@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
 import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
@@ -21,8 +21,7 @@ import {
   type DeadlinePlanUnavailableReason,
   type KwhPerUnitProvenanceRow,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
-import { attachTabShownResize } from '../chartVisibilityResize.ts';
+import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
@@ -791,43 +790,24 @@ const writeBarCentresForTest = (
 };
 
 const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstanceRef = useRef<EChartsType | null>(null);
-
-  useEffect(() => {
-    const container = chartRef.current;
-    if (!container) return undefined;
-    const chart = initEcharts(container, undefined, {
-      renderer: 'svg',
-      ...resolveChartSize(container),
-    });
-    chartInstanceRef.current = chart;
-    chart.setOption(
-      buildChartOption(payload, resolvePalette(container), resolveTypography(container)),
-      { notMerge: true },
-    );
-    writeBarCentresForTest(container, chart, payload.timeline.hours.length);
-
-    const resizeObserver = typeof ResizeObserver === 'function'
-      ? new ResizeObserver(() => {
-        chart.resize(resolveChartSize(container));
-        writeBarCentresForTest(container, chart, payload.timeline.hours.length);
-      })
-      : null;
-    resizeObserver?.observe(container);
-    // Cold-mount path: the chart may be initialized while its panel is still
-    // `display:none`, so `clientWidth` was the 480 px fallback. Resize once on
-    // the next frame so the SVG settles to the real visible width before the
-    // user sees it, and re-resize whenever the chart's tab is shown again.
-    const detachTabShown = attachTabShownResize({ container, chart, resolveSize: resolveChartSize });
-
-    return () => {
-      resizeObserver?.disconnect();
-      detachTabShown();
-      chart.dispose();
-      if (chartInstanceRef.current === chart) chartInstanceRef.current = null;
-    };
-  }, [payload]);
+  // Routed through the shared `useEchartsMount` primitive. `onAfterRender`
+  // writes the per-bar pixel centres for the bar-centre parity test after the
+  // initial render and after each ResizeObserver resize — the one extra
+  // side-effect this chart layers on the common init/dispose/resize shape.
+  // `resolveChartSize` is this view's container-specific sizer. The cold-mount
+  // tab-shown resize is handled inside the primitive.
+  const chartRef = useEchartsMount({
+    buildOption: (container) => buildChartOption(
+      payload,
+      resolvePalette(container),
+      resolveTypography(container),
+    ),
+    resolveSize: resolveChartSize,
+    deps: [payload],
+    onAfterRender: (chart, container) => (
+      writeBarCentresForTest(container, chart, payload.timeline.hours.length)
+    ),
+  });
 
   return <div ref={chartRef} class="deadline-horizon-chart" role="img" aria-label={payload.timeline.ariaLabel} />;
 };
@@ -909,9 +889,10 @@ const renderProvenanceRowDisplay = (
 };
 
 // Exported for unit tests so the freshness tick can be exercised in isolation
-// without also mounting `HorizonChart` (whose ECharts `initEcharts` call hits
-// real ECharts subpaths the JSDOM-aliased shim doesn't fully cover). The
-// production render path still routes through `DeadlinePlanRoot` below.
+// without also mounting `HorizonChart` (whose ECharts init via
+// `useEchartsMount` hits real ECharts subpaths the JSDOM-aliased shim doesn't
+// fully cover). The production render path still routes through
+// `DeadlinePlanRoot` below.
 export const PlanInputsCard = ({ payload }: { payload: DeadlinePlanPayload }) => {
   const {
     perUnitRateLabel,
