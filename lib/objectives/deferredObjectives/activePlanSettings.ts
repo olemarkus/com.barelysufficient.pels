@@ -259,6 +259,9 @@ const hasValidPlanIdentity = (v: Record<string, unknown>): boolean => (
 const hasValidPlanLevelDurationSnapshot = (v: Record<string, unknown>): boolean => (
   isOptionalFinitePositive(v.initialPlanningSpeedKw)
     && isOptionalNonEmptyString(v.initialEstimatedDurationText)
+    // Committed learned-rate baseline for measured_deviation. Optional and
+    // positive, same backward-compat treatment as the duration snapshot.
+    && isOptionalFinitePositive(v.initialKwhPerUnit)
 );
 
 const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 => {

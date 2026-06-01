@@ -72,6 +72,13 @@ type BaseDeferredObjectiveDiagnostic = {
   energyExpectedKWh?: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
+  // Sample-driven global learned mean (kWh/unit), kind-agnostic. Distinct from
+  // the kind-split `kWhPerPercent`/`kWhPerDegreeC`, which are the banded
+  // remaining-interval display average and so shift as a task crosses bands.
+  // This only moves on genuine rate drift, so it is the stable statistic the
+  // active-plan recorder's `measured_deviation` detector compares. Null on
+  // bootstrap / unresolved. See `profileEnergyResolution.kWhPerUnitMean`.
+  kwhPerUnitLearnedMean: number | null;
   rateConfidence: string | null;
   // Band-aware aggregated confidence for the smart-task chip. Honest about
   // whether the *model in use* (bands integrated for this resolution) is
@@ -432,6 +439,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       energyNeededKWh: 0,
       energyExpectedKWh: 0,
       kWhPerUnit: null,
+      kWhPerUnitMean: null,
       rateConfidence: null,
       displayConfidence: null,
       kwhPerUnitSource: null,
@@ -541,6 +549,8 @@ const buildDiagnosticBase = (params: {
     energyNeededKWh: params.energyNeededKWh,
     kWhPerPercent: params.kWhPerPercent,
     kWhPerDegreeC: params.kWhPerDegreeC,
+    // Base default; resolved diagnostics override via `buildKnownEnergyFields`.
+    kwhPerUnitLearnedMean: null,
     rateConfidence: params.rateConfidence,
     displayConfidence: params.displayConfidence,
     kwhPerUnitSource: params.kwhPerUnitSource,
@@ -600,12 +610,13 @@ const buildKnownEnergyFields = (params: {
 }): Pick<
   DeferredObjectiveDiagnostic,
   'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerPercent' | 'kWhPerDegreeC'
-  | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
+  | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
   energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
   kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
   kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
+  kwhPerUnitLearnedMean: params.profileEnergy.kWhPerUnitMean,
   rateConfidence: params.profileEnergy.rateConfidence,
   displayConfidence: params.profileEnergy.displayConfidence,
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,

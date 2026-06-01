@@ -54,18 +54,28 @@ export const hasPriceHorizonAdvanced = (
 // (i.e. the user toggled a smart-task rescue Flow card) — the history detail
 // then names the Flow permission change instead of the broader
 // "smart-task settings / target changed" copy. `objective_changed` and
-// `rate_refined` are the next specific named causes; otherwise the split
-// between `prices_revised` and `schedule_revised` depends on whether the price
-// horizon actually advanced.
+// `rate_refined` are the next specific named causes; `measured_deviation` ranks
+// just below them and ABOVE the generic prices/schedule split so a learned-rate
+// drift that also reshapes the schedule is labelled by its root cause rather
+// than the resulting schedule change. Otherwise the split between
+// `prices_revised` and `schedule_revised` depends on whether the price horizon
+// actually advanced.
 export const resolveReplanReason = (params: {
   objectiveChanged: boolean;
   rescuePermissionOnlyChanged: boolean;
   sourceRefined: boolean;
+  // The live learned per-unit energy rate diverged from the rate the committed
+  // plan was built against. The common slow-delivery case is "learned rate
+  // drifts → planner adds later buckets → schedule changes", so the deviation
+  // and a schedule change frequently fire together; the deviation is the root
+  // cause and must win the label over `schedule_revised`.
+  measuredDeviation: boolean;
   pricesAdvanced: boolean;
 }): DeferredObjectiveActivePlanRevisionReason => {
   if (params.rescuePermissionOnlyChanged) return 'flow_permission_changed';
   if (params.objectiveChanged) return 'objective_changed';
   if (params.sourceRefined) return 'rate_refined';
+  if (params.measuredDeviation) return 'measured_deviation';
   if (params.pricesAdvanced) return 'prices_revised';
   return 'schedule_revised';
 };

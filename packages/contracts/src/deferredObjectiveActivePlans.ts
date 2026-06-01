@@ -251,6 +251,16 @@ export type DeferredObjectiveActivePlanV1 = {
   // at first-revision time alongside the speed so the meta-line surface stays
   // consistent across revisions. Optional for backward compatibility.
   initialEstimatedDurationText?: string;
+  // Committed learned energy rate (kWh per °C or per % SoC) the deviation
+  // detector compares the live learned rate against. Frozen when the plan is
+  // first committed against a `learned`-source profile, re-baselined whenever a
+  // `measured_deviation` revision fires (so a sustained drift is reported once,
+  // and gradual drift re-arms after each report), and reset on
+  // `objective_changed`. Absent when the committing diagnostic was still on the
+  // bootstrap fallback (no learned rate yet) and on legacy persisted plans —
+  // both mean "no baseline", so the detector stays silent. See
+  // `hasLearnedRateDeviated` in `activePlanRecorder.ts`.
+  initialKwhPerUnit?: number;
   // First full-horizon allocation accepted for this objective. Runtime uses
   // this as the committed schedule envelope on later plan cycles; fresh
   // optimizer output may update diagnostics, but it must not move the selected

@@ -23,6 +23,14 @@ export type DeferredObjectiveEnergyResolution = {
   // learned rate (`kWhPerUnit`) and the low end of the range stay at the mean.
   energyExpectedKWh: number;
   kWhPerUnit: number | null;
+  // Sample-driven global learned mean (kWh per unit), independent of how much
+  // progress remains. Unlike `kWhPerUnit` — which is the banded average over
+  // the *remaining* interval and therefore shifts as the task crosses bands
+  // even with no new samples — this only moves when accepted samples move it,
+  // i.e. on genuine rate drift. It is the stable statistic the
+  // `measured_deviation` detector compares across time; `kWhPerUnit` stays the
+  // display value. Null on the bootstrap fallback (no learned mean yet).
+  kWhPerUnitMean: number | null;
   rateConfidence: string | null;
   // Band-aware confidence for the smart-task chip. Aggregated from the bands
   // actually integrated for this resolution: if every qualifying band that
@@ -40,6 +48,7 @@ export type DeferredObjectiveEnergyResolution = {
   energyNeededKWh: null;
   energyExpectedKWh: null;
   kWhPerUnit: null;
+  kWhPerUnitMean: null;
   rateConfidence: null;
   displayConfidence: null;
   kwhPerUnitSource: null;
@@ -136,6 +145,9 @@ export const resolveProfileEnergy = (params: {
       energyNeededKWh: bootstrapEnergyKWh,
       energyExpectedKWh: bootstrapEnergyKWh,
       kWhPerUnit: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT,
+      // No learned mean yet — bootstrap constant is not a measurement, so the
+      // deviation detector must stay silent until real samples land.
+      kWhPerUnitMean: null,
       rateConfidence: null,
       displayConfidence: null,
       kwhPerUnitSource: 'bootstrap',
@@ -146,6 +158,7 @@ export const resolveProfileEnergy = (params: {
     energyNeededKWh: null,
     energyExpectedKWh: null,
     kWhPerUnit: null,
+    kWhPerUnitMean: null,
     rateConfidence: null,
     displayConfidence: null,
     kwhPerUnitSource: null,
@@ -184,6 +197,8 @@ const buildLearnedResolution = (params: {
     energyNeededKWh,
     energyExpectedKWh,
     kWhPerUnit: effectiveKwhPerUnit,
+    // Stable cross-time statistic for measured_deviation (see the type comment).
+    kWhPerUnitMean: globalMean,
     rateConfidence: kWhPerUnit.confidence,
     displayConfidence: resolveDisplayConfidence({
       bands: profile?.bands,

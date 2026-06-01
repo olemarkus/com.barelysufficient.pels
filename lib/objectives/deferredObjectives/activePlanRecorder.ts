@@ -357,14 +357,90 @@ const resolveSourceTransition = (params: {
   };
 };
 
+// Relative drift in the learned per-unit energy rate (kWh/°C or kWh/%) above
+// which the committed plan's energy assumption is treated as materially stale.
+// 15% balances "honest enough to tell the user the plan's energy basis shifted"
+// against "don't churn history on profile-learning jitter".
+const MEASURED_DEVIATION_RELATIVE_THRESHOLD = 0.15;
+
+// The live learned per-unit energy rate, or null when the diagnostic is still
+// on the bootstrap fallback or the resolver short-circuited (target met). This
+// is the SAME quantity `resolveProvenance` freezes, so the baseline and the
+// live reading compare like with like. It is deliberately NOT instantaneous
+// power: a thermostat at temperature or mid-duty-cycle reads ~0 W, but the
+// learned rate is accumulated over progress, so an idle cycle contributes no
+// sample and the last learned rate stands — no false "delivery collapsed"
+// reading.
+const resolveLearnedRateKwh = (diag: DeferredObjectiveDiagnostic): number | null => {
+  if (diag.kwhPerUnitSource !== 'learned') return null;
+  // Use the sample-driven global mean, NOT `kWhPerPercent`/`kWhPerDegreeC`:
+  // those are the banded average over the remaining interval and shift as the
+  // task crosses bands even with no new samples, which would fire spurious
+  // deviations during normal progress. The global mean only moves on real
+  // rate drift. See `diagnosticsBridge.kwhPerUnitLearnedMean`.
+  const rate = diag.kwhPerUnitLearnedMean;
+  return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
+};
+
+// True when the live learned energy rate has drifted past the threshold from
+// the rate the committed plan was built against (`current.initialKwhPerUnit`).
+// Both sides must be a learned rate — that single gate is what keeps thermostat
+// live-power swings, EV nameplate cold-starts, and bootstrap estimates from
+// ever reaching here. An objective change owns its own stronger reason and
+// invalidates the cross-objective comparison, so it suppresses this.
+const hasLearnedRateDeviated = (params: {
+  current: DeferredObjectiveActivePlanV1;
+  diag: DeferredObjectiveDiagnostic;
+  objectiveChanged: boolean;
+}): boolean => {
+  if (params.objectiveChanged) return false;
+  const live = resolveLearnedRateKwh(params.diag);
+  const baseline = params.current.initialKwhPerUnit;
+  if (live === null || typeof baseline !== 'number' || !Number.isFinite(baseline) || baseline <= 0) {
+    return false;
+  }
+  return Math.abs(live - baseline) / baseline >= MEASURED_DEVIATION_RELATIVE_THRESHOLD;
+};
+
+// The committed learned-rate baseline carried onto the next revision. Frozen
+// when the rate first becomes learned, reset on objective change, and
+// re-baselined to the live rate whenever a measured_deviation fires — so a
+// sustained drift reports once and gradual drift re-arms after each report.
+// Depends only on `current.initialKwhPerUnit` and the live diagnostic, never on
+// the previous revision's per-cycle snapshot, so an unrelated null-rate or
+// below-threshold revision can neither corrupt the baseline nor break the
+// debounce.
+const resolveInitialKwhPerUnit = (params: {
+  current: DeferredObjectiveActivePlanV1;
+  diag: DeferredObjectiveDiagnostic;
+  objectiveChanged: boolean;
+  measuredDeviation: boolean;
+}): number | undefined => {
+  const live = resolveLearnedRateKwh(params.diag) ?? undefined;
+  if (params.objectiveChanged || params.measuredDeviation) return live;
+  return params.current.initialKwhPerUnit ?? live;
+};
+
+// Spreadable persisted fragment for the committed learned-rate baseline:
+// carries the key only when defined, so the `objective_changed`/bootstrap
+// "no baseline" path drops it cleanly. Kept as a helper so the conditional
+// stays out of `maybeWriteReplanRevision`'s complexity budget.
+const toInitialKwhPerUnitField = (
+  value: number | undefined,
+): { initialKwhPerUnit?: number } => (
+  value !== undefined ? { initialKwhPerUnit: value } : {}
+);
+
 const shouldWriteReplanRevision = (params: {
   objectiveChanged: boolean;
   scheduleChanged: boolean;
   metadataDriftedWithinSchedule: boolean;
   sourceChanged: boolean;
+  measuredDeviation: boolean;
 }): boolean => (
   params.objectiveChanged || params.scheduleChanged
     || params.metadataDriftedWithinSchedule || params.sourceChanged
+    || params.measuredDeviation
 );
 
 // Bounded most-recent-first log of past revisions kept on the active plan
@@ -612,6 +688,7 @@ export class DeferredObjectiveActivePlanRecorder {
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
     const startedAtMs = this.plans[diag.deviceId]?.startedAtMs ?? nowMs;
     const provenance = resolveProvenance(diag);
+    const initialKwhPerUnit = resolveLearnedRateKwh(diag);
     // Freeze the plan-level total duration here so the hero meta line stays
     // stable across revisions. See `resolvePlanLevelDurationSnapshot` for the
     // preservation/reset rules applied during subsequent revisions.
@@ -630,6 +707,11 @@ export class DeferredObjectiveActivePlanRecorder {
         hours,
       },
       ...(provenance ? { kwhPerUnitProvenance: provenance } : {}),
+      // Freeze the committed learned-rate baseline for `measured_deviation`.
+      // Omitted when the first revision is still on the bootstrap fallback (no
+      // learned rate yet) — the baseline backfills on the first later cycle
+      // whose source is `learned` (see `resolveInitialKwhPerUnit`).
+      ...toInitialKwhPerUnitField(initialKwhPerUnit ?? undefined),
       ...(revision.planningSpeedKw !== undefined ? { initialPlanningSpeedKw: revision.planningSpeedKw } : {}),
       ...(revision.estimatedDurationText !== undefined
         ? { initialEstimatedDurationText: revision.estimatedDurationText }
@@ -728,18 +810,27 @@ export class DeferredObjectiveActivePlanRecorder {
     // revision followed by a satisfied diagnostic would spuriously fire
     // `rate_refined` even though nothing was learned.
     const { sourceChanged, sourceRefined } = resolveSourceTransition({ latest, diag });
-    // TODO: device_unavailable + measured_deviation triggers — wired here once
-    // device-level metering exists. For now those reasons are not used.
+    // The live learned per-unit energy rate (kWh/°C or kWh/%) drifted away from
+    // the rate the committed plan was built against (`current.initialKwhPerUnit`)
+    // — the device needs materially more/less energy per unit of progress than
+    // planned, so the committed bucket allocation's energy assumption is stale.
+    // Gated on a learned rate both sides (see `hasLearnedRateDeviated`), so
+    // bootstrap/cold-start and idle live-power readings never reach it.
+    // TODO: device_unavailable trigger — wired here once device-level metering
+    // distinguishes "unreachable" from a slow reading.
+    const measuredDeviation = hasLearnedRateDeviated({ current, diag, objectiveChanged });
     if (!shouldWriteReplanRevision({
       objectiveChanged,
       scheduleChanged,
       metadataDriftedWithinSchedule,
       sourceChanged,
+      measuredDeviation,
     })) return false;
     const reason = resolveReplanReason({
       objectiveChanged,
       rescuePermissionOnlyChanged: sigDiff.rescueOnly,
       sourceRefined,
+      measuredDeviation,
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
     });
     const nextRevision = latest.revision + 1;
@@ -761,9 +852,13 @@ export class DeferredObjectiveActivePlanRecorder {
     // explicit-undefined idiom while the in-memory shape no longer exposes
     // `undefined` keys that violate `exactOptionalPropertyTypes`-style
     // contracts.
+    const nextInitialKwhPerUnit = resolveInitialKwhPerUnit({
+      current, diag, objectiveChanged, measuredDeviation,
+    });
     const {
       initialPlanningSpeedKw: _droppedSnapshotSpeed,
       initialEstimatedDurationText: _droppedSnapshotDurationText,
+      initialKwhPerUnit: _droppedInitialRate,
       ...currentWithoutSnapshot
     } = current;
     this.plans[diag.deviceId] = {
@@ -790,6 +885,7 @@ export class DeferredObjectiveActivePlanRecorder {
       }),
       ...(nextProvenance ? { kwhPerUnitProvenance: nextProvenance } : {}),
       ...toPersistedPlanLevelDurationFields(snapshot),
+      ...toInitialKwhPerUnitField(nextInitialKwhPerUnit),
       latest: revision,
       // Prepend the prior `latest` onto the history log, FIFO-pruned to the
       // cap so the persisted blob stays bounded. The head of the array is

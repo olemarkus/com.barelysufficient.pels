@@ -88,6 +88,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   energyNeededKWh: 4.5,
   kWhPerPercent: null,
   kWhPerDegreeC: 1.5,
+  kwhPerUnitLearnedMean: 1.5,
   rateConfidence: 'high',
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 3,
@@ -3374,5 +3375,103 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       })], 2 * HOUR_MS + SETTLE_OFFSET_MS + 30_000);
       expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     });
+  });
+});
+
+describe('measured_deviation (learned energy-rate drift)', () => {
+  // Same schedule both cycles so only the learned rate changes — isolates the
+  // measured_deviation trigger from schedule/source/metadata reasons.
+  const steadySchedule = () => makeHorizon([
+    makeBucket(2 * HOUR_MS, 1.5),
+    makeBucket(3 * HOUR_MS, 1.5),
+    makeBucket(4 * HOUR_MS, 1.5),
+  ]);
+
+  it('freezes the committed learned rate and emits measured_deviation when it drifts past 15%', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.5,
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.initialKwhPerUnit).toBe(1.5);
+
+    // 1.5 → 1.0 kWh/°C is a 33% drift on an unchanged schedule.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.0,
+      horizonPlan: steadySchedule(),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('measured_deviation');
+    expect(plan?.latest?.revision).toBe(2);
+    // Re-baselined to the live rate so a sustained drift reports once.
+    expect(plan?.initialKwhPerUnit).toBe(1.0);
+  });
+
+  it('debounces a sustained drift — no second measured_deviation at the same rate', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.5,
+    })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.0,
+      horizonPlan: steadySchedule(),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+
+    // Same 1.0 rate again — within threshold of the re-baselined 1.0, no new revision.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.0,
+      horizonPlan: steadySchedule(),
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
+  });
+
+  it('does not emit measured_deviation for a bootstrap rate (no learned reading)', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.5,
+    })], HOUR_MS);
+    // Source regresses to bootstrap with a wildly different rate — a source
+    // change owns the revision; the deviation detector must stay out of it.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'bootstrap', kwhPerUnitLearnedMean: null,
+      horizonPlan: steadySchedule(),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    expect(recorder.getPlanForTests('dev')?.latest?.reason).not.toBe('measured_deviation');
+  });
+
+  it('stays silent with no baseline (committed on bootstrap), then arms after the rate is learned', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Committed while still bootstrapping — no learned baseline frozen.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'bootstrap', kwhPerUnitLearnedMean: null,
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.initialKwhPerUnit).toBeUndefined();
+
+    // Profile becomes learned — backfills the baseline (reason rate_refined),
+    // does NOT fire measured_deviation (nothing to compare against yet).
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.5,
+      horizonPlan: steadySchedule(),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+    const armed = recorder.getPlanForTests('dev');
+    expect(armed?.latest?.reason).toBe('rate_refined');
+    expect(armed?.initialKwhPerUnit).toBe(1.5);
+
+    // Now a real learned drift fires.
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS, kwhPerUnitSource: 'learned', kwhPerUnitLearnedMean: 1.0,
+      horizonPlan: steadySchedule(),
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.reason).toBe('measured_deviation');
   });
 });
