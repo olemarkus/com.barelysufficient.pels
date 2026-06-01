@@ -87,7 +87,11 @@ const run = async () => {
 };
 
 const capture = async (browser) => {
-  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 2 });
+  // deviceScaleFactor pinned to 1: the widgets are mobile surfaces, so a 1× capture
+  // at the 360-px card width keeps the intrinsic image within mobile support
+  // (≤ 480 px, matching the docs landing screenshots) instead of emitting an
+  // oversized 2× asset.
+  const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
 
   // --- Static widgets: one screenshot each ---
   console.log('Available power (headroom)');
