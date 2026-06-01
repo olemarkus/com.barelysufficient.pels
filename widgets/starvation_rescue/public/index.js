@@ -14,24 +14,21 @@
     loadError: "Could not load devices. Try again later.",
     // Row status-chip word. The widget appends "· N min". Cause-specific so the
     // chip never overclaims: only budget rows (the releasable "Let it run now"
-    // state) say "Held back"; capacity/external say "Waiting" (physically held —
-    // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
-    // says "On hold". User-facing register only — no "starvation" jargon.
+    // state) say "Held back"; capacity rows say "Waiting" (physically held — the
+    // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
+    // register only — no "starvation" jargon.
     starvedChip: "Held back",
     waitingChip: "Waiting",
-    manualChip: "On hold",
     // Rescue affordance (budget-caused rows only). "Let it run now" is device-
     // scoped — it releases THIS device from the daily budget so it runs now,
     // rather than promising house power. The rescue is a bounded near-term run
     // (the confirm sheet surfaces the "By {time}" timing prominently).
     rescueButton: "Let it run now",
-    // Informational note on capacity / manual / external rows — they get NO rescue
-    // affordance. Honest about why, without implying the user can raise the cap.
-    // Matches the canonical "Waiting for available power" wording the overview and
-    // the row subtext use, so the capacity story reads the same everywhere.
+    // Informational note on capacity rows — they get NO rescue affordance. Honest
+    // about why, without implying the user can raise the cap. Matches the canonical
+    // "Waiting for available power" wording the overview and the row subtext use,
+    // so the capacity story reads the same everywhere.
     capacityNote: "Waiting for available power.",
-    manualNote: "Under manual control.",
-    externalNote: "Waiting on an external service.",
     // A budget-held device that already has a smart task: shown in the list (so the
     // user sees it is held back) but with no rescue button — its own task is what
     // brings it to target, so a one-shot rescue would only get in the way.
@@ -68,11 +65,7 @@
     deadlinePassed: "That timing just passed. Try again."
   };
   var starvationDurationMinutes = (accumulatedMs) => Number.isFinite(accumulatedMs) && accumulatedMs > 0 ? Math.floor(accumulatedMs / 6e4) : 0;
-  var resolveStarvationRowChipWord = (cause) => {
-    if (cause === "budget") return STARVATION_RESCUE_WIDGET_COPY.starvedChip;
-    if (cause === "manual") return STARVATION_RESCUE_WIDGET_COPY.manualChip;
-    return STARVATION_RESCUE_WIDGET_COPY.waitingChip;
-  };
+  var resolveStarvationRowChipWord = (cause) => cause === "budget" ? STARVATION_RESCUE_WIDGET_COPY.starvedChip : STARVATION_RESCUE_WIDGET_COPY.waitingChip;
   var formatStarvationRowChip = (cause, accumulatedMs) => `${resolveStarvationRowChipWord(cause)} \xB7 ${starvationDurationMinutes(accumulatedMs)} min`;
   var STARVATION_RESCUE_VISIBLE_ROWS = 2;
   var formatStarvationOverflowCue = (totalCount) => {
@@ -91,16 +84,11 @@
       const degrees = formatTargetDegrees(intendedNormalTargetC);
       return degrees ? `Held below ${degrees} by today\u2019s budget` : "Held by today\u2019s budget";
     }
-    if (cause === "capacity") return "Waiting for available power";
-    if (cause === "manual") return "Under manual control";
-    return "Waiting on an external service";
+    return "Waiting for available power";
   };
   var resolveStarvationRowNote = (cause, hasSmartTask = false) => {
     if (cause === "budget") return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
-    if (cause === "capacity") return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
-    if (cause === "manual") return STARVATION_RESCUE_WIDGET_COPY.manualNote;
-    if (cause === "external") return STARVATION_RESCUE_WIDGET_COPY.externalNote;
-    return null;
+    return STARVATION_RESCUE_WIDGET_COPY.capacityNote;
   };
   var starvationRowOffersRescue = (cause) => cause === "budget";
   var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false) => starvationRowOffersRescue(cause) && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);

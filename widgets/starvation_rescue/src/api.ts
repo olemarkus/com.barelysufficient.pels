@@ -27,8 +27,8 @@ import type {
 //    starved list), so the device reaches its normal comfort/storage level;
 //  - the FRESH DEADLINE is a fixed near-term horizon from now;
 //  - the GUARDRAIL is re-checked here: only a currently-starved BUDGET-caused
-//    device gets the budget-exempt rescue (capacity is physical, manual/external
-//    are outside PELS's control — see feedback_hard_cap_is_physical).
+//    device gets the budget-exempt rescue (capacity is physical, the hard cap is
+//    not a tuning knob — see feedback_hard_cap_is_physical).
 //
 // PREVIEW ≡ PERSIST: a rescue is always a FRESH task — task-having devices are
 // excluded from the rescue (`App.getStarvedRescueDevices`), so there is no merge.
@@ -99,7 +99,7 @@ const parseRescueRequest = (body: unknown): StarvationRescueRequest | null => {
 // rescuable (budget-caused) starved row with a known target. This is the
 // guardrail's enforcement point: it runs on both preview and create so a stale
 // or tampered request can never build a budget-exempt rescue for a
-// capacity/manual/external row, or for a device that already recovered.
+// capacity row, or for a device that already recovered.
 const resolveRescuableDevice = (
   app: StarvationRescueApiApp | undefined,
 ): ((deviceId: string) =>

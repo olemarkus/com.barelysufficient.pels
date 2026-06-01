@@ -5,6 +5,26 @@ Core intended-target / suppression-state diagnostics now exist in `lib/plan/plan
 and `lib/diagnostics/deviceDiagnosticsService.ts`, but flows/insights and any remaining
 integration gaps should still follow this note.
 
+> **Model correction (2026-06) — starve only when PELS holds a device below its
+> mode target.** The original model below measured starvation by comparing the
+> device's PHYSICAL temperature against a deficit threshold derived from the
+> intended target. That mislabelled any device sitting below its target — even
+> one PELS was commanding in full (`keep`) — as "starved", and the overview
+> bucketed those `keep`/paused episodes as a "Manual hold". The shipped criterion
+> is now: **a device is starved only when PELS's COMMANDED effective target is
+> below its intended/mode target** (`commandedTargetC < intendedNormalTargetC`)
+> AND a real counting suppression (capacity/budget/shortfall/…) is active. A
+> device PELS commands in full is never starved, however cold it physically is.
+> Consequences, reflected throughout the sections below:
+>
+> - The physical-temperature entry/exit thresholds and the anchor/step-deficit
+>   table (`lib/diagnostics/starvationThresholds.ts`) are GONE.
+> - `keep` / `inactive` / `invalid_observation` can no longer START starvation.
+> - There are only two overview/badge buckets: `capacity` (physical) and
+>   `budget` (releasable). The `manual` and `external` causes are removed; a
+>   starved episode always carries a capacity/budget counting cause, retained
+>   across pauses.
+
 > **v2 — user-initiated budget-exempt rescue (shipped).** The v1 DETECTION model
 > below is unchanged: the planner still never auto-mitigates starvation. What v2
 > adds is a separate, explicitly user-initiated lane: the starvation-rescue
@@ -14,18 +34,16 @@ integration gaps should still follow this note.
 > devices that already have an open smart task, so the action is a fresh create
 > through the same engine as the New smart task widget, not a merge into an
 > existing deadline. This bypasses DAILY-BUDGET admission only — never capacity
-> (the hard cap is physical), and capacity/manual/external rows get no rescue
-> affordance. So the system is no longer "detection-only" for temperature
-> devices — but the new behaviour is gated behind explicit user action, not
-> automatic mitigation.
+> (the hard cap is physical), and capacity rows get no rescue affordance. So the
+> system is no longer "detection-only" for temperature devices — but the new
+> behaviour is gated behind explicit user action, not automatic mitigation.
 >
 > The widget's row status chip intentionally shows the live duration with
 > cause-specific wording: `Held back · N min` for budget-held rows that can be
-> released, `Waiting · N min` for capacity/external rows, and `On hold · N min`
-> for manual rows. The "do not append duration to the badge" rule in the
-> *Overview UI* section below governs the OVERVIEW HERO surface, not this
-> standalone action widget, where the duration is the primary signal for
-> choosing what to rescue.
+> released and `Waiting · N min` for capacity rows. The "do not append duration to
+> the badge" rule in the *Overview UI* section below governs the OVERVIEW HERO
+> surface, not this standalone action widget, where the duration is the primary
+> signal for choosing what to rescue.
 
 The detection feature is detection only:
 
@@ -65,12 +83,21 @@ vendor-specific diagnostic quirks.
 
 A device is starved only when both are true:
 
-1. it is thermally under-served relative to its intended normal target
-2. PELS is actively suppressing, holding, or retry-delaying service
+1. PELS's COMMANDED effective target is below the device's intended/mode target
+   (`commandedTargetC < intendedNormalTargetC`, by at least the target step) —
+   i.e. PELS is actively limiting the device, not waiting for it to reach a
+   target it is already commanding in full.
+2. a real counting suppression (capacity/budget/shortfall/…) is active.
 
-Cooldown, retry/backoff, restore holds, and other PELS-created hold states are still part of the
-starvation episode. They affect attribution, but they do not pause the user-visible starvation
-duration.
+This replaces the old "physical temperature below a deficit threshold" rule. A
+device PELS commands in full (`keep`) is never starved, however cold it
+physically is — that is the device not reaching its own target, not PELS holding
+it back.
+
+Cooldown, retry/backoff, restore holds, and other non-counting PELS hold states
+PAUSE a latched episode (they do not start one and they do not add counted time):
+while paused the device is not being limited right now. The original capacity/
+budget cause is retained across the pause for badge attribution.
 
 Starvation is orthogonal metadata, not a new planner state:
 
@@ -95,9 +122,11 @@ It must not depend directly on UI status text or free-form planner reason string
 Each eligible plan sample must normalize into:
 
 - `eligibleForStarvation: boolean`
-- `currentTemperatureC: number | null`
+- `currentTemperatureC: number | null` (display/telemetry only — NOT the entry signal)
 - `intendedNormalTargetC: number | null`
-- `targetStepC: number | null`
+- `commandedTargetC: number | null` (the effective target PELS is commanding now:
+  `plannedTarget ?? currentTarget`)
+- `targetStepC: number | null` (used as the below-target epsilon, not for a deficit threshold)
 - `suppressionState: 'counting' | 'paused' | 'none'`
 - `countingCause`
 - `pauseReason`
@@ -133,61 +162,40 @@ episode.
 
 ## Target Used For Evaluation
 
-Always evaluate starvation against the device's intended normal target.
-
-For v1 this means:
+The intended normal target is the user's normal comfort/storage target:
 
 - use the operating-mode target that represents the user's normal comfort/storage target
-- do not evaluate against a temporary shed target such as `shed -> set_temperature(min)`
-- do not evaluate against the currently applied target
 - do not include optional cheap/expensive price-optimization deltas in the starvation baseline
+
+The COMMANDED target is what PELS is applying right now: the planned setpoint this
+cycle when PELS is applying one, otherwise the held current setpoint
+(`commandedTargetC = plannedTarget ?? currentTarget`). When PELS sheds a
+thermostat it lowers the commanded target below the intended target; that gap is
+the starvation signal.
 
 Changing the intended normal target must not by itself create starvation.
 
 Target-change behavior:
 
 - if not yet starved: reset the pending entry timer
-- if already starved: keep the episode latched, recompute thresholds from the new target on the
-  next valid sample, and do not count anything retroactively
+- if already starved: keep the episode latched and do not count anything retroactively
 
-## Threshold Model
+## Below-Target Model
 
-### Entry anchors
-
-Use these `(targetC, entryDeficitC)` anchors:
-
-- `(16, 2)`
-- `(21, 2)`
-- `(24, 3)`
-- `(55, 10)`
-- `(80, 20)`
-
-### Interpolation
-
-Linearly interpolate the deficit between anchors.
-
-Clamp outside the table before quantization:
-
-- targets below `16` use the `16 -> 2` anchor
-- targets above `80` use the `80 -> 20` anchor
-
-### Step quantization
-
-Temperature thresholds must respect the device's allowed target step.
-
-Use:
-
-- the target capability step when it is available
-- fallback `0.5` when `intendedNormalTargetC < 30`
-- fallback `1.0` when `intendedNormalTargetC >= 30`
-
-Compute:
+Starvation no longer derives a physical-temperature deficit threshold from an
+anchor table. The single comparison is commanded-vs-intended:
 
 ```text
-rawEntryDeficitC = interpolated deficit from anchor table
-entryDeficitC = max(stepC, ceil(rawEntryDeficitC / stepC) * stepC)
-entryThresholdC = intendedNormalTargetC - entryDeficitC
+epsilon = targetStepC > 0 ? targetStepC / 2 : 0.25
+pelsHoldsBelowTarget = commandedTargetC < intendedNormalTargetC - epsilon
 ```
+
+- the half-step epsilon keeps float/quantization noise from reading an equal
+  command as "below"
+- `commandedTargetC == intendedNormalTargetC` is never below — a device PELS
+  commands in full is never starved
+- physical `currentTemperatureC` is carried for display/telemetry only; it does
+  not gate entry, accumulation, or clear
 
 ## Observation Freshness And Continuity
 
@@ -199,9 +207,11 @@ A sample is valid only when all are true:
 
 - device is still eligible
 - `observationFresh === true`
-- `currentTemperatureC` is finite
 - `intendedNormalTargetC` is finite
-- `targetStepC` is finite
+- `commandedTargetC` is finite
+
+(`currentTemperatureC` finiteness is no longer a validity requirement — physical
+temperature is display/telemetry only.)
 
 Continuity rules for v1:
 
@@ -225,13 +235,13 @@ across valid contiguous samples:
 
 - eligible managed temperature device
 - fresh valid observation
-- `currentTemperatureC <= entryThresholdC`
-- `suppressionState !== 'none'`
+- `suppressionState === 'counting'` with a real counting cause
+- `pelsHoldsBelowTarget` (`commandedTargetC < intendedNormalTargetC`)
 
 The entry timer resets on any of:
 
-- `currentTemperatureC > entryThresholdC`
-- `suppressionState === 'none'`
+- PELS no longer holds the device below target (`commandedTargetC >= intendedNormalTargetC`)
+- the suppression is not a real counting cause (`keep` / `inactive` / cooldown / any pause)
 - invalid observation
 - sample gap longer than `10 minutes`
 - intended normal target change
@@ -264,8 +274,9 @@ Current planner-text examples that should normalize to these causes:
 
 ## Hold / Retry Attribution
 
-These also add starvation time after entry, but are attributed as hold/retry reasons rather than
-counting causes:
+These are pause reasons, NOT counting causes. They cannot start starvation and do
+not add counted time; on a latched episode they pause accumulation (the device is
+not being limited right now) while retaining the original capacity/budget cause:
 
 - `cooldown (...)`
 - `headroom cooldown (...)`
@@ -275,39 +286,28 @@ counting causes:
 - `keep`
 - `keep (recently restored)`
 - `restore (...)`
+- `deferred_objective_avoid`
 - unknown or unmapped suppression reason
 
 Behavior in these states:
 
-- if not yet starved: continue the entry timer while the device remains under-served
-- if already starved: keep adding starvation time while the device remains under-served
+- if not yet starved: reset the pending entry timer (PELS is not limiting the device)
+- if already starved AND still held below target: pause accumulation, stay latched
+- invalid observations and sample gaps also pause accumulation
 
-Invalid observations and sample gaps still pause accumulation because the UI cannot know whether
-the device recovered.
+## Clear (recovery)
 
-## Exit Threshold
+There is no physical-temperature exit threshold. Recovery is purely
+commanded-vs-intended:
 
-Use hysteresis:
+- once PELS commands the full mode target again (`commandedTargetC >= intendedNormalTargetC`
+  on a valid sample), stop adding counted time and start a `10 minute` clear timer
+- if PELS drops the commanded target back below the intended target before the
+  clear timer completes, cancel the clear timer and resume the episode
+- clear only after the device has been commanded at/above its full target
+  continuously for `10 minutes` across valid contiguous samples
 
-```text
-exitDeficitC = max(stepC, floor((entryDeficitC * 0.5) / stepC) * stepC)
-exitThresholdC = intendedNormalTargetC - exitDeficitC
-```
-
-Recovery behavior:
-
-- once `currentTemperatureC >= exitThresholdC`, stop adding counted starvation time
-- start a clear timer
-- if temperature drops below `exitThresholdC` before the clear timer completes, cancel the clear
-  timer and resume the episode state
-
-Clear starvation only when:
-
-- `currentTemperatureC >= exitThresholdC`
-- continuously for `10 minutes`
-- across valid contiguous samples
-
-Partial recovery must not clear starvation immediately.
+Partial recovery (a still-below commanded target) must not clear starvation.
 
 ## State Machine
 
@@ -330,19 +330,22 @@ Add starvation time only while all are true:
 
 - device is already starved
 - sample is valid
-- `suppressionState !== 'none'`
-- `currentTemperatureC < exitThresholdC`
+- `suppressionState === 'counting'` with a real counting cause
+- `pelsHoldsBelowTarget` (`commandedTargetC < intendedNormalTargetC`)
 
 ### Pause accumulation
 
-Pause starvation accumulation only while the sample is invalid, stale/missing, or there is no PELS
-suppression/hold state.
+Pause starvation accumulation while the sample is invalid/stale, OR PELS is not
+holding the device below target via a real counting cause (a `keep`/`inactive`/
+cooldown/restore pause, or a still-below device under a non-counting suppression).
+The original capacity/budget cause is retained across the pause.
 
 ### Clear
 
 `starved -> not starved`
 
-Clear only after temperature has remained above the exit threshold for `10 minutes`.
+Clear only after PELS has commanded the full mode target
+(`commandedTargetC >= intendedNormalTargetC`) for `10 minutes`.
 
 ### Hard reset
 
@@ -448,8 +451,9 @@ Diagnostics should include, per relevant device:
 - `starvationEpisodeStartedAt`
 - `starvationLastResumedAt`
 - intended normal target used for evaluation
-- current temperature
-- active counting suppression cause
+- commanded target PELS is applying
+- current temperature (display/telemetry)
+- active counting suppression cause (retained across pauses)
 - active pause reason, if any
 
 Logs should include:
@@ -464,19 +468,18 @@ Logs should include:
 ## Acceptance Criteria
 
 - starvation applies only to eligible managed temperature devices in the formal PELS device model
-- a device in `keep` does not become starved merely because it is heating slowly after a target
-  increase
-- starvation is evaluated against the intended normal target, not a temporary shed target
-- price-optimization deltas do not change the starvation baseline in v1
-- entry threshold uses the fixed anchor table plus linear interpolation
-- out-of-range targets clamp to the nearest anchor before quantization
-- entry and exit thresholds respect the device temperature step
-- starvation enters only after `15 minutes` of continuous qualifying suppression
+- a device PELS commands in full (`keep`) never becomes starved, however cold it physically is
+- starvation requires PELS to command the device below its intended/mode target
+  (`commandedTargetC < intendedNormalTargetC`) under a real counting cause
+- price-optimization deltas do not change the intended-target baseline
+- physical temperature does not gate entry, accumulation, or clear (display/telemetry only)
+- starvation enters only after `15 minutes` of continuous below-target counting suppression
 - invalid observations and sample gaps do not backfill or count as continuous qualification
-- cooldown/backoff/restore-hold states continue starvation while the device remains under-served
-- unknown suppression reasons remain explicitly attributed when they count
+- non-counting holds (cooldown/backoff/restore/keep/inactive) cannot start starvation and pause a
+  latched episode, retaining its capacity/budget cause
+- the overview/badge has exactly two buckets — `capacity` and `budget`; no manual/external bucket
 - `capacity control off` clears and resets starvation
-- starvation clears only after temperature has remained above the exit threshold for `10 minutes`
+- starvation clears only after PELS commands the full mode target for `10 minutes`
 - enabling starvation detection does not change planner decisions
 - duration-threshold triggers fire once per episode per threshold
 - app restart clears live starvation state in v1

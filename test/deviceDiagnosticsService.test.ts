@@ -57,6 +57,9 @@ const buildObservation = (
   eligibleForStarvation: true,
   currentTemperatureC: 18,
   intendedNormalTargetC: 22,
+  // PELS holds the commanded setpoint 4° under the mode target — it IS limiting
+  // the device, the sole entry signal for starvation.
+  commandedTargetC: 18,
   targetStepC: 0.5,
   suppressionState: 'counting',
   countingCause: 'capacity',
@@ -535,7 +538,7 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 
-  it('continues starvation accumulation through held suppression states', () => {
+  it('pauses accumulation through a non-counting hold then resumes under a real cap hold', () => {
     const { service } = createDeps();
     const start = Date.now();
 
@@ -551,6 +554,8 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (16 * 60 * 1000),
       observations: [buildObservation()],
     });
+    // A `keep` interlude — PELS is no longer holding the device below target, so
+    // accumulation pauses (the device is not being limited right now).
     service.observePlanSample({
       nowTs: start + (20 * 60 * 1000),
       observations: [buildObservation({
@@ -570,13 +575,15 @@ describe('DeviceDiagnosticsService', () => {
 
     const starvation = getStarvationState(service);
     expect(starvation?.isStarved).toBe(true);
-    expect(starvation?.starvedAccumulatedMs).toBe(12 * 60 * 1000);
+    // 1 min on entry (t15→t16) + 4 min counting (t16→t20) + 2 min after resume
+    // (t25→t27). The keep window (t20→t25) does NOT accumulate.
+    expect(starvation?.starvedAccumulatedMs).toBe(7 * 60 * 1000);
     expect(starvation?.starvationCause).toBe('capacity');
     expect(starvation?.starvationPauseReason).toBeNull();
-    expect(starvation?.starvationLastResumedAt).toBe(start + (15 * 60 * 1000));
+    expect(starvation?.starvationLastResumedAt).toBe(start + (25 * 60 * 1000));
   });
 
-  it('enters starvation when cooldown follows active suppression before the entry delay completes', () => {
+  it('never enters starvation under a non-counting hold (cooldown) — only a real cap hold counts', () => {
     const { service } = createDeps();
     const start = Date.now();
 
@@ -584,6 +591,8 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start,
       observations: [buildObservation()],
     });
+    // A cooldown pause before the entry delay completes resets the pending entry:
+    // PELS is not actively limiting the device, so it cannot starve.
     service.observePlanSample({
       nowTs: start + (9 * 60 * 1000),
       observations: [buildObservation({
@@ -602,12 +611,56 @@ describe('DeviceDiagnosticsService', () => {
     });
 
     const starvation = getStarvationState(service);
-    expect(starvation?.isStarved).toBe(true);
-    expect(starvation?.starvationEpisodeStartedAt).toBe(start + (15 * 60 * 1000));
-    expect(starvation?.starvedAccumulatedMs).toBe(60 * 1000);
-    expect(starvation?.starvationCause).toBeNull();
-    expect(starvation?.starvationPauseReason).toBe('cooldown');
-    expect(starvation?.starvationLastResumedAt).toBe(start + (15 * 60 * 1000));
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.pendingEntryStartedAt).toBeUndefined();
+  });
+
+  it('never starves a device PELS commands in full, however cold it is', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    // Owner's bug case (Nordic S4 REL): mode target 18, PELS commands the full
+    // 18 (`keep`), device physically at 15.9 — PELS is not limiting it.
+    const keepObservation = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 15.9,
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'keep',
+    });
+
+    for (const offset of [0, 9, 16, 30]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [keepObservation] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(false);
+    expect(service.getOverviewStarvation('heater-1')).toBeNull();
+  });
+
+  it('starves a device PELS sheds below its mode target (commanded < intended)', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    // Mode target 18, PELS commands 16 due to a capacity shed → 2° under target.
+    const shedObservation = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 16,
+      currentTemperatureC: 17,
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    });
+
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [shedObservation] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(true);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
+      isStarved: true,
+      cause: 'capacity',
+    });
   });
 
   it('keeps starvation latched across sample gaps but pauses accumulation', () => {
@@ -667,12 +720,15 @@ describe('DeviceDiagnosticsService', () => {
     const starvation = getStarvationState(service);
     expect(starvation?.isStarved).toBe(true);
     expect(starvation?.starvedAccumulatedMs).toBe(5 * 60 * 1000);
-    expect(starvation?.starvationCause).toBeNull();
+    // The original capacity cause is RETAINED across the pause — a pause does not
+    // change WHY the device became starved, so the overview still reads capacity
+    // (there is no manual/external bucket anymore).
+    expect(starvation?.starvationCause).toBe('capacity');
     expect(starvation?.starvationPauseReason).toBe('suppression_none');
     expect(starvation?.starvationLastResumedAt).toBeUndefined();
     expect(service.getOverviewStarvation('heater-1')).toMatchObject({
       isStarved: true,
-      cause: 'external',
+      cause: 'capacity',
     });
   });
 
@@ -743,22 +799,33 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (16 * 60 * 1000),
       observations: [buildObservation()],
     });
+    // PELS restores the device to its full mode target (commanded == intended) —
+    // it is no longer holding it below target, so the episode clears.
     service.observePlanSample({
       nowTs: start + (20 * 60 * 1000),
       observations: [buildObservation({
-        currentTemperatureC: 21,
+        commandedTargetC: 22,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
       })],
     });
     service.observePlanSample({
       nowTs: start + (29 * 60 * 1000),
       observations: [buildObservation({
-        currentTemperatureC: 21,
+        commandedTargetC: 22,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
       })],
     });
     service.observePlanSample({
       nowTs: start + (31 * 60 * 1000),
       observations: [buildObservation({
-        currentTemperatureC: 21,
+        commandedTargetC: 22,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
       })],
     });
 
@@ -820,6 +887,7 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (16 * 60 * 1000),
       observations: [buildObservation()],
     });
+    // `keep` interlude pauses (PELS no longer holds below target)...
     service.observePlanSample({
       nowTs: start + (20 * 60 * 1000),
       observations: [buildObservation({
@@ -828,20 +896,28 @@ describe('DeviceDiagnosticsService', () => {
         pauseReason: 'keep',
       })],
     });
+    // ...then a real cap hold resumes accumulation.
     service.observePlanSample({
       nowTs: start + (25 * 60 * 1000),
       observations: [buildObservation()],
     });
+    // PELS restores the full mode target (commanded == intended) → clears.
     service.observePlanSample({
       nowTs: start + (30 * 60 * 1000),
       observations: [buildObservation({
-        currentTemperatureC: 21,
+        commandedTargetC: 22,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
       })],
     });
     service.observePlanSample({
       nowTs: start + (40 * 60 * 1000),
       observations: [buildObservation({
-        currentTemperatureC: 21,
+        commandedTargetC: 22,
+        suppressionState: 'none',
+        countingCause: null,
+        pauseReason: null,
       })],
     });
 
@@ -855,11 +931,25 @@ describe('DeviceDiagnosticsService', () => {
         starvedDurationMs: 60 * 1000,
       })],
       [expect.objectContaining({
+        event: 'device_starvation_paused',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        pauseReason: 'keep',
+        transitionAtMs: start + (20 * 60 * 1000),
+      })],
+      [expect.objectContaining({
+        event: 'device_starvation_resumed',
+        deviceId: 'heater-1',
+        deviceName: 'Hall Heater',
+        cause: 'capacity',
+        transitionAtMs: start + (25 * 60 * 1000),
+      })],
+      [expect.objectContaining({
         event: 'device_starvation_cleared',
         deviceId: 'heater-1',
         deviceName: 'Hall Heater',
         transitionAtMs: start + (40 * 60 * 1000),
-        starvedDurationMs: 15 * 60 * 1000,
+        starvedDurationMs: 10 * 60 * 1000,
       })],
     ]);
   });

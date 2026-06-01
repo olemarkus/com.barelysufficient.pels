@@ -56,7 +56,7 @@ export type StarvationRescueCreateResponse = {
 export type StarvationRescueRejectReason =
   | 'invalid_request'
   // The device is not a currently-starved BUDGET-caused row (it cleared, its
-  // cause changed to capacity/manual/external, or it never offered a rescue).
+  // cause changed to capacity, or it never offered a rescue).
   // The guardrail: only budget starvation gets the budget-exempt rescue.
   | 'not_rescuable'
   // No intended normal target known for the device yet, so there is nothing to

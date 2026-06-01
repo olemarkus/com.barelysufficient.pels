@@ -271,11 +271,54 @@ describe('plan diagnostics observations', () => {
       observationFresh: true,
       currentTemperatureC: 18,
       intendedNormalTargetC: 21,
+      // PELS commands the held 18° setpoint (3° under the 21° mode target).
+      commandedTargetC: 18,
       targetStepC: 0.5,
       suppressionState: 'counting',
       countingCause: 'capacity',
       pauseReason: null,
     });
+  });
+
+  it('resolves the commanded target from the planned setpoint, falling back to the current setpoint', () => {
+    const inputDevice: PlanInputDevice = {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      managed: true,
+      controllable: true,
+      available: true,
+      currentTemperature: 18,
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
+    };
+    const basePlanDevice: DevicePlanDevice = {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      currentState: 'not_applicable',
+      plannedState: 'shed',
+      currentTarget: 19,
+      reason: r('shed due to capacity'),
+      controllable: true,
+      available: true,
+      currentTemperature: 18,
+    };
+
+    // Planned setpoint present → that is what PELS is commanding.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: { ...basePlanDevice, plannedTarget: 16 },
+      desiredForMode: { 'heater-1': 21 },
+    }).commandedTargetC).toBe(16);
+
+    // No planned setpoint → fall back to the held current setpoint.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: basePlanDevice,
+      desiredForMode: { 'heater-1': 21 },
+    }).commandedTargetC).toBe(19);
   });
 
   it('uses the operating-mode target rather than price-optimization deltas for starvation baseline', () => {

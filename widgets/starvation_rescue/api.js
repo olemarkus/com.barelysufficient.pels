@@ -40,24 +40,21 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   loadError: "Could not load devices. Try again later.",
   // Row status-chip word. The widget appends "· N min". Cause-specific so the
   // chip never overclaims: only budget rows (the releasable "Let it run now"
-  // state) say "Held back"; capacity/external say "Waiting" (physically held —
-  // the hard cap is not a tuning knob, feedback_hard_cap_is_physical) and manual
-  // says "On hold". User-facing register only — no "starvation" jargon.
+  // state) say "Held back"; capacity rows say "Waiting" (physically held — the
+  // hard cap is not a tuning knob, feedback_hard_cap_is_physical). User-facing
+  // register only — no "starvation" jargon.
   starvedChip: "Held back",
   waitingChip: "Waiting",
-  manualChip: "On hold",
   // Rescue affordance (budget-caused rows only). "Let it run now" is device-
   // scoped — it releases THIS device from the daily budget so it runs now,
   // rather than promising house power. The rescue is a bounded near-term run
   // (the confirm sheet surfaces the "By {time}" timing prominently).
   rescueButton: "Let it run now",
-  // Informational note on capacity / manual / external rows — they get NO rescue
-  // affordance. Honest about why, without implying the user can raise the cap.
-  // Matches the canonical "Waiting for available power" wording the overview and
-  // the row subtext use, so the capacity story reads the same everywhere.
+  // Informational note on capacity rows — they get NO rescue affordance. Honest
+  // about why, without implying the user can raise the cap. Matches the canonical
+  // "Waiting for available power" wording the overview and the row subtext use,
+  // so the capacity story reads the same everywhere.
   capacityNote: "Waiting for available power.",
-  manualNote: "Under manual control.",
-  externalNote: "Waiting on an external service.",
   // A budget-held device that already has a smart task: shown in the list (so the
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
