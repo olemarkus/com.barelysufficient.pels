@@ -18,14 +18,30 @@ export const buildHoursFromHorizonPlan = (
   // mid-hour. The Settings UI keys planned usage by hour-aligned price-horizon
   // start timestamps, so floor each bucket to its containing hour and sum
   // segments that collapse into the same hour.
-  const byHour = new Map<number, number>();
+  const byHour = new Map<number, { plannedKWh: number; earliestStartMs: number }>();
   for (const bucket of horizonPlan.plannedBuckets) {
     if (bucket.plannedUsefulEnergyKWh <= 0) continue;
     const hourStart = Math.floor(bucket.startMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-    byHour.set(hourStart, (byHour.get(hourStart) ?? 0) + bucket.plannedUsefulEnergyKWh);
+    const existing = byHour.get(hourStart);
+    if (existing) {
+      existing.plannedKWh += bucket.plannedUsefulEnergyKWh;
+      existing.earliestStartMs = Math.min(existing.earliestStartMs, bucket.startMs);
+    } else {
+      byHour.set(hourStart, { plannedKWh: bucket.plannedUsefulEnergyKWh, earliestStartMs: bucket.startMs });
+    }
   }
   return [...byHour.entries()]
-    .map(([startsAtMs, plannedKWh]) => ({ startsAtMs, plannedKWh: roundKWh(plannedKWh) }))
+    .map(([startsAtMs, { plannedKWh, earliestStartMs }]) => ({
+      startsAtMs,
+      plannedKWh: roundKWh(plannedKWh),
+      // When the earliest bucket folded into this hour starts after the hour
+      // boundary, the planner trimmed it to `nowMs` (the current hour on a
+      // mid-hour cycle), so `plannedKWh` is already only the post-trim
+      // remainder covering `[earliestStartMs, hourEnd]`. Record that so the
+      // history chart does not prorate an already-trimmed value. A full hour
+      // (earliest bucket hour-aligned) leaves `coversFromMs` absent.
+      ...(earliestStartMs > startsAtMs ? { coversFromMs: earliestStartMs } : {}),
+    }))
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
 };
 
@@ -163,9 +179,17 @@ export const mergeHoursPreservingCommitment = (
   const mergedLive = live.map((liveHour) => {
     const c = committedByStart.get(liveHour.startsAtMs);
     if (!c) return liveHour;
-    return c.plannedKWh > liveHour.plannedKWh
-      ? { ...liveHour, plannedKWh: c.plannedKWh }
-      : liveHour;
+    // Take the floor that wins the `Math.max` *whole*, so coverage follows the
+    // energy: when the committed hour wins, its `coversFromMs` (absent ⇒ full
+    // hour) replaces the live hour's trimmed `coversFromMs`. Keeping the live
+    // trimmed coverage with the committed full energy would mislabel a full-hour
+    // floor as a sub-hour span and suppress proration in the chart. Ties go to
+    // the committed hour (`>=`): when a trimmed live current-hour bucket rounds
+    // back to the committed full-hour kWh (or the device made no measurable
+    // progress), the committed full-hour coverage is the correct one to keep so
+    // the chart still prorates the elapsed part. When the live hour strictly
+    // wins (fresh/grown), it keeps its own coverage.
+    return c.plannedKWh >= liveHour.plannedKWh ? { ...c } : liveHour;
   });
   // Elapsed hours (`startsAtMs < currentHourStart`) are re-added as floors. In
   // production the planner trims the live plan's current bucket start to
