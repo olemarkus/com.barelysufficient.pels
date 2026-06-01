@@ -111,22 +111,22 @@ describe('headroom widget browser', () => {
     expect(targets.metaEl.dataset.tone).toBe('danger');
   });
 
-  test('over_cap meta omits the misleading "0 kW available" and shows only the paused count', () => {
+  test('over_cap meta omits the misleading "0 kW available" and shows only the held-back count', () => {
     const targets = resolveTargets();
     renderWidget(targets, {
       ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 3,
     });
 
     expect(targets.metaEl.textContent).not.toContain('available');
-    expect(targets.metaEl.textContent).toBe('3 paused');
+    expect(targets.metaEl.textContent).toBe('3 held back');
     // The aria-label must match the visible meta — assistive tech must not hear
     // the dropped "0 kW available" either.
     const aria = targets.root.getAttribute('aria-label') ?? '';
     expect(aria).not.toContain('available');
-    expect(aria).toContain('3 paused');
+    expect(aria).toContain('3 held back');
   });
 
-  test('over_cap meta is empty when nothing is paused (no false "0 kW available")', () => {
+  test('over_cap meta is empty when nothing is held back (no false "0 kW available")', () => {
     const targets = resolveTargets();
     renderWidget(targets, {
       ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 0,
@@ -142,7 +142,36 @@ describe('headroom widget browser', () => {
     });
 
     expect(targets.metaEl.textContent).toContain('available');
-    expect(targets.metaEl.textContent).toContain('2 paused');
+    expect(targets.metaEl.textContent).toContain('2 held back');
+  });
+
+  test('renders the canonical price chip and a grammatical aria phrase', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, { ...READY, priceLevel: 'cheap' });
+
+    expect(targets.chipEl.textContent).toBe('Price low');
+    expect(targets.chipEl.hidden).toBe(false);
+    const aria = targets.root.getAttribute('aria-label') ?? '';
+    // The fixed broken forms must never come back.
+    expect(aria).not.toContain('Price Cheap');
+    expect(aria).not.toContain('Price Price');
+    expect(aria).toContain('Price: low');
+  });
+
+  test('shows "Price high" for expensive hours', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, { ...READY, priceLevel: 'expensive' });
+
+    expect(targets.chipEl.textContent).toBe('Price high');
+    expect(targets.root.getAttribute('aria-label')).toContain('Price: high');
+  });
+
+  test('omits the price chip and aria phrase for normal hours', () => {
+    const targets = resolveTargets();
+    renderWidget(targets, { ...READY, priceLevel: 'normal' });
+
+    expect(targets.chipEl.hidden).toBe(true);
+    expect(targets.root.getAttribute('aria-label')).not.toContain('Price');
   });
 
   test('hides the state label when there is nothing exceptional to say', () => {

@@ -10,6 +10,13 @@
 //   - right number = "Safe pace now"  (dynamic kW threshold PELS reacts at)
 //   - the fixed ceiling is "Hard cap" — a DIFFERENT value, never shown as the
 //     right-hand number here.
+//
+// The price chip reuses the canonical "Price low" / "Price high" pair from
+// `priceLevelChips.ts` (notes/ui-terminology.md § "Headroom-widget chips") so
+// the widget, the settings UI, and runtime logging speak the same words for the
+// same signal.
+
+import { resolvePriceLevelChip } from './priceLevelChips';
 
 export type HeadroomWidgetPriceCopyLevel = 'cheap' | 'normal' | 'expensive' | 'unknown';
 
@@ -33,23 +40,19 @@ export const HEADROOM_WIDGET_COPY = {
    * dynamic safe pace from the static "Hard cap"; reads parallel with "Power now".
    */
   safePaceLabel: 'Safe pace now',
-  /** Screen-reader prefix for the price chip in the aria-label ("Price Cheap"). */
-  priceAriaPrefix: 'Price',
   /** Shown when there is no status to render yet. */
   noDataSubtitle: 'No data yet',
   /** Shown when the widget API call fails. */
   loadErrorSubtitle: 'Unable to load',
 } as const;
 
-// Display casing lives in the copy, not in CSS: the chip is rendered verbatim
-// (no `text-transform`), so the runtime log path and the widget read the exact
-// same words. Title case so the chip reads "Cheap" / "Expensive".
-const PRICE_CHIP_LABELS: Record<HeadroomWidgetPriceCopyLevel, string> = {
-  cheap: 'Cheap',
-  normal: 'Normal',
-  expensive: 'Expensive',
-  unknown: '—',
-};
+// The chip is rendered verbatim (no CSS `text-transform`), so the runtime log
+// path and the widget read the exact same words. Only `cheap` / `expensive` are
+// ever shown (see `SHOW_PRICE_CHIP_FOR` in the renderer); the widget HIDES the
+// chip for both `normal` and `unknown`. The empty string (`normal`) and the
+// placeholder dash (`unknown`) below are only the helper's return values for
+// log/aria callers — the widget never paints them.
+const PLACEHOLDER_LABEL = '—';
 
 const LIMIT_STATE_LABELS: Record<HeadroomWidgetLimitState, string> = {
   under: '',
@@ -58,10 +61,31 @@ const LIMIT_STATE_LABELS: Record<HeadroomWidgetLimitState, string> = {
   over_cap: 'Over hard cap',
 };
 
-/** Chip text for a price level (`cheap` / `normal` / `expensive`). */
-export const headroomPriceChipLabel = (level: HeadroomWidgetPriceCopyLevel): string => (
-  PRICE_CHIP_LABELS[level]
-);
+/**
+ * Chip text for a price level. Reuses the canonical `priceLevelChips.ts` pair
+ * so `cheap` → "Price low" and `expensive` → "Price high"; `normal` returns the
+ * empty string (no chip) and `unknown` the placeholder dash.
+ */
+export const headroomPriceChipLabel = (level: HeadroomWidgetPriceCopyLevel): string => {
+  if (level === 'unknown') return PLACEHOLDER_LABEL;
+  return resolvePriceLevelChip(level)?.label ?? '';
+};
+
+/**
+ * Grammatical screen-reader phrasing for the price chip, e.g. "Price: low".
+ * Derives the bare level word from the canonical chip label so the aria text
+ * can never regress to the broken "Price Price low" / "Price Cheap" forms.
+ * Returns the empty string when there is no chip to announce.
+ */
+export const headroomPriceAriaLabel = (level: HeadroomWidgetPriceCopyLevel): string => {
+  const chip = level === 'unknown' ? null : resolvePriceLevelChip(level);
+  if (!chip) return '';
+  // Canonical labels are "Price low" / "Price high" — the trailing word is the
+  // already-lowercase human level. Strip the leading "Price " prefix and reuse
+  // the remainder verbatim as the grammatical "Price: <level>" phrase.
+  const levelWord = chip.label.replace(/^Price\s+/u, '');
+  return `Price: ${levelWord}`;
+};
 
 /**
  * Short state label for the at-limit row. Empty string when there is nothing
@@ -76,7 +100,11 @@ export const headroomAvailableLabel = (availableKwText: string): string => (
   `${availableKwText} kW available`
 );
 
-/** "1 paused" / "N paused" — count of devices PELS is currently holding back. */
-export const headroomPausedLabel = (shedCount: number): string => (
-  shedCount === 1 ? '1 paused' : `${shedCount} paused`
+/**
+ * "1 held back" / "N held back" — count of devices PELS is currently holding
+ * back. Uses "held back" to match the dedicated Held-back-devices widget
+ * (notes/ui-terminology.md § "Headroom-widget chips").
+ */
+export const headroomHeldBackLabel = (shedCount: number): string => (
+  shedCount === 1 ? '1 held back' : `${shedCount} held back`
 );

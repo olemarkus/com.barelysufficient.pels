@@ -103,6 +103,13 @@ Secondary text under a Limited chip names the action: **Turned off by PELS**, **
 
 The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining because of the daily budget, with a per-device **Let it run now** action (a one-device budget exemption — never a hard-cap change). The duration chip word is cause-specific so it never overclaims: only **budget** rows (the releasable "Let it run now" state) read `Held back · N min`; **capacity** and **external** rows read `Waiting · N min` (physically held — the hard cap is not a tuning knob) and **manual** rows read `On hold · N min`. Both non-budget kinds get an informational note instead of a rescue button. This is a deliberate, widget-scoped synonym of the overview **Limited** chip: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The internal/advanced **device-detail diagnostics** surface still says **Starved** (the planner term) — an accepted advanced-surface holdout, tracked for alignment in TODO. Keep these three deliberate: **Limited** (overview chip), **Held back** (the widget), **Starved** (advanced diagnostics only).
 
+### Headroom-widget chips — "Available power" widget
+
+The **Available power** (headroom) dashboard widget shares vocabulary with the rest of the surfaces. Source of truth: `packages/shared-domain/src/headroomWidgetCopy.ts` (count + chip) and `packages/shared-domain/src/priceLevelChips.ts` (price pair).
+
+- **Held-back count** reads **"N held back"** (e.g. `2 held back`), not "N paused" or "N limited", so the count word matches the dedicated **Held-back devices** widget above. Helper: `headroomHeldBackLabel`.
+- **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
+
 ## Smart task vocabulary
 
 Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.
