@@ -94,6 +94,7 @@ import {
   resolveFlowBackedBinaryTriggerCardId,
   resolveRestoreLogSource,
 } from './planExecutorPredicates';
+import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
@@ -336,13 +337,17 @@ export class PlanExecutor {
         });
       }
 
-    } else if (pending.lifecycleRelease) {
-      // Smart-task lifecycle-end disable confirmed (flow-backed): record diagnostics
-      // only via the release recorder — do NOT stamp the capacity cooldown markers,
-      // because a lifecycle disable is a planning decision, not capacity pressure.
-      this.recordReleaseShedActuation(deviceId, liveDevice.name, now);
     } else {
-      this.recordShedActuation(deviceId, liveDevice.name, now);
+      // Binary OFF confirmed (flow-backed). The lifecycle-vs-capacity recorder selection
+      // comes from the shared helper so it stays in lockstep with the direct path: a
+      // smart-task lifecycle-end disable records diagnostics only via the release recorder
+      // (no capacity cooldown markers, because it is a planning decision, not capacity
+      // pressure); a capacity shed stamps the markers via recordShedActuation.
+      selectShedActuationRecorder({
+        lifecycleRelease: pending.lifecycleRelease,
+        recordShedActuation: this.boundRecordShedActuation,
+        recordReleaseShedActuation: this.recordReleaseShedActuation,
+      })(deviceId, liveDevice.name, now);
     }
 
     this.flushLastControlledPersistence();
