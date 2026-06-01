@@ -1134,8 +1134,9 @@ const REVISION_REASON_LABEL: Record<DeferredObjectiveActivePlanRevisionReason, s
   // names the *event the recorder saw* ("couldn't read"), not a state it
   // assumes.
   device_unavailable: 'Device was unreachable',
-  // `measured_deviation` fires when observed delivery rate diverged from the
-  // planned rate enough to trigger a replan. Naming the *cause-effect* (rate
+  // `measured_deviation` fires when the device's learned per-unit energy rate
+  // (kWh per °C or per % SoC) drifted far enough from the rate the plan was
+  // committed against to trigger a replan. Naming the *cause-effect* (rate
   // differed → replan) reads more clearly than naming an abstract field
   // ("rate updated", which leaves the user asking which rate).
   measured_deviation: 'Measured rate differed from plan',
