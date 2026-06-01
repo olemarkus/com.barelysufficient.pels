@@ -5,6 +5,7 @@ import {
 } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 import type { PowerTrackerState } from '../lib/power/tracker';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 
 const buildDeps = (
   overrides: Partial<DeferredObjectiveLifecycleEmitterDeps> = {},
@@ -33,6 +34,24 @@ describe('DeferredObjectiveLifecycleEmitter', () => {
     const [diagnostics, nowMs] = observeDeferredObjectivePlanHistory.mock.calls[0]!;
     expect(Array.isArray(diagnostics)).toBe(true);
     expect(nowMs).toBe(1_000_000_000_000);
+  });
+
+  it('reads the active-plan snapshot once per tick and forwards that same instance to observe', () => {
+    const activePlans: DeferredObjectiveActivePlansV1 = { version: 1, plansByDeviceId: {} };
+    const getDeferredObjectiveActivePlans = vi.fn(() => activePlans);
+    const observeDeferredObjectivePlanHistory = vi.fn();
+    const emitter = new DeferredObjectiveLifecycleEmitter(buildDeps({
+      getDeferredObjectiveActivePlans,
+      observeDeferredObjectivePlanHistory,
+    }));
+
+    emitter.tick(1_000_000_000_000);
+
+    // Exactly one recorder read per tick (shared by the diagnostics build and observe).
+    expect(getDeferredObjectiveActivePlans).toHaveBeenCalledTimes(1);
+    // The same snapshot instance reaches the observe callback (third positional arg).
+    const observedActivePlans = observeDeferredObjectivePlanHistory.mock.calls[0]![2];
+    expect(observedActivePlans).toBe(activePlans);
   });
 
   it('no-ops when no settings provider returns settings', () => {
