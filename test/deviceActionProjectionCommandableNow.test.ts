@@ -16,6 +16,7 @@ import {
   COMMANDABLE_NOW_GRACE_MS,
   isCanSetControl,
   isCommandableNow,
+  isEvPhysicallyUnplugged,
   resolveBoostActive,
   resolveCanSetControl,
   resolveCommandableNow,
@@ -289,6 +290,79 @@ describe('isCanSetControl — dual-read fallback', () => {
       controlCapabilityId: 'evcharger_charging',
       canSetControl: true,
     })).toBe(true);
+  });
+});
+
+describe('isEvDevice — capabilities-only EV recognition', () => {
+  // Early/partial device shapes can expose `evcharger_charging` only via the
+  // raw `capabilities` list *before* `controlCapabilityId` (or `deviceClass`)
+  // has resolved. The `isEvDevice` union treats that unresolved shape as EV, so
+  // the EV-aware consumers below recognise the plug state instead of falling
+  // through to their non-EV branches. The capabilities arm is gated on
+  // `controlCapabilityId === undefined`: once control resolves to a non-EV
+  // capability (e.g. a socket-class community charger that resolves to
+  // `'onoff'`), the device is handled generically and must NOT be promoted to
+  // EV — see the regression test at the end of this block.
+
+  it('resolveCommandableNow blocks a discharging charger known only via capabilities', () => {
+    const result = resolveCommandableNow({
+      dev: {
+        controlCapabilityId: undefined,
+        capabilities: ['evcharger_charging'],
+        evChargingState: 'plugged_in_discharging',
+      },
+      nowMs: NOW_MS,
+    });
+    expect(result.commandableNow).toBe(false);
+    expect(result.reason).toBe('charger is discharging');
+  });
+
+  it('resolveCommandableNow treats a never-seen plug state on a capabilities-only charger as uncertain', () => {
+    const result = resolveCommandableNow({
+      dev: { controlCapabilityId: undefined, capabilities: ['evcharger_charging'] },
+      nowMs: NOW_MS,
+    });
+    expect(result.commandableNow).toBe(false);
+    expect(result.reason).toBe('charger state unknown');
+  });
+
+  it('isEvPhysicallyUnplugged recognises a plugged_out charger known only via capabilities', () => {
+    expect(isEvPhysicallyUnplugged({
+      controlCapabilityId: undefined,
+      capabilities: ['evcharger_charging'],
+      evChargingState: 'plugged_out',
+    })).toBe(true);
+  });
+
+  it('does not treat a non-EV capabilities list as an EV device', () => {
+    expect(isEvPhysicallyUnplugged({
+      capabilities: ['onoff', 'measure_power'],
+      evChargingState: 'plugged_out',
+    })).toBe(false);
+  });
+
+  it('does NOT treat a non-evcharger device that resolved control to onoff as EV, even if it lists evcharger_charging', () => {
+    // Regression (P1): a socket/heater-class community charger lists
+    // `evcharger_charging` in its raw capabilities, but `getControlCapabilityId`
+    // (managerControl.ts) resolves its control capability to `'onoff'` — the
+    // evcharger arm there requires `deviceClass === 'evcharger'`. Its plug state
+    // lives on `evcharger_charging_state`, a capability it does not expose, so
+    // `evChargingState` is undefined. If `isEvDevice` promoted it to EV, the
+    // EV-commandable block would return `state_unknown` and the live executor
+    // would mark it permanently restore-blocked. A resolved non-EV control
+    // capability is authoritative and must keep the device freely restorable.
+    const devShape = {
+      deviceClass: 'socket',
+      controlCapabilityId: 'onoff' as const,
+      capabilities: ['onoff', 'measure_power', 'evcharger_charging'],
+      evChargingState: undefined,
+    };
+
+    expect(isEvPhysicallyUnplugged(devShape)).toBe(false);
+
+    const result = resolveCommandableNow({ dev: devShape, nowMs: NOW_MS });
+    expect(result.commandableNow).toBe(true);
+    expect(result.reason).toBeNull();
   });
 });
 

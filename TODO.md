@@ -1135,16 +1135,6 @@ live-walk screenshots.*
       `lib/observer/idleClassifier.ts`. Source: v2.7.1 release-review.
       *(In flight on the v2.11 correctness train — removed by its fix PR.)*
 
-- [ ] Fold `capabilities.includes('evcharger_charging')` into `isEvDevice`
-      (`lib/device/deviceActionProjection.ts`). Post-detype refactor the
-      predicate checks `deviceClass === 'evcharger'` or
-      `controlCapabilityId === 'evcharger_charging'` only; if
-      `controlCapabilityId` ever fails to resolve but caps include
-      `evcharger_charging`, the device is mistakenly non-EV. Practical risk
-      low because `managerParseSnapshot.ts` derives `controlCapabilityId`
-      from caps directly, but the asymmetry with pre-refactor logic is real.
-      Source: release-review adversarial-review, 2026-05-28.
-
 *Bot-review audit follow-ups (2026-05-28). Items surfaced by
 chatgpt-codex-connector / gemini-code-assist reviews on the v2.10
 follow-up train that were missed at merge time; filed here for the next

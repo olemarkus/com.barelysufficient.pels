@@ -48,23 +48,42 @@ import {
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
 /**
- * Producer-internal EV-device predicate. A device is treated as "EV" if EITHER
- * its `deviceClass` is `'evcharger'` OR its resolved binary control capability
- * is `'evcharger_charging'`. The union is intentional: real EV devices set both
- * fields, so this collapses what used to be two slightly different gates inside
- * this file (`resolveEvBoostActive` historically read `deviceClass`; the
+ * Producer-internal EV-device predicate. A device is treated as "EV" if ANY of:
+ * its `deviceClass` is `'evcharger'`, its resolved binary control capability is
+ * `'evcharger_charging'`, OR — only while `controlCapabilityId` is still
+ * unresolved — its raw `capabilities` list includes `'evcharger_charging'`.
+ * The union is intentional: real EV devices set the first two fields, so this
+ * collapses what used to be two slightly different gates inside this file
+ * (`resolveEvBoostActive` historically read `deviceClass`; the
  * commandability/restore-block helpers read `controlCapabilityId`) into a
  * single source of truth.
  *
- * Returns `false` when both fields are missing.
+ * The `capabilities` arm is deliberately gated on `controlCapabilityId ===
+ * undefined`. `getControlCapabilityId` (managerControl.ts) only resolves to
+ * `'evcharger_charging'` when `deviceClass === 'evcharger'`; a non-evcharger
+ * device that merely lists `evcharger_charging` (e.g. a socket-classed
+ * community charger) resolves its control capability to `'onoff'` and is
+ * handled generically — it must stay freely restorable. A resolved non-EV
+ * control capability is therefore authoritative: the capabilities arm only
+ * rescues the early/partial shape where `controlCapabilityId` has not resolved
+ * yet, never overriding a device that already resolved to non-EV control.
+ *
+ * Returns `false` when all three fields are missing.
  *
  * Kept private to this producer module: consumers in `lib/plan/restore/**`
  * receive `TargetDeviceSnapshot` and resolve EV semantics through different
  * helpers — they don't share the `PlanInputDevice` shape this predicate is
  * shaped for.
  */
-const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: string }): boolean => (
-  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
+const isEvDevice = (dev: {
+  deviceClass?: string;
+  controlCapabilityId?: string;
+  capabilities?: readonly string[];
+}): boolean => (
+  dev.deviceClass === 'evcharger'
+  || dev.controlCapabilityId === 'evcharger_charging'
+  || (dev.controlCapabilityId === undefined
+    && dev.capabilities?.includes('evcharger_charging') === true)
 );
 
 export type BinaryControlPlan = {
@@ -91,6 +110,7 @@ type ObservationFreshness = {
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  capabilities?: string[];
   evChargingState?: string;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
@@ -234,6 +254,7 @@ export const COMMANDABLE_NOW_GRACE_MS = 5 * 60 * 1000;
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  capabilities?: string[];
   evChargingState?: string;
   available?: boolean;
 };
@@ -446,8 +467,11 @@ function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandab
   // Routed through the shared `isEvDevice` union predicate so this helper and
   // `resolveEvBoostActive` / `getEvRestoreBlockReason` / `isEvPhysicallyUnplugged`
   // all agree on what counts as an EV device. Real EV devices set both
-  // `deviceClass === 'evcharger'` and `controlCapabilityId === 'evcharger_charging'`,
-  // so this is a no-op for the device shapes the producer sees in practice.
+  // `deviceClass === 'evcharger'` and `controlCapabilityId === 'evcharger_charging'`
+  // (and list `evcharger_charging` in `capabilities`), so this is a no-op for the
+  // fully-resolved device shapes the producer sees in practice; the `capabilities`
+  // arm only rescues early/partial shapes before `controlCapabilityId` resolves
+  // and never promotes a device that already resolved a non-EV control capability.
   if (!isEvDevice(dev)) return null;
 
   switch (dev.evChargingState) {
