@@ -681,16 +681,6 @@ were rolled back before they could land.*
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
       `notes/deferred-load-objectives/`.
 
-- [ ] Smart-task history receipt + chip helpers in
-      `packages/shared-domain/src/deferredPlanHistoryReceipt.ts` still inline
-      every user-facing string (Started, Ready, Largest planned hour, Delivered,
-      Week, on average, etc.). gemini flagged this on PR #887: when a real
-      localization story lands these need to route through a labels module
-      similar to `deadlineLabels.ts` so runtime logging + UI consume the same
-      vocabulary (see `feedback_ui_text_shared_with_logs`). Out of scope for any single release —
-      full externalization is a separate sweep across all of
-      `packages/shared-domain/src/**`.
-
 - [ ] **Move BudgetOverview confidence strings to shared-domain.**
       PR #1211 renamed "Plan confidence" → "Budget confidence"
       inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,

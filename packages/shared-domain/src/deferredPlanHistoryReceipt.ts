@@ -61,6 +61,40 @@ import {
   SMART_TASK_LIST_7DAY_HIT_RATE_LABEL,
 } from './deadlineLabels';
 import {
+  formatReceiptAbandonedDelivered,
+  formatReceiptCostNarrative,
+  formatReceiptDeliveredBare,
+  formatReceiptDeliveredOf,
+  formatReceiptDurationHours,
+  formatReceiptDurationHoursMinutes,
+  formatReceiptDurationMinutes,
+  formatReceiptOtherTasksHeading,
+  formatReceiptOutcomeAbandoned,
+  formatReceiptOutcomeMissed,
+  formatReceiptOutcomeSucceeded,
+  formatReceiptPlannedKWh,
+  formatReceiptReadyMargin,
+  formatReceiptShortfall,
+  formatReceiptStartFromPercent,
+  formatReceiptStartFromTemperature,
+  formatReceiptWeekCost,
+  formatReceiptWeekOf,
+  formatReceiptWeekProvisionalHeading,
+  RECEIPT_DURATION_ZERO,
+  RECEIPT_FRAGMENT_SEPARATOR,
+  RECEIPT_LAST_STATE_BEHIND_NO_TIME_CHARGE,
+  RECEIPT_LAST_STATE_BEHIND_NO_TIME_HEAT,
+  RECEIPT_LAST_STATE_BEHIND_SCHEDULE,
+  RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE,
+  RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE,
+  RECEIPT_LAST_STATE_TARGET_REACHED,
+  RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
+  RECEIPT_ROW_LABEL_READY,
+  RECEIPT_ROW_LABEL_STARTED,
+  RECEIPT_WEEK_LAST,
+  RECEIPT_WEEK_THIS,
+} from './deferredPlanHistoryReceiptStrings';
+import {
   formatDateInTimeZone,
   formatTimeInTimeZone,
   getPreviousLocalDayStartUtcMs,
@@ -71,11 +105,6 @@ import {
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
-
-// Non-breaking space, used between the approx glyph + value + unit so the
-// chip never wraps mid-figure ("12 / kr" breaking onto two lines at 320 px).
-// v2.7.3 — `pels-m3-critic` + `pels-ux-fit` finding.
-const NBSP = ' ';
 
 // ─── Receipt timeline (Succeeded shape) ───────────────────────────────────────
 
@@ -104,13 +133,13 @@ const formatClock = (atMs: number, timeZone: string): string | null => {
 };
 
 const formatMargin = (ms: number): string => {
-  if (ms <= 0) return '0 min';
+  if (ms <= 0) return RECEIPT_DURATION_ZERO;
   const totalMinutes = Math.floor(ms / MINUTE_MS);
-  if (totalMinutes < 60) return `${totalMinutes} min`;
+  if (totalMinutes < 60) return formatReceiptDurationMinutes(totalMinutes);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (minutes === 0) return `${hours} h`;
-  return `${hours} h ${minutes} min`;
+  if (minutes === 0) return formatReceiptDurationHours(hours);
+  return formatReceiptDurationHoursMinutes(hours, minutes);
 };
 
 const formatStartProgress = (
@@ -118,9 +147,13 @@ const formatStartProgress = (
     'objectiveKind' | 'startProgressC' | 'startProgressPercent'>,
 ): string | null => {
   if (entry.objectiveKind === 'temperature') {
-    return entry.startProgressC === null ? null : `from ${entry.startProgressC.toFixed(1)} °C`;
+    return entry.startProgressC === null
+      ? null
+      : formatReceiptStartFromTemperature(entry.startProgressC.toFixed(1));
   }
-  return entry.startProgressPercent === null ? null : `from ${entry.startProgressPercent.toFixed(0)} %`;
+  return entry.startProgressPercent === null
+    ? null
+    : formatReceiptStartFromPercent(entry.startProgressPercent.toFixed(0));
 };
 
 // Picks the first progress sample whose value differs from the entry's start
@@ -213,7 +246,7 @@ export const formatPlanHistoryReceiptTimeline = (
   const startedClock = formatClock(startTimeMs, timeZone);
   if (startedClock !== null) {
     rows.push({
-      label: 'Started',
+      label: RECEIPT_ROW_LABEL_STARTED,
       time: startedClock,
       detail: formatStartProgress(entry),
     });
@@ -225,9 +258,9 @@ export const formatPlanHistoryReceiptTimeline = (
     const peakClock = formatClock(largest.startsAtMs, timeZone);
     if (peakClock !== null) {
       rows.push({
-        label: 'Largest planned hour',
+        label: RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
         time: peakClock,
-        detail: `${largest.plannedKWh.toFixed(1)} kWh planned`,
+        detail: formatReceiptPlannedKWh(largest.plannedKWh.toFixed(1)),
       });
     }
   }
@@ -239,9 +272,9 @@ export const formatPlanHistoryReceiptTimeline = (
     if (readyClock !== null) {
       const margin = entry.deadlineAtMs - entry.metAtMs;
       const detail = margin > 0 && deadlineClock !== null
-        ? `${formatMargin(margin)} before ${deadlineClock}`
+        ? formatReceiptReadyMargin(formatMargin(margin), deadlineClock)
         : null;
-      rows.push({ label: 'Ready', time: readyClock, detail });
+      rows.push({ label: RECEIPT_ROW_LABEL_READY, time: readyClock, detail });
     }
   }
 
@@ -339,20 +372,20 @@ export const formatPlanHistoryShortfallChip = (
     // reads as a >100% contradiction. When delivery already meets/exceeds the
     // scheduled total, energy wasn't the limiting factor: drop the denominator
     // and show the bare delivered figure rather than a ratio over 100%.
-    parts.push(`Delivered ${entry.deliveredKWh!.toFixed(1)} of ${plannedTotal.toFixed(1)} kWh`);
+    parts.push(formatReceiptDeliveredOf(entry.deliveredKWh!.toFixed(1), plannedTotal.toFixed(1)));
   } else if (hasDelivery) {
-    parts.push(`Delivered ${entry.deliveredKWh!.toFixed(1)} kWh`);
+    parts.push(formatReceiptDeliveredBare(entry.deliveredKWh!.toFixed(1)));
   }
   const shortfallMs = estimateTimeShortfall(entry);
   if (shortfallMs !== null && shortfallMs >= MINUTE_MS) {
     // NBSP between glyph and value so the chip reads "short ≈ 23 min" rather
     // than "short ≈23 min" — matches the cost-narrative chip spacing.
-    parts.push(`short ${APPROX_GLYPH}${NBSP}${formatMargin(shortfallMs)}`);
+    parts.push(formatReceiptShortfall(APPROX_GLYPH, formatMargin(shortfallMs)));
   }
   if (parts.length === 0) return null;
   // v2.7.3 P2 — drop trailing period; chips read as audit copy when stacked
   // with a terminal period. Sentence-tier strings still get one.
-  return parts.join(' · ');
+  return parts.join(RECEIPT_FRAGMENT_SEPARATOR);
 };
 
 // ─── Cost narrative chip (Succeeded + Missed) ────────────────────────────────
@@ -390,7 +423,7 @@ export const formatPlanHistoryCostNarrative = (
   if (unit.length === 0) return null;
   const hasCost = typeof entry.totalCost === 'number' && Number.isFinite(entry.totalCost);
   if (!hasCost) return null;
-  return `${APPROX_GLYPH}${NBSP}${Math.round(entry.totalCost!)}${NBSP}${unit}`;
+  return formatReceiptCostNarrative(APPROX_GLYPH, Math.round(entry.totalCost!), unit);
 };
 
 // ─── Abandoned details (collapsed <details> body) ────────────────────────────
@@ -416,16 +449,16 @@ const formatLastDeviceState = (
   switch (lastPlan.planStatus) {
     case 'on_track':
       return entry.objectiveKind === 'ev_soc'
-        ? 'Last device state: charging on schedule.'
-        : 'Last device state: heating on schedule.';
+        ? RECEIPT_LAST_STATE_CHARGING_ON_SCHEDULE
+        : RECEIPT_LAST_STATE_HEATING_ON_SCHEDULE;
     case 'at_risk':
-      return 'Last device state: behind schedule.';
+      return RECEIPT_LAST_STATE_BEHIND_SCHEDULE;
     case 'cannot_meet':
       return entry.objectiveKind === 'ev_soc'
-        ? 'Last device state: behind schedule with not enough time to finish.'
-        : 'Last device state: behind schedule with not enough time to reach the target.';
+        ? RECEIPT_LAST_STATE_BEHIND_NO_TIME_CHARGE
+        : RECEIPT_LAST_STATE_BEHIND_NO_TIME_HEAT;
     case 'satisfied':
-      return 'Last device state: target already reached.';
+      return RECEIPT_LAST_STATE_TARGET_REACHED;
     case 'invalid':
       return null;
     default:
@@ -458,7 +491,7 @@ export const formatPlanHistoryAbandonedDetails = (
   if (entry.outcome !== 'abandoned' && entry.outcome !== 'replaced') return null;
   const lines: string[] = [];
   if (typeof entry.deliveredKWh === 'number' && Number.isFinite(entry.deliveredKWh)) {
-    lines.push(`${entry.deliveredKWh.toFixed(1)} kWh delivered before it stopped.`);
+    lines.push(formatReceiptAbandonedDelivered(entry.deliveredKWh.toFixed(1)));
   }
   const deviceState = formatLastDeviceState(entry);
   if (deviceState !== null) lines.push(deviceState);
@@ -537,7 +570,7 @@ const formatRelativeWeekLabel = (
   timeZone: string,
 ): string => {
   const currentWeekStartMs = getWeekStartInTimeZone(new Date(nowMs), timeZone);
-  if (weekStartMs === currentWeekStartMs) return 'This week';
+  if (weekStartMs === currentWeekStartMs) return RECEIPT_WEEK_THIS;
   // Step one calendar week back via local-day arithmetic, never a fixed
   // 7×24h millisecond offset. `currentWeekStartMs` is local Monday 00:00;
   // stepping one local day earlier lands on the previous Sunday 00:00,
@@ -552,7 +585,7 @@ const formatRelativeWeekLabel = (
     new Date(getPreviousLocalDayStartUtcMs(currentWeekStartMs, timeZone)),
     timeZone,
   );
-  if (weekStartMs === previousWeekStartMs) return 'Last week';
+  if (weekStartMs === previousWeekStartMs) return RECEIPT_WEEK_LAST;
   // Older weeks render as "Week of 12 May" — the Monday formatted day +
   // short month, in the user's time zone.
   const monthDay = formatDateInTimeZone(
@@ -560,7 +593,7 @@ const formatRelativeWeekLabel = (
     { day: 'numeric', month: 'short' },
     timeZone,
   );
-  return `Week of ${monthDay}`;
+  return formatReceiptWeekOf(monthDay);
 };
 
 type OutcomeCounts = {
@@ -601,20 +634,20 @@ const formatWeekHeading = (
   // all-succeeded week doesn't carry a noisy "0 missed · 0 abandoned" tail,
   // and a zero-succeeded week still surfaces the misses/abandons that the
   // previous "N deadlines met" wording dropped on the floor.
-  if (counts.succeeded > 0) outcomeFragments.push(`${counts.succeeded} succeeded`);
-  if (counts.missed > 0) outcomeFragments.push(`${counts.missed} missed`);
-  if (counts.abandoned > 0) outcomeFragments.push(`${counts.abandoned} abandoned`);
+  if (counts.succeeded > 0) outcomeFragments.push(formatReceiptOutcomeSucceeded(counts.succeeded));
+  if (counts.missed > 0) outcomeFragments.push(formatReceiptOutcomeMissed(counts.missed));
+  if (counts.abandoned > 0) outcomeFragments.push(formatReceiptOutcomeAbandoned(counts.abandoned));
   const parts = [lead, ...outcomeFragments];
   const unit = costUnit.trim();
   const cost = sumEntryCost(entries);
   // Nordpool prices can briefly go negative; preserve the sign so a credit
   // week reads as a credit week in the archive heading rather than disappearing.
   if (unit.length > 0 && cost !== 0) {
-    parts.push(`${APPROX_GLYPH} ${Math.round(cost)} ${unit}`);
+    parts.push(formatReceiptWeekCost(APPROX_GLYPH, Math.round(cost), unit));
   }
   // v2.7.3 P2 — drop trailing period on section headings; HTML headings
   // don't take terminal punctuation.
-  return parts.join(' · ');
+  return parts.join(RECEIPT_FRAGMENT_SEPARATOR);
 };
 
 /**
@@ -652,7 +685,7 @@ export const groupPlanHistoryByIsoWeek = (
       groups.push({
         weekKey: key,
         // Heading recomputed below once the group is fully populated.
-        heading: `Week ${week}`,
+        heading: formatReceiptWeekProvisionalHeading(week),
         entries: [entry],
       });
     } else {
@@ -665,7 +698,7 @@ export const groupPlanHistoryByIsoWeek = (
   return groups.map((group) => {
     const weekStartMs = computeWeekStart(group.entries[0]!.deadlineAtMs, timeZone);
     const heading = weekStartMs === null
-      ? `Other tasks · ${group.entries.length} ${group.entries.length === 1 ? 'task' : 'tasks'}`
+      ? formatReceiptOtherTasksHeading(group.entries.length)
       : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries, costUnit);
     return { ...group, heading };
   });
@@ -873,14 +906,18 @@ export const resolvePlanHistory7DayHitRateStrip = (
   const segments: { text: string; tone: 'neutral' | 'positive' | 'warning' | 'muted' }[] = [
     { text: SMART_TASK_LIST_7DAY_HIT_RATE_LABEL, tone: 'neutral' },
   ];
-  if (counts.succeeded > 0) segments.push({ text: `${counts.succeeded} succeeded`, tone: 'positive' });
-  if (counts.missed > 0) segments.push({ text: `${counts.missed} missed`, tone: 'warning' });
-  if (counts.abandoned > 0) segments.push({ text: `${counts.abandoned} abandoned`, tone: 'muted' });
+  if (counts.succeeded > 0) {
+    segments.push({ text: formatReceiptOutcomeSucceeded(counts.succeeded), tone: 'positive' });
+  }
+  if (counts.missed > 0) segments.push({ text: formatReceiptOutcomeMissed(counts.missed), tone: 'warning' });
+  if (counts.abandoned > 0) {
+    segments.push({ text: formatReceiptOutcomeAbandoned(counts.abandoned), tone: 'muted' });
+  }
   if (hitRatePercent !== null) {
     segments.push({ text: formatSmartTaskHitRateFragment(hitRatePercent, decisive), tone: 'neutral' });
   }
   return {
-    text: segments.map((segment) => segment.text).join(' · '),
+    text: segments.map((segment) => segment.text).join(RECEIPT_FRAGMENT_SEPARATOR),
     segments,
     succeeded: counts.succeeded,
     missed: counts.missed,
