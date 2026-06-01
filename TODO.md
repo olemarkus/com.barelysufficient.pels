@@ -886,11 +886,6 @@ live-walk screenshots.*
       longer depend on UI-facing `reason` objects.
       Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
       boundaries.
-- [ ] Extract rebuild-metrics/tracing helpers out of `planService.ts` now that plan snapshots are
-      in-memory/realtime only. Fold or delete the remaining tiny `planServiceInternals.ts` helper
-      surface if it no longer pays for itself.
-      Files: `lib/plan/planService.ts`, `lib/plan/planServiceInternals.ts`,
-      new `lib/plan/planRebuildMetrics.ts`.
 - [ ] Keep executor-owned actuation metadata persistence from growing ad hoc now that
       `lastControlledMs` is persisted out of `PlanExecutor`. If more per-device actuation state
       needs durable storage, extract a small persistence helper/queue instead of adding more
