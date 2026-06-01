@@ -16,6 +16,7 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
+import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { isCapacityBreached } from '../planRemainingSheddableLoad';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
@@ -437,22 +438,6 @@ function resolveSteppedShedTargetStep(params: {
     shedAction: shedBehaviorAction === 'set_step' ? 'set_step' : 'turn_off',
     currentDesiredStepId: effectiveCurrentStepId,
   });
-}
-
-function isNonSteppedDeviceRecovering(
-  candidate: PlanInputDevice,
-  state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
-): boolean {
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !isObservedOff(candidate)) {
-    return false;
-  }
-  if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {
-    return true;
-  }
-  const shedDecidedMs = state.shedDecidedMs[candidate.id];
-  if (shedDecidedMs == null) return false;
-  const lastRestoreMs = state.lastDeviceRestoreMs[candidate.id];
-  return lastRestoreMs == null || lastRestoreMs < shedDecidedMs;
 }
 
 export function isNotAtShedTemperature(device: ShedCandidate): boolean {
