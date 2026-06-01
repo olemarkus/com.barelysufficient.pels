@@ -9,7 +9,7 @@
  *     the field reflects the calibration store's `hasRecentDrawAt` answer.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toPlanDevice } from '../lib/app/appInit';
+import { toPlanDevice } from '../setup/appInit';
 import {
   createEmptyPowerCalibrationSnapshot,
   POWER_CALIBRATION_CONSTANTS,

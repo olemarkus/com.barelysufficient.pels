@@ -515,19 +515,20 @@ PRs. Items below are later polish.*
       may need per-device step granularity). Source: pels-runtime-reality
       review of PR #1214, 2026-05-28.
 
-- [ ] **Migrate `lib/app/appInit/**` (and the rest of `lib/app/`) to
-      `setup/`.** `CLAUDE.md` lists `lib/app/` as sunsetting with only
-      `appContext.ts` as the long-term inhabitant, but new wiring continues
-      to land under `lib/app/appInit/` (chunk 3 added
-      `residualKwForPlanDevice.ts` next to the pre-existing
-      `calibrationViews.ts` + `deferredRecorders.ts`). The blocker for the
-      proper migration is `no-lib-to-setup` (dep-cruiser): `lib/app/appInit.ts`
-      cannot import from `setup/**`. Real fix: either move `appInit.ts`
-      itself to `setup/` (then its wiring siblings follow), or relax the
-      dep-cruiser rule with a narrow `pathNot` exception for `lib/app/**`
-      while the migration completes. Source: pels-layering-guardian review
-      of PR #1190 flagged chunk 3's new file as misplaced; root cause is
-      the un-finished sunsetting, not chunk 3.
+- [ ] **Migrate the remaining `lib/app/**` inhabitants to `setup/`.**
+      `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
+      as the long-term inhabitant. The `appInit` surface (`appInit.ts` +
+      `appInit/**`) has been relocated to `setup/appInit/` — that move
+      proved `no-lib-to-setup` is NOT a blocker (the arrow stays
+      `setup -> lib`; nothing in `lib/**` imports the moved wiring, only
+      `app.ts` did). The still-pending inhabitants are the other wiring
+      helpers (`appDebugHelpers.ts`, `appSnapshotHelpers.ts`,
+      `appSettingsHelpers.ts`, `appDeviceSupport.ts`,
+      `appDeviceControl*.ts`, `appRealtimeDeviceReconcile*.ts`,
+      `appLifecycleHelpers.ts`, `settingsUiApi*.ts`, etc.). Each follows
+      the same pattern: confirm only entry-layer code imports it, then
+      `git mv` to `setup/` and rewrite import depths. `appContext.ts`
+      stays in `lib/app/`.
 
 - [ ] **Release remaining planned-bucket hours back to the budget when a smart
       task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
@@ -1591,10 +1592,10 @@ live-walk screenshots.*
       Files: `lib/device/**`, `lib/executor/binaryControlDispatch.ts`,
       `lib/executor/targetExecutor.ts`.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to decide whether the now-thin `lib/app/appInit.ts` adapter should be
-      deleted, move `resolveHasBinaryControl` to a better long-term home if it stays shared, and
-      keep trimming any delegates that no longer buy readability or testability.
-      Files: `app.ts`, `lib/app/**`.
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
+      one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
+      it stays shared, and keep trimming any delegates that no longer buy readability or testability.
+      Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -1900,7 +1901,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [ ] P3 tidy: `lib/app/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
+- [ ] P3 tidy: `setup/appInit/deferredObjectiveLifecycle.ts` reads `getActivePlansSnapshot()`
       twice per tick (verbatim from the pre-PR-C code) — collapse to one read. Source:
       pels-layering-guardian + pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 

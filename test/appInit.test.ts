@@ -62,9 +62,9 @@ import {
   createPriceCoordinator,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
-} from '../lib/app/appInit';
+} from '../setup/appInit';
 import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives';
-import { disableDeferredObjectiveInSettings } from '../lib/app/appInit/deferredRecorders';
+import { disableDeferredObjectiveInSettings } from '../setup/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,

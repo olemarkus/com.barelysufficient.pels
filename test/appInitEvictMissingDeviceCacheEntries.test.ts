@@ -8,7 +8,7 @@
  * entry forever. Source: chunk-2 producer review of PR #1189.
  */
 import { describe, expect, it } from 'vitest';
-import { evictMissingDeviceCacheEntries } from '../lib/app/appInit';
+import { evictMissingDeviceCacheEntries } from '../setup/appInit';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 

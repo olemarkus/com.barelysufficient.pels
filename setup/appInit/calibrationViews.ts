@@ -3,12 +3,12 @@ import {
   getDeliveryPowerKw,
   hasRecentDrawAt,
   isStepCalibrationConfident,
-} from '../../device/devicePowerCalibration';
-import { firstPositiveFinite } from '../../objectives/deferredObjectives/planningSpeed';
-import type { StepPowerCalibrationView } from '../../plan/planTypes';
-import { isFiniteNumber } from '../../utils/appTypeGuards';
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
-import type { AppContext } from '../appContext';
+} from '../../lib/device/devicePowerCalibration';
+import { firstPositiveFinite } from '../../lib/objectives/deferredObjectives/planningSpeed';
+import type { StepPowerCalibrationView } from '../../lib/plan/planTypes';
+import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { AppContext } from '../../lib/app/appContext';
 
 const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
 

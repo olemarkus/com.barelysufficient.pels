@@ -21,7 +21,7 @@
 import type {
   RestorePowerSource,
   TargetDeviceSnapshot,
-} from '../../../packages/contracts/src/types';
+} from '../../packages/contracts/src/types';
 import {
   resolveResidualKwRestore,
   resolveResidualKwShed,
@@ -29,16 +29,16 @@ import {
   type ResidualKwShedBehavior,
   type ResidualKwShedSteppedDevice,
   type ResidualKwShedTemperatureTarget,
-} from '../../device/deviceResidualKw';
-import { isDeviceObservationStale } from '../../observer/observationFreshness';
-import { getCurrentDrawKw, getRestoreDrawKw } from '../../observer/observedPower';
-import { resolveObservedCurrentState } from '../../observer/observedState';
+} from '../../lib/device/deviceResidualKw';
+import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
+import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
+import { resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
-} from '../../plan/planSteppedLoadState';
-import { getPrimaryTargetCapability } from '../../utils/targetCapabilities';
-import type { ShedAction } from '../../plan/planTypes';
+} from '../../lib/plan/planSteppedLoadState';
+import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
+import type { ShedAction } from '../../lib/plan/planTypes';
 
 export type ResidualKwForPlanDeviceShedBehavior = {
   action: ShedAction;
