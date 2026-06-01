@@ -2247,6 +2247,201 @@ describe('deadline plan page payload', () => {
     expect(payload.planInputs.perUnitRateNote).toBeNull();
   });
 
+  it('honours the producer-persisted flat rateMean + speedMode over the live profile', () => {
+    // Forward-compat: a revision recorded by the new producer carries flat
+    // `rateMean` / `speedMode`. The UI must read those directly and NOT
+    // re-derive from the live profile — here the profile mean (0.40) differs
+    // from the persisted rate (0.22) to prove the flat field wins.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'ev',
+      name: 'Garage EV',
+      currentOn: false,
+      stateOfCharge: { percent: 40, status: 'fresh' },
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const revision = {
+      revision: 2,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'rate_refined' as const,
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 3 }],
+      energyNeededKWh: 3,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'learned' as const,
+      rateMean: 0.22,
+      speedMode: 'auto' as const,
+      planningSpeedKw: 7,
+      estimatedDurationText: '3h',
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 60,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      original: revision,
+      latest: revision,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          ev: {
+            enabled: true,
+            kind: 'ev_soc',
+            enforcement: 'soft',
+            targetPercent: 60,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    // Live profile mean deliberately differs from the persisted rateMean.
+    bootstrap.power.tracker = {
+      objectiveProfiles: {
+        ev: {
+          kind: 'ev_soc',
+          updatedAtMs: now.getTime(),
+          lastSample: { observedAtMs: now.getTime(), value: 41, unit: 'percent' },
+          kwhPerUnit: {
+            sampleCount: 5,
+            mean: 0.40,
+            m2: 0,
+            min: 0.40,
+            max: 0.40,
+            confidence: 'high',
+            lastUpdatedMs: now.getTime(),
+          },
+          acceptedSamples: 5,
+          rejectedSamples: 0,
+        },
+      },
+    };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'ev',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.22 kWh/%');
+    expect(payload.planInputs.perUnitRateNote).toBeNull();
+    expect(payload.hero.metaLine).toContain('Auto');
+  });
+
+  it('uses the persisted learning speedMode + bootstrap rateMean with no live profile', () => {
+    // Forward-compat bootstrap case: producer persisted `speedMode: 'learning'`
+    // and the bootstrap rate; the live profile is absent. The hero badge and
+    // the bootstrap note must both come from the flat fields.
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: TargetDeviceSnapshot[] = [{
+      id: 'ev',
+      name: 'Garage EV',
+      currentOn: false,
+      stateOfCharge: { percent: 40, status: 'fresh' },
+      planningPowerKw: 7,
+      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const revision = {
+      revision: 1,
+      revisedAtMs: now.getTime(),
+      computedFromPricesUpTo: deadline.getTime(),
+      reason: 'flow_card' as const,
+      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 }],
+      energyNeededKWh: 20,
+      planStatus: 'on_track' as const,
+      kwhPerUnitSource: 'bootstrap' as const,
+      rateMean: 0.15,
+      speedMode: 'learning' as const,
+      planningSpeedKw: 7,
+      estimatedDurationText: '2h 51m',
+    };
+    const activePlan: DeferredObjectiveActivePlanV1 = {
+      deviceId: 'ev',
+      deviceName: 'Garage EV',
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 60,
+      deadlineAtMs: deadline.getTime(),
+      startedAtMs: now.getTime(),
+      pending: false,
+      objectiveSignature: 'sig',
+      original: revision,
+      latest: revision,
+    };
+    const bootstrap = buildBootstrap({
+      capacity_limit_kw: 8,
+      deferred_objectives: {
+        version: 1,
+        objectivesByDeviceId: {
+          ev: {
+            enabled: true,
+            kind: 'ev_soc',
+            enforcement: 'soft',
+            targetPercent: 60,
+            deadlineAtMs: deadline.getTime(),
+          },
+        },
+      },
+    }, activePlan);
+    bootstrap.power.tracker = { objectiveProfiles: {} };
+
+    const payload = expectOk(testExports.buildObjectivePayload({
+      bootstrap,
+      deviceId: 'ev',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    }));
+
+    expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh/%');
+    expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
+    expect(payload.hero.metaLine).toContain('Learning…');
+  });
+
   it('surfaces the kWhPerUnit provenance rows when the active plan carries a learned profile', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);

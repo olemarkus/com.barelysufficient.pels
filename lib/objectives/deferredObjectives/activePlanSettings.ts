@@ -35,6 +35,26 @@ const isKwhPerUnitSource = (value: unknown): value is 'learned' | 'bootstrap' =>
   value === 'learned' || value === 'bootstrap'
 );
 
+// `rateMean` is the producer-resolved display rate; the contract allows
+// `number | null`. The recorder only ever writes a finite POSITIVE number
+// (`resolveRateMean` returns `null` for non-positive / non-finite rates and the
+// field is then omitted). Accept `null` so a hand-edited/forward-compat payload
+// that explicitly set it null round-trips rather than dropping the whole plan,
+// but reject any non-positive number (0 / negative) the same way the recorder
+// and the rate label formatter do — a non-positive rate is meaningless and
+// would render garbage in the plan-inputs row.
+const isOptionalRateMean = (value: unknown): boolean => (
+  value === undefined || value === null || (isFiniteNumber(value) && value > 0)
+);
+
+// `speedMode` is the producer-resolved presentation enum. Optional for
+// backward compatibility; when present require a known member so a tampered
+// payload can't smuggle an unknown key that renders `undefined` in the hero
+// meta line.
+const isOptionalSpeedMode = (value: unknown): boolean => (
+  value === undefined || value === 'auto' || value === 'learning'
+);
+
 export const createEmptyActivePlans = (): DeferredObjectiveActivePlansV1 => ({
   version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
   plansByDeviceId: {},
@@ -136,11 +156,26 @@ const hasValidRevisionEnergyFields = (v: Record<string, unknown>): boolean => (
 // if present require a known value rather than silently keeping garbage.
 // `planningSpeedKw` + `estimatedDurationText` are the per-revision duration
 // snapshot, optional for backward compatibility.
-const hasValidRevisionDurationFields = (v: Record<string, unknown>): boolean => (
-  (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource))
+//
+// `speedMode` / `rateMean` are the producer-resolved flat display fields. The
+// recorder (`buildRevision`) only ever writes them alongside `kwhPerUnitSource`
+// — both are gated on `source !== null`, and `resolveRateMean` returns `null`
+// (so the field is omitted) whenever the source short-circuited. Enforce that
+// invariant here: a payload carrying `speedMode` or `rateMean` WITHOUT
+// `kwhPerUnitSource` was never produced by this app and is treated as tampered.
+// This keeps the persisted shape and the UI fallback in
+// `resolveDisplayRateAndSpeedMode` consistent (legacy revisions carry neither
+// field and fall back to the live profile; revisions that carry the flat fields
+// always carry the source they were resolved from).
+const hasValidRevisionDurationFields = (v: Record<string, unknown>): boolean => {
+  if (v.kwhPerUnitSource === undefined
+    && (v.speedMode !== undefined || v.rateMean !== undefined)) return false;
+  return (v.kwhPerUnitSource === undefined || isKwhPerUnitSource(v.kwhPerUnitSource))
     && isOptionalFinitePositive(v.planningSpeedKw)
     && isOptionalNonEmptyString(v.estimatedDurationText)
-);
+    && isOptionalRateMean(v.rateMean)
+    && isOptionalSpeedMode(v.speedMode);
+};
 
 const isRevision = (value: unknown): value is DeferredObjectiveActivePlanRevisionV1 => {
   if (!value || typeof value !== 'object') return false;

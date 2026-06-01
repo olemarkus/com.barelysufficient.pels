@@ -30,6 +30,20 @@ export type DeferredObjectiveActivePlanRevisionReason =
 // plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanKwhPerUnitSource = 'learned' | 'bootstrap';
 
+// Producer-resolved presentation-speed mode for the hero meta line. The
+// recorder collapses `kwhPerUnitSource` into this flat enum so the settings UI
+// never branches on planner internals (`feedback_layering_resolution_in_producer`):
+//   `learning` — the revision used the bootstrap kWh/% fallback (no learned
+//                profile yet; EV cold-start only).
+//   `auto`     — a learned profile drove the rate (the steady state).
+// The human label strings ("Auto" / "Learning…") stay in the settings UI per
+// `feedback_ui_text_shared_with_logs` — only the enum is persisted. `Manual`
+// / `Conservative` are future modes that would extend this union if/when they
+// ship. Optional for backward compatibility — older persisted revisions don't
+// carry it and the UI falls back to deriving it from `kwhPerUnitSource`
+// (absent → `auto`).
+export type DeferredObjectiveActivePlanSpeedMode = 'auto' | 'learning';
+
 // Producer-resolved verdict for what bound the floor schedule on this revision.
 // Mirrors the planner's `statusDetail` mapping in
 // `lib/objectives/deferredObjectives/floorShortfallCause.ts` (`limited_by_daily_budget`
@@ -95,6 +109,24 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
   // backward compatibility — older persisted revisions don't carry it and the
   // UI should treat absence as `learned`.
   kwhPerUnitSource?: DeferredObjectiveActivePlanKwhPerUnitSource;
+  // Producer-resolved display rate (kWh per °C / %) for the plan-inputs row.
+  // The recorder collapses the bootstrap-vs-learned branching the settings UI
+  // used to do (`resolveKwhPerUnitDisplayRate`) into this flat value: the
+  // learned profile mean, or the EV bootstrap constant when `speedMode` is
+  // `learning`. The recorder OMITS the field entirely (absent, never written as
+  // `null`) when no usable positive rate was resolved — the source
+  // short-circuited or the rate wasn't a finite positive number. The `| null`
+  // in the type is tolerated only so a hand-edited/forward-compat payload that
+  // explicitly set it null still round-trips through the validator. Optional for
+  // backward compatibility — older persisted revisions don't carry it and the UI
+  // falls back to the live learned-profile mean.
+  rateMean?: number | null;
+  // Producer-resolved presentation-speed mode. See
+  // `DeferredObjectiveActivePlanSpeedMode` for the enum + the
+  // enum-not-human-string rationale. Optional for backward compatibility —
+  // older persisted revisions don't carry it and the UI derives it from
+  // `kwhPerUnitSource` (absent → `auto`).
+  speedMode?: DeferredObjectiveActivePlanSpeedMode;
   // Number of horizon buckets whose per-bucket cap collapsed to zero because
   // the daily budget cap had already been reached. Lets the UI explain a
   // `cannot_meet` outcome that would otherwise look like a device or schedule
