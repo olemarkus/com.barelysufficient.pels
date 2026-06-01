@@ -2,6 +2,7 @@ import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
+import { getPendingBinaryCommandWindowMs } from '../observer/pendingBinaryCommandTypes';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
@@ -82,6 +83,7 @@ export function shouldSkipBinaryControl(params: {
       actuationMode,
       hasTargets,
       capabilityId: snapshot?.controlCapabilityId ?? null,
+      ...evSnapshotField(snapshot),
     });
     return true;
   }
@@ -95,6 +97,7 @@ export function shouldSkipBinaryControl(params: {
       capabilityId: controlPlan.capabilityId,
       logContext,
       actuationMode,
+      ...evSnapshotField(snapshot, controlPlan.isEv),
     });
     return true;
   }
@@ -108,6 +111,7 @@ export function shouldSkipBinaryControl(params: {
       capabilityId: controlPlan.capabilityId,
       logContext,
       actuationMode,
+      ...evSnapshotField(snapshot, controlPlan.isEv),
     });
     return true;
   }
@@ -160,11 +164,47 @@ export function getPendingBinaryCommand(
   const pendingBinaryCommands = state.pendingBinaryCommands;
   const entry = pendingBinaryCommands[deviceId];
   if (!entry) return undefined;
-  if (isPendingBinaryCommandActive({ pending: entry })) {
+  const nowMs = Date.now();
+  if (isPendingBinaryCommandActive({ pending: entry, nowMs })) {
     return entry;
   }
   delete pendingBinaryCommands[deviceId];
+  logger.debug({
+    event: 'pending_binary_command_cleared',
+    reason: 'stale_age',
+    deviceId,
+    capabilityId: entry.capabilityId,
+    desired: entry.desired,
+    ageMs: nowMs - entry.startedMs,
+    timeoutMs: getPendingBinaryCommandWindowMs(entry),
+  });
   return undefined;
+}
+
+/**
+ * Returns `{ evSnapshot: formatEvSnapshot(snapshot) }` when the snapshot
+ * describes an EV charger, otherwise an empty object. Spread into a
+ * structured `binary_command_skipped` emit so EV chargers carry the
+ * snapshot fields (`currentOn=`, `evState=`, `canSet=`, `powerKw=`, …)
+ * needed to diagnose stalled shedding, while non-EV emits stay unchanged.
+ *
+ * EV identity prefers the producer-resolved `controlPlan.isEv` when the caller
+ * has a control plan (it already folds in the resolved `evcharger_charging`
+ * control capability, including the early shape where the device exposes the
+ * capability but hasn't populated `deviceClass`). Where there is no control
+ * plan yet (the missing-control-plan skip), it falls back to the snapshot's own
+ * identity — `deviceClass === 'evcharger'` OR the `evcharger_charging` control
+ * capability — mirroring the `isEvDevice` union in `deviceActionProjection.ts`.
+ */
+function evSnapshotField(
+  snapshot: TargetDeviceSnapshot | undefined,
+  isEvFromPlan?: boolean,
+): { evSnapshot: string } | Record<string, never> {
+  const isEv = isEvFromPlan
+    ?? (snapshot?.deviceClass === 'evcharger'
+      || snapshot?.controlCapabilityId === 'evcharger_charging');
+  if (!isEv) return {};
+  return { evSnapshot: formatEvSnapshot(snapshot) };
 }
 
 export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {

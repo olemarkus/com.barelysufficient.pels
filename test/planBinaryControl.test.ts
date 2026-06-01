@@ -446,6 +446,7 @@ describe('plan binary control helpers', () => {
     expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
       reasonCode: 'already_matched',
     });
+    expect(logCapture.findEvent('binary_command_skipped')).not.toHaveProperty('evSnapshot');
   });
 
   it('clears pending standard binary commands once the live state confirms them', async () => {
@@ -1118,6 +1119,7 @@ describe('plan binary control helpers', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: expect.stringMatching(/missing_(onoff_capability|control_targets)/),
+      evSnapshot: expect.stringContaining('evState='),
     }));
 
     await expect(setBinaryControl({
@@ -1143,6 +1145,35 @@ describe('plan binary control helpers', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
+      evSnapshot: expect.stringContaining('evState='),
+    }));
+
+    // EV identity is the same union as `isEvDevice`: a snapshot that omits
+    // `deviceClass` but carries the `evcharger_charging` control capability is
+    // still an EV charger, so its skip emit must carry the snapshot too.
+    await expect(setBinaryControl({
+      state,
+      deviceManager: failingManager as never,
+      updateLocalSnapshot,
+      log,
+      logDebug,
+      error,
+      debugStructured,
+      deviceId: 'ev2',
+      name: 'EV2',
+      desired: false,
+      snapshot: {
+        id: 'ev2',
+        name: 'EV2',
+        controlCapabilityId: 'evcharger_charging',
+        canSetControl: false,
+      },
+      logContext: 'capacity',
+    })).resolves.toBe(false);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'capability_not_setable',
+      evSnapshot: expect.stringContaining('evState='),
     }));
 
     await expect(setBinaryControl({
@@ -1212,6 +1243,31 @@ describe('plan binary control helpers', () => {
 
     expect(pending).toBeUndefined();
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
+    expect(logCapture.findEvent('pending_binary_command_cleared')).toMatchObject({
+      reason: 'stale_age',
+      deviceId: 'socket1',
+      capabilityId: 'onoff',
+      desired: false,
+      ageMs: 20_000,
+      timeoutMs: 15_000,
+    });
+  });
+
+  it('does not emit pending_binary_command_cleared when the pending entry is still active', () => {
+    const state = createPlanEngineState();
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: 1_000,
+    };
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 5_000);
+    const pending = getPendingBinaryCommand(state, 'socket1');
+    nowSpy.mockRestore();
+
+    expect(pending).toBeDefined();
+    expect(state.pendingBinaryCommands.socket1).toBeDefined();
+    expect(logCapture.findEvent('pending_binary_command_cleared')).toBeUndefined();
   });
 
   it('clears pending EV commands after a failed capability write', async () => {
