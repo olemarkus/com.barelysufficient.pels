@@ -1140,4 +1140,50 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.energyNeededKWh).toBeCloseTo(0.0005);
     expect(plan.unplannedUsefulEnergyKWh).toBe(0);
   });
+
+  it('flags priceDeferralEligible when a committed avoid current hour can defer to cheaper hours', () => {
+    // The commitment floor keeps the current `avoid` hour booked, but the full
+    // residual fits in the cheaper preferred hours alone — so the current hour is
+    // release-eligible and admission idles the device this cycle.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2 }), // default deadline NOW + 4h
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+    });
+
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plan.priceDeferralEligible).toBe(true);
+  });
+
+  it('does not flag priceDeferralEligible when the current hour is not an avoid hour', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective(),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'preferred'), bucket(1, 'preferred')],
+    });
+
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
+
+  it('does not flag priceDeferralEligible for a hard objective deferring into an avoid hour', () => {
+    // A hard objective must not defer from one `avoid` hour into another: the
+    // deferred re-allocation fits only by using the avoid h1, so there is no
+    // cheaper hour to carry the load — eligibility is false for hard too, not just
+    // soft. h1 is early, well clear of the deadline reserve.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2, enforcement: 'hard' }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid'), bucket(1, 'avoid'), bucket(2, 'preferred')],
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+    });
+
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
 });

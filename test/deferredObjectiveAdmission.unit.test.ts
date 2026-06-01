@@ -3,6 +3,7 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredTargetOverrides,
 } from '../lib/objectives/deferredObjectives/admission';
+import { resolveDeferredAvoidDeviceIds } from '../lib/objectives/deferredObjectives/decorationController';
 import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
@@ -63,6 +64,7 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   plannedBuckets: [],
   usesDeadlineReserve: false,
   usesPolicyAvoid: false,
+  priceDeferralEligible: false,
   ...overrides,
 });
 
@@ -319,6 +321,36 @@ describe('applyDeferredObjectiveAdmission', () => {
     // it resolves to temperatureBoost or evBoost by device kind.
     expect(devices[0]?.forceBoostActive).toBe(true);
   });
+
+  it('idles a price-deferred current hour and emits shed_release for a cap-off device', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+    });
+    const device = buildEvDevice({ id: 'heater1', controllable: false });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' });
+  });
+
+  it('idles a price-deferred current hour with no release intent for a cap-on device', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+    });
+    const device = buildEvDevice({ id: 'heater1', controllable: true });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
+    expect(decisions.get('heater1')).toEqual({ kind: 'idle', budgetExempt: false });
+  });
+
+  it('pauses a price-deferred EV charger', () => {
+    const diagnostic = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true }),
+    });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
+  });
 });
 
 describe('buildDeferredTargetOverrides', () => {
@@ -419,5 +451,43 @@ describe('buildDeferredTargetOverrides', () => {
     });
     expect(buildDeferredTargetOverrides([diagnostic], () => 1.5))
       .toEqual({ heater1: 21 });
+  });
+
+  it('skips a price-deferred temperature diagnostic (no deadline floor while released)', () => {
+    // The device is released this cycle (admission idles it), so stamping the
+    // deadline floor would lift the setpoint and run it in the very `avoid` hour
+    // we deferred out of — defeating the price-deferral release.
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      targetTemperatureC: 65,
+      horizonPlan: buildHorizonPlan({ priceDeferralEligible: true }),
+    });
+    expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});
+  });
+});
+
+describe('resolveDeferredAvoidDeviceIds', () => {
+  it('flags a price-deferred device as waiting for cheaper hours, even when at_risk with a booked current bucket', () => {
+    // Price-deferral release: the device is idled because a cheaper hour can carry
+    // the load, so it gets the "waiting for cheaper hours" framing — not capacity /
+    // daily-budget framing (which would miscount the pause as starvation). The
+    // current bucket still carries booked energy and the status may be `at_risk`
+    // from leaning on the current `avoid` hour, so the price-deferral case must
+    // bypass both the no-energy and the on_track gates.
+    const diagnostic = buildDiagnostic({
+      deviceId: 'heater1',
+      status: 'at_risk',
+      horizonPlan: buildHorizonPlan({
+        status: 'at_risk',
+        statusDetail: 'planned_using_policy_avoid',
+        priceDeferralEligible: true,
+      }),
+    });
+    expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(true);
+  });
+
+  it('does not flag a normally-planned device that is running this hour', () => {
+    const diagnostic = buildDiagnostic({ deviceId: 'heater1', horizonPlan: buildHorizonPlan() });
+    expect(resolveDeferredAvoidDeviceIds([diagnostic]).has('heater1')).toBe(false);
   });
 });

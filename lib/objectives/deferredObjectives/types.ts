@@ -144,4 +144,15 @@ export type DeferredObjectiveHorizonPlan = {
   plannedBuckets: DeferredObjectivePlannedBucket[];
   usesDeadlineReserve: boolean;
   usesPolicyAvoid: boolean;
+  // Per-cycle price-deferral control signal (mid-execution price deferral). True
+  // when the current hour is an `avoid` (expensive) hour carrying booked energy
+  // purely because of the commitment floor, AND re-allocating the buffered-floor
+  // residual over the remaining (cheaper, non-`avoid`) hours alone still lands
+  // `on_track`. Read ONLY by the decoration controller's admission path, which
+  // idles the device for this cycle so a cheaper hour carries the load. NOT read
+  // by the recorder — it records the committed plan (the `avoid` hour stays booked
+  // as a fallback), so this never writes a revision; the device's idling (no
+  // progress) is what re-books the cheaper hours at the next `:58` settle. See
+  // notes/deferred-load-objectives/execution-adaptation.md work item 2.
+  priceDeferralEligible: boolean;
 };

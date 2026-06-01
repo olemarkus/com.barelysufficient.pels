@@ -123,11 +123,21 @@ export class DeferredObjectiveDecorationController {
 // physical-constraint framing so the Overview doesn't mask a failure the user
 // already got notified about. `inactive` / `satisfied` / `invalid` never reach
 // this branch because they don't co-occur with a current-bucket avoid.
-const resolveDeferredAvoidDeviceIds = (
+export const resolveDeferredAvoidDeviceIds = (
   evaluations: readonly DeferredObjectiveDiagnostic[],
 ): Set<string> => {
   const avoidIds = new Set<string>();
   for (const diag of evaluations) {
+    // Price-deferral release: the device is idled this cycle because a cheaper hour
+    // can carry the load (the producer proved the deferred re-allocation `on_track`),
+    // so it gets the "waiting for cheaper hours" framing too — even though the
+    // current bucket carries booked energy and the plan status may be `at_risk` from
+    // leaning on the current `avoid` hour. Without this the reason falls through to
+    // capacity/daily-budget framing and the pause is miscounted as starvation.
+    if (diag.horizonPlan?.priceDeferralEligible) {
+      avoidIds.add(diag.deviceId);
+      continue;
+    }
     if (diag.status !== 'on_track') continue;
     const currentBucket = diag.horizonPlan?.currentBucket;
     const isAvoidBucket = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;

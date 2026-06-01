@@ -47,6 +47,7 @@ const makeHorizon = (
   plannedBuckets: [],
   usesDeadlineReserve: false,
   usesPolicyAvoid: false,
+  priceDeferralEligible: false,
   ...overrides,
 });
 
