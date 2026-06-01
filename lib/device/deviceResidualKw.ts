@@ -23,7 +23,7 @@
  * EV / generic fallback (source `'fallback'`). The producer module does NOT
  * implement the observed-power highest-of math itself (that lives in
  * `lib/observer/observedPower.getRestoreDrawKw`); the wiring layer in
- * `lib/app/appInit/residualKwForPlanDevice.ts` calls the observer helper and
+ * `setup/appInit/residualKwForPlanDevice.ts` calls the observer helper and
  * funnels the pre-resolved `{ kw, source }` in via `restoreFallback`.
  *
  * Layering note: this helper deliberately does NOT consult observed-off state.

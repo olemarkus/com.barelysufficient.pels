@@ -2,7 +2,7 @@ import {
   buildShedActuationTransport,
   planTerminalEnding,
   resolveTerminalShedCommand,
-} from '../lib/app/appInit/deferredObjectiveLifecycle';
+} from '../setup/appInit/deferredObjectiveLifecycle';
 import { applyShedBehavior } from '../lib/device/shedBehaviorActuation';
 import type {
   ShedActuationCommand,

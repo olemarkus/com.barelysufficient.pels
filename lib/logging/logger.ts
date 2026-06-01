@@ -19,7 +19,7 @@ export type StructuredDebugEmitter = (payload: Record<string, unknown>) => void;
  *
  * Both inner fields are optional so test harnesses can omit logging
  * entirely. The production contract is established by `createPlanService`
- * (lib/app/appInit.ts) which always supplies both emitters — a unit test
+ * (setup/appInit.ts) which always supplies both emitters — a unit test
  * passing `{}` is not evidence the call site is safe.
  */
 export type Loggers = {

@@ -1,33 +1,33 @@
-import { isDeviceObservationStale } from '../observer/observationFreshness';
+import { isDeviceObservationStale } from '../lib/observer/observationFreshness';
 import {
   resolveCanSetControl,
   resolveCommandableNow,
   type CommandableNowGraceEntry,
-} from '../device/deviceActionProjection';
+} from '../lib/device/deviceActionProjection';
 import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
-import { PlanEngine as PlanEngineClass } from '../plan/planEngine';
-import { PlanService } from '../plan/planService';
-import { PriceCoordinator } from '../price/priceCoordinator';
-import { PriceFlowTagPublisher } from '../price/priceFlowTags';
-import { readPriceStore } from '../price/priceStore';
-import { registerFlowCards } from '../../flowCards/registerFlowCards';
-import { resolveHomeyEnergyApiFromSdk } from '../utils/homeyEnergy';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { FlowHomeyLike } from '../utils/types';
-import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { AppContext } from './appContext';
+import { PlanEngine as PlanEngineClass } from '../lib/plan/planEngine';
+import { PlanService } from '../lib/plan/planService';
+import { PriceCoordinator } from '../lib/price/priceCoordinator';
+import { PriceFlowTagPublisher } from '../lib/price/priceFlowTags';
+import { readPriceStore } from '../lib/price/priceStore';
+import { registerFlowCards } from '../flowCards/registerFlowCards';
+import { resolveHomeyEnergyApiFromSdk } from '../lib/utils/homeyEnergy';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { FlowHomeyLike } from '../lib/utils/types';
+import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../lib/diagnostics/deviceDiagnosticsService';
+import type { AppContext } from '../lib/app/appContext';
 import {
   clearObjectiveForDevice,
   DeferredObjectiveDecorationController,
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
   upsertObjectiveForDevice,
-} from '../objectives/deferredObjectives';
-import { LEARNED_THERMOSTAT_DEADBAND_C } from '../utils/settingsKeys';
+} from '../lib/objectives/deferredObjectives';
+import { LEARNED_THERMOSTAT_DEADBAND_C } from '../lib/utils/settingsKeys';
 import {
   getLearnedThermostatDeadbandC,
   normaliseLearnedThermostatDeadbandMap,
-} from '../utils/learnedThermostatDeadbandStore';
+} from '../lib/utils/learnedThermostatDeadbandStore';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
   requireDeferredObjectiveActivePlanRecorder,
@@ -36,7 +36,7 @@ import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './appInit/calibrationViews';
-import { isRuntimePlannedDevice } from './appDeviceSupport';
+import { isRuntimePlannedDevice } from '../lib/app/appDeviceSupport';
 
 export {
   buildDeferredObjectiveDeviceWriteDeps,

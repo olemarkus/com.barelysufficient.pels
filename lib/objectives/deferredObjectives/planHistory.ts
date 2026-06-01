@@ -130,7 +130,7 @@ export type PlanHistoryPersistDeps = {
   // telemetry that lets us count how many `missed` runs were genuine capacity
   // misses versus shaky-estimate / conservative-planning false alarms. Optional
   // so the recorder stays usable in tests and headless callers. Gated on the
-  // `deferred_objectives` debug topic by the wiring in `lib/app/appInit.ts`.
+  // `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
   debugStructured?: StructuredDebugEmitter;
   // Optional side-effect callback invoked when a temperature objective finalises
   // as `met` with `metReason: 'stalled'` — the exact shape that carries a clean
@@ -147,7 +147,7 @@ export type PlanHistoryPersistDeps = {
 // hour: `deliveredKWh` is the device's measured useful kWh during that
 // hour, `priceValue` is the hourly spot price in the user's display unit.
 // The recorder sums `priceValue × deliveredKWh` into `totalCost` on the
-// matching in-progress record. Wiring lives in `lib/app/appInit.ts`.
+// matching in-progress record. Wiring lives in `setup/appInit.ts`.
 export type DeferredObjectivePlanHistoryHourlyDelivery = {
   deviceId: string;
   deadlineAtMs: number;
