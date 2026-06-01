@@ -105,18 +105,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 *Widget-polish train shipped across PRs #1313–#1317 (lint enforcement #1305; see
 `notes/widget-review.md` § Shipped). Remaining widget follow-ups, deferred / low urgency:*
 
-  - [ ] **Widget price-chip vocabulary divergence** — the headroom "Available power" chip says
-        `Cheap`/`Expensive` while the sibling shared-domain helper `priceLevelChips.ts` says
-        `Price low`/`Price high` for the same cheap/expensive signal. Pre-existing (the token PR
-        only moved the casing out of CSS into the copy). Align both onto one vocabulary, or document
-        the widget-scoped synonym in `notes/ui-terminology.md`. Also: `headroomPriceChipLabel`'s
-        aria path yields "Price Cheap" / "Price Normal" (and "Price —" for unknown, which the chip
-        hides) — reconsider the aria construction when aligning. Source: pels-copy-and-terminology
-        P2/P3, widget token-strategy train 2026-05-31.
-  - [ ] **No unit test pins the widget chip casing** — add a direct assertion that
-        `headroomPriceChipLabel('cheap') === 'Cheap'` (etc.) so a revert to lowercase — which would
-        silently reintroduce the removed CSS `text-transform` dependency — is caught. Source:
-        adversarial-review (low), widget token-strategy train 2026-05-31.
   - [ ] **No CI guard that committed widget bundles match source** — generated
         `widgets/*/public/index.css` (and `index.js`) are committed but nothing fails CI if they
         drift from `src/`. Add a post-`build:widgets` `git diff --exit-code widgets/*/public`
@@ -653,13 +641,6 @@ the renderer can land.*
       looks orphaned. Files: `widgets/headroom/public/index.css:~13`,
       `widgets/headroom/src/public/render.ts:39`. Source: release-review
       pels-ux-fit, 2026-05-26.
-
-- [ ] **Headroom widget — switch `"N paused"` to canonical `"N limited"`
-      vocabulary per `notes/ui-terminology.md`.** The widget uses
-      "paused" while the rest of the PELS UI labels PELS-acted-on devices
-      as "Limited". Files: `widgets/headroom/src/public/render.ts:~70`.
-      Source: release-review pels-ux-fit + pels-copy-and-terminology,
-      2026-05-26.
 
 - [ ] **Headroom widget — reconcile widget compose name `"Available power"`
       with the rendered headline (current draw).** A user who taps the
