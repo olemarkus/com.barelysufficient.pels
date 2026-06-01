@@ -298,7 +298,7 @@ const resolveOverviewStarvationCause = (
 );
 
 // PELS is holding the device below its intended/mode target when the target it
-// is COMMANDING sits at least a target step under the intended target. The
+// is COMMANDING sits more than half a target step under the intended target. That
 // half-step epsilon keeps float quantization noise from reading equal commands as
 // "below". A device PELS commands in full (commanded == intended) is never below.
 const pelsCommandsBelowTarget = (
