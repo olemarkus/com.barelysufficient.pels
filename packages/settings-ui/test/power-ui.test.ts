@@ -72,6 +72,13 @@ const buildBuckets = (startIso: string, hours: number, kWh: number) => {
   return buckets;
 };
 
+// Several tests below fake the system clock. Restore real timers after every
+// test at file scope so a throwing assertion mid-test cannot leak faked timers
+// into later tests (useRealTimers is a no-op when timers aren't faked).
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('power page stats (buckets-only)', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -209,6 +216,22 @@ describe('power page stats (buckets-only)', () => {
   // `getPowerStats` used to read persisted `hourlyAverages` outright once non-empty,
   // dropping every recent hour from the Typical-day chart. The merge must fold
   // bucket-derived recent hours in additively.
+  it('collapses a DST fall-back duplicated hour into one sample', async () => {
+    const { getDerivedHourlyAverages } = await import('../src/ui/powerStats.ts');
+    // Europe/Oslo falls back 2025-10-26 03:00 -> 02:00, so 00:00Z and 01:00Z
+    // both land on wall-clock hour 02 of that Sunday. They must aggregate as ONE
+    // sample (summed) — matching tracker.ts processDayHourBuckets — not two, or
+    // the additive merge with persisted hourlyAverages double-weights the hour.
+    const buckets = {
+      '2025-10-26T00:00:00.000Z': 1, // 02:00 CEST
+      '2025-10-26T01:00:00.000Z': 2, // 02:00 CET (the repeated hour)
+    };
+    const averages = getDerivedHourlyAverages(buckets, 'Europe/Oslo');
+    // 2025-10-26 is a Sunday -> getUTCDay() === 0; wall-clock hour 2.
+    expect(averages['0_2']).toEqual({ sum: 3, count: 1 });
+    expect(Object.keys(averages)).toEqual(['0_2']);
+  });
+
   it('merges recent buckets into the typical-day pattern, not only the aged slice', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(Date.UTC(2026, 4, 16, 12, 0, 0))); // 2026-05-16 12:00 UTC
