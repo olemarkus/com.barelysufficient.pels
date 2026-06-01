@@ -499,10 +499,15 @@ export default tseslint.config(
     // `met-by-device-cap` postmortem variant + resolver, then again for the
     // `unknown`-with-plan postmortem branch (PR #1074 follow-up). Bumped
     // again for the revision-log `hourDiffAriaLabel` formatter + normalize
-    // helper (PR #1197 follow-up batch 3).
+    // helper (PR #1197 follow-up batch 3). Bumped for the met-then-cooled
+    // displayed-end resolver (`resolveDisplayedEndValue`) that floors a met
+    // run's shown end at target so a "Succeeded · 64 → 39 °C" row no longer
+    // reads as a drop — and again when that resolver took a `metReason` arg to
+    // exclude stall-promoted mets (whose below-target plateau is intentional).
+    // Still targeting <=500 once the split lands.
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 635, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 655, skipBlankLines: true, skipComments: true }],
     },
   },
 );
