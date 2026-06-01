@@ -321,6 +321,60 @@ describe('plan diagnostics observations', () => {
     }).commandedTargetC).toBe(19);
   });
 
+  it('flags a turn_off shed of a temperature device as a PELS-commanded off shed', () => {
+    const inputDevice: PlanInputDevice = {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      deviceType: 'temperature',
+      managed: true,
+      controllable: true,
+      available: true,
+      currentTemperature: 16,
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
+    };
+    const basePlanDevice: DevicePlanDevice = {
+      id: 'heater-1',
+      name: 'Hall Heater',
+      deviceClass: 'thermostat',
+      currentState: 'off',
+      plannedState: 'shed',
+      currentTarget: 18,
+      plannedTarget: 18,
+      reason: r('shed due to capacity'),
+      controllable: true,
+      available: true,
+      currentTemperature: 16,
+    };
+
+    // turn_off shed → no lowered setpoint, but flagged as a PELS off shed.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: { ...basePlanDevice, shedAction: 'turn_off' },
+      desiredForMode: { 'heater-1': 18 },
+    })).toMatchObject({
+      pelsCommandsTurnOffShed: true,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      intendedNormalTargetC: 18,
+    });
+
+    // A kept device (PELS not shedding) is never an off shed, even off+cold.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: { ...basePlanDevice, plannedState: 'keep', shedAction: 'turn_off' },
+      desiredForMode: { 'heater-1': 18 },
+    }).pelsCommandsTurnOffShed).toBe(false);
+
+    // A setpoint-lowering shed is not a turn_off off shed.
+    expect(buildObservation({
+      inputDevice,
+      planDevice: { ...basePlanDevice, shedAction: 'set_temperature', plannedTarget: 16 },
+      desiredForMode: { 'heater-1': 18 },
+    }).pelsCommandsTurnOffShed).toBe(false);
+  });
+
   it('uses the operating-mode target rather than price-optimization deltas for starvation baseline', () => {
     const observation = buildObservation({
       inputDevice: {

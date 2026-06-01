@@ -61,6 +61,7 @@ const buildObservation = (
   // the device, the sole entry signal for starvation.
   commandedTargetC: 18,
   targetStepC: 0.5,
+  pelsCommandsTurnOffShed: false,
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
@@ -661,6 +662,143 @@ describe('DeviceDiagnosticsService', () => {
       isStarved: true,
       cause: 'capacity',
     });
+  });
+
+  it('starves a device PELS sheds by turning it OFF while below its mode target', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    // turn_off shed: no lowered setpoint (commanded == intended), but PELS has
+    // cut power. Temperature 16 sits under the mode target 18 → starved.
+    const turnOffShed = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      pelsCommandsTurnOffShed: true,
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    });
+
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [turnOffShed] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(true);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
+      isStarved: true,
+      cause: 'capacity',
+    });
+  });
+
+  it('attributes a turn_off budget shed below target to the budget bucket', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    const turnOffBudgetShed = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      pelsCommandsTurnOffShed: true,
+      suppressionState: 'counting',
+      countingCause: 'daily_budget',
+      pauseReason: null,
+    });
+
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [turnOffBudgetShed] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(true);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({
+      isStarved: true,
+      cause: 'budget',
+    });
+  });
+
+  it('does not starve a device the USER turned off (PELS not shedding it)', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    // Device is off and below target, but PELS is NOT shedding it
+    // (pelsCommandsTurnOffShed=false, plannedState keep) — the user turned it off.
+    const userOff = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      pelsCommandsTurnOffShed: false,
+      suppressionState: 'paused',
+      countingCause: null,
+      pauseReason: 'keep',
+    });
+
+    for (const offset of [0, 9, 16, 30]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [userOff] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(false);
+    expect(service.getOverviewStarvation('heater-1')).toBeNull();
+  });
+
+  it('does not starve a turn_off-shed device already at or above its target (satisfied)', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    // PELS sheds via turn_off, but the device is already at/above its target —
+    // it is genuinely satisfied, not starved.
+    const satisfiedOff = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 18.5,
+      pelsCommandsTurnOffShed: true,
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    });
+
+    for (const offset of [0, 9, 16, 30]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [satisfiedOff] });
+    }
+
+    expect(getStarvationState(service)?.isStarved).toBe(false);
+    expect(service.getOverviewStarvation('heater-1')).toBeNull();
+  });
+
+  it('clears a latched turn_off-shed starvation when PELS restores the device (on)', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+
+    const turnOffShed = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      pelsCommandsTurnOffShed: true,
+      suppressionState: 'counting',
+      countingCause: 'capacity',
+      pauseReason: null,
+    });
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [turnOffShed] });
+    }
+    expect(getStarvationState(service)?.isStarved).toBe(true);
+
+    // PELS restores: no longer shedding via turn_off, commanding the full target.
+    const restored = buildObservation({
+      intendedNormalTargetC: 18,
+      commandedTargetC: 18,
+      currentTemperatureC: 16,
+      pelsCommandsTurnOffShed: false,
+      suppressionState: 'none',
+      countingCause: null,
+      pauseReason: null,
+    });
+    for (const offset of [20, 29, 31]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [restored] });
+    }
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.starvedAccumulatedMs).toBe(0);
   });
 
   it('keeps starvation latched across sample gaps but pauses accumulation', () => {
