@@ -1889,9 +1889,13 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       value-edge guard.** DONE (option b): `.dependency-cruiser.cjs` runs post-compilation
       (`tsPreCompilationDeps` unset), so `import type` edges are invisible to every rule. The manual
       `grep -rn "from .*objectives" lib/plan/` audit is now an enforced check — `npm run arch:grep`
-      (`scripts/check-plan-objectives-edge.mjs`), wired into `ci:checks` (so the CI checks job and
-      the pre-commit run cover it) and an explicit workflow step. It fails on ANY lib/plan ->
-      objectives from-specifier, value OR type, single/double quotes, naming the offending file:line.
+      (`scripts/check-plan-objectives-edge.mjs`), wired into `ci:checks` (so the pre-push hook and
+      the CI checks job cover it — NOT the pre-commit hook, which only runs lint-staged +
+      `scripts/pre-commit-extra-checks.mjs`) and an explicit workflow step. The scanner uses the
+      TypeScript compiler API (AST walk over module specifiers), so it ignores comments and catches
+      every import shape — value/type `import ... from`, `export ... from`, `import x = require(...)`,
+      and `import(...)`/`require(...)` with string OR template-literal args — naming the offending
+      file:line.
       Scoped to the boundary the rule comment names (`no-plan-to-smarttasks`); the
       `no-objectives-to-peer-except-power` gate was left out of scope as its comment documents no
       type-edge audit. Option (a) — flipping `tsPreCompilationDeps: true` — was deliberately NOT

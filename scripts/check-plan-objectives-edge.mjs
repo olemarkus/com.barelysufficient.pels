@@ -1,4 +1,4 @@
-// Grep guard for the lib/plan -> lib/objectives type-edge boundary.
+// AST guard for the lib/plan -> lib/objectives type-edge boundary.
 //
 // WHY THIS EXISTS: .dependency-cruiser.cjs runs post-compilation
 // (tsPreCompilationDeps is unset), so `import type` edges are erased by tsc
@@ -10,26 +10,90 @@
 // This guard promotes the previously-manual audit (documented in
 // .dependency-cruiser.cjs next to `no-plan-to-smarttasks`) into an enforced
 // check: it asserts ZERO import edges from lib/plan/** to any objectives
-// module, covering both value AND type imports, with single or double quotes.
+// module, covering value AND type imports in every specifier shape.
 // Flipping tsPreCompilationDeps to true was deliberately rejected (it surfaces
 // ~18 pre-existing type-only no-circular violations and doubles the cruised
 // graph) — see TODO.md.
+//
+// Implementation uses the TypeScript compiler API rather than a raw-text
+// regex. The AST natively ignores comments (so a commented-out objectives
+// import never false-positives) and exposes every specifier shape:
+//   - import ... from '...'            (ImportDeclaration)
+//   - export ... from '...'            (ExportDeclaration with moduleSpecifier)
+//   - import X = require('...')         (ImportEqualsDeclaration)
+//   - import('...') / require('...')    (CallExpression; string OR template literal)
+// A specifier is an offender when its text contains "objectives".
+//
+// This guard runs in `ci:checks` (the pre-push hook and the CI checks job),
+// NOT the pre-commit hook (which only runs lint-staged +
+// scripts/pre-commit-extra-checks.mjs).
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const planDir = path.join(rootDir, 'lib', 'plan');
 
-// Matches every module-specifier shape that creates a graph edge to the
-// objectives subsystem, in single or double quotes:
-//   - `import ... from '...objectives...'`     (value or `import type`)
-//   - `export ... from '...objectives...'`     (re-export)
-//   - `import('...objectives...')`             (dynamic / inline `import(...)` type)
-// Only the specifier string is inspected, so the word "objectives" appearing in
-// code or comments outside a module specifier is ignored.
-const FORBIDDEN_SPECIFIER = /\b(?:from|import)\s*\(?\s*(['"])([^'"]*objectives[^'"]*)\1/g;
+function isObjectivesSpecifier(text) {
+  return text.includes('objectives');
+}
+
+// Extract the literal/template specifier text from a node, or null if it isn't
+// a static string we can inspect.
+function specifierText(node) {
+  if (node === undefined) return null;
+  if (ts.isStringLiteralLike(node)) return node.text;
+  // No-substitution template literal: `import(\`...\`)`
+  if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  return null;
+}
+
+function collectOffenders(sourceFile, relPath, offenders) {
+  const record = (node, text) => {
+    if (text !== null && isObjectivesSpecifier(text)) {
+      const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+      offenders.push({ file: relPath, line: line + 1, specifier: text });
+    }
+  };
+
+  const visit = (node) => {
+    // import ... from '...'  /  export ... from '...'
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
+      && node.moduleSpecifier !== undefined
+    ) {
+      record(node.moduleSpecifier, specifierText(node.moduleSpecifier));
+    }
+
+    // import X = require('...')
+    if (
+      ts.isImportEqualsDeclaration(node)
+      && ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      const arg = node.moduleReference.expression;
+      record(arg, specifierText(arg));
+    }
+
+    // import('...') / require('...')  (string OR template-literal argument)
+    if (ts.isCallExpression(node)) {
+      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
+      if ((isDynamicImport || isRequire) && node.arguments.length > 0) {
+        const arg = node.arguments[0];
+        record(arg, specifierText(arg));
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+}
 
 async function collectTsFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -48,14 +112,8 @@ const offenders = [];
 
 for (const file of files) {
   const source = await fs.readFile(file, 'utf8');
-  for (const match of source.matchAll(FORBIDDEN_SPECIFIER)) {
-    const line = source.slice(0, match.index).split('\n').length;
-    offenders.push({
-      file: path.relative(rootDir, file),
-      line,
-      specifier: match[2],
-    });
-  }
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  collectOffenders(sourceFile, path.relative(rootDir, file), offenders);
 }
 
 if (offenders.length > 0) {
@@ -63,7 +121,7 @@ if (offenders.length > 0) {
     'Architecture boundary violation (no-plan-to-smarttasks, type-edge guard):\n'
     + 'lib/plan/** must not import the objectives subsystem — value OR type imports.\n'
     + 'dependency-cruiser runs post-compilation and cannot see `import type` edges,\n'
-    + 'so this grep guard enforces the boundary. Offending import(s):\n',
+    + 'so this AST guard enforces the boundary. Offending import(s):\n',
   );
   for (const { file, line, specifier } of offenders) {
     process.stderr.write(`  ${file}:${line}  imports '${specifier}'\n`);
