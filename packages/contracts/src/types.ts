@@ -16,6 +16,16 @@ export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
 export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'profile_default';
 
 /**
+ * The plan-cycle decision PELS made for a device. `shed` = actively held off
+ * by PELS, `keep` = allowed to run, `inactive` = not being managed this cycle
+ * (capacity control off, manual mode, etc.). Canonical home so the producer
+ * (`DevicePlanDevice.plannedState`), the idle-classifier consumer
+ * (`IdleClassifierDeviceInput.plannedState`), and test helpers share one union;
+ * a typo or new state can't silently slip past the eligibility gate.
+ */
+export type PlannedDeviceState = 'shed' | 'keep' | 'inactive';
+
+/**
  * Provenance label for the kW used as a device's restore reservation. The
  * canonical home for this union — observer, producer, and plan-layer types
  * all import it from here so a new label can be added in one place. See

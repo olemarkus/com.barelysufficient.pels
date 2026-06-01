@@ -9,6 +9,7 @@ import type {
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  PlannedDeviceState,
   RestorePowerSource,
   SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
@@ -54,7 +55,7 @@ export type DevicePlanDevice = {
   // Transitional snapshot field only. Planner truth must come from currentState.
   currentOn: boolean;
   currentState: string;
-  plannedState: string;
+  plannedState: PlannedDeviceState;
   currentTarget: number | null;
   plannedTarget?: number;
   observationStale?: boolean;
