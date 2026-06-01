@@ -1,5 +1,5 @@
-import type { DeferredObjectiveLifecycleEmitter } from '../objectives/deferredObjectives/lifecycleEmitter';
-import { normalizeError } from '../utils/errorUtils';
+import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
+import { normalizeError } from '../lib/utils/errorUtils';
 
 /**
  * Default tick cadence for the smart-task lifecycle clock. Deadline /

@@ -7,7 +7,7 @@ import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from '../l
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
-import { startDeferredObjectiveLifecycleClock } from '../lib/app/deferredObjectiveLifecycleClock';
+import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 
 export type BackgroundTasksControllerDeps = {
