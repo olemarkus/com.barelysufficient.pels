@@ -1463,14 +1463,14 @@ prod walk that didn't warrant a P2 slot.*
 
 - [ ] Idle-classifier eligibility follow-ups (from the `shedAction → plannedState`
       fix):
-      - **Type-narrow `IdleClassifierDeviceInput.plannedState`.** Currently typed
-        as `string` to match the producer (`DevicePlanDevice.plannedState: string`
-        in `lib/plan/planTypes.ts`). In practice the field is `'shed' | 'keep' |
-        'inactive'`. Promote the union to a shared alias (e.g. in
-        `packages/contracts/src/types.ts`) and have both producer and consumer
-        reference it, so a future typo like `'SHED'` or a new state value can't
-        silently re-disable the eligibility gate. Same applies to the test helper
-        in `test/idleClassifier.test.ts`.
+      - ~~**Type-narrow `IdleClassifierDeviceInput.plannedState`.** Promote the
+        `'shed' | 'keep' | 'inactive'` union to a shared `PlannedDeviceState`
+        alias in `packages/contracts/src/types.ts`; producer
+        (`DevicePlanDevice.plannedState`), consumer
+        (`IdleClassifierDeviceInput.plannedState`), and test helpers all
+        reference it.~~ Done — alias in `packages/contracts/src/types.ts`; test
+        helpers inherit it via `Partial<DevicePlanDevice>` /
+        `Partial<IdleClassifierDeviceInput>`.
       - **Decide whether `plannedState === 'inactive'` should also gate
         eligibility.** `inactive` is used in `lib/plan/planOffStateReason.ts` for
         devices PELS is no longer managing (capacity control off, manual mode,
