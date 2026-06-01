@@ -401,6 +401,17 @@ release, not v2.7.1 merge-blockers.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Migrate or reset legacy `hourlyAverages` produced by the pre-fix dense aggregation.**
+      Before the `processDayHourBuckets` over-count fix, persisted `hourlyAverages` counts
+      were inflated (count incremented for all 24 weekday/hour slots per aged-out day,
+      plus +2 for boundary days). The typical-day merge now folds those legacy entries in
+      with correctly-counted recent buckets, so existing installs still carry a downward
+      bias on the >30-day-old slice. The inflation isn't reversible in place; the clean fix
+      is a one-time reset of persisted `hourlyAverages` on upgrade (chart rebuilds correctly
+      from the 30-day bucket window) — a data-loss-vs-accuracy product call. Files:
+      `lib/power/tracker.ts` (migration marker + reset), `packages/contracts/src/powerTrackerTypes.ts`.
+      Source: codex P2 on PR #1393, 2026-06-01.
+
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate

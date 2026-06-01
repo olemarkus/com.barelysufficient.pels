@@ -74,13 +74,26 @@ export const mergeDailyTotals = (
 export const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined, timeZone: string) => {
   const averages: Record<string, { sum: number; count: number }> = {};
   if (!buckets) return averages;
+  // Collapse to one sample per zoned (calendar-date, hour) first — mirroring
+  // `tracker.ts` `processDayHourBuckets`/`resolveDayHourKey`. On a DST fall-back
+  // day the repeated wall-clock hour produces two ISO buckets; counting each as
+  // its own sample (as a naive per-bucket loop would) over-weights the divisor
+  // for that weekday/hour and diverges from how persisted `hourlyAverages` was
+  // aggregated, corrupting the additive merge. Summing them into one sample
+  // keeps both sources on the same grouping.
+  const perDayHour = new Map<string, { weekday: number; hour: number; sum: number }>();
   for (const [iso, kWh] of Object.entries(buckets)) {
-    const date = new Date(iso);
-    const { year, month, day, hour } = getZonedParts(date, timeZone);
+    const { year, month, day, hour } = getZonedParts(new Date(iso), timeZone);
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const dayHourKey = `${year}-${month}-${day}_${hour}`;
+    const existing = perDayHour.get(dayHourKey);
+    if (existing) existing.sum += kWh;
+    else perDayHour.set(dayHourKey, { weekday, hour, sum: kWh });
+  }
+  for (const { weekday, hour, sum } of perDayHour.values()) {
     const key = `${weekday}_${hour}`;
     const existing = averages[key] || { sum: 0, count: 0 };
-    averages[key] = { sum: existing.sum + kWh, count: existing.count + 1 };
+    averages[key] = { sum: existing.sum + sum, count: existing.count + 1 };
   }
   return averages;
 };
