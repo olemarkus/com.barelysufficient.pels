@@ -1685,6 +1685,18 @@ md-filled-button.is-busy {
   font-style: italic;
 }
 
+/* Muted "Cost ≈ X kr · Y kWh delivered" meta line from the persisted run
+ * totals (`formatPlanHistoryListCostAndDelivered`, whole kroner to match the
+ * ISO-week divider roll-up + detail cost chip). The past list is a calm glance
+ * surface, so the cost reads as supporting metadata — the same secondary tone
+ * the overshoot line carries — never competing with the deadline/progress
+ * lines above it. Producer returns `null` when neither cost nor delivery was
+ * recorded, so the line is suppressed rather than faking a 0 kr row. */
+.plan-history-card__cost {
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 /* v2.9.x batch 47 — muted overshoot signal on Succeeded list cards whose
  * final reading exceeded the target by > 5 °C / > 10 %. Informational, not
  * alarming: same supporting tone as the coverage line below it so the user

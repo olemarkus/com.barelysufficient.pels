@@ -661,3 +661,123 @@ describe('history device-filter persistence', () => {
     expect(deviceCells).toContain('Connected 300');
   });
 });
+
+// Cost-on-list-rows — REAL state-path regression. pels-ux-fit proved the cost
+// was dead-wired: `renderHistorySurface` builds the `DeadlinesHistoryListState`
+// but never set `costUnit`, so the empty-string default dropped the cost half of
+// every row in production while the component-level tests (which inject
+// `costUnit` straight into the view) stayed green. These tests go through the
+// actual state-builder so a future un-wiring is caught here. The boot-default
+// `CostDisplay` is `{ unit: 'kr', divisor: 100 }` (the Norwegian default
+// `resolveCostDisplayFromCombinedPrices` returns), which is exactly what the
+// production default-price path threads — so the persisted RAW øre `totalCost`
+// must be divided by 100 before it reads as kr. These tests pin BOTH the wiring
+// (cost reaches the row) AND the scaling (the divisor is applied), driving the
+// production state builder so a future un-wiring OR un-scaling regresses here.
+describe('history cost meta line (real state path)', () => {
+  const { resetDeviceFilterCacheForTests, renderHistorySurface } = testExports;
+
+  // `totalCost` is the RAW persisted total in the scheme's minor unit (øre for
+  // the default kr/100 scheme), exactly as the runtime accumulates it from
+  // combined-price totals.
+  const buildCostEntry = (totalCost: number, deliveredKWh: number) => ({
+    id: `dev_cost-${totalCost}`,
+    deviceId: 'dev_cost',
+    deviceName: 'Connected 300',
+    objectiveKind: 'temperature' as const,
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: T0 + 6 * HOUR_MS,
+    startedAtMs: T0,
+    finalizedAtMs: T0 + 5 * HOUR_MS,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 22.5,
+    outcome: 'met' as const,
+    metAtMs: T0 + 4 * HOUR_MS,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation' as const,
+    originalPlan: null,
+    finalPlan: null,
+    totalCost,
+    deliveredKWh,
+  });
+
+  const buildCostPayload = (totalCost: number, deliveredKWh: number) => ({
+    version: 1 as const,
+    entriesByDeviceId: {
+      dev_cost: [buildCostEntry(totalCost, deliveredKWh)],
+    },
+  });
+
+  beforeEach(() => {
+    resetDeviceFilterCacheForTests();
+    document.body.replaceChildren();
+  });
+
+  afterEach(() => {
+    resetDeviceFilterCacheForTests();
+    document.body.replaceChildren();
+  });
+
+  const mount = (): HTMLElement => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    return el;
+  };
+
+  it('threads the resolved cost unit into the rendered row (cost is not dead-wired)', () => {
+    const surface = mount();
+    // 1234 øre @ divisor 100 → ≈ 12 kr.
+    renderHistorySurface(surface, buildCostPayload(1234, 18.2));
+    const cost = surface.querySelector('.plan-history-card__cost');
+    // The cost half renders — proving `costUnit` reaches the row from the state
+    // builder, not just when a test injects it into the component.
+    expect(cost).not.toBeNull();
+    expect(cost?.textContent).toContain('Cost ≈');
+    expect(cost?.textContent).toContain('18.2 kWh delivered');
+  });
+
+  it('applies the CostDisplay divisor — 150 øre @ divisor 100 reads "≈ 2 kr", not "≈ 150 kr"', () => {
+    const surface = mount();
+    // The P1 money bug: dropping the divisor labelled raw øre as kr, rendering
+    // ~100× too much. 150 øre / 100 = 1.5 → Math.round → 2 kr.
+    renderHistorySurface(surface, buildCostPayload(150, 1.5));
+    const cost = surface.querySelector('.plan-history-card__cost');
+    expect(cost?.textContent).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
+    // Guard the regression direction explicitly: the raw øre figure must NOT
+    // appear labelled as kr.
+    expect(cost?.textContent).not.toContain('150 kr');
+  });
+
+  it('renders the row cost in WHOLE kroner (matches the week-divider rounding)', () => {
+    const surface = mount();
+    // 1234 øre → 12 kr, not "12.34". The divider above sums the same money and
+    // rounds it (Math.round); the row must agree so one screen never shows two
+    // precisions for the same figure.
+    renderHistorySurface(surface, buildCostPayload(1234, 18.2));
+    const cost = surface.querySelector('.plan-history-card__cost');
+    expect(cost?.textContent).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
+    expect(cost?.textContent).not.toContain('12.34');
+  });
+
+  it('row cost agrees with the week-divider roll-up for the same single-entry data', () => {
+    const surface = mount();
+    // One entry → its row cost and the week divider's single-entry roll-up are
+    // the same money. Both must scale øre→kr identically (divisor applied once
+    // each), so the divider heading and the row read the same figure rather
+    // than the divider reading raw øre while the row reads kr (or vice-versa).
+    renderHistorySurface(surface, buildCostPayload(150, 1.5));
+    const rowCost = surface.querySelector('.plan-history-card__cost')?.textContent ?? '';
+    const weekHeading = surface.querySelector('.deadlines-history__week')?.textContent ?? '';
+    expect(rowCost).toContain('≈ 2 kr');
+    expect(weekHeading).toContain('≈ 2 kr');
+    // Neither surface labels raw øre as kr.
+    expect(rowCost).not.toContain('150 kr');
+    expect(weekHeading).not.toContain('150 kr');
+  });
+});

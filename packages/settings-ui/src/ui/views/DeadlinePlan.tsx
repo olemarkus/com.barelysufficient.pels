@@ -24,6 +24,7 @@ import {
 import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
+import type { CostDisplay } from '../dailyBudgetCost.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
@@ -194,7 +195,16 @@ export type DeadlinePlanPendingPayload = {
 export type DeadlinePlanLoadState =
   | { status: 'error'; message: string; onRetry?: () => void; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
-  | { status: 'pending'; pending: DeadlinePlanPendingPayload; history?: DeadlinePlanHistoryView }
+  | {
+    status: 'pending';
+    pending: DeadlinePlanPendingPayload;
+    history?: DeadlinePlanHistoryView;
+    // Display currency for the device-scoped `PriorRunsHistory` cost lines —
+    // resolved from the same price source as the live hero so the past-run rows
+    // scale øre→kr identically. Optional so legacy callers/tests that don't
+    // render history cost can omit it.
+    costDisplay?: CostDisplay;
+  }
   | {
     status: 'unavailable';
     objectiveKind: DeferredObjectiveSettingsKind;
@@ -209,7 +219,13 @@ export type DeadlinePlanLoadState =
     objectiveKind: DeferredObjectiveSettingsKind;
     history?: DeadlinePlanHistoryView;
   }
-  | { status: 'ready'; payload: DeadlinePlanPayload; history?: DeadlinePlanHistoryView }
+  | {
+    status: 'ready';
+    payload: DeadlinePlanPayload;
+    history?: DeadlinePlanHistoryView;
+    // See the `pending` variant — display currency for the past-run cost lines.
+    costDisplay?: CostDisplay;
+  }
   | {
     // Detail view for a finalized plan in history. The page lands on the
     // History tab and shows the entry's recorded plan snapshots instead of
@@ -1025,11 +1041,24 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
 // yet or the device has no recorded entries — we intentionally suppress the
 // "Past tasks" heading in the empty case so a brand-new device with no prior
 // runs doesn't get a cosmetic empty section directly under the pending hero.
-const PriorRunsHistory = ({ history }: { history: DeadlinePlanHistoryView | undefined }) => {
+const PriorRunsHistory = ({ history, costDisplay }: {
+  history: DeadlinePlanHistoryView | undefined;
+  // Display currency for the past-run cost lines + week roll-up. When absent
+  // (legacy callers, or a boot without prices) the cost half is dropped — the
+  // rows still render. Threading unit + divisor keeps the device-scoped surface
+  // scaling øre→kr the same way the Smart-tasks tab list and live hero do.
+  costDisplay?: CostDisplay;
+}) => {
   if (!history || history.entries.length === 0) return null;
   return (
     <DeadlinesHistoryListRoot
-      state={{ status: 'ready', entries: history.entries, timeZone: history.timeZone }}
+      state={{
+        status: 'ready',
+        entries: history.entries,
+        timeZone: history.timeZone,
+        costUnit: costDisplay?.unit ?? '',
+        costDivisor: costDisplay?.divisor ?? 1,
+      }}
     />
   );
 };
@@ -1105,7 +1134,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     return (
       <>
         <PendingHero pending={loadState.pending} />
-        <PriorRunsHistory history={loadState.history} />
+        <PriorRunsHistory history={loadState.history} costDisplay={loadState.costDisplay} />
       </>
     );
   }
@@ -1133,7 +1162,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <HorizonCard payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
       <RevisionHistoryPanel payload={loadState.payload} />
-      <PriorRunsHistory history={loadState.history} />
+      <PriorRunsHistory history={loadState.history} costDisplay={loadState.costDisplay} />
     </>
   );
 };
