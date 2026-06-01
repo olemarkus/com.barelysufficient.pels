@@ -69,6 +69,10 @@ export const buildDeferredObjectiveDebugPayload = (
   // whether Steps 1–2 actually let it reach medium/high.
   displayConfidence: diagnostic.displayConfidence,
   kwhPerUnitSource: diagnostic.kwhPerUnitSource,
+  // The per-active-hour speed the planner committed against. Logged so a
+  // `measured_deviation` revision (emitted by the recorder on this same
+  // `deferred_objectives` topic) can be read against the speed that drove it.
+  planningSpeedKw: diagnostic.planningSpeedKw,
   deadlineAtMs: diagnostic.deadlineAtMs,
   deadlineLocalTime: diagnostic.deadlineLocalTime,
   horizonBucketCount: diagnostic.horizonBucketCount,
