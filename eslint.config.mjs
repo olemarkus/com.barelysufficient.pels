@@ -479,6 +479,20 @@ export default tseslint.config(
     },
   },
   {
+    // The receipt producer composes six asymmetric smart-task history surfaces
+    // (succeeded timeline, missed shortfall chip, cost chip, abandoned details,
+    // ISO-week archive, 7-day strip). Externalizing its user-visible strings
+    // into `deferredPlanHistoryReceiptStrings.ts`
+    // (per `feedback_ui_text_shared_with_logs`) adds a ~30-line named-import
+    // block that pushes the producer just over the 500 cap; the strings
+    // themselves now live in the sibling module. Capped tightly so the producer
+    // can't grow new logic under the allowance.
+    files: ['packages/shared-domain/src/deferredPlanHistoryReceipt.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
     // The compatibility wrapper still keeps power-sample state and promise plumbing local while
     // PlanRebuildScheduler owns the cross-intent queue. `schedulePlanRebuildFromPowerSample`
     // remains a long orchestration function — keep `max-lines-per-function` raised until

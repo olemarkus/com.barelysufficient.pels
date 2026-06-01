@@ -10,6 +10,14 @@ import {
   groupPlanHistoryByIsoWeek,
   resolvePlanHistory7DayHitRateStrip,
 } from '../packages/shared-domain/src/deferredPlanHistoryReceipt';
+import {
+  formatReceiptDeliveredOf,
+  formatReceiptOutcomeSucceeded,
+  RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
+  RECEIPT_ROW_LABEL_READY,
+  RECEIPT_ROW_LABEL_STARTED,
+  RECEIPT_WEEK_THIS,
+} from '../packages/shared-domain/src/deferredPlanHistoryReceiptStrings';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -656,5 +664,58 @@ describe('resolvePlanHistory7DayHitRateStrip', () => {
       expect(strip!.succeeded).toBe(1);
       expect(strip!.hitRatePercent).toBe(100);
     });
+  });
+});
+
+// Guards the structural move (TODO #887 / `feedback_ui_text_shared_with_logs`):
+// the receipt producer must compose its user-visible strings from the shared
+// `deferredPlanHistoryReceiptStrings` module, not re-inline them. These assert
+// the rendered output is keyed off the canonical constants/formatters so a
+// future re-inlining (which would let logs and UI drift) is caught here.
+describe('receipt strings are sourced from the shared strings module', () => {
+  const NOW_MS = Date.UTC(2026, 4, 16, 12, 0, 0);
+
+  it('labels the Succeeded timeline rows from the shared row-label constants', () => {
+    const rows = formatPlanHistoryReceiptTimeline(
+      buildEntry({
+        progressSamples: [
+          { atMs: DEADLINE_MS - 8 * HOUR_MS, valueC: null, valuePercent: 20 },
+          { atMs: DEADLINE_MS - 7 * HOUR_MS, valueC: null, valuePercent: 24 },
+        ],
+      }),
+      'UTC',
+    );
+    expect(rows!.map((row) => row.label)).toEqual([
+      RECEIPT_ROW_LABEL_STARTED,
+      RECEIPT_ROW_LABEL_LARGEST_PLANNED_HOUR,
+      RECEIPT_ROW_LABEL_READY,
+    ]);
+  });
+
+  it('builds the Missed "Delivered X of Y" chip via the shared formatter', () => {
+    const line = formatPlanHistoryShortfallChip(buildEntry({
+      outcome: 'missed',
+      finalProgressPercent: 60,
+      deliveredKWh: 17,
+      finalPlan: buildSnapshot({
+        hours: [
+          { startsAtMs: DEADLINE_MS - 4 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 3 * HOUR_MS, plannedKWh: 8 },
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 8 },
+        ],
+      }),
+    }));
+    expect(line!.startsWith(formatReceiptDeliveredOf('17.0', '24.0'))).toBe(true);
+  });
+
+  it('leads the week-divider heading with the shared relative-week + outcome strings', () => {
+    const groups = groupPlanHistoryByIsoWeek(
+      [buildEntry({ outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 12 })],
+      'UTC',
+      '',
+      NOW_MS,
+    );
+    expect(groups[0]!.heading.startsWith(RECEIPT_WEEK_THIS)).toBe(true);
+    expect(groups[0]!.heading).toContain(formatReceiptOutcomeSucceeded(1));
   });
 });
