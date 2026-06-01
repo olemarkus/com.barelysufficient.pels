@@ -13,7 +13,6 @@ export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
 const MIN_VALID_TIMESTAMP_MS = 100000000000, MAX_SAMPLE_GAP_MS = 48 * 60 * 60 * 1000;
-const ZERO_HOURS = Array.from({ length: 24 }, () => 0);
 
 type ControlledSample = {
   controlledPowerW?: number;
@@ -232,7 +231,7 @@ export function getUtcDayOfWeek(date: Date): number {
 }
 
 const processDayHourBuckets = (
-  dayHourBuckets: Map<string, number[]>,
+  dayHourBuckets: Map<string, Map<number, number>>,
   averages: Map<string, { sum: number; count: number }>,
 ) => {
   for (const [dateKey, hours] of dayHourBuckets.entries()) {
@@ -241,11 +240,17 @@ const processDayHourBuckets = (
     // either way — weekday is a property of the date label itself, not its instant.
     const date = new Date(`${dateKey}T00:00:00.000Z`);
     const dayOfWeek = getUtcDayOfWeek(date);
-    for (let hour = 0; hour < 24; hour += 1) {
+    // Only fold in hours actually aged out this prune run. Hourly buckets cross the
+    // 30-day threshold gradually (~one hour per tick), so a single calendar day can
+    // span two prune runs. Iterating a fixed 0..23 range would add count+1 for every
+    // weekday/hour slot — including hours absent this run — inflating the divisor with
+    // zero-sum contributions and biasing typical-day averages low. The map only holds
+    // hours present this run, so each hour's count is incremented exactly once total.
+    for (const [hour, kWh] of hours.entries()) {
       const patternKey = `${dayOfWeek}_${hour}`;
       const existingPattern = averages.get(patternKey) || { sum: 0, count: 0 };
       averages.set(patternKey, {
-        sum: existingPattern.sum + hours[hour],
+        sum: existingPattern.sum + kWh,
         count: existingPattern.count + 1,
       });
     }
@@ -304,7 +309,9 @@ export function aggregateAndPruneHistory(
       Object.entries(existingHourlyAverages || {}) as Array<[string, { sum: number; count: number }]>,
     );
     const nextBuckets = new Map<string, number>();
-    const dayHourBuckets = new Map<string, number[]>();
+    // Sparse per-day hour map: only hours that aged out this prune run are present.
+    // See processDayHourBuckets for why a dense 0..23 array would overcount.
+    const dayHourBuckets = new Map<string, Map<number, number>>();
 
     if (buckets) {
       for (const [isoKey, kWh] of Object.entries(buckets)) {
@@ -313,8 +320,8 @@ export function aggregateAndPruneHistory(
 
         if (timestamp < hourlyThreshold) {
           const { dateKey, hourOfDay } = resolveDayHourKey(new Date(isoKey), timeZone);
-          const hours = dayHourBuckets.get(dateKey) ?? ZERO_HOURS.slice();
-          hours[hourOfDay] = (hours[hourOfDay] ?? 0) + kWh;
+          const hours = dayHourBuckets.get(dateKey) ?? new Map<number, number>();
+          hours.set(hourOfDay, (hours.get(hourOfDay) ?? 0) + kWh);
           dayHourBuckets.set(dateKey, hours);
           nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
         } else {

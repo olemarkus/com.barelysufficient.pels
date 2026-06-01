@@ -74,15 +74,55 @@ export const mergeDailyTotals = (
 export const getDerivedHourlyAverages = (buckets: Record<string, number> | undefined, timeZone: string) => {
   const averages: Record<string, { sum: number; count: number }> = {};
   if (!buckets) return averages;
+  // Collapse to one sample per zoned (calendar-date, hour) first — mirroring
+  // `tracker.ts` `processDayHourBuckets`/`resolveDayHourKey`. On a DST fall-back
+  // day the repeated wall-clock hour produces two ISO buckets; counting each as
+  // its own sample (as a naive per-bucket loop would) over-weights the divisor
+  // for that weekday/hour and diverges from how persisted `hourlyAverages` was
+  // aggregated, corrupting the additive merge. Summing them into one sample
+  // keeps both sources on the same grouping.
+  const perDayHour = new Map<string, { weekday: number; hour: number; sum: number }>();
   for (const [iso, kWh] of Object.entries(buckets)) {
-    const date = new Date(iso);
-    const { year, month, day, hour } = getZonedParts(date, timeZone);
+    const { year, month, day, hour } = getZonedParts(new Date(iso), timeZone);
     const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    const dayHourKey = `${year}-${month}-${day}_${hour}`;
+    const existing = perDayHour.get(dayHourKey);
+    if (existing) existing.sum += kWh;
+    else perDayHour.set(dayHourKey, { weekday, hour, sum: kWh });
+  }
+  for (const { weekday, hour, sum } of perDayHour.values()) {
     const key = `${weekday}_${hour}`;
     const existing = averages[key] || { sum: 0, count: 0 };
-    averages[key] = { sum: existing.sum + kWh, count: existing.count + 1 };
+    averages[key] = { sum: existing.sum + sum, count: existing.count + 1 };
   }
   return averages;
+};
+
+// Persisted `hourlyAverages` only ever holds weekday/hour slices for hours that have
+// aged out of the 30-day hourly retention window in `lib/power/tracker.ts`
+// (`aggregateAndPruneHistory`). The most-recent-30-days of hourly buckets still live
+// exclusively in `tracker.buckets`. Reading persisted `hourlyAverages` alone (once it
+// is non-empty) therefore drops every recent hour from the typical-day chart. Merge
+// both sources additively: each hourly bucket is moved out of `buckets` once folded
+// into `hourlyAverages`, so no hour is counted twice (same invariant as
+// `mergeDailyTotals`).
+export const mergeHourlyAverages = (
+  // Homey SDK settings can return `null` for an unset key; `persisted || {}`
+  // already handles it at runtime, so accept it in the signature too.
+  persisted: Record<string, { sum: number; count: number }> | null | undefined,
+  buckets: Record<string, number> | undefined,
+  timeZone: string,
+): Record<string, { sum: number; count: number }> => {
+  const merged: Record<string, { sum: number; count: number }> = {};
+  for (const [key, data] of Object.entries(persisted || {})) {
+    merged[key] = { sum: data.sum, count: data.count };
+  }
+  const fromBuckets = getDerivedHourlyAverages(buckets, timeZone);
+  for (const [key, data] of Object.entries(fromBuckets)) {
+    const existing = merged[key] || { sum: 0, count: 0 };
+    merged[key] = { sum: existing.sum + data.sum, count: existing.count + data.count };
+  }
+  return merged;
 };
 
 export const getHourlyPatternMeta = (buckets: Record<string, number> | undefined, timeZone: string) => {
