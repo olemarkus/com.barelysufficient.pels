@@ -1310,6 +1310,14 @@ prod walk that didn't warrant a P2 slot.*
       posture. An unrelated stepped keep device that should have been clamped
       to lowestActive per docs/technical.md:222 then stays at its current
       step. Inverse-direction asymmetry vs. the codex P1 closed in PR #891.
+      NOT a localized fix (investigated 2026-06-01): `isHeldByRestoreAdmission`
+      derives from restore-admission reasons (`cooldownRestore`/`meterSettling`)
+      that are produced only by the restore pass (`applyRestorePlanWithTiming`),
+      which runs *after* this pre-pass — and that pass's `restoredOneThisCycle`
+      admission depends on the devices this pre-pass builds. Genuine circular
+      ordering, not a missing wire. Honest fix = compute `effectiveShedSet`
+      post-restore and re-run the keep-invariant clamp (a scoped restore-pass
+      reorder), not a one-line conjunct. Don't re-attempt as a quick win.
       Why P3: very narrow trigger; user-visible incident (Connected 300
       stuck at medium during overshoot) is fixed by the shipped clamp; no
       observed prod occurrence of this corner.
