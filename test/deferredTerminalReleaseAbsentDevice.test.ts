@@ -1,4 +1,4 @@
-import { handleDeferredDeadlineReached } from '../lib/app/appInit/deferredObjectiveLifecycle';
+import { handleDeferredDeadlineReached } from '../setup/appInit/deferredObjectiveLifecycle';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 import type { AppContext } from '../lib/app/appContext';
 

@@ -11,7 +11,7 @@
  * end-to-end.
  */
 import { describe, expect, it } from 'vitest';
-import { projectPreviewPlanDevice, toPlanDevice } from '../lib/app/appInit';
+import { projectPreviewPlanDevice, toPlanDevice } from '../setup/appInit';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 import type { AppContext } from '../lib/app/appContext';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
