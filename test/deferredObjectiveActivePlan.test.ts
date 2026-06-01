@@ -2281,7 +2281,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // and may split a single hour into two segments at planningEndMs. Persist
     // each segment under the floor-of-hour timestamp and sum the energy so the
     // Settings UI can find the planned kWh by the price-horizon hour key.
-    // See PR #643 review thread 5.
+    // See PR #643 review thread 5. The trimmed hour also records `coversFromMs`
+    // (the earliest segment start) so the history chart knows its energy is
+    // already only the post-trim remainder and must not be prorated again.
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
     const hourStart = 2 * HOUR_MS;
@@ -2303,7 +2305,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.hours).toEqual([
-      { startsAtMs: hourStart, plannedKWh: 1.0 },
+      { startsAtMs: hourStart, plannedKWh: 1.0, coversFromMs: midHour },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
     ]);
   });

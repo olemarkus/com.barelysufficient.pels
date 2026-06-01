@@ -275,6 +275,252 @@ describe('resolveHistoryDetailChartData', () => {
       // different times — the divergence is enough to surface the overlay.
       expect(data.plannedFinal![1]?.atMs).not.toBe(data.plannedOriginal[1]?.atMs);
     });
+
+    it('re-anchors the revised staircase at the measured progress at revisedAtMs', () => {
+      // Revision computed 2 h into the run, when the device had already reached
+      // 60 °C — the revised line must start there, not re-climb from the 50 °C
+      // task-start temperature.
+      const revisedAtMs = START_MS + 2 * HOUR_MS;
+      const original = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs: START_MS,
+        kwhPerUnitMean: 0.5,
+      });
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: original,
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: START_MS + HOUR_MS, valueC: 56, valuePercent: null },
+          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      // First point sits at the revision time, anchored at the measured 60 °C.
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 60 });
+      // The line only climbs from there (1 kWh / 0.5 = +2 °C/h); it never dips
+      // back toward the start temperature.
+      expect(Math.min(...data.plannedFinal!.map(observedPointValue))).toBeGreaterThanOrEqual(60);
+    });
+
+    it('interpolates from start progress when the only sample is after revisedAtMs (seeded start overwritten)', () => {
+      // Replan in the task's first hour: the recorder overwrote the seeded
+      // start sample with a later same-hour reading, so the only observed point
+      // is AFTER revisedAtMs. The seeded startProgress bracket lets the anchor
+      // interpolate from start rather than re-climbing from the start-anchored
+      // plan.
+      const revisedAtMs = START_MS + 2 * HOUR_MS;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: revisedAtMs + HOUR_MS, valueC: 62, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      // Interpolate 50 @ windowStart → 62 @ +3h at +2h = 58, anchored at the revision.
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 58 });
+    });
+
+    it('keeps the start anchor when the revision coincides with the window start', () => {
+      // revisedAtMs === windowStart: no mid-run replan to re-anchor on, even
+      // though observed samples exist.
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs: START_MS,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: START_MS + HOUR_MS, valueC: 58, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      expect(data.plannedFinal![0]).toEqual({ atMs: START_MS, value: 50 });
+    });
+
+    it('keeps the no-original fallback primary staircase start-anchored', () => {
+      // Entry with only a finalPlan (no originalPlan), revised late. The primary
+      // staircase must stay start-anchored at the window start — the from-start
+      // intent — not re-anchored mid-window at the revision point.
+      const revisedAtMs = START_MS + 2 * HOUR_MS;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: null,
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedOriginal[0]).toEqual({ atMs: START_MS, value: 50 });
+      expect(data.plannedFinal).toBeNull();
+    });
+
+    it('prorates a revision hour that straddles revisedAtMs', () => {
+      // Revision computed 30 min into the START_MS+2h hour: that hour already
+      // delivered its first half before the anchor, so only the second half's
+      // booked energy is credited forward (the first half is on the observed
+      // line). 1 kWh * 0.5 / 0.5 kwhPerUnitMean = +1 °C for that hour, not +2.
+      const revisedAtMs = START_MS + 2 * HOUR_MS + HOUR_MS / 2;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 }, // straddles anchor
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      // Anchored at the measured 60 °C at the revision time.
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 60 });
+      // Straddling hour credits only its post-anchor half: 60 → 61 by 3h.
+      expect(data.plannedFinal![1]?.value).toBeCloseTo(61, 5);
+      // Next full hour adds +2 °C: 61 → 63 by 4h.
+      expect(data.plannedFinal![2]?.value).toBeCloseTo(63, 5);
+    });
+
+    it('does not prorate a straddling hour that is already trimmed (coversFromMs set)', () => {
+      // Same mid-hour revision, but the current hour carries `coversFromMs`: the
+      // planner already trimmed it to the post-revision remainder, so its
+      // (smaller) plannedKWh must be added whole — prorating it would double-trim.
+      const revisedAtMs = START_MS + 2 * HOUR_MS + HOUR_MS / 2;
+      const final = buildSnapshot({
+        hours: [
+          // Trimmed current hour: 0.5 kWh already scoped to [2.5h, 3h).
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 0.5, coversFromMs: revisedAtMs },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 60 });
+      // Trimmed hour adds its full 0.5 kWh (not prorated again): 0.5 / 0.5 = +1 °C → 61.
+      expect(data.plannedFinal![1]?.value).toBeCloseTo(61, 5);
+      // Next full hour adds +2 °C → 63.
+      expect(data.plannedFinal![2]?.value).toBeCloseTo(63, 5);
+    });
+
+    it('interpolates the anchor when no sample lands exactly at revisedAtMs', () => {
+      // The recorder keeps one sample per hour, so a mid-hour revision usually
+      // has no sample at revisedAtMs. Interpolate between the bracketing samples
+      // rather than snapping to the stale prior-hour reading.
+      const revisedAtMs = START_MS + 2 * HOUR_MS;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS + HOUR_MS, valueC: 54, valuePercent: null },      // before
+          { atMs: START_MS + 3 * HOUR_MS, valueC: 64, valuePercent: null },  // after
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      // 54 @ +1h → 64 @ +3h, interpolated at +2h = 59 (not the stale 54).
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 59 });
+    });
+
+    it('prorates a trimmed hour carried forward with coversFromMs before the anchor', () => {
+      // An earlier same-hour revision trimmed this hour (coversFromMs = 2h20m)
+      // and its floor was carried past a later revision (revisedAtMs = 2h40m).
+      // The [2h20m, 2h40m] sliver predates the anchor, so the trimmed energy is
+      // prorated over its covered span, not added whole.
+      const revisedAtMs = START_MS + 2 * HOUR_MS + (2 * HOUR_MS) / 3; // 2h40m
+      const coversFromMs = START_MS + 2 * HOUR_MS + HOUR_MS / 3; // 2h20m
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 0.5, coversFromMs },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+        ],
+        revisedAtMs,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        startProgressC: 50,
+        originalPlan: buildSnapshot({ revisedAtMs: START_MS }),
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 50, valuePercent: null },
+          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.plannedFinal).not.toBeNull();
+      expect(data.plannedFinal![0]).toEqual({ atMs: revisedAtMs, value: 60 });
+      // Covered span [2h20m,3h]=40min; post-anchor [2h40m,3h]=20min → fraction 0.5.
+      // 0.5 kWh * 0.5 / 0.5 = +0.5 °C → 60.5 (not the whole +1 °C → 61).
+      expect(data.plannedFinal![1]?.value).toBeCloseTo(60.5, 5);
+    });
   });
 
   describe('observed samples', () => {
