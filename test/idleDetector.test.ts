@@ -339,6 +339,34 @@ describe('classifyIdleState — temperature sensor stopped reporting', () => {
     );
     expect(resumed.classification).toBe('active');
   });
+
+  it('gives a held device one cycle of grace on a momentary sensor blip, then escalates', () => {
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    // Establish a healthy near-target hold (sensor alive, small gap, idle).
+    classifyIdleState(baseInput({ now: t0, currentTemperature: 64, targetTemperature: 65 }), state);
+    const held = classifyIdleState(
+      baseInput({ now: t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000, currentTemperature: 64, targetTemperature: 65 }),
+      state,
+    );
+    expect(held.classification).toBe('near_target_idle');
+
+    // A single-cycle `measure_temperature` dropout right after the hold, well
+    // past the unresponsive window, must NOT alarm immediately — the idle streak
+    // is long but the sensor has only just gone dark.
+    const blip = classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_HOLD_MIN_DURATION_MS + IDLE_UNRESPONSIVE_MIN_DURATION_MS },
+      state,
+    );
+    expect(blip.classification).toBe('active');
+
+    // If the sensor stays dark, it escalates on the next cycle.
+    const persistent = classifyIdleState(
+      { ...sensorDark(), now: t0 + IDLE_HOLD_MIN_DURATION_MS + IDLE_UNRESPONSIVE_MIN_DURATION_MS + 60_000 },
+      state,
+    );
+    expect(persistent.classification).toBe('unresponsive');
+  });
 });
 
 describe('classifyIdleState — capped_idle', () => {
