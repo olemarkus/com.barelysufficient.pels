@@ -125,6 +125,25 @@ export const formatReceiptWeekCost = (
   unit: string,
 ): string => `${approxGlyph} ${roundedCost} ${unit}`;
 
+// Scales a persisted RAW cost total to the display currency before the cost
+// formatters above round it. History `totalCost` is accumulated in the scheme's
+// minor unit (øre for the default Norwegian `kr`/100 scheme), so labelling it
+// `kr` without dividing renders ~100× too much. Mirrors the live deadline hero,
+// which divides each hour's `price` by the same `CostDisplay.divisor` BEFORE
+// accumulating the delivered cost (`deadlinePlan.ts`). The divisor arrives as a
+// bare number because `CostDisplay` lives in the settings-UI layer this module
+// may not import. Guards a 0/NaN divisor to 1 so a malformed price payload never
+// divides by zero.
+export const scaleRawCostToDisplay = (rawCost: number, divisor: number): number => (
+  rawCost / (Number.isFinite(divisor) && divisor > 0 ? divisor : 1)
+);
+
+// Display currency for the week roll-up — `unit` is the suffix (`kr`), `divisor`
+// scales the raw minor-unit `totalCost` sum to that currency. A small bundle so
+// the heading producer passes one cost param (mirrors the settings-UI
+// `CostDisplay`, which the shared-domain layer may not import).
+export type WeekCostDisplay = { unit: string; divisor: number };
+
 // Relative week lead labels for the section heading. "This week" / "Last week"
 // anchor on the user's current week; older weeks render as "Week of 12 May"
 // (the week's Monday formatted) rather than the engineer-facing ISO number.

@@ -10,12 +10,17 @@
 // mistake aggregate on the past-tasks landing surface).
 import {
   formatMissStreakAggregateLine,
+  formatPlanHistoryCostAndDelivered,
   formatPlanHistoryMissedReason,
   formatPlanHistoryOvershootLine,
   formatPlanHistoryPostmortem,
   formatPlanHistoryProgressLine,
   formatPlanHistoryUsageDayLinkLabel,
 } from '../packages/shared-domain/src/deferredPlanHistory';
+import {
+  formatPlanHistoryListCostAndDelivered,
+  groupPlanHistoryByIsoWeek,
+} from '../packages/shared-domain/src/deferredPlanHistoryReceipt';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -756,5 +761,179 @@ describe('formatPlanHistoryProgressLine', () => {
       finalProgressC: 65,
       targetTemperatureC: null,
     }))).toBeNull();
+  });
+});
+
+// List-row cost producer — WHOLE-kroner `Cost ≈ X kr · Y kWh delivered`. Renders
+// at the same precision as the ISO-week divider roll-up (`Math.round`) and the
+// detail cost chip, never the 2-decimal Missed-fallback form. The persisted
+// `totalCost` is RAW minor-unit (øre for the default kr/100 scheme); the
+// producer scales by the `CostDisplay.divisor` before rounding — without that
+// scaling raw øre is labelled kr and reads ~100× too high. Branch matrix:
+// cost+delivery, cost-only, delivery-only, empty-unit, neither (null), rounding,
+// divisor scaling.
+describe('formatPlanHistoryListCostAndDelivered', () => {
+  it('renders cost in whole kroner joined with delivered kWh (øre scaled by divisor 100)', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 1234, deliveredKWh: 18.2 },
+        'kr',
+        100,
+      ),
+    ).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
+  });
+
+  it('applies the CostDisplay divisor — 150 øre @ divisor 100 reads "≈ 2 kr", not "≈ 150 kr"', () => {
+    // The P1 money bug guard at the producer boundary: 150 øre / 100 = 1.5 →
+    // Math.round → 2 kr. Dropping the divisor would render "≈ 150 kr".
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 150, deliveredKWh: 1.5 },
+        'kr',
+        100,
+      ),
+    ).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
+  });
+
+  it('rounds to whole kroner (matches the week-divider rounding)', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 1262, deliveredKWh: 4 },
+        'kr',
+        100,
+      ),
+    ).toBe('Cost ≈ 13 kr · 4.0 kWh delivered');
+  });
+
+  it('treats an omitted divisor as 1 (already-scaled total, no division)', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 12.34, deliveredKWh: 18.2 },
+        'kr',
+      ),
+    ).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
+  });
+
+  it('drops the cost clause when the unit is empty but delivery is recorded', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 1234, deliveredKWh: 18.2 },
+        '',
+        100,
+      ),
+    ).toBe('18.2 kWh delivered');
+  });
+
+  it('renders cost-only when delivery is not recorded', () => {
+    // 950 øre / 100 = 9.5 → Math.round → 10 kr.
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 950, deliveredKWh: undefined },
+        'kr',
+        100,
+      ),
+    ).toBe('Cost ≈ 10 kr');
+  });
+
+  it('returns null when neither cost nor delivery was recorded', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: undefined, deliveredKWh: undefined },
+        'kr',
+        100,
+      ),
+    ).toBeNull();
+  });
+
+  it('strips a rate-shaped Flow/Homey unit so a TOTAL reads "kr", not "kr/kWh"', () => {
+    // Flow/Homey schemes pass their raw price-RATE label (`kr/kWh`) through as
+    // the cost unit. A total cost is an amount, so the row must drop the `/kWh`
+    // suffix — otherwise it labels an amount as a per-kWh rate.
+    const line = formatPlanHistoryListCostAndDelivered(
+      { totalCost: 12, deliveredKWh: 4 },
+      'kr/kWh',
+      1,
+    );
+    expect(line).toBe('Cost ≈ 12 kr · 4.0 kWh delivered');
+    expect(line).not.toContain('kr/kWh');
+  });
+
+  it('tolerates whitespace in the rate suffix (" NOK / kWh " → "NOK")', () => {
+    const line = formatPlanHistoryListCostAndDelivered(
+      { totalCost: 9, deliveredKWh: 3 },
+      ' NOK / kWh ',
+      1,
+    );
+    expect(line).toBe('Cost ≈ 9 NOK · 3.0 kWh delivered');
+    expect(line).not.toContain('NOK /');
+    expect(line).not.toContain('/ kWh');
+  });
+});
+
+// Row ↔ week-divider agreement: the same RAW øre money must read identically on
+// the per-row cost line and the ISO-week roll-up heading once both apply the
+// CostDisplay divisor. A single entry isolates the scaling: a regression that
+// scales one surface but not the other (the original P1 shape) diverges here.
+describe('formatPlanHistoryCostAndDelivered (hero 2-decimal total)', () => {
+  it('strips a rate-shaped Flow/Homey unit so the TOTAL reads "kr", not "kr/kWh"', () => {
+    const line = formatPlanHistoryCostAndDelivered(
+      { totalCost: 12.3, deliveredKWh: 4 },
+      'kr/kWh',
+      '',
+    );
+    expect(line).toBe('Cost ≈ 12.30 kr · 4.0 kWh delivered');
+    expect(line).not.toContain('kr/kWh');
+  });
+});
+
+describe('list-row cost ↔ week-divider roll-up agreement (divisor applied to both)', () => {
+  const TZ = 'Europe/Oslo';
+  const DEADLINE_MS = Date.UTC(2026, 4, 6, 6, 0, 0);
+
+  const buildCostEntry = (totalCost: number): DeferredObjectivePlanHistoryEntry => ({
+    id: `entry-${totalCost}`,
+    originalPlan: null,
+    finalPlan: null,
+    deviceId: 'dev_cost',
+    deviceName: 'Connected 300',
+    objectiveKind: 'temperature',
+    targetTemperatureC: 65,
+    targetPercent: null,
+    deadlineAtMs: DEADLINE_MS,
+    startedAtMs: DEADLINE_MS - 6 * 3_600_000,
+    finalizedAtMs: DEADLINE_MS,
+    startProgressC: 50,
+    startProgressPercent: null,
+    finalProgressC: 65,
+    finalProgressPercent: null,
+    initialEnergyNeededKWh: 22.5,
+    outcome: 'met',
+    metAtMs: DEADLINE_MS,
+    usedDeadlineReserve: false,
+    usedPolicyAvoid: false,
+    observedIntervals: [],
+    discoveredFrom: 'observation',
+    totalCost,
+    deliveredKWh: 1.5,
+  });
+
+  it('row "≈ 2 kr" matches the single-entry week-divider "≈ 2 kr" for 150 øre @ divisor 100', () => {
+    const entry = buildCostEntry(150);
+    const rowCost = formatPlanHistoryListCostAndDelivered(entry, 'kr', 100);
+    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, 'kr', DEADLINE_MS, 100);
+    expect(rowCost).toContain('≈ 2 kr');
+    expect(group?.heading).toContain('≈ 2 kr');
+    // Neither labels raw øre as kr.
+    expect(rowCost).not.toContain('150 kr');
+    expect(group?.heading).not.toContain('150 kr');
+  });
+
+  it('strips a rate-shaped unit from the week-divider roll-up too ("kr/kWh" → "kr")', () => {
+    // Flow/Homey total: divisor 1, raw rate label `kr/kWh`. The heading total is
+    // an amount, so it must read `≈ 12 kr`, never `≈ 12 kr/kWh`.
+    const entry = buildCostEntry(12);
+    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, 'kr/kWh', DEADLINE_MS, 1);
+    expect(group?.heading).toContain('≈ 12 kr');
+    expect(group?.heading).not.toContain('kr/kWh');
   });
 });
