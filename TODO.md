@@ -1471,12 +1471,6 @@ prod walk that didn't warrant a P2 slot.*
         threshold fields — add a forced-cause marker for field debugging only
         if rescue field logs prove ambiguous. (`planTemperatureBoost.ts`,
         `planEvBoost.ts`)
-      - **Move `add_budget_exemption`'s thrown error string to shared-domain** (per
-        `feedback_ui_text_shared_with_logs`) — pre-existing convention gap.
-        `flowCards/deviceSettingsCards.ts` builds the message from a dynamic `label`
-        (`` `${label} device must be provided` ``), so externalizing it needs a small
-        formatter rather than a constant. (The `allow_smart_task_rescue` card's four
-        thrown strings were moved to `packages/shared-domain/src/smartTaskRescueStrings.ts`.)
       - **Tests:** spy `rebuildPlan` to pin the idempotent no-op (no rebuild on an
         unchanged mode).
 

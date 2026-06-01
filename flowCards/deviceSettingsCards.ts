@@ -1,4 +1,5 @@
 import { BUDGET_EXEMPT_DEVICES, CONTROLLABLE_DEVICES } from '../lib/utils/settingsKeys';
+import { formatDeviceMustBeProvidedMessage } from '../packages/shared-domain/src/smartTaskRescueStrings';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
@@ -129,7 +130,7 @@ async function setDeviceBooleanSetting(params: {
     logPrefix,
     deps,
   } = params;
-  if (!deviceId) throw new Error(`${label[0].toUpperCase()}${label.slice(1)} device must be provided`);
+  if (!deviceId) throw new Error(formatDeviceMustBeProvidedMessage(label));
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);
   const deviceName = device ? device.name : `device ${deviceId}`;
