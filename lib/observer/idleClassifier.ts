@@ -21,6 +21,7 @@ import {
 } from './idleDetector';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Logger as PinoLogger } from '../logging/logger';
+import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 
 /** Subset of DevicePlanDevice used by the classifier — keeps coupling thin. */
@@ -33,7 +34,7 @@ export type IdleClassifierDeviceInput = {
   measuredPowerKw?: number;
   currentTemperature?: number;
   currentTarget: number | null;
-  plannedState: string;
+  plannedState: PlannedDeviceState;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
 };
 
