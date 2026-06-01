@@ -1,30 +1,30 @@
-import type { AppContext } from '../appContext';
-import type { PlanInputDevice } from '../../plan/planTypes';
-import type { DeferredObjectiveDiagnostic } from '../../objectives/deferredObjectives';
+import type { AppContext } from '../../lib/app/appContext';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   DeferredObjectiveLifecycleEmitter,
-} from '../../objectives/deferredObjectives/lifecycleEmitter';
+} from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
 import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
-} from '../../objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import {
   applyShedBehavior,
   type ShedActuationCommand,
   type ShedActuationObservedState,
-} from '../../device/shedBehaviorActuation';
-import { getLogger } from '../../logging/logger';
-import { resolveFlowBackedBinaryTriggerCardId } from '../../executor/planExecutorPredicates';
+} from '../../lib/device/shedBehaviorActuation';
+import { getLogger } from '../../lib/logging/logger';
+import { resolveFlowBackedBinaryTriggerCardId } from '../../lib/executor/planExecutorPredicates';
 import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
-} from '../../utils/targetCapabilities';
+} from '../../lib/utils/targetCapabilities';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
   getSteppedLoadStep,
-} from '../../utils/deviceControlProfiles';
-import type { ShedActuationTransport } from '../../device/shedBehaviorActuation';
+} from '../../lib/utils/deviceControlProfiles';
+import type { ShedActuationTransport } from '../../lib/device/shedBehaviorActuation';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectivePlanHistoryRecorder,

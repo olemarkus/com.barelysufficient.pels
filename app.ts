@@ -107,7 +107,7 @@ import {
   projectPreviewPlanDevice,
   registerAppFlowCards,
   toPlanDevice,
-} from './lib/app/appInit';
+} from './setup/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
 import {
   createDeferredObjectiveEndedBus,

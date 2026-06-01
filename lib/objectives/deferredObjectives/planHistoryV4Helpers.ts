@@ -25,7 +25,7 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 // (no price data yet, hour outside the published horizon) causes the
 // rollover detector to skip the contribution — the postmortem strip is
 // best-effort, not a hard requirement for finalization. See
-// `lib/app/appInit.ts` for the production wiring against
+// `setup/appInit.ts` for the production wiring against
 // `combined_prices`.
 export type HourPriceResolver = (
   hourStartMs: number,
