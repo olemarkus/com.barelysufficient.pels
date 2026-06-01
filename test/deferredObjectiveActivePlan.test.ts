@@ -2002,6 +2002,105 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.latest?.planStatus).toBe('at_risk');
   });
 
+  // Producer-resolved flat display fields (`rateMean` / `speedMode`) replace the
+  // settings-UI `resolveKwhPerUnitDisplayRate` / `resolveSpeedModeLabel` helpers
+  // (`feedback_layering_resolution_in_producer`). This table asserts the persisted
+  // enum/rate matches what those helpers produced for every source case. Only the
+  // enum is persisted — the "Auto" / "Learning…" copy stays in the UI per
+  // `feedback_ui_text_shared_with_logs`.
+  describe('persists flat rateMean + speedMode resolved from the diagnostic source', () => {
+    const cases: ReadonlyArray<{
+      name: string;
+      objectiveKind: 'temperature' | 'ev_soc';
+      source: 'learned' | 'bootstrap' | null;
+      kWhPerDegreeC: number | null;
+      kWhPerPercent: number | null;
+      expectedRateMean: number | undefined;
+      expectedSpeedMode: 'auto' | 'learning' | undefined;
+    }> = [
+      {
+        name: 'learned thermal → auto + learned mean',
+        objectiveKind: 'temperature',
+        source: 'learned',
+        kWhPerDegreeC: 1.5,
+        kWhPerPercent: null,
+        expectedRateMean: 1.5,
+        expectedSpeedMode: 'auto',
+      },
+      {
+        name: 'learned EV → auto + learned per-percent mean',
+        objectiveKind: 'ev_soc',
+        source: 'learned',
+        kWhPerDegreeC: null,
+        kWhPerPercent: 0.18,
+        expectedRateMean: 0.18,
+        expectedSpeedMode: 'auto',
+      },
+      {
+        name: 'bootstrap EV → learning + bootstrap constant',
+        objectiveKind: 'ev_soc',
+        source: 'bootstrap',
+        kWhPerDegreeC: null,
+        // The diagnostic carries the bootstrap constant on kWhPerPercent.
+        kWhPerPercent: 0.15,
+        expectedRateMean: 0.15,
+        expectedSpeedMode: 'learning',
+      },
+    ];
+
+    for (const tc of cases) {
+      it(tc.name, () => {
+        const { deps, saved } = buildPersistDeps();
+        const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+        recorder.observe([makeDiag({
+          deviceId: 'dev',
+          deadlineAtMs: 6 * HOUR_MS,
+          objectiveKind: tc.objectiveKind,
+          ...(tc.objectiveKind === 'ev_soc'
+            ? { targetTemperatureC: null, currentTemperatureC: null, targetPercent: 80, currentPercent: 40 }
+            : {}),
+          kwhPerUnitSource: tc.source,
+          kWhPerDegreeC: tc.kWhPerDegreeC,
+          kWhPerPercent: tc.kWhPerPercent,
+        })], HOUR_MS);
+        recorder.flushIfDirty();
+
+        const latest = saved()!.plansByDeviceId.dev.latest;
+        expect(latest?.rateMean).toBe(tc.expectedRateMean);
+        expect(latest?.speedMode).toBe(tc.expectedSpeedMode);
+      });
+    }
+
+    it('omits both fields when the source short-circuited (target already met)', () => {
+      // Satisfied diagnostic: no source consulted → both fields suppressed so
+      // legacy/byte-stable revisions and the UI fall back to the learned-profile
+      // mean (rateMean) and `auto` (speedMode).
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+      recorder.observe([makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        kwhPerUnitSource: null,
+        status: 'satisfied',
+        reasonCode: 'energy_already_met',
+        energyNeededKWh: 0,
+        horizonPlan: makeHorizon([], {
+          status: 'satisfied',
+          statusDetail: 'energy_already_met',
+          energyNeededKWh: 0,
+          plannedUsefulEnergyKWh: 0,
+        }),
+      })], HOUR_MS);
+      recorder.flushIfDirty();
+
+      const latest = saved()!.plansByDeviceId.dev.latest;
+      expect(latest?.rateMean).toBeUndefined();
+      expect(latest?.speedMode).toBeUndefined();
+    });
+  });
+
   it('omits floorShortfallCause when no shortfall is in play (byte-stable on healthy plans)', () => {
     // Steady on-track plan with `planned_with_margin` resolves to
     // `floorShortfallCause: 'none'` in the helper, which the recorder
@@ -2547,6 +2646,97 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         version: 1,
         plansByDeviceId: {
           dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'totally_invalid' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('round-trips flat rateMean + speedMode on the latest revision', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'rate_refined', kwhPerUnitSource: 'learned', rateMean: 0.22, speedMode: 'auto' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.rateMean).toBe(0.22);
+      expect(normalized.plansByDeviceId.dev?.latest?.speedMode).toBe('auto');
+    });
+
+    it('accepts legacy revisions without rateMean / speedMode fields', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'learned' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev?.latest?.rateMean).toBeUndefined();
+      expect(normalized.plansByDeviceId.dev?.latest?.speedMode).toBeUndefined();
+    });
+
+    it('drops plans whose speedMode is present but malformed', () => {
+      // A tampered enum must not reach the hero meta line's label map (where an
+      // unknown key would render `undefined`).
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'learned', speedMode: 'turbo' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('drops plans whose rateMean is non-numeric garbage', () => {
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'learned', rateMean: 'fast' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it.each([0, -0.1])('drops plans whose rateMean is non-positive (%p)', (rateMean) => {
+      // The recorder only ever persists a finite POSITIVE rate (`resolveRateMean`
+      // returns null and the field is omitted otherwise). A 0 / negative rate is
+      // meaningless and would render garbage in the plan-inputs row, so the
+      // validator must reject the whole plan rather than keep it.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', kwhPerUnitSource: 'learned', rateMean }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('drops plans carrying speedMode without kwhPerUnitSource', () => {
+      // The recorder only writes `speedMode` alongside `kwhPerUnitSource` (both
+      // gated on `source !== null`). A payload with `speedMode` but no source
+      // was never produced by this app — treat it as tampered.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', speedMode: 'auto' }),
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
+    it('drops plans carrying rateMean without kwhPerUnitSource', () => {
+      // `resolveRateMean` returns null (field omitted) whenever the source
+      // short-circuited, so a persisted `rateMean` always travels with its
+      // resolving source. Reject the inconsistent shape.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: basePlan({ reason: 'flow_card', rateMean: 0.22 }),
         },
       };
       const normalized = normalizeDeferredObjectiveActivePlans(persisted);

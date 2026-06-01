@@ -1189,21 +1189,6 @@ six-agent fan-out pass — non-blocking polish, drift, and follow-up.*
       Function is identical, this is a copy/layout preference. Pick one direction and document
       in `notes/ev-ready-by/README.md`.
 
-- [ ] Move smart-task rate and speed-mode display resolution to the producer.
-      Supersedes the earlier `deadlinePlanInputs.ts:51-55` smell:
-      `deadlinePlanInputs.ts` now has `resolveKwhPerUnitDisplayRate`, and
-      `deadlinePlanHero.ts` has a sibling `resolveSpeedModeLabel`; both still
-      ask the settings UI consumer to derive display fields from planner
-      internals. Move the resolution into `activePlanRecorder.ts` and persist
-      flat `rateMean: number | null` plus `speedMode: 'auto' | 'learning'` on
-      `DeferredObjectiveActivePlanRevisionV1`; delete the settings-UI helpers
-      and update the contract.
-      Source: `pels-layering-guardian`, v2.9.0 retrospective, 2026-05-23.
-      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanInputs.ts`,
-      `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
-
 - [ ] Light-canvas tooltip contrast spot-check on Homey light. The
       `967365c5` pivot rebound `.tippy-box[data-theme~='pels']` to
       `color: var(--text)` on `background: var(--color-surface-elevated)`
