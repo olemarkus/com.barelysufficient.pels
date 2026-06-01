@@ -107,6 +107,23 @@ const resolveCommandedTargetC = (device: DevicePlanDevice): number | null => {
   return null;
 };
 
+// True when PELS is shedding this temperature device by commanding it OFF: the
+// plan decided to shed it (`plannedState === 'shed'`) and the resolved shed
+// action is `turn_off` (the default shed behavior — cut power without lowering a
+// setpoint). This is just as much PELS holding the device below its target as a
+// setpoint-lowering shed, but it leaves no lowered commanded target for the
+// commanded-vs-intended check to detect, so it is surfaced as its own signal.
+// A device the USER turned off is not being shed by PELS (`plannedState` is
+// `keep`), so it never sets this.
+const resolvePelsCommandsTurnOffShed = (
+  device: DevicePlanDevice,
+  isTemperatureDevice: boolean,
+): boolean => (
+  isTemperatureDevice
+  && device.plannedState === 'shed'
+  && device.shedAction === 'turn_off'
+);
+
 const resolveTargetStepC = (
   inputDevice: PlanInputDevice | undefined,
   intendedNormalTargetC: number | null,
@@ -235,6 +252,10 @@ const buildDiagnosticsObservation = (params: {
   });
   const currentTemperatureC = resolveCurrentTemperatureC(device, inputDevice);
   const commandedTargetC = resolveCommandedTargetC(device);
+  const pelsCommandsTurnOffShed = resolvePelsCommandsTurnOffShed(
+    device,
+    isTemperatureInputDevice(inputDevice),
+  );
   const targetStepC = resolveTargetStepC(inputDevice, intendedNormalTargetC);
   const observationFresh = resolveObservationFresh(device, inputDevice);
   const eligibleForStarvation = resolveEligibleForStarvation({
@@ -273,6 +294,7 @@ const buildDiagnosticsObservation = (params: {
     intendedNormalTargetC,
     commandedTargetC,
     targetStepC,
+    pelsCommandsTurnOffShed,
     suppressionState: starvationSuppression.suppressionState,
     countingCause: starvationSuppression.countingCause,
     pauseReason: starvationSuppression.pauseReason,

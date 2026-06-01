@@ -71,6 +71,14 @@ export type DeviceDiagnosticsPlanObservation = {
   // it is already commanding in full.
   commandedTargetC: number | null;
   targetStepC: number | null;
+  // True when PELS is shedding this temperature device by commanding it OFF
+  // (`plannedState === 'shed'` with the `turn_off` shed behavior). A turn_off
+  // shed cuts power without lowering a setpoint, so the commanded-vs-intended
+  // target check alone cannot see it; this flag carries the "PELS holds the
+  // device off" signal so a below-target turn_off shed still counts as
+  // suppression. A device the USER turned off (PELS not shedding it) has
+  // `plannedState !== 'shed'` and never sets this.
+  pelsCommandsTurnOffShed: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
@@ -171,12 +179,16 @@ type LiveStarvationObservation = {
   intendedNormalTargetC: number | null;
   commandedTargetC: number | null;
   targetStepC: number | null;
+  pelsCommandsTurnOffShed: boolean;
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-  // True when PELS is commanding the device BELOW its intended/mode target —
-  // the sole entry signal for starvation. `commandedTargetC < intendedNormalTargetC`
-  // (by at least the target step), meaning PELS is actively limiting the device.
+  // True when PELS is holding the device below its intended/mode target — the
+  // entry signal for starvation. Either PELS commands a lowered setpoint
+  // (`commandedTargetC < intendedNormalTargetC` by at least the target step) OR
+  // PELS sheds the device by turning it OFF while its temperature sits below the
+  // intended target. Both are PELS actively limiting the device; a device PELS
+  // commands in full (`keep`) is never below.
   pelsHoldsBelowTarget: boolean;
 };
 
@@ -311,6 +323,26 @@ const pelsCommandsBelowTarget = (
   return commandedTargetC < intendedNormalTargetC - epsilon;
 };
 
+// PELS is holding a turn_off-shed device below its intended target when it has
+// commanded the device OFF as a shed AND the device's temperature still sits
+// more than half a target step under the intended target. The turn_off shed
+// itself is PELS limiting the device (no setpoint is lowered, so
+// `pelsCommandsBelowTarget` cannot see it); the temperature comparison excludes
+// a device that is off because it has already reached / overshot its target
+// (genuinely satisfied, not starved). Only PELS-commanded turn_off sheds set
+// `pelsCommandsTurnOffShed` — a user-off device never qualifies.
+const pelsHoldsOffBelowTarget = (
+  pelsCommandsTurnOffShed: boolean,
+  intendedNormalTargetC: number | null,
+  currentTemperatureC: number | null,
+  targetStepC: number | null,
+): boolean => {
+  if (!pelsCommandsTurnOffShed) return false;
+  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
+  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
+  return currentTemperatureC < intendedNormalTargetC - epsilon;
+};
+
 const normalizeStarvationObservation = (
   observation: DeviceDiagnosticsPlanObservation,
 ): LiveStarvationObservation => ({
@@ -320,12 +352,18 @@ const normalizeStarvationObservation = (
   intendedNormalTargetC: observation.intendedNormalTargetC,
   commandedTargetC: observation.commandedTargetC,
   targetStepC: observation.targetStepC,
+  pelsCommandsTurnOffShed: observation.pelsCommandsTurnOffShed,
   suppressionState: observation.suppressionState,
   countingCause: observation.countingCause,
   pauseReason: observation.pauseReason,
   pelsHoldsBelowTarget: pelsCommandsBelowTarget(
     observation.intendedNormalTargetC,
     observation.commandedTargetC,
+    observation.targetStepC,
+  ) || pelsHoldsOffBelowTarget(
+    observation.pelsCommandsTurnOffShed,
+    observation.intendedNormalTargetC,
+    observation.currentTemperatureC,
     observation.targetStepC,
   ),
 });
@@ -334,7 +372,13 @@ const isValidStarvationObservation = (observation: LiveStarvationObservation): b
   observation.eligibleForStarvation
   && observation.observationFresh
   && isFiniteNumber(observation.intendedNormalTargetC)
-  && isFiniteNumber(observation.commandedTargetC)
+  // A setpoint comparison needs a finite commanded target; a turn_off shed
+  // instead compares the device's temperature against the intended target, so a
+  // turn_off shed with a known current temperature is equally valid.
+  && (
+    isFiniteNumber(observation.commandedTargetC)
+    || (observation.pelsCommandsTurnOffShed && isFiniteNumber(observation.currentTemperatureC))
+  )
 );
 
 const isCountingStarvationObservation = (observation: LiveStarvationObservation): boolean => (
