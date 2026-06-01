@@ -347,9 +347,8 @@ export function createDeferredObjectiveLifecycleEmitter(
     onDeadlineReached: (deviceId, objectiveKind, deadlineAtMs, nowMs) => (
       handleDeferredDeadlineReached(ctx, deviceId, objectiveKind, deadlineAtMs, nowMs)
     ),
-    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, getStallClassification) => {
+    observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans, getStallClassification) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
-      const activePlans = ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
       recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
       // Persist the watermark when we flushed new history (recorder is clean and the save
       // succeeded). Otherwise, if the recorder is clean and enough time has passed since the

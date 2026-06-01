@@ -75,6 +75,7 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   observeDeferredObjectivePlanHistory?: (
     diagnostics: DeferredObjectiveDiagnostic[],
     nowMs: number,
+    activePlans: DeferredObjectiveActivePlansV1 | null,
     getStallClassification?: (deviceId: string) => StallClassification,
   ) => void;
   getStallClassification?: (deviceId: string) => StallClassification;
@@ -90,6 +91,12 @@ export class DeferredObjectiveLifecycleEmitter {
     const settings = this.deps.getDeferredObjectiveSettings();
     if (!settings) return;
 
+    // Read the active-plan recorder snapshot ONCE per tick and reuse it for both
+    // the diagnostics build and the plan-history observe callback. The snapshot is
+    // an in-memory recorder read (no SDK call) and nothing mutates the recorder
+    // within this synchronous tick, so the single read is behavior-identical.
+    const activePlans = this.deps.getDeferredObjectiveActivePlans();
+
     const diagnostics = buildDeferredObjectiveDiagnostics({
       nowMs,
       timeZone: this.deps.getTimeZone(),
@@ -98,7 +105,7 @@ export class DeferredObjectiveLifecycleEmitter {
       powerTracker: this.deps.getPowerTracker(),
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-      activePlans: this.deps.getDeferredObjectiveActivePlans(),
+      activePlans,
       hardCapKw: this.deps.getHardCapKw(),
       concurrentEligibleTracker: this.concurrentEligibleTracker,
     });
@@ -111,6 +118,7 @@ export class DeferredObjectiveLifecycleEmitter {
     this.deps.observeDeferredObjectivePlanHistory?.(
       diagnostics,
       nowMs,
+      activePlans,
       this.deps.getStallClassification,
     );
 
