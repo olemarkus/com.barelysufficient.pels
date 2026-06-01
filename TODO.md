@@ -1125,24 +1125,6 @@ critique, and pels-ux-fit walkthrough) on the Marie Michelets household
 flagged ten findings; eight landed as the train PRs #1207–#1211, #1220,
 and #1222. Remaining: the persona expansions below.*
 
-- [ ] **Walk history-detail hero on prod after the primitive migration.**
-      PR #1222 moved `DeadlinePlanHistoryDetail`'s hero root onto the
-      shared `plan-hero pels-hero` primitive (`--pels-surface-container-high`
-      tier, `--radius-lg`, inset highlight). The `pels-m3-critic` review
-      called the visual shift a judgment call rather than a violation
-      (receipts conventionally sit at surface-1; the live smart-task
-      hero sits at container-high). Walk a Succeeded and a Missed
-      entry on the production Homey alongside the live PlanHero. If
-      the receipt feels "still live" / too loud at the new tier, the
-      correct fix is a dedicated `--pels-surface-receipt` token
-      between `--color-surface-1` and `--pels-surface-container-high`,
-      not reverting to `pels-surface-card` (which would re-introduce
-      the primitive duplication PR #1222 closed). Files:
-      `settings/tokens.css` (new token if needed), `settings/style.css`
-      (re-point `.plan-hero` / `.plan-history-detail__hero` if needed),
-      `notes/overview-hero-spec.md` (document the tier ladder). Source:
-      `pels-m3-critic` follow-up on PR #1222, 2026-05-28.
-
 - [ ] **Move BudgetOverview confidence strings to shared-domain.**
       PR #1211 renamed "Plan confidence" → "Budget confidence"
       inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`,
