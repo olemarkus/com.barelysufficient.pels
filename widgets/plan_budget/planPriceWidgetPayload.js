@@ -30,6 +30,15 @@ __export(planPriceWidgetPayload_exports, {
 });
 module.exports = __toCommonJS(planPriceWidgetPayload_exports);
 
+// packages/shared-domain/src/price/priceUnitLabel.ts
+var PER_KWH_RATE_SUFFIX = /^(.*?)\s*\/\s*kwh\s*$/i;
+var priceRateLabelToAmountUnit = (rateLabel) => {
+  const match = PER_KWH_RATE_SUFFIX.exec(rateLabel);
+  if (!match) return rateLabel.trim();
+  const moneyUnit = match[1].trim();
+  return moneyUnit.length > 0 ? moneyUnit : rateLabel.trim();
+};
+
 // packages/shared-domain/src/planPriceWidgetCopy.ts
 var PLAN_PRICE_WIDGET_TITLE = "Budget and Price";
 var PLAN_PRICE_WIDGET_EMPTY = {
@@ -42,7 +51,7 @@ var ORE_PER_KWH_LABEL = "\xF8re/kWh";
 var PLACEHOLDER_UNIT = "price units";
 var KWH_RATE_SUFFIX = /\s*\/\s*kwh\s*$/i;
 var normalizeUnitWithKwh = (unit) => KWH_RATE_SUFFIX.test(unit) ? unit : `${unit}/kWh`;
-var stripKwhRateSuffix = (unit) => unit.replace(KWH_RATE_SUFFIX, "").trim();
+var stripKwhRateSuffix = priceRateLabelToAmountUnit;
 var resolvePlanPriceCostDisplay = (params) => {
   const { priceScheme, priceUnit } = params;
   if (priceScheme === "flow" || priceScheme === "homey") {

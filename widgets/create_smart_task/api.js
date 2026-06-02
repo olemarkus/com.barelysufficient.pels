@@ -4733,6 +4733,8 @@ var ONE_HOUR_MS2 = 60 * 60 * 1e3;
 // lib/objectives/deferredObjectives/activePlanRecorder.ts
 var logger3 = getLogger("plan/deferred-active");
 var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
+var ONE_HOUR_MS3 = 60 * 60 * 1e3;
+var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
 
 // lib/utils/perfCounters.ts
 var state = {
@@ -5269,7 +5271,7 @@ var deadlineLabels = (kind) => DEADLINE_LABELS[kind];
 var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
 var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
-var ONE_HOUR_MS3 = 60 * ONE_MINUTE_MS;
+var ONE_HOUR_MS4 = 60 * ONE_MINUTE_MS;
 
 // packages/shared-domain/src/smartTaskDeviceKind.ts
 var isEvCharger = (device) => device.deviceClass === "evcharger";

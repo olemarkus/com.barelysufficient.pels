@@ -37,6 +37,15 @@ jobs:
       - name: Build app bundle
         run: npm run build
 
+      - name: Verify committed generated artifacts match source
+        run: |
+          DIRTY="$(git status --porcelain)"
+          if [ -n "$DIRTY" ]; then
+            echo "::error::Build changed the working tree. A generated artifact (e.g. a widget bundle) is stale, hand-edited, or newly produced but uncommitted. Run 'npm run build' and commit the result." >&2
+            echo "$DIRTY" >&2
+            exit 1
+          fi
+
       - name: Validate Homey package contents
         run: npm run validate
 
