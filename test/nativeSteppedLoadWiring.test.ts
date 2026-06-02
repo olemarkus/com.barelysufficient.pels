@@ -1339,6 +1339,57 @@ describe('native stepped-load wiring', () => {
     }
   });
 
+  it('keeps the native stepped-load command adapter across a transient empty SDK read', async () => {
+    // Regression: a transient empty SDK read is held back by the abandon-grace
+    // guard (the snapshot is preserved), but the native stepped-load adapter must
+    // be preserved too. Previously the adapter was torn down before the guard ran,
+    // so a default-on Høiax step command would silently no-op until the next good
+    // read re-registered it.
+    let devicePayload: Record<string, unknown> = { 'hoiax-1': buildHoiaxDevice() };
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return devicePayload;
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    const put = vi.fn().mockResolvedValue(undefined);
+    setRestClient({ get, put });
+    try {
+      const deviceManager = new DeviceTransport(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        {
+          getNativeEvWiringEnabled: () => true,
+          getDeviceControlProfile: () => steppedProfile,
+        },
+      );
+
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+      expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
+
+      // Transient empty read: the SDK returns no devices for one refresh.
+      devicePayload = {};
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+
+      // The abandon-grace guard preserves the snapshot...
+      expect(deviceManager.getSnapshot().map((d) => d.id)).toEqual(['hoiax-1']);
+
+      // ...and the native stepped-load adapter for the preserved device survives,
+      // so a step command still routes (it would resolve false with no adapter).
+      await expect(setObservedNativeSteppedLoadStep({
+        owner: deviceManager,
+        deviceId: 'hoiax-1',
+        profile: steppedProfile,
+        desiredStepId: 'max',
+        setCapability: (capabilityId, value) => deviceManager.setCapability('hoiax-1', capabilityId, value),
+      })).resolves.toBe(true);
+      expect(put).toHaveBeenCalledWith(
+        'manager/devices/device/hoiax-1/capability/max_power_3000',
+        { value: '3' },
+      );
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
   it('clears fallback off-step reporting when native onoff turns back on', async () => {
     const offDevice = {
       ...buildHoiaxDevice(),
