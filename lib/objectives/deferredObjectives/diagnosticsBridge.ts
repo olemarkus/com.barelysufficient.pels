@@ -17,6 +17,7 @@ import { formatDeadlineLocalTime } from './deadline';
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveCommittedHours } from './resolveCommittedHours';
+import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { resolvePlanningSpeedKw } from './planningSpeed';
 import {
   resolveObjectiveProgress,
@@ -468,6 +469,23 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     deviceId,
     objective,
   });
+  // Trajectory gate for mid-execution price deferral. Resolved here (not in the
+  // planner) because it compares the buffered energy still needed
+  // (`profileEnergy.energyNeededKWh`, derived from the RAW measured value) against
+  // the committed plan's future hours — the planner sees neither the measured
+  // value nor the commitment. `commitment === undefined` ⇒ no committed future
+  // hours ⇒ never ahead.
+  //
+  // PRECONDITION: this point is only reached on `progress.reasonCode === null`
+  // (every stale/missing/invalid read short-circuits to `withUnknown` above) and
+  // `energyNeededKWh` is the buffered floor for the current remaining units. A
+  // stale read returns `remainingUnits: 0 ⇒ energyNeededKWh: 0`, which would
+  // falsely read "ahead" — so the gate must never be relocated past that guard.
+  const aheadOfHourMilestone = isAheadOfHourMilestone({
+    energyNeededKWh: profileEnergy.energyNeededKWh,
+    committedHours: commitment ?? [],
+    nowMs,
+  });
   const { plan: horizonPlan, dailyBudgetExhaustedBucketCount } = resolveHorizonPlanWithRescue({
     nowMs,
     deviceId,
@@ -477,6 +495,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     deadlineAtMs,
     steps,
     commitment,
+    aheadOfHourMilestone,
     policyHorizon,
     priceOptimizationEnabled,
     dailyBudgetSnapshot,

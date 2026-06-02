@@ -139,9 +139,7 @@ export const planDeferredObjectiveHorizon = (
   });
   const priceDeferralEligible = resolvePriceDeferralEligible({
     allocation,
-    buckets,
-    stepForBucket,
-    energyNeededKWh,
+    aheadOfHourMilestone: input.aheadOfHourMilestone ?? false,
     epsilonKWh,
   });
   return buildPlanFromAllocation({
@@ -358,45 +356,57 @@ const resolveBudgetBoundFeasibility = (params: {
   return uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh;
 };
 
-// Price-deferral release probe (mid-execution price deferral). Eligible only when
-// the current hour is an `avoid` (expensive) bucket carrying booked energy —
-// typically a commitment-floor artifact, since a fresh cheapest-first plan would
-// not put energy into an expensive current hour while cheaper hours still have
-// room — AND a fresh re-allocation of the buffered-floor residual over the
-// *remaining* (non-current) hours alone lands `on_track` (no shortfall, no
-// deadline reserve, and no other `avoid` hour — for soft AND hard alike: if the
-// residual only fits by using another avoid hour there is no cheaper hour to
-// defer into). When true the decoration controller's admission idles the device
-// this cycle so a cheaper hour carries the load. Classification only, exactly like
-// the climbed-band / budget-bound probes; the `avoid` banding doubles as the
-// meaningful-price-gap gate (a flat price curve does not band hours as `avoid`).
+// Relative price margin a later hour must beat to be worth deferring into. A
+// pure ratio (later ≤ current × (1 − margin)) — unit-invariant, since the price
+// series carries no currency at this layer — so near-equal hours keep the
+// earlier (safer-to-heat-early) slot. ~5%.
+const PRICE_DEFERRAL_MARGIN = 0.05;
+
+// Price-deferral release probe (mid-execution price deferral). Eligible when
+// BOTH hold:
+//  1. `aheadOfHourMilestone` — the device's MEASURED value is already at/above
+//     the committed plan's end-of-this-hour milestone in the objective's own
+//     unit (resolved by the producer in `isAheadOfHourMilestone`; the planner
+//     has no measured value or committed rate). Being at/ahead of a trajectory
+//     that was built to meet the deadline makes coasting this hour self-feasible
+//     — so no residual re-allocation safety check is needed.
+//  2. A later, NON-reserve hour is cheaper than the current hour by more than
+//     `PRICE_DEFERRAL_MARGIN` (raw-price ratio). Deadline-reserve hours are
+//     excluded so we never defer into the reserve; a negative later price
+//     naturally satisfies the inequality (heat when paid). The current hour must
+//     still carry booked energy (else it is already idle and admission releases
+//     it via the `plannedUsefulEnergyKWh ≤ 0` branch — nothing to defer).
+// When true the decoration controller's admission idles the device this cycle so
+// a cheaper hour carries the load. Classification only — never writes a revision.
 const resolvePriceDeferralEligible = (params: {
   allocation: BucketAllocationResult;
-  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
-  stepForBucket: StepForBucket;
-  energyNeededKWh: number;
+  aheadOfHourMilestone: boolean;
   epsilonKWh: number;
 }): boolean => {
+  if (!params.aheadOfHourMilestone) return false;
   const current = params.allocation.plannedBuckets.find((bucket) => bucket.current);
-  if (
-    !current
-    || current.preference !== 'avoid'
-    || current.plannedUsefulEnergyKWh <= params.epsilonKWh
-  ) {
+  if (!current || current.plannedUsefulEnergyKWh <= params.epsilonKWh) return false;
+  const currentPrice = current.price;
+  if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice) || currentPrice <= 0) {
     return false;
   }
-  const remainingBuckets = params.buckets.filter((bucket) => !bucket.current);
-  if (remainingBuckets.length === 0) return false;
-  const deferred = allocateEnergyToBuckets({
-    buckets: remainingBuckets,
-    stepForBucket: params.stepForBucket,
-    energyNeededKWh: params.energyNeededKWh,
-    epsilonKWh: params.epsilonKWh,
-  });
-  if (deferred.unplannedUsefulEnergyKWh > params.epsilonKWh) return false;
-  if (deferred.usesDeadlineReserve) return false;
-  if (deferred.usesPolicyAvoid) return false;
-  return true;
+  const threshold = currentPrice * (1 - PRICE_DEFERRAL_MARGIN);
+  return params.allocation.plannedBuckets.some((bucket) => (
+    !bucket.current
+    && !bucket.reserve
+    && bucket.startMs >= current.endMs
+    // The cheaper hour must be one the plan actually carries load in. A bucket
+    // the allocation booked nothing into (zero-capacity, or simply not part of
+    // the committed/expanded set) is cheap on paper but won't take the deferred
+    // energy — the committed reallocation fills the planned hours first, so
+    // releasing toward it would just push the load into the remaining (possibly
+    // pricier) committed hours at the next settle. Requiring booked energy keeps
+    // the price signal aligned with where the load really goes.
+    && bucket.plannedUsefulEnergyKWh > params.epsilonKWh
+    && typeof bucket.price === 'number'
+    && Number.isFinite(bucket.price)
+    && bucket.price <= threshold
+  ));
 };
 
 const buildPlanFromAllocation = (params: {
