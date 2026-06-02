@@ -73,6 +73,7 @@ import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
+import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
@@ -1945,7 +1946,12 @@ class PelsApp extends Homey.App {
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
   }
   public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
-    return this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
+    const snapshot = this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
+    if (snapshot === null) return null;
+    // Stitch live in-progress trajectory (start progress + observed samples)
+    // onto the snapshot for the smart-tasks widget chart. UI-only — never
+    // persisted (see the assembler + the field doc on the contract).
+    return assembleActivePlansWithTrajectory(snapshot, this.deferredObjectivePlanHistoryRecorder);
   }
   // Read the device's currently-persisted deferred objective, or undefined when
   // none is stored. Backs `hasDeferredObjectiveForDevice`.

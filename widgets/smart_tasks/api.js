@@ -25,6 +25,220 @@ __export(api_exports, {
 });
 module.exports = __toCommonJS(api_exports);
 
+// packages/shared-domain/src/deferredPlanHistoryChartData.ts
+var HOUR_MS = 60 * 60 * 1e3;
+var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs) => {
+  const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
+  if (kwhPerUnitMean <= 0) return [];
+  const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
+  const points = [
+    { atMs: anchorAtMs, value: anchorValue }
+  ];
+  let cumulativeProgress = anchorValue;
+  let lastAnchorAtMs = anchorAtMs;
+  for (const hour of sortedHours) {
+    const endOfHour = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    if (endOfHour <= anchorAtMs) continue;
+    const plannedKWh = Number.isFinite(hour.plannedKWh) ? Math.max(0, hour.plannedKWh) : 0;
+    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
+    const coveredSpanMs = endOfHour - coverStartMs;
+    const postAnchorFraction = coveredSpanMs > 0 ? Math.max(0, Math.min(1, (endOfHour - Math.max(anchorAtMs, coverStartMs)) / coveredSpanMs)) : 1;
+    if (hour.startsAtMs > lastAnchorAtMs) {
+      points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
+    }
+    cumulativeProgress += plannedKWh * postAnchorFraction / kwhPerUnitMean;
+    points.push({ atMs: endOfHour, value: cumulativeProgress });
+    lastAnchorAtMs = endOfHour;
+  }
+  return points;
+};
+var observedValueAt = (observed, atMs) => {
+  let before = null;
+  for (const point of observed) {
+    if (point.atMs <= atMs) {
+      before = point;
+      continue;
+    }
+    if (before === null) return null;
+    if (point.atMs === before.atMs) return before.value;
+    const fraction = (atMs - before.atMs) / (point.atMs - before.atMs);
+    return before.value + (point.value - before.value) * fraction;
+  }
+  return before === null ? null : before.value;
+};
+var buildRevisedStaircase = (snapshot, observed, startProgress, windowStartMs, windowEndMs) => {
+  const revisedAtMs = snapshot.revisedAtMs;
+  if (Number.isFinite(revisedAtMs) && revisedAtMs > windowStartMs) {
+    const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
+    const anchorValue = observedValueAt(bracketed, revisedAtMs);
+    if (anchorValue !== null) {
+      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs);
+    }
+  }
+  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs);
+};
+var staircasesDiffer = (a, b) => {
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].atMs !== b[i].atMs) return true;
+    if (Math.abs(a[i].value - b[i].value) > 1e-3) return true;
+  }
+  return false;
+};
+var finiteOrNull = (raw) => raw === null || !Number.isFinite(raw) ? null : raw;
+var pickStartProgress = (entry) => finiteOrNull(
+  entry.objectiveKind === "temperature" ? entry.startProgressC : entry.startProgressPercent
+);
+var pickTargetValue = (entry) => finiteOrNull(
+  entry.objectiveKind === "temperature" ? entry.targetTemperatureC : entry.targetPercent
+);
+var pickObservedSamples = (entry) => {
+  if (!Array.isArray(entry.progressSamples) || entry.progressSamples.length === 0) {
+    return [];
+  }
+  const out = [];
+  for (const sample of entry.progressSamples) {
+    if (!Number.isFinite(sample.atMs)) continue;
+    const value = entry.objectiveKind === "temperature" ? sample.valueC : sample.valuePercent;
+    if (value === null || !Number.isFinite(value)) continue;
+    out.push({ atMs: sample.atMs, value });
+  }
+  return out.sort((a, b) => a.atMs - b.atMs);
+};
+var hasUsableTrajectory = (observed, originalSnapshotMean, finalSnapshotMean) => {
+  if (observed.length >= 2) return true;
+  if (typeof originalSnapshotMean === "number" && originalSnapshotMean > 0) return true;
+  if (typeof finalSnapshotMean === "number" && finalSnapshotMean > 0) return true;
+  return false;
+};
+var pickMetMarker = (entry) => {
+  if (entry.outcome !== "met") return null;
+  if (entry.metAtMs === null || !Number.isFinite(entry.metAtMs)) return null;
+  return entry.metAtMs;
+};
+var pickMetMarkerValue = (entry) => {
+  if (pickMetMarker(entry) === null) return null;
+  if (entry.metReason === "stalled" || entry.metReason === "stalled_device_capped") {
+    const finalProgress = entry.objectiveKind === "temperature" ? entry.finalProgressC : entry.finalProgressPercent;
+    return Number.isFinite(finalProgress) ? finalProgress : null;
+  }
+  return pickTargetValue(entry);
+};
+var composeTrajectoryData = (entry, observed, windowStartMs, windowEndMs) => {
+  const startProgress = pickStartProgress(entry);
+  const plannedOriginal = entry.originalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs) : [];
+  const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs) : [];
+  const replanned = plannedOriginal.length > 0 && plannedFinalStartAnchored.length > 0 && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
+  const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, windowStartMs, windowEndMs) : [];
+  const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
+  const resolvedOriginal = plannedOriginal.length > 0 ? plannedOriginal : plannedFinalStartAnchored;
+  return {
+    mode: "trajectory",
+    unit: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
+    windowStartMs,
+    windowEndMs,
+    plannedOriginal: resolvedOriginal,
+    plannedFinal,
+    observed,
+    target: pickTargetValue(entry),
+    metAtMs: pickMetMarker(entry),
+    metMarkerValue: pickMetMarkerValue(entry)
+  };
+};
+var composeLegacyData = (entry, windowStartMs, windowEndMs) => ({
+  mode: "legacy_kwh",
+  unit: null,
+  windowStartMs,
+  windowEndMs,
+  plannedOriginal: [],
+  plannedFinal: null,
+  observed: [],
+  target: pickTargetValue(entry),
+  metAtMs: pickMetMarker(entry),
+  metMarkerValue: pickMetMarkerValue(entry)
+});
+var resolveHistoryDetailChartData = (entry) => {
+  const observed = pickObservedSamples(entry);
+  const originalMean = entry.originalPlan?.kwhPerUnitMean;
+  const finalMean = entry.finalPlan?.kwhPerUnitMean;
+  const windowStartMs = entry.startedAtMs;
+  const windowEndMs = entry.deadlineAtMs;
+  if (!hasUsableTrajectory(observed, originalMean, finalMean)) {
+    return composeLegacyData(entry, windowStartMs, windowEndMs);
+  }
+  const trajectory = composeTrajectoryData(entry, observed, windowStartMs, windowEndMs);
+  if (trajectory.plannedOriginal.length === 0 && trajectory.plannedFinal === null && trajectory.observed.length < 2) {
+    return composeLegacyData(entry, windowStartMs, windowEndMs);
+  }
+  return trajectory;
+};
+
+// packages/shared-domain/src/deferredActivePlanChartData.ts
+var finiteOrNull2 = (raw) => raw === null || raw === void 0 || !Number.isFinite(raw) ? null : raw;
+var pickTarget = (plan) => finiteOrNull2(
+  plan.objectiveKind === "temperature" ? plan.targetTemperatureC : plan.targetPercent
+);
+var pickStartProgress2 = (plan) => finiteOrNull2(
+  plan.objectiveKind === "temperature" ? plan.startProgressC : plan.startProgressPercent
+);
+var pickRate = (plan) => {
+  const rate = finiteOrNull2(plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null);
+  return rate !== null && rate > 0 ? rate : null;
+};
+var pickObservedSamples2 = (samples, objectiveKind) => {
+  if (!Array.isArray(samples) || samples.length === 0) return [];
+  const out = [];
+  for (const sample of samples) {
+    if (!sample || !Number.isFinite(sample.atMs)) continue;
+    const value = objectiveKind === "temperature" ? sample.valueC : sample.valuePercent;
+    if (value === null || !Number.isFinite(value)) continue;
+    out.push({ atMs: sample.atMs, value });
+  }
+  return out.sort((a, b) => a.atMs - b.atMs);
+};
+var emptyChart = (target, windowStartMs, windowEndMs) => ({
+  mode: "legacy_kwh",
+  unit: null,
+  windowStartMs,
+  windowEndMs,
+  plannedOriginal: [],
+  plannedFinal: null,
+  observed: [],
+  target,
+  metAtMs: null,
+  metMarkerValue: null
+});
+var resolveActivePlanChartData = (plan) => {
+  const windowStartMs = plan.startedAtMs;
+  const windowEndMs = plan.deadlineAtMs;
+  const target = pickTarget(plan);
+  const observed = pickObservedSamples2(plan.progressSamples, plan.objectiveKind);
+  const startProgress = pickStartProgress2(plan);
+  const rate = pickRate(plan);
+  const latest = plan.latest;
+  const planned = latest && startProgress !== null && rate !== null ? integratePlannedStaircase(
+    { hours: latest.hours, kwhPerUnitMean: rate },
+    startProgress,
+    windowStartMs,
+    windowEndMs
+  ) : [];
+  if (planned.length === 0 && observed.length < 2) {
+    return emptyChart(target, windowStartMs, windowEndMs);
+  }
+  return {
+    mode: "trajectory",
+    unit: plan.objectiveKind === "temperature" ? "\xB0C" : "%",
+    windowStartMs,
+    windowEndMs,
+    plannedOriginal: planned,
+    plannedFinal: null,
+    observed,
+    target,
+    metAtMs: null,
+    metMarkerValue: null
+  };
+};
+
 // packages/shared-domain/src/deadlineLabels.ts
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
 var SMART_TASK_LIST_STATUS_LABELS = {
@@ -515,8 +729,36 @@ var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
 var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
+// packages/shared-domain/src/utils/dateUtils.ts
+var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
+
+// packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
+var HOUR_MS2 = 60 * 60 * 1e3;
+
+// packages/shared-domain/src/deferredPlanHistory.ts
+var OUTCOME_LABELS = {
+  met: "Succeeded",
+  missed: "Missed",
+  abandoned: "Abandoned",
+  replaced: "Abandoned",
+  unknown: "Unknown"
+};
+var OUTCOME_TONES = {
+  met: "ok",
+  missed: "warn",
+  abandoned: "muted",
+  replaced: "muted",
+  unknown: "muted"
+};
+var getPlanHistoryOutcomeLabel = (outcome) => OUTCOME_LABELS[outcome];
+var getPlanHistoryOutcomeTone = (outcome) => OUTCOME_TONES[outcome];
+var MINUTE_MS = 60 * 1e3;
+var HOUR_MS3 = 60 * MINUTE_MS;
+
 // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
 var ROW_CAP = 3;
+var ENDED_ROW_CAP = 5;
+var ENDED_WINDOW_MS = 24 * 60 * 60 * 1e3;
 var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 var STATUS_TIER = {
   cannot_meet: 0,
@@ -537,6 +779,7 @@ var STATUS_TONE = {
   satisfied: "ok"
 };
 var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
+var toWidgetChart = (chart) => chart.mode === "trajectory" ? chart : null;
 var resolveCurrentValue = (device, kind) => {
   if (!device) return null;
   if (kind === "temperature") {
@@ -729,7 +972,8 @@ var buildRow = (params) => {
     planMetaLabel: copy.planMetaLabel,
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
-    recourseHint: copy.recourseHint
+    recourseHint: copy.recourseHint,
+    chart: toWidgetChart(resolveActivePlanChartData(plan))
   };
 };
 var buildCandidate = (params) => {
@@ -752,21 +996,56 @@ var buildCandidate = (params) => {
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
 };
+var resolveEndedTarget = (entry) => {
+  if (entry.objectiveKind === "temperature") {
+    return isFiniteNumber(entry.targetTemperatureC) ? entry.targetTemperatureC : null;
+  }
+  return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
+};
+var buildEndedRow = (entry, devicesById, nowMs, timeZone) => {
+  const targetValue = resolveEndedTarget(entry);
+  if (targetValue === null) return null;
+  return {
+    id: entry.id,
+    deviceId: entry.deviceId,
+    deviceName: devicesById.get(entry.deviceId)?.name ?? entry.deviceName ?? entry.deviceId,
+    unitSymbol: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
+    targetValue,
+    targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(entry.objectiveKind),
+    outcomeLabel: getPlanHistoryOutcomeLabel(entry.outcome),
+    // The history tone vocabulary ('ok' | 'warn' | 'muted') is a subset of the
+    // widget tone union, so it maps straight through with no 'danger' case.
+    outcomeTone: getPlanHistoryOutcomeTone(entry.outcome),
+    finishedLabel: formatDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
+    chart: toWidgetChart(resolveHistoryDetailChartData(entry))
+  };
+};
+var buildEndedRows = (history, devicesById, nowMs, timeZone) => {
+  const byDevice = history?.entriesByDeviceId;
+  if (!byDevice) return [];
+  const cutoffMs = nowMs - ENDED_WINDOW_MS;
+  const recent = Object.values(byDevice).flat().filter((entry) => isFiniteNumber(entry.finalizedAtMs) && entry.finalizedAtMs >= cutoffMs && entry.finalizedAtMs <= nowMs);
+  return [...recent].sort((a, b) => b.finalizedAtMs - a.finalizedAtMs).map((entry) => buildEndedRow(entry, devicesById, nowMs, timeZone)).filter((row) => row !== null).slice(0, ENDED_ROW_CAP);
+};
 var buildSmartTasksWidgetPayload = (input) => {
-  const plans = input.activePlans?.plansByDeviceId;
-  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
   const devicesById = new Map(
     input.devices.map((device) => [device.id, device])
   );
-  const candidates = Object.entries(plans).map(([deviceId, plan]) => plan ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone: input.timeZone ?? null }) : null).filter((candidate) => candidate !== null);
-  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+  const timeZone = input.timeZone ?? null;
+  const endedRows = buildEndedRows(input.history, devicesById, input.nowMs, timeZone);
+  const plans = input.activePlans?.plansByDeviceId;
+  const candidates = plans ? Object.entries(plans).map(([deviceId, plan]) => plan ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone }) : null).filter((candidate) => candidate !== null) : [];
+  if (candidates.length === 0 && endedRows.length === 0) {
+    return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+  }
   const sorted = [...candidates].sort(compareCandidates);
   const top = sorted.slice(0, ROW_CAP);
   const overflowCount = Math.max(0, sorted.length - top.length);
   return {
     state: "ready",
     rows: top.map((candidate) => candidate.row),
-    overflowCount
+    overflowCount,
+    endedRows
   };
 };
 
@@ -778,9 +1057,11 @@ var readTimeZone = (homey) => {
 var getSmartTasks = async ({ homey }) => {
   const app = homey.app;
   const activePlans = typeof app?.getDeferredObjectiveActivePlansUiPayload === "function" ? app.getDeferredObjectiveActivePlansUiPayload() : null;
+  const history = typeof app?.getDeferredObjectivePlanHistoryUiPayload === "function" ? app.getDeferredObjectivePlanHistoryUiPayload() : null;
   const devices = typeof app?.getUiPickerDevices === "function" ? app.getUiPickerDevices() : [];
   return buildSmartTasksWidgetPayload({
     activePlans,
+    history,
     devices,
     nowMs: Date.now(),
     timeZone: readTimeZone(homey)

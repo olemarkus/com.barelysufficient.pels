@@ -1,3 +1,5 @@
+import type { DeferredPlanHistoryChartData } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
+
 export type SmartTasksWidgetTone = 'danger' | 'warn' | 'muted' | 'ok';
 
 export type SmartTasksWidgetRow = {
@@ -36,6 +38,37 @@ export type SmartTasksWidgetRow = {
   // Closing-sentence recourse hint shown under whyLabel on cannot_meet and
   // EV-unplugged cases. Null when the widget can't honestly offer recourse.
   recourseHint: string | null;
+  // Producer-resolved planned-vs-actual trajectory for the tap-to-detail chart
+  // (planned staircase + observed progress line + target). `null` when there's
+  // nothing chartable yet (no rate AND < 2 observed samples) — the detail panel
+  // hides the chart and shows only the text lines. Resolved by
+  // `resolveActivePlanChartData` in shared-domain.
+  chart: DeferredPlanHistoryChartData | null;
+};
+
+// A task that finalized within the recent window (last 24h), shown in the
+// "Recently ended" section below the active rows. Carries its FINAL trajectory
+// (resolved from the persisted history entry) so tapping it shows the same
+// chart shape as an on-going task. The outcome label + tone come from the
+// shared-domain history helpers so the widget never hardcodes "Succeeded" /
+// "Missed" copy (`feedback_ui_text_shared_with_logs`).
+export type SmartTasksWidgetEndedRow = {
+  // Stable history-entry id (NOT deviceId) — a device can finalize more than one
+  // task within the 24h window, so the tap target / detail lookup must key on
+  // this unique id to open the run the user actually tapped.
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  unitSymbol: '°C' | '%';
+  targetValue: number;
+  // "Heat to 55 °C" / "Charge to 80 %" — producer-resolved action verb.
+  targetActionVerb: string;
+  // Outcome chip label ("Succeeded" / "Missed" / "Abandoned" / "Unknown").
+  outcomeLabel: string;
+  outcomeTone: SmartTasksWidgetTone;
+  // Long local-time label for when the run ended ("Today 14:20", "Sat 14:20").
+  finishedLabel: string;
+  chart: DeferredPlanHistoryChartData | null;
 };
 
 export type SmartTasksWidgetReadyPayload = {
@@ -43,6 +76,10 @@ export type SmartTasksWidgetReadyPayload = {
   rows: SmartTasksWidgetRow[];
   // Number of active (non-satisfied) tasks not included in the top-3.
   overflowCount: number;
+  // Tasks that finalized in the recent window, newest first, capped. Empty when
+  // nothing ended recently. The payload is `ready` (not `empty`) whenever EITHER
+  // `rows` or `endedRows` is non-empty.
+  endedRows: SmartTasksWidgetEndedRow[];
 };
 
 export type SmartTasksWidgetEmptyPayload = {

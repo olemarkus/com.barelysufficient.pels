@@ -63,6 +63,21 @@ export type DeferredObjectiveActivePlanFloorShortfallCause =
   | 'time_capacity'
   | 'none';
 
+// Hourly snapshot of objective progress while a run is in flight. Structurally
+// identical to `DeferredObjectivePlanHistoryProgressSample` in
+// `deferredObjectivePlanHistory.ts`, but duplicated here on purpose:
+// `deferredObjectivePlanHistory.ts` already imports from THIS file
+// (`DeferredObjectiveActivePlanHourV1` / `…StatusV1`), so importing the history
+// sample type back here would close a circular dependency (rejected by the
+// `no-circular` dep-cruiser rule). The shapes are byte-identical so values flow
+// between the two structurally. Added 2026-06-02 for the smart-tasks widget
+// trajectory chart.
+export type DeferredObjectiveActivePlanProgressSampleV1 = {
+  atMs: number;
+  valueC: number | null;
+  valuePercent: number | null;
+};
+
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;
@@ -269,6 +284,22 @@ export type DeferredObjectiveActivePlanV1 = {
   commitment?: DeferredObjectiveActivePlanCommitmentV1;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
+  // ── UI-derived live-progress fields (NEVER persisted) ──────────────────────
+  // Populated only by the active-plans UI payload assembler
+  // (`setup/deferredObjectiveActivePlansUiAssembler.ts`, called from
+  // `app.getDeferredObjectiveActivePlansUiPayload`), which stitches the live
+  // in-progress readings from the plan-history recorder onto the snapshot so the
+  // smart-tasks widget can draw a planned-vs-actual trajectory while the run is
+  // open. The active-plan store never writes these (the samples are persisted by
+  // the history recorder, not duplicated here), so persistence round-trips and
+  // the active-plan validator are unaffected — they are absent on every loaded
+  // plan and present only on the assembled UI payload. Added 2026-06-02.
+  //
+  // `startProgress*` is the first observed reading of the run (the trajectory
+  // anchor); `progressSamples` is the hourly observed series so far.
+  startProgressC?: number | null;
+  startProgressPercent?: number | null;
+  progressSamples?: DeferredObjectiveActivePlanProgressSampleV1[];
   // Bounded, most-recent-first log of past revisions, capped at
   // `MAX_HISTORY_REVISIONS` entries in the recorder. The first element is the
   // revision that landed *before* `latest` (so the head is always "previous

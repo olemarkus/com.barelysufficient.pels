@@ -14,6 +14,10 @@
         <p class="empty" data-empty hidden></p>
         <p class="empty-hint" data-empty-hint hidden></p>
         <p class="overflow" data-overflow hidden></p>
+        <div class="ended" data-ended-section hidden>
+          <p class="ended__heading" data-ended-heading></p>
+          <ol class="rows ended__rows" data-ended-rows></ol>
+        </div>
       </section>
       <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
         <header class="detail-header">
@@ -25,6 +29,7 @@
         <div class="detail-body">
           <p class="detail-line detail-line--target" data-detail-target></p>
           <p class="detail-line detail-line--deadline" data-detail-deadline hidden></p>
+          <div class="detail-chart" data-detail-chart hidden></div>
           <p class="detail-line detail-line--why" data-detail-why hidden></p>
           <p class="detail-line detail-line--recourse" data-detail-recourse hidden></p>
           <p class="detail-line detail-line--meta" data-detail-meta hidden></p>
@@ -39,6 +44,16 @@
           <span class="row__values" data-row-values></span>
           <span class="row__eta" data-row-eta></span>
           <span class="chip" data-row-chip></span>
+        </button>
+      </li>
+    </template>
+    <template id="ended-row-template">
+      <li class="row">
+        <button type="button" class="row__btn" data-ended-button aria-controls="smart-task-detail" aria-label="Ended smart task">
+          <span class="row__name" data-ended-name></span>
+          <span class="row__values" data-ended-values></span>
+          <span class="row__eta" data-ended-finished></span>
+          <span class="chip" data-ended-chip></span>
         </button>
       </li>
     </template>

@@ -4,7 +4,18 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanHistoryEntry } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
+import {
+  getPlanHistoryOutcomeLabel,
+  getPlanHistoryOutcomeTone,
+} from '../../../packages/shared-domain/src/deferredPlanHistory';
+import {
+  type DeferredPlanHistoryChartData,
+  resolveHistoryDetailChartData,
+} from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import {
   formatSmartTaskListConfidenceChipLabel,
   resolveSmartTaskLearning,
@@ -21,12 +32,18 @@ import {
 } from '../../../packages/shared-domain/src/deadlineLabels';
 import type {
   SmartTasksWidgetEmptyPayload,
+  SmartTasksWidgetEndedRow,
   SmartTasksWidgetPayload,
   SmartTasksWidgetRow,
   SmartTasksWidgetTone,
 } from './smartTasksWidgetTypes';
 
 export const ROW_CAP = 3;
+// Recently-ended tasks shown below the active rows. Capped so the 220 px panel
+// stays scannable and the payload bounded; newest-finalized first.
+export const ENDED_ROW_CAP = 5;
+// A task counts as "recently ended" when it finalized within this window.
+export const ENDED_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Re-export under the widget-local name so existing consumers/tests keep a
 // stable import surface; the string itself is sourced from shared-domain so
 // runtime logging and the widget render identical copy.
@@ -54,6 +71,15 @@ const STATUS_TONE: Record<SmartTaskListStatusId, SmartTasksWidgetTone> = {
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
+);
+
+// The widget only ever draws the `trajectory` shape; the producers' `legacy_kwh`
+// fallback (a kWh bar chart for old history entries) has no widget renderer. Map
+// it to null at the boundary so `row.chart` is non-null EXACTLY when there's a
+// trajectory to draw — matching the field's "null when nothing chartable" doc
+// and letting the renderer skip a legacy branch.
+const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistoryChartData | null => (
+  chart.mode === 'trajectory' ? chart : null
 );
 
 const resolveCurrentValue = (
@@ -233,6 +259,10 @@ const resolveConfidenceLabel = (
 
 export type SmartTasksWidgetInput = {
   activePlans: DeferredObjectiveActivePlansV1 | null;
+  // Finalized plan history (all devices). The "Recently ended" section is built
+  // from entries that finalized within `ENDED_WINDOW_MS`. Null/absent when the
+  // recorder isn't wired — the section is simply empty.
+  history?: SettingsUiDeferredObjectivePlanHistoryPayload | null;
   devices: ReadonlyArray<TargetDeviceSnapshot>;
   nowMs: number;
   timeZone?: string | null;
@@ -349,6 +379,7 @@ const buildRow = (params: {
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
+    chart: toWidgetChart(resolveActivePlanChartData(plan)),
   };
 };
 
@@ -379,21 +410,84 @@ const buildCandidate = (params: {
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
 };
 
-export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): SmartTasksWidgetPayload => {
-  const plans = input.activePlans?.plansByDeviceId;
-  if (!plans) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+const resolveEndedTarget = (entry: DeferredObjectivePlanHistoryEntry): number | null => {
+  if (entry.objectiveKind === 'temperature') {
+    return isFiniteNumber(entry.targetTemperatureC) ? entry.targetTemperatureC : null;
+  }
+  return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
+};
 
+const buildEndedRow = (
+  entry: DeferredObjectivePlanHistoryEntry,
+  devicesById: Map<string, TargetDeviceSnapshot>,
+  nowMs: number,
+  timeZone: string | null,
+): SmartTasksWidgetEndedRow | null => {
+  const targetValue = resolveEndedTarget(entry);
+  if (targetValue === null) return null;
+  return {
+    id: entry.id,
+    deviceId: entry.deviceId,
+    deviceName: devicesById.get(entry.deviceId)?.name ?? entry.deviceName ?? entry.deviceId,
+    unitSymbol: entry.objectiveKind === 'temperature' ? '°C' : '%',
+    targetValue,
+    targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(entry.objectiveKind),
+    outcomeLabel: getPlanHistoryOutcomeLabel(entry.outcome),
+    // The history tone vocabulary ('ok' | 'warn' | 'muted') is a subset of the
+    // widget tone union, so it maps straight through with no 'danger' case.
+    outcomeTone: getPlanHistoryOutcomeTone(entry.outcome),
+    finishedLabel: formatDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
+    chart: toWidgetChart(resolveHistoryDetailChartData(entry)),
+  };
+};
+
+// Collect tasks that finalized within `ENDED_WINDOW_MS` across all devices,
+// newest-finalized first, capped at `ENDED_ROW_CAP`. The history payload is
+// already sorted newest-first per device, but entries from different devices
+// must be re-merged, so we sort the flattened list explicitly.
+const buildEndedRows = (
+  history: SettingsUiDeferredObjectivePlanHistoryPayload | null | undefined,
+  devicesById: Map<string, TargetDeviceSnapshot>,
+  nowMs: number,
+  timeZone: string | null,
+): SmartTasksWidgetEndedRow[] => {
+  const byDevice = history?.entriesByDeviceId;
+  if (!byDevice) return [];
+  const cutoffMs = nowMs - ENDED_WINDOW_MS;
+  const recent = Object.values(byDevice)
+    .flat()
+    .filter((entry) => isFiniteNumber(entry.finalizedAtMs)
+      && entry.finalizedAtMs >= cutoffMs
+      && entry.finalizedAtMs <= nowMs);
+  // Filter unrenderable entries (null target) BEFORE the cap so a junk entry in
+  // the newest slots can't displace a valid older row out of the capped list.
+  return [...recent]
+    .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs)
+    .map((entry) => buildEndedRow(entry, devicesById, nowMs, timeZone))
+    .filter((row): row is SmartTasksWidgetEndedRow => row !== null)
+    .slice(0, ENDED_ROW_CAP);
+};
+
+export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): SmartTasksWidgetPayload => {
   const devicesById = new Map<string, TargetDeviceSnapshot>(
     input.devices.map((device) => [device.id, device]),
   );
+  const timeZone = input.timeZone ?? null;
+  const endedRows = buildEndedRows(input.history, devicesById, input.nowMs, timeZone);
 
-  const candidates = Object.entries(plans)
-    .map(([deviceId, plan]) => (plan
-      ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone: input.timeZone ?? null })
-      : null))
-    .filter((candidate): candidate is Candidate => candidate !== null);
+  const plans = input.activePlans?.plansByDeviceId;
+  const candidates = plans
+    ? Object.entries(plans)
+      .map(([deviceId, plan]) => (plan
+        ? buildCandidate({ deviceId, plan, devicesById, nowMs: input.nowMs, timeZone })
+        : null))
+      .filter((candidate): candidate is Candidate => candidate !== null)
+    : [];
 
-  if (candidates.length === 0) return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+  // Empty only when there is nothing to show in EITHER section.
+  if (candidates.length === 0 && endedRows.length === 0) {
+    return emptyPayload(EMPTY_SUBTITLE_DEFAULT, SMART_TASK_WIDGET_EMPTY_HINT);
+  }
 
   const sorted = [...candidates].sort(compareCandidates);
   const top = sorted.slice(0, ROW_CAP);
@@ -403,5 +497,6 @@ export const buildSmartTasksWidgetPayload = (input: SmartTasksWidgetInput): Smar
     state: 'ready',
     rows: top.map((candidate) => candidate.row),
     overflowCount,
+    endedRows,
   };
 };

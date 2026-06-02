@@ -193,6 +193,37 @@
   text-align: right;
 }
 
+/* ----- Recently ended section ----- */
+
+/* Sits below the active rows, separated by a faint rule so it reads as a
+   distinct "history" group rather than more live tasks. */
+.ended {
+  border-top: 1px solid;
+  border-top-color: var(--pw-line-light, rgba(15, 23, 28, 0.08));
+  padding-top: var(--pw-su-1, 4px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+}
+
+.ended__heading {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+/* Ended rows don't carry a live danger/warn background wash — the outcome chip
+   alone conveys the result, keeping the history group visually calm. */
+.ended__rows {
+  flex: none;
+}
+
+.ended__rows .row[data-tone="warn"] .row__btn {
+  background: transparent;
+}
+
 /* ----- Detail view ----- */
 
 .detail-header {
@@ -286,5 +317,107 @@
    rather than reading as the dimmest line. */
 .detail-line--meta {
   color: var(--pw-text, inherit);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+/* ----- Detail trajectory chart ----- */
+
+/* Compact planned-vs-actual sparkline + its colour-coded legend, between the
+   deadline line and the why/meta copy. Column so the legend sits under the SVG;
+   `flex: none` stops the flex parent from stretching it. */
+.detail-chart {
+  flex: none;
+  width: 100%;
+  margin: var(--pw-su-1, 4px) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+}
+
+.tchart {
+  display: block;
+  width: 100%;
+  height: 96px;
+}
+
+/* `vector-effect: non-scaling-stroke` keeps stroke WEIGHTS true regardless of
+   the non-uniform `preserveAspectRatio:none` scaling (the viewBox is wider than
+   the render box, which would otherwise thin vertical-vs-horizontal segments
+   unevenly). Geometry values (stroke-width / dasharray / r) are raw SVG (Homey
+   ships no token); every COLOUR stays tokenised. */
+.tchart__target,
+.tchart__planned,
+.tchart__planned-revised,
+.tchart__observed {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Target reference — a faint dashed horizontal guide behind the series. Lower
+   opacity + dashed so it reads as the goal, distinct from the solid planned
+   line that shares the muted tone. */
+.tchart__target {
+  stroke: var(--pw-text-muted, #6d7680);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+}
+
+/* Planned trajectory — the muted "where it should be" staircase, solid stroke. */
+.tchart__planned {
+  fill: none;
+  stroke: var(--pw-text-muted, #6d7680);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Revised plan overlay (finished runs that replanned) — lighter + dashed so it
+   reads as secondary to the primary planned line. */
+.tchart__planned-revised {
+  fill: none;
+  stroke: var(--pw-text-muted, #6d7680);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.7;
+}
+
+/* Observed progress — the accent "where it actually is" line, drawn on top. */
+.tchart__observed {
+  fill: none;
+  stroke: var(--pw-success, #58c56a);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Marker at the point the run reached / plateaued at target. */
+.tchart__marker {
+  fill: var(--pw-success, #58c56a);
+}
+
+/* Colour-coded legend naming the two lines + the target guide so the chart
+   reads without a manual. The word colours match the series strokes. */
+.tchart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--pw-su-2, 8px);
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+}
+
+.tchart__legend-item {
+  color: var(--pw-text-muted, #6d7680);
+}
+
+/* Measured = the focal accent series; carries the success tone + medium weight. */
+.tchart__legend-item--measured {
+  color: var(--pw-text-success, #2f8f47);
+  font-weight: var(--pw-weight-medium, 500);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+.tchart__legend-item--target {
   font-variant-numeric: var(--pw-numeric, tabular-nums);
 }

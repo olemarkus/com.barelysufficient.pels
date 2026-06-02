@@ -111,7 +111,19 @@ const capture = async (browser) => {
   console.log('Smart tasks (smart_tasks)');
   {
     const page = await openWidget(context, 'smart_tasks');
+    // List view: active rows ranked by attention + the "Recently ended" section.
     await shoot(page, 'smart-tasks.png');
+    // Tap an on-going task that carries a chart (the at-risk Hot water row;
+    // the cannot-finish row intentionally has no trajectory) → detail with the
+    // planned-vs-actual trajectory chart.
+    await page.locator('[data-row-button][data-device-id="preview-hot-water"]').click();
+    await page.locator('[data-detail-chart]:not([hidden])').waitFor({ state: 'visible' });
+    await shoot(page, 'smart-tasks-detail.png');
+    // Back, then tap a recently-ended task → its final trajectory.
+    await page.locator('[data-detail-back]').click();
+    await page.locator('[data-ended-button]').first().click();
+    await page.locator('[data-detail-chart]:not([hidden])').waitFor({ state: 'visible' });
+    await shoot(page, 'smart-tasks-ended.png');
     await page.close();
   }
 

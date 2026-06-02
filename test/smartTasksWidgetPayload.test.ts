@@ -5,11 +5,15 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanHistoryEntry } from '../packages/contracts/src/deferredObjectivePlanHistory';
+import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../packages/shared-domain/src/deadlineLabels';
 import {
   buildSmartTasksWidgetPayload,
   EMPTY_SUBTITLE_DEFAULT,
+  ENDED_ROW_CAP,
+  ENDED_WINDOW_MS,
   ROW_CAP,
 } from '../widgets/smart_tasks/src/smartTasksWidgetPayload';
 
@@ -532,5 +536,189 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
     expect(payload.rows[0].deadlineLongLabel).toBe('Tomorrow 08:00');
+  });
+
+  test('attaches a trajectory chart to active rows', () => {
+    const plan = buildPlan({
+      deviceId: 'dev',
+      startProgressC: 50,
+      progressSamples: [
+        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
+        { atMs: NOW, valueC: 52, valuePercent: null },
+      ],
+      latest: { ...buildPlan({}).latest!, rateMean: 0.5 },
+    });
+    const payload = buildSmartTasksWidgetPayload(buildInput({ dev: plan }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].chart?.mode).toBe('trajectory');
+    expect(payload.rows[0].chart?.observed).toHaveLength(2);
+  });
+});
+
+const buildHistoryEntry = (
+  overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
+): DeferredObjectivePlanHistoryEntry => ({
+  id: `entry-${Math.random()}`,
+  deviceId: 'dev',
+  deviceName: 'Device',
+  objectiveKind: 'temperature',
+  targetTemperatureC: 55,
+  targetPercent: null,
+  deadlineAtMs: NOW - HOUR,
+  startedAtMs: NOW - 4 * HOUR,
+  finalizedAtMs: NOW - HOUR,
+  startProgressC: 40,
+  startProgressPercent: null,
+  finalProgressC: 55,
+  finalProgressPercent: null,
+  initialEnergyNeededKWh: 4,
+  outcome: 'met',
+  metAtMs: NOW - HOUR,
+  usedDeadlineReserve: false,
+  usedPolicyAvoid: false,
+  observedIntervals: [],
+  discoveredFrom: 'observation',
+  originalPlan: {
+    hours: [
+      { startsAtMs: NOW - 4 * HOUR, plannedKWh: 1 },
+      { startsAtMs: NOW - 3 * HOUR, plannedKWh: 1 },
+    ],
+    energyNeededKWh: 2,
+    planStatus: 'on_track',
+    revisedAtMs: NOW - 4 * HOUR,
+    kwhPerUnitMean: 0.5,
+  },
+  finalPlan: null,
+  progressSamples: [
+    { atMs: NOW - 4 * HOUR, valueC: 40, valuePercent: null },
+    { atMs: NOW - 3 * HOUR, valueC: 48, valuePercent: null },
+  ],
+  ...overrides,
+});
+
+const historyPayload = (
+  entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>,
+): SettingsUiDeferredObjectivePlanHistoryPayload => ({ version: 1, entriesByDeviceId });
+
+describe('buildSmartTasksWidgetPayload — recently ended section', () => {
+  test('returns ready with only ended rows when there are no active plans', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({ dev: [buildHistoryEntry({ deviceId: 'dev' })] }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows).toHaveLength(0);
+    expect(payload.endedRows).toHaveLength(1);
+    expect(payload.endedRows[0].outcomeLabel).toBe('Succeeded');
+    expect(payload.endedRows[0].outcomeTone).toBe('ok');
+    expect(payload.endedRows[0].chart?.mode).toBe('trajectory');
+  });
+
+  test('includes all outcomes (met / missed / abandoned), newest finalized first', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({
+        a: [buildHistoryEntry({ deviceId: 'a', deviceName: 'Met', outcome: 'met', finalizedAtMs: NOW - 3 * HOUR })],
+        b: [buildHistoryEntry({ deviceId: 'b', deviceName: 'Missed', outcome: 'missed', metAtMs: null, finalizedAtMs: NOW - HOUR })],
+        c: [buildHistoryEntry({ deviceId: 'c', deviceName: 'Abandoned', outcome: 'abandoned', metAtMs: null, finalizedAtMs: NOW - 2 * HOUR })],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.endedRows.map((r) => r.deviceName)).toEqual(['Missed', 'Abandoned', 'Met']);
+    expect(payload.endedRows.map((r) => r.outcomeLabel)).toEqual(['Missed', 'Abandoned', 'Succeeded']);
+  });
+
+  test('excludes entries finalized before the 24h window or in the future', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({
+        old: [buildHistoryEntry({ deviceId: 'old', finalizedAtMs: NOW - ENDED_WINDOW_MS - HOUR })],
+        future: [buildHistoryEntry({ deviceId: 'future', finalizedAtMs: NOW + HOUR })],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('empty');
+  });
+
+  test('caps the ended section', () => {
+    const entries: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
+    for (let i = 0; i < ENDED_ROW_CAP + 3; i += 1) {
+      entries[`d${i}`] = [buildHistoryEntry({ deviceId: `d${i}`, finalizedAtMs: NOW - (i + 1) * 60 * 1000 })];
+    }
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload(entries),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.endedRows).toHaveLength(ENDED_ROW_CAP);
+  });
+
+  test('keeps distinct rows (with distinct ids) for multiple ended runs of the same device', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({
+        dev: [
+          buildHistoryEntry({ id: 'run-late', deviceId: 'dev', finalizedAtMs: NOW - HOUR }),
+          buildHistoryEntry({ id: 'run-early', deviceId: 'dev', finalizedAtMs: NOW - 3 * HOUR }),
+        ],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    // Both runs render (newest first) and carry their unique history-entry id so
+    // the detail view can open the exact run the user tapped.
+    expect(payload.endedRows.map((r) => r.id)).toEqual(['run-late', 'run-early']);
+    expect(payload.endedRows[0].deviceId).toBe('dev');
+    expect(payload.endedRows[1].deviceId).toBe('dev');
+  });
+
+  test('applies the ended cap to renderable rows (filters nulls before slicing)', () => {
+    // Newest entry is unrenderable (no target); it must not consume a cap slot
+    // and hide an older valid row.
+    const entries: Record<string, DeferredObjectivePlanHistoryEntry[]> = {
+      bad: [buildHistoryEntry({
+        id: 'bad', deviceId: 'bad', targetTemperatureC: null, targetPercent: null, finalizedAtMs: NOW - 60 * 1000,
+      })],
+    };
+    for (let i = 0; i < ENDED_ROW_CAP; i += 1) {
+      entries[`ok${i}`] = [buildHistoryEntry({ id: `ok${i}`, deviceId: `ok${i}`, finalizedAtMs: NOW - (i + 2) * 60 * 1000 })];
+    }
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null, history: historyPayload(entries), devices: [], nowMs: NOW, timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    // Cap-many valid rows shown; the null-target newest entry is dropped, not counted.
+    expect(payload.endedRows).toHaveLength(ENDED_ROW_CAP);
+    expect(payload.endedRows.some((r) => r.id === 'bad')).toBe(false);
+  });
+
+  test('empty when neither active nor ended content exists', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({}),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('empty');
   });
 });
