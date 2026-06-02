@@ -363,7 +363,10 @@ describe('DeadlinePlanHistoryDetail', () => {
     const finalCannotMeet = buildRevision({ planStatus: 'cannot_meet' });
     const root = await mount(buildEntry({
       outcome: 'missed',
-      finalProgressC: 38,
+      // Made real progress toward the 65 °C target (start 50 → 55) so the run
+      // doesn't classify as `no_delivery`, and no delivery was recorded so the
+      // delivery split is inconclusive — leaving the cannot_meet fallback copy.
+      finalProgressC: 55,
       originalPlan: finalCannotMeet,
       finalPlan: finalCannotMeet,
     }));

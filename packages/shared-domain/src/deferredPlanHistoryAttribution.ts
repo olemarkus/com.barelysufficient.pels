@@ -23,21 +23,36 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory';
+import { MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP } from './deadlineLabels';
 
 // Why a `missed` run missed, in the order we check (most concrete cause wins):
 //   - `budget_limited`     — the daily budget cap collapsed one or more planned
 //                            hours; the device was held back on purpose.
-//   - `low_confidence`     — the learned rate backing the plan was still in its
-//                            low-confidence band, so the "cannot finish" rested
-//                            on a shaky estimate (false-alarm-suspect).
+//   - `no_delivery`        — the device delivered essentially no useful energy
+//                            and made no progress toward target; the most
+//                            concrete, device-actionable miss.
+//   - `capacity_shortfall` — confident plan, but the executor couldn't deliver
+//                            even the planned floor; a genuine capacity miss.
 //   - `energy_underestimate` — the executor delivered at/above the planned
 //                            floor energy yet still missed: capacity was there,
 //                            but the target needed more energy than estimated.
-//   - `capacity_shortfall` — confident plan, but the executor couldn't deliver
-//                            even the planned floor; a genuine capacity miss.
+//   - `low_confidence`     — delivery couldn't be measured AND the learned rate
+//                            was still genuinely cold-start (few accepted
+//                            samples), so the verdict rested on an unproven
+//                            estimate. Gated on sample count, NOT the confidence
+//                            band: the band-aware confidence "sits at low
+//                            effectively forever" on thermal devices, so gating
+//                            on it would make every thermal miss read "still
+//                            learning" and mask the real cause.
 //   - `unknown`            — not enough recorded data to attribute honestly.
+//
+// The delivery split (`no_delivery` / `capacity_shortfall` /
+// `energy_underestimate`) is checked ahead of `low_confidence` so a clear
+// delivery story always wins; `low_confidence` is the honest fallback only when
+// delivery wasn't measurable.
 export type DeferredPlanHistoryMissCause =
   | 'budget_limited'
+  | 'no_delivery'
   | 'low_confidence'
   | 'energy_underestimate'
   | 'capacity_shortfall'
@@ -48,6 +63,19 @@ export type DeferredPlanHistoryMissCause =
 // shortfall. 0.95 tolerates rounding and the last partial hour without letting
 // a clear under-delivery masquerade as "power was available".
 const DELIVERED_PLAN_FRACTION = 0.95;
+
+// Below this delivered energy a run counts as having delivered essentially
+// nothing (paired with a flat progress check below). Small absolute floor: even
+// the smallest real heating/charging run clears it, so it only fires when the
+// device genuinely did almost no work. Tunable.
+const NO_DELIVERY_KWH_FLOOR = 0.1;
+
+// Idle deadbands for the directional "progress toward target" check. Deadlines
+// are heat-up / charge-up, so progress toward target is `final − start`; a run
+// that stayed flat (or, for a mis-configured start-above-target task, cooled)
+// produces a delta below the deadband and reads as no delivery. Tunable.
+const NO_DELIVERY_PROGRESS_DEADBAND_C = 0.5;
+const NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
 
 type AttributionSnapshot = Pick<
   DeferredObjectivePlanHistoryRevisionSnapshot,
@@ -82,25 +110,96 @@ export type DeferredPlanHistoryMissAttribution = {
   deliveredAtOrAbovePlan: boolean | null;
 };
 
+// Entry fields the attribution reads. The progress fields + `objectiveKind`
+// back the directional `no_delivery` check; the rest back the delivery split and
+// snapshot lookup. All already persisted on `DeferredObjectivePlanHistoryEntry`.
+type AttributionEntry = Pick<
+  DeferredObjectivePlanHistoryEntry,
+  'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
+  | 'objectiveKind' | 'startProgressC' | 'startProgressPercent'
+  | 'finalProgressC' | 'finalProgressPercent'
+>;
+
 const pickSnapshot = (
   entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
 ): AttributionSnapshot | null => entry.finalPlan ?? entry.originalPlan ?? null;
+
+// Signed progress toward target (`final − start`) plus the per-kind deadband, or
+// null when the relevant progress samples weren't recorded. Deadlines are
+// heat-up / charge-up, so a delta at/above the deadband means the device made
+// real progress; below it (flat, or a cooling start-above-target task) means it
+// effectively didn't move.
+const resolveProgressTowardTarget = (
+  entry: Pick<
+    AttributionEntry,
+    'objectiveKind' | 'startProgressC' | 'finalProgressC'
+    | 'startProgressPercent' | 'finalProgressPercent'
+  >,
+): { delta: number; deadband: number } | null => {
+  if (entry.objectiveKind === 'temperature') {
+    const start = entry.startProgressC;
+    const final = entry.finalProgressC;
+    if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
+    return { delta: (final as number) - (start as number), deadband: NO_DELIVERY_PROGRESS_DEADBAND_C };
+  }
+  const start = entry.startProgressPercent;
+  const final = entry.finalProgressPercent;
+  if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
+  return { delta: (final as number) - (start as number), deadband: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT };
+};
+
+// True when the device delivered essentially nothing. Primary signal is the flat
+// directional progress; delivered energy (when recorded) must also sit below the
+// floor. When delivery wasn't recorded (legacy entries / unwired feed) the flat
+// progress carries it alone. Requires progress to be known — without it we can't
+// honestly claim "no delivery".
+const resolveNoDelivery = (
+  entry: Pick<
+    AttributionEntry,
+    'objectiveKind' | 'startProgressC' | 'finalProgressC'
+    | 'startProgressPercent' | 'finalProgressPercent'
+  >,
+  deliveredKWh: number | null,
+): boolean => {
+  const progress = resolveProgressTowardTarget(entry);
+  if (progress === null) return false;
+  if (progress.delta >= progress.deadband) return false;
+  if (deliveredKWh === null) return true;
+  return deliveredKWh < NO_DELIVERY_KWH_FLOOR;
+};
 
 const resolveCause = (params: {
   outcome: DeferredObjectivePlanHistoryEntry['outcome'];
   snapshot: AttributionSnapshot | null;
   deliveredAtOrAbovePlan: boolean | null;
+  noDelivery: boolean;
 }): DeferredPlanHistoryMissCause | null => {
-  const { outcome, snapshot, deliveredAtOrAbovePlan } = params;
+  const { outcome, snapshot, deliveredAtOrAbovePlan, noDelivery } = params;
   if (outcome !== 'missed') return null;
+  // Budget exhaustion is a deliberate hold-back, so it outranks everything —
+  // including a `no_delivery` that the hold-back itself produced.
+  if (snapshot !== null && (snapshot.dailyBudgetExhaustedBucketCount ?? 0) > 0) {
+    return 'budget_limited';
+  }
+  // The delivery story (entry-level, works even without a snapshot) wins over the
+  // shaky-estimate fallback below: a clear "did almost nothing" / "did some but
+  // short" / "delivered the plan yet short" is more honest than "still learning".
+  if (noDelivery) return 'no_delivery';
   if (snapshot === null) return 'unknown';
-  if ((snapshot.dailyBudgetExhaustedBucketCount ?? 0) > 0) return 'budget_limited';
-  // A shaky estimate undercuts the whole verdict, so it outranks the
-  // delivered-vs-planned split below — that split assumes the plan it's
-  // measuring against was trustworthy.
-  if (snapshot.rateConfidence === 'low') return 'low_confidence';
-  if (deliveredAtOrAbovePlan === true) return 'energy_underestimate';
   if (deliveredAtOrAbovePlan === false) return 'capacity_shortfall';
+  if (deliveredAtOrAbovePlan === true) return 'energy_underestimate';
+  // Delivery wasn't measurable. Only then fall back to "still learning", and
+  // only on a genuine cold start (few accepted samples) — NOT the confidence
+  // band, which sits at low effectively forever on thermal devices.
+  // `typeof === 'number'` (not `!== undefined`): a persisted/legacy entry can
+  // carry `acceptedSamples: null`, and `null < 4` coerces to true — which would
+  // misclassify as `low_confidence` instead of the honest `unknown` fallback.
+  if (
+    typeof snapshot.acceptedSamples === 'number'
+    && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP
+  ) {
+    return 'low_confidence';
+  }
   return 'unknown';
 };
 
@@ -172,10 +271,7 @@ const resolveDeliveredAtOrAbovePlan = (
  * of historical entries is no-worse-than-before.
  */
 export const resolveDeferredPlanHistoryMissAttribution = (
-  entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
-    'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-  >,
+  entry: AttributionEntry,
   energyExpectedKWh: number | null = null,
 ): DeferredPlanHistoryMissAttribution => {
   const snapshot = pickSnapshot(entry);
@@ -188,7 +284,12 @@ export const resolveDeferredPlanHistoryMissAttribution = (
     pickResolvedMean(snapshot, energyExpectedKWh),
   );
   return {
-    cause: resolveCause({ outcome: entry.outcome, snapshot, deliveredAtOrAbovePlan }),
+    cause: resolveCause({
+      outcome: entry.outcome,
+      snapshot,
+      deliveredAtOrAbovePlan,
+      noDelivery: resolveNoDelivery(entry, deliveredKWh),
+    }),
     plannedKWh,
     deliveredKWh,
     planningSpeedKw: snapshot?.planningSpeedKw ?? null,
@@ -199,46 +300,39 @@ export const resolveDeferredPlanHistoryMissAttribution = (
   };
 };
 
-const formatLowConfidenceCause = (acceptedSamples: number | null): string => {
-  // Reuses the "what PELS has learned" framing from the live confidence surface
-  // so the receipt reads as the same story the user saw while the task ran under
-  // the "Estimating" chip. Kept tight (no "PELS was…" / "…when it planned this
-  // run") so it fits the one-line list-card reason slot at 320px; the consumer
-  // prefixes "Why:" which supplies the subject.
-  if (acceptedSamples !== null && acceptedSamples > 0) {
-    const readings = `${acceptedSamples} ${acceptedSamples === 1 ? 'reading' : 'readings'}`;
-    return `Still learning this device's energy use (${readings}).`;
-  }
-  return "Still learning this device's energy use.";
-};
+// "Still learning" copy. No reading count: `low_confidence` now fires only on a
+// genuine cold start (gated on `acceptedSamples < MIN_LEARNED_SAMPLES_*`), but
+// the count is decoupled from the confidence band, so showing it (e.g. "(1090
+// readings)") reads as broken trust. Dropping it guarantees no count can ever
+// contradict the "still learning" framing. Kept tight (no "PELS was…") so it
+// fits the one-line list-card reason slot at 320px; the consumer prefixes "Why:".
+const STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
 
 /**
- * Composes the "Why" sentence for the two miss causes that only the plan-time
- * provenance (Session A) can distinguish — a low-confidence learned rate, and
- * a run that delivered the planned power yet still came up short because the
- * target needed more energy than estimated. Returns `null` for every other
- * cause (`budget_limited`, `capacity_shortfall`, `unknown`) and for non-missed
- * outcomes.
+ * Composes the "Why" sentence for the miss causes that only the plan-time
+ * provenance + recorded delivery (Session A) can distinguish: a device that
+ * delivered almost nothing, a run that delivered the planned power yet still
+ * came up short, and a genuine cold-start estimate. Returns `null` for every
+ * other cause (`budget_limited`, `capacity_shortfall`, `unknown`) and for
+ * non-missed outcomes.
  *
  * Deliberately narrow: the shipped budget-exhaustion and `cannot_meet` "Why"
  * copy stays owned by `formatPlanHistoryMissedReason`'s `planStatus` branches
  * so this change doesn't reword strings the UI already ships. The caller
- * inserts this refinement ahead of those branches, so a low-confidence
- * `cannot_meet` reads "still learning" rather than "couldn't reserve enough
- * cheap hours". Tone matches the surrounding blameless receipt copy.
+ * inserts this refinement ahead of those branches. Tone matches the surrounding
+ * blameless receipt copy.
  */
-export const formatRefinedMissCause = (
-  entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
-    'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-  >,
-): string | null => {
+export const formatRefinedMissCause = (entry: AttributionEntry): string | null => {
   const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
   switch (attribution.cause) {
-    case 'low_confidence':
-      return formatLowConfidenceCause(attribution.acceptedSamples);
+    case 'no_delivery':
+      return entry.objectiveKind === 'temperature'
+        ? 'Delivered almost no heat before the deadline.'
+        : 'Delivered almost no charge before the deadline.';
     case 'energy_underestimate':
       return 'Target needed more energy than estimated.';
+    case 'low_confidence':
+      return STILL_LEARNING_CAUSE;
     default:
       return null;
   }
