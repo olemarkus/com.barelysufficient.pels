@@ -391,5 +391,8 @@
   },
   "2.11.1": {
     "en": "Improved the smart task planner. Also includes various UI tweaks."
+  },
+  "2.11.2": {
+    "en": "Tweaks for widgets and improved trajectory estimates."
   }
 }
