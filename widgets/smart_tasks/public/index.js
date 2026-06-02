@@ -1032,12 +1032,14 @@
       if (!homey?.setHeight) return;
       const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
       const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0) + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-      const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+      const contentHeight = Math.max(root.scrollHeight, root.getBoundingClientRect().height);
+      const height = Math.ceil(contentHeight + bodyPadding);
       if (height <= 0 || height === lastReportedHeight) return;
       lastReportedHeight = height;
       homey.setHeight(height);
     };
     return {
+      report,
       observe: () => {
         if (observer || typeof widgetWindow.ResizeObserver !== "function") return;
         observer = new widgetWindow.ResizeObserver(() => report());
@@ -1142,7 +1144,7 @@
     return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
   };
   var createWidgetController = (params) => {
-    const { targets, widgetDocument, widgetWindow } = params;
+    const { targets, widgetDocument, widgetWindow, reportHeight } = params;
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
@@ -1157,9 +1159,10 @@
     const render = () => {
       if (lastPayload === null && !everLoaded) {
         renderLoading(targets);
-        return;
+      } else {
+        renderWidget(targets, lastPayload, view);
       }
-      renderWidget(targets, lastPayload, view);
+      reportHeight?.();
     };
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
@@ -1242,9 +1245,14 @@
   var installWidget = (widgetWindow, widgetDocument) => {
     const targets = resolveTargets(widgetDocument);
     if (!targets) return null;
-    const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
     let activeHomey = null;
     const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
+    const controller = createWidgetController({
+      targets,
+      widgetDocument,
+      widgetWindow,
+      reportHeight: () => heightReporter.report()
+    });
     const installWindow = widgetWindow;
     installWindow.onHomeyReady = (homey) => {
       activeHomey = homey;

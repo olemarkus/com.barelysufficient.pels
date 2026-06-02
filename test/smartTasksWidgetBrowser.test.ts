@@ -1,5 +1,6 @@
 import { installWidget } from '../widgets/smart_tasks/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../widgets/smart_tasks/src/public/widgetApp';
+import { PREVIEW_SMART_TASKS_PAYLOAD } from '../widgets/smart_tasks/src/public/previewPayloads';
 import { renderTrajectoryChart } from '../widgets/smart_tasks/src/public/trajectoryChart';
 import type { DeferredPlanHistoryChartData } from '../packages/shared-domain/src/deferredPlanHistoryChartData';
 import type { SmartTasksWidgetPayload } from '../widgets/smart_tasks/src/smartTasksWidgetTypes';
@@ -199,6 +200,45 @@ describe('smart tasks widget detail view', () => {
     expect(legendText).toContain('Target 55 °C');
     // Y-axis scale labels give a near-flat series context.
     expect(chart.querySelectorAll('.tchart__axis').length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('reports the taller detail height synchronously on the list→detail swap', async () => {
+    // Regression: the detail panel (which adds the trajectory chart) is taller
+    // than the list. Homey widgets don't scroll internally, so the iframe must
+    // grow on tap or the chart sits clipped below the list-sized fold. The fix
+    // reports height eagerly from render() — not only via the async
+    // ResizeObserver. jsdom has NO ResizeObserver, so setHeight here can ONLY
+    // come from that eager per-render report: this guards it doesn't regress
+    // back to observer-only (which would leave the chart clipped for seconds).
+    window.history.replaceState({}, '', '/');
+    (window as WidgetWindow).Homey = {};
+    const setHeight = vi.fn();
+    const homey: WidgetHomey = {
+      api: () => Promise.resolve(PREVIEW_SMART_TASKS_PAYLOAD),
+      ready: () => {},
+      setHeight,
+    };
+    // jsdom does no layout (scrollHeight is 0), so stub the content height to
+    // reflect the open view: the detail (chart) is taller than the list.
+    const root = document.getElementById('widget-root') as HTMLElement;
+    Object.defineProperty(root, 'scrollHeight', {
+      configurable: true,
+      get: () => ((document.querySelector('[data-detail-view]') as HTMLElement).hidden ? 120 : 320),
+    });
+
+    activeController = installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady!(homey);
+    await flushPromises();
+    expect(setHeight).toHaveBeenCalledWith(120);
+
+    setHeight.mockClear();
+    const row = document.querySelector(
+      '[data-row-button][data-device-id="preview-hot-water"]',
+    ) as HTMLElement | null;
+    expect(row).not.toBeNull();
+    // No await between the click and the assertion: the grow must be synchronous.
+    row?.click();
+    expect(setHeight).toHaveBeenCalledWith(320);
   });
 
   test('lists recently-ended tasks and opens their final-trajectory detail on tap', async () => {

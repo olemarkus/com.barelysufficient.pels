@@ -27,16 +27,19 @@ export type WidgetHomey = {
   setHeight?: (height: number) => void;
 };
 
-// Keep the widget iframe sized to its content. A ResizeObserver (not a
-// synchronous measure in render) is what makes this reliable: first paint,
-// web-font load, async payload arrival, and list↔detail swaps all change the
-// height after a render returns. `getHomey` is read lazily so a reporter
-// created before bootstrap still sees the assigned client.
+// Keep the widget iframe sized to its content. Two complementary triggers:
+// `report()` is called synchronously from the controller's render() so a
+// list↔detail swap grows the iframe in the same turn the chart is painted
+// (otherwise the taller detail sits clipped below the list-sized fold until the
+// observer fires); the ResizeObserver is the backstop for height changes that
+// land AFTER a render returns — first paint, web-font load, async payload
+// arrival. `getHomey` is read lazily so a reporter created before bootstrap
+// still sees the assigned client.
 const createHeightReporter = (
   root: HTMLElement,
   widgetWindow: WidgetWindow,
   getHomey: () => WidgetHomey | null,
-): { observe: () => void; disconnect: () => void } => {
+): { observe: () => void; disconnect: () => void; report: () => void } => {
   let observer: ResizeObserver | null = null;
   let lastReportedHeight = 0;
   const report = (): void => {
@@ -48,12 +51,20 @@ const createHeightReporter = (
     const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
     const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
       + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
-    const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+    // Measure the true CONTENT height via `scrollHeight`, not the rendered box.
+    // When the eager report fires on a list→detail swap, the iframe is still at
+    // the (shorter) list height; `getBoundingClientRect().height` can return
+    // that clipped value, so we'd never report the growth and the chart would
+    // stay clipped below the fold. `scrollHeight` is the unclipped content
+    // height. Keep the rect as a floor for the rare case scrollHeight rounds low.
+    const contentHeight = Math.max(root.scrollHeight, root.getBoundingClientRect().height);
+    const height = Math.ceil(contentHeight + bodyPadding);
     if (height <= 0 || height === lastReportedHeight) return;
     lastReportedHeight = height;
     homey.setHeight(height);
   };
   return {
+    report,
     observe: (): void => {
       if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
       observer = new widgetWindow.ResizeObserver(() => report());
@@ -216,8 +227,13 @@ export const createWidgetController = (params: {
   targets: RenderTargets;
   widgetDocument: Document;
   widgetWindow: WidgetWindow;
+  // Report the widget's content height to Homey. Called synchronously after
+  // every render so a list→detail swap grows the iframe in the same turn the
+  // chart is painted, instead of waiting on the async ResizeObserver tick (the
+  // detail's chart would otherwise sit clipped below the list-sized fold).
+  reportHeight?: () => void;
 }): WidgetController => {
-  const { targets, widgetDocument, widgetWindow } = params;
+  const { targets, widgetDocument, widgetWindow, reportHeight } = params;
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
@@ -238,9 +254,13 @@ export const createWidgetController = (params: {
   const render = (): void => {
     if (lastPayload === null && !everLoaded) {
       renderLoading(targets);
-      return;
+    } else {
+      renderWidget(targets, lastPayload, view);
     }
-    renderWidget(targets, lastPayload, view);
+    // Eagerly resize the iframe to the just-rendered content. `scrollHeight`
+    // (read inside the reporter) forces a synchronous reflow, so the new height
+    // is accurate the moment a list↔detail swap or payload arrival changes it.
+    reportHeight?.();
   };
 
   const loadAndRender = async (): Promise<void> => {
@@ -342,11 +362,17 @@ export const installWidget = (
   const targets = resolveTargets(widgetDocument);
   if (!targets) return null;
 
-  const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
   // Size the iframe to content (Homey.setHeight) once a real client is wired;
-  // the no-Homey preview/harness path renders at natural page size.
+  // the no-Homey preview/harness path renders at natural page size. Created
+  // before the controller so its `report` can be wired into every render.
   let activeHomey: WidgetHomey | null = null;
   const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
+  const controller = createWidgetController({
+    targets,
+    widgetDocument,
+    widgetWindow,
+    reportHeight: () => heightReporter.report(),
+  });
   const installWindow = widgetWindow;
   installWindow.onHomeyReady = (homey: WidgetHomey): void => {
     activeHomey = homey;
