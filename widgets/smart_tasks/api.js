@@ -30,7 +30,7 @@ var HOUR_MS = 60 * 60 * 1e3;
 var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs, capValue = null) => {
   const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
   if (kwhPerUnitMean <= 0) return [];
-  if (capValue !== null && anchorValue >= capValue) return [];
+  const effectiveCap = capValue === null ? null : Math.max(capValue, anchorValue);
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points = [
     { atMs: anchorAtMs, value: anchorValue }
@@ -48,7 +48,7 @@ var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs,
       points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
     }
     cumulativeProgress += plannedKWh * postAnchorFraction / kwhPerUnitMean;
-    if (capValue !== null && cumulativeProgress > capValue) cumulativeProgress = capValue;
+    if (effectiveCap !== null && cumulativeProgress > effectiveCap) cumulativeProgress = effectiveCap;
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
@@ -68,6 +68,23 @@ var observedValueAt = (observed, atMs) => {
   }
   return before === null ? null : before.value;
 };
+var firstBookedHourStartMs = (snapshot) => {
+  let earliest = null;
+  for (const hour of snapshot.hours) {
+    const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
+    if (plannedKWh <= 0) continue;
+    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
+    if (earliest === null || coverStartMs < earliest) earliest = coverStartMs;
+  }
+  return earliest;
+};
+var resolveStaircaseAnchor = (snapshot, observed, startProgress, windowStartMs) => {
+  const firstBookedMs = firstBookedHourStartMs(snapshot);
+  if (firstBookedMs === null) return { value: startProgress, atMs: windowStartMs };
+  const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
+  const anchorValue = observedValueAt(bracketed, firstBookedMs);
+  return anchorValue === null ? { value: startProgress, atMs: windowStartMs } : { value: anchorValue, atMs: firstBookedMs };
+};
 var buildRevisedStaircase = (snapshot, observed, startProgress, window) => {
   const { windowStartMs, windowEndMs, capValue } = window;
   const revisedAtMs = snapshot.revisedAtMs;
@@ -79,6 +96,11 @@ var buildRevisedStaircase = (snapshot, observed, startProgress, window) => {
     }
   }
   return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs, capValue);
+};
+var resolveFallbackPrimaryStaircase = (finalPlan, observed, startProgress, window) => {
+  if (finalPlan === null) return [];
+  const anchor = resolveStaircaseAnchor(finalPlan, observed, startProgress, window.windowStartMs);
+  return integratePlannedStaircase(finalPlan, anchor.value, anchor.atMs, window.windowEndMs, window.capValue);
 };
 var staircasesDiffer = (a, b) => {
   if (a.length !== b.length) return true;
@@ -132,30 +154,49 @@ var pickMetMarkerValue = (entry) => {
   }
   return pickTargetValue(entry);
 };
-var composeTrajectoryData = (entry, observed, windowStartMs, windowEndMs) => {
-  const startProgress = pickStartProgress(entry);
-  const target = pickTargetValue(entry);
+var buildTrajectoryPayload = (entry, plannedOriginal, plannedFinal, observed, frame) => ({
+  mode: "trajectory",
+  unit: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
+  windowStartMs: frame.windowStartMs,
+  windowEndMs: frame.windowEndMs,
+  plannedOriginal,
+  plannedFinal,
+  observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
+  target: pickTargetValue(entry),
+  metAtMs: pickMetMarker(entry),
+  metMarkerValue: pickMetMarkerValue(entry)
+});
+var composeHeatFromBelowTrajectory = (entry, observed, frame) => {
+  const { windowStartMs, windowEndMs, startProgress, target } = frame;
   const plannedOriginal = entry.originalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs, target) : [];
   const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs, target) : [];
   const replanned = plannedOriginal.length > 0 && plannedFinalStartAnchored.length > 0 && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
   const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target }) : [];
   const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
-  const resolvedOriginal = plannedOriginal.length > 0 ? plannedOriginal : plannedFinalStartAnchored;
-  return {
-    mode: "trajectory",
-    unit: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
-    windowStartMs,
-    windowEndMs,
-    plannedOriginal: resolvedOriginal,
-    plannedFinal,
-    // Anchor the displayed measured line at the run start so it doesn't begin
-    // mid-chart. The raw `observed` (above) still feeds the revised-staircase
-    // re-anchor interpolation, which does its own start bracketing.
-    observed: anchorObservedAtStart(observed, windowStartMs, startProgress),
-    target: pickTargetValue(entry),
-    metAtMs: pickMetMarker(entry),
-    metMarkerValue: pickMetMarkerValue(entry)
-  };
+  const fallbackPrimary = startProgress !== null ? resolveFallbackPrimaryStaircase(
+    entry.finalPlan,
+    observed,
+    startProgress,
+    { windowStartMs, windowEndMs, capValue: target }
+  ) : [];
+  const resolvedOriginal = plannedOriginal.length > 0 ? plannedOriginal : fallbackPrimary;
+  return buildTrajectoryPayload(entry, resolvedOriginal, plannedFinal, observed, frame);
+};
+var composeTrajectoryData = (entry, observed, windowStartMs, windowEndMs) => {
+  const startProgress = pickStartProgress(entry);
+  const target = pickTargetValue(entry);
+  const frame = { windowStartMs, windowEndMs, startProgress, target };
+  if (startProgress !== null && target !== null && startProgress >= target) {
+    const richest = entry.originalPlan ?? entry.finalPlan;
+    const primary = resolveFallbackPrimaryStaircase(
+      richest,
+      observed,
+      startProgress,
+      { windowStartMs, windowEndMs, capValue: target }
+    );
+    return buildTrajectoryPayload(entry, primary, null, observed, frame);
+  }
+  return composeHeatFromBelowTrajectory(entry, observed, frame);
 };
 var composeLegacyData = (entry, windowStartMs, windowEndMs) => ({
   mode: "legacy_kwh",
@@ -220,9 +261,13 @@ var emptyChart = (target, windowStartMs, windowEndMs) => ({
   metAtMs: null,
   metMarkerValue: null
 });
-var resolvePlannedAnchor = (startProgress, currentValue, windowStartMs, nowMs) => {
-  if (startProgress !== null) return { value: startProgress, atMs: windowStartMs };
-  if (currentValue !== null) return { value: currentValue, atMs: nowMs ?? windowStartMs };
+var resolveActivePlannedAnchor = (snapshot, withNow, live) => {
+  if (live.startProgress !== null) {
+    return resolveStaircaseAnchor(snapshot, withNow, live.startProgress, live.windowStartMs);
+  }
+  if (live.currentValue !== null) {
+    return { value: live.currentValue, atMs: live.nowMs ?? live.windowStartMs };
+  }
   return null;
 };
 var resolveActivePlanChartData = (plan, options = {}) => {
@@ -237,14 +282,9 @@ var resolveActivePlanChartData = (plan, options = {}) => {
   const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
   const rate = pickRate(plan);
   const latest = plan.latest;
-  const anchor = resolvePlannedAnchor(startProgress, currentValue, windowStartMs, nowMs);
-  const planned = latest && anchor !== null && rate !== null ? integratePlannedStaircase(
-    { hours: latest.hours, kwhPerUnitMean: rate },
-    anchor.value,
-    anchor.atMs,
-    windowEndMs,
-    target
-  ) : [];
+  const snapshot = latest && rate !== null ? { hours: latest.hours, kwhPerUnitMean: rate } : null;
+  const anchor = snapshot === null ? null : resolveActivePlannedAnchor(snapshot, withNow, { startProgress, currentValue, windowStartMs, nowMs });
+  const planned = snapshot !== null && anchor !== null ? integratePlannedStaircase(snapshot, anchor.value, anchor.atMs, windowEndMs, target) : [];
   if (planned.length === 0 && observed.length < 2) {
     return emptyChart(target, windowStartMs, windowEndMs);
   }

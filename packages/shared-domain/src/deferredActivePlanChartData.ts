@@ -18,6 +18,7 @@ import {
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
   integratePlannedStaircase,
+  resolveStaircaseAnchor,
 } from './deferredPlanHistoryChartData';
 
 const finiteOrNull = (raw: number | null | undefined): number | null => (
@@ -73,6 +74,32 @@ const emptyChart = (
   metMarkerValue: null,
 });
 
+// Where the live planned staircase should anchor. With a known run-start
+// reading, anchor at the observed value where booked heating STARTS (the first
+// booked hour) — the trough for a drain-reheat, ≈ start for heat-from-below.
+// Without a recorded start (e.g. just after an app restart), anchor at the live
+// "now" reading so the plan still renders a "you are here" line. Null when there
+// is no value to integrate from. Pulled out to keep `resolveActivePlanChartData`
+// under the complexity bar.
+const resolveActivePlannedAnchor = (
+  snapshot: Parameters<typeof resolveStaircaseAnchor>[0],
+  withNow: readonly DeferredPlanHistoryChartPoint[],
+  live: {
+    startProgress: number | null;
+    currentValue: number | null;
+    windowStartMs: number;
+    nowMs: number | undefined;
+  },
+): { value: number; atMs: number } | null => {
+  if (live.startProgress !== null) {
+    return resolveStaircaseAnchor(snapshot, withNow, live.startProgress, live.windowStartMs);
+  }
+  if (live.currentValue !== null) {
+    return { value: live.currentValue, atMs: live.nowMs ?? live.windowStartMs };
+  }
+  return null;
+};
+
 /**
  * Composes the trajectory chart payload for an on-going smart task.
  *
@@ -87,21 +114,6 @@ const emptyChart = (
  * points (a single point renders as a lone dot, which reads worse than no chart).
  * The renderer hides the chart container in that case and shows the text lines.
  */
-// The planned staircase's anchor: the run-start reading when known, else the
-// live current reading at `now`. Returns null only when neither is available
-// (then there's no value to integrate the plan from). Pulled out to keep
-// `resolveActivePlanChartData` under the complexity bar.
-const resolvePlannedAnchor = (
-  startProgress: number | null,
-  currentValue: number | null,
-  windowStartMs: number,
-  nowMs: number | undefined,
-): { value: number; atMs: number } | null => {
-  if (startProgress !== null) return { value: startProgress, atMs: windowStartMs };
-  if (currentValue !== null) return { value: currentValue, atMs: nowMs ?? windowStartMs };
-  return null;
-};
-
 export const resolveActivePlanChartData = (
   plan: DeferredObjectiveActivePlanV1,
   // `nowMs` + `currentValue` (the device's live reading from the widget's device
@@ -127,15 +139,20 @@ export const resolveActivePlanChartData = (
   // Truthy guard covers both `null` and a defensively-omitted `undefined`
   // `latest`, and narrows it for the `.hours` read.
   const latest = plan.latest;
-  const anchor = resolvePlannedAnchor(startProgress, currentValue, windowStartMs, nowMs);
-  const planned = latest && anchor !== null && rate !== null
-    ? integratePlannedStaircase(
-      { hours: latest.hours, kwhPerUnitMean: rate },
-      anchor.value,
-      anchor.atMs,
-      windowEndMs,
-      target,
-    )
+  // Anchor the planned staircase at the observed value where booked heating
+  // STARTS (the first booked hour), capped at target — so a draw-down/reheat
+  // task booked to reheat from a 20 °C trough rises 20 → target instead of
+  // climbing from the (stale) 65 °C start past target. `resolveStaircaseAnchor`
+  // interpolates start + samples (incl. the appended now-reading) at the
+  // booked-hour start, falling back to the latest sample (the live "now") when
+  // that hour is still in the future. No planned line when there is no value to
+  // integrate from.
+  const snapshot = latest && rate !== null ? { hours: latest.hours, kwhPerUnitMean: rate } : null;
+  const anchor = snapshot === null
+    ? null
+    : resolveActivePlannedAnchor(snapshot, withNow, { startProgress, currentValue, windowStartMs, nowMs });
+  const planned = snapshot !== null && anchor !== null
+    ? integratePlannedStaircase(snapshot, anchor.value, anchor.atMs, windowEndMs, target)
     : [];
   if (planned.length === 0 && observed.length < 2) {
     return emptyChart(target, windowStartMs, windowEndMs);

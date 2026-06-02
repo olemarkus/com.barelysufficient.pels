@@ -1,11 +1,12 @@
 # Execution Adaptation: trajectory rebase + mid-execution price deferral
 
-Status (2026-06-01): **both work items shipped.** WI-1 (trajectory rebase) merged earlier; WI-2
+Status (2026-06-02): **three work items shipped.** WI-1 (trajectory rebase) merged earlier; WI-2
 (mid-execution price deferral) ships on top of the **hourly-settle foundation** (the active-plan
 recorder now writes once per hour at `:58`, driven by the lifecycle clock), which is what makes
 the per-cycle release clean — admission's override is structurally insulated from the
-clock-driven recorder. Builds on the active-plan replan policy in
-[`README.md`](./README.md) §"Active plan persistence and replan policy".
+clock-driven recorder. WI-3 (draw-down/reheat anchor) generalizes WI-1's re-anchor to the
+primary + live staircases so charts read correctly when the device starts above target. Builds on
+the active-plan replan policy in [`README.md`](./README.md) §"Active plan persistence and replan policy".
 
 ## Motivating evidence (prod, Connected 300, night of 2026-05-31)
 
@@ -121,8 +122,9 @@ computed.
 at the measured value (not `startProgressC`); the anchor is interpolated when no sample lands at
 `revisedAtMs`; a straddling full-hour floor is prorated; a straddling *trimmed* hour
 (`coversFromMs`) is added whole; a trimmed hour carried forward with `coversFromMs` *before* the
-anchor is prorated over its covered span; the no-observed-sample, revision-at-start, and
-no-`originalPlan` fallback cases stay start-anchored. `activePlanSchedule`:
+anchor is prorated over its covered span; the no-observed-sample and revision-at-start cases
+stay start-anchored. (WI-3 below changes the no-`originalPlan` fallback to anchor at observed
+reality instead of start-anchored.) `activePlanSchedule`:
 `buildHoursFromHorizonPlan` records `coversFromMs` for a trimmed current hour, and the merge
 clears it when a full-hour floor wins / keeps it for a fresh trimmed hour. The existing
 identical-staircase / replan overlay cases still hold.
@@ -285,3 +287,59 @@ scarcity). That fork only affects how *often* item 2 can release (a less pessimi
 feasibility model would free more expensive hours), not its correctness. Resolving it later
 means reading the bucket `usefulEnergyCapacityKWh` breakdown / the `policyHorizon` headroom
 forecast on prod.
+
+## Work item 3 — Draw-down / reheat anchor (start-above-target objectives) — DONE
+
+**Scope: display-only, both trajectory producers.** WI-1 re-anchored only the *revised* history
+staircase (at `revisedAtMs`). WI-3 generalizes "anchor at observed reality" to the **primary**
+staircase too — both the finished-run history chart
+(`packages/shared-domain/src/deferredPlanHistoryChartData.ts`) and the live smart-tasks widget chart
+(`deferredActivePlanChartData.ts`).
+
+**The defect.** `integratePlannedStaircase` models planned progress as monotonic from the *run
+start*: `startProgress + Σ(plannedKWh)/rate`. That holds for "heat from below" but breaks for a
+**satisfied-then-drifted** objective — a tank that starts at 65 °C (already ≥ a ≥40 °C target), is
+drawn down to ~20 °C by exogenous use, then must be reheated to 40 by the deadline. This is a real,
+supported case (`bucketAllocation.ts` `expandCommittedAllocation`: "commitment empty (target met at
+creation), then a hot-water draw created a new need"). Anchored at the 65 °C start, the booked reheat
+climbs *past* target. Note the history recorder promotes the **richest** schedule into `originalPlan`
+(`pickRicherSnapshot` in `planHistoryInProgressState.ts`), so a finalized drain-reheat entry's
+`originalPlan` is the *reheat* (not the empty satisfied seed) — the start-anchored original then
+reads flat at / re-climbs from the 65 °C start (cap-flattened). The widget's live chart anchored at
+`startProgressC` and overshot directly.
+
+**The fix.**
+- `resolveStaircaseAnchor(snapshot, observed, startProgress, windowStartMs)` anchors a staircase at
+  the **observed value where booked heating starts** (the first hour with `plannedKWh > 0`,
+  `coversFromMs ?? startsAtMs`), interpolated from `progressSamples` (seeded with the recorded
+  start). When that hour is still in the future (no reheat begun), `observedValueAt` returns the
+  latest sample — the live "now" value — so an in-flight task still reads. Falls back to
+  `{ startProgress, windowStartMs }` when there is no booked hour / no covering observation.
+- History `composeTrajectoryData`: when the run **started at/above target** (`startProgress ≥
+  target` — the satisfied-then-drift signature), the start-anchored "Initial schedule" is
+  meaningless, so it draws ONE primary line from the richest recorded plan
+  (`resolveFallbackPrimaryStaircase`) anchored at the trough, no revised overlay. Heat-from-below
+  runs (`startProgress < target`) keep the start-anchored original as the from-start intent
+  reference; the empty-original fallback there stays for legacy entries with no recorded original.
+- Active `resolveActivePlanChartData`: the planned staircase anchors via `resolveStaircaseAnchor`
+  when the start reading is known (trough for drain-reheat, ≈ start for heat-from-below), or at the
+  live "now" reading when no start was recorded (post-restart), capped at target.
+- **Removed the interim omit-stopgap.** The "anchor ≥ target → omit the planned line" short-circuit
+  added alongside the cap is gone: it hid the booked reheat on a *missed* drain run ("PELS intended
+  to reheat but didn't" is exactly the story to show). With the trough-anchor the reheat anchor is
+  below target, so the line is drawn and rises normally.
+- **Non-descent invariant.** The per-rise cap uses `effectiveCap = max(target, anchor)` so it can
+  never drag the line below its anchor. In every real reheat `anchor < target` ⇒ `effectiveCap =
+  target`; the `max` only matters for the degenerate "already at/above target when heating would
+  start" input the planner never emits (books only while measured < target), where the line reads
+  flat at the anchor rather than descending.
+
+Builds on / supersedes the cap + omit-stopgap introduced with the smart-tasks-widget chart work
+(PR #1433); WI-3 lands on top of that branch.
+
+**Tests.** `deferredActivePlanChartData`: anchors at the observed value where booked heating starts
+(capped); a succeeded drain-reheat anchors at the ~20 °C trough, non-descending, ends at target;
+live-"now" fallback before any booked hour. `deferredPlanHistoryChartData`: the no-original fallback
+anchors at observed reality; a succeeded drain-reheat is trough-anchored + capped with the full
+65→20→40 measured arc and no revised overlay; a missed drain-reheat still **draws** the reheat plan
+while measured ends low.
