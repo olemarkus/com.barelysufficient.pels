@@ -207,6 +207,29 @@ const captureProgressPercent = (diag: DeferredObjectiveDiagnostic): number | nul
   diag.objectiveKind === 'ev_soc' ? diag.currentPercent : null
 );
 
+// Start-progress capture gated on `hasTrustworthyProgress` — the same definition
+// `progressSamples` (`recordProgressSample`) and `seedHourOpening` already use.
+// `captureProgress*` returns the raw reading even when the diagnostic is
+// stale/invalid (`objective_progress_stale` etc.), so seeding `startProgress*`
+// from it lets an untrusted first read become a sticky start anchor
+// (`backfillStartProgress` only fills when start is null). That anchor feeds the
+// directional miss-attribution check (`final − start`), so a stale start could
+// flip a finalized run to `no_delivery`. Returning null instead defers to
+// `backfillStartProgress`, which adopts the first trustworthy reading.
+//
+// Scope note: only the START anchor is gated here. The `finalProgress*` seed +
+// update paths remain ungated as on main — gating them is a separate, more
+// entangled change (it interacts with the "non-plannable ticks don't roll final
+// forward" rule and the finalized-outcome classification) tracked apart from
+// this focused fix.
+const captureTrustedProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
+  hasTrustworthyProgress(diag) ? captureProgressC(diag) : null
+);
+
+const captureTrustedProgressPercent = (diag: DeferredObjectiveDiagnostic): number | null => (
+  hasTrustworthyProgress(diag) ? captureProgressPercent(diag) : null
+);
+
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
   if (diag.objectiveKind === 'temperature') {
     if (diag.currentTemperatureC === null) return false;
@@ -266,8 +289,8 @@ export const startRecord = (
     targetPercent: diag.targetPercent,
     deadlineAtMs: diag.deadlineAtMs,
     startedAtMs: nowMs,
-    startProgressC: captureProgressC(diag),
-    startProgressPercent: captureProgressPercent(diag),
+    startProgressC: captureTrustedProgressC(diag),
+    startProgressPercent: captureTrustedProgressPercent(diag),
     finalProgressC: captureProgressC(diag),
     finalProgressPercent: captureProgressPercent(diag),
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
@@ -388,16 +411,17 @@ const refreshPlanSnapshots = (
 // would otherwise carry that null all the way to finalization. The history
 // formatter (`packages/shared-domain/src/deferredPlanHistory.ts`) returns
 // `null` for the progress line when the start value is null, hiding the
-// run from the past-tasks list. Adopting the first non-null reading keeps
-// "start" semantically meaning "first observed progress" rather than
-// "snapshot at create-time, even if it was missing". Once set, the value
-// is sticky — later cycles must not overwrite it.
+// run from the past-tasks list. Adopting the first *trustworthy* reading
+// (`captureTrustedProgress*`, not a stale/invalid one) keeps "start"
+// semantically meaning "first trustworthy observed progress" rather than
+// "snapshot at create-time, even if it was missing or stale". Once set, the
+// value is sticky — later cycles must not overwrite it.
 const backfillStartProgress = (
   record: InProgressRecord,
   diag: DeferredObjectiveDiagnostic,
 ): Pick<InProgressRecord, 'startProgressC' | 'startProgressPercent'> => ({
-  startProgressC: record.startProgressC ?? captureProgressC(diag),
-  startProgressPercent: record.startProgressPercent ?? captureProgressPercent(diag),
+  startProgressC: record.startProgressC ?? captureTrustedProgressC(diag),
+  startProgressPercent: record.startProgressPercent ?? captureTrustedProgressPercent(diag),
 });
 
 

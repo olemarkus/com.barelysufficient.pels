@@ -508,6 +508,55 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(entries[0]!.observedIntervals.length).toBeGreaterThan(0);
   });
 
+  it('does not anchor startProgress on a stale first reading; backfills from the first trustworthy one', () => {
+    // The first observed diagnostic carries a stale reading (value present but
+    // flagged `objective_progress_stale`). Seeding `startProgressC` from it would
+    // make a wrong anchor sticky and could flip the directional miss attribution
+    // (final − start) to `no_delivery`. The start must instead adopt the first
+    // trustworthy reading (18 °C), not the stale 50 °C.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, status: 'cannot_meet',
+      reasonCode: 'objective_progress_stale',
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 18, status: 'cannot_meet',
+    })], 2 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    const entry = saved()!.entries[0]!;
+    expect(entry.startProgressC).toBe(18);
+    expect(entry.startProgressC).not.toBe(50);
+  });
+
+  it('leaves startProgress null when no cycle is ever trustworthy (no false anchor)', () => {
+    // Every read is stale, so the start anchor never gets a trustworthy value.
+    // It must stay null rather than sticking on a stale reading — a null start
+    // disables the directional `final − start` miss-attribution check (see
+    // deferredPlanHistoryAttribution: `resolveNoDelivery` returns false on null
+    // progress), so the run can never be falsely attributed to `no_delivery`.
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, status: 'cannot_meet',
+      reasonCode: 'objective_progress_stale',
+    })], 0);
+    recorder.observe([makeDiag({
+      deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51, status: 'cannot_meet',
+      reasonCode: 'objective_progress_stale',
+    })], 3 * HOUR_MS);
+    recorder.observe([], 6 * HOUR_MS);
+    recorder.flushIfDirty();
+
+    expect(saved()!.entries[0]!.startProgressC).toBeNull();
+  });
+
   it('records a `met` entry when the device is already at target across an unknown-throughout window', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
