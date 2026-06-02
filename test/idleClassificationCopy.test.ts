@@ -1,4 +1,19 @@
-import { formatIdleClassificationCopy } from '../packages/shared-domain/src/idleClassificationCopy';
+import {
+  classificationImpliesStallSatisfied,
+  formatIdleClassificationCopy,
+} from '../packages/shared-domain/src/idleClassificationCopy';
+
+describe('classificationImpliesStallSatisfied', () => {
+  it('treats parked classifications (near_target_idle, capped_idle) as stall-satisfied', () => {
+    expect(classificationImpliesStallSatisfied('near_target_idle')).toBe(true);
+    expect(classificationImpliesStallSatisfied('capped_idle')).toBe(true);
+  });
+
+  it('never treats a fault or the absence of a classification as satisfied', () => {
+    expect(classificationImpliesStallSatisfied('unresponsive')).toBe(false);
+    expect(classificationImpliesStallSatisfied(undefined)).toBe(false);
+  });
+});
 
 describe('formatIdleClassificationCopy', () => {
   it('builds a neutral status line for near_target_idle with temperatures', () => {

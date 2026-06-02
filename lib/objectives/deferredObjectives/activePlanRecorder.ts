@@ -44,6 +44,22 @@ const diagTargetTemperatureC = (diag: DeferredObjectiveDiagnostic): number | nul
   diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : null
 );
 
+// The persisted `planStatus` is the status Flows read (deadlineObjectiveCards:
+// "public Flow status follows the active-plan recorder's settled status"). It
+// must follow the resolved user-facing `diagnostic.status` (idle-aware) so a
+// parked/stalled device reports `satisfied` to Flows, agreeing with the status
+// chip — NOT the raw `horizonPlan.status`, which stays the trajectory verdict
+// that drives commitment/energy. They are identical except when
+// `diagnosticsBridge` resolved a stalled device to `satisfied`. `diag.status`
+// is never `unknown` here (callers only reach this with `horizonPlan` present),
+// but narrow it to satisfy the non-`unknown` `planStatus` type.
+const reportedPlanStatus = (
+  diag: DeferredObjectiveDiagnostic,
+  horizonPlan: NonNullable<DeferredObjectiveDiagnostic['horizonPlan']>,
+): DeferredObjectiveActivePlanRevisionV1['planStatus'] => (
+  diag.status === 'unknown' ? horizonPlan.status : diag.status
+);
+
 
 // Mirror `planHistory.ts` ABANDON_GRACE_MS. Homey settings reads can transiently
 // return empty/malformed data; if a plan cycle ever produces an empty
@@ -294,7 +310,7 @@ const buildRevision = (params: {
     ...(energyExpectedKWh !== null && energyExpectedKWh !== energyNeededKWh
       ? { energyExpectedKWh }
       : {}),
-    planStatus: horizonPlan.status,
+    planStatus: reportedPlanStatus(params.diag, horizonPlan),
     ...(source !== null ? { kwhPerUnitSource: source } : {}),
     // Producer-resolved flat display fields (see `resolveRateMean` /
     // `resolveSpeedMode`). Gated on `source !== null` alongside
@@ -363,7 +379,7 @@ const hasMetadataDriftedWithinSchedule = (params: {
   diag: DeferredObjectiveDiagnostic;
 }): boolean => {
   const { latest, horizonPlan, diag } = params;
-  return latest.planStatus !== horizonPlan.status
+  return latest.planStatus !== reportedPlanStatus(diag, horizonPlan)
     || (latest.dailyBudgetExhaustedBucketCount ?? 0) !== diag.dailyBudgetExhaustedBucketCount
     || (latest.floorShortfallCause ?? 'none') !== resolveFloorShortfallCause(diag.reasonCode);
 };
@@ -979,7 +995,11 @@ export class DeferredObjectiveActivePlanRecorder {
       hourCount: effectiveHours.length,
       ...buildActivePlanLifecycleFields(diag, current.startedAtMs),
     });
-    const allocationChanged = shouldFireNotification(latest.hours.length, effectiveHours.length, horizonPlan.status);
+    const allocationChanged = shouldFireNotification(
+      latest.hours.length,
+      effectiveHours.length,
+      reportedPlanStatus(diag, horizonPlan),
+    );
     notifyRevisionWrittenIfPubliclyObservable({
       deps: this.deps,
       diag,

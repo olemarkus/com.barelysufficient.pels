@@ -2364,3 +2364,121 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 });
+
+describe('buildDeferredObjectiveDiagnostics — stall-classification status resolution', () => {
+  // on_track recipe: 4 kWh need fits the 17:00→22:00 window with reserve intact.
+  const onTrackParams = () => ({
+    nowMs: NOW_MS,
+    timeZone: 'UTC',
+    devices: [buildDevice()],
+    settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '22:00' })),
+    powerTracker: buildPowerTracker(),
+    dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 5) }),
+    priceOptimizationEnabled: true,
+  });
+
+  // at_risk recipe: cumulative daily budget plateaus at the 20 kWh cap, so the
+  // horizon is budget-bound (mirrors the dailyBudgetExhaustedBucketCount test).
+  const atRiskParams = () => ({
+    nowMs: NOW_MS,
+    timeZone: 'UTC',
+    devices: [buildDevice()],
+    settings: normalizeDeferredObjectiveSettings(buildSettings()),
+    powerTracker: buildPowerTracker(),
+    dailyBudgetSnapshot: buildSnapshot({
+      prices: Array.from({ length: 24 }, () => 5),
+      allowedCumKWh: Array.from({ length: 24 }, (_, index) => Math.min((index + 1) * 2, 20)),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+    }),
+    priceOptimizationEnabled: true,
+  });
+
+  // An established run = the active-plan recorder has committed a `latest`
+  // revision for this (device, deadline). Stall resolution is suppressed until
+  // then so a first-seen task can't read a stale device-keyed classifier verdict.
+  const establishedPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => ({
+    version: 1,
+    plansByDeviceId: {
+      'ev-1': {
+        deviceId: 'ev-1',
+        deviceName: 'Driveway EV',
+        objectiveKind: 'ev_soc',
+        targetTemperatureC: null,
+        targetPercent: 60,
+        deadlineAtMs,
+        startedAtMs: NOW_MS - HOUR_MS,
+        pending: false,
+        objectiveSignature: JSON.stringify(['ev_soc', null, 60, deadlineAtMs, 'soft']),
+        latest: {
+          revision: 1,
+          revisedAtMs: NOW_MS - HOUR_MS,
+          computedFromPricesUpTo: NOW_MS + HOUR_MS,
+          reason: 'flow_card',
+          hours: [],
+          energyNeededKWh: 2,
+          planStatus: 'on_track',
+        },
+      },
+    },
+  });
+
+  // Build once to read the resolved deadline, then attach a matching established
+  // plan so the first-seen guard is satisfied for the resolution-path tests.
+  const withEstablishedPlan = (params: ReturnType<typeof onTrackParams>) => {
+    const deadlineAtMs = buildDeferredObjectiveDiagnostics(params)[0]?.deadlineAtMs;
+    if (deadlineAtMs == null) throw new Error('expected a resolved deadline');
+    return { ...params, activePlans: establishedPlans(deadlineAtMs) };
+  };
+
+  it('leaves the trajectory status untouched when no stall reader is supplied', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics(onTrackParams());
+    expect(diagnostic?.status).toBe('on_track');
+  });
+
+  it('resolves a parked on_track device to satisfied with the near-target reason, preserving the raw status', () => {
+    const params = withEstablishedPlan(onTrackParams());
+    expect(buildDeferredObjectiveDiagnostics(params)[0]?.status).toBe('on_track');
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...params,
+      getStallClassification: (id: string) => (id === 'ev-1' ? 'near_target_idle' : undefined),
+    });
+    expect(diagnostic?.status).toBe('satisfied');
+    expect(diagnostic?.reasonCode).toBe('objective_stalled_near_target');
+    // The raw trajectory verdict stays on the horizonPlan so the postmortem
+    // recorder and the structured horizon log keep the honest reading.
+    expect(diagnostic?.horizonPlan?.status).toBe('on_track');
+  });
+
+  it('resolves a parked failing device (at_risk) to satisfied with the device-capped reason', () => {
+    const params = withEstablishedPlan(atRiskParams());
+    expect(buildDeferredObjectiveDiagnostics(params)[0]?.status).toBe('at_risk');
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...params,
+      getStallClassification: () => 'capped_idle',
+    });
+    expect(diagnostic?.status).toBe('satisfied');
+    expect(diagnostic?.reasonCode).toBe('objective_stalled_device_capped');
+    expect(diagnostic?.horizonPlan?.status).toBe('at_risk');
+  });
+
+  it('never treats an unresponsive (likely-fault) device as satisfied', () => {
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...withEstablishedPlan(atRiskParams()),
+      getStallClassification: () => 'unresponsive',
+    });
+    expect(diagnostic?.status).toBe('at_risk');
+  });
+
+  it('ignores a stale classifier verdict on a first-seen task (no established plan yet)', () => {
+    // No activePlans → the run is first-seen, so the device-keyed classifier
+    // result belongs to a prior objective and must NOT promote this brand-new
+    // task to satisfied. Regression guard for the stale-classifier window.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...atRiskParams(),
+      getStallClassification: () => 'near_target_idle',
+    });
+    expect(diagnostic?.status).toBe('at_risk');
+  });
+});

@@ -539,6 +539,27 @@ the renderer can land.*
       document the limitation in `notes/idle-classification.md`.
       Files: `lib/observer/idleDetector.ts`,
       `notes/idle-classification.md`.
+- [ ] `capped_idle` structurally can't fire for the very device it was
+      designed for. `shouldUseCappedIdle` requires BOTH `gap > 5 °C`
+      (`NEAR_TARGET_TEMPERATURE_DELTA_C`) AND power-draw samples in both
+      halves of the window (`samplesShowCycling`). The canonical Connected
+      300 parks at ~60.6 °C vs a 65 °C target (gap ~4.4 °C, inside the
+      near-target band) and draws a FLAT 0 W once fill-satisfied (it does
+      not cycle) — so both gates fail and it only ever classifies as
+      `near_target_idle` (→ `stalled`), never `capped_idle`
+      (→ `stalled_device_capped`); when it cools just past 60 °C it even
+      flips to the alarming `unresponsive`. Distinct from the short-deadline
+      window item above (that's about window length; this is the gate
+      thresholds vs the device's flat-0 W/sub-5 °C-gap reality). Live status
+      consistency is already handled (PELS resolves the live status to
+      `satisfied` via the `near_target_idle` path — see
+      `diagnosticsBridge.resolveStallReportedStatus`); this item is only
+      about the finer `stalled` vs `stalled_device_capped` reason granularity
+      in the postmortem. Acceptance: relax the `capped_idle` gates to cover
+      the flat-0 W-below-target plateau (carefully — it shares the
+      `unresponsive` fault path), or document the device falls back to
+      `near_target_idle`. Files: `lib/observer/idleDetector.ts`,
+      `notes/idle-classification.md`.
       Source: `pels-runtime-reality`, PR #1018 follow-up, 2026-05-23.
 
 - [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the

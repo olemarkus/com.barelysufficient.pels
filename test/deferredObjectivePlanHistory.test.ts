@@ -2183,6 +2183,36 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
     });
 
+    it('keeps metReason "stalled" when the live status was producer-resolved to satisfied', () => {
+      // The lifecycleEmitter feeds the recorder diagnostics whose top-level
+      // `status` was resolved to `satisfied` by diagnosticsBridge (so the chip /
+      // Flows agree), while `horizonPlan.status` stays the raw `cannot_meet`
+      // trajectory. The postmortem must read the RAW status (`rawHorizonStatus`)
+      // so `mergeRecord` doesn't pre-satisfy the run and short-circuit the stall
+      // promotion via `promoteRecordToStalled`'s already-satisfied early return —
+      // which would silently drop the `stalled` met-reason.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const resolvedDiag = (currentTemperatureC: number) => makeDiag({
+        deviceId: 'dev',
+        deadlineAtMs,
+        currentTemperatureC,
+        status: 'satisfied',
+        reasonCode: 'objective_stalled_near_target',
+        horizonPlan: makeHorizon({ status: 'cannot_meet', statusDetail: 'target_cannot_be_met' }),
+      });
+
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })], 0);
+      recorder.observe([resolvedDiag(61.8)], 3 * HOUR_MS, null, () => 'near_target_idle');
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+    });
+
     it('does not write metReason on runs that crossed the target normally', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);

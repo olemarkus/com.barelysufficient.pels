@@ -14,8 +14,9 @@ import type { DeferredObjectiveStatusBus } from './statusBus';
 import type { DeferredObjectiveHoursRemainingBus } from './hoursRemainingBus';
 import type { DeferredObjectiveHoursRemainingTracker } from './hoursRemainingCrossings';
 import type { DeferredObjectiveSettingsV1 } from './settings';
+import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
 
-type StallClassification = 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
+type StallClassification = IdleClassification | undefined;
 
 /**
  * Clock-driven smart-task lifecycle emission.
@@ -122,6 +123,11 @@ export class DeferredObjectiveLifecycleEmitter {
       activePlans,
       hardCapKw: this.deps.getHardCapKw(),
       concurrentEligibleTracker: this.concurrentEligibleTracker,
+      // Resolve the user-facing status to `satisfied` for parked/stalled devices
+      // so the status chip, notifications, Flows (active-plan recorder) and the
+      // postmortem all agree. The decoration/actuation path builds its own
+      // diagnostics WITHOUT this, keeping admission on the raw trajectory status.
+      getStallClassification: this.deps.getStallClassification,
     });
 
     // Plan-history record, using this tick's (pre-write) snapshot.
