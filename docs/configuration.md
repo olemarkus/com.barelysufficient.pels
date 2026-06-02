@@ -44,7 +44,7 @@ See [Daily Energy Budget](/daily-budget#where-to-configure-it) for the full desc
 The Usage page helps you understand what PELS has observed.
 
 - **Today so far** shows hourly kWh for the selected local day.
-- **Last 14 days** shows recent daily totals.
+- **Last 7 days** shows recent daily totals.
 - **Typical day** shows historical hourly patterns.
 - **Detailed hourly view** shows lower-level hourly buckets.
 
