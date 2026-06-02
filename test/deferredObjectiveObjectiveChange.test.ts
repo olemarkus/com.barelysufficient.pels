@@ -86,7 +86,7 @@ describe('applyDeferredObjectiveChange', () => {
     });
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
-    expect(clearSpy).toHaveBeenCalledWith('dev');
+    expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]!.deadlineAtMs).toBe(8 * HOUR_MS);
   });
@@ -109,7 +109,7 @@ describe('applyDeferredObjectiveChange', () => {
     });
 
     expect(finalizeSpy).toHaveBeenCalledWith('dev', HOUR_MS, 'replaced');
-    expect(clearSpy).toHaveBeenCalledWith('dev');
+    expect(clearSpy).not.toHaveBeenCalled();
     expect(markSpy).toHaveBeenCalledTimes(1);
     expect(markSpy.mock.calls[0]![0]).toMatchObject({
       targetTemperatureC: 70,
@@ -225,7 +225,7 @@ describe('applyDeferredObjectiveChange', () => {
 
       expect(userChangeSpy).not.toHaveBeenCalled();
       expect(elapsedSpy).toHaveBeenCalledWith('dev', 6 * HOUR_MS);
-      expect(clearSpy).toHaveBeenCalledWith('dev');
+      expect(clearSpy).not.toHaveBeenCalled();
       expect(markSpy).toHaveBeenCalledTimes(1);
       expect(markSpy.mock.calls[0]![0]!.deadlineAtMs).toBe(12 * HOUR_MS);
     });

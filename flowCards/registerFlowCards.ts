@@ -2,6 +2,7 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/power/capacityGuard';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
@@ -117,6 +118,7 @@ export type FlowCardDeps = {
   // Production always wires these via appInit.
   upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
+  getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;
   getDeferredObjectiveEndedBus?: () => DeferredObjectiveEndedBus | undefined;

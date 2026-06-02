@@ -6,7 +6,7 @@
     "en": "[[device]] smart task !{{is|is not}} [[status]]"
   },
   "hint": {
-    "en": "True when the current smart task status for this device matches the chosen status."
+    "en": "True when the saved smart task status for this device matches the chosen status."
   },
   "args": [
     {

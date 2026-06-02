@@ -131,7 +131,7 @@ For many homes, this is the useful combination:
 
 ## Status and History
 
-The Smart tasks view shows current tasks and past tasks. Flow cards can also react to status changes.
+The Smart tasks view shows current tasks and past tasks. Flow cards can also react when the saved status changes.
 
 | Status | Meaning |
 | --- | --- |
@@ -145,7 +145,7 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 
 If no active task is stored for a device, that device simply has no Smart task status.
 
-Use **Smart task status changed** for live notifications as a task is being tracked. Use **Smart task ended** when you want an alert after the task run concludes.
+Use **Smart task status changed** for notifications after PELS saves a new status. Use **Smart task ended** when you want an alert after the task run concludes.
 
 ### Outcomes
 

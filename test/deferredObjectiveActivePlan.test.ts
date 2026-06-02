@@ -197,6 +197,53 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.latest).toBeNull();
   });
 
+  it('emits a pending status event when replacing a settled active plan', () => {
+    const events: Array<{
+      eventType: string;
+      previousPlanStatus: string | null;
+      revision: unknown;
+      reason: string;
+    }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          eventType: event.eventType,
+          previousPlanStatus: event.previousPlanStatus,
+          revision: event.revision,
+          reason: event.reason,
+        });
+      },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.markPending(buildSeed({ deadlineAtMs: 7 * HOUR_MS }), 2 * HOUR_MS);
+
+    expect(events).toEqual([{
+      eventType: 'pending_written',
+      previousPlanStatus: 'on_track',
+      revision: null,
+      reason: 'pending',
+    }]);
+    expect(recorder.getPlanForTests('dev')?.pending).toBe(true);
+  });
+
+  it('does not emit a pending status event when the replaced plan was past deadline', () => {
+    const events: string[] = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => { events.push(event.eventType); },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.markPending(buildSeed({ deadlineAtMs: 8 * HOUR_MS }), 7 * HOUR_MS);
+
+    expect(events).toEqual([]);
+    expect(recorder.getPlanForTests('dev')?.pending).toBe(true);
+  });
+
   it('captures awaiting_horizon_plan on a pending record auto-created from a diagnostic with no horizon plan', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -1436,14 +1483,31 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
 
   it('writes a new revision when planStatus transitions across the same set of hours', () => {
     // planStatus transitions (on_track <-> at_risk <-> cannot_meet) drive a
-    // user-visible "Can't fully meet" chip in Settings UI, so they must
-    // persist even when the hour set is unchanged.
+    // user-visible status chip in Settings UI and Flow, so they must persist
+    // and notify even when the hour set is unchanged.
+    const events: Array<{
+      previousPlanStatus: string | null;
+      previousWasPending: boolean;
+      allocationChanged: boolean;
+      planStatus: string;
+    }> = [];
     const { deps, saveCount } = buildPersistDeps();
-    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          previousPlanStatus: event.previousPlanStatus,
+          previousWasPending: event.previousWasPending,
+          allocationChanged: event.allocationChanged,
+          planStatus: event.revision.planStatus,
+        });
+      },
+    });
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
     recorder.flushIfDirty();
     expect(saveCount()).toBe(1);
+    expect(events).toEqual([]);
 
     // Same schedule, status flips on_track -> at_risk.
     recorder.observe([makeDiag({
@@ -1462,6 +1526,99 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const plan = recorder.getPlanForTests('dev');
     expect(plan?.latest?.planStatus).toBe('at_risk');
     expect(plan?.latest?.revision).toBe(2);
+    expect(events).toEqual([{
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
+      allocationChanged: false,
+      planStatus: 'at_risk',
+    }]);
+  });
+
+  it('keeps mid-hour status drift live-only until the settle gate', () => {
+    // Mid-hour diagnostics still guide execution, but the active-plan revision
+    // is the public Flow/UI status source. A transient at-risk sample before
+    // :58 must not persist or fire the revision bus.
+    const events: Array<{ planStatus: string }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({ planStatus: event.revision.planStatus });
+      },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { status: 'at_risk' }),
+    })], 2 * HOUR_MS + 30 * 60 * 1000);
+
+    expect(events).toEqual([]);
+    expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('on_track');
+    expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
+  });
+
+  it('drops expired diagnostics without emitting a public status revision', () => {
+    const events: Array<{ planStatus: string }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({ planStatus: event.revision.planStatus });
+      },
+    });
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      status: 'at_risk',
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { status: 'at_risk' }),
+    })], 6 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    expect(events).toEqual([]);
+    expect(recorder.getPlanForTests('dev')).toBeUndefined();
+  });
+
+  it('emits a waiting-to-settled revision event when a pending task gets its first plan', () => {
+    const events: Array<{
+      previousPlanStatus: string | null;
+      previousWasPending: boolean;
+      allocationChanged: boolean;
+      planStatus: string;
+    }> = [];
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder({
+      ...deps,
+      onRevisionWritten: (event) => {
+        events.push({
+          previousPlanStatus: event.previousPlanStatus,
+          previousWasPending: event.previousWasPending,
+          allocationChanged: event.allocationChanged,
+          planStatus: event.revision.planStatus,
+        });
+      },
+    });
+
+    recorder.markPending(buildSeed(), 0);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+
+    expect(events).toEqual([{
+      previousPlanStatus: null,
+      previousWasPending: true,
+      allocationChanged: false,
+      planStatus: 'on_track',
+    }]);
   });
 
   it('skips both the revision and the bus when nothing observable changed', () => {
@@ -1607,17 +1764,23 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
   });
 
-  it('does not emit onRevisionWritten when the schedule empties because the objective was satisfied', () => {
+  it('emits a status-only revision event when the objective becomes satisfied', () => {
     // Once the device reaches its target the horizon plan reports zero
     // remaining energy and the planned buckets all carry 0 useful kWh,
-    // collapsing the schedule to []. Firing here would produce a malformed
-    // "…reach goal at . 0 kWh remaining" notification (no projected finish,
-    // no remaining energy), so the bus stays quiet.
-    const events: Array<{ reason: string }> = [];
+    // collapsing the live schedule to []. The plan-changed Flow card still
+    // must not fire (`allocationChanged=false`), but the status-change Flow
+    // card now sees the settled `satisfied` status.
+    const events: Array<{ reason: string; allocationChanged: boolean; planStatus: string }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
-      onRevisionWritten: (event) => { events.push({ reason: event.reason }); },
+      onRevisionWritten: (event) => {
+        events.push({
+          reason: event.reason,
+          allocationChanged: event.allocationChanged,
+          planStatus: event.revision.planStatus,
+        });
+      },
     });
 
     recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
@@ -1635,9 +1798,13 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
-    expect(events).toEqual([]);
+    expect(events).toEqual([{
+      reason: 'schedule_revised',
+      allocationChanged: false,
+      planStatus: 'satisfied',
+    }]);
     // Revision is still persisted so the Settings UI reflects the satisfied
-    // state — the suppression is for the notification path only.
+    // state. Only the allocation-change side of the revision bus is quiet.
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(0);
   });
@@ -1717,17 +1884,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(events).toHaveLength(1);
   });
 
-  it('emits onRevisionWritten when the schedule collapses to empty because the plan cannot meet the deadline', () => {
+  it('emits a status-only revision event when the plan can no longer meet the deadline', () => {
     // Regression for the gap Codex flagged on PR #730: a planner transition
     // like `cannot_meet/target_cannot_be_met` (with partial buckets) →
     // `cannot_meet/no_bucket_capacity` (no buckets) stays within the same
-    // `cannot_meet` status, so `deadline_status_changed` does not fire. The
-    // `deadline_plan_changed` trigger must therefore still emit on collapses
-    // backed by a degraded plan status, even though the `projectedFinishAtMs`
-    // token will be empty in that case. Satisfied collapses remain suppressed
-    // (see the satisfied test) because the target is met — there is no plan
-    // to talk about and the notification template would render badly.
-    const events: Array<{ reason: string; hours: number; planStatus: string }> = [];
+    // `cannot_meet` status on the live bus. Public Flow status now follows the
+    // settled active-plan revision, so the status-only revision event carries
+    // the degradation while `deadline_plan_changed` still ignores it.
+    const events: Array<{
+      reason: string;
+      hours: number;
+      previousPlanStatus: string | null;
+      allocationChanged: boolean;
+      planStatus: string;
+    }> = [];
     const { deps } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
@@ -1735,6 +1905,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         events.push({
           reason: event.reason,
           hours: event.revision.hours.length,
+          previousPlanStatus: event.previousPlanStatus,
+          allocationChanged: event.allocationChanged,
           planStatus: event.revision.planStatus,
         });
       },
@@ -1755,9 +1927,15 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       }),
     })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
 
-    // The committed schedule does not collapse, so the plan-changed bus stays
-    // quiet. A metadata revision still persists the degraded status.
-    expect(events).toEqual([]);
+    // The committed schedule does not collapse, so plan-changed Flow stays
+    // quiet. The shared revision bus still emits for settled status change.
+    expect(events).toEqual([{
+      reason: 'schedule_revised',
+      hours: 3,
+      previousPlanStatus: 'on_track',
+      allocationChanged: false,
+      planStatus: 'cannot_meet',
+    }]);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(2);
     expect(recorder.getPlanForTests('dev')?.latest?.energyNeededKWh).toBe(4.5);
     expect(recorder.getPlanForTests('dev')?.latest?.planStatus).toBe('cannot_meet');

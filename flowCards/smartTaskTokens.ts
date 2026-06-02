@@ -14,8 +14,7 @@ import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingEvent,
-  type DeferredObjectivePlanRevisionEvent,
-  type DeferredObjectiveStatusSnapshot,
+  type DeferredObjectivePlanRevisionWrittenEvent,
 } from '../lib/objectives/deferredObjectives';
 import { isFiniteNumber } from '../lib/utils/appTypeGuards';
 
@@ -23,6 +22,11 @@ import { isFiniteNumber } from '../lib/utils/appTypeGuards';
 // here keeps the runtime call sites readable while the single source of truth
 // stays in shared-domain.
 export type SmartTaskStatusId = SmartTaskStatusNotificationId;
+
+type SmartTaskStatusTokenSource = {
+  deviceId: string;
+  deviceName: string | null;
+};
 
 // Homey number-typed flow tokens must not be null. Coerce nullish or
 // non-finite inputs to 0 — flows that need "data not ready yet" semantics
@@ -71,10 +75,10 @@ export const buildSmartTaskEndedTokens = (
 };
 
 export const buildSmartTaskStatusTokens = (
-  snapshot: DeferredObjectiveStatusSnapshot,
+  source: SmartTaskStatusTokenSource,
   status: SmartTaskStatusId,
 ): Record<string, unknown> => ({
-  device_name: snapshot.deviceName ?? snapshot.deviceId,
+  device_name: source.deviceName ?? source.deviceId,
   status,
 });
 
@@ -91,7 +95,7 @@ export const buildSmartTaskHoursRemainingTokens = (
 });
 
 export const buildSmartTaskPlanChangedTokens = (
-  event: DeferredObjectivePlanRevisionEvent,
+  event: DeferredObjectivePlanRevisionWrittenEvent,
   timeZone: string,
 ): Record<string, unknown> => ({
   device_name: event.deviceName ?? event.deviceId,

@@ -1,40 +1,47 @@
 # Status Hysteresis and Confidence Margins
 
-Hysteresis on smart-task status transitions and confidence-scaled deadline
-margins are **deferred from v1**. The shipped runtime transitions
-immediately on status change
-(`lib/objectives/deferredObjectives/statusTransitions.ts:117`) and uses a flat
-deadline-reserve margin without a confidence band. This note collects the
-design so the intent isn't lost; the trigger for picking it up is real
-telemetry showing user-observable status flapping, not the section's
-existence.
+Extra hysteresis on smart-task status transitions and confidence-scaled deadline
+margins are **deferred from v1**. The shipped runtime still computes live
+diagnostic status immediately on every cycle
+(`lib/objectives/deferredObjectives/statusTransitions.ts`), but that live bus is
+internal lifecycle/debug state. Public Flow/UI status reads the active-plan
+record's saved `latest.planStatus`, so short mid-hour flips are damped by the
+active-plan recorder's settle gate before they become user-observable.
+
+This note collects the remaining hysteresis design so the intent is not lost;
+pick it up only if real telemetry shows user-observable status flapping after
+the saved-active-plan gate, or if PELS deliberately exposes live status again.
 
 ## Why hysteresis was designed
 
 Stop status from flapping `on_track` ↔ `at_risk` ↔ `on_track` between
-cycles, which would otherwise generate noisy flow-trigger fires and UI
-churn.
+cycles. That used to be a direct Flow-trigger risk when public status followed
+the immediate status bus. Today it is mostly a risk at active-plan revision
+boundaries or at the satisfied target boundary.
 
 ## What already damps the noise (without hysteresis)
 
-1. **Flow-trigger dedup.** `statusTransitions.ts` suppresses
-   `deadline_status_changed` on same-status re-runs, so a flip-and-flip-back
-   inside a few cycles only generates one fire.
-2. **Plan-stability rule.** The active-plan recorder doesn't write a new
-   revision when the hour schedule is unchanged — trivial recomputations
-   don't perturb persistence.
-3. **Plan-cycle frequency.** 10s polls or flow-event-driven; most
-   "flapping" resolves within seconds, well below user-observable.
+1. **Saved active-plan status.** `deadline_status_changed` and
+   `deadline_status_is` read settled active-plan revisions, not the immediate
+   diagnostic status bus. Mid-hour diagnostic flips do not fire public Flow
+   cards unless they survive to a saved revision.
+2. **Same-status public suppression.** The Flow trigger suppresses same-public-status
+   revisions, including raw `cannot_meet` ↔ `invalid` transitions that both map to
+   `unachievable`.
+3. **Plan-stability rule.** The active-plan recorder ignores trivial
+   recomputations and writes replans at the settle gate unless the objective
+   itself changed.
 
 ## The case dedup doesn't cover
 
 Status flapping across the **target boundary** — thermostat reads 21.9°C
 (`on_track`), next reads 22.1°C (`satisfied`), next reads 21.95°C
-(`on_track`). Each transition is a *different* status, so dedup doesn't
-apply, and a flow wired to `deadline_status_changed` fires three times for
-sensor noise. The same flapping risk applies to EV SoC: a charger
-reporting an integer percent that bounces 79 → 80 → 79 across consecutive
-samples produces three status fires for no real progress.
+(`on_track`). Each transition is a different status, so same-status
+suppression cannot help. The saved-active-plan gate prevents second-by-second
+Flow churn, but an unlucky settle sample can still publish a boundary status
+that reverses on a later revision. The same risk applies to EV SoC: a charger
+reporting an integer percent that bounces 79 -> 80 -> 79 can alternate the
+saved public status across revisions even though no meaningful progress changed.
 
 The fix is an **asymmetric satisfied-gate** at the diagnostic boundary in
 `lib/objectives/deferredObjectives/diagnosticsBridge.ts`:
@@ -73,8 +80,10 @@ Flow triggers and user-visible stable state may use rules such as
 - require five minutes stable before upgrading from `at_risk` to
   `on_track`
 
-These rules imply a `stableStatus` field on the evaluation type, separate
-from the latest-cycle `status`. Today only the latest-cycle `status` ships.
+These rules imply either a `stableStatus` field on the evaluation type or an
+additional active-plan status gate before writing public revisions. Today the
+latest-cycle diagnostic `status` ships internally and the active-plan
+`latest.planStatus` ships publicly.
 
 ## Confidence-scaled deadline margin (deferred)
 
@@ -125,8 +134,8 @@ The shipped status values live on the diagnostic type
 
 ## Trigger to revisit
 
-- Real telemetry shows user-visible `deadline_status_changed` flapping
-  unrelated to true plan changes.
+- Real telemetry shows user-visible `deadline_status_changed` flapping after
+  the saved active-plan status gate.
 - The asymmetric satisfied-gate (smaller fix) doesn't catch the observed
   case.
 - Or: confidence-scaled margins become necessary because a class of plans

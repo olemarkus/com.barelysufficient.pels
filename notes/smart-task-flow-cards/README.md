@@ -36,7 +36,8 @@ re-add the token quietly.
   observable and `shortfall` fell back to 0; gate numeric comparisons on it).
 - `deadline_status_changed` — `device_name` (string), `status` (string,
   stable lowercase id: `waiting` / `on_track` / `at_risk` /
-  `unachievable` / `satisfied`).
+  `unachievable` / `satisfied`). It fires from the settled active-plan
+  revision stream, not from every live diagnostic status transition.
 - `deadline_plan_changed` — `device_name` (string), `remaining_kwh`
   (number), `planned_hours` (number), `projected_finish_local_time`
   (string). Trigger title is "Smart task schedule changed".
@@ -59,9 +60,9 @@ was folded into it.
 
 | Card | Kind | Today |
 |---|---|---|
-| `deadline_ended` | trigger | `outcome` dropdown arg + display-label tokens |
-| `deadline_status_changed` | trigger | `status` dropdown arg + display-label tokens |
-| `deadline_plan_changed` | trigger | no dropdown; tokens incomplete |
+| `deadline_ended` | trigger | no dropdown; stable `outcome` and shortfall tokens |
+| `deadline_status_changed` | trigger | no dropdown; stable `status` token |
+| `deadline_plan_changed` | trigger | no dropdown; stable plan-summary tokens |
 | `deadline_status_is` | condition | `status` dropdown arg |
 | `has_active_deadline` | condition | shipped, no change needed |
 | `set_temperature_deadline`, `set_ev_charge_deadline`, `clear_deadline` | action | not in scope (separate token list) |
@@ -142,6 +143,12 @@ stable-id *values* are public API — treat any rename as a breaking change.
 | `smart_task_hours_remaining` | `device_name`, `hours_remaining` (number) | — |
 
 The `deadline_status_is` condition compares against the same `status` enum. The
+trigger and condition both read the active-plan record's settled public status:
+an enabled task with no saved revision is `waiting`, replacing a settled task
+with a pending record emits the saved status → `waiting`, the first saved
+revision after a pending record emits `waiting` → the saved status, and a
+first discovered revision with no prior public status does not emit a change.
+Live diagnostic status transitions remain internal lifecycle/debug signals. The
 trimmed proposal-era tokens (`kind`, `*_id` suffixes, `previous_status_id`,
 `change_reason_id`, `risk_reason`, `*_unit`) were **not** shipped — see the
 rejected-expansion note above.

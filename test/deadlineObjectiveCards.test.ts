@@ -13,13 +13,19 @@ import {
   type DeferredObjectiveHoursRemainingBus,
   type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanHistoryRecorder,
+  type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
-  type DeferredObjectiveStatusSnapshot,
 } from '../lib/objectives/deferredObjectives';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+import type {
+  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveActivePlanV1,
+  DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlanRevisionV1,
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCardDeps } from '../flowCards/registerFlowCards';
 
@@ -104,17 +110,84 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; na
   ...overrides,
 } as TargetDeviceSnapshot);
 
-const buildSnapshot = (
-  overrides: Partial<DeferredObjectiveStatusSnapshot> & Pick<DeferredObjectiveStatusSnapshot, 'deviceId' | 'kind' | 'status' | 'previousStatus' | 'deadlineAtMs'>,
-): DeferredObjectiveStatusSnapshot => ({
-  deviceName: null,
-  targetText: '',
-  deadlineLocalTime: '',
-  deadlineMissed: false,
-  shortfallKwh: null,
-  shortfallText: null,
+const buildActivePlanRevision = (
+  planStatus: DeferredObjectiveActivePlanStatusV1,
+  overrides: Partial<DeferredObjectiveActivePlanRevisionV1> = {},
+): DeferredObjectiveActivePlanRevisionV1 => ({
+  revision: 1,
+  revisedAtMs: MOCK_NOW_MS,
+  computedFromPricesUpTo: null,
+  reason: 'flow_card',
+  hours: [],
+  energyNeededKWh: 1,
+  planStatus,
   ...overrides,
 });
+
+const buildActivePlan = (overrides: {
+  deviceId?: string;
+  deviceName?: string | null;
+  planStatus?: DeferredObjectiveActivePlanStatusV1;
+  pending?: boolean;
+  latest?: DeferredObjectiveActivePlanRevisionV1 | null;
+  deadlineAtMs?: number;
+} = {}): DeferredObjectiveActivePlanV1 => {
+  const deviceId = overrides.deviceId ?? 'heater-1';
+  const pending = overrides.pending ?? false;
+  const latest = overrides.latest ?? (pending ? null : buildActivePlanRevision(overrides.planStatus ?? 'on_track'));
+  return {
+    deviceId,
+    deviceName: overrides.deviceName ?? 'Boiler',
+    objectiveKind: 'temperature',
+    targetTemperatureC: 55,
+    targetPercent: null,
+    deadlineAtMs: overrides.deadlineAtMs ?? HH_MM_TO_UTC_MS(7, 0),
+    startedAtMs: MOCK_NOW_MS,
+    pending,
+    objectiveSignature: `${deviceId}:sig`,
+    original: latest,
+    latest,
+  };
+};
+
+const buildActivePlans = (
+  plans: DeferredObjectiveActivePlanV1[],
+): DeferredObjectiveActivePlansV1 => ({
+  version: 1,
+  plansByDeviceId: Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
+});
+
+const buildPlanRevisionEvent = (
+  overrides: Omit<Partial<DeferredObjectivePlanRevisionEvent>, 'revision'> & {
+    planStatus?: DeferredObjectiveActivePlanStatusV1;
+    revision?: Partial<DeferredObjectiveActivePlanRevisionV1>;
+  } = {},
+): DeferredObjectivePlanRevisionEvent => {
+  const {
+    planStatus: eventPlanStatus,
+    revision: revisionOverrides = {},
+    ...eventOverrides
+  } = overrides;
+  const planStatus = eventPlanStatus ?? revisionOverrides.planStatus ?? 'on_track';
+  const revision = buildActivePlanRevision(planStatus, {
+    reason: 'schedule_revised',
+    ...revisionOverrides,
+    planStatus,
+  });
+  return {
+    eventType: 'revision_written',
+    deviceId: 'heater-1',
+    deviceName: 'Boiler',
+    objectiveKind: 'temperature',
+    reason: revision.reason,
+    previousPlanStatus: 'on_track',
+    previousWasPending: false,
+    allocationChanged: false,
+    projectedFinishAtMs: null,
+    revision,
+    ...eventOverrides,
+  };
+};
 
 const buildHoursRemainingDiagnostic = (
   overrides: Partial<DeferredObjectiveDiagnostic> & {
@@ -176,6 +249,7 @@ const buildDeps = (overrides: {
   endedBus?: DeferredObjectiveEndedBus;
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
   rebuildPlan?: ReturnType<typeof vi.fn>;
   recorders?: MockRecorders;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey>; recorders: MockRecorders } => {
@@ -229,6 +303,11 @@ const buildDeps = (overrides: {
     log: () => {},
     logDebug: () => {},
     error: () => {},
+    getDeferredObjectiveActivePlans: () => (
+      Object.prototype.hasOwnProperty.call(overrides, 'activePlans')
+        ? overrides.activePlans
+        : recorders.activePlanRecorder.getActivePlansSnapshot()
+    ),
     getDeferredObjectiveStatusBus: () => overrides.bus,
     getDeferredObjectivePlanRevisionBus: () => overrides.planRevisionBus,
     getDeferredObjectiveEndedBus: () => overrides.endedBus,
@@ -588,36 +667,29 @@ describe('deadline objective flow cards', () => {
   });
 
   it('deadline_status_is matches at-risk as its own smart task status', async () => {
-    const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      activePlans: buildActivePlans([buildActivePlan({ planStatus: 'at_risk' })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
-    bus.publish({
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'at_risk',
-      previousStatus: 'on_track',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
-    });
     expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
   it('deadline_status_is returns true for waiting when a task has no status yet', async () => {
-    const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
@@ -634,38 +706,50 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'pending_prices' })).toBe(true);
   });
 
-  it('deadline_status_is maps compatibility status args to active smart task statuses', async () => {
-    const bus = createDeferredObjectiveStatusBus();
+  it('deadline_status_is returns false when active-plan state is unavailable', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      activePlans: null,
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
-    const snapshot: DeferredObjectiveStatusSnapshot = {
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'cannot_meet',
-      previousStatus: 'on_track',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
-    };
-    bus.publish(snapshot);
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+  });
+
+  it('deadline_status_is maps compatibility status args to active smart task statuses', async () => {
+    const activePlans = buildActivePlans([buildActivePlan({ planStatus: 'cannot_meet' })]);
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans,
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
 
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'cannot_finish' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
 
-    bus.publish({
-      ...snapshot,
-      status: 'satisfied',
-      previousStatus: 'cannot_meet',
-    });
+    activePlans.plansByDeviceId['heater-1'] = buildActivePlan({ planStatus: 'satisfied' });
     expect(await condition.run!({ device: 'heater-1', status: 'satisfied' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'done' })).toBe(true);
   });
@@ -698,45 +782,67 @@ describe('deadline objective flow cards', () => {
   });
 
   it('deadline_status_is returns false for completely unknown status ids', async () => {
-    const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      activePlans: buildActivePlans([buildActivePlan({ planStatus: 'on_track' })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
     });
     registerDeadlineObjectiveCards(deps);
     const condition = mock.conditions.get('deadline_status_is')!;
-    bus.publish(buildSnapshot({
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'on_track',
-      previousStatus: 'none',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-    }));
     expect(await condition.run!({ device: 'heater-1', status: 'missed' })).toBe(false);
     expect(await condition.run!({ device: 'heater-1', status: 'unknown_future_id' })).toBe(false);
     expect(await condition.run!({ device: 'heater-1', status: '' })).toBe(false);
   });
 
-  it('publishes status_changed triggers with the stable lowercase status id', async () => {
+  it('does not fire status_changed from live status bus transitions', () => {
     const bus = createDeferredObjectiveStatusBus();
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       bus,
+      planRevisionBus,
     });
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_status_changed')!;
-    const transition = buildSnapshot({
+
+    bus.publish({
       deviceId: 'heater-1',
       deviceName: 'Boiler',
       kind: 'temperature',
       status: 'at_risk',
       previousStatus: 'on_track',
+      targetText: '55 °C',
+      deadlineLocalTime: '07:00',
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      deadlineMissed: false,
+      shortfallKwh: null,
+      shortfallText: null,
     });
-    bus.publish(transition);
+
+    expect(trigger.trigger).not.toHaveBeenCalled();
+  });
+
+  it('publishes status_changed from settled active-plan revision events', async () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      planRevisionBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'on_track',
+      planStatus: 'at_risk',
+    }));
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     const [tokens, state] = trigger.trigger.mock.calls[0]!;
     expect(tokens).toEqual({
@@ -747,14 +853,20 @@ describe('deadline objective flow cards', () => {
     expect(await trigger.run!({ device: 'heater-1' }, state)).toBe(true);
     expect(await trigger.run!({ device: 'heater-2' }, state)).toBe(false);
 
-    bus.publish({ ...transition, status: 'on_track', previousStatus: 'at_risk' });
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'at_risk',
+      planStatus: 'on_track',
+    }));
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
     expect(trigger.trigger.mock.calls[1]![0]).toEqual({
       device_name: 'Boiler',
       status: 'on_track',
     });
 
-    bus.publish({ ...transition, status: 'cannot_meet', previousStatus: 'on_track' });
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'on_track',
+      planStatus: 'cannot_meet',
+    }));
     expect(trigger.trigger).toHaveBeenCalledTimes(3);
     expect(trigger.trigger.mock.calls[2]![0]).toEqual({
       device_name: 'Boiler',
@@ -762,26 +874,50 @@ describe('deadline objective flow cards', () => {
     });
   });
 
-  it('publishes unknown as waiting when the active smart task status changes', async () => {
-    const bus = createDeferredObjectiveStatusBus();
+  it('publishes status_changed when a pending task receives its first settled plan', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      planRevisionBus,
     });
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_status_changed')!;
-    bus.publish({
+
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: null,
+      previousWasPending: true,
+      planStatus: 'on_track',
+    }));
+
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const [tokens, state] = trigger.trigger.mock.calls[0]!;
+    expect(tokens).toEqual({
+      device_name: 'Boiler',
+      status: 'on_track',
+    });
+    expect(state).toEqual({ deviceId: 'heater-1' });
+  });
+
+  it('publishes waiting when a settled task is replaced by a pending plan', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      planRevisionBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+
+    planRevisionBus.publish({
+      eventType: 'pending_written',
       deviceId: 'heater-1',
       deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'unknown',
-      previousStatus: 'on_track',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
+      objectiveKind: 'temperature',
+      reason: 'pending',
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
+      allocationChanged: false,
+      projectedFinishAtMs: null,
+      revision: null,
     });
 
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
@@ -793,113 +929,69 @@ describe('deadline objective flow cards', () => {
     expect(state).toEqual({ deviceId: 'heater-1' });
   });
 
-  it('does not fire on the first observation of a freshly created task', async () => {
-    const bus = createDeferredObjectiveStatusBus();
+  it('does not fire on the first settled revision of a freshly discovered task', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
+      planRevisionBus,
     });
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_status_changed')!;
-    const snapshot: DeferredObjectiveStatusSnapshot = {
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'on_track',
-      // `previousStatus = 'none'` means the bus had no record before — i.e. a
-      // freshly added (or re-added after `clear_deadline`) task. The trigger
-      // is "status changed", not "task created", so this must not fire.
-      previousStatus: 'none',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
-    };
 
-    bus.publish(snapshot);
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: null,
+      previousWasPending: false,
+      planStatus: 'on_track',
+    }));
     expect(trigger.trigger).not.toHaveBeenCalled();
 
-    // Subsequent real status change (now bus has prior status `on_track`).
-    bus.publish({
-      ...snapshot,
-      status: 'at_risk',
-      previousStatus: 'on_track',
-    });
+    // Subsequent settled status change now has prior public status.
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'on_track',
+      planStatus: 'at_risk',
+    }));
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fire when the bus forgets a device but the cache still holds the same deadline', () => {
-    // Regression: `statusBus.forgetDevice()` is called from paths other than
-    // `clear_deadline` (transition sweeps, runtime disable in appInit). Those
-    // paths leave `lastFlowStatusByDeviceId` populated. When the device next
-    // reappears with `previousStatus: 'none'` AND the cached entry happens to
-    // match the same deadlineAtMs, the trigger would otherwise reuse the
-    // stale cached status and emit a spurious status-change event.
-    const bus = createDeferredObjectiveStatusBus();
+  it('does not fire when settled raw statuses map to the same public status', () => {
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
-      bus,
-      rebuildPlan: vi.fn(),
+      planRevisionBus,
     });
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_status_changed')!;
 
-    // Initial: bus publishes on_track with a real prior status — fires once
-    // and populates the cache.
-    const snapshot: DeferredObjectiveStatusSnapshot = {
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'on_track',
-      previousStatus: 'unknown',
-      targetText: '55 °C',
-      deadlineLocalTime: '07:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
-    };
-    bus.publish(snapshot);
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
-
-    // Bus forgets the device via a non-clear path (e.g. transition sweep).
-    // The trigger's cache is NOT cleared by this path.
-    bus.forgetDevice('heater-1');
-
-    // Re-publish with the same deadlineAtMs and previousStatus=none. Without
-    // the fix, the cache match would suppress the 'none' signal and re-fire.
-    bus.publish({ ...snapshot, previousStatus: 'none' });
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'cannot_meet',
+      planStatus: 'invalid',
+    }));
+    expect(trigger.trigger).not.toHaveBeenCalled();
   });
 
-  it('does not fire after clear_deadline + re-add even when the bus reports the same status', async () => {
+  it('deadline_status_is prefers settled active-plan status over the live status bus', async () => {
     const bus = createDeferredObjectiveStatusBus();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
       bus,
-      rebuildPlan: vi.fn(),
+      activePlans: buildActivePlans([buildActivePlan({ planStatus: 'on_track' })]),
     });
     seedObjectives(mock.settings, {
-        'heater-1': {
-          enabled: true,
-          kind: 'temperature',
-          enforcement: 'soft',
-          targetTemperatureC: 55,
-          deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
-        },
-      });
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
     registerDeadlineObjectiveCards(deps);
-    const trigger = mock.triggers.get('deadline_status_changed')!;
-
-    // First create: bus publishes on_track with a real prior status — fires.
     bus.publish({
       deviceId: 'heater-1',
       deviceName: 'Boiler',
       kind: 'temperature',
-      status: 'on_track',
-      previousStatus: 'unknown',
+      status: 'at_risk',
+      previousStatus: 'on_track',
       targetText: '55 °C',
       deadlineLocalTime: '07:00',
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
@@ -907,28 +999,36 @@ describe('deadline objective flow cards', () => {
       shortfallKwh: null,
       shortfallText: null,
     });
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(false);
+  });
 
-    // Clear via the action — wipes the bus and the trigger's cache.
-    await mock.actions.get('clear_deadline')!.run!({ device: 'heater-1' });
-
-    // Re-add at a different deadline time. Bus publishes with no prior
-    // status; the now-empty cache must NOT fall back to firing because a
-    // recreate is task creation, not a status change.
-    bus.publish({
-      deviceId: 'heater-1',
-      deviceName: 'Boiler',
-      kind: 'temperature',
-      status: 'on_track',
-      previousStatus: 'none',
-      targetText: '55 °C',
-      deadlineLocalTime: '08:00',
-      deadlineAtMs: HH_MM_TO_UTC_MS(8, 0),
-      deadlineMissed: false,
-      shortfallKwh: null,
-      shortfallText: null,
+  it('deadline_status_is returns false after the smart-task deadline has passed', async () => {
+    const activePlans = buildActivePlans([buildActivePlan({
+      planStatus: 'at_risk',
+      deadlineAtMs: HH_MM_TO_UTC_MS(4, 0),
+    })]);
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans,
     });
-    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(4, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(false);
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(false);
+
+    delete activePlans.plansByDeviceId['heater-1'];
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(false);
   });
 
   it('publishes deadline_ended with stable outcome and numeric shortfall', async () => {
@@ -1055,10 +1155,13 @@ describe('deadline objective flow cards', () => {
     // projected finish lands at 05:36 — the producer already resolved the ms.
     const projectedFinishAtMs = hourStartC + Math.round((1.5 / 2.5) * 3600000);
     planRevisionBus.publish({
+      eventType: 'revision_written',
       deviceId: 'ev-1',
       deviceName: 'Garage charger',
       objectiveKind: 'ev_soc',
       reason: 'prices_revised',
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
       allocationChanged: true,
       projectedFinishAtMs,
       revision: {
@@ -1090,10 +1193,13 @@ describe('deadline objective flow cards', () => {
 
     // allocationChanged === false should not fire the trigger.
     planRevisionBus.publish({
+      eventType: 'revision_written',
       deviceId: 'ev-1',
       deviceName: 'Garage charger',
       objectiveKind: 'ev_soc',
       reason: 'rate_refined',
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
       allocationChanged: false,
       projectedFinishAtMs,
       revision: {
@@ -1127,10 +1233,13 @@ describe('deadline objective flow cards', () => {
 
     // First revision: 3 planned hours.
     planRevisionBus.publish({
+      eventType: 'revision_written',
       deviceId: 'ev-1',
       deviceName: 'Garage charger',
       objectiveKind: 'ev_soc',
       reason: 'prices_revised',
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
       allocationChanged: true,
       projectedFinishAtMs: hourStartC,
       revision: {
@@ -1152,10 +1261,13 @@ describe('deadline objective flow cards', () => {
     // Later revision: schedule shrunk to a single remaining hour. The token
     // must reflect the current schedule rather than the historic peak.
     planRevisionBus.publish({
+      eventType: 'revision_written',
       deviceId: 'ev-1',
       deviceName: 'Garage charger',
       objectiveKind: 'ev_soc',
       reason: 'prices_revised',
+      previousPlanStatus: 'on_track',
+      previousWasPending: false,
       allocationChanged: true,
       projectedFinishAtMs: hourStartC,
       revision: {
@@ -1185,10 +1297,13 @@ describe('deadline objective flow cards', () => {
     const trigger = mock.triggers.get('deadline_plan_changed')!;
 
     expect(() => planRevisionBus.publish({
+      eventType: 'revision_written',
       deviceId: 'ev-1',
       deviceName: 'Garage charger',
       objectiveKind: 'ev_soc',
       reason: 'prices_revised',
+      previousPlanStatus: null,
+      previousWasPending: false,
       allocationChanged: true,
       // Force buildPlanChangedTokens to throw by giving it a malformed revision.
       projectedFinishAtMs: 0,
