@@ -241,6 +241,17 @@ test.describe('Deadline plan', () => {
       await expect(overviewTab(page)).toHaveAttribute('aria-selected', 'true');
       await expect(smartTasksTab(page)).toHaveAttribute('aria-selected', 'false');
 
+      // Plant a sentinel that only survives an in-place SPA transition. A full
+      // document navigation (the regression) reloads index.html and wipes it.
+      // This guards the real-WebView failure mode: the chip's own
+      // `stopPropagation` (to suppress the parent card's activation) must not
+      // also stop the router's capture-phase interceptor, or the `<a href>`
+      // full-navigates and the Homey mobile WebView never re-injects the SDK —
+      // every API call stalls and the deep-linked page hangs on "Loading".
+      await page.evaluate(() => {
+        (window as unknown as { __SPA_SENTINEL__?: boolean }).__SPA_SENTINEL__ = true;
+      });
+
       // The Overview surface renders one chip per device with an active smart
       // task; the dev_connected300 temperature objective is enabled in the
       // stub bootstrap so the chip is present without any extra patching.
@@ -251,6 +262,13 @@ test.describe('Deadline plan', () => {
       const panel = deadlinePanel(page);
       await expect(panel).toBeVisible();
       await expect(panel.locator('.plan-hero__headline')).toBeVisible();
+      const spaSurvived = await page.evaluate(
+        () => (window as unknown as { __SPA_SENTINEL__?: boolean }).__SPA_SENTINEL__ === true,
+      );
+      expect(
+        spaSurvived,
+        'chip click must route in-place (pushState); a wiped sentinel means a full document navigation that hangs the real WebView',
+      ).toBe(true);
       // Breadcrumb follows the deep-link: Smart tasks lit, Overview cleared,
       // shell-nav still visible (not hidden) so the user can pivot tabs.
       await expect(page.locator('#shell-nav')).toBeVisible();
