@@ -1688,6 +1688,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
     parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
         const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+        this.syncTrackedDevices(effectiveList);
         return this.parseDeviceList(effectiveList, {}, 'unfiltered');
     }
     async getDevicesForDebug(): Promise<HomeyDeviceLike[]> { return this.fetchDevices(); }
@@ -1803,7 +1804,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 nowMs: start,
             });
             if (!committed) return;
-            if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
+            this.adoptCommittedDeviceList(effectiveList, isTargetedRefresh);
             recordSnapshotRefreshObservations({
                 state: this.observationState,
                 snapshot,
@@ -2179,17 +2180,14 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // `parseDeviceListForTests` are the two entry points; both pre-apply the
     // override exactly once so it propagates downstream without being re-run by
     // this wrapper or by `resolveParseDeviceIdentity` inside `parseDevice`.
+    // Parsing is side-effect-free; the realtime tracking map and native adapters
+    // are (re)built separately via `syncTrackedDevices`, which `refreshSnapshot`
+    // runs only after the abandon-grace guard commits the snapshot.
     private parseDeviceList(
         effectiveList: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
         purpose: ParseDevicePurpose = 'runtime',
     ): TargetDeviceSnapshot[] {
-        this.latestTrackedDevicesById = new Map(
-            effectiveList
-                .map((device) => [getDeviceId(device), device] as const)
-                .filter(([deviceId]) => Boolean(deviceId) && this.shouldTrackRealtimeDevice(deviceId)),
-        );
-        this.syncTrackedNativeSteppedLoadAdapters();
         return parseDeviceList({
             list: effectiveList,
             livePowerWByDeviceId,
@@ -2197,6 +2195,33 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             deps: this.getParseDeviceDeps(),
             purpose,
         });
+    }
+
+    // Rebuild the realtime tracking map and (re)sync native stepped-load command
+    // adapters from a device list. Side-effecting, so `refreshSnapshot` runs it
+    // ONLY after the abandon-grace guard has committed the snapshot: a transient
+    // empty SDK read must not tear down tracking/adapters for devices that are
+    // still present. The guard already preserves the snapshot on such a read, so
+    // the matching native adapters must be preserved too — otherwise a default-on
+    // native stepped-load command (e.g. a Høiax heater) would silently no-op
+    // (`setObservedNativeSteppedLoadStep` returns false with no adapter) until the
+    // next good read re-registered it.
+    private syncTrackedDevices(effectiveList: HomeyDeviceLike[]): void {
+        this.latestTrackedDevicesById = new Map(
+            effectiveList
+                .map((device) => [getDeviceId(device), device] as const)
+                .filter(([deviceId]) => Boolean(deviceId) && this.shouldTrackRealtimeDevice(deviceId)),
+        );
+        this.syncTrackedNativeSteppedLoadAdapters();
+    }
+
+    // Adopt the side effects of a committed snapshot: rebuild the tracking map /
+    // native adapters and refresh the raw-device cache. Run only after the
+    // abandon-grace guard commits, so a deferred transient empty read leaves the
+    // previously-tracked devices, their native adapters, and the raw cache intact.
+    private adoptCommittedDeviceList(effectiveList: HomeyDeviceLike[], isTargetedRefresh: boolean): void {
+        this.syncTrackedDevices(effectiveList);
+        if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
     }
 
     private parseDevice(
