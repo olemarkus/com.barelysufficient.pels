@@ -91,6 +91,14 @@ export const integratePlannedStaircase = (
   anchorValue: number,
   anchorAtMs: number,
   windowEndMs: number,
+  // The objective target. The planner books a floor of energy that, with a
+  // conservative rate, integrates to MORE than the target (buffer + the device
+  // stops at its setpoint) — so the raw cumulative would imply "planned to heat
+  // to 108 °C" for a 65 °C goal. The plan's intent is to REACH the target, not
+  // exceed it, so cap the drawn trajectory there: the staircase rises to the
+  // target and then reads flat, and the y-axis no longer blows out past the
+  // goal. Null leaves it uncapped (legacy callers). Added 2026-06-02.
+  capValue: number | null = null,
 ): DeferredPlanHistoryChartPoint[] => {
   // Stepped line: one anchor at `anchorAtMs` (progress = `anchorValue`), plus a
   // pair of anchors per planned hour — one at the hour's *start* carrying the
@@ -118,6 +126,12 @@ export const integratePlannedStaircase = (
   // than a divide-by-zero infinity.
   const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
   if (kwhPerUnitMean <= 0) return [];
+  // Already at/above the target at the anchor → there is nothing to plan toward
+  // it. Drawing a staircase here would either sit flat at the (above-target)
+  // start or, with the cap, descend to the target — a planned line must never
+  // go DOWN. Omit it; the chart shows just the measured line + target guide
+  // (the same shape a cooling-to-setpoint run already gets).
+  if (capValue !== null && anchorValue >= capValue) return [];
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points: DeferredPlanHistoryChartPoint[] = [
     { atMs: anchorAtMs, value: anchorValue },
@@ -164,6 +178,9 @@ export const integratePlannedStaircase = (
       points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
     }
     cumulativeProgress += (plannedKWh * postAnchorFraction) / kwhPerUnitMean;
+    // Cap at the target so the planned line approaches the goal and flattens,
+    // instead of projecting past it and blowing out the y-axis.
+    if (capValue !== null && cumulativeProgress > capValue) cumulativeProgress = capValue;
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
@@ -212,18 +229,18 @@ const buildRevisedStaircase = (
   snapshot: DeferredObjectivePlanHistoryRevisionSnapshot,
   observed: readonly DeferredPlanHistoryChartPoint[],
   startProgress: number,
-  windowStartMs: number,
-  windowEndMs: number,
+  window: { windowStartMs: number; windowEndMs: number; capValue: number | null },
 ): DeferredPlanHistoryChartPoint[] => {
+  const { windowStartMs, windowEndMs, capValue } = window;
   const revisedAtMs = snapshot.revisedAtMs;
   if (Number.isFinite(revisedAtMs) && revisedAtMs > windowStartMs) {
     const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
     const anchorValue = observedValueAt(bracketed, revisedAtMs);
     if (anchorValue !== null) {
-      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs);
+      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs, capValue);
     }
   }
-  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs);
+  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs, capValue);
 };
 
 const staircasesDiffer = (
@@ -262,6 +279,21 @@ const pickTargetValue = (
 ): number | null => finiteOrNull(
   entry.objectiveKind === 'temperature' ? entry.targetTemperatureC : entry.targetPercent,
 );
+
+// Prepend the run's start reading at the window start when the first observed
+// sample lands later (the recorder often misses the opening cycle, so the line
+// would otherwise begin mid-chart and read as a data gap / glitch). No-op when
+// there's no start value or a sample already covers the window start. Exported
+// so the live-task producer applies the same anchoring.
+export const anchorObservedAtStart = (
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  windowStartMs: number,
+  startProgress: number | null,
+): DeferredPlanHistoryChartPoint[] => {
+  if (startProgress === null) return [...observed];
+  if (observed.length > 0 && observed[0]!.atMs <= windowStartMs) return [...observed];
+  return [{ atMs: windowStartMs, value: startProgress }, ...observed];
+};
 
 const pickObservedSamples = (
   entry: Pick<
@@ -368,12 +400,15 @@ const composeTrajectoryData = (
   windowEndMs: number,
 ): DeferredPlanHistoryChartData => {
   const startProgress = pickStartProgress(entry);
+  // Cap the planned staircases at the target so they approach the goal and
+  // flatten rather than projecting past it (the planner books a buffered floor).
+  const target = pickTargetValue(entry);
   // Planned staircase requires the start-progress anchor — without it the
   // first segment has no y-value and the line would float arbitrarily. Drop
   // the staircase but keep the observed line; the view falls through to
   // rendering observed-only when planned points are empty.
   const plannedOriginal = entry.originalPlan !== null && startProgress !== null
-    ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs)
+    ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs, target)
     : [];
   // Start-anchored final staircase. Used as the no-original primary fallback AND
   // as the replan-detection baseline. Detecting a replan by comparing the
@@ -383,7 +418,7 @@ const composeTrajectoryData = (
   // overlay a "Revised trajectory" on a single-revision task whose one revision
   // happens to sit after the window start.)
   const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null
-    ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs)
+    ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs, target)
     : [];
   // A real replan = the original and final plans differ when anchored the same
   // way. Only then overlay a "Revised trajectory", rendered re-anchored at the
@@ -395,7 +430,7 @@ const composeTrajectoryData = (
     && plannedFinalStartAnchored.length > 0
     && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
   const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null
-    ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, windowStartMs, windowEndMs)
+    ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target })
     : [];
   const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
   // When only the final plan was recorded (no original), surface the
@@ -411,7 +446,10 @@ const composeTrajectoryData = (
     windowEndMs,
     plannedOriginal: resolvedOriginal,
     plannedFinal,
-    observed,
+    // Anchor the displayed measured line at the run start so it doesn't begin
+    // mid-chart. The raw `observed` (above) still feeds the revised-staircase
+    // re-anchor interpolation, which does its own start bracketing.
+    observed: anchorObservedAtStart(observed, windowStartMs, startProgress),
     target: pickTargetValue(entry),
     metAtMs: pickMetMarker(entry),
     metMarkerValue: pickMetMarkerValue(entry),

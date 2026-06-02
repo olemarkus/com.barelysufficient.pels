@@ -140,10 +140,11 @@ export const formatPlanHistoryReachedAtLine = (
   if (entry.outcome !== 'met' || entry.metAtMs === null) return null;
   const date = new Date(entry.metAtMs);
   if (Number.isNaN(date.getTime())) return null;
-  const timeLabel = formatTimeInTimeZone(date, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }, timeZone);
+  // `h23` keeps midnight as "00:05" (a bare `hour12:false` can pick `h24` →
+  // "24:05" in some locales) and matches PELS's 24h labels.
+  const timeLabel = formatTimeInTimeZone(
+    date, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }, timeZone,
+  );
   return `reached at ${timeLabel}`;
 };
 

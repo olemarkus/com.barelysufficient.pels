@@ -134,8 +134,13 @@ const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
 const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
 const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
 
-const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
-const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
+// Exported so the widget's recently-ended detail reuses the SAME recourse copy
+// for a Missed task that the active cannot-finish path uses — budget-bound vs
+// device-bound — keeping the two surfaces consistent and hard-cap-safe (never
+// "raise the cap"). Which one applies is resolved per missed entry in the
+// widget payload builder from the plan snapshot's daily-budget-exhausted count.
+export const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
+export const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
 
 export type SmartTaskWidgetDetailCopy = {
@@ -213,6 +218,17 @@ export const SMART_TASK_WIDGET_EMPTY_HINT
 // so runtime logging and the widget render the same string per
 // `feedback_ui_text_shared_with_logs`.
 export const SMART_TASK_WIDGET_EMPTY_SUBTITLE = 'No active smart tasks';
+
+// Shown until the widget's first API response lands. The app can be slow to
+// respond right after a restart (cold-start device enumeration / busy event
+// loop), and without this the widget sat on the blank "No active smart tasks"
+// state for the whole wait, reading as "nothing here" rather than "loading".
+export const SMART_TASK_WIDGET_LOADING = 'Loading…';
+
+// Error subtitle after repeated failed refreshes. Sourced here (like the
+// headroom / plan_budget widgets) so runtime log breadcrumbs reuse the exact
+// phrasing the user saw, rather than the widget inlining it.
+export const SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE = 'Unable to load';
 // One-word prefix for the detail-panel plan-meta recap (duration · power · energy)
 // so it isn't the least-legible line — names the dense run-on as a forward estimate.
 export const SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = 'Estimate';

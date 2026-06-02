@@ -99,11 +99,14 @@
   display: none !important;
 }
 
+/* Content-height (NOT pinned to the iframe): widgetApp measures this element and
+   reports it to Homey via setHeight, so the iframe grows to fit the list /
+   detail instead of clipping at a fixed compose height. A fixed `height: 100%`
+   would re-introduce the clipping this widget had. */
 .widget-root {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
   gap: var(--pw-su-2, 8px);
   box-sizing: border-box;
 }
@@ -350,6 +353,26 @@
   outline-offset: 2px;
 }
 
+/* Visible back affordance: a Material arrow_back glyph as a tinted CSS mask (so
+   it tracks the theme), full text colour so it reads as an actionable control
+   rather than decoration. Drawn as a mask — not a text glyph — so it never
+   leaks into the header's text content. */
+.back-btn__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  align-self: center;
+  background-color: var(--pw-text, #1f252a);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='black'%3E%3Cpath d='M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z'/%3E%3C/svg%3E");
+}
+
 .back-btn__name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -424,7 +447,17 @@
 .tchart {
   display: block;
   width: 100%;
-  height: 96px;
+  height: 84px;
+}
+
+/* Y-axis value labels (data min/max) at the chart's left edge, so a near-flat
+   series still reads against a scale instead of looking like meaningless noise.
+   Squishes slightly under the non-uniform scale like the rest of the in-SVG
+   text — acceptable for short numbers. */
+.tchart__axis {
+  fill: var(--pw-text-muted, #6d7680);
+  font-size: var(--pw-font-size-body, 14px);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
 }
 
 /* `vector-effect: non-scaling-stroke` keeps stroke WEIGHTS true regardless of
@@ -481,6 +514,12 @@
 
 /* Marker at the point the run reached / plateaued at target. */
 .tchart__marker {
+  fill: var(--pw-success, #58c56a);
+}
+
+/* "You are here" / latest-reading dot on the measured line (active tasks and
+   missed/abandoned runs, which have no met marker). */
+.tchart__now {
   fill: var(--pw-success, #58c56a);
 }
 

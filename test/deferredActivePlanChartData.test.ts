@@ -63,6 +63,84 @@ describe('resolveActivePlanChartData', () => {
     expect(data.metMarkerValue).toBeNull();
   });
 
+  test('caps the planned staircase at the target (no overshoot past the goal)', () => {
+    // 5 booked hours × 1 kWh ÷ 0.5 kWh/°C = +10 °C from start 50 → would reach
+    // 60, but the target is 55, so the drawn plan must flatten at 55.
+    const data = resolveActivePlanChartData(buildPlan({
+      targetTemperatureC: 55,
+      startProgressC: 50,
+      latest: {
+        ...buildPlan().latest!,
+        rateMean: 0.5,
+        hours: [
+          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 4 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 1 },
+        ],
+      },
+    }));
+    const maxPlanned = Math.max(...data.plannedOriginal.map((p) => p.value));
+    expect(maxPlanned).toBe(55);
+  });
+
+  test('appends the live now reading past the last sample', () => {
+    const data = resolveActivePlanChartData(buildPlan(), {
+      nowMs: START_MS + 2.5 * HOUR_MS,
+      currentValue: 53,
+    });
+    const last = data.observed[data.observed.length - 1]!;
+    expect(last).toEqual({ atMs: START_MS + 2.5 * HOUR_MS, value: 53 });
+  });
+
+  test('anchors the measured line at the run start when the first sample lands later', () => {
+    const data = resolveActivePlanChartData(buildPlan({
+      startProgressC: 50,
+      // First sample an hour into the run — without anchoring the line would
+      // begin mid-chart.
+      progressSamples: [
+        { atMs: START_MS + HOUR_MS, valueC: 52, valuePercent: null },
+        { atMs: START_MS + 2 * HOUR_MS, valueC: 54, valuePercent: null },
+      ],
+    }));
+    expect(data.observed[0]).toEqual({ atMs: START_MS, value: 50 });
+  });
+
+  test('omits the planned line when the run starts at/above target (no descending plan)', () => {
+    // "Heat to 40" but already at 64 — there's nothing to plan toward; the
+    // planned staircase must not be drawn (and must never descend to the target).
+    const data = resolveActivePlanChartData(buildPlan({
+      targetTemperatureC: 40,
+      startProgressC: 64,
+      progressSamples: [
+        { atMs: START_MS, valueC: 64, valuePercent: null },
+        { atMs: START_MS + HOUR_MS, valueC: 55, valuePercent: null },
+      ],
+    }));
+    expect(data.plannedOriginal).toEqual([]);
+    // Measured line still renders (start ≥ target is a real, if odd, run).
+    expect(data.observed.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test('renders the planned line from the live reading when the stitch gave no start/samples', () => {
+    // Reproduces the on-device "on-going task has no chart" case: the in-progress
+    // stitch delivered neither start progress nor samples (e.g. just after an app
+    // restart), but the plan + rate are present and the device reports a live
+    // value. The planned staircase must still render (anchored at the live value).
+    const data = resolveActivePlanChartData(buildPlan({
+      startProgressC: null,
+      startProgressPercent: null,
+      progressSamples: undefined,
+      targetTemperatureC: 65,
+      latest: { ...buildPlan().latest!, rateMean: 0.5 },
+    }), { nowMs: START_MS + HOUR_MS, currentValue: 30 });
+    expect(data.mode).toBe('trajectory');
+    expect(data.plannedOriginal.length).toBeGreaterThanOrEqual(2);
+    // The "now" reading anchors the plan and shows the you-are-here dot.
+    expect(data.observed.some((p) => p.value === 30)).toBe(true);
+  });
+
   test('maps observed samples to the kind value and sorts ascending', () => {
     const data = resolveActivePlanChartData(buildPlan());
     expect(data.observed).toEqual([

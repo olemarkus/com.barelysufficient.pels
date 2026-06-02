@@ -1,9 +1,9 @@
+import { SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from './previewPayloads';
-import { renderWidget, type RenderTargets } from './render';
+import { renderLoading, renderWidget, type RenderTargets } from './render';
 import type { SmartTasksWidgetPayload } from '../smartTasksWidgetTypes';
 
 const REFRESH_INTERVAL_MS = 60 * 1000;
-const LOAD_ERROR_SUBTITLE = 'Unable to load';
 // Consecutive failed refreshes tolerated before the widget drops the last good
 // render and shows the error state — ~3 × 60 s grace for transient SDK blips.
 const MAX_CONSECUTIVE_LOAD_FAILURES = 3;
@@ -11,11 +11,59 @@ const MAX_CONSECUTIVE_LOAD_FAILURES = 3;
 export type WidgetWindow = Window & {
   Homey?: unknown;
   onHomeyReady?: (homey: WidgetHomey) => void;
+  // Declared so the typed lint resolves the constructor when the height
+  // reporter reads the global `ResizeObserver` off the widget window.
+  ResizeObserver?: typeof globalThis.ResizeObserver;
 };
 
 export type WidgetHomey = {
   api: (method: string, path: string) => Promise<unknown>;
   ready?: () => void;
+  // Resize the widget iframe to fit content. The list (active rows + a
+  // "Recently ended" section) and the detail (chart + legend) both vary in
+  // height and exceed any single fixed compose height — Homey widgets don't
+  // scroll internally, so we measure and report the content height instead of
+  // clipping. Mirrors the create_smart_task widget.
+  setHeight?: (height: number) => void;
+};
+
+// Keep the widget iframe sized to its content. A ResizeObserver (not a
+// synchronous measure in render) is what makes this reliable: first paint,
+// web-font load, async payload arrival, and list↔detail swaps all change the
+// height after a render returns. `getHomey` is read lazily so a reporter
+// created before bootstrap still sees the assigned client.
+const createHeightReporter = (
+  root: HTMLElement,
+  widgetWindow: WidgetWindow,
+  getHomey: () => WidgetHomey | null,
+): { observe: () => void; disconnect: () => void } => {
+  let observer: ResizeObserver | null = null;
+  let lastReportedHeight = 0;
+  const report = (): void => {
+    const homey = getHomey();
+    if (!homey?.setHeight) return;
+    // Homey pads <body> around #widget-root; the root's box excludes that, so
+    // add the body's vertical padding or the iframe lands a few px short and
+    // clips the bottom row.
+    const bodyStyle = widgetWindow.getComputedStyle(root.ownerDocument.body);
+    const bodyPadding = (Number.parseFloat(bodyStyle.paddingTop) || 0)
+      + (Number.parseFloat(bodyStyle.paddingBottom) || 0);
+    const height = Math.ceil(root.getBoundingClientRect().height + bodyPadding);
+    if (height <= 0 || height === lastReportedHeight) return;
+    lastReportedHeight = height;
+    homey.setHeight(height);
+  };
+  return {
+    observe: (): void => {
+      if (observer || typeof widgetWindow.ResizeObserver !== 'function') return;
+      observer = new widgetWindow.ResizeObserver(() => report());
+      observer.observe(root);
+    },
+    disconnect: (): void => {
+      observer?.disconnect();
+      observer = null;
+    },
+  };
 };
 
 export type WidgetController = {
@@ -61,6 +109,43 @@ const focusRowButton = (targets: RenderTargets, section: DetailSection, key: str
   const dataAttr = section === 'ended' ? 'data-history-id' : 'data-device-id';
   const button = targets[dom.listKey].querySelector(`${dom.buttonSelector}[${dataAttr}="${key}"]`);
   if (button instanceof HTMLElement) button.focus();
+};
+
+// Wire the three click listeners (active row / ended row → open detail; back →
+// list) and return a teardown that removes them. Lifted out of the controller
+// so the controller closure stays under the size bar; reads/writes the view via
+// the passed accessors.
+const wireInteraction = (
+  targets: RenderTargets,
+  deps: { getView: () => ViewState; setView: (next: ViewState) => void; render: () => void },
+): (() => void) => {
+  const openDetail = (event: Event, section: DetailSection): void => {
+    const dom = SECTION_DOM[section];
+    const button = event.target instanceof Element ? event.target.closest(dom.buttonSelector) : null;
+    if (!(button instanceof HTMLElement)) return;
+    const key = button.dataset[dom.datasetKey];
+    if (!key) return;
+    deps.setView({ kind: 'detail', section, key });
+    deps.render();
+    targets.detailBackBtn.focus();
+  };
+  const onRow = (event: Event): void => openDetail(event, 'active');
+  const onEnded = (event: Event): void => openDetail(event, 'ended');
+  const onBack = (): void => {
+    const view = deps.getView();
+    if (view.kind === 'list') return;
+    deps.setView({ kind: 'list' });
+    deps.render();
+    focusRowButton(targets, view.section, view.key);
+  };
+  targets.rowsList.addEventListener('click', onRow);
+  targets.endedRowsList.addEventListener('click', onEnded);
+  targets.detailBackBtn.addEventListener('click', onBack);
+  return (): void => {
+    targets.rowsList.removeEventListener('click', onRow);
+    targets.endedRowsList.removeEventListener('click', onEnded);
+    targets.detailBackBtn.removeEventListener('click', onBack);
+  };
 };
 
 const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
@@ -140,49 +225,22 @@ export const createWidgetController = (params: {
   let visibilityListenerBound = false;
   let lastPayload: SmartTasksWidgetPayload | null = null;
   let view: ViewState = { kind: 'list' };
-  let interactionBound = false;
+  let teardownInteraction: (() => void) | null = null;
   let consecutiveLoadFailures = 0;
+  // Guards in-flight loads from rendering into a torn-down widget after destroy().
+  let destroyed = false;
+  // Until the first API response lands, show the loading state instead of the
+  // blank empty state — the app can take many seconds to respond after a restart
+  // (cold-start device enumeration / busy event loop), and a blank panel for that
+  // whole window reads as "nothing here" rather than "loading".
+  let everLoaded = false;
 
   const render = (): void => {
+    if (lastPayload === null && !everLoaded) {
+      renderLoading(targets);
+      return;
+    }
     renderWidget(targets, lastPayload, view);
-  };
-
-  const openDetail = (event: Event, section: DetailSection): void => {
-    const dom = SECTION_DOM[section];
-    const button = event.target instanceof Element ? event.target.closest(dom.buttonSelector) : null;
-    if (!(button instanceof HTMLElement)) return;
-    const key = button.dataset[dom.datasetKey];
-    if (!key) return;
-    view = { kind: 'detail', section, key };
-    render();
-    targets.detailBackBtn.focus();
-  };
-
-  const handleRowClick = (event: Event): void => openDetail(event, 'active');
-  const handleEndedClick = (event: Event): void => openDetail(event, 'ended');
-
-  const handleBackClick = (): void => {
-    if (view.kind === 'list') return;
-    const { section, key } = view;
-    view = { kind: 'list' };
-    render();
-    focusRowButton(targets, section, key);
-  };
-
-  const bindInteraction = (): void => {
-    if (interactionBound) return;
-    targets.rowsList.addEventListener('click', handleRowClick);
-    targets.endedRowsList.addEventListener('click', handleEndedClick);
-    targets.detailBackBtn.addEventListener('click', handleBackClick);
-    interactionBound = true;
-  };
-
-  const unbindInteraction = (): void => {
-    if (!interactionBound) return;
-    targets.rowsList.removeEventListener('click', handleRowClick);
-    targets.endedRowsList.removeEventListener('click', handleEndedClick);
-    targets.detailBackBtn.removeEventListener('click', handleBackClick);
-    interactionBound = false;
   };
 
   const loadAndRender = async (): Promise<void> => {
@@ -194,13 +252,14 @@ export const createWidgetController = (params: {
       const payload: SmartTasksWidgetPayload = preview || !homeyRef
         ? PREVIEW_SMART_TASKS_PAYLOAD
         : await homeyRef.api('GET', '/smart_tasks') as SmartTasksWidgetPayload;
-      if (loadId !== loadSequence) return;
+      if (destroyed || loadId !== loadSequence) return;
       consecutiveLoadFailures = 0;
+      everLoaded = true;
       lastPayload = payload;
       view = rehydrateView(view, payload);
       render();
     } catch (error) {
-      if (loadId !== loadSequence) return;
+      if (destroyed || loadId !== loadSequence) return;
       console.error('Failed to load smart_tasks widget', error);
       // Homey SDK reads fail transiently (per feedback_homey_sdk_unreliable).
       // Keep the last good payload + open detail panel across a brief blip and
@@ -211,7 +270,8 @@ export const createWidgetController = (params: {
       if (consecutiveLoadFailures < MAX_CONSECUTIVE_LOAD_FAILURES && lastPayload?.state === 'ready') {
         return;
       }
-      lastPayload = { state: 'empty', subtitle: LOAD_ERROR_SUBTITLE, hint: null };
+      everLoaded = true;
+      lastPayload = { state: 'empty', subtitle: SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE, hint: null };
       view = { kind: 'list' };
       render();
     } finally {
@@ -246,18 +306,27 @@ export const createWidgetController = (params: {
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
     homeyRef = homey;
-    bindInteraction();
+    teardownInteraction ??= wireInteraction(targets, {
+      getView: () => view,
+      setView: (next) => { view = next; },
+      render,
+    });
+    // Paint the loading state synchronously so the slow first `homey.api()` round
+    // trip shows "Loading…" rather than a blank panel.
+    render();
     void loadAndRender();
     startRefreshLoop();
     bindVisibilityReload();
   };
 
   const destroy = (): void => {
+    destroyed = true;
     if (refreshTimer !== null) {
       widgetWindow.clearInterval(refreshTimer);
       refreshTimer = null;
     }
-    unbindInteraction();
+    teardownInteraction?.();
+    teardownInteraction = null;
     if (!visibilityListenerBound) return;
     widgetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
     visibilityListenerBound = false;
@@ -274,8 +343,14 @@ export const installWidget = (
   if (!targets) return null;
 
   const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
+  // Size the iframe to content (Homey.setHeight) once a real client is wired;
+  // the no-Homey preview/harness path renders at natural page size.
+  let activeHomey: WidgetHomey | null = null;
+  const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
   const installWindow = widgetWindow;
   installWindow.onHomeyReady = (homey: WidgetHomey): void => {
+    activeHomey = homey;
+    heightReporter.observe();
     controller.bootstrap(homey);
   };
 
@@ -289,5 +364,14 @@ export const installWidget = (
   } else {
     bootstrapWithoutHomey();
   }
-  return controller;
+  return {
+    ...controller,
+    destroy: (): void => {
+      controller.destroy();
+      heightReporter.disconnect();
+      // Drop the client so a late ResizeObserver callback short-circuits in
+      // getHomey() instead of calling setHeight on a torn-down widget.
+      activeHomey = null;
+    },
+  };
 };

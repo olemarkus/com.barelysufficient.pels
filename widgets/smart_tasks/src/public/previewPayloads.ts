@@ -114,6 +114,10 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       outcomeLabel: 'Succeeded',
       outcomeTone: 'ok',
       finishedLabel: 'Today 06:30',
+      progressLabel: '45 → 80 %  ·  target 80 %',
+      reachedAtLabel: 'reached at 06:00',
+      whyLabel: null,
+      recourseHint: null,
       chart: {
         mode: 'trajectory',
         unit: '%',
@@ -148,7 +152,11 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       targetActionVerb: 'Heat to',
       outcomeLabel: 'Missed',
       outcomeTone: 'warn',
-      finishedLabel: 'Yesterday 23:00',
+      finishedLabel: 'Mon 23:00',
+      progressLabel: '40 → 52 °C  ·  target 60 °C',
+      reachedAtLabel: null,
+      whyLabel: 'Daily budget filled before the deadline.',
+      recourseHint: 'Budget settings show whether future days need power reserved earlier.',
       chart: {
         mode: 'trajectory',
         unit: '°C',

@@ -14,6 +14,7 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 import {
+  anchorObservedAtStart,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
   integratePlannedStaircase,
@@ -86,24 +87,54 @@ const emptyChart = (
  * points (a single point renders as a lone dot, which reads worse than no chart).
  * The renderer hides the chart container in that case and shows the text lines.
  */
+// The planned staircase's anchor: the run-start reading when known, else the
+// live current reading at `now`. Returns null only when neither is available
+// (then there's no value to integrate the plan from). Pulled out to keep
+// `resolveActivePlanChartData` under the complexity bar.
+const resolvePlannedAnchor = (
+  startProgress: number | null,
+  currentValue: number | null,
+  windowStartMs: number,
+  nowMs: number | undefined,
+): { value: number; atMs: number } | null => {
+  if (startProgress !== null) return { value: startProgress, atMs: windowStartMs };
+  if (currentValue !== null) return { value: currentValue, atMs: nowMs ?? windowStartMs };
+  return null;
+};
+
 export const resolveActivePlanChartData = (
   plan: DeferredObjectiveActivePlanV1,
+  // `nowMs` + `currentValue` (the device's live reading from the widget's device
+  // snapshot) extend the measured line to "now" and give an active task a
+  // "you are here" anchor even before two hourly samples have been bucketed.
+  options: { nowMs?: number; currentValue?: number | null } = {},
 ): DeferredPlanHistoryChartData => {
   const windowStartMs = plan.startedAtMs;
   const windowEndMs = plan.deadlineAtMs;
   const target = pickTarget(plan);
-  const observed = pickObservedSamples(plan.progressSamples, plan.objectiveKind);
   const startProgress = pickStartProgress(plan);
+  const samples = pickObservedSamples(plan.progressSamples, plan.objectiveKind);
+  // Append the live "now" reading past the last bucketed sample, then anchor at
+  // the run start so the line spans start → now instead of starting mid-chart.
+  const nowMs = options.nowMs;
+  const currentValue = finiteOrNull(options.currentValue ?? null);
+  const withNow = nowMs !== undefined && currentValue !== null
+    && (samples.length === 0 || samples[samples.length - 1]!.atMs < nowMs)
+    ? [...samples, { atMs: nowMs, value: currentValue }]
+    : samples;
+  const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
   const rate = pickRate(plan);
   // Truthy guard covers both `null` and a defensively-omitted `undefined`
   // `latest`, and narrows it for the `.hours` read.
   const latest = plan.latest;
-  const planned = latest && startProgress !== null && rate !== null
+  const anchor = resolvePlannedAnchor(startProgress, currentValue, windowStartMs, nowMs);
+  const planned = latest && anchor !== null && rate !== null
     ? integratePlannedStaircase(
       { hours: latest.hours, kwhPerUnitMean: rate },
-      startProgress,
-      windowStartMs,
+      anchor.value,
+      anchor.atMs,
       windowEndMs,
+      target,
     )
     : [];
   if (planned.length === 0 && observed.length < 2) {

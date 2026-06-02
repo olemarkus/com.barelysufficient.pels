@@ -43,9 +43,11 @@ const createSvg = <K extends keyof SVGElementTagNameMap>(
   doc: Document,
   tag: K,
   attrs: SvgAttrs,
+  text?: string,
 ): SVGElementTagNameMap[K] => {
   const el = doc.createElementNS(SVG_NS, tag) as SVGElementTagNameMap[K];
   for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+  if (text !== undefined) el.textContent = text;
   return el;
 };
 
@@ -127,6 +129,33 @@ const appendLegend = (container: HTMLElement, data: DeferredPlanHistoryChartData
   if (legend.childNodes.length > 0) container.appendChild(legend);
 };
 
+const formatAxisValue = (value: number): string => {
+  const rounded = Math.round(value * 10) / 10;
+  return rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+};
+
+// Data max (top) + min (bottom) labels at the left edge, so even a near-flat
+// series reads against a value scale. The top label carries the unit ("65 °C")
+// so the axis isn't a mystery number; the bottom stays bare (same unit).
+// Skipped when the range collapses to a single value (nothing to scale).
+const appendYAxisLabels = (
+  svg: SVGElement,
+  doc: Document,
+  values: readonly number[],
+  unit: string | null,
+): void => {
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  if (dataMax <= dataMin) return;
+  const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
+  svg.appendChild(createSvg(doc, 'text', {
+    class: 'tchart__axis', x: PLOT.left, y: PLOT.top + 10, 'text-anchor': 'start',
+  }, maxLabel));
+  svg.appendChild(createSvg(doc, 'text', {
+    class: 'tchart__axis', x: PLOT.left, y: PLOT.bottom, 'text-anchor': 'start',
+  }, formatAxisValue(dataMin)));
+};
+
 const collectValues = (data: DeferredPlanHistoryChartData): number[] => {
   const values: number[] = [];
   for (const point of data.plannedOriginal) values.push(point.value);
@@ -200,9 +229,22 @@ export const renderTrajectoryChart = (
     svg.appendChild(createSvg(doc, 'circle', {
       class: 'tchart__marker', cx: xScale(data.metAtMs), cy: yScale(data.metMarkerValue), r: 4,
     }));
+  } else if (hasObserved) {
+    // No met marker → dot the latest observed reading: the "you are here" anchor
+    // on an active task, and "where it ended up" on a missed/abandoned run.
+    const last = data.observed[data.observed.length - 1]!;
+    svg.appendChild(createSvg(doc, 'circle', {
+      class: 'tchart__now', cx: xScale(last.atMs), cy: yScale(last.value), r: 4,
+    }));
   }
 
-  container.appendChild(svg);
+  // 5) Y-axis scale labels so even a near-flat series reads against a value scale.
+  appendYAxisLabels(svg, doc, values, data.unit);
+
+  // Legend ABOVE the chart: the chart is the tallest element, so in tight
+  // vertical layouts a legend below it is the first thing to fall off-screen.
+  // Placing it first keeps the "what are these lines" key reliably visible.
   appendLegend(container, data);
+  container.appendChild(svg);
   return true;
 };
