@@ -27,9 +27,10 @@ module.exports = __toCommonJS(api_exports);
 
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
-var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs) => {
+var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs, capValue = null) => {
   const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
   if (kwhPerUnitMean <= 0) return [];
+  if (capValue !== null && anchorValue >= capValue) return [];
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points = [
     { atMs: anchorAtMs, value: anchorValue }
@@ -47,6 +48,7 @@ var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs)
       points.push({ atMs: hour.startsAtMs, value: cumulativeProgress });
     }
     cumulativeProgress += plannedKWh * postAnchorFraction / kwhPerUnitMean;
+    if (capValue !== null && cumulativeProgress > capValue) cumulativeProgress = capValue;
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
@@ -66,16 +68,17 @@ var observedValueAt = (observed, atMs) => {
   }
   return before === null ? null : before.value;
 };
-var buildRevisedStaircase = (snapshot, observed, startProgress, windowStartMs, windowEndMs) => {
+var buildRevisedStaircase = (snapshot, observed, startProgress, window) => {
+  const { windowStartMs, windowEndMs, capValue } = window;
   const revisedAtMs = snapshot.revisedAtMs;
   if (Number.isFinite(revisedAtMs) && revisedAtMs > windowStartMs) {
     const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
     const anchorValue = observedValueAt(bracketed, revisedAtMs);
     if (anchorValue !== null) {
-      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs);
+      return integratePlannedStaircase(snapshot, anchorValue, revisedAtMs, windowEndMs, capValue);
     }
   }
-  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs);
+  return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs, capValue);
 };
 var staircasesDiffer = (a, b) => {
   if (a.length !== b.length) return true;
@@ -92,6 +95,11 @@ var pickStartProgress = (entry) => finiteOrNull(
 var pickTargetValue = (entry) => finiteOrNull(
   entry.objectiveKind === "temperature" ? entry.targetTemperatureC : entry.targetPercent
 );
+var anchorObservedAtStart = (observed, windowStartMs, startProgress) => {
+  if (startProgress === null) return [...observed];
+  if (observed.length > 0 && observed[0].atMs <= windowStartMs) return [...observed];
+  return [{ atMs: windowStartMs, value: startProgress }, ...observed];
+};
 var pickObservedSamples = (entry) => {
   if (!Array.isArray(entry.progressSamples) || entry.progressSamples.length === 0) {
     return [];
@@ -126,10 +134,11 @@ var pickMetMarkerValue = (entry) => {
 };
 var composeTrajectoryData = (entry, observed, windowStartMs, windowEndMs) => {
   const startProgress = pickStartProgress(entry);
-  const plannedOriginal = entry.originalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs) : [];
-  const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs) : [];
+  const target = pickTargetValue(entry);
+  const plannedOriginal = entry.originalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs, target) : [];
+  const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs, target) : [];
   const replanned = plannedOriginal.length > 0 && plannedFinalStartAnchored.length > 0 && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
-  const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, windowStartMs, windowEndMs) : [];
+  const plannedFinalCandidate = replanned && entry.finalPlan !== null && startProgress !== null ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target }) : [];
   const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
   const resolvedOriginal = plannedOriginal.length > 0 ? plannedOriginal : plannedFinalStartAnchored;
   return {
@@ -139,7 +148,10 @@ var composeTrajectoryData = (entry, observed, windowStartMs, windowEndMs) => {
     windowEndMs,
     plannedOriginal: resolvedOriginal,
     plannedFinal,
-    observed,
+    // Anchor the displayed measured line at the run start so it doesn't begin
+    // mid-chart. The raw `observed` (above) still feeds the revised-staircase
+    // re-anchor interpolation, which does its own start bracketing.
+    observed: anchorObservedAtStart(observed, windowStartMs, startProgress),
     target: pickTargetValue(entry),
     metAtMs: pickMetMarker(entry),
     metMarkerValue: pickMetMarkerValue(entry)
@@ -208,19 +220,30 @@ var emptyChart = (target, windowStartMs, windowEndMs) => ({
   metAtMs: null,
   metMarkerValue: null
 });
-var resolveActivePlanChartData = (plan) => {
+var resolvePlannedAnchor = (startProgress, currentValue, windowStartMs, nowMs) => {
+  if (startProgress !== null) return { value: startProgress, atMs: windowStartMs };
+  if (currentValue !== null) return { value: currentValue, atMs: nowMs ?? windowStartMs };
+  return null;
+};
+var resolveActivePlanChartData = (plan, options = {}) => {
   const windowStartMs = plan.startedAtMs;
   const windowEndMs = plan.deadlineAtMs;
   const target = pickTarget(plan);
-  const observed = pickObservedSamples2(plan.progressSamples, plan.objectiveKind);
   const startProgress = pickStartProgress2(plan);
+  const samples = pickObservedSamples2(plan.progressSamples, plan.objectiveKind);
+  const nowMs = options.nowMs;
+  const currentValue = finiteOrNull2(options.currentValue ?? null);
+  const withNow = nowMs !== void 0 && currentValue !== null && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs) ? [...samples, { atMs: nowMs, value: currentValue }] : samples;
+  const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
   const rate = pickRate(plan);
   const latest = plan.latest;
-  const planned = latest && startProgress !== null && rate !== null ? integratePlannedStaircase(
+  const anchor = resolvePlannedAnchor(startProgress, currentValue, windowStartMs, nowMs);
+  const planned = latest && anchor !== null && rate !== null ? integratePlannedStaircase(
     { hours: latest.hours, kwhPerUnitMean: rate },
-    startProgress,
-    windowStartMs,
-    windowEndMs
+    anchor.value,
+    anchor.atMs,
+    windowEndMs,
+    target
   ) : [];
   if (planned.length === 0 && observed.length < 2) {
     return emptyChart(target, windowStartMs, windowEndMs);
@@ -729,13 +752,158 @@ var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
 var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
+// packages/shared-domain/src/deferredPlanHistoryAttribution.ts
+var DELIVERED_PLAN_FRACTION = 0.95;
+var NO_DELIVERY_KWH_FLOOR = 0.1;
+var NO_DELIVERY_PROGRESS_DEADBAND_C = 0.5;
+var NO_DELIVERY_PROGRESS_DEADBAND_PERCENT = 1;
+var sumPlannedKWh = (snapshot) => {
+  let total = 0;
+  for (const hour of snapshot.hours) {
+    if (Number.isFinite(hour.plannedKWh) && hour.plannedKWh > 0) total += hour.plannedKWh;
+  }
+  return total;
+};
+var pickSnapshot = (entry) => entry.finalPlan ?? entry.originalPlan ?? null;
+var resolveProgressTowardTarget = (entry) => {
+  if (entry.objectiveKind === "temperature") {
+    const start2 = entry.startProgressC;
+    const final2 = entry.finalProgressC;
+    if (!Number.isFinite(start2) || !Number.isFinite(final2)) return null;
+    return { delta: final2 - start2, deadband: NO_DELIVERY_PROGRESS_DEADBAND_C };
+  }
+  const start = entry.startProgressPercent;
+  const final = entry.finalProgressPercent;
+  if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
+  return { delta: final - start, deadband: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT };
+};
+var resolveNoDelivery = (entry, deliveredKWh) => {
+  const progress = resolveProgressTowardTarget(entry);
+  if (progress === null) return false;
+  if (progress.delta >= progress.deadband) return false;
+  if (deliveredKWh === null) return true;
+  return deliveredKWh < NO_DELIVERY_KWH_FLOOR;
+};
+var resolveCause = (params) => {
+  const { outcome, snapshot, deliveredAtOrAbovePlan, noDelivery } = params;
+  if (outcome !== "missed") return null;
+  if (snapshot !== null && (snapshot.dailyBudgetExhaustedBucketCount ?? 0) > 0) {
+    return "budget_limited";
+  }
+  if (noDelivery) return "no_delivery";
+  if (snapshot === null) return "unknown";
+  if (deliveredAtOrAbovePlan === false) return "capacity_shortfall";
+  if (deliveredAtOrAbovePlan === true) return "energy_underestimate";
+  if (typeof snapshot.acceptedSamples === "number" && snapshot.acceptedSamples < MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP) {
+    return "low_confidence";
+  }
+  return "unknown";
+};
+var resolveDeliveredKWh = (entry) => typeof entry.deliveredKWh === "number" && Number.isFinite(entry.deliveredKWh) ? entry.deliveredKWh : null;
+var normalizeEnergyExpectedKWh = (value) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  return value;
+};
+var pickResolvedMean = (snapshot, hint) => normalizeEnergyExpectedKWh(snapshot?.energyExpectedKWh) ?? normalizeEnergyExpectedKWh(hint);
+var resolveDeliveredAtOrAbovePlan = (deliveredKWh, plannedKWh, energyExpectedKWh) => {
+  const comparisonBasis = energyExpectedKWh ?? plannedKWh;
+  if (deliveredKWh === null || comparisonBasis === null || comparisonBasis <= 0) return null;
+  return deliveredKWh >= comparisonBasis * DELIVERED_PLAN_FRACTION;
+};
+var resolveDeferredPlanHistoryMissAttribution = (entry, energyExpectedKWh = null) => {
+  const snapshot = pickSnapshot(entry);
+  const plannedTotal = snapshot === null ? null : sumPlannedKWh(snapshot);
+  const plannedKWh = plannedTotal !== null && plannedTotal > 0 ? plannedTotal : null;
+  const deliveredKWh = resolveDeliveredKWh(entry);
+  const deliveredAtOrAbovePlan = resolveDeliveredAtOrAbovePlan(
+    deliveredKWh,
+    plannedKWh,
+    pickResolvedMean(snapshot, energyExpectedKWh)
+  );
+  return {
+    cause: resolveCause({
+      outcome: entry.outcome,
+      snapshot,
+      deliveredAtOrAbovePlan,
+      noDelivery: resolveNoDelivery(entry, deliveredKWh)
+    }),
+    plannedKWh,
+    deliveredKWh,
+    planningSpeedKw: snapshot?.planningSpeedKw ?? null,
+    rateConfidence: snapshot?.rateConfidence ?? null,
+    acceptedSamples: snapshot?.acceptedSamples ?? null,
+    dailyBudgetExhaustedBucketCount: snapshot?.dailyBudgetExhaustedBucketCount ?? 0,
+    deliveredAtOrAbovePlan
+  };
+};
+var STILL_LEARNING_CAUSE = "Still learning this device's energy use.";
+var formatRefinedMissCause = (entry) => {
+  const attribution = resolveDeferredPlanHistoryMissAttribution(entry);
+  switch (attribution.cause) {
+    case "no_delivery":
+      return entry.objectiveKind === "temperature" ? "Delivered almost no heat before the deadline." : "Delivered almost no charge before the deadline.";
+    case "energy_underestimate":
+      return "Target needed more energy than estimated.";
+    case "low_confidence":
+      return STILL_LEARNING_CAUSE;
+    default:
+      return null;
+  }
+};
+
 // packages/shared-domain/src/utils/dateUtils.ts
 var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
+function formatTimeInTimeZone(date, options, timeZone) {
+  return date.toLocaleTimeString([], { timeZone, ...options });
+}
 
 // packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
 var HOUR_MS2 = 60 * 60 * 1e3;
 
 // packages/shared-domain/src/deferredPlanHistory.ts
+var formatTemperature = (value) => value === null ? null : `${value.toFixed(1)} \xB0C`;
+var formatPercent = (value) => value === null ? null : `${value.toFixed(0)} %`;
+var resolveDisplayedEndValue = (outcome, metReason, finalValue, targetValue) => outcome === "met" && metReason === void 0 && finalValue !== null && targetValue !== null && finalValue < targetValue ? targetValue : finalValue;
+var formatPlanHistoryProgressLine = (entry) => {
+  const suppressArrow = entry.outcome === "abandoned" || entry.outcome === "replaced";
+  if (entry.objectiveKind === "temperature") {
+    const start2 = formatTemperature(entry.startProgressC);
+    const target2 = formatTemperature(entry.targetTemperatureC);
+    if (!start2 || !target2) return null;
+    if (suppressArrow) return `${start2}  \xB7  target ${target2}`;
+    const endC = resolveDisplayedEndValue(
+      entry.outcome,
+      entry.metReason,
+      entry.finalProgressC,
+      entry.targetTemperatureC
+    );
+    const end2 = formatTemperature(endC);
+    return `${start2} \u2192 ${end2 ?? "\u2014"}  \xB7  target ${target2}`;
+  }
+  const start = formatPercent(entry.startProgressPercent);
+  const target = formatPercent(entry.targetPercent);
+  if (!start || !target) return null;
+  if (suppressArrow) return `${start}  \xB7  target ${target}`;
+  const endPct = resolveDisplayedEndValue(
+    entry.outcome,
+    entry.metReason,
+    entry.finalProgressPercent,
+    entry.targetPercent
+  );
+  const end = formatPercent(endPct);
+  return `${start} \u2192 ${end ?? "\u2014"}  \xB7  target ${target}`;
+};
+var formatPlanHistoryReachedAtLine = (entry, timeZone = "UTC") => {
+  if (entry.outcome !== "met" || entry.metAtMs === null) return null;
+  const date = new Date(entry.metAtMs);
+  if (Number.isNaN(date.getTime())) return null;
+  const timeLabel = formatTimeInTimeZone(
+    date,
+    { hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+    timeZone
+  );
+  return `reached at ${timeLabel}`;
+};
 var OUTCOME_LABELS = {
   met: "Succeeded",
   missed: "Missed",
@@ -754,6 +922,32 @@ var getPlanHistoryOutcomeLabel = (outcome) => OUTCOME_LABELS[outcome];
 var getPlanHistoryOutcomeTone = (outcome) => OUTCOME_TONES[outcome];
 var MINUTE_MS = 60 * 1e3;
 var HOUR_MS3 = 60 * MINUTE_MS;
+var snapshotShowsBudgetExhausted = (snapshot) => snapshot !== null && typeof snapshot.dailyBudgetExhaustedBucketCount === "number" && snapshot.dailyBudgetExhaustedBucketCount > 0;
+var pickLastPlan = (entry) => (
+  // Prefer the final plan's status — it reflects the planner's last word
+  // before finalization. Fall back to the original snapshot when the run
+  // finalized before the planner replanned (no finalPlan recorded).
+  entry.finalPlan ?? entry.originalPlan
+);
+var formatPlanHistoryMissedReason = (entry) => {
+  if (entry.outcome !== "missed") return null;
+  const lastPlan = pickLastPlan(entry);
+  if (snapshotShowsBudgetExhausted(lastPlan)) {
+    return "Daily budget filled before the deadline.";
+  }
+  const refinedCause = formatRefinedMissCause(entry);
+  if (refinedCause !== null) return refinedCause;
+  if (lastPlan?.planStatus === "cannot_meet") {
+    return "Couldn't reserve enough cheap hours in time.";
+  }
+  if (lastPlan?.planStatus === "at_risk") {
+    return "Fell behind and didn't catch up in time.";
+  }
+  if (entry.discoveredFrom === "backfill") {
+    return "PELS restarted mid-task; outcome estimated.";
+  }
+  return "Didn't reach the target before the deadline.";
+};
 
 // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
 var ROW_CAP = 3;
@@ -955,12 +1149,13 @@ var buildRow = (params) => {
   const firstHourMs = plan.latest?.hours[0]?.startsAtMs ?? null;
   const firstPlannedTimeLabel = isFiniteNumber(firstHourMs) ? formatLocalHHMM(firstHourMs, timeZone) : null;
   const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
+  const currentValue = resolveCurrentValue(device, plan.objectiveKind);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
     unitSymbol: plan.objectiveKind === "temperature" ? "\xB0C" : "%",
-    currentValue: resolveCurrentValue(device, plan.objectiveKind),
+    currentValue,
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
@@ -973,7 +1168,7 @@ var buildRow = (params) => {
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
-    chart: toWidgetChart(resolveActivePlanChartData(plan))
+    chart: toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue }))
   };
 };
 var buildCandidate = (params) => {
@@ -1002,6 +1197,11 @@ var resolveEndedTarget = (entry) => {
   }
   return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
 };
+var endedRunWasBudgetBound = (entry) => ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+var resolveEndedRecourse = (entry) => {
+  if (entry.outcome !== "missed") return null;
+  return endedRunWasBudgetBound(entry) ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
+};
 var buildEndedRow = (entry, devicesById, nowMs, timeZone) => {
   const targetValue = resolveEndedTarget(entry);
   if (targetValue === null) return null;
@@ -1017,6 +1217,12 @@ var buildEndedRow = (entry, devicesById, nowMs, timeZone) => {
     // widget tone union, so it maps straight through with no 'danger' case.
     outcomeTone: getPlanHistoryOutcomeTone(entry.outcome),
     finishedLabel: formatDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
+    // Canonical history copy — same helpers the settings-UI history list/detail
+    // use, so wording stays single-sourced.
+    progressLabel: formatPlanHistoryProgressLine(entry),
+    reachedAtLabel: formatPlanHistoryReachedAtLine(entry, timeZone ?? "UTC"),
+    whyLabel: formatPlanHistoryMissedReason(entry),
+    recourseHint: resolveEndedRecourse(entry),
     chart: toWidgetChart(resolveHistoryDetailChartData(entry))
   };
 };
@@ -1050,20 +1256,30 @@ var buildSmartTasksWidgetPayload = (input) => {
 };
 
 // widgets/smart_tasks/src/api.ts
+var readRecentHistory = (app, nowMs) => {
+  if (typeof app?.getDeferredObjectivePlanHistoryRecentUiPayload === "function") {
+    return app.getDeferredObjectivePlanHistoryRecentUiPayload(nowMs - ENDED_WINDOW_MS);
+  }
+  if (typeof app?.getDeferredObjectivePlanHistoryUiPayload === "function") {
+    return app.getDeferredObjectivePlanHistoryUiPayload();
+  }
+  return null;
+};
 var readTimeZone = (homey) => {
   const tz = homey.clock?.getTimezone?.();
   return typeof tz === "string" && tz.length > 0 ? tz : null;
 };
 var getSmartTasks = async ({ homey }) => {
   const app = homey.app;
+  const nowMs = Date.now();
   const activePlans = typeof app?.getDeferredObjectiveActivePlansUiPayload === "function" ? app.getDeferredObjectiveActivePlansUiPayload() : null;
-  const history = typeof app?.getDeferredObjectivePlanHistoryUiPayload === "function" ? app.getDeferredObjectivePlanHistoryUiPayload() : null;
+  const history = readRecentHistory(app, nowMs);
   const devices = typeof app?.getUiPickerDevices === "function" ? app.getUiPickerDevices() : [];
   return buildSmartTasksWidgetPayload({
     activePlans,
     history,
     devices,
-    nowMs: Date.now(),
+    nowMs,
     timeZone: readTimeZone(homey)
   });
 };

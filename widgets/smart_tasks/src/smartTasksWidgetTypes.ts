@@ -68,6 +68,17 @@ export type SmartTasksWidgetEndedRow = {
   outcomeTone: SmartTasksWidgetTone;
   // Long local-time label for when the run ended ("Today 14:20", "Sat 14:20").
   finishedLabel: string;
+  // Producer-resolved progress recap ("38 → 55 · target 55 °C"), shown as the
+  // detail's headline line. Null when start/target couldn't be resolved.
+  progressLabel: string | null;
+  // "reached at HH:MM" — non-null only for a Succeeded run. The success receipt.
+  reachedAtLabel: string | null;
+  // Blameless "why" sentence for a Missed run (e.g. "Daily budget filled before
+  // the deadline."); null for every other outcome.
+  whyLabel: string | null;
+  // Recourse hint for a Missed run — the budget-bound vs device-bound copy the
+  // active cannot-finish path uses; null otherwise. Never names the hard cap.
+  recourseHint: string | null;
   chart: DeferredPlanHistoryChartData | null;
 };
 

@@ -1,7 +1,8 @@
 import { installWidget } from '../widgets/smart_tasks/src/public/widgetApp';
-import type { WidgetWindow } from '../widgets/smart_tasks/src/public/widgetApp';
+import type { WidgetHomey, WidgetWindow } from '../widgets/smart_tasks/src/public/widgetApp';
 import { renderTrajectoryChart } from '../widgets/smart_tasks/src/public/trajectoryChart';
 import type { DeferredPlanHistoryChartData } from '../packages/shared-domain/src/deferredPlanHistoryChartData';
+import type { SmartTasksWidgetPayload } from '../widgets/smart_tasks/src/smartTasksWidgetTypes';
 import { registerHiddenGuardSuite } from './cssTestUtils';
 
 // The renderer switches views (.list-view/.detail-view) and toggles the row
@@ -41,6 +42,7 @@ const WIDGET_MARKUP = `
     <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
       <header class="detail-header">
         <button type="button" class="back-btn" data-detail-back aria-label="Back to smart tasks">
+          <span class="back-btn__icon" aria-hidden="true"></span>
           <span class="back-btn__name" data-detail-name></span>
         </button>
         <span class="chip" data-detail-chip></span>
@@ -130,18 +132,42 @@ describe('smart tasks widget detail view', () => {
     expect(detailView.hidden).toBe(false);
 
     const header = document.querySelector('.detail-header') as HTMLElement;
-    // No leaked nav chevron — the dashboard tile is not a navigation stack.
+    // The back arrow is a masked SVG icon, never a text glyph — so it stays a
+    // visible affordance without leaking a U+2190 into the header's text.
     expect(header.textContent).not.toContain(LEFT_ARROW);
     expect(header.querySelector('.back-btn__chevron')).toBeNull();
 
-    // The back button stays a real, labelled affordance with a return target.
+    // A VISIBLE back affordance: the icon is present alongside the labelled,
+    // returnable button (the old build offered only unmarked tappable text).
     const backBtn = document.querySelector('[data-detail-back]') as HTMLButtonElement;
     expect(backBtn).not.toBeNull();
+    expect(backBtn.querySelector('.back-btn__icon')).not.toBeNull();
     expect(backBtn.getAttribute('aria-label')).toBe('Back to smart tasks');
     backBtn.click();
     await flushPromises();
     expect(detailView.hidden).toBe(true);
     expect((document.querySelector('[data-list-view]') as HTMLElement).hidden).toBe(false);
+  });
+
+  test('shows a loading state until the first (slow) API response lands', async () => {
+    // Not preview, and Homey present → the widget waits for onHomeyReady then
+    // awaits homey.api(). A slow first call must read as "Loading…", not the
+    // blank "No active smart tasks" empty state.
+    window.history.replaceState({}, '', '/');
+    (window as WidgetWindow).Homey = {};
+    let resolveApi: ((value: SmartTasksWidgetPayload) => void) | null = null;
+    const homey: WidgetHomey = {
+      api: () => new Promise((res) => { resolveApi = (value) => res(value); }),
+      ready: () => {},
+    };
+    activeController = installWidget(window as WidgetWindow, document);
+    (window as WidgetWindow).onHomeyReady!(homey);
+    await flushPromises();
+    expect((document.querySelector('[data-empty]') as HTMLElement).textContent).toBe('Loading…');
+
+    resolveApi!({ state: 'empty', subtitle: 'No active smart tasks', hint: null });
+    await flushPromises();
+    expect((document.querySelector('[data-empty]') as HTMLElement).textContent).toBe('No active smart tasks');
   });
 
   test('plan-meta recap renders the labelled estimate, keeping the banded range', async () => {
@@ -171,6 +197,8 @@ describe('smart tasks widget detail view', () => {
     expect(legendText).toContain('Planned');
     expect(legendText).toContain('Measured');
     expect(legendText).toContain('Target 55 °C');
+    // Y-axis scale labels give a near-flat series context.
+    expect(chart.querySelectorAll('.tchart__axis').length).toBeGreaterThanOrEqual(2);
   });
 
   test('lists recently-ended tasks and opens their final-trajectory detail on tap', async () => {
@@ -196,9 +224,30 @@ describe('smart tasks widget detail view', () => {
     const chart = document.querySelector('[data-detail-chart]') as HTMLElement;
     expect(chart.hidden).toBe(false);
     expect(chart.querySelector('svg.tchart')).not.toBeNull();
-    // Live-only lines stay suppressed for an ended task.
-    expect((document.querySelector('[data-detail-why]') as HTMLElement).hidden).toBe(true);
+    // The headline is the progress recap; a Succeeded run shows its "reached at"
+    // receipt line; the live-only estimate/confidence lines stay suppressed.
+    expect((document.querySelector('[data-detail-target]') as HTMLElement).textContent).toContain('→');
+    expect((document.querySelector('[data-detail-why]') as HTMLElement).textContent).toBe('reached at 06:00');
     expect((document.querySelector('[data-detail-meta]') as HTMLElement).hidden).toBe(true);
+  });
+
+  test('a Missed ended task shows its blameless why + budget recourse', async () => {
+    activeController = installWidget(window as WidgetWindow, document);
+    await flushPromises();
+    const missedRow = document.querySelector(
+      '[data-ended-button][data-history-id="preview-hot-water-past-ended"]',
+    ) as HTMLElement | null;
+    expect(missedRow).not.toBeNull();
+    missedRow?.click();
+    await flushPromises();
+
+    expect((document.querySelector('[data-detail-chip]') as HTMLElement).textContent).toBe('Missed');
+    const why = document.querySelector('[data-detail-why]') as HTMLElement;
+    const recourse = document.querySelector('[data-detail-recourse]') as HTMLElement;
+    expect(why.hidden).toBe(false);
+    expect(why.textContent).toContain('Daily budget');
+    expect(recourse.hidden).toBe(false);
+    expect(recourse.textContent).toContain('Budget settings');
   });
 });
 

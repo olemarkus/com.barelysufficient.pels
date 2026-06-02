@@ -9,6 +9,9 @@ import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../pac
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
 import {
+  formatPlanHistoryMissedReason,
+  formatPlanHistoryProgressLine,
+  formatPlanHistoryReachedAtLine,
   getPlanHistoryOutcomeLabel,
   getPlanHistoryOutcomeTone,
 } from '../../../packages/shared-domain/src/deferredPlanHistory';
@@ -18,6 +21,8 @@ import {
 } from '../../../packages/shared-domain/src/deferredPlanHistoryChartData';
 import {
   formatSmartTaskListConfidenceChipLabel,
+  RECOURSE_CANNOT_MEET_BUDGET,
+  RECOURSE_CANNOT_MEET_DEVICE,
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
   resolveSmartTaskWidgetDetailCopy,
@@ -361,12 +366,13 @@ const buildRow = (params: {
     ? formatLocalHHMM(firstHourMs, timeZone)
     : null;
   const copy = resolveRowCopy(plan, statusId, firstPlannedTimeLabel);
+  const currentValue = resolveCurrentValue(device, plan.objectiveKind);
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
     unitSymbol: plan.objectiveKind === 'temperature' ? '°C' : '%',
-    currentValue: resolveCurrentValue(device, plan.objectiveKind),
+    currentValue,
     targetValue,
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
@@ -379,7 +385,7 @@ const buildRow = (params: {
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
-    chart: toWidgetChart(resolveActivePlanChartData(plan)),
+    chart: toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue })),
   };
 };
 
@@ -417,6 +423,20 @@ const resolveEndedTarget = (entry: DeferredObjectivePlanHistoryEntry): number | 
   return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
 };
 
+// A missed run is budget-bound when the recorded plan snapshot saw the daily
+// budget exhausted; otherwise it's device/shortfall-bound. Drives which
+// (hard-cap-safe) recourse hint applies — mirrors `resolveMissedHistoryRecourse`.
+const endedRunWasBudgetBound = (entry: DeferredObjectivePlanHistoryEntry): boolean => (
+  ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0
+);
+
+// Missed → budget/device recourse hint (reusing the active cannot-finish copy);
+// every other outcome carries no recourse.
+const resolveEndedRecourse = (entry: DeferredObjectivePlanHistoryEntry): string | null => {
+  if (entry.outcome !== 'missed') return null;
+  return endedRunWasBudgetBound(entry) ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
+};
+
 const buildEndedRow = (
   entry: DeferredObjectivePlanHistoryEntry,
   devicesById: Map<string, TargetDeviceSnapshot>,
@@ -437,6 +457,12 @@ const buildEndedRow = (
     // widget tone union, so it maps straight through with no 'danger' case.
     outcomeTone: getPlanHistoryOutcomeTone(entry.outcome),
     finishedLabel: formatDeadlineLong(entry.finalizedAtMs, nowMs, timeZone),
+    // Canonical history copy — same helpers the settings-UI history list/detail
+    // use, so wording stays single-sourced.
+    progressLabel: formatPlanHistoryProgressLine(entry),
+    reachedAtLabel: formatPlanHistoryReachedAtLine(entry, timeZone ?? 'UTC'),
+    whyLabel: formatPlanHistoryMissedReason(entry),
+    recourseHint: resolveEndedRecourse(entry),
     chart: toWidgetChart(resolveHistoryDetailChartData(entry)),
   };
 };

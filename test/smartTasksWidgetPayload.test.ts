@@ -619,6 +619,54 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
     expect(payload.endedRows[0].chart?.mode).toBe('trajectory');
   });
 
+  test('composes the success receipt on a met ended row', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({ dev: [buildHistoryEntry({ deviceId: 'dev', outcome: 'met' })] }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    const row = payload.endedRows[0];
+    expect(row.progressLabel).toContain('→');
+    expect(row.reachedAtLabel).toMatch(/^reached at /);
+    expect(row.whyLabel).toBeNull();
+    expect(row.recourseHint).toBeNull();
+  });
+
+  test('composes a blameless why + budget recourse on a budget-bound missed row', () => {
+    const payload = buildSmartTasksWidgetPayload({
+      activePlans: null,
+      history: historyPayload({
+        dev: [buildHistoryEntry({
+          deviceId: 'dev',
+          outcome: 'missed',
+          metAtMs: null,
+          finalProgressC: 48,
+          finalPlan: {
+            hours: [{ startsAtMs: NOW - 4 * HOUR, plannedKWh: 1 }],
+            energyNeededKWh: 4,
+            planStatus: 'cannot_meet',
+            revisedAtMs: NOW - 4 * HOUR,
+            kwhPerUnitMean: 0.5,
+            dailyBudgetExhaustedBucketCount: 3,
+          },
+        })],
+      }),
+      devices: [],
+      nowMs: NOW,
+      timeZone: 'UTC',
+    });
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    const row = payload.endedRows[0];
+    expect(row.whyLabel).toBe('Daily budget filled before the deadline.');
+    expect(row.recourseHint).toContain('Budget settings');
+    expect(row.reachedAtLabel).toBeNull();
+  });
+
   test('includes all outcomes (met / missed / abandoned), newest finalized first', () => {
     const payload = buildSmartTasksWidgetPayload({
       activePlans: null,

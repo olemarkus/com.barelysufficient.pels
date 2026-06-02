@@ -2248,13 +2248,16 @@ class PelsApp extends Homey.App {
     }
     return this.createDeferredObjective(deviceId, candidate);
   }
-  public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
+  private buildPlanHistoryUiPayload(
+    accept?: (entry: DeferredObjectivePlanHistoryEntry) => boolean,
+  ): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();
     const entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
     if (snapshot) {
       // Sort newest finalizedAtMs first within each device to match the UI expectation.
       const byDevice = new Map<string, DeferredObjectivePlanHistoryEntry[]>();
       for (const entry of snapshot.entries) {
+        if (accept && !accept(entry)) continue;
         const list = byDevice.get(entry.deviceId) ?? [];
         list.push(entry);
         byDevice.set(entry.deviceId, list);
@@ -2264,6 +2267,22 @@ class PelsApp extends Homey.App {
       }
     }
     return { version: 1, entriesByDeviceId };
+  }
+
+  public getDeferredObjectivePlanHistoryUiPayload(): SettingsUiDeferredObjectivePlanHistoryPayload {
+    return this.buildPlanHistoryUiPayload();
+  }
+
+  // Bounded variant for the smart-tasks widget: only entries finalized at/after
+  // `sinceMs`. The widget refreshes every 60 s and only renders the last 24 h, so
+  // serializing the full (unbounded, all-time) history each cycle is wasteful —
+  // this keeps the payload proportional to recent activity.
+  public getDeferredObjectivePlanHistoryRecentUiPayload(
+    sinceMs: number,
+  ): SettingsUiDeferredObjectivePlanHistoryPayload {
+    return this.buildPlanHistoryUiPayload(
+      (entry) => Number.isFinite(entry.finalizedAtMs) && entry.finalizedAtMs >= sinceMs,
+    );
   }
   public applyPlanActions = (plan: DevicePlan) => this.planService.applyPlanActions(plan);
   public applySheddingToDevice = (deviceId: string, deviceName: string, reason?: string) =>

@@ -1,13 +1,30 @@
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
-import { buildSmartTasksWidgetPayload } from './smartTasksWidgetPayload';
+import { buildSmartTasksWidgetPayload, ENDED_WINDOW_MS } from './smartTasksWidgetPayload';
 import type { SmartTasksWidgetPayload } from './smartTasksWidgetTypes';
 
 type WidgetApiApp = {
   getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  // Bounded fetch (last-24h) is preferred so the widget doesn't serialize the
+  // entire all-time history every 60 s refresh; the full method is the
+  // back-compat fallback for an app build that predates the bounded one.
+  getDeferredObjectivePlanHistoryRecentUiPayload?: (sinceMs: number) => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
+};
+
+const readRecentHistory = (
+  app: WidgetApiApp | undefined,
+  nowMs: number,
+): SettingsUiDeferredObjectivePlanHistoryPayload | null => {
+  if (typeof app?.getDeferredObjectivePlanHistoryRecentUiPayload === 'function') {
+    return app.getDeferredObjectivePlanHistoryRecentUiPayload(nowMs - ENDED_WINDOW_MS);
+  }
+  if (typeof app?.getDeferredObjectivePlanHistoryUiPayload === 'function') {
+    return app.getDeferredObjectivePlanHistoryUiPayload();
+  }
+  return null;
 };
 
 type WidgetApiContext = {
@@ -27,12 +44,11 @@ const readTimeZone = (homey: WidgetApiContext['homey']): string | null => {
 
 export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartTasksWidgetPayload> => {
   const app = homey.app;
+  const nowMs = Date.now();
   const activePlans = typeof app?.getDeferredObjectiveActivePlansUiPayload === 'function'
     ? app.getDeferredObjectiveActivePlansUiPayload()
     : null;
-  const history = typeof app?.getDeferredObjectivePlanHistoryUiPayload === 'function'
-    ? app.getDeferredObjectivePlanHistoryUiPayload()
-    : null;
+  const history = readRecentHistory(app, nowMs);
   const devices = typeof app?.getUiPickerDevices === 'function'
     ? app.getUiPickerDevices()
     : [];
@@ -40,7 +56,7 @@ export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartT
     activePlans,
     history,
     devices,
-    nowMs: Date.now(),
+    nowMs,
     timeZone: readTimeZone(homey),
   });
 };

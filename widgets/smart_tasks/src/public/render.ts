@@ -1,6 +1,8 @@
 import {
   formatSmartTaskWidgetOverflow,
   SMART_TASK_WIDGET_ENDED_HEADING,
+  SMART_TASK_WIDGET_LOADING,
+  SMART_TASK_WIDGET_TARGET_NOUN,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetPayload';
 import type {
@@ -124,7 +126,9 @@ const renderEndedRow = (
   const chipEl = li.querySelector('[data-ended-chip]');
   if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
   if (valuesEl instanceof HTMLElement) {
-    valuesEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    // "Target X" noun form (not "Heat to X") so the ended rows match the active
+    // rows' target phrasing on the same screen; the journey/why lives in detail.
+    valuesEl.textContent = `${SMART_TASK_WIDGET_TARGET_NOUN} ${formatValue(row.targetValue, row.unitSymbol)}`;
   }
   if (finishedEl instanceof HTMLElement) finishedEl.textContent = row.finishedLabel;
   if (chipEl instanceof HTMLElement) {
@@ -254,12 +258,16 @@ const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow
   detailChipEl.textContent = row.outcomeLabel;
   detailChipEl.dataset.tone = row.outcomeTone;
   setOptionalLine(detailDeadlineEl, row.finishedLabel);
-  detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+  // Headline = the progress recap ("38 → 55 · target 55 °C") — the postmortem
+  // story — falling back to the plain goal when start/final couldn't be resolved.
+  detailTargetEl.textContent = row.progressLabel
+    ?? targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;
   renderChart(detailChartEl, row.chart);
-  // An ended run has no live "why / recourse / estimate / confidence" copy.
-  setOptionalLine(detailWhyEl, null);
-  setOptionalLine(detailRecourseEl, null);
+  // Succeeded → "reached at HH:MM"; Missed → the blameless why sentence + the
+  // budget/device recourse hint. Abandoned carries neither.
+  setOptionalLine(detailWhyEl, row.reachedAtLabel ?? row.whyLabel);
+  setOptionalLine(detailRecourseEl, row.recourseHint);
   setOptionalLine(detailMetaEl, null);
   setOptionalLine(detailConfidenceEl, null);
 };
@@ -295,6 +303,25 @@ const renderDetail = (
     return;
   }
   renderActiveDetail(targets, row);
+};
+
+// First-paint loading state, shown until the first API response lands so a slow
+// app start reads as "loading" rather than the blank "no tasks" empty state.
+export const renderLoading = (targets: RenderTargets): void => {
+  const {
+    root, listView, detailView, rowsList, emptyEl, emptyHintEl, overflowEl, endedSectionEl,
+  } = targets;
+  root.dataset.state = 'empty';
+  root.dataset.view = 'list';
+  listView.hidden = false;
+  detailView.hidden = true;
+  clearChildren(rowsList);
+  rowsList.hidden = true;
+  endedSectionEl.hidden = true;
+  emptyHintEl.hidden = true;
+  overflowEl.hidden = true;
+  emptyEl.hidden = false;
+  emptyEl.textContent = SMART_TASK_WIDGET_LOADING;
 };
 
 export const renderWidget = (
