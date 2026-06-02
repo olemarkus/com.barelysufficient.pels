@@ -41,6 +41,35 @@ the release-review cleanup PR.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+### P1 — v2.11.0..HEAD release-review findings (2026-06-02, six-agent fan-out:
+`pels-runtime-reality` + `pels-layering-guardian` + `pels-ux-fit` + `pels-m3-critic` +
+`pels-copy-and-terminology` + codex adversarial). The P0 (stale Usage range in
+`docs/configuration.md`) shipped in the same release-review cleanup PR; the deviceTransport
+transient-empty-read adapter-teardown P1 shipped as its own runtime PR. Items below are the
+non-blocking carry-forward.
+
+- [ ] **History-detail chart-card title renders at 0px width behind the full-width toggle
+      (pre-existing, v2.7.2 — not a regression).** `pels-ux-fit` rendered the surface and
+      measured `h2.plan-card__title` width === 0 while the
+      `.plan-history-detail__chart-toggle` button took the full `.budget-card-header` width.
+      The header CSS already declares `> h2 { flex: 1 1 auto }` / `> button { flex-shrink: 0 }`,
+      so the button's full-width must come from a subtler `#deadline-plan-panel`-scoped
+      `.pels-button` override that beats the doubled-class decorator — pin the exact winning
+      rule via the render-gate harness before patching, then constrain the toggle (likely a
+      panel-scoped `width: auto; flex: 0 0 auto`) and add a `test:layout` computed-style
+      assertion (the pre-commit hook skips that suite). Files:
+      `packages/settings-ui/public/style.css` + `settings/style.css` (~2707, ~5210),
+      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx` (~1202-1213).
+      Source: `pels-ux-fit`, v2.11.0..HEAD release-review.
+- [ ] **History-detail Usage cross-link renders as default browser-blue hyperlink
+      (pre-existing, v2.7.2 — not a regression).** `.plan-history-detail__usage-link-anchor`
+      computes `color: rgb(0,0,238)` with `text-decoration: underline` — off-palette and
+      low-contrast on the dark surface, reading like a broken/placeholder link. Add a
+      token-bound rule (e.g. `color: var(--color-base-accent-default)`, tone the underline to
+      match other PELS inline links). Files: `packages/settings-ui/public/style.css` +
+      `settings/style.css`, `DeadlinePlanHistoryDetail.tsx` (~849-861). Source: `pels-ux-fit`,
+      v2.11.0..HEAD release-review.
+
 ### P1 — Widget loveability follow-ups (demoted from P0, 2026-05-31)
 
 *Source: owner walked the live dashboard with all five PELS widgets stacked
@@ -125,6 +154,24 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
       pels-runtime-reality, 2026-05-26.
 
 ## P2 Product, Observability, and Maintainability
+
+*v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
+
+- [ ] **Insights mode-tile revert can show a stale mode on overlapping async writes.**
+      `drivers/pels_insights/device.ts:~166` reverts the tile to a pre-write snapshot on a
+      failed `homey.settings.set`; with two rapid overlapping mode taps the failed (still-latest)
+      write can revert the tile to a mode that an earlier, now-committed write already superseded.
+      Serialize mode writes, or on failure revert to the settled current setting rather than the
+      pre-write snapshot. Pairs with the existing `refreshModeOptions` coalescing P1 item for
+      this file. Source: codex adversarial, v2.11.0..HEAD release-review.
+- [ ] **Render-gate seed misses the two genuinely-new pixel paths shipped this range.** The
+      populated `Cost ≈ X kr · Y kWh delivered` past-list meta line and the "Revised trajectory"
+      overlay / re-anchored staircase ship in v2.11.0..HEAD but the standing gate
+      (`packages/settings-ui/tests/e2e/smart-tasks-surface-screenshots.spec.ts`) seeds neither
+      (`revisionCount: 1`, no `totalCost`). Add one seed with `revisionCount: 2` + a mid-window
+      `revisedAtMs` and one with `totalCost`/`delivered` populated, and extend the spec to
+      navigate into the history-detail surface (currently list-only). Source: `pels-m3-critic` +
+      `pels-ux-fit`, v2.11.0..HEAD release-review.
 
 - [ ] Persist price-display provenance on smart-task history entries so archived cost survives a
       price-scheme/currency change. `DeferredObjectivePlanHistoryEntry` stores `totalCost` /
@@ -1207,6 +1254,13 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       Source: pels-layering-guardian on PR-D1, 2026-05-30.
 
 ## P3 Future and Exploratory Work
+
+*v2.11.0..HEAD release-review findings (2026-06-02). Cosmetic / single-home-discipline.*
+
+- [ ] **Stale JSDoc names a deleted helper.** `packages/settings-ui/src/ui/deadlinePlanInputs.ts:39-41`
+      still says `rateMean`/`usingBootstrap` are "Pre-resolved by `resolveKwhPerUnitDisplayRate`",
+      but that helper was deleted in `423afd5a` and replaced by `resolveDisplayRateAndSpeedMode`.
+      Update the symbol name. Source: `pels-layering-guardian`, v2.11.0..HEAD release-review.
 
 *v2.10.0..HEAD release-review cleanup (2026-05-29).*
 
