@@ -41,6 +41,11 @@ export const resolveHorizonPlanWithRescue = (params: {
   deadlineAtMs: number;
   steps: DeferredObjectiveStep[];
   commitment: ReturnType<typeof resolveCommittedHours>;
+  // Producer-resolved trajectory gate for mid-execution price deferral: `true`
+  // when the measured value is already at/above the committed plan's
+  // end-of-this-hour milestone (`isAheadOfHourMilestone`). Forwarded verbatim to
+  // the planner, which combines it with the relative-price test.
+  aheadOfHourMilestone?: boolean;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   priceOptimizationEnabled: boolean;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -116,6 +121,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     buckets,
     committed: commitment !== undefined,
     committedHours: commitment,
+    aheadOfHourMilestone: params.aheadOfHourMilestone,
   });
 
   if (objective.rescue?.exemptFromBudget !== 'always') {

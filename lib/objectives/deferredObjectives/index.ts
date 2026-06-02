@@ -8,6 +8,7 @@ export { createDeferredObjectivePlanRevisionBus } from './planRevisionBus';
 export type {
   DeferredObjectivePlanRevisionBus,
   DeferredObjectivePlanRevisionEvent,
+  DeferredObjectivePlanRevisionWrittenEvent,
 } from './planRevisionBus';
 export { createDeferredObjectiveEndedBus } from './endedEventBus';
 export type {

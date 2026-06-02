@@ -182,20 +182,17 @@ bridge tests.
 
 Tracked in `TODO.md` (EV deadline kWh target).
 
-#### Observability: measured deviation and expanded trigger tokens
+#### Observability: expanded trigger tokens
 
 The expanded tokens are the mechanism PELS uses to feed
 notification-friendly text into a user's own flow, since PELS does not
 deliver notifications directly.
 
-- **Measured-deviation detection**. `activePlanRecorder.ts` reserves
-  `measured_deviation` and `device_unavailable` reasons but does not emit
-  them. Compare observed delivery (read from the calibration EMA via
-  `getDeliveryPowerKw`) against the planned bucket allocation, emit a
-  `measured_deviation` revision when divergence sustains beyond a
-  threshold. Drives the `risk_reason` trigger token.
-- **Expanded trigger tokens**. `flowCards/deadlineObjectiveCards.ts` emits
-  2 tokens for `deadline_status_changed`. Add `planned_start_local`,
+- **Measured-deviation detection** is shipped: `activePlanRecorder.ts`
+  emits a `measured_deviation` revision when the learned per-unit energy
+  rate drifts far enough from the committed plan baseline.
+- **Expanded trigger tokens** remain deferred. `flowCards/smartTaskTokens.ts`
+  currently emits only the stable minimum token bags. Add `planned_start_local`,
   `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
   `estimated_duration_text`, and `risk_reason`. Token sources already
   live on the active-plan recorder's `latest` revision (`energyNeededKWh`,
@@ -203,12 +200,10 @@ deliver notifications directly.
   `notification_text` token is explicitly *not* part of this proposal —
   see `notes/smart-task-flow-cards/README.md` Rule 4.
 
-Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
-`flowCards/deadlineObjectiveCards.ts`,
+Files: `flowCards/smartTaskTokens.ts`, `flowCards/deadlineObjectiveCards.ts`,
 `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 
-Tracked in `TODO.md` (smart task flow card redesign + measured-deviation
-work).
+Tracked in `TODO.md` (smart task expanded trigger tokens).
 
 ### Open shape — automation and overrides
 

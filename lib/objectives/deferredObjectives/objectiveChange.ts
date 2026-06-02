@@ -58,8 +58,8 @@ const seedFromEntry = (
  * - New: just seed the active plan; nothing to finalize.
  *
  * Same-deadline target changes are deliberately treated as two separate runs: the prior
- * committed plan is finalized for history, the active record is abandoned, and a new pending
- * active plan is seeded for the replacement objective.
+ * committed plan is finalized for history, and the active record is replaced in-place with a
+ * pending plan for the replacement objective.
  *
  * Caller responsibility: pass the entries actually persisted in settings before/after the
  * write, so this helper does not need to read settings itself. The runtime auto-disable path
@@ -112,7 +112,6 @@ export const applyDeferredObjectiveChange = (
     } else {
       planHistoryRecorder.finalizeElapsedDeadline(deviceId, nowMs);
     }
-    activePlanRecorder.clearForDevice(deviceId);
     activePlanRecorder.markPending(seedFromEntry(deviceId, deviceName, nextEntry), nowMs);
     return;
   }

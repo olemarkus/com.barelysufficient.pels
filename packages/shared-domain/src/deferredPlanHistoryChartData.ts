@@ -82,8 +82,12 @@ export type DeferredPlanHistoryChartData = {
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const integratePlannedStaircase = (
-  snapshot: DeferredObjectivePlanHistoryRevisionSnapshot,
+// Exported so the live-task producer (`deferredActivePlanChartData.ts`) can
+// reuse the exact planned-staircase math. Narrowed to the two fields it reads
+// (`hours` + `kwhPerUnitMean`) so the active-plan revision — which carries the
+// same shape under a different name — can feed it without a full snapshot.
+export const integratePlannedStaircase = (
+  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'hours' | 'kwhPerUnitMean'>,
   anchorValue: number,
   anchorAtMs: number,
   windowEndMs: number,

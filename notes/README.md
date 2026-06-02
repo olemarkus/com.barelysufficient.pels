@@ -60,8 +60,8 @@ below.
 - `ev-ready-by/README.md` — EV charging deadline feature (admission + trust surfaces shipped; kWh
   target mode + expanded observability deferred).
 - `planning-horizon-milestones/README.md` — deferred energy-milestone / horizon-scheduling design.
-- `status-hysteresis/README.md` — deferred status-transition hysteresis (revisit on real flapping
-  telemetry).
+- `status-hysteresis/README.md` — deferred extra status-transition hysteresis after the saved
+  active-plan status gate.
 
 ## Smart tasks
 

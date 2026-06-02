@@ -1141,49 +1141,145 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.unplannedUsefulEnergyKWh).toBe(0);
   });
 
-  it('flags priceDeferralEligible when a committed avoid current hour can defer to cheaper hours', () => {
-    // The commitment floor keeps the current `avoid` hour booked, but the full
-    // residual fits in the cheaper preferred hours alone — so the current hour is
-    // release-eligible and admission idles the device this cycle.
+  // Mid-execution price deferral: the planner combines the producer-resolved
+  // `aheadOfHourMilestone` trajectory gate with a relative raw-price test. The
+  // current hour stays booked by the commitment floor; eligibility means the
+  // admission path idles the device this cycle so a cheaper later hour carries
+  // the load. (Trajectory math itself is covered in trajectoryMilestone.test.ts.)
+  const deferralBuckets = (prices: number[]): DeferredObjectiveHorizonBucket[] => (
+    prices.map((price, hourOffset) => bucket(hourOffset, 'neutral', { price }))
+  );
+
+  it('flags priceDeferralEligible when ahead of milestone and a later hour is >5% cheaper', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
-      objective: objective({ energyNeededKWh: 2 }), // default deadline NOW + 4h
+      objective: objective({ energyNeededKWh: 2 }), // deadline NOW + 4h
       steps: defaultSteps,
-      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
+      buckets: deferralBuckets([100, 90, 90, 90]),
       committed: true,
       committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
     });
 
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plan.priceDeferralEligible).toBe(true);
   });
 
-  it('does not flag priceDeferralEligible when the current hour is not an avoid hour', () => {
+  it('does not flag priceDeferralEligible when not ahead of the milestone', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
-      objective: objective(),
+      objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
-      buckets: [bucket(0, 'preferred'), bucket(1, 'preferred')],
+      buckets: deferralBuckets([100, 50, 50, 50]),
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: false,
     });
 
     expect(plan.priceDeferralEligible).toBe(false);
   });
 
-  it('does not flag priceDeferralEligible for a hard objective deferring into an avoid hour', () => {
-    // A hard objective must not defer from one `avoid` hour into another: the
-    // deferred re-allocation fits only by using the avoid h1, so there is no
-    // cheaper hour to carry the load — eligibility is false for hard too, not just
-    // soft. h1 is early, well clear of the deadline reserve.
+  it('does not flag priceDeferralEligible when no later hour beats the 5% margin', () => {
+    // Later hours are cheaper, but only by <5% (current 100, threshold 95;
+    // later hours 96/98) — keep the safer earlier slot.
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
-      objective: objective({ energyNeededKWh: 2, enforcement: 'hard' }),
+      objective: objective({ energyNeededKWh: 2 }),
       steps: defaultSteps,
-      buckets: [bucket(0, 'avoid'), bucket(1, 'avoid'), bucket(2, 'preferred')],
+      buckets: deferralBuckets([100, 96, 98, 97]),
       committed: true,
       committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
     });
 
-    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
+
+  it('does not defer into the deadline-reserve hour even when it is cheaper', () => {
+    // deadlineMarginMs = 1h ⇒ h3 (NOW+3h..NOW+4h) is the reserve segment. The
+    // only sub-threshold hour is that reserve hour, so eligibility is false.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2, deadlineMarginMs: HOUR_MS }),
+      steps: defaultSteps,
+      buckets: deferralBuckets([100, 100, 100, 50]),
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
+
+  it('does not flag priceDeferralEligible when the current hour price is free or negative', () => {
+    // current ≤ 0 ⇒ heat now while it is free; never defer away from it.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2 }),
+      steps: defaultSteps,
+      buckets: deferralBuckets([0, -5, -5, -5]),
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
+
+  it('flags priceDeferralEligible when a later hour has a negative price', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2 }),
+      steps: defaultSteps,
+      buckets: deferralBuckets([100, -2, 100, 100]),
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.priceDeferralEligible).toBe(true);
+  });
+
+  it('does not flag priceDeferralEligible when the only cheaper later hour carries no booked load', () => {
+    // h1 is cheaper but capped to zero by its daily-budget/headroom forecast, so
+    // the allocation books nothing into it — it won't carry the deferred load, and
+    // releasing toward it would just push the load into the pricier committed
+    // hours. No other hour beats the margin.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 2 }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'neutral', { price: 100 }),
+        bucket(1, 'neutral', { price: 50, maxUsefulEnergyKWh: 0 }),
+        bucket(2, 'neutral', { price: 100 }),
+        bucket(3, 'neutral', { price: 100 }),
+      ],
+      committed: true,
+      committedHours: [{ startsAtMs: NOW_MS, plannedKWh: 1 }],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.priceDeferralEligible).toBe(false);
+  });
+
+  it('does not flag priceDeferralEligible when the current hour carries no booked energy', () => {
+    // No commitment + the current hour is less preferred, so the allocator books
+    // the preferred future hour and leaves the current hour at 0 kWh — it is
+    // already idle, so there is nothing to defer.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ energyNeededKWh: 1 }),
+      steps: defaultSteps,
+      buckets: [
+        bucket(0, 'avoid', { price: 100 }),
+        bucket(1, 'preferred', { price: 50 }),
+        bucket(2, 'preferred', { price: 50 }),
+      ],
+      aheadOfHourMilestone: true,
+    });
+
+    expect(plan.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBe(0);
     expect(plan.priceDeferralEligible).toBe(false);
   });
 });

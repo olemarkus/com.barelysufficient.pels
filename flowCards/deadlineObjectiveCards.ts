@@ -1,11 +1,15 @@
 import {
   readAllObjectives,
   resolveDeferredObjectiveDeadline,
+  type DeferredObjectivePlanRevisionEvent,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveSettingsV1,
-  type DeferredObjectiveStatusSnapshot,
 } from '../lib/objectives/deferredObjectives';
 import type { ObjectiveWriteOutcome } from '../lib/objectives/deferredObjectives';
+import type {
+  DeferredObjectiveActivePlanStatusV1,
+  DeferredObjectiveActivePlanV1,
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
@@ -23,22 +27,12 @@ const LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 type SmartTaskActiveFlowStatus = SmartTaskStatusId;
 
-type LastSmartTaskFlowStatus = {
-  status: SmartTaskActiveFlowStatus;
-  deadlineAtMs: number | null;
-};
-
 export type DropdownArg = string | { id?: string; name?: string };
-type InternalTaskStatus =
-  | DeferredObjectiveStatusSnapshot['status']
-  | DeferredObjectiveStatusSnapshot['previousStatus'];
 
 // Status the user effectively sees while the planner has not yet produced a
-// horizon plan for an enabled task (e.g. waiting for prices). Mirrors the
-// `'waiting'` value the trigger emits when the bus transitions to an
-// `unknown` snapshot from a non-`none` prior status. (First observations
-// where the prior is `none` are suppressed as task creation, not a status
-// change.)
+// settled active-plan revision for an enabled task (e.g. waiting for prices).
+// Once a revision exists, public Flow status follows the active-plan recorder's
+// settled status rather than the live per-cycle diagnostic status.
 const PENDING_FLOW_STATUS: SmartTaskActiveFlowStatus = 'waiting';
 
 export const getDropdownId = (raw: DropdownArg | undefined): string => (
@@ -129,12 +123,10 @@ const normalizeSmartTaskStatusArg = (raw: DropdownArg | undefined): SmartTaskAct
   }
 };
 
-const mapInternalTaskStatusToFlowStatus = (status: InternalTaskStatus): SmartTaskActiveFlowStatus | null => {
+const mapPlanStatusToFlowStatus = (
+  status: DeferredObjectiveActivePlanStatusV1,
+): SmartTaskActiveFlowStatus => {
   switch (status) {
-    case 'none':
-      return null;
-    case 'unknown':
-      return 'waiting';
     case 'on_track':
       return 'on_track';
     case 'at_risk':
@@ -145,17 +137,24 @@ const mapInternalTaskStatusToFlowStatus = (status: InternalTaskStatus): SmartTas
     case 'satisfied':
       return 'satisfied';
     default:
-      return 'waiting';
+      return 'unachievable';
   }
 };
 
-const mapSnapshotToFlowStatus = (snapshot: DeferredObjectiveStatusSnapshot): SmartTaskActiveFlowStatus => {
-  return mapInternalTaskStatusToFlowStatus(snapshot.status) ?? 'waiting';
+const mapPreviousPlanStatusToFlowStatus = (
+  event: DeferredObjectivePlanRevisionEvent,
+): SmartTaskActiveFlowStatus | null => {
+  if (event.previousWasPending) return PENDING_FLOW_STATUS;
+  return event.previousPlanStatus === null ? null : mapPlanStatusToFlowStatus(event.previousPlanStatus);
 };
 
-const mapPreviousStatusToFlowStatus = (
-  previousStatus: DeferredObjectiveStatusSnapshot['previousStatus'],
-): SmartTaskActiveFlowStatus | null => mapInternalTaskStatusToFlowStatus(previousStatus);
+const mapPlanEventToFlowStatus = (
+  event: DeferredObjectivePlanRevisionEvent,
+): SmartTaskActiveFlowStatus => (
+  event.eventType === 'pending_written'
+    ? PENDING_FLOW_STATUS
+    : mapPlanStatusToFlowStatus(event.revision.planStatus)
+);
 
 // Backward-compat for the 'none' dropdown id from the initial
 // `deadline_status_is` card (committed 2026-05-10 as `3ba281d7`, refactored
@@ -185,13 +184,10 @@ const isLegacyNoneStatusMatch = (
 };
 
 export function registerDeadlineObjectiveCards(deps: FlowCardDeps): void {
-  // Shared between the trigger registration and `clear_deadline` so wiping a
-  // task wipes the trigger's suppression cache too.
-  const lastFlowStatusByDeviceId = new Map<string, LastSmartTaskFlowStatus>();
   registerSetTemperatureDeadlineCard(deps);
   registerSetEvChargeDeadlineCard(deps);
-  registerClearDeadlineCard(deps, lastFlowStatusByDeviceId);
-  registerDeadlineStatusChangedTrigger(deps, lastFlowStatusByDeviceId);
+  registerClearDeadlineCard(deps);
+  registerDeadlineStatusChangedTrigger(deps);
   registerDeadlineEndedTrigger(deps);
   registerDeadlinePlanChangedTrigger(deps);
   registerSmartTaskHoursRemainingTrigger(deps);
@@ -311,10 +307,7 @@ const resolveDeviceName = async (deps: FlowCardDeps, deviceId: string): Promise<
   }
 };
 
-function registerClearDeadlineCard(
-  deps: FlowCardDeps,
-  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
-): void {
+function registerClearDeadlineCard(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getActionCard('clear_deadline');
   card.registerRunListener(async (args: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg } | null;
@@ -331,12 +324,12 @@ function registerClearDeadlineCard(
       deviceId,
       deviceName: hadEntry ? await resolveDeviceName(deps, deviceId) : null,
     }));
-    // Flow-card-only side effects of forgetting a task: drop the bus / hours
-    // tracker memory and the trigger's per-device suppression cache so a later
-    // re-added task is a fresh observation, not a continuation of stale state.
+    // Flow-card-only side effects of forgetting a task: drop the live status bus
+    // / hours-tracker memory so lifecycle-only surfaces do not keep stale state.
+    // The public status-change trigger is active-plan-revision backed, so it no
+    // longer needs a separate suppression cache here.
     deps.getDeferredObjectiveStatusBus?.()?.forgetDevice(deviceId);
     deps.getDeferredObjectiveHoursRemainingTracker?.()?.forgetDevice(deviceId);
-    lastFlowStatusByDeviceId.delete(deviceId);
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -350,10 +343,7 @@ function registerClearDeadlineCard(
   });
 }
 
-function registerDeadlineStatusChangedTrigger(
-  deps: FlowCardDeps,
-  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
-): void {
+function registerDeadlineStatusChangedTrigger(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getTriggerCard('deadline_status_changed');
   card.registerRunListener(async (args: unknown, state?: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg } | null;
@@ -366,55 +356,25 @@ function registerDeadlineStatusChangedTrigger(
     return buildDeviceAutocompleteOptions(snapshot, query);
   });
 
-  const bus = deps.getDeferredObjectiveStatusBus?.();
+  const bus = deps.getDeferredObjectivePlanRevisionBus?.();
   if (!bus) return;
-  bus.onTransition((snapshot) => {
-    if (snapshot.deadlineMissed) return;
-    const flowStatus = mapSnapshotToFlowStatus(snapshot);
-    const previousStatus = resolvePreviousFlowStatus(snapshot, lastFlowStatusByDeviceId);
-    // Always cache the latest status so future transitions have a comparison
-    // point, even when we suppress this fire.
-    lastFlowStatusByDeviceId.set(snapshot.deviceId, {
-      status: flowStatus,
-      deadlineAtMs: snapshot.deadlineAtMs,
-    });
-    // No prior status (first observation of a new task, or after `clear_deadline`
-    // wiped the cache) is task creation, not a status change — don't fire.
-    if (previousStatus === null) return;
-    if (previousStatus === flowStatus) return;
+  bus.onRevision((event) => {
     let tokens: Record<string, unknown>;
     try {
-      tokens = buildSmartTaskStatusTokens(snapshot, flowStatus);
+      const previousStatus = mapPreviousPlanStatusToFlowStatus(event);
+      // No prior public status means task creation/discovery, not a status change.
+      if (previousStatus === null) return;
+      const flowStatus = mapPlanEventToFlowStatus(event);
+      if (previousStatus === flowStatus) return;
+      tokens = buildSmartTaskStatusTokens(event, flowStatus);
     } catch (err) {
       deps.error('Failed to build deadline_status_changed tokens', err);
       return;
     }
-    void card.trigger?.(tokens, { deviceId: snapshot.deviceId })
+    void card.trigger?.(tokens, { deviceId: event.deviceId })
       .catch((err: Error) => deps.error('Failed to trigger deadline_status_changed', err));
   });
 }
-
-const resolvePreviousFlowStatus = (
-  snapshot: DeferredObjectiveStatusSnapshot,
-  lastFlowStatusByDeviceId: Map<string, LastSmartTaskFlowStatus>,
-): SmartTaskActiveFlowStatus | null => {
-  // Bus reports `'none'` whenever the device was forgotten (`forgetDevice`),
-  // which happens from clear_deadline, transition sweeps, and runtime disable
-  // paths. Only clear_deadline also clears `lastFlowStatusByDeviceId`, so the
-  // cache may still hold a same-deadline entry from a prior fire. Trust the
-  // bus's `'none'` signal first — otherwise a recreated/reappearing task
-  // emits a spurious status-change trigger on its first observation.
-  if (snapshot.previousStatus === 'none') return null;
-  const previousFlowStatus = lastFlowStatusByDeviceId.get(snapshot.deviceId);
-  // Cached entry for the same deadline is the highest-trust prior — it
-  // reflects the last fired flow status, which may differ from the bus's
-  // internal status mapping.
-  if (previousFlowStatus?.deadlineAtMs === snapshot.deadlineAtMs) {
-    return previousFlowStatus.status;
-  }
-  // Otherwise rely on the bus's reported previous internal status.
-  return mapPreviousStatusToFlowStatus(snapshot.previousStatus);
-};
 
 function registerDeadlineEndedTrigger(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getTriggerCard('deadline_ended');
@@ -462,6 +422,7 @@ function registerDeadlinePlanChangedTrigger(deps: FlowCardDeps): void {
   const bus = deps.getDeferredObjectivePlanRevisionBus?.();
   if (!bus) return;
   bus.onRevision((event) => {
+    if (event.eventType !== 'revision_written') return;
     if (!event.allocationChanged) return;
     let tokens: Record<string, unknown>;
     try {
@@ -540,14 +501,21 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
     if (!deviceId) return false;
     const rawStatus = getDropdownId(payload?.status);
     const settings = requireSettingsRead(deps)();
-    const hasEntry = Boolean(settings.objectivesByDeviceId[deviceId]?.enabled);
+    const entry = settings.objectivesByDeviceId[deviceId];
+    const hasEntry = Boolean(entry?.enabled);
     const legacyNoneMatch = isLegacyNoneStatusMatch(rawStatus, hasEntry);
     if (legacyNoneMatch !== null) return legacyNoneMatch;
     const wantedStatus = normalizeSmartTaskStatusArg(payload?.status);
     if (!wantedStatus) return false;
-    const bus = deps.getDeferredObjectiveStatusBus?.();
-    const current = bus?.getCurrent(deviceId) ?? null;
-    const effectiveStatus = resolveEffectiveStatus(current, hasEntry);
+    const activePlans = deps.getDeferredObjectiveActivePlans?.() ?? null;
+    if (activePlans === null) return false;
+    const plan = activePlans.plansByDeviceId[deviceId] ?? null;
+    const effectiveStatus = resolveEffectiveStatus(
+      plan,
+      hasEntry,
+      entry?.deadlineAtMs ?? null,
+      deps.getNow().getTime(),
+    );
     return effectiveStatus !== null && effectiveStatus === wantedStatus;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
@@ -556,25 +524,24 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
   });
 }
 
-// Resolves what the user effectively sees as the current smart task status.
+// Resolves the public, settled smart-task status used by Flow conditions.
 // Four cases:
-//   1. Bus has a current snapshot AND deadline already missed → no active
-//      status matches; the missed trigger is the right surface for that event.
-//   2. Bus has a current snapshot → use the mapped flow status.
-//   3. No bus snapshot AND task is enabled in settings → the planner has not
-//      produced a horizon yet (e.g. waiting for prices); the user-facing
-//      status is `waiting`.
-//   4. Otherwise → no task; nothing matches.
+//   1. No enabled objective entry → no task; nothing matches.
+//   2. Persisted plan is past deadline → no active status matches; the ended
+//      trigger owns that event.
+//   3. No settled revision yet → waiting.
+//   4. Settled revision exists → use `latest.planStatus`.
 const resolveEffectiveStatus = (
-  current: DeferredObjectiveStatusSnapshot | null,
+  plan: DeferredObjectiveActivePlanV1 | null,
   hasEntry: boolean,
+  objectiveDeadlineAtMs: number | null,
+  nowMs: number,
 ): SmartTaskActiveFlowStatus | null => {
-  if (current) {
-    if (current.deadlineMissed) return null;
-    return mapSnapshotToFlowStatus(current);
-  }
-  if (hasEntry) return PENDING_FLOW_STATUS;
-  return null;
+  if (!hasEntry) return null;
+  if (objectiveDeadlineAtMs !== null && objectiveDeadlineAtMs <= nowMs) return null;
+  if (plan !== null && plan.deadlineAtMs <= nowMs) return null;
+  if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
+  return mapPlanStatusToFlowStatus(plan.latest.planStatus);
 };
 
 function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {

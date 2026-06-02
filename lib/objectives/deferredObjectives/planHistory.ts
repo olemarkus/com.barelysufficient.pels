@@ -3,6 +3,7 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
+  DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryV4,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import { getLogger } from '../../logging/logger';
@@ -15,6 +16,7 @@ import {
   buildFinalHourFlush,
   buildFinalizedAttributionEvent,
   detectHourRollover,
+  drainProgressSamples,
   hasTrustworthyProgress,
   hourBucketMs,
   type HourPriceResolver,
@@ -178,6 +180,29 @@ export class DeferredObjectivePlanHistoryRecorder {
     const loaded = deps.load();
     this.entries = loaded?.entries.slice() ?? [];
     this.trimEntries();
+  }
+
+  // Live trajectory for an in-flight run, stitched into the active-plans UI
+  // payload (`setup/deferredObjectiveActivePlansUiAssembler.ts`) so the
+  // smart-tasks widget can draw planned-vs-actual progress while the run is
+  // open. Reads the in-memory in-progress record without mutating it
+  // (`drainProgressSamples` copies + sorts the sample map). Returns null when no
+  // run is open for the device; a device has at most one open run (one objective
+  // per device), so the first matching record wins.
+  getInProgressTrajectory(deviceId: string): {
+    startProgressC: number | null;
+    startProgressPercent: number | null;
+    progressSamples: DeferredObjectivePlanHistoryProgressSample[];
+  } | null {
+    for (const record of this.inProgress.values()) {
+      if (record.deviceId !== deviceId) continue;
+      return {
+        startProgressC: record.startProgressC,
+        startProgressPercent: record.startProgressPercent,
+        progressSamples: drainProgressSamples(record.progressSamples),
+      };
+    }
+    return null;
   }
 
   observe(

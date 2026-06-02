@@ -51,8 +51,9 @@ const resolveReleaseIntentForCapOff = (
 
 // A deferred current hour is "released" when the device is idled this cycle rather
 // than run. Three causes: there is no current bucket, the current bucket carries no
-// booked energy, or the producer flagged the hour price-deferral-eligible (an
-// expensive `avoid` hour whose load a cheaper hour can carry). Single source of
+// booked energy, or the producer flagged the hour price-deferral-eligible (the
+// device is already at/above this hour's trajectory milestone AND a later hour is
+// cheaper, so a cheaper hour can carry the load). Single source of
 // truth shared by `resolveDecision` (which idles the device) and
 // `buildDeferredTargetOverrides` (which must NOT stamp a deadline floor target on a
 // released device — otherwise `resolvePlannedTarget` would command it to run
@@ -86,9 +87,9 @@ const resolveDecision = (
   if (isReleasedCurrentHour(horizonPlan)) {
     // Released bucket: hold the device in its configured release posture. Besides
     // genuine idle hours (no current bucket / no booked energy), this also fires
-    // when the producer flagged the hour price-deferral-eligible — the current hour
-    // is an expensive `avoid` hour whose load a cheaper hour can carry, so release
-    // the device this cycle. This is a live per-cycle control decision on the
+    // when the producer flagged the hour price-deferral-eligible — the device is
+    // already at/above this hour's trajectory milestone and a later hour is
+    // cheaper, so release the device this cycle. This is a live per-cycle control decision on the
     // admission path; the clock-driven recorder is insulated, so no revision is
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //

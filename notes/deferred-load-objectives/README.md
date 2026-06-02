@@ -33,8 +33,8 @@ As of this note, PELS already has internal/native EV state-of-charge plumbing:
 - public flow cards expose deadline creation, clearing, status conditions, and status-change /
   missed-deadline triggers; the earlier device-detail Settings UI card has been removed in favor of
   the flow-card surface (see `docs/flow-cards.md`)
-- a status bus inside the bridge publishes status transitions and missed-deadline events that the
-  flow trigger cards subscribe to
+- an internal status bus publishes live status transitions and missed-deadline lifecycle events,
+  while public status Flow cards read the settled active-plan status
 - soft temperature objectives participate in planner admission: planned hours admit the device,
   idle hours keep cap-off devices off, and planned temperature targets are lifted to the deadline
   target
@@ -78,8 +78,8 @@ Storage rules:
 - `targetTemperatureC` must be finite and within the bounded settings range. The Settings UI should
   further constrain it to the device target capability range when that range is available.
 - Clearing a deadline for a device that has no objective is a safe no-op: `removeObjective`
-  returns settings unchanged, the status bus's `forgetDevice` and the trigger-suppression cache
-  delete both no-op cleanly.
+  returns settings unchanged, and the status bus / hours-tracker forget paths both no-op cleanly.
+  Public status-change Flow cards are revision-backed and have no separate trigger cache.
 - `deadlineAtMs` is an absolute UTC timestamp. Flow cards take a `HH:mm` local-time argument and
   resolve it to the next future local moment **once at write time**; the persisted value never
   rolls forward on its own. When the deadline passes, the runtime auto-disables the entry
@@ -97,10 +97,10 @@ Storage rules:
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
 enabled objective, and emits structured `deferred_objectives` debug diagnostics. The bridge also
-publishes status transitions and deadline-missed events to an in-process status bus that flow
-trigger and condition cards subscribe to. Public flow cards are the user-facing surface for
-creating and clearing deadlines. For soft temperature objectives, the planner uses the evaluation
-to decide planned/idle participation and deadline target overrides.
+publishes live status transitions and deadline-missed lifecycle events to an in-process status
+bus. Public status Flow cards read the settled active-plan status instead; create/clear Flow cards
+remain the user-facing surface for managing deadlines. For soft temperature objectives, the
+planner uses the evaluation to decide planned/idle participation and deadline target overrides.
 
 Price gating is deliberate. The bridge only plans when price optimization is enabled and the
 daily-budget price payload covers every hour from now through the objective deadline. If the
@@ -273,8 +273,9 @@ these triggers:
    while the deadline is still in the future. Tracked for future use; today the
    recorder simply drops the record once a diagnostic disappears, matching the
    history recorder's abandon path.
-7. **`measured_deviation`** — Reserved for the future per-device metering work. Not
-   yet emitted.
+7. **`measured_deviation`** — A learned per-unit energy rate has drifted far enough from the
+   committed plan baseline that the plan's energy basis changed. Emitted by the active-plan
+   recorder; richer Flow tokens for this reason remain deferred.
 
 A normal plan cycle whose output does not change committed-plan metadata does **not** mutate
 the record. This is what makes the plan stable: the runtime can re-evaluate every cycle, but
@@ -791,22 +792,22 @@ The shipped status values on the diagnostic
 - `satisfied` — current progress is at or above target. Live; if a later reading drops below
   target, the next cycle returns to one of the values above.
 
-Status transitions today fire immediately on change (no hysteresis); the flow trigger bus
-suppresses same-status re-fires. The shipped `deadlineMarginMs = 1 hour` is a flat reserve,
-not confidence-scaled. Deadlines closer than the reserve window collapse to a fully-reserve
-horizon: any allocation reads as `at_risk` (or `cannot_meet` if the energy still doesn't
-fit), never `on_track`.
+Live diagnostic status transitions still publish immediately on change (no hysteresis) for
+runtime lifecycle/debug handling. Public Flow/UI status is read from the active-plan record's
+settled `latest.planStatus`: replan revisions settle at the active-plan recorder's cadence,
+and short mid-hour diagnostic flips stay internal unless they survive to a saved revision. The
+shipped `deadlineMarginMs = 1 hour` is a flat reserve, not confidence-scaled. Deadlines closer
+than the reserve window collapse to a fully-reserve horizon: any allocation reads as `at_risk`
+(or `cannot_meet` if the energy still doesn't fit), never `on_track`.
 
-An internal `'invalid'` value exists on `DeferredObjectiveHorizonStatus` and the bus snapshot
-type (`statusBus.ts`), produced by the horizon planner when a precondition fails inside the
-planning step. `diagnosticsBridge` collapses `'invalid'` to `'unknown'` before it reaches the
-flow surface — user-facing status is always one of the five above. The internal value is
-retained for runtime branching only; tightening the bus type to `Exclude<…, 'invalid'>` is
-possible but cosmetic.
+An internal `'invalid'` value exists on `DeferredObjectiveHorizonStatus` and may be persisted on
+the active-plan status when a saved plan revision is invalid. Public Flow maps it to
+`unachievable`, while the live diagnostic bridge collapses it to `unknown` before it reaches
+diagnostic status consumers.
 
-Hysteresis and confidence-scaled margin are deferred — see
+Additional hysteresis and confidence-scaled margin are deferred — see
 [`notes/status-hysteresis/README.md`](../status-hysteresis/README.md). Picked up only if real
-telemetry shows user-observable status flapping.
+telemetry shows user-observable status flapping after the settled active-plan gate.
 
 ## Deadline Enforcement
 
@@ -1029,12 +1030,13 @@ Planner behavior:
 
 Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
-- **`deadline_status_changed`** — fires when the status bus reports a transition between
-  `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. First-observation and
-  same-status re-fires are suppressed. Tokens: `device_name`, `status` (stable lowercase id).
-  A sticky `deadlineMissed` flag on the snapshot blocks re-fires once the deadline has passed
-  (the missed transition is surfaced via `deadline_ended` instead); the flag clears on
-  `satisfied` or when the objective is rescheduled.
+- **`deadline_status_changed`** — fires when the active-plan recorder publishes a saved status
+  transition between `waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`. Replacing
+  a settled task with a pending record emits saved status → `waiting`, and the first saved
+  revision after a pending record emits `waiting` → saved status; a first discovered revision with
+  no prior public status and same-status re-fires are suppressed. Tokens: `device_name`, `status`
+  (stable lowercase id). The immediate status bus remains internal; the missed transition is
+  surfaced via `deadline_ended` instead.
 - **`deadline_ended`** — fires once per run conclusion with `outcome` = `succeeded` /
   `missed` / `abandoned` (stable lowercase id). Tokens: `device_name`, `outcome`, `shortfall`
   (number, 0 when succeeded; flow UI label "Gap to target"). `replaced` and `unknown`
@@ -1045,11 +1047,12 @@ Three trigger cards registered in `flowCards/deadlineObjectiveCards.ts`:
 
 Plus two condition cards:
 
-- **`deadline_status_is`** — true if the current effective status matches the chosen dropdown
-  value (`waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`). The runlistener
-  also accepts a legacy id set (`none`, `pending_prices`, `cannot_meet`, `cannot_finish`,
-  `done`) for backwards compatibility with older user flows; only the canonical ids are exposed
-  in today's dropdown JSON.
+- **`deadline_status_is`** — true if the active-plan record's saved public status matches the
+  chosen dropdown value (`waiting` / `on_track` / `at_risk` / `unachievable` / `satisfied`).
+  An enabled objective with no saved active-plan revision resolves as `waiting`; expired tasks
+  have no matching status. The runlistener also accepts a legacy id set (`none`,
+  `pending_prices`, `cannot_meet`, `cannot_finish`, `done`) for backwards compatibility with
+  older user flows; only the canonical ids are exposed in today's dropdown JSON.
 - **`has_active_deadline`** — true if the device has an enabled objective entry.
 
 The `clear_deadline` action card's device autocomplete is filtered to devices with an active

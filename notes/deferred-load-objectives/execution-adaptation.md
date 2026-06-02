@@ -63,7 +63,7 @@ override only** (see work item 2). Two distinct flap concerns, handled separatel
   *eliminated structurally* by keeping the recorder out of the loop; the commitment never
   changes.
 - **Control flap** (device toggles on/off) — bounded by the existing shed/restore cooldowns
-  (60–300 s) plus the conservative-estimate and sticky guards in work item 2.
+  (60–300 s) plus the stable committed-rate milestone and conservative unit deadband in work item 2.
 
 ## Work item 1 — Rebase the revised trajectory onto measured progress — DONE
 
@@ -129,100 +129,133 @@ identical-staircase / replan overlay cases still hold.
 
 ## Work item 2 — Mid-execution price deferral (limit when a cheaper hour can do it) — DONE
 
-Stop drawing real power in an `avoid` hour when the remaining work fits in cheaper hours by the
-deadline. Shipped as a producer-resolved flag + a per-cycle admission release:
+Back the device off the current hour when it is **already at/above this hour's planned trajectory
+milestone** (in the objective's own unit) **and** a later hour is genuinely cheaper. The plan stays
+built in energy (feedforward); the per-hour back-off is a **feedback term closed on the measured
+physical unit**, so it self-corrects for rate error in both directions. Shipped as a
+producer-resolved flag + the same per-cycle admission release:
 
-- The horizon planner resolves a live `priceDeferralEligible` flag
-  (`resolvePriceDeferralEligible`, `horizonPlanner.ts`) — true when the current hour is an
-  `avoid` bucket carrying booked energy AND a fresh re-allocation of the buffered-floor residual
-  over the remaining (cheaper, non-`avoid`) hours alone lands `on_track`.
+- The producer resolves a trajectory gate `aheadOfHourMilestone` (`isAheadOfHourMilestone`,
+  `trajectoryMilestone.ts`), computed in `diagnosticsBridge.ts` where the RAW measured value and
+  the committed rate live (the planner sees neither).
+- The horizon planner combines it with a relative raw-price test to set `priceDeferralEligible`
+  (`resolvePriceDeferralEligible`, `horizonPlanner.ts`).
 - The decoration controller's admission reads the flag (`isReleasedCurrentHour`, `admission.ts`)
   and idles the device this cycle (ev_pause / shed_release / plain idle by device kind),
   reusing the existing release posture. No executor change — limiting is "request nothing."
 
-**Why it's clean now (the foundation made it so):** the original sketch below worried the
-per-cycle release would churn the recorder. On the hourly-settle foundation it can't: admission
-runs on the **decoration controller's** diagnostics (power cycle); the recorder runs on the
-**emitter's separate** diagnostics (clock, settles once per hour at `:58`). The release override
-lives only on the admission path, so it **structurally** never reaches the recorder. The device's
-idling (no progress) is what re-books the cheaper hours at the next `:58` settle — one honest
-revision, not churn.
+**Why degrees, not kWh (and not the `avoid` band).** The earlier shipped gate decided in energy
+(routed through the drifting learned rate) and triggered on the absolute `avoid` price band. Both
+were wrong: (1) for a storage device with stochastic hot-water draw-off the kWh-fed view is *blind
+to energy leaving the tank*, and the learned rate (`rateConfidence` pinned `low` all night) is the
+least reliable quantity to route the decision through; (2) the `avoid` band can't express "X%
+cheaper" (it's a within-horizon normalized rank) and never fires on a smoothly-sloping curve.
+Comparing the measured unit against a stable plan milestone, and prices by raw ratio, fixes both.
 
-### Release test (evaluated each cycle, only while `currentBucket.preference === 'avoid'`)
+**Why it stays clean (the foundation made it so):** admission runs on the **decoration
+controller's** diagnostics (power cycle); the recorder runs on the **emitter's separate**
+diagnostics (clock, settles once per hour at `:58`). The flag lives only on the admission path, so
+it **structurally** never reaches the recorder. The device's idling (no progress) is what re-books
+the cheaper hours at the next `:58` settle — one honest revision, not churn.
 
-1. **Conservative residual.** Take `energyNeededKWh` — the buffered floor (`mean + k·SE` from
-   `integrateBands`), **not** the mean — for `remainingUnits = target − measured`.
-2. **Re-allocate over future hours only.** Run a fresh `allocateEnergyToBuckets` over the
-   **non-current** buckets with that residual (current `avoid` hour excluded).
-3. **Check status.** Apply `resolveStatus`. Release iff it returns `on_track`
-   (`unplanned ≤ ε ∧ !usesDeadlineReserve ∧ (soft ⇒ !usesPolicyAvoid)`). Otherwise keep
-   running — we genuinely need this hour. (`planned_using_policy_avoid` is literally "we are
-   only `at_risk` because we are leaning on an `avoid` hour" — its *absence* after excluding
-   the current hour is the release signal.)
+### Release test (evaluated each cycle)
+
+1. **Trajectory gate — buffered energy still needed vs the committed future hours.** The committed
+   plan's end-of-this-hour milestone is reached when the buffered energy still needed is already
+   covered by the energy the LATER committed hours will deliver:
+
+   `energyNeededKWh ≤ futureCommittedKWh × (1 − MILESTONE_AHEAD_MARGIN)`   (margin ~2%)
+
+   Both sides are the SAME buffered-energy currency: `energyNeededKWh` is the buffered floor
+   (`mean + k·SE` from `integrateBands`) for the current measured `remainingUnits` — recomputed
+   every cycle from the RAW reading, so a draw-off raises it and re-engages heating —
+   and `futureCommittedKWh` is what the committed plan booked for the hours after the current one,
+   also sized at the buffered rate. This is the unit-trajectory comparison expressed in energy:
+   **buffered-to-buffered, with NO division by a learned rate**, so there is no mean-vs-buffered
+   bias (an earlier draft divided committed energy by the committed *mean* rate while the energy
+   was *booked* at the buffered rate — that over-deferred ~2× for the low-confidence devices this
+   feature targets). `futureCommittedKWh` is frozen within the hour (settled at `:58`), so it is the
+   stable reference: capacity arbitration jerking the mid-hour trajectory around cannot chatter it,
+   and a rate drift between commit and now only shifts the comparison in the safe direction.
+2. **Relative-price gate.** A later, **non-reserve** hour must be cheaper than the current hour by
+   more than `PRICE_DEFERRAL_MARGIN` (~5%), tested on the **raw price ratio**
+   (`later ≤ current × (1 − margin)`). Pure ratio ⇒ unit-invariant across currencies (the price
+   series carries no currency at this layer). Requires `current price > 0` (free/negative current →
+   heat now). Deadline-reserve hours are excluded so we never defer into the reserve; a negative
+   later price naturally satisfies the inequality (heat when paid). The current hour must still
+   carry booked energy (else it is already idle — nothing to defer).
+
+**Self-feasibility (why the old residual re-allocation is gone).** Being at/above this hour's
+milestone means we are on a trajectory that was itself built to meet the deadline, so coasting this
+hour cannot by itself cause a miss. The "safer to heat early" bias is double-protected: we never
+defer when behind the milestone, and only defer when a later hour is *meaningfully* cheaper.
 
 ### No commitment rewrite — release is a live override (preserves the floor)
 
-The release does **not** touch the persisted commitment. The committed `avoid` hour stays
+The release does **not** touch the persisted commitment. The committed current hour stays
 booked as a **fallback**; the release is a per-cycle override in the control layer that, when
-the test passes, makes the current `avoid` hour's *effective* contribution 0 →
-`requestedMinimumStepId` null → admission decides `idle` (device kept off this cycle).
+the test passes, idles the device this cycle.
 
-- **Insertion point:** the live `DeferredObjectiveHorizonPlan` that admission consumes (after
-  `resolveCurrentBucketPlan`). The recorder's committed hours, `sameHourSchedule`, and
-  `history[]` are **insulated** — they keep observing the committed allocation, so no
-  `schedule_revised` / `deadline_plan_changed` / `measured_deviation` revision is ever written.
-- The `Math.max` floor invariant is therefore **preserved, not carved out**. If the cheaper
-  hours later fall short (measured drifts down, residual no longer fits), the same live test
-  simply stops overriding and the still-committed fallback hour runs — no revision in either
-  direction.
-- **Watch-out:** the override must not reach the recorder's hour-set. A current-hour
-  `plannedKWh → 0` that `buildHoursFromHorizonPlan` would *drop* must not propagate to the
-  recorder, or it re-creates the exact revision churn we're avoiding. Apply the override on the
-  admission input while the recorder still observes the committed plan.
+- **Insertion point:** the live `DeferredObjectiveHorizonPlan` that admission consumes. The
+  recorder's committed hours, `sameHourSchedule`, and `history[]` are **insulated** — they keep
+  observing the committed allocation, so no `schedule_revised` / `deadline_plan_changed` /
+  `measured_deviation` revision is ever written.
+- The `Math.max` floor invariant is therefore **preserved, not carved out**. If a draw-off later
+  pulls measured below the milestone (`remainingUnits` grows past the future-committed units), the
+  same live test simply stops overriding and the still-committed fallback hour runs — no revision
+  in either direction.
+- **Watch-out:** the override must not reach the recorder's hour-set. Apply it on the admission
+  input while the recorder still observes the committed plan.
 
 ### Timing
 
 - The release is evaluated per cycle and is reversible, so it can fire as soon as the test
-  passes (even early in the hour), subject to the sticky guard below.
-- **Future `avoid` hours are never proactively dropped.** They stay committed as fallbacks and
-  are suppressed live only when each *becomes* current and the test passes then. This avoids a
-  forward-commitment rewrite (revision hysteresis) and is also more correct: feasibility is
+  passes, subject to the deadband and actuator cooldowns below.
+- **Future hours are never proactively dropped.** They stay committed as fallbacks and are
+  suppressed live only when each *becomes* current and the milestone+price test passes then. This
+  avoids a forward-commitment rewrite (revision hysteresis) and is more correct: the gate is
   re-tested against fresh measured progress at each hour rather than guessed ahead.
 
 ### Guards
 
-1. **Conservative estimate.** Release on the buffered floor, never the mean. `rateConfidence`
-   was pinned `low` all night; releasing on the optimistic mean risks deferring into a miss.
-2. **Price gap via banding, not a tuned threshold.** No `minDiff` knob shipped. The release
-   only fires off an `avoid`-banded current hour and only when the residual re-allocates onto
-   hours that are *not* `avoid` (and not the deadline reserve) — for soft AND hard alike. The
-   band boundary is the price gap; a flat curve does not band hours as `avoid`, so it never fires.
-3. **No explicit stickiness — stable by construction.** Within an `avoid` hour the flag is
-   stable (preference is constant, the committed floor is constant, and idling makes no progress
-   so the residual doesn't shrink), so it doesn't flap. The actuator-level shed/restore cooldowns
-   (60–300 s) are the backstop against any residual control flap; a separate sticky latch would be
-   redundant state. (Revision flap is a non-issue — the recorder is insulated by construction; see
-   above.)
-4. **Headroom already respected.** The re-allocation honors each bucket's `reservedHeadroomKw`
-   forecast (`resolveBucketStepCapacityKWh`), so it won't defer into hours with no physical room.
+1. **Buffered-to-buffered, conservative margin.** Both sides of the milestone are buffered energy,
+   so there is no rate division and no mean-vs-buffered bias. A small relative `MILESTONE_AHEAD_MARGIN`
+   (~2%, rate-free) requires being clearly ahead before releasing — biasing toward heating
+   ("early is safer") and absorbing threshold jitter; the shed/restore cooldowns (60–300 s) backstop
+   any residual control flap. A rate drift between commit and now only shifts the comparison toward
+   keeping the device running (safe).
+2. **Relative price, not an absolute band or knob.** `PRICE_DEFERRAL_MARGIN` (~5%) on the raw
+   price ratio; near-equal hours keep the safer earlier slot. A flat curve never beats the margin,
+   so it never fires. No absolute price floor — that would be currency-unsafe (the series is
+   unit-blind at this layer); the `current > 0` sign guard handles the free/negative case.
+3. **Stateless flag — no revision flap by construction.** The recorder is insulated; the
+   actuator-level shed/restore cooldowns (60–300 s) are the backstop against control flap (the
+   stateless flag deliberately carries no two-sided latch).
+4. **No committed future energy.** No commitment, or only the current/past hours are booked →
+   `futureCommittedKWh = 0` → not ahead → never defer (keep heating).
+5. **Headroom already respected.** Allocation honors each bucket's `reservedHeadroomKw` forecast,
+   so the cheaper hours it would defer into already account for physical room.
 
 ### No separate "over-run the cheap hour" rule
 
 The symmetric idea (over-run a cheap hour to retire an expensive future bucket) is not needed:
 with no price ceiling the device already runs freely at full power in cheap/uncontended hours,
-and the per-hour release above retires each `avoid` hour as it arrives. The two together pull
-energy toward cheap hours without a dedicated over-run mechanism.
+and the per-hour release above retires each expensive hour as it arrives.
 
 ### Tests
 
-- Releases when ahead and cheaper hours suffice; **does not** release when the residual still
-  needs the `avoid` hour (device keeps running).
-- Respects the conservative floor — no release that the buffered estimate says would miss.
-- **No commitment revision is written** across a full release → drift → re-engage cycle; the
-  active-plan `history[]` length is unchanged and `deadline_plan_changed` does not fire. (This
-  is the regression guard for the governing invariant.)
-- A released current hour does not propagate a `plannedKWh → 0` into the recorder's hour-set.
-- Honors the min-price-gap on a flat curve (no release, no control flap).
+- `trajectoryMilestone.test.ts`: ahead when the later committed hours cover the buffered need;
+  not ahead when they don't; honours a draw-off (higher `energyNeededKWh` → not ahead); the
+  conservative ahead-margin boundary; no committed future energy → false; non-finite/negative
+  `energyNeededKWh` → false; excludes the current clock hour from the future sum (mid-hour
+  `nowMs`); 25-hour DST day.
+- `deferredObjectiveHorizon.test.ts`: flags when ahead + a later hour beats the 5% margin;
+  not when not ahead; not when no later hour beats the margin; not into the deadline-reserve hour;
+  not when current price ≤ 0; flags on a negative later price; not when the current hour carries
+  no booked energy.
+- `deferredObjectiveAdmission.unit.test.ts` (unchanged): the consumer path still idles /
+  shed_releases / ev_pauses on the flag — the regression guard that the recorder stays insulated
+  and the admission contract is intact.
 
 ## Explicit non-goal — near-target / "safely ahead" release
 
@@ -238,11 +271,11 @@ and the `near_target_idle → 'stalled' → met` classification stay as-is.)
 
 ## Deferred — feasibility / throughput accuracy (not in these two work items)
 
-Work item 2 acts on the **existing** feasibility verdict (`resolveStatus` over the current
-allocation) and is conservative by construction — it only releases when the existing test says
-the residual fits future non-`avoid` hours `on_track`. So it is **correct without resolving how
-pessimistic the cold-start `cannot_meet` was**: a pessimistic verdict simply means item 2
-releases less often, never that it releases unsafely.
+Work item 2 acts on the **committed plan's** trajectory and is conservative by construction — it
+only releases when the measured value is at/above this hour's committed milestone (ahead by the
+deadband). So it is **correct without resolving how pessimistic the cold-start `cannot_meet`
+was**: a pessimistic plan books more committed energy, which raises the per-hour milestone, so
+item 2 releases less often, never unsafely.
 
 Deferred question (revisit after the two work items land): whether the ~1.25–1.67 kWh/hour
 bucket cap on the motivating night came from the booked `low` step (`step.usefulPowerKw` —

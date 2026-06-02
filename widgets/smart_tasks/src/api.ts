@@ -1,10 +1,12 @@
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { buildSmartTasksWidgetPayload } from './smartTasksWidgetPayload';
 import type { SmartTasksWidgetPayload } from './smartTasksWidgetTypes';
 
 type WidgetApiApp = {
   getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
 };
 
@@ -28,11 +30,15 @@ export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartT
   const activePlans = typeof app?.getDeferredObjectiveActivePlansUiPayload === 'function'
     ? app.getDeferredObjectiveActivePlansUiPayload()
     : null;
+  const history = typeof app?.getDeferredObjectivePlanHistoryUiPayload === 'function'
+    ? app.getDeferredObjectivePlanHistoryUiPayload()
+    : null;
   const devices = typeof app?.getUiPickerDevices === 'function'
     ? app.getUiPickerDevices()
     : [];
   return buildSmartTasksWidgetPayload({
     activePlans,
+    history,
     devices,
     nowMs: Date.now(),
     timeZone: readTimeZone(homey),

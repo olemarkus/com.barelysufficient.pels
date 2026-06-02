@@ -1,5 +1,7 @@
 import { installWidget } from '../widgets/smart_tasks/src/public/widgetApp';
 import type { WidgetWindow } from '../widgets/smart_tasks/src/public/widgetApp';
+import { renderTrajectoryChart } from '../widgets/smart_tasks/src/public/trajectoryChart';
+import type { DeferredPlanHistoryChartData } from '../packages/shared-domain/src/deferredPlanHistoryChartData';
 import { registerHiddenGuardSuite } from './cssTestUtils';
 
 // The renderer switches views (.list-view/.detail-view) and toggles the row
@@ -16,7 +18,9 @@ registerHiddenGuardSuite({
     '.list-view', '.detail-view', // views
     '.rows', // row list (hidden when the payload is empty)
     '.empty', '.empty-hint', '.overflow', // list affordances
+    '.ended', // recently-ended section (hidden when nothing ended recently)
     '.detail-line', // toggled detail text lines
+    '.detail-chart', // trajectory chart container (hidden when nothing chartable)
   ],
 });
 
@@ -29,6 +33,10 @@ const WIDGET_MARKUP = `
       <p class="empty" data-empty hidden></p>
       <p class="empty-hint" data-empty-hint hidden></p>
       <p class="overflow" data-overflow hidden></p>
+      <div class="ended" data-ended-section hidden>
+        <p class="ended__heading" data-ended-heading></p>
+        <ol class="rows ended__rows" data-ended-rows></ol>
+      </div>
     </section>
     <section id="smart-task-detail" class="detail-view" data-detail-view hidden aria-live="polite">
       <header class="detail-header">
@@ -40,6 +48,7 @@ const WIDGET_MARKUP = `
       <div class="detail-body">
         <p class="detail-line detail-line--target" data-detail-target></p>
         <p class="detail-line detail-line--deadline" data-detail-deadline hidden></p>
+        <div class="detail-chart" data-detail-chart hidden></div>
         <p class="detail-line detail-line--why" data-detail-why hidden></p>
         <p class="detail-line detail-line--recourse" data-detail-recourse hidden></p>
         <p class="detail-line detail-line--meta" data-detail-meta hidden></p>
@@ -54,6 +63,16 @@ const WIDGET_MARKUP = `
         <span class="row__values" data-row-values></span>
         <span class="row__eta" data-row-eta></span>
         <span class="chip" data-row-chip></span>
+      </button>
+    </li>
+  </template>
+  <template id="ended-row-template">
+    <li class="row">
+      <button type="button" class="row__btn" data-ended-button aria-controls="smart-task-detail" aria-label="Ended smart task">
+        <span class="row__name" data-ended-name></span>
+        <span class="row__values" data-ended-values></span>
+        <span class="row__eta" data-ended-finished></span>
+        <span class="chip" data-ended-chip></span>
       </button>
     </li>
   </template>
@@ -134,5 +153,110 @@ describe('smart tasks widget detail view', () => {
     // least-legible line; the banded energy range is preserved intact.
     expect(meta.textContent?.startsWith('Estimate ')).toBe(true);
     expect(meta.textContent).toContain('kWh');
+  });
+
+  test('renders the trajectory chart in the detail panel when the row carries chart data', async () => {
+    await openHotWaterDetail();
+
+    const chart = document.querySelector('[data-detail-chart]') as HTMLElement;
+    expect(chart.hidden).toBe(false);
+    const svg = chart.querySelector('svg.tchart');
+    expect(svg).not.toBeNull();
+    // Planned staircase + observed line both drawn.
+    expect(chart.querySelector('.tchart__planned')).not.toBeNull();
+    expect(chart.querySelector('.tchart__observed')).not.toBeNull();
+    // Colour-coded legend names the series + the target value so the chart is
+    // legible without a manual.
+    const legendText = (chart.querySelector('.tchart__legend') as HTMLElement | null)?.textContent ?? '';
+    expect(legendText).toContain('Planned');
+    expect(legendText).toContain('Measured');
+    expect(legendText).toContain('Target 55 °C');
+  });
+
+  test('lists recently-ended tasks and opens their final-trajectory detail on tap', async () => {
+    activeController = installWidget(window as WidgetWindow, document);
+    await flushPromises();
+
+    const endedSection = document.querySelector('[data-ended-section]') as HTMLElement;
+    expect(endedSection.hidden).toBe(false);
+    const endedButtons = document.querySelectorAll('[data-ended-button]');
+    expect(endedButtons.length).toBeGreaterThan(0);
+
+    const evRow = document.querySelector(
+      '[data-ended-button][data-history-id="preview-ev-ended"]',
+    ) as HTMLElement | null;
+    expect(evRow).not.toBeNull();
+    evRow?.click();
+    await flushPromises();
+
+    const detailView = document.querySelector('[data-detail-view]') as HTMLElement;
+    expect(detailView.hidden).toBe(false);
+    // Outcome chip carries the producer-resolved label; the chart renders.
+    expect((document.querySelector('[data-detail-chip]') as HTMLElement).textContent).toBe('Succeeded');
+    const chart = document.querySelector('[data-detail-chart]') as HTMLElement;
+    expect(chart.hidden).toBe(false);
+    expect(chart.querySelector('svg.tchart')).not.toBeNull();
+    // Live-only lines stay suppressed for an ended task.
+    expect((document.querySelector('[data-detail-why]') as HTMLElement).hidden).toBe(true);
+    expect((document.querySelector('[data-detail-meta]') as HTMLElement).hidden).toBe(true);
+  });
+});
+
+describe('renderTrajectoryChart', () => {
+  const T = 1_700_000_000_000;
+  const H = 60 * 60 * 1000;
+  const baseChart = (over: Partial<DeferredPlanHistoryChartData> = {}): DeferredPlanHistoryChartData => ({
+    mode: 'trajectory',
+    unit: '°C',
+    windowStartMs: T,
+    windowEndMs: T + 3 * H,
+    plannedOriginal: [],
+    plannedFinal: null,
+    observed: [],
+    target: 55,
+    metAtMs: null,
+    metMarkerValue: null,
+    ...over,
+  });
+
+  let container: HTMLElement;
+  beforeEach(() => { container = document.createElement('div'); });
+
+  test('hides the chart when the only planned data is a single anchor and < 2 observed', () => {
+    // A no-allocated-hours plan integrates to just the start anchor — not a line.
+    const drawn = renderTrajectoryChart(container, baseChart({
+      plannedOriginal: [{ atMs: T, value: 42 }],
+      observed: [{ atMs: T, value: 42 }],
+    }));
+    expect(drawn).toBe(false);
+    expect(container.querySelector('svg.tchart')).toBeNull();
+    expect(container.querySelector('.tchart__legend')).toBeNull();
+  });
+
+  test('draws a planned staircase with >= 2 points and names it in the legend', () => {
+    const drawn = renderTrajectoryChart(container, baseChart({
+      plannedOriginal: [{ atMs: T, value: 42 }, { atMs: T + H, value: 48 }, { atMs: T + 2 * H, value: 55 }],
+    }));
+    expect(drawn).toBe(true);
+    expect(container.querySelector('.tchart__planned')).not.toBeNull();
+    expect(container.querySelector('.tchart__observed')).toBeNull();
+    const legend = container.querySelector('.tchart__legend')?.textContent ?? '';
+    expect(legend).toContain('Planned');
+    expect(legend).not.toContain('Measured');
+  });
+
+  test('draws an observed-only chart (>= 2 samples, no planned)', () => {
+    const drawn = renderTrajectoryChart(container, baseChart({
+      observed: [{ atMs: T, value: 42 }, { atMs: T + H, value: 50 }],
+    }));
+    expect(drawn).toBe(true);
+    expect(container.querySelector('.tchart__observed')).not.toBeNull();
+    expect(container.querySelector('.tchart__planned')).toBeNull();
+  });
+
+  test('hides the chart for the legacy_kwh fallback mode', () => {
+    const drawn = renderTrajectoryChart(container, baseChart({ mode: 'legacy_kwh', unit: null }));
+    expect(drawn).toBe(false);
+    expect(container.childNodes.length).toBe(0);
   });
 });

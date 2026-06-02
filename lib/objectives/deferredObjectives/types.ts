@@ -74,6 +74,12 @@ export type DeferredObjectiveHorizonBucket = {
   endMs: number;
   preference?: DeferredObjectiveBucketPreference;
   policyScore?: number;
+  // Raw per-bucket price in the source currency (øre, EUR, eurocent, … — the
+  // series carries no unit at this layer; see `collectSnapshotPriceBuckets`).
+  // Consumed ONLY by the relative price-deferral test, which compares hours by
+  // ratio so it stays unit-invariant. Optional/back-compat: missing → no price
+  // → the deferral test treats the hour as non-comparable.
+  price?: number | null;
   maxUsefulEnergyKWh?: number;
   // Producer-resolved per-bucket forecast of physical headroom available to a
   // fully-reserved smart task: `hardCapKw − plannedUncontrolledKw` (the hard
@@ -97,6 +103,14 @@ export type DeferredObjectiveHorizonInput = {
   // the fresh-optimizer path so the two cases stay distinguishable.
   committed?: boolean;
   committedHours?: DeferredObjectiveCommittedHour[];
+  // Producer-resolved per-cycle trajectory gate (mid-execution price deferral).
+  // `true` when the buffered energy still needed is already covered by the
+  // committed plan's future hours — i.e. the device is at/above this hour's
+  // committed milestone (resolved by `isAheadOfHourMilestone`, which the planner
+  // cannot compute itself — it sees neither the measured-driven `energyNeededKWh`
+  // nor the commitment). Combined with the relative-price test to set
+  // `priceDeferralEligible`. Optional/back-compat: missing → not ahead.
+  aheadOfHourMilestone?: boolean;
   epsilonKWh?: number;
 };
 
@@ -113,6 +127,9 @@ export type DeferredObjectivePlannedBucket = {
   durationHours: number;
   preference: DeferredObjectiveBucketPreference;
   policyScore: number;
+  // Raw per-bucket price carried through from the horizon bucket for the
+  // relative price-deferral comparison. `null` when the source had no price.
+  price: number | null;
   reserve: boolean;
   current: boolean;
   usefulEnergyCapacityKWh: number;
@@ -145,14 +162,17 @@ export type DeferredObjectiveHorizonPlan = {
   usesDeadlineReserve: boolean;
   usesPolicyAvoid: boolean;
   // Per-cycle price-deferral control signal (mid-execution price deferral). True
-  // when the current hour is an `avoid` (expensive) hour carrying booked energy
-  // purely because of the commitment floor, AND re-allocating the buffered-floor
-  // residual over the remaining (cheaper, non-`avoid`) hours alone still lands
-  // `on_track`. Read ONLY by the decoration controller's admission path, which
-  // idles the device for this cycle so a cheaper hour carries the load. NOT read
-  // by the recorder — it records the committed plan (the `avoid` hour stays booked
-  // as a fallback), so this never writes a revision; the device's idling (no
-  // progress) is what re-books the cheaper hours at the next `:58` settle. See
+  // when BOTH hold for the current hour: (1) the device's measured value is
+  // already at/above the committed plan's end-of-this-hour milestone in the
+  // objective's own unit (`aheadOfHourMilestone`), so coasting this hour stays on
+  // a deadline-meeting trajectory; and (2) a later, non-reserve hour is cheaper
+  // than the current hour by more than the relative margin (raw-price ratio, so
+  // unit-invariant across currencies). Read ONLY by the decoration controller's
+  // admission path, which idles the device for this cycle so a cheaper hour
+  // carries the load. NOT read by the recorder — it records the committed plan
+  // (the current hour stays booked as a fallback), so this never writes a
+  // revision; the device's idling (no progress) is what re-books the cheaper
+  // hours at the next `:58` settle. See
   // notes/deferred-load-objectives/execution-adaptation.md work item 2.
   priceDeferralEligible: boolean;
 };

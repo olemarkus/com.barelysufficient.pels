@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.barelysufficient.pels",
-  "version": "2.11.0",
+  "version": "2.11.1",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platforms": [
@@ -305,7 +305,7 @@
           "en": "Smart task status changed for [[device]]"
         },
         "hint": {
-          "en": "Fires when the smart task status transitions for the chosen device. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / satisfied."
+          "en": "Fires when PELS saves a new smart task status for the chosen device. Short mid-hour recalculations do not fire it. Filter on the [[status]] tag downstream; values are stable lowercase ids: waiting / on_track / at_risk / unachievable / satisfied."
         },
         "args": [
           {
@@ -627,7 +627,7 @@
           "en": "[[device]] smart task !{{is|is not}} [[status]]"
         },
         "hint": {
-          "en": "True when the current smart task status for this device matches the chosen status."
+          "en": "True when the saved smart task status for this device matches the chosen status."
         },
         "args": [
           {

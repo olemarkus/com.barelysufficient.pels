@@ -265,6 +265,9 @@ export function registerAppFlowCards(ctx: AppContext): void {
       }),
       params,
     ),
+    getDeferredObjectiveActivePlans: () => (
+      ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
+    ),
     getDeferredObjectiveStatusBus: () => ctx.deferredObjectiveStatusBus,
     getDeferredObjectivePlanRevisionBus: () => ctx.deferredObjectivePlanRevisionBus,
     getDeferredObjectiveEndedBus: () => ctx.deferredObjectiveEndedBus,

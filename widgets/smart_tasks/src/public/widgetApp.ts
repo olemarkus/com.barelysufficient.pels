@@ -27,23 +27,39 @@ export type WidgetController = {
 // Internal navigation state. `detail` keeps the selected row's deviceId so a
 // refresh can rehydrate the same task; the controller drops back to `list`
 // when the selected task disappears from the payload (satisfied / abandoned).
+type DetailSection = 'active' | 'ended';
+
+// `key` is the row identity within its section: `deviceId` for active tasks,
+// the unique history-entry `id` for ended tasks (deviceId is not unique among
+// ended rows). See the matching note in render.ts.
 type ViewState =
   | { kind: 'list' }
-  | { kind: 'detail'; deviceId: string };
+  | { kind: 'detail'; section: DetailSection; key: string };
+
+// The DOM dataset attribute + CSS selector that carry each section's row key.
+const SECTION_DOM = {
+  active: { buttonSelector: '[data-row-button]', datasetKey: 'deviceId', listKey: 'rowsList' },
+  ended: { buttonSelector: '[data-ended-button]', datasetKey: 'historyId', listKey: 'endedRowsList' },
+} as const;
 
 // If the open detail panel's task has dropped out of the latest payload
-// (satisfied / abandoned / device removed), fall back to the list. Pure so it
-// stays out of the controller closure.
+// (satisfied / abandoned / device removed / aged out of the 24h window), fall
+// back to the list. Pure so it stays out of the controller closure.
 const rehydrateView = (view: ViewState, payload: SmartTasksWidgetPayload | null): ViewState => {
   if (view.kind !== 'detail') return view;
   if (!payload || payload.state !== 'ready') return { kind: 'list' };
-  return payload.rows.some((row) => row.deviceId === view.deviceId) ? view : { kind: 'list' };
+  const present = view.section === 'ended'
+    ? payload.endedRows.some((row) => row.id === view.key)
+    : payload.rows.some((row) => row.deviceId === view.key);
+  return present ? view : { kind: 'list' };
 };
 
 // Move focus across the list↔detail swap so keyboard / switch-access users
 // aren't stranded on a now-hidden element (M3 navigation).
-const focusRowButton = (targets: RenderTargets, deviceId: string): void => {
-  const button = targets.rowsList.querySelector(`[data-row-button][data-device-id="${deviceId}"]`);
+const focusRowButton = (targets: RenderTargets, section: DetailSection, key: string): void => {
+  const dom = SECTION_DOM[section];
+  const dataAttr = section === 'ended' ? 'data-history-id' : 'data-device-id';
+  const button = targets[dom.listKey].querySelector(`${dom.buttonSelector}[${dataAttr}="${key}"]`);
   if (button instanceof HTMLElement) button.focus();
 };
 
@@ -67,9 +83,13 @@ const GENERIC_TARGET_SELECTORS = {
   emptyEl: '[data-empty]',
   emptyHintEl: '[data-empty-hint]',
   overflowEl: '[data-overflow]',
+  endedSectionEl: '[data-ended-section]',
+  endedHeadingEl: '[data-ended-heading]',
+  endedRowsList: '[data-ended-rows]',
   detailHeaderEl: '[data-detail-name]',
   detailChipEl: '[data-detail-chip]',
   detailDeadlineEl: '[data-detail-deadline]',
+  detailChartEl: '[data-detail-chart]',
   detailTargetEl: '[data-detail-target]',
   detailWhyEl: '[data-detail-why]',
   detailRecourseEl: '[data-detail-recourse]',
@@ -92,17 +112,19 @@ const resolveGenericTargets = (widgetDocument: Document): GenericTargets | null 
 const resolveTargets = (widgetDocument: Document): RenderTargets | null => {
   const root = widgetDocument.getElementById('widget-root');
   const rowTemplate = widgetDocument.getElementById('row-template');
+  const endedRowTemplate = widgetDocument.getElementById('ended-row-template');
   const detailBackBtn = widgetDocument.querySelector('[data-detail-back]');
   const generic = resolveGenericTargets(widgetDocument);
   if (
     !(root instanceof HTMLElement)
     || !(rowTemplate instanceof HTMLTemplateElement)
+    || !(endedRowTemplate instanceof HTMLTemplateElement)
     || !(detailBackBtn instanceof HTMLButtonElement)
     || generic === null
   ) {
     return null;
   }
-  return { root, rowTemplate, detailBackBtn, ...generic };
+  return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
 };
 
 export const createWidgetController = (params: {
@@ -125,29 +147,32 @@ export const createWidgetController = (params: {
     renderWidget(targets, lastPayload, view);
   };
 
-  const handleRowClick = (event: Event): void => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const button = target.closest('[data-row-button]');
+  const openDetail = (event: Event, section: DetailSection): void => {
+    const dom = SECTION_DOM[section];
+    const button = event.target instanceof Element ? event.target.closest(dom.buttonSelector) : null;
     if (!(button instanceof HTMLElement)) return;
-    const deviceId = button.dataset.deviceId;
-    if (!deviceId) return;
-    view = { kind: 'detail', deviceId };
+    const key = button.dataset[dom.datasetKey];
+    if (!key) return;
+    view = { kind: 'detail', section, key };
     render();
     targets.detailBackBtn.focus();
   };
 
+  const handleRowClick = (event: Event): void => openDetail(event, 'active');
+  const handleEndedClick = (event: Event): void => openDetail(event, 'ended');
+
   const handleBackClick = (): void => {
     if (view.kind === 'list') return;
-    const returnToDeviceId = view.deviceId;
+    const { section, key } = view;
     view = { kind: 'list' };
     render();
-    focusRowButton(targets, returnToDeviceId);
+    focusRowButton(targets, section, key);
   };
 
   const bindInteraction = (): void => {
     if (interactionBound) return;
     targets.rowsList.addEventListener('click', handleRowClick);
+    targets.endedRowsList.addEventListener('click', handleEndedClick);
     targets.detailBackBtn.addEventListener('click', handleBackClick);
     interactionBound = true;
   };
@@ -155,6 +180,7 @@ export const createWidgetController = (params: {
   const unbindInteraction = (): void => {
     if (!interactionBound) return;
     targets.rowsList.removeEventListener('click', handleRowClick);
+    targets.endedRowsList.removeEventListener('click', handleEndedClick);
     targets.detailBackBtn.removeEventListener('click', handleBackClick);
     interactionBound = false;
   };
