@@ -354,6 +354,10 @@ const mapPolicyBuckets = (
       endMs: bucket.endMs,
       preference: resolveBucketPreference(priceFactor, rankedScore),
       policyScore: priceFactor ?? rankedScore,
+      // Raw price carried for the relative price-deferral test (ratio-based,
+      // unit-invariant). `collectSnapshotPriceBuckets` already guarantees a
+      // finite price on every source bucket.
+      price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
     };

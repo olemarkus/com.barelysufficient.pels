@@ -39,6 +39,7 @@ type BucketSegment = {
   durationHours: number;
   preference: DeferredObjectiveBucketPreference;
   policyScore: number;
+  price: number | null;
   reserve: boolean;
   current: boolean;
   usefulEnergyCapKWh: number;
@@ -429,12 +430,20 @@ const buildBucketSegment = (params: {
     durationHours,
     preference: normalizePreference(bucket.preference),
     policyScore: normalizePolicyScore(bucket.policyScore, bucket.preference),
+    price: normalizePrice(bucket.price),
     reserve,
     current: startMs <= nowMs && endMs > nowMs,
     usefulEnergyCapKWh,
     reservedHeadroomKw: normalizeReservedHeadroomKw(bucket.reservedHeadroomKw),
   };
 };
+
+// Preserve finite prices, including negatives: a negative price (paid to
+// consume) is meaningful and the relative price-deferral test relies on it.
+// Non-finite / missing → null, treated as "no price" (non-comparable) there.
+const normalizePrice = (price: number | null | undefined): number | null => (
+  typeof price === 'number' && Number.isFinite(price) ? price : null
+);
 
 // Treat non-finite or negative inputs as "no forecast available" so the
 // per-hour cap falls back to step capacity ∧ daily-budget only. A zero
@@ -589,6 +598,7 @@ const buildPlannedBuckets = (params: {
     durationHours: bucket.durationHours,
     preference: bucket.preference,
     policyScore: bucket.policyScore,
+    price: bucket.price,
     reserve: bucket.reserve,
     current: bucket.current,
     usefulEnergyCapacityKWh: resolveBucketStepCapacityKWh(bucket, stepForBucket(bucket)),
