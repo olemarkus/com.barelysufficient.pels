@@ -33,7 +33,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
 | **Desired stepped load changed for** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
-| **Smart task status changed** | Fires when PELS re-evaluates a Smart task for a device and the status changes, such as **On track** to **At risk**. |
+| **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it. |
 | **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
 | **Smart task time is running low** | Fires once when the time left before a task's ready-by drops to or below a chosen number of hours, re-arming if the ready-by is rescheduled. Exposes an `hours_remaining` tag. Use it to act a fixed lead-time before a deadline, such as 2 hours left. |
@@ -54,7 +54,7 @@ Use **Capacity guard: manual action needed** for urgent notifications, not for n
 | **Is device managed by PELS?** | Checks whether PELS currently manages the selected device. |
 | **Is power-limit control enabled for device?** | Checks whether power-limit control is enabled for the selected device. |
 | **Does device have budget exemption?** | Checks whether the selected device is ignored by daily-budget control while still counting in real usage and hourly hard-cap protection. |
-| **Smart task status is...** | True when the current Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
+| **Smart task status is...** | True when the saved Smart task status for the chosen device matches **Waiting**, **On track**, **At risk**, **Cannot finish**, or **Satisfied**. |
 | **Has smart task** | True when the device has a stored Smart task. |
 
 The device-aware available-power condition includes built-in hysteresis after recent limiting or resume events on the same device.
@@ -131,7 +131,7 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 | Heat a temperature device to a target temperature | **Add heating task** |
 | Remove the current task for a device | **Clear smart task** |
 
-Use **Smart task status changed** for notifications, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
+Use **Smart task status changed** for notifications after the task status has settled, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
 
 To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget or limit lower-priority devices while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
 

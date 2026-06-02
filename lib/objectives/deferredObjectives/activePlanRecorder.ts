@@ -83,6 +83,31 @@ export type ActivePlanFlowCardSeed = {
   rescue?: DeferredObjectiveRescuePermissions;
 };
 
+const notifyRevisionWrittenIfPubliclyObservable = (params: {
+  deps: ActivePlanPersistDeps;
+  diag: DeferredObjectiveDiagnostic;
+  current: DeferredObjectiveActivePlanV1;
+  latest: DeferredObjectiveActivePlanRevisionV1;
+  revision: DeferredObjectiveActivePlanRevisionV1;
+  reason: DeferredObjectiveActivePlanRevisionReason;
+  allocationChanged: boolean;
+}): void => {
+  const planStatusChanged = params.latest.planStatus !== params.revision.planStatus;
+  if (!params.allocationChanged && !planStatusChanged) return;
+  params.deps.onRevisionWritten?.({
+    eventType: 'revision_written',
+    deviceId: params.diag.deviceId,
+    deviceName: params.diag.deviceName ?? params.current.deviceName,
+    objectiveKind: params.diag.objectiveKind,
+    revision: params.revision,
+    reason: params.reason,
+    previousPlanStatus: params.latest.planStatus,
+    previousWasPending: false,
+    allocationChanged: params.allocationChanged,
+    projectedFinishAtMs: resolveProjectedFinishAtMs(params.diag),
+  });
+};
+
 const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic): string | null => {
   if (diag.deadlineAtMs === null) return null;
   return buildObjectiveSignature({
@@ -515,12 +540,29 @@ export class DeferredObjectiveActivePlanRecorder {
       }
       return;
     }
+    const previousPlanStatus = existing !== undefined && existing.latest !== null && existing.deadlineAtMs > nowMs
+      ? existing.latest.planStatus
+      : null;
     this.plans[seed.deviceId] = createPlanFromSeed(seed, nowMs);
     this.lastSeenAtMs.set(seed.deviceId, nowMs);
     // Fresh plan (different deadline/signature): drop the prior settle marker so
     // the replacement is not wrongly treated as "already settled this hour".
     this.lastScheduleSettledHourMs.delete(seed.deviceId);
     this.dirty = true;
+    if (previousPlanStatus !== null) {
+      this.deps.onRevisionWritten?.({
+        eventType: 'pending_written',
+        deviceId: seed.deviceId,
+        deviceName: seed.deviceName,
+        objectiveKind: seed.objectiveKind,
+        revision: null,
+        reason: 'pending',
+        previousPlanStatus,
+        previousWasPending: false,
+        allocationChanged: false,
+        projectedFinishAtMs: null,
+      });
+    }
   }
 
   // Called from the flow card handler when the objective is cleared.
@@ -537,6 +579,10 @@ export class DeferredObjectiveActivePlanRecorder {
   observe(diagnostics: readonly DeferredObjectiveDiagnostic[], nowMs: number): void {
     for (const diag of diagnostics) {
       if (diag.deadlineAtMs === null) continue;
+      if (diag.deadlineAtMs <= nowMs) {
+        this.dropPlanForRuntimeReason(diag.deviceId, 'deadline_passed');
+        continue;
+      }
       this.lastSeenAtMs.set(diag.deviceId, nowMs);
       this.observeDiagnostic(diag, nowMs);
     }
@@ -686,7 +732,9 @@ export class DeferredObjectiveActivePlanRecorder {
     nowMs: number,
   ): void {
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
-    const startedAtMs = this.plans[diag.deviceId]?.startedAtMs ?? nowMs;
+    const previous = this.plans[diag.deviceId];
+    const previousWasPending = previous !== undefined && (previous.pending || previous.latest === null);
+    const startedAtMs = previous?.startedAtMs ?? nowMs;
     const provenance = resolveProvenance(diag);
     const initialKwhPerUnit = resolveLearnedRateKwh(diag);
     // Freeze the plan-level total duration here so the hero meta line stays
@@ -728,6 +776,20 @@ export class DeferredObjectiveActivePlanRecorder {
       hourCount: hours.length,
       ...buildActivePlanLifecycleFields(diag, startedAtMs),
     });
+    if (previousWasPending) {
+      this.deps.onRevisionWritten?.({
+        eventType: 'revision_written',
+        deviceId: diag.deviceId,
+        deviceName: diag.deviceName ?? previous?.deviceName ?? null,
+        objectiveKind: diag.objectiveKind,
+        revision,
+        reason,
+        previousPlanStatus: null,
+        previousWasPending: true,
+        allocationChanged: false,
+        projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
+      });
+    }
   }
 
   // The once-per-hour `:58` settle gate (see SCHEDULE_SETTLE_OFFSET_MS). True when
@@ -917,28 +979,23 @@ export class DeferredObjectiveActivePlanRecorder {
       hourCount: effectiveHours.length,
       ...buildActivePlanLifecycleFields(diag, current.startedAtMs),
     });
-    if (shouldFireNotification(latest.hours.length, effectiveHours.length, horizonPlan.status)) {
-      this.deps.onRevisionWritten?.({
-        deviceId: diag.deviceId,
-        deviceName: diag.deviceName ?? current.deviceName,
-        objectiveKind: diag.objectiveKind,
-        revision,
-        reason,
-        allocationChanged: true,
-        projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
-      });
-    }
+    const allocationChanged = shouldFireNotification(latest.hours.length, effectiveHours.length, horizonPlan.status);
+    notifyRevisionWrittenIfPubliclyObservable({
+      deps: this.deps,
+      diag,
+      current,
+      latest,
+      revision,
+      reason,
+      allocationChanged,
+    });
     return true;
   }
 
   private dropExpiredAndAbandoned(nowMs: number): void {
     for (const [deviceId, plan] of Object.entries(this.plans)) {
       if (plan.deadlineAtMs <= nowMs) {
-        delete this.plans[deviceId];
-        this.lastSeenAtMs.delete(deviceId);
-        this.lastScheduleSettledHourMs.delete(deviceId);
-        this.dirty = true;
-        this.emit({ event: 'active_plan_dropped', deviceId, reason: 'deadline_passed' });
+        this.dropPlanForRuntimeReason(deviceId, 'deadline_passed');
         continue;
       }
       // Diagnostic stopped appearing while the deadline is still in the
@@ -949,13 +1006,21 @@ export class DeferredObjectiveActivePlanRecorder {
       // which observe() picks up via objective_changed before grace expires.
       const lastSeen = this.lastSeenAtMs.get(deviceId) ?? nowMs;
       if (nowMs - lastSeen >= ABANDON_GRACE_MS) {
-        delete this.plans[deviceId];
-        this.lastSeenAtMs.delete(deviceId);
-        this.lastScheduleSettledHourMs.delete(deviceId);
-        this.dirty = true;
-        this.emit({ event: 'active_plan_dropped', deviceId, reason: 'objective_inactive' });
+        this.dropPlanForRuntimeReason(deviceId, 'objective_inactive');
       }
     }
+  }
+
+  private dropPlanForRuntimeReason(
+    deviceId: string,
+    reason: 'deadline_passed' | 'objective_inactive',
+  ): void {
+    if (this.plans[deviceId] === undefined) return;
+    delete this.plans[deviceId];
+    this.lastSeenAtMs.delete(deviceId);
+    this.lastScheduleSettledHourMs.delete(deviceId);
+    this.dirty = true;
+    this.emit({ event: 'active_plan_dropped', deviceId, reason });
   }
 
   flushIfDirty(): boolean {

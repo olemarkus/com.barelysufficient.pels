@@ -987,17 +987,15 @@ live-walk screenshots.*
       `flowCards/deadlineObjectiveCards.ts`,
       `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`, contract and bridge tests.
-- [ ] Close the EV deadline observability loop: measured deviation and richer trigger tokens.
-      Two connected items: (a) emit the `measured_deviation` revision reserved in
-      `activePlanRecorder.ts:379-380` by comparing observed delivery (read from the calibration
-      EMA via `getDeliveryPowerKw`) against the planned bucket allocation; (b) expand
-      `buildTriggerTokens` (`flowCards/deadlineObjectiveCards.ts:161-179`) with
+- [ ] Close the EV deadline observability loop with richer trigger tokens.
+      `measured_deviation` revisions now emit from the active-plan recorder when a learned
+      per-unit energy rate drifts far enough from the committed plan baseline. Remaining work:
+      decide and implement whether Flow tokens should expose richer plan/risk context such as
       `planned_start_local`, `planned_finish_local`, `required_kwh`, `planning_speed_kw`,
       `estimated_duration_text`, and `risk_reason`. The active-plan recorder already carries
       `energyNeededKWh`, `planStatus`, `kwhPerUnitSource`, and the bucket allocation needed.
       Design: `notes/ev-ready-by/README.md`.
-      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`,
-      `flowCards/deadlineObjectiveCards.ts`,
+      Files: `flowCards/smartTaskTokens.ts`, `flowCards/deadlineObjectiveCards.ts`,
       `.homeycompose/flow/triggers/deadline_status_changed.json`, related tests.
 - [ ] Mark stale-on devices `available=false` when Homey's own availability signal goes false.
       The headroom-for-device path now credits configured load for stale-on devices on the
@@ -1319,20 +1317,6 @@ prod walk that didn't warrant a P2 slot.*
       `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts`,
       `test/deferredObjectivePlanHistory.test.ts`.
       Source: adversarial residual-risk review, v2.9.0 closeout, 2026-05-23.
-
-- [ ] Smart-task status oscillation at the cusp — quality-of-emit nit, not a
-      bug. When a committed plan sits right at the boundary between the
-      primary horizon and the deadline reserve hour, per-cycle re-solves can
-      flip between `on_track`, `at_risk: planned_using_deadline_reserve`, and
-      back as small inputs (current bucket clip, learned-rate jitter, partial
-      kWh placed in the current hour) tip allocation across the reserve
-      boundary. The verdicts are individually correct; the user-visible
-      flutter is the issue. Possible mitigations: hysteresis on the `at_risk`
-      → `on_track` transition, or smoothing the verdict over a small window.
-      Defer until a real user complaint surfaces — prod walk 2026-05-23 logged
-      this as a low-priority observation, not actionable yet.
-      Files: `lib/objectives/deferredObjectives/horizonPlanner.ts:resolveStatus`,
-      possibly `activePlanSchedule.ts` for emit gating.
 
 - [ ] **P2 — `seed.kind === 'grace_fallback'` is a third branch consumers could read** (`lib/plan/planModeTargetGuard.ts`). Resolution-in-producer smell (`feedback_layering_resolution_in_producer`): consumers in `lib/plan/planDevices.ts` already branch on `kind`, so a future `pels-layering-guardian` pass should evaluate whether the producer should flatten kinds (e.g. emit a single `{ value, source }` shape and let the producer encode the no-actuation hint inline) before more consumers branch on this. No boundary violation yet — same module surface — but worth a sweep before the surface grows.
 
