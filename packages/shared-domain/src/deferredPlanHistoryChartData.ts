@@ -126,12 +126,22 @@ export const integratePlannedStaircase = (
   // than a divide-by-zero infinity.
   const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
   if (kwhPerUnitMean <= 0) return [];
-  // Already at/above the target at the anchor → there is nothing to plan toward
-  // it. Drawing a staircase here would either sit flat at the (above-target)
-  // start or, with the cap, descend to the target — a planned line must never
-  // go DOWN. Omit it; the chart shows just the measured line + target guide
-  // (the same shape a cooling-to-setpoint run already gets).
-  if (capValue !== null && anchorValue >= capValue) return [];
+  // NOTE: there is deliberately NO "anchor >= target → omit" short-circuit here.
+  // Callers anchor the staircase at the observed value where booked heating
+  // STARTS (see `resolveStaircaseAnchor`), not at the task-start reading. For a
+  // draw-down/reheat objective (tank starts above target, drained below it, then
+  // reheated) the anchor is the drain trough — already below target — so the plan
+  // rises trough → target normally. Omitting on `anchorValue >= capValue` would
+  // hide a booked reheat on a MISSED run, where "PELS intended to reheat but
+  // didn't" is exactly the story to show.
+  //
+  // Effective ceiling is `max(target, anchor)` so the rise-cap below can never
+  // pull the line BELOW its anchor (a planned line must never descend). In every
+  // real reheat the anchor (trough) is below target, so this is just `target`;
+  // it only matters for the degenerate "already at/above target when heating
+  // would start" input the planner never actually emits (it books energy only
+  // while measured < target), where the line then reads flat at the anchor.
+  const effectiveCap = capValue === null ? null : Math.max(capValue, anchorValue);
   const sortedHours = [...snapshot.hours].sort((a, b) => a.startsAtMs - b.startsAtMs);
   const points: DeferredPlanHistoryChartPoint[] = [
     { atMs: anchorAtMs, value: anchorValue },
@@ -179,8 +189,10 @@ export const integratePlannedStaircase = (
     }
     cumulativeProgress += (plannedKWh * postAnchorFraction) / kwhPerUnitMean;
     // Cap at the target so the planned line approaches the goal and flattens,
-    // instead of projecting past it and blowing out the y-axis.
-    if (capValue !== null && cumulativeProgress > capValue) cumulativeProgress = capValue;
+    // instead of projecting past it and blowing out the y-axis. `effectiveCap`
+    // (= max(target, anchor)) guarantees this never drags the line below its
+    // anchor — see the header.
+    if (effectiveCap !== null && cumulativeProgress > effectiveCap) cumulativeProgress = effectiveCap;
     points.push({ atMs: endOfHour, value: cumulativeProgress });
     lastAnchorAtMs = endOfHour;
   }
@@ -215,6 +227,50 @@ const observedValueAt = (
   return before === null ? null : before.value;
 };
 
+// Start of the first hour that actually books energy (`coversFromMs ?? startsAtMs`
+// of the earliest hour with `plannedKWh > 0`), or `null` when no hour books any.
+// This is where the staircase should anchor at observed reality — the device
+// only departs from its current value once booked heating begins, so anchoring
+// here (not at the run start) handles draw-down/reheat objectives where the
+// device drifts away from target before the booked reheat starts.
+const firstBookedHourStartMs = (
+  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'hours'>,
+): number | null => {
+  let earliest: number | null = null;
+  for (const hour of snapshot.hours) {
+    const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
+    if (plannedKWh <= 0) continue;
+    const coverStartMs = hour.coversFromMs ?? hour.startsAtMs;
+    if (earliest === null || coverStartMs < earliest) earliest = coverStartMs;
+  }
+  return earliest;
+};
+
+// Resolves where a planned staircase should START — the anchor `{ value, atMs }`
+// integrated forward from. Anchors at the observed value at the first booked
+// hour's start (interpolated from the samples, seeded with the recorded start
+// progress so an early bracket exists). When that booked hour is still in the
+// future (no reheat hour has begun), `observedValueAt` returns the latest
+// sample, i.e. the live "now" value — so an in-flight task before its trough
+// anchors at the current reading. Falls back to `{ startProgress, windowStartMs }`
+// when there is no booked hour, or when no observation covers the booked-hour
+// start (e.g. samples begin after it). Producer-resolved per
+// `feedback_layering_resolution_in_producer`; consumers read flat points only.
+export const resolveStaircaseAnchor = (
+  snapshot: Pick<DeferredObjectivePlanHistoryRevisionSnapshot, 'hours'>,
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  startProgress: number,
+  windowStartMs: number,
+): { value: number; atMs: number } => {
+  const firstBookedMs = firstBookedHourStartMs(snapshot);
+  if (firstBookedMs === null) return { value: startProgress, atMs: windowStartMs };
+  const bracketed = [{ atMs: windowStartMs, value: startProgress }, ...observed];
+  const anchorValue = observedValueAt(bracketed, firstBookedMs);
+  return anchorValue === null
+    ? { value: startProgress, atMs: windowStartMs }
+    : { value: anchorValue, atMs: firstBookedMs };
+};
+
 // Builds the revised (final-plan) staircase, re-anchored at the measured
 // progress when that revision was computed (`revisedAtMs`) so a mid-run replan
 // reads as "from where the device actually was" instead of re-climbing from the
@@ -241,6 +297,23 @@ const buildRevisedStaircase = (
     }
   }
   return integratePlannedStaircase(snapshot, startProgress, windowStartMs, windowEndMs, capValue);
+};
+
+// Primary staircase for a run with no usable original (no original plan, or a
+// satisfied-then-drifted run whose original was empty/rate-less because target
+// was already met at creation): the final plan is the only real schedule, so
+// anchor it at the observed value where its booked heating starts (the trough)
+// rather than start-anchored — see `composeTrajectoryData`. Empty when there is
+// no final plan to fall back to.
+const resolveFallbackPrimaryStaircase = (
+  finalPlan: DeferredObjectivePlanHistoryRevisionSnapshot | null,
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  startProgress: number,
+  window: { windowStartMs: number; windowEndMs: number; capValue: number | null },
+): DeferredPlanHistoryChartPoint[] => {
+  if (finalPlan === null) return [];
+  const anchor = resolveStaircaseAnchor(finalPlan, observed, startProgress, window.windowStartMs);
+  return integratePlannedStaircase(finalPlan, anchor.value, anchor.atMs, window.windowEndMs, window.capValue);
 };
 
 const staircasesDiffer = (
@@ -390,42 +463,66 @@ type ChartDataEntry = Pick<
   | 'outcome'
 >;
 
-// Compose the trajectory-mode payload once the gate (`hasUsableTrajectory`)
-// has passed. Split out from `resolveHistoryDetailChartData` so the parent's
+// Window + resolved anchors/cap shared across the trajectory compose helpers,
+// grouped so each helper stays within the parameter budget. `startProgress` /
+// `target` are the kind-resolved values (null when the entry recorded neither).
+type TrajectoryFrame = {
+  windowStartMs: number;
+  windowEndMs: number;
+  startProgress: number | null;
+  target: number | null;
+};
+
+// Assembles the flat trajectory payload from already-resolved staircases. The
+// displayed measured line is anchored at the run start so it doesn't begin
+// mid-chart (the raw `observed` still feeds the revised-staircase re-anchor,
+// which does its own start bracketing). Shared by both compose branches.
+const buildTrajectoryPayload = (
+  entry: ChartDataEntry,
+  plannedOriginal: DeferredPlanHistoryChartPoint[],
+  plannedFinal: DeferredPlanHistoryChartPoint[] | null,
+  observed: DeferredPlanHistoryChartPoint[],
+  frame: TrajectoryFrame,
+): DeferredPlanHistoryChartData => ({
+  mode: 'trajectory',
+  unit: entry.objectiveKind === 'temperature' ? '°C' : '%',
+  windowStartMs: frame.windowStartMs,
+  windowEndMs: frame.windowEndMs,
+  plannedOriginal,
+  plannedFinal,
+  observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
+  target: pickTargetValue(entry),
+  metAtMs: pickMetMarker(entry),
+  metMarkerValue: pickMetMarkerValue(entry),
+});
+
+// Heat-from-below trajectory (`startProgress < target`): the start-anchored
+// original is the genuine from-start intent reference, with a re-anchored
+// "Revised trajectory" overlay on a real replan. Split out so the parent's
 // branching complexity stays inside ESLint's threshold.
-const composeTrajectoryData = (
+const composeHeatFromBelowTrajectory = (
   entry: ChartDataEntry,
   observed: DeferredPlanHistoryChartPoint[],
-  windowStartMs: number,
-  windowEndMs: number,
+  frame: TrajectoryFrame,
 ): DeferredPlanHistoryChartData => {
-  const startProgress = pickStartProgress(entry);
-  // Cap the planned staircases at the target so they approach the goal and
-  // flatten rather than projecting past it (the planner books a buffered floor).
-  const target = pickTargetValue(entry);
-  // Planned staircase requires the start-progress anchor — without it the
-  // first segment has no y-value and the line would float arbitrarily. Drop
-  // the staircase but keep the observed line; the view falls through to
-  // rendering observed-only when planned points are empty.
+  const { windowStartMs, windowEndMs, startProgress, target } = frame;
+  // Planned staircase requires the start-progress anchor — without it the first
+  // segment has no y-value and the line would float arbitrarily. Drop the
+  // staircase but keep the observed line; the view renders observed-only when
+  // planned is empty.
   const plannedOriginal = entry.originalPlan !== null && startProgress !== null
     ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs, target)
     : [];
-  // Start-anchored final staircase. Used as the no-original primary fallback AND
-  // as the replan-detection baseline. Detecting a replan by comparing the
-  // original against a *like-anchored* final means a re-anchor alone never reads
-  // as a replan — only a genuinely different schedule does. (Comparing the
-  // start-anchored original against the re-anchored final would spuriously
-  // overlay a "Revised trajectory" on a single-revision task whose one revision
-  // happens to sit after the window start.)
+  // Start-anchored final, the like-anchored replan-detection baseline: comparing
+  // the original against a like-anchored final means a re-anchor alone never
+  // reads as a replan — only a genuinely different schedule does.
   const plannedFinalStartAnchored = entry.finalPlan !== null && startProgress !== null
     ? integratePlannedStaircase(entry.finalPlan, startProgress, windowStartMs, windowEndMs, target)
     : [];
   // A real replan = the original and final plans differ when anchored the same
-  // way. Only then overlay a "Revised trajectory", rendered re-anchored at the
-  // measured progress when the revision was computed so a mid-run replan stops
-  // reading as "still climbing from the task-start temperature". The original
-  // staircase keeps the start anchor as the original-intent reference; a
-  // single-revision task (original === final) shows just that, no overlay.
+  // way. Only then overlay a "Revised trajectory", re-anchored at the measured
+  // progress when the revision was computed; a single-revision task shows just
+  // the original.
   const replanned = plannedOriginal.length > 0
     && plannedFinalStartAnchored.length > 0
     && staircasesDiffer(plannedOriginal, plannedFinalStartAnchored);
@@ -433,27 +530,49 @@ const composeTrajectoryData = (
     ? buildRevisedStaircase(entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target })
     : [];
   const plannedFinal = plannedFinalCandidate.length > 0 ? plannedFinalCandidate : null;
-  // When only the final plan was recorded (no original), surface the
-  // start-anchored final as the primary staircase so the view still renders the
-  // planner's intent from the window start (not re-anchored mid-window).
-  const resolvedOriginal = plannedOriginal.length > 0
-    ? plannedOriginal
-    : plannedFinalStartAnchored;
-  return {
-    mode: 'trajectory',
-    unit: entry.objectiveKind === 'temperature' ? '°C' : '%',
-    windowStartMs,
-    windowEndMs,
-    plannedOriginal: resolvedOriginal,
-    plannedFinal,
-    // Anchor the displayed measured line at the run start so it doesn't begin
-    // mid-chart. The raw `observed` (above) still feeds the revised-staircase
-    // re-anchor interpolation, which does its own start bracketing.
-    observed: anchorObservedAtStart(observed, windowStartMs, startProgress),
-    target: pickTargetValue(entry),
-    metAtMs: pickMetMarker(entry),
-    metMarkerValue: pickMetMarkerValue(entry),
-  };
+  // Legacy entry with no recorded original: the final plan is the only schedule,
+  // so surface it as the primary line anchored at the observed value where its
+  // booked heating starts rather than floating. (The satisfied-then-drift case,
+  // start ≥ target, is handled by the caller's early return.)
+  const fallbackPrimary = startProgress !== null
+    ? resolveFallbackPrimaryStaircase(
+      entry.finalPlan, observed, startProgress, { windowStartMs, windowEndMs, capValue: target },
+    )
+    : [];
+  const resolvedOriginal = plannedOriginal.length > 0 ? plannedOriginal : fallbackPrimary;
+  return buildTrajectoryPayload(entry, resolvedOriginal, plannedFinal, observed, frame);
+};
+
+// Compose the trajectory-mode payload once the gate (`hasUsableTrajectory`)
+// has passed. Branches on whether the device started below target (heat from
+// below) or at/above it (satisfied-then-drift). The `target` cap keeps every
+// staircase from projecting past the goal (the planner books a buffered floor).
+const composeTrajectoryData = (
+  entry: ChartDataEntry,
+  observed: DeferredPlanHistoryChartPoint[],
+  windowStartMs: number,
+  windowEndMs: number,
+): DeferredPlanHistoryChartData => {
+  const startProgress = pickStartProgress(entry);
+  const target = pickTargetValue(entry);
+  const frame: TrajectoryFrame = { windowStartMs, windowEndMs, startProgress, target };
+  // Satisfied-then-drift: the device started at/above target (already met), was
+  // drained below it by exogenous use (e.g. a hot-water draw), then PELS booked
+  // reheat. The recorder promotes the RICHEST schedule (the reheat) into
+  // `originalPlan` (`pickRicherSnapshot` in `planHistoryInProgressState.ts`), so
+  // a start-anchored "Initial schedule" line would read flat at / re-climb from
+  // the above-target start (cap-flattened). There is no meaningful from-start
+  // intent here — draw ONE primary line anchored at the observed value where
+  // booked heating starts (the drain trough), rising to target. No "Revised
+  // trajectory" overlay (nothing to contrast against).
+  if (startProgress !== null && target !== null && startProgress >= target) {
+    const richest = entry.originalPlan ?? entry.finalPlan;
+    const primary = resolveFallbackPrimaryStaircase(
+      richest, observed, startProgress, { windowStartMs, windowEndMs, capValue: target },
+    );
+    return buildTrajectoryPayload(entry, primary, null, observed, frame);
+  }
+  return composeHeatFromBelowTrajectory(entry, observed, frame);
 };
 
 const composeLegacyData = (

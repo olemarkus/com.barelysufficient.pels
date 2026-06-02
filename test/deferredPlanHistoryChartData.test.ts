@@ -370,17 +370,19 @@ describe('resolveHistoryDetailChartData', () => {
       expect(data.plannedFinal![0]).toEqual({ atMs: START_MS, value: 50 });
     });
 
-    it('keeps the no-original fallback primary staircase start-anchored', () => {
-      // Entry with only a finalPlan (no originalPlan), revised late. The primary
-      // staircase must stay start-anchored at the window start — the from-start
-      // intent — not re-anchored mid-window at the revision point.
-      const revisedAtMs = START_MS + 2 * HOUR_MS;
+    it('anchors the no-original fallback primary staircase at observed reality', () => {
+      // Entry with only a finalPlan (no usable originalPlan): the final plan is
+      // the only real schedule, so it becomes the primary line — anchored at the
+      // observed value where its booked heating starts (the first booked hour),
+      // not re-climbing from the task-start progress. With no original to
+      // contrast against, no "Revised trajectory" overlay is drawn.
+      const firstBookedMs = START_MS + 2 * HOUR_MS;
       const final = buildSnapshot({
         hours: [
-          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: firstBookedMs, plannedKWh: 1 },
           { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
         ],
-        revisedAtMs,
+        revisedAtMs: firstBookedMs,
         kwhPerUnitMean: 0.5,
       });
       const entry = buildEntry({
@@ -389,12 +391,102 @@ describe('resolveHistoryDetailChartData', () => {
         finalPlan: final,
         progressSamples: [
           { atMs: START_MS, valueC: 50, valuePercent: null },
-          { atMs: revisedAtMs, valueC: 60, valuePercent: null },
+          { atMs: firstBookedMs, valueC: 60, valuePercent: null },
         ],
       });
       const data = resolveHistoryDetailChartData(entry);
-      expect(data.plannedOriginal[0]).toEqual({ atMs: START_MS, value: 50 });
+      // Booked heating starts at +2h where the device had measured 60 °C.
+      expect(data.plannedOriginal[0]).toEqual({ atMs: firstBookedMs, value: 60 });
       expect(data.plannedFinal).toBeNull();
+    });
+
+    it('draws a succeeded draw-down/reheat run anchored at the trough, capped at target', () => {
+      // Satisfied-then-drifted: tank at 65 °C, target 40 (met at creation), so
+      // the recorder writes an empty-hours / rate-less original. A draw pulls it
+      // to 20 °C; PELS books reheat (the finalPlan), which reaches 40 by the
+      // deadline. The chart must show the reheat anchored at the ~20 °C trough
+      // rising to 40 — not the start-anchored 65 → 85 overshoot — and the
+      // measured line shows the full 65 → 20 → 40 arc.
+      const reheatStart = START_MS + 2 * HOUR_MS;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: reheatStart, plannedKWh: 5 },
+          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+        ],
+        revisedAtMs: reheatStart,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        targetTemperatureC: 40,
+        startProgressC: 65,
+        finalProgressC: 40,
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        // The recorder promotes the richest schedule (the booked reheat) into
+        // BOTH originalPlan and finalPlan (`pickRicherSnapshot`); the empty
+        // satisfied-window seed never survives to a finalized entry. start ≥
+        // target routes the primary through the trough anchor regardless.
+        originalPlan: final,
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 65, valuePercent: null },
+          { atMs: START_MS + HOUR_MS, valueC: 40, valuePercent: null },
+          { atMs: reheatStart, valueC: 20, valuePercent: null },
+          { atMs: reheatStart + HOUR_MS, valueC: 32, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 40, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('trajectory');
+      expect(data.plannedOriginal[0]).toEqual({ atMs: reheatStart, value: 20 });
+      const values = data.plannedOriginal.map(observedPointValue);
+      for (let i = 1; i < values.length; i += 1) {
+        expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]!); // never descends
+        expect(values[i]!).toBeLessThanOrEqual(40); // never exceeds target
+      }
+      expect(values.at(-1)).toBe(40);
+      // No redundant revised overlay — one clean line.
+      expect(data.plannedFinal).toBeNull();
+      // Observed shows the full drain-then-reheat arc.
+      expect(data.observed.map(observedPointValue)).toEqual([65, 40, 20, 32, 40]);
+    });
+
+    it('draws the reheat plan for a missed draw-down/reheat run (not omitted)', () => {
+      // Same shape, but the reheat never lands: measured stays low. The planned
+      // reheat (anchored at the trough → target) must still be drawn so the user
+      // sees the intended reheat that PELS booked but did not achieve.
+      const reheatStart = START_MS + 2 * HOUR_MS;
+      const final = buildSnapshot({
+        hours: [
+          { startsAtMs: reheatStart, plannedKWh: 5 },
+          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+        ],
+        revisedAtMs: reheatStart,
+        kwhPerUnitMean: 0.5,
+      });
+      const entry = buildEntry({
+        targetTemperatureC: 40,
+        startProgressC: 65,
+        finalProgressC: 24,
+        outcome: 'missed',
+        metAtMs: null,
+        // Richest schedule promoted into originalPlan (see succeeded case).
+        originalPlan: final,
+        finalPlan: final,
+        progressSamples: [
+          { atMs: START_MS, valueC: 65, valuePercent: null },
+          { atMs: reheatStart, valueC: 20, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 24, valuePercent: null },
+        ],
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('trajectory');
+      // Reheat plan drawn (not omitted), anchored at the trough, ending at target.
+      expect(data.plannedOriginal.length).toBeGreaterThan(0);
+      expect(data.plannedOriginal[0]).toEqual({ atMs: reheatStart, value: 20 });
+      expect(data.plannedOriginal.at(-1)?.value).toBe(40);
+      // Measured ends low.
+      expect(data.observed.at(-1)?.value).toBe(24);
     });
 
     it('prorates a revision hour that straddles revisedAtMs', () => {

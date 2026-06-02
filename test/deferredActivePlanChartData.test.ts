@@ -46,17 +46,22 @@ const buildPlan = (
 });
 
 describe('resolveActivePlanChartData', () => {
-  test('builds the planned staircase from latest.hours × rateMean anchored at start progress', () => {
+  test('anchors the planned staircase at the observed value where booked heating starts, capped at target', () => {
     const data = resolveActivePlanChartData(buildPlan());
     expect(data.mode).toBe('trajectory');
     expect(data.unit).toBe('°C');
     expect(data.windowStartMs).toBe(START_MS);
     expect(data.windowEndMs).toBe(DEADLINE_MS);
     expect(data.target).toBe(55);
-    // Anchor at start, flat to the first booked hour, then +2 °C per booked hour.
-    expect(data.plannedOriginal[0]).toEqual({ atMs: START_MS, value: 50 });
-    const last = data.plannedOriginal[data.plannedOriginal.length - 1]!;
-    expect(last.value).toBeCloseTo(54, 5);
+    // First booked hour is START_MS + 1h; the device had measured 52 °C by then
+    // (observed sample), so the line anchors at 52 there — not the 50 °C
+    // task-start progress. Then +2 °C per booked hour, clamped at the 55 °C
+    // target (the second riser would reach 56).
+    expect(data.plannedOriginal).toEqual([
+      { atMs: START_MS + HOUR_MS, value: 52 },
+      { atMs: START_MS + 2 * HOUR_MS, value: 54 },
+      { atMs: START_MS + 3 * HOUR_MS, value: 55 },
+    ]);
     // Live charts never draw a revised line or a reached marker.
     expect(data.plannedFinal).toBeNull();
     expect(data.metAtMs).toBeNull();
@@ -107,20 +112,37 @@ describe('resolveActivePlanChartData', () => {
     expect(data.observed[0]).toEqual({ atMs: START_MS, value: 50 });
   });
 
-  test('omits the planned line when the run starts at/above target (no descending plan)', () => {
-    // "Heat to 40" but already at 64 — there's nothing to plan toward; the
-    // planned staircase must not be drawn (and must never descend to the target).
+  test('draws a draw-down/reheat plan anchored at the trough, rising to target (not omitted, never descending)', () => {
+    // "Guarantee ≥ 40 °C": tank starts at 65 (already met), a hot-water draw
+    // pulls it to a 20 °C trough, then PELS books reheat. The planned line must
+    // anchor at the ~20 °C trough where booked heating begins and rise to 40 —
+    // NOT be omitted, and NOT climb from 65 past target.
+    const reheatStart = START_MS + 2 * HOUR_MS;
     const data = resolveActivePlanChartData(buildPlan({
       targetTemperatureC: 40,
-      startProgressC: 64,
+      startProgressC: 65,
+      latest: {
+        ...buildPlan().latest!,
+        // 5 kWh each ÷ 0.5 kWh/°C would raise +20 °C past target → cap holds.
+        hours: [
+          { startsAtMs: reheatStart, plannedKWh: 5 },
+          { startsAtMs: reheatStart + HOUR_MS, plannedKWh: 5 },
+        ],
+        rateMean: 0.5,
+      },
       progressSamples: [
-        { atMs: START_MS, valueC: 64, valuePercent: null },
-        { atMs: START_MS + HOUR_MS, valueC: 55, valuePercent: null },
+        { atMs: START_MS, valueC: 65, valuePercent: null },
+        { atMs: START_MS + HOUR_MS, valueC: 40, valuePercent: null },
+        { atMs: reheatStart, valueC: 20, valuePercent: null },
       ],
     }));
-    expect(data.plannedOriginal).toEqual([]);
-    // Measured line still renders (start ≥ target is a real, if odd, run).
-    expect(data.observed.length).toBeGreaterThanOrEqual(2);
+    expect(data.plannedOriginal[0]).toEqual({ atMs: reheatStart, value: 20 });
+    const values = data.plannedOriginal.map((p) => p.value);
+    for (let i = 1; i < values.length; i += 1) {
+      expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]!); // never descends
+      expect(values[i]!).toBeLessThanOrEqual(40); // never exceeds target
+    }
+    expect(values.at(-1)).toBe(40);
   });
 
   test('renders the planned line from the live reading when the stitch gave no start/samples', () => {
