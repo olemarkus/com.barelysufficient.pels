@@ -125,11 +125,14 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 *Widget-polish train shipped across PRs #1313–#1317 (lint enforcement #1305; see
 `notes/widget-review.md` § Shipped). Remaining widget follow-ups, deferred / low urgency:*
 
-  - [ ] **No CI guard that committed widget bundles match source** — generated
-        `widgets/*/public/index.css` (and `index.js`) are committed but nothing fails CI if they
-        drift from `src/`. Add a post-`build:widgets` `git diff --exit-code widgets/*/public`
-        check so a stale generated artifact (or a hand-edit of a generated file) is caught. Source:
-        adversarial-review (low), widget token-strategy train 2026-05-31.
+  - [x] **No CI guard that committed widget bundles match source** — DONE 2026-06-02.
+        Generated widget artifacts (`api.js`/`*WidgetPayload.js` at `widgets/<name>/` root **and**
+        `public/index.css`/`index.js`) drifted from `src/` with nothing failing CI — `4bd1ce94`
+        shipped stale `plan_budget`/`create_smart_task` API bundles after a `shared-domain` change
+        the `bundleApi: true` widgets inline. Fixed by regenerating the bundles and adding a
+        post-`npm run build` `git diff --exit-code` step in `test.yml` (covers all generated
+        artifacts, not just `widgets/*/public`). Source: adversarial-review (low), widget
+        token-strategy train 2026-05-31.
   - [ ] **`settings.test.ts` full-suite flake** — "renders devices with target
         temperature capabilities" fails intermittently under full-suite load (`test:ui`
         / `test:ui:unit`) but passes in isolation; cost three pre-push retries during
