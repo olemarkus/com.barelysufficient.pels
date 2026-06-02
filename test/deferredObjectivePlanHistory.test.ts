@@ -94,6 +94,27 @@ const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV4): {
 };
 
 describe('DeferredObjectivePlanHistoryRecorder', () => {
+  it('exposes the live in-progress trajectory (start progress + sorted samples) for an open run', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+    const deadlineAtMs = 6 * HOUR_MS;
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 58 })], 3 * HOUR_MS);
+
+    const trajectory = recorder.getInProgressTrajectory('dev');
+    expect(trajectory).not.toBeNull();
+    expect(trajectory!.startProgressC).toBe(50);
+    expect(trajectory!.startProgressPercent).toBeNull();
+    // One hourly sample per occupied hour bucket, sorted ascending by atMs.
+    expect(trajectory!.progressSamples.map((s) => s.valueC)).toEqual([50, 58]);
+    const ats = trajectory!.progressSamples.map((s) => s.atMs);
+    expect(ats).toEqual([...ats].sort((a, b) => a - b));
+
+    // Reading does not mutate or finalize the open record.
+    expect(recorder.getInProgressTrajectory('absent')).toBeNull();
+  });
+
   it('finalizes a run as `met` when status reaches satisfied during the horizon', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectivePlanHistoryRecorder(deps);

@@ -2,6 +2,8 @@
 "use strict";
 (() => {
   // widgets/smart_tasks/src/public/previewPayloads.ts
+  var T = 17e11;
+  var H = 60 * 60 * 1e3;
   var PREVIEW_SMART_TASKS_PAYLOAD = {
     state: "ready",
     // Non-zero so the preview also demonstrates the "+N in Smart tasks"
@@ -27,7 +29,8 @@
         planMetaLabel: null,
         confidenceLabel: null,
         whyLabel: "Today\u2019s daily budget runs out before the deadline.",
-        recourseHint: "Budget settings show whether future days need power reserved earlier."
+        recourseHint: "Budget settings show whether future days need power reserved earlier.",
+        chart: null
       },
       {
         deviceId: "preview-hot-water",
@@ -46,7 +49,31 @@
         planMetaLabel: "Estimate \u22482h 15m \xB7 1.8 kW \xB7 \u22484.0 kWh",
         confidenceLabel: null,
         whyLabel: "Limited time left before the deadline.",
-        recourseHint: null
+        recourseHint: null,
+        // Planned line climbs steadily to the target by the deadline; the observed
+        // line tracks BELOW it and flatter — visibly behind schedule, which is the
+        // "at risk" reading made visual (and consistent with the estimate above).
+        chart: {
+          mode: "trajectory",
+          unit: "\xB0C",
+          windowStartMs: T,
+          windowEndMs: T + 3 * H,
+          plannedOriginal: [
+            { atMs: T, value: 42 },
+            { atMs: T + H, value: 46.5 },
+            { atMs: T + 2 * H, value: 51 },
+            { atMs: T + 3 * H, value: 55 }
+          ],
+          plannedFinal: null,
+          observed: [
+            { atMs: T, value: 42 },
+            { atMs: T + H, value: 44 },
+            { atMs: T + 1.5 * H, value: 45.5 }
+          ],
+          target: 55,
+          metAtMs: null,
+          metMarkerValue: null
+        }
       },
       {
         // Demonstrates the "Target X" rendering when the device snapshot hasn't
@@ -70,7 +97,78 @@
         // the "Waiting for tomorrow's prices" reason).
         confidenceLabel: null,
         whyLabel: "Waiting for tomorrow\u2019s prices.",
-        recourseHint: null
+        recourseHint: null,
+        chart: null
+      }
+    ],
+    endedRows: [
+      {
+        id: "preview-ev-ended",
+        deviceId: "preview-ev",
+        deviceName: "EV charger",
+        unitSymbol: "%",
+        targetValue: 80,
+        targetActionVerb: "Charge to",
+        outcomeLabel: "Succeeded",
+        outcomeTone: "ok",
+        finishedLabel: "Today 06:30",
+        chart: {
+          mode: "trajectory",
+          unit: "%",
+          windowStartMs: T,
+          windowEndMs: T + 4 * H,
+          plannedOriginal: [
+            { atMs: T, value: 45 },
+            { atMs: T + H, value: 45 },
+            { atMs: T + 2 * H, value: 60 },
+            { atMs: T + 3 * H, value: 73 },
+            { atMs: T + 4 * H, value: 80 }
+          ],
+          plannedFinal: null,
+          observed: [
+            { atMs: T, value: 45 },
+            { atMs: T + H, value: 46 },
+            { atMs: T + 2 * H, value: 61 },
+            { atMs: T + 3 * H, value: 74 },
+            { atMs: T + 3.5 * H, value: 80 }
+          ],
+          target: 80,
+          metAtMs: T + 3.5 * H,
+          metMarkerValue: 80
+        }
+      },
+      {
+        id: "preview-hot-water-past-ended",
+        deviceId: "preview-hot-water-past",
+        deviceName: "Hot water",
+        unitSymbol: "\xB0C",
+        targetValue: 60,
+        targetActionVerb: "Heat to",
+        outcomeLabel: "Missed",
+        outcomeTone: "warn",
+        finishedLabel: "Yesterday 23:00",
+        chart: {
+          mode: "trajectory",
+          unit: "\xB0C",
+          windowStartMs: T,
+          windowEndMs: T + 3 * H,
+          plannedOriginal: [
+            { atMs: T, value: 40 },
+            { atMs: T + H, value: 47 },
+            { atMs: T + 2 * H, value: 54 },
+            { atMs: T + 3 * H, value: 60 }
+          ],
+          plannedFinal: null,
+          observed: [
+            { atMs: T, value: 40 },
+            { atMs: T + H, value: 44 },
+            { atMs: T + 2 * H, value: 48 },
+            { atMs: T + 3 * H, value: 52 }
+          ],
+          target: 60,
+          metAtMs: null,
+          metMarkerValue: null
+        }
       }
     ]
   };
@@ -91,6 +189,10 @@
     paused_unplugged: "Unplugged"
   };
   var SMART_TASK_WIDGET_EMPTY_SUBTITLE = "No active smart tasks";
+  var SMART_TASK_WIDGET_ENDED_HEADING = "Recently ended";
+  var SMART_TASK_WIDGET_CHART_PLANNED_LABEL = "Planned";
+  var SMART_TASK_WIDGET_CHART_MEASURED_LABEL = "Measured";
+  var SMART_TASK_WIDGET_CHART_TARGET_LABEL = "Target";
   var formatSmartTaskWidgetOverflow = (count) => `+${count} in Smart tasks`;
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
@@ -470,8 +572,151 @@
   var ONE_MINUTE_MS = 60 * 1e3;
   var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
+  // packages/shared-domain/src/deferredPlanHistoryChartData.ts
+  var HOUR_MS = 60 * 60 * 1e3;
+
+  // packages/shared-domain/src/utils/dateUtils.ts
+  var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
+
+  // packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
+  var HOUR_MS2 = 60 * 60 * 1e3;
+
+  // packages/shared-domain/src/deferredPlanHistory.ts
+  var MINUTE_MS = 60 * 1e3;
+  var HOUR_MS3 = 60 * MINUTE_MS;
+
   // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
+  var ENDED_WINDOW_MS = 24 * 60 * 60 * 1e3;
   var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
+
+  // widgets/smart_tasks/src/public/trajectoryChart.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var MIN_LINE_POINTS = 2;
+  var isDrawableLine = (points) => (points?.length ?? 0) >= MIN_LINE_POINTS;
+  var VIEW = { width: 480, height: 96 };
+  var PLOT = { left: 8, right: 472, top: 10, bottom: 86 };
+  var PLOT_WIDTH = PLOT.right - PLOT.left;
+  var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
+  var createSvg = (doc, tag, attrs) => {
+    const el = doc.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+    return el;
+  };
+  var makeXScale = (startMs, endMs) => {
+    const span = endMs - startMs;
+    if (!Number.isFinite(span) || span <= 0) return () => PLOT.left;
+    return (atMs) => {
+      const fraction = Math.max(0, Math.min(1, (atMs - startMs) / span));
+      return PLOT.left + fraction * PLOT_WIDTH;
+    };
+  };
+  var makeYScale = (values) => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = max > min ? (max - min) * 0.12 : Math.max(1, Math.abs(max) * 0.1);
+    const lo = min - pad;
+    const span = max + pad - lo;
+    return (value) => PLOT.bottom - (value - lo) / span * PLOT_HEIGHT;
+  };
+  var buildPolyline = (points, xScale, yScale) => points.map((point, index) => `${index === 0 ? "M" : "L"}${xScale(point.atMs).toFixed(1)} ${yScale(point.value).toFixed(1)}`).join(" ");
+  var buildStepPath = (points, xScale, yScale) => {
+    if (points.length === 0) return "";
+    const xy = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
+    let path = `M${xy[0].x.toFixed(1)} ${xy[0].y.toFixed(1)}`;
+    for (let i = 1; i < xy.length; i += 1) {
+      path += ` L${xy[i].x.toFixed(1)} ${xy[i - 1].y.toFixed(1)} L${xy[i].x.toFixed(1)} ${xy[i].y.toFixed(1)}`;
+    }
+    return path;
+  };
+  var appendLegend = (container, data) => {
+    const doc = container.ownerDocument;
+    const legend = doc.createElement("div");
+    legend.className = "tchart__legend";
+    const addItem = (modifier, text) => {
+      const item = doc.createElement("span");
+      item.className = `tchart__legend-item tchart__legend-item--${modifier}`;
+      item.textContent = text;
+      legend.appendChild(item);
+    };
+    if (isDrawableLine(data.plannedOriginal) || isDrawableLine(data.plannedFinal)) {
+      addItem("planned", SMART_TASK_WIDGET_CHART_PLANNED_LABEL);
+    }
+    if (isDrawableLine(data.observed)) {
+      addItem("measured", SMART_TASK_WIDGET_CHART_MEASURED_LABEL);
+    }
+    if (data.target !== null && data.unit !== null) {
+      const rounded = Math.round(data.target * 10) / 10;
+      const valueText = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+      addItem("target", `${SMART_TASK_WIDGET_CHART_TARGET_LABEL} ${valueText} ${data.unit}`);
+    }
+    if (legend.childNodes.length > 0) container.appendChild(legend);
+  };
+  var collectValues = (data) => {
+    const values = [];
+    for (const point of data.plannedOriginal) values.push(point.value);
+    for (const point of data.plannedFinal ?? []) values.push(point.value);
+    for (const point of data.observed) values.push(point.value);
+    if (data.target !== null) values.push(data.target);
+    return values.filter((value) => Number.isFinite(value));
+  };
+  var renderTrajectoryChart = (container, data) => {
+    const doc = container.ownerDocument;
+    while (container.firstChild) container.removeChild(container.firstChild);
+    if (data.mode !== "trajectory") return false;
+    const hasPlanned = isDrawableLine(data.plannedOriginal);
+    const hasRevised = isDrawableLine(data.plannedFinal);
+    const hasObserved = isDrawableLine(data.observed);
+    if (!hasPlanned && !hasRevised && !hasObserved) return false;
+    const values = collectValues(data);
+    if (values.length === 0) return false;
+    const xScale = makeXScale(data.windowStartMs, data.windowEndMs);
+    const yScale = makeYScale(values);
+    const svg = createSvg(doc, "svg", {
+      class: "tchart",
+      viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
+      preserveAspectRatio: "none",
+      role: "img"
+    });
+    if (data.target !== null) {
+      const y = yScale(data.target);
+      svg.appendChild(createSvg(doc, "line", {
+        class: "tchart__target",
+        x1: PLOT.left,
+        y1: y,
+        x2: PLOT.right,
+        y2: y
+      }));
+    }
+    if (hasRevised && data.plannedFinal) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__planned-revised",
+        d: buildStepPath(data.plannedFinal, xScale, yScale)
+      }));
+    }
+    if (hasPlanned) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__planned",
+        d: buildStepPath(data.plannedOriginal, xScale, yScale)
+      }));
+    }
+    if (hasObserved) {
+      svg.appendChild(createSvg(doc, "path", {
+        class: "tchart__observed",
+        d: buildPolyline(data.observed, xScale, yScale)
+      }));
+    }
+    if (data.metAtMs !== null && data.metMarkerValue !== null) {
+      svg.appendChild(createSvg(doc, "circle", {
+        class: "tchart__marker",
+        cx: xScale(data.metAtMs),
+        cy: yScale(data.metMarkerValue),
+        r: 4
+      }));
+    }
+    container.appendChild(svg);
+    appendLegend(container, data);
+    return true;
+  };
 
   // widgets/smart_tasks/src/public/render.ts
   var formatValue = (value, unitSymbol) => {
@@ -490,7 +735,7 @@
     if (row.finishLabel === null) return "";
     return `${row.etaVerb} ${row.finishLabel}`;
   };
-  var targetSentence = (row) => `${row.targetActionVerb} ${formatValue(row.targetValue, row.unitSymbol)}`;
+  var targetSentence = (verb, targetValue, unitSymbol) => `${verb} ${formatValue(targetValue, unitSymbol)}`;
   var renderRow = (template, row) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
@@ -521,16 +766,55 @@
     }
     return li;
   };
+  var renderEndedRow = (template, row) => {
+    const fragment = template.content.cloneNode(true);
+    const li = fragment.querySelector(".row");
+    if (!(li instanceof HTMLElement)) throw new Error("ended-row template missing .row");
+    li.dataset.tone = row.outcomeTone;
+    const button = li.querySelector("[data-ended-button]");
+    if (button instanceof HTMLElement) {
+      button.dataset.historyId = row.id;
+      button.setAttribute("aria-label", `${row.deviceName}, ${row.outcomeLabel}, ${row.finishedLabel}`);
+    }
+    const nameEl = li.querySelector("[data-ended-name]");
+    const valuesEl = li.querySelector("[data-ended-values]");
+    const finishedEl = li.querySelector("[data-ended-finished]");
+    const chipEl = li.querySelector("[data-ended-chip]");
+    if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
+    if (valuesEl instanceof HTMLElement) {
+      valuesEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    }
+    if (finishedEl instanceof HTMLElement) finishedEl.textContent = row.finishedLabel;
+    if (chipEl instanceof HTMLElement) {
+      chipEl.textContent = row.outcomeLabel;
+      chipEl.dataset.tone = row.outcomeTone;
+    }
+    return li;
+  };
   var clearChildren = (el) => {
     while (el.firstChild) el.removeChild(el.firstChild);
+  };
+  var renderEndedSection = (targets, endedRows) => {
+    const { endedSectionEl, endedHeadingEl, endedRowsList, endedRowTemplate } = targets;
+    clearChildren(endedRowsList);
+    if (endedRows.length === 0) {
+      endedSectionEl.hidden = true;
+      return;
+    }
+    endedSectionEl.hidden = false;
+    endedHeadingEl.textContent = SMART_TASK_WIDGET_ENDED_HEADING;
+    for (const row of endedRows) {
+      endedRowsList.appendChild(renderEndedRow(endedRowTemplate, row));
+    }
   };
   var renderListReady = (targets, payload) => {
     const { rowsList, emptyEl, emptyHintEl, overflowEl, rowTemplate } = targets;
     clearChildren(rowsList);
+    renderEndedSection(targets, payload.endedRows);
     if (payload.rows.length === 0) {
       rowsList.hidden = true;
-      emptyEl.hidden = false;
-      emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
+      emptyEl.hidden = payload.endedRows.length > 0;
+      if (!emptyEl.hidden) emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
       emptyHintEl.hidden = true;
       overflowEl.hidden = true;
       return;
@@ -549,9 +833,10 @@
     }
   };
   var renderListEmpty = (targets, payload) => {
-    const { rowsList, emptyEl, emptyHintEl, overflowEl } = targets;
+    const { rowsList, emptyEl, emptyHintEl, overflowEl, endedSectionEl } = targets;
     clearChildren(rowsList);
     rowsList.hidden = true;
+    endedSectionEl.hidden = true;
     emptyEl.hidden = false;
     emptyEl.textContent = payload.subtitle;
     if (payload.hint) {
@@ -567,20 +852,16 @@
     el.textContent = visible ? text : "";
     el.hidden = !visible;
   };
-  var renderDetail = (targets, payload, deviceId) => {
-    const row = payload.rows.find((candidate) => candidate.deviceId === deviceId);
-    if (!row) {
-      const { root, listView, detailView } = targets;
-      renderListReady(targets, payload);
-      root.dataset.view = "list";
-      listView.hidden = false;
-      detailView.hidden = true;
-      return;
-    }
+  var renderChart = (el, chart) => {
+    const drawn = chart !== null && renderTrajectoryChart(el, chart);
+    el.hidden = !drawn;
+  };
+  var renderActiveDetail = (targets, row) => {
     const {
       detailHeaderEl,
       detailChipEl,
       detailDeadlineEl,
+      detailChartEl,
       detailTargetEl,
       detailWhyEl,
       detailRecourseEl,
@@ -592,12 +873,61 @@
     detailChipEl.dataset.tone = row.tone;
     const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
     setOptionalLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
-    detailTargetEl.textContent = targetSentence(row);
+    detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
     detailTargetEl.hidden = false;
+    renderChart(detailChartEl, row.chart);
     setOptionalLine(detailWhyEl, row.whyLabel);
     setOptionalLine(detailRecourseEl, row.recourseHint);
     setOptionalLine(detailMetaEl, row.planMetaLabel);
     setOptionalLine(detailConfidenceEl, row.confidenceLabel);
+  };
+  var renderEndedDetail = (targets, row) => {
+    const {
+      detailHeaderEl,
+      detailChipEl,
+      detailDeadlineEl,
+      detailChartEl,
+      detailTargetEl,
+      detailWhyEl,
+      detailRecourseEl,
+      detailMetaEl,
+      detailConfidenceEl
+    } = targets;
+    detailHeaderEl.textContent = row.deviceName;
+    detailChipEl.textContent = row.outcomeLabel;
+    detailChipEl.dataset.tone = row.outcomeTone;
+    setOptionalLine(detailDeadlineEl, row.finishedLabel);
+    detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+    detailTargetEl.hidden = false;
+    renderChart(detailChartEl, row.chart);
+    setOptionalLine(detailWhyEl, null);
+    setOptionalLine(detailRecourseEl, null);
+    setOptionalLine(detailMetaEl, null);
+    setOptionalLine(detailConfidenceEl, null);
+  };
+  var fallBackToList = (targets, payload) => {
+    const { root, listView, detailView } = targets;
+    renderListReady(targets, payload);
+    root.dataset.view = "list";
+    listView.hidden = false;
+    detailView.hidden = true;
+  };
+  var renderDetail = (targets, payload, view) => {
+    if (view.section === "ended") {
+      const endedRow = payload.endedRows.find((candidate) => candidate.id === view.key);
+      if (!endedRow) {
+        fallBackToList(targets, payload);
+        return;
+      }
+      renderEndedDetail(targets, endedRow);
+      return;
+    }
+    const row = payload.rows.find((candidate) => candidate.deviceId === view.key);
+    if (!row) {
+      fallBackToList(targets, payload);
+      return;
+    }
+    renderActiveDetail(targets, row);
   };
   var renderWidget = (targets, payload, view) => {
     const { root, listView, detailView } = targets;
@@ -615,10 +945,11 @@
       root.dataset.view = "detail";
       listView.hidden = true;
       detailView.hidden = false;
-      renderDetail(targets, payload, view.deviceId);
+      renderDetail(targets, payload, view);
       return;
     }
-    root.dataset.state = payload.rows.length === 0 ? "empty" : "ready";
+    const hasContent = payload.rows.length > 0 || payload.endedRows.length > 0;
+    root.dataset.state = hasContent ? "ready" : "empty";
     root.dataset.view = "list";
     listView.hidden = false;
     detailView.hidden = true;
@@ -629,13 +960,20 @@
   var REFRESH_INTERVAL_MS = 60 * 1e3;
   var LOAD_ERROR_SUBTITLE = "Unable to load";
   var MAX_CONSECUTIVE_LOAD_FAILURES = 3;
+  var SECTION_DOM = {
+    active: { buttonSelector: "[data-row-button]", datasetKey: "deviceId", listKey: "rowsList" },
+    ended: { buttonSelector: "[data-ended-button]", datasetKey: "historyId", listKey: "endedRowsList" }
+  };
   var rehydrateView = (view, payload) => {
     if (view.kind !== "detail") return view;
     if (!payload || payload.state !== "ready") return { kind: "list" };
-    return payload.rows.some((row) => row.deviceId === view.deviceId) ? view : { kind: "list" };
+    const present = view.section === "ended" ? payload.endedRows.some((row) => row.id === view.key) : payload.rows.some((row) => row.deviceId === view.key);
+    return present ? view : { kind: "list" };
   };
-  var focusRowButton = (targets, deviceId) => {
-    const button = targets.rowsList.querySelector(`[data-row-button][data-device-id="${deviceId}"]`);
+  var focusRowButton = (targets, section, key) => {
+    const dom = SECTION_DOM[section];
+    const dataAttr = section === "ended" ? "data-history-id" : "data-device-id";
+    const button = targets[dom.listKey].querySelector(`${dom.buttonSelector}[${dataAttr}="${key}"]`);
     if (button instanceof HTMLElement) button.focus();
   };
   var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
@@ -653,9 +991,13 @@
     emptyEl: "[data-empty]",
     emptyHintEl: "[data-empty-hint]",
     overflowEl: "[data-overflow]",
+    endedSectionEl: "[data-ended-section]",
+    endedHeadingEl: "[data-ended-heading]",
+    endedRowsList: "[data-ended-rows]",
     detailHeaderEl: "[data-detail-name]",
     detailChipEl: "[data-detail-chip]",
     detailDeadlineEl: "[data-detail-deadline]",
+    detailChartEl: "[data-detail-chart]",
     detailTargetEl: "[data-detail-target]",
     detailWhyEl: "[data-detail-why]",
     detailRecourseEl: "[data-detail-recourse]",
@@ -673,12 +1015,13 @@
   var resolveTargets = (widgetDocument) => {
     const root = widgetDocument.getElementById("widget-root");
     const rowTemplate = widgetDocument.getElementById("row-template");
+    const endedRowTemplate = widgetDocument.getElementById("ended-row-template");
     const detailBackBtn = widgetDocument.querySelector("[data-detail-back]");
     const generic = resolveGenericTargets(widgetDocument);
-    if (!(root instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement) || !(detailBackBtn instanceof HTMLButtonElement) || generic === null) {
+    if (!(root instanceof HTMLElement) || !(rowTemplate instanceof HTMLTemplateElement) || !(endedRowTemplate instanceof HTMLTemplateElement) || !(detailBackBtn instanceof HTMLButtonElement) || generic === null) {
       return null;
     }
-    return { root, rowTemplate, detailBackBtn, ...generic };
+    return { root, rowTemplate, endedRowTemplate, detailBackBtn, ...generic };
   };
   var createWidgetController = (params) => {
     const { targets, widgetDocument, widgetWindow } = params;
@@ -694,33 +1037,36 @@
     const render = () => {
       renderWidget(targets, lastPayload, view);
     };
-    const handleRowClick = (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const button = target.closest("[data-row-button]");
+    const openDetail = (event, section) => {
+      const dom = SECTION_DOM[section];
+      const button = event.target instanceof Element ? event.target.closest(dom.buttonSelector) : null;
       if (!(button instanceof HTMLElement)) return;
-      const deviceId = button.dataset.deviceId;
-      if (!deviceId) return;
-      view = { kind: "detail", deviceId };
+      const key = button.dataset[dom.datasetKey];
+      if (!key) return;
+      view = { kind: "detail", section, key };
       render();
       targets.detailBackBtn.focus();
     };
+    const handleRowClick = (event) => openDetail(event, "active");
+    const handleEndedClick = (event) => openDetail(event, "ended");
     const handleBackClick = () => {
       if (view.kind === "list") return;
-      const returnToDeviceId = view.deviceId;
+      const { section, key } = view;
       view = { kind: "list" };
       render();
-      focusRowButton(targets, returnToDeviceId);
+      focusRowButton(targets, section, key);
     };
     const bindInteraction = () => {
       if (interactionBound) return;
       targets.rowsList.addEventListener("click", handleRowClick);
+      targets.endedRowsList.addEventListener("click", handleEndedClick);
       targets.detailBackBtn.addEventListener("click", handleBackClick);
       interactionBound = true;
     };
     const unbindInteraction = () => {
       if (!interactionBound) return;
       targets.rowsList.removeEventListener("click", handleRowClick);
+      targets.endedRowsList.removeEventListener("click", handleEndedClick);
       targets.detailBackBtn.removeEventListener("click", handleBackClick);
       interactionBound = false;
     };

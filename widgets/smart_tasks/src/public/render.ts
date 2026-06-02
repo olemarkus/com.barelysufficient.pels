@@ -1,15 +1,24 @@
-import { formatSmartTaskWidgetOverflow } from '../../../../packages/shared-domain/src/deadlineLabels';
+import {
+  formatSmartTaskWidgetOverflow,
+  SMART_TASK_WIDGET_ENDED_HEADING,
+} from '../../../../packages/shared-domain/src/deadlineLabels';
 import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetPayload';
 import type {
   SmartTasksWidgetEmptyPayload,
+  SmartTasksWidgetEndedRow,
   SmartTasksWidgetPayload,
   SmartTasksWidgetReadyPayload,
   SmartTasksWidgetRow,
 } from '../smartTasksWidgetTypes';
+import { renderTrajectoryChart } from './trajectoryChart';
 
+// `section` disambiguates the two lists; `key` is the row identity WITHIN its
+// section — `deviceId` for an active task (one active plan per device), the
+// unique history-entry `id` for an ended task (a device can have several ended
+// runs in the window, so deviceId is not unique there).
 type ViewState =
   | { kind: 'list' }
-  | { kind: 'detail'; deviceId: string };
+  | { kind: 'detail'; section: 'active' | 'ended'; key: string };
 
 export type RenderTargets = {
   root: HTMLElement;
@@ -19,11 +28,16 @@ export type RenderTargets = {
   emptyEl: HTMLElement;
   emptyHintEl: HTMLElement;
   overflowEl: HTMLElement;
+  endedSectionEl: HTMLElement;
+  endedHeadingEl: HTMLElement;
+  endedRowsList: HTMLElement;
   rowTemplate: HTMLTemplateElement;
+  endedRowTemplate: HTMLTemplateElement;
   detailBackBtn: HTMLButtonElement;
   detailHeaderEl: HTMLElement;
   detailChipEl: HTMLElement;
   detailDeadlineEl: HTMLElement;
+  detailChartEl: HTMLElement;
   detailTargetEl: HTMLElement;
   detailWhyEl: HTMLElement;
   detailRecourseEl: HTMLElement;
@@ -54,8 +68,8 @@ const formatRowEta = (row: SmartTasksWidgetRow): string => {
   return `${row.etaVerb} ${row.finishLabel}`;
 };
 
-const targetSentence = (row: SmartTasksWidgetRow): string => (
-  `${row.targetActionVerb} ${formatValue(row.targetValue, row.unitSymbol)}`
+const targetSentence = (verb: string, targetValue: number, unitSymbol: '°C' | '%'): string => (
+  `${verb} ${formatValue(targetValue, unitSymbol)}`
 );
 
 const renderRow = (template: HTMLTemplateElement, row: SmartTasksWidgetRow): HTMLElement => {
@@ -89,8 +103,56 @@ const renderRow = (template: HTMLTemplateElement, row: SmartTasksWidgetRow): HTM
   return li;
 };
 
+const renderEndedRow = (
+  template: HTMLTemplateElement,
+  row: SmartTasksWidgetEndedRow,
+): HTMLElement => {
+  const fragment = template.content.cloneNode(true) as DocumentFragment;
+  const li = fragment.querySelector('.row');
+  if (!(li instanceof HTMLElement)) throw new Error('ended-row template missing .row');
+  li.dataset.tone = row.outcomeTone;
+  const button = li.querySelector('[data-ended-button]');
+  if (button instanceof HTMLElement) {
+    // Key on the unique history-entry id, not deviceId — a device can have
+    // multiple ended runs in the window.
+    button.dataset.historyId = row.id;
+    button.setAttribute('aria-label', `${row.deviceName}, ${row.outcomeLabel}, ${row.finishedLabel}`);
+  }
+  const nameEl = li.querySelector('[data-ended-name]');
+  const valuesEl = li.querySelector('[data-ended-values]');
+  const finishedEl = li.querySelector('[data-ended-finished]');
+  const chipEl = li.querySelector('[data-ended-chip]');
+  if (nameEl instanceof HTMLElement) nameEl.textContent = row.deviceName;
+  if (valuesEl instanceof HTMLElement) {
+    valuesEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+  }
+  if (finishedEl instanceof HTMLElement) finishedEl.textContent = row.finishedLabel;
+  if (chipEl instanceof HTMLElement) {
+    chipEl.textContent = row.outcomeLabel;
+    chipEl.dataset.tone = row.outcomeTone;
+  }
+  return li;
+};
+
 const clearChildren = (el: HTMLElement): void => {
   while (el.firstChild) el.removeChild(el.firstChild);
+};
+
+const renderEndedSection = (
+  targets: RenderTargets,
+  endedRows: SmartTasksWidgetEndedRow[],
+): void => {
+  const { endedSectionEl, endedHeadingEl, endedRowsList, endedRowTemplate } = targets;
+  clearChildren(endedRowsList);
+  if (endedRows.length === 0) {
+    endedSectionEl.hidden = true;
+    return;
+  }
+  endedSectionEl.hidden = false;
+  endedHeadingEl.textContent = SMART_TASK_WIDGET_ENDED_HEADING;
+  for (const row of endedRows) {
+    endedRowsList.appendChild(renderEndedRow(endedRowTemplate, row));
+  }
 };
 
 const renderListReady = (
@@ -99,10 +161,13 @@ const renderListReady = (
 ): void => {
   const { rowsList, emptyEl, emptyHintEl, overflowEl, rowTemplate } = targets;
   clearChildren(rowsList);
+  renderEndedSection(targets, payload.endedRows);
   if (payload.rows.length === 0) {
     rowsList.hidden = true;
-    emptyEl.hidden = false;
-    emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
+    // No active rows but ended rows exist: keep the empty line off so the
+    // "Recently ended" section carries the surface on its own.
+    emptyEl.hidden = payload.endedRows.length > 0;
+    if (!emptyEl.hidden) emptyEl.textContent = EMPTY_SUBTITLE_DEFAULT;
     emptyHintEl.hidden = true;
     overflowEl.hidden = true;
     return;
@@ -125,9 +190,10 @@ const renderListEmpty = (
   targets: RenderTargets,
   payload: SmartTasksWidgetEmptyPayload,
 ): void => {
-  const { rowsList, emptyEl, emptyHintEl, overflowEl } = targets;
+  const { rowsList, emptyEl, emptyHintEl, overflowEl, endedSectionEl } = targets;
   clearChildren(rowsList);
   rowsList.hidden = true;
+  endedSectionEl.hidden = true;
   emptyEl.hidden = false;
   emptyEl.textContent = payload.subtitle;
   if (payload.hint) {
@@ -151,30 +217,18 @@ const setOptionalLine = (el: HTMLElement, text: string | null): void => {
   /* eslint-enable no-param-reassign */
 };
 
-const renderDetail = (
-  targets: RenderTargets,
-  payload: SmartTasksWidgetReadyPayload,
-  deviceId: string,
-): void => {
-  const row = payload.rows.find((candidate) => candidate.deviceId === deviceId);
-  if (!row) {
-    // Controller should have rehydrated to list, but guard the renderer too.
-    const { root, listView, detailView } = targets;
-    renderListReady(targets, payload);
-    root.dataset.view = 'list';
-    listView.hidden = false;
-    detailView.hidden = true;
-    return;
-  }
+// Draws the trajectory chart, or hides the container when there's nothing
+// chartable so the text lines carry the panel.
+const renderChart = (el: HTMLElement, chart: SmartTasksWidgetRow['chart']): void => {
+  const drawn = chart !== null && renderTrajectoryChart(el, chart);
+  // eslint-disable-next-line no-param-reassign -- `el` is a DOM write sink.
+  el.hidden = !drawn;
+};
+
+const renderActiveDetail = (targets: RenderTargets, row: SmartTasksWidgetRow): void => {
   const {
-    detailHeaderEl,
-    detailChipEl,
-    detailDeadlineEl,
-    detailTargetEl,
-    detailWhyEl,
-    detailRecourseEl,
-    detailMetaEl,
-    detailConfidenceEl,
+    detailHeaderEl, detailChipEl, detailDeadlineEl, detailChartEl, detailTargetEl,
+    detailWhyEl, detailRecourseEl, detailMetaEl, detailConfidenceEl,
   } = targets;
   detailHeaderEl.textContent = row.deviceName;
   detailChipEl.textContent = row.statusLabel;
@@ -182,12 +236,65 @@ const renderDetail = (
   const deadlineLabel = row.deadlineLongLabel ?? row.finishLabel;
   setOptionalLine(detailDeadlineEl, deadlineLabel ? `${row.etaVerb} ${deadlineLabel}` : null);
   // Detail target line repeats the action verb so it stands on its own.
-  detailTargetEl.textContent = targetSentence(row);
+  detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
   detailTargetEl.hidden = false;
+  renderChart(detailChartEl, row.chart);
   setOptionalLine(detailWhyEl, row.whyLabel);
   setOptionalLine(detailRecourseEl, row.recourseHint);
   setOptionalLine(detailMetaEl, row.planMetaLabel);
   setOptionalLine(detailConfidenceEl, row.confidenceLabel);
+};
+
+const renderEndedDetail = (targets: RenderTargets, row: SmartTasksWidgetEndedRow): void => {
+  const {
+    detailHeaderEl, detailChipEl, detailDeadlineEl, detailChartEl, detailTargetEl,
+    detailWhyEl, detailRecourseEl, detailMetaEl, detailConfidenceEl,
+  } = targets;
+  detailHeaderEl.textContent = row.deviceName;
+  detailChipEl.textContent = row.outcomeLabel;
+  detailChipEl.dataset.tone = row.outcomeTone;
+  setOptionalLine(detailDeadlineEl, row.finishedLabel);
+  detailTargetEl.textContent = targetSentence(row.targetActionVerb, row.targetValue, row.unitSymbol);
+  detailTargetEl.hidden = false;
+  renderChart(detailChartEl, row.chart);
+  // An ended run has no live "why / recourse / estimate / confidence" copy.
+  setOptionalLine(detailWhyEl, null);
+  setOptionalLine(detailRecourseEl, null);
+  setOptionalLine(detailMetaEl, null);
+  setOptionalLine(detailConfidenceEl, null);
+};
+
+// Falls the detail view back to the list (used when the selected row dropped
+// out of the latest payload). Kept here so the renderer guards itself even if
+// the controller's rehydrate missed.
+const fallBackToList = (targets: RenderTargets, payload: SmartTasksWidgetReadyPayload): void => {
+  const { root, listView, detailView } = targets;
+  renderListReady(targets, payload);
+  root.dataset.view = 'list';
+  listView.hidden = false;
+  detailView.hidden = true;
+};
+
+const renderDetail = (
+  targets: RenderTargets,
+  payload: SmartTasksWidgetReadyPayload,
+  view: Extract<ViewState, { kind: 'detail' }>,
+): void => {
+  if (view.section === 'ended') {
+    const endedRow = payload.endedRows.find((candidate) => candidate.id === view.key);
+    if (!endedRow) {
+      fallBackToList(targets, payload);
+      return;
+    }
+    renderEndedDetail(targets, endedRow);
+    return;
+  }
+  const row = payload.rows.find((candidate) => candidate.deviceId === view.key);
+  if (!row) {
+    fallBackToList(targets, payload);
+    return;
+  }
+  renderActiveDetail(targets, row);
 };
 
 export const renderWidget = (
@@ -212,10 +319,11 @@ export const renderWidget = (
     root.dataset.view = 'detail';
     listView.hidden = true;
     detailView.hidden = false;
-    renderDetail(targets, payload, view.deviceId);
+    renderDetail(targets, payload, view);
     return;
   }
-  root.dataset.state = payload.rows.length === 0 ? 'empty' : 'ready';
+  const hasContent = payload.rows.length > 0 || payload.endedRows.length > 0;
+  root.dataset.state = hasContent ? 'ready' : 'empty';
   root.dataset.view = 'list';
   listView.hidden = false;
   detailView.hidden = true;

@@ -217,6 +217,23 @@ export const SMART_TASK_WIDGET_EMPTY_SUBTITLE = 'No active smart tasks';
 // so it isn't the least-legible line — names the dense run-on as a forward estimate.
 export const SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = 'Estimate';
 
+// Heading above the recently-ended-tasks section in the widget list. Sourced
+// here (not inlined in the widget) so the section label stays beside the rest
+// of the smart-task vocabulary per `feedback_ui_text_shared_with_logs`. "Ended"
+// is outcome-neutral — the section mixes succeeded / missed / abandoned runs.
+export const SMART_TASK_WIDGET_ENDED_HEADING = 'Recently ended';
+
+// Legend words for the widget's trajectory chart, sourced here so the chart's
+// colour-coded key reads identically wherever the series are named.
+// `planned` = the booked schedule's progress line; `measured` = the observed
+// progress so far (live) / what actually happened (ended); `target` prefixes
+// the goal value on the reference line ("Target 55 °C"). Kept terse for the
+// 220 px widget. Outcome-neutral and kind-agnostic (the value/unit carries °C
+// vs %).
+export const SMART_TASK_WIDGET_CHART_PLANNED_LABEL = 'Planned';
+export const SMART_TASK_WIDGET_CHART_MEASURED_LABEL = 'Measured';
+export const SMART_TASK_WIDGET_CHART_TARGET_LABEL = 'Target';
+
 // Overflow line shown beneath the capped widget row list when more active
 // tasks exist than the widget renders (`+N in Smart tasks`). Formatter rather
 // than a constant because the count is dynamic; sourced from shared-domain so

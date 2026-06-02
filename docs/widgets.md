@@ -48,6 +48,18 @@ Each row shows:
 
 If you have more than three active Smart tasks, a small `+N in Smart tasks` line appears at the bottom — the full list lives in the **Smart tasks** tab inside PELS.
 
+### Tap a task to see its progress
+
+Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
+
+![Smart tasks widget detail: a planned-vs-measured progress trajectory for an at-risk task, with the measured line tracking below the plan toward a dashed target line](/screenshots/widgets/smart-tasks-detail.png)
+
+### Recently ended tasks
+
+Below the active list, a **Recently ended** section shows tasks that finished in the last 24 hours — whether they reached their target, missed it, or were cancelled — each with an outcome chip and the time it ended. Tap one to see how the run actually played out against its plan.
+
+![Smart tasks widget: a Recently ended section listing a succeeded and a missed task, and the trajectory detail of a succeeded EV charge reaching its target](/screenshots/widgets/smart-tasks-ended.png)
+
 The widget refreshes about every 60 seconds.
 
 ## New smart task
