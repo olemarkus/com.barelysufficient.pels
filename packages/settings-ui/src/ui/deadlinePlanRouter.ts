@@ -135,7 +135,18 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
 
   // Intercept anchor navigations to the SPA route so the deadline plan opens
   // in-place. Full-document navigation (Homey mobile WebView) would discard
-  // the Homey SDK injection and break every API call.
+  // the Homey SDK injection and break every API call — leaving the deep-linked
+  // page stuck on "Loading" forever.
+  //
+  // Bound in the CAPTURE phase, not bubble. The Overview device-card
+  // smart-task chip (`PlanDeviceCards.tsx`) calls `event.stopPropagation()` in
+  // its own bubble-phase handler to keep the click from reaching the parent
+  // card's "open device details" activation. A bubble-phase listener here
+  // never sees that click — the chip stops it one level below `document` — so
+  // the `<a href>` falls through to a real navigation and the page hangs.
+  // Capturing means we run before the chip's `stopPropagation`, call
+  // `preventDefault()`, and route in-place; the chip's later stopPropagation
+  // still suppresses the card activation as intended.
   document.addEventListener('click', (event) => {
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -153,7 +164,7 @@ export const initDeadlinePlanRouter = (deps: RouterDeps): void => {
     window.history.pushState(null, '', target);
     openedViaPushState = true;
     applyRouteFromUrl();
-  });
+  }, true);
 
   window.addEventListener('popstate', () => {
     applyRouteFromUrl();
