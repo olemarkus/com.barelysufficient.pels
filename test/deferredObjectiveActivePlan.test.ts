@@ -1068,6 +1068,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       recorder.observe([makeDiag({
         deviceId: 'dev',
         deadlineAtMs: 6 * HOUR_MS,
+        // Top-level status mirrors horizonPlan.status in production
+        // (`diagnosticsBridge` sets `status: horizonPlan.status`); the recorder's
+        // published-status drift check reads the (resolvable) top-level status.
+        status: 'at_risk',
         horizonPlan: makeHorizon([
           makeBucket(2 * HOUR_MS, 1.5),
           makeBucket(3 * HOUR_MS, 1.5),
@@ -1332,6 +1336,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       deadlineAtMs: 6 * HOUR_MS,
       planningSpeedKw: 2,
       energyNeededKWh: 4.5,
+      // Top-level status mirrors horizonPlan.status in production (see note above).
+      status: 'at_risk',
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 1.5),
       ], {

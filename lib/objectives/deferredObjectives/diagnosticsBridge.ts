@@ -25,6 +25,10 @@ import {
 } from './diagnosticProgress';
 import type { DeferredObjectiveKind } from './types';
 import {
+  classificationImpliesStallSatisfied,
+  type IdleClassification,
+} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
@@ -50,7 +54,12 @@ export type DeferredObjectiveDiagnosticReasonCode =
   | 'objective_missing_charge_rate'
   | 'objective_missing_device'
   | 'objective_missing_temperature'
-  | 'objective_progress_stale';
+  | 'objective_progress_stale'
+  // Live status resolved to `satisfied` because the device parked in a stall
+  // classification (see `resolveStallReportedStatus`). `near_target` = inside
+  // the hysteresis band; `device_capped` = at the device's own internal cap.
+  | 'objective_stalled_near_target'
+  | 'objective_stalled_device_capped';
 
 export type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
 
@@ -158,6 +167,13 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // verdicts flicker in production — see the rationale on
   // `ConcurrentEligibleTaskTracker`.
   concurrentEligibleTracker?: ConcurrentEligibleTaskTracker;
+  // Idle-classifier reader. When provided, the live (user-facing) status is
+  // resolved to `satisfied` for devices parked in a stall classification so the
+  // status chip, notifications and Flows agree with the postmortem recorder
+  // (which already promotes such runs to `satisfied(stalled)`). The decoration /
+  // actuation path deliberately OMITS this so admission keeps reading the raw
+  // trajectory status — only `horizonPlan.status` (untouched) drives commitment.
+  getStallClassification?: (deviceId: string) => IdleClassification | undefined;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   // Resolve the priority-1 fully-reserved smart-task count once per cycle so
@@ -176,14 +192,74 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   return Object.entries(params.settings.objectivesByDeviceId)
     .flatMap(([deviceId, objective]) => {
       if (!objective.enabled) return [];
-      return [buildDeferredObjectiveDiagnostic({
+      const diagnostic = buildDeferredObjectiveDiagnostic({
         ...params,
         deviceId,
         objective,
         device: deviceById.get(deviceId),
         concurrentEligibleCount,
-      })];
+      });
+      return [resolveStallReportedStatus(
+        diagnostic,
+        params.getStallClassification?.(deviceId),
+        hasEstablishedActivePlan(params.activePlans, deviceId, diagnostic.deadlineAtMs),
+      )];
     });
+};
+
+// True once the active-plan recorder has committed a `latest` revision for this
+// exact (device, deadline) run. Used to suppress stall resolution on a
+// first-seen task: the idle classifier ticks AFTER plan emission and is keyed by
+// device only, so on a brand-new objective's first cycle `getStallClassification`
+// returns the PREVIOUS cycle's verdict — which belongs to whatever ran on that
+// device before. Resolving on that stale value would flash a brand-new deadline
+// as `satisfied` (and could write a first revision / fire a Flow) until the
+// classifier re-ticks. Mirrors the postmortem's "skip stall promotion on
+// first-seen records" guard (planHistory `observeDiagnostic`). Inlined rather
+// than reusing `findPlanForRecord` to avoid a diagnosticsBridge↔planHistory
+// import cycle.
+const hasEstablishedActivePlan = (
+  activePlans: DeferredObjectiveActivePlansV1 | null | undefined,
+  deviceId: string,
+  deadlineAtMs: number | null,
+): boolean => {
+  if (deadlineAtMs === null) return false;
+  const plan = activePlans?.plansByDeviceId[deviceId];
+  return plan?.deadlineAtMs === deadlineAtMs && plan?.latest != null;
+};
+
+// Resolve the user-facing `status` (NOT `horizonPlan.status`, which stays the
+// raw trajectory verdict) when the device's own controller has parked it: a
+// `near_target_idle` / `capped_idle` device won't move further, so the
+// objective is "as met as it gets". Only the live trajectory verdicts are
+// overridden — `unknown` / `invalid` / an already-`satisfied` run are left
+// alone, and `unresponsive` (a likely fault) never counts as satisfied
+// (`classificationImpliesStallSatisfied`). Mirrors the postmortem's
+// `stallClassificationToMetReason`.
+const STALL_RESOLVABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
+  'on_track',
+  'at_risk',
+  'cannot_meet',
+]);
+
+const resolveStallReportedStatus = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  classification: IdleClassification | undefined,
+  hasEstablishedPlan: boolean,
+): DeferredObjectiveDiagnostic => {
+  // First-seen tasks read a stale, device-keyed classifier verdict — wait until
+  // the run is established (a committed revision exists) so the classification
+  // belongs to THIS objective. See `hasEstablishedActivePlan`.
+  if (!hasEstablishedPlan) return diagnostic;
+  if (!classificationImpliesStallSatisfied(classification)) return diagnostic;
+  if (!STALL_RESOLVABLE_STATUSES.has(diagnostic.status)) return diagnostic;
+  return {
+    ...diagnostic,
+    status: 'satisfied',
+    reasonCode: classification === 'capped_idle'
+      ? 'objective_stalled_device_capped'
+      : 'objective_stalled_near_target',
+  };
 };
 
 export const emitDeferredObjectiveDiagnostics = (params: {

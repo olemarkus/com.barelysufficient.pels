@@ -10,6 +10,7 @@ import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
 import {
   appendHourlyContribution,
@@ -34,6 +35,7 @@ import {
   lastObservedAtMs,
   mergeRecord,
   promoteRecordToStalled,
+  rawHorizonStatus,
   recordNonPlannableTick,
   stallClassificationToMetReason,
   startRecord,
@@ -61,7 +63,7 @@ const ABANDON_GRACE_MS = 60 * 60 * 1000;
 // silently call a tripped breaker "succeeded".
 export type DeferredObjectiveStallClassificationReader = (
   deviceId: string,
-) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
+) => IdleClassification | undefined;
 
 export type DeferredObjectiveBackfillConfig = {
   deviceId: string;
@@ -246,7 +248,8 @@ export class DeferredObjectivePlanHistoryRecorder {
     const plan = findPlanForRecord(activePlans, { deviceId: diag.deviceId, deadlineAtMs: diag.deadlineAtMs! });
     const existing = this.inProgress.get(key);
     if (existing) {
-      const plannable = isPlannableStatus(diag.status) || isSatisfiedStatus(diag.status);
+      const horizonStatus = rawHorizonStatus(diag);
+      const plannable = isPlannableStatus(horizonStatus) || isSatisfiedStatus(horizonStatus);
       // Plannable diagnostics roll forward progress + planning flags. Unknown/invalid still
       // count as observation ("PELS was watching"). If an already-met run later reports
       // trustworthy below-target progress, clear the live met marker; otherwise preserve

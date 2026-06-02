@@ -23,6 +23,42 @@
 
 export type IdleClassification = 'near_target_idle' | 'unresponsive' | 'capped_idle';
 
+/**
+ * Single source of truth for "which idle classifications mean the device has
+ * settled as far as it will go and the objective should read as satisfied".
+ *
+ * `near_target_idle` (parked inside the hysteresis band) and `capped_idle`
+ * (parked at the device's own internal cap below the PELS target) both mean
+ * the device's own controller has stopped — pushing harder won't move it, so
+ * the deferred objective is "as met as it gets". `unresponsive` (likely a
+ * fault) and `undefined` (active / no classification) deliberately do NOT
+ * count — a tripped breaker must never read as satisfied.
+ *
+ * Used by BOTH the live status producer (`diagnosticsBridge`) and the
+ * postmortem met-reason mapping (`stallClassificationToMetReason`) so the
+ * user-facing live status and the recorded outcome can never disagree about
+ * what counts as a stall.
+ */
+export const classificationImpliesStallSatisfied = (
+  classification: IdleClassification | undefined,
+): boolean => {
+  switch (classification) {
+    case 'near_target_idle':
+    case 'capped_idle':
+      return true;
+    case 'unresponsive':
+    case undefined:
+      return false;
+    default: {
+      // Exhaustiveness guard: a new IdleClassification member must make an
+      // explicit stall-satisfied decision here (and so at every call site)
+      // rather than silently defaulting to false.
+      const exhaustive: never = classification;
+      return exhaustive;
+    }
+  }
+};
+
 export type IdleClassificationCopyInput = {
   classification: IdleClassification;
   currentTemperatureC?: number;

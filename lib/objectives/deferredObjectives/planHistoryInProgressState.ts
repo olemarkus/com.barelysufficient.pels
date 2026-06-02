@@ -15,6 +15,10 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import {
+  classificationImpliesStallSatisfied,
+  type IdleClassification,
+} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import {
   appendRevisionLogIfNew,
   attachEnergyExpectedKWh,
   captureRevisionSnapshot,
@@ -199,6 +203,18 @@ export const isSatisfiedStatus = (status: DeferredObjectiveDiagnostic['status'])
   status === 'satisfied'
 );
 
+// The postmortem reasons about the raw trajectory verdict, not the live
+// user-facing status. `diagnosticsBridge` may resolve the top-level
+// `diagnostic.status` to `satisfied` when the device is parked in a stall
+// classification; reading that here would let `mergeRecord` pre-satisfy the
+// record and short-circuit the stall promotion (dropping the `stalled` /
+// `stalled_device_capped` met-reason). The planner's `horizonPlan.status` is
+// never resolved, so it stays the honest trajectory verdict. Falls back to the
+// top-level status on the unknown/invalid paths that carry no `horizonPlan`.
+export const rawHorizonStatus = (
+  diag: DeferredObjectiveDiagnostic,
+): DeferredObjectiveDiagnostic['status'] => diag.horizonPlan?.status ?? diag.status;
+
 const captureProgressC = (diag: DeferredObjectiveDiagnostic): number | null => (
   diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : null
 );
@@ -276,7 +292,7 @@ export const startRecord = (
   plan: DeferredObjectiveActivePlanV1 | undefined,
 ): InProgressRecord | null => {
   if (diag.deadlineAtMs === null) return null;
-  const currentlySatisfied = isSatisfiedStatus(diag.status);
+  const currentlySatisfied = isSatisfiedStatus(rawHorizonStatus(diag));
   const originalRevision = pickRevisionForOriginal(plan);
   const finalRevision = pickRevisionForFinal(plan);
   const originalSnapshot = originalRevision ? captureRevisionSnapshot(originalRevision, plan) : null;
@@ -456,7 +472,7 @@ const computeMergedMetState = (
       finalProgressPercent: record.finalProgressPercent,
     };
   }
-  const currentlySatisfied = isSatisfiedStatus(diag.status);
+  const currentlySatisfied = isSatisfiedStatus(rawHorizonStatus(diag));
   return {
     satisfied: currentlySatisfied,
     metAtMs: currentlySatisfied ? (record.metAtMs ?? nowMs) : null,
@@ -556,14 +572,16 @@ export const promoteRecordToStalled = (
 };
 
 // Producer-side translation of observer-layer classifier output to the
-// persisted `metReason`. `unresponsive` deliberately returns null so a
-// tripped breaker doesn't get silently called "succeeded".
+// persisted `metReason`. Gated on the shared `classificationImpliesStallSatisfied`
+// so the postmortem and the live status producer (`diagnosticsBridge`) can never
+// disagree about which classifications count as a stall; `unresponsive` /
+// `undefined` return null so a tripped breaker doesn't get silently called
+// "succeeded".
 export const stallClassificationToMetReason = (
-  classification: 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined,
+  classification: IdleClassification | undefined,
 ): DeferredObjectivePlanMetReason | null => {
-  if (classification === 'near_target_idle') return 'stalled';
-  if (classification === 'capped_idle') return 'stalled_device_capped';
-  return null;
+  if (!classificationImpliesStallSatisfied(classification)) return null;
+  return classification === 'capped_idle' ? 'stalled_device_capped' : 'stalled';
 };
 
 export const recordNonPlannableTick = (

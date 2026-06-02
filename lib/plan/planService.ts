@@ -12,6 +12,7 @@ import {
   getDeviceOverviewExpectedPowerKw,
 } from '../../packages/shared-domain/src/deviceOverview';
 import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
 import {
   resolvePlanStateKind,
   resolvePlanStateTone,
@@ -205,7 +206,7 @@ export class PlanService {
   // least one plan tick has run.
   getStallClassification(
     deviceId: string,
-  ): 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined {
+  ): IdleClassification | undefined {
     return this.idleClassifier.getClassification(deviceId);
   }
 
