@@ -2616,9 +2616,14 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         }),
       );
       const finalized = events.find((e) => e.event === 'deferred_objective_history_finalized');
+      // The device sat at 50 °C and never progressed before the deadline sweep,
+      // so it delivered essentially nothing — `no_delivery` is the concrete
+      // cause and wins over the cold-start "still learning" fallback (which now
+      // only applies when delivery couldn't be measured). The raw provenance the
+      // log carries (low band, 3 samples) is still surfaced for correlation.
       expect(finalized).toMatchObject({
         outcome: 'missed',
-        missCause: 'low_confidence',
+        missCause: 'no_delivery',
         rateConfidence: 'low',
         acceptedSamples: 3,
       });

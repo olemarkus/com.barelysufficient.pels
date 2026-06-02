@@ -4720,168 +4720,6 @@ var logger = getLogger("plan/deferred-diag-bridge");
 // lib/objectives/deferredObjectives/hoursRemainingCrossings.ts
 var HOUR_MS3 = 60 * 60 * 1e3;
 
-// lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
-var ONE_HOUR_MS2 = 60 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/planHistoryInProgressState.ts
-var INTERVAL_MERGE_GAP_MS = 5 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/planHistory.ts
-var logger2 = getLogger("plan/deferred-history");
-var ABANDON_GRACE_MS = 60 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/activePlanSchedule.ts
-var ONE_HOUR_MS3 = 60 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/activePlanRecorder.ts
-var logger3 = getLogger("plan/deferred-active");
-var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
-var ONE_HOUR_MS4 = 60 * 60 * 1e3;
-var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
-
-// lib/utils/perfCounters.ts
-var state = {
-  startedAt: Date.now(),
-  counts: {},
-  durations: {}
-};
-
-// lib/utils/opRssTracker.ts
-var MB = 1024 * 1024;
-
-// packages/contracts/src/deferredObjectiveSettings.ts
-var normalizeEntryBase = (raw) => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const entry = raw;
-  if (typeof entry.enabled !== "boolean") return null;
-  if (!isValidDeadlineAtMs(entry.deadlineAtMs)) return null;
-  if (entry.kind === "ev_soc") {
-    if (entry.enforcement !== "soft" && entry.enforcement !== "hard") return null;
-    if (!isValidTargetPercent(entry.targetPercent)) return null;
-    return {
-      enabled: entry.enabled,
-      kind: entry.kind,
-      enforcement: entry.enforcement,
-      targetPercent: entry.targetPercent,
-      deadlineAtMs: entry.deadlineAtMs
-    };
-  }
-  if (entry.kind === "temperature") {
-    if (entry.enforcement !== "soft") return null;
-    if (!isValidTargetTemperature(entry.targetTemperatureC)) return null;
-    return {
-      enabled: entry.enabled,
-      kind: entry.kind,
-      enforcement: "soft",
-      targetTemperatureC: entry.targetTemperatureC,
-      deadlineAtMs: entry.deadlineAtMs
-    };
-  }
-  return null;
-};
-var normalizeDeferredObjectiveSettingsEntry2 = (raw) => {
-  const base = normalizeEntryBase(raw);
-  if (!base) return null;
-  const rescue = normalizeRescuePermissions(raw.rescue);
-  return rescue ? { ...base, rescue } : base;
-};
-var isRescueMode = (value) => value === "always" || value === "at_risk";
-var normalizeRescuePermissions = (raw) => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return void 0;
-  const value = raw;
-  const exemptFromBudget = isRescueMode(value.exemptFromBudget) ? value.exemptFromBudget : void 0;
-  const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices) ? value.limitLowerPriorityDevices : void 0;
-  if (!exemptFromBudget && !limitLowerPriorityDevices) return void 0;
-  return {
-    ...exemptFromBudget ? { exemptFromBudget } : {},
-    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}
-  };
-};
-var isValidDeadlineAtMs = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
-var isValidTargetPercent = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 100;
-var isValidTargetTemperature = (value) => typeof value === "number" && Number.isFinite(value) && value >= -50 && value <= 100;
-
-// packages/shared-domain/src/smartTaskDeadlineFormat.ts
-var HOUR_MS4 = 60 * 60 * 1e3;
-var DAY_MS = 24 * HOUR_MS4;
-var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-var formatLocalHHMM = (ms, timeZone) => {
-  const date = new Date(ms);
-  if (!Number.isFinite(date.getTime())) return "";
-  try {
-    return new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-      timeZone: timeZone ?? void 0
-    }).format(date);
-  } catch {
-    return formatLocalHHMMFallback(date);
-  }
-};
-var calendarDayIndex = (ms, timeZone) => {
-  try {
-    const ymd = new Intl.DateTimeFormat("en-CA", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      timeZone: timeZone ?? void 0
-    }).format(new Date(ms));
-    const [y, m, d] = ymd.split("-").map(Number);
-    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
-      throw new Error("unexpected en-CA date parts");
-    }
-    return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
-  } catch {
-    const date = new Date(ms);
-    return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
-  }
-};
-var formatSmartTaskDeadlineLong = (ms, nowMs, timeZone) => {
-  const date = new Date(ms);
-  if (!Number.isFinite(date.getTime())) return "";
-  const timePart = formatLocalHHMM(ms, timeZone);
-  const dayDiff = calendarDayIndex(ms, timeZone) - calendarDayIndex(nowMs, timeZone);
-  if (dayDiff === 0) return `Today ${timePart}`;
-  if (dayDiff === 1) return `Tomorrow ${timePart}`;
-  try {
-    if (dayDiff >= -6 && dayDiff <= 6) {
-      const weekday = new Intl.DateTimeFormat("en-GB", {
-        weekday: "short",
-        timeZone: timeZone ?? void 0
-      }).format(date);
-      return `${weekday} ${timePart}`;
-    }
-    const dayMonth = new Intl.DateTimeFormat("en-GB", {
-      day: "numeric",
-      month: "short",
-      timeZone: timeZone ?? void 0
-    }).format(date);
-    return `${dayMonth} ${timePart}`;
-  } catch {
-    return formatLocalHHMMFallback(date);
-  }
-};
-var hoursAreContiguous = (hours) => {
-  for (let i = 1; i < hours.length; i += 1) {
-    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS4) return false;
-  }
-  return true;
-};
-var formatScheduledHoursWindow = (scheduledHours, timeZone) => {
-  if (scheduledHours.length === 0) return null;
-  if (scheduledHours.length === 1) {
-    return formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
-  }
-  if (hoursAreContiguous(scheduledHours)) {
-    const first = formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
-    const lastStart = scheduledHours[scheduledHours.length - 1].startsAtMs;
-    const end = formatLocalHHMM(lastStart + HOUR_MS4, timeZone);
-    return `${first}\u2013${end}`;
-  }
-  return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(", ");
-};
-
 // packages/shared-domain/src/deadlineLabels.ts
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
 var SMART_TASK_LIST_STATUS_LABELS = {
@@ -5274,7 +5112,169 @@ var deadlineLabels = (kind) => DEADLINE_LABELS[kind];
 var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
 var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
-var ONE_HOUR_MS5 = 60 * ONE_MINUTE_MS;
+var ONE_HOUR_MS2 = 60 * ONE_MINUTE_MS;
+
+// lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
+var ONE_HOUR_MS3 = 60 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/planHistoryInProgressState.ts
+var INTERVAL_MERGE_GAP_MS = 5 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/planHistory.ts
+var logger2 = getLogger("plan/deferred-history");
+var ABANDON_GRACE_MS = 60 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/activePlanSchedule.ts
+var ONE_HOUR_MS4 = 60 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/activePlanRecorder.ts
+var logger3 = getLogger("plan/deferred-active");
+var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
+var ONE_HOUR_MS5 = 60 * 60 * 1e3;
+var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
+
+// lib/utils/perfCounters.ts
+var state = {
+  startedAt: Date.now(),
+  counts: {},
+  durations: {}
+};
+
+// lib/utils/opRssTracker.ts
+var MB = 1024 * 1024;
+
+// packages/contracts/src/deferredObjectiveSettings.ts
+var normalizeEntryBase = (raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const entry = raw;
+  if (typeof entry.enabled !== "boolean") return null;
+  if (!isValidDeadlineAtMs(entry.deadlineAtMs)) return null;
+  if (entry.kind === "ev_soc") {
+    if (entry.enforcement !== "soft" && entry.enforcement !== "hard") return null;
+    if (!isValidTargetPercent(entry.targetPercent)) return null;
+    return {
+      enabled: entry.enabled,
+      kind: entry.kind,
+      enforcement: entry.enforcement,
+      targetPercent: entry.targetPercent,
+      deadlineAtMs: entry.deadlineAtMs
+    };
+  }
+  if (entry.kind === "temperature") {
+    if (entry.enforcement !== "soft") return null;
+    if (!isValidTargetTemperature(entry.targetTemperatureC)) return null;
+    return {
+      enabled: entry.enabled,
+      kind: entry.kind,
+      enforcement: "soft",
+      targetTemperatureC: entry.targetTemperatureC,
+      deadlineAtMs: entry.deadlineAtMs
+    };
+  }
+  return null;
+};
+var normalizeDeferredObjectiveSettingsEntry2 = (raw) => {
+  const base = normalizeEntryBase(raw);
+  if (!base) return null;
+  const rescue = normalizeRescuePermissions(raw.rescue);
+  return rescue ? { ...base, rescue } : base;
+};
+var isRescueMode = (value) => value === "always" || value === "at_risk";
+var normalizeRescuePermissions = (raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return void 0;
+  const value = raw;
+  const exemptFromBudget = isRescueMode(value.exemptFromBudget) ? value.exemptFromBudget : void 0;
+  const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices) ? value.limitLowerPriorityDevices : void 0;
+  if (!exemptFromBudget && !limitLowerPriorityDevices) return void 0;
+  return {
+    ...exemptFromBudget ? { exemptFromBudget } : {},
+    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}
+  };
+};
+var isValidDeadlineAtMs = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
+var isValidTargetPercent = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 100;
+var isValidTargetTemperature = (value) => typeof value === "number" && Number.isFinite(value) && value >= -50 && value <= 100;
+
+// packages/shared-domain/src/smartTaskDeadlineFormat.ts
+var HOUR_MS4 = 60 * 60 * 1e3;
+var DAY_MS = 24 * HOUR_MS4;
+var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+var formatLocalHHMM = (ms, timeZone) => {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: timeZone ?? void 0
+    }).format(date);
+  } catch {
+    return formatLocalHHMMFallback(date);
+  }
+};
+var calendarDayIndex = (ms, timeZone) => {
+  try {
+    const ymd = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone: timeZone ?? void 0
+    }).format(new Date(ms));
+    const [y, m, d] = ymd.split("-").map(Number);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+      throw new Error("unexpected en-CA date parts");
+    }
+    return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
+  } catch {
+    const date = new Date(ms);
+    return Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
+  }
+};
+var formatSmartTaskDeadlineLong = (ms, nowMs, timeZone) => {
+  const date = new Date(ms);
+  if (!Number.isFinite(date.getTime())) return "";
+  const timePart = formatLocalHHMM(ms, timeZone);
+  const dayDiff = calendarDayIndex(ms, timeZone) - calendarDayIndex(nowMs, timeZone);
+  if (dayDiff === 0) return `Today ${timePart}`;
+  if (dayDiff === 1) return `Tomorrow ${timePart}`;
+  try {
+    if (dayDiff >= -6 && dayDiff <= 6) {
+      const weekday = new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        timeZone: timeZone ?? void 0
+      }).format(date);
+      return `${weekday} ${timePart}`;
+    }
+    const dayMonth = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      timeZone: timeZone ?? void 0
+    }).format(date);
+    return `${dayMonth} ${timePart}`;
+  } catch {
+    return formatLocalHHMMFallback(date);
+  }
+};
+var hoursAreContiguous = (hours) => {
+  for (let i = 1; i < hours.length; i += 1) {
+    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS4) return false;
+  }
+  return true;
+};
+var formatScheduledHoursWindow = (scheduledHours, timeZone) => {
+  if (scheduledHours.length === 0) return null;
+  if (scheduledHours.length === 1) {
+    return formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
+  }
+  if (hoursAreContiguous(scheduledHours)) {
+    const first = formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
+    const lastStart = scheduledHours[scheduledHours.length - 1].startsAtMs;
+    const end = formatLocalHHMM(lastStart + HOUR_MS4, timeZone);
+    return `${first}\u2013${end}`;
+  }
+  return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(", ");
+};
 
 // packages/shared-domain/src/smartTaskDeviceKind.ts
 var isEvCharger = (device) => device.deviceClass === "evcharger";

@@ -442,9 +442,12 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
   // v2.7.4 — plan-time miss attribution (Session A) refines the Why line for
   // the two causes the planStatus alone can't tell apart.
   it('names the still-learning estimate ahead of the cannot_meet fallback', () => {
+    // Genuine cold start (few samples) with delivery unmeasured: the honest
+    // fallback is "still learning", and it has no reading count — the count is
+    // decoupled from the confidence band, so showing it read as broken trust.
     const entry = buildEntry({
       outcome: 'missed',
-      deliveredKWh: 2.5,
+      deliveredKWh: undefined,
       finalPlan: buildSnapshot({
         planStatus: 'cannot_meet',
         rateConfidence: 'low',
@@ -452,7 +455,7 @@ describe('formatPlanHistoryMissedReason (v2.7.3 blameless rewrite)', () => {
       }),
     });
     expect(formatPlanHistoryMissedReason(entry)).toBe(
-      "Still learning this device's energy use (3 readings).",
+      "Still learning this device's energy use.",
     );
   });
 

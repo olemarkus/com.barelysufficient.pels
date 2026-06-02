@@ -74,14 +74,113 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('budget_limited');
   });
 
-  it('classifies low_confidence ahead of the delivered-vs-plan split', () => {
-    // Delivered above plan (would be energy_underestimate) but the rate was
-    // low-confidence — the shaky estimate undercuts the whole verdict.
+  it('lets the delivery split win over a low confidence band', () => {
+    // Delivered above plan AND a low confidence band — but the band "sits at low
+    // effectively forever" on thermal devices, so the concrete delivery story
+    // (energy underestimate) must win rather than masking it as "still learning".
+    // The device made real progress (default 50 -> 60), so no_delivery is out.
     const entry = buildEntry({
       deliveredKWh: 25,
-      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 3 }),
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1090 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('energy_underestimate');
+  });
+
+  it('classifies no_delivery when the device delivered almost nothing and stayed flat', () => {
+    // Thermal device with 1090 accepted samples and a low band — under the old
+    // classifier this read "still learning (1090 readings)". Now the flat,
+    // no-delivery story wins.
+    const entry = buildEntry({
+      deliveredKWh: 0.02,
+      startProgressC: 18.3,
+      finalProgressC: 18.6,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1090 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('no_delivery');
+  });
+
+  it('classifies no_delivery for a cooling start-above-target task', () => {
+    // The screenshot case: asked to heat to 40 but already at 64.7, the tank only
+    // cooled to 20.1 — it delivered no heat. Directional progress (final - start)
+    // is a large negative, below the deadband, so no_delivery fires.
+    const entry = buildEntry({
+      targetTemperatureC: 40,
+      deliveredKWh: 0,
+      startProgressC: 64.7,
+      finalProgressC: 20.1,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1141 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('no_delivery');
+  });
+
+  it('fires no_delivery on flat progress alone when delivery was never recorded', () => {
+    const entry = buildEntry({
+      deliveredKWh: undefined,
+      startProgressC: 18.3,
+      finalProgressC: 18.5,
+      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 50 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('no_delivery');
+  });
+
+  it('classifies no_delivery for an EV that barely charged', () => {
+    const entry = buildEntry({
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      startProgressC: null,
+      finalProgressC: null,
+      startProgressPercent: 41,
+      finalProgressPercent: 41.5,
+      deliveredKWh: 0.03,
+      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 30 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('no_delivery');
+  });
+
+  it('classifies budget_limited ahead of no_delivery', () => {
+    const entry = buildEntry({
+      deliveredKWh: 0,
+      startProgressC: 18.3,
+      finalProgressC: 18.4,
+      finalPlan: buildSnapshot({ dailyBudgetExhaustedBucketCount: 2 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('budget_limited');
+  });
+
+  it('classifies low_confidence only on a genuine cold start with delivery unmeasured', () => {
+    // Few accepted samples (< the confident-chip threshold) AND no recorded
+    // delivery to tell a concrete story — the honest fallback is "still learning".
+    const entry = buildEntry({
+      deliveredKWh: undefined,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 2 }),
     });
     expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('low_confidence');
+  });
+
+  it('does not classify low_confidence on a well-sampled rate with delivery unmeasured', () => {
+    // 1090 samples is no cold start, so even with delivery unmeasured the verdict
+    // is honestly `unknown`, never "still learning".
+    const entry = buildEntry({
+      deliveredKWh: undefined,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1090 }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('unknown');
+  });
+
+  it('treats a runtime-null acceptedSamples as not-cold-start (no coercion)', () => {
+    // A persisted/legacy entry can carry `acceptedSamples: null` despite the
+    // `number` type. `null < 4` coerces to true, so a `!== undefined` guard would
+    // misfire `low_confidence`; the `typeof === 'number'` guard falls back to
+    // `unknown`.
+    const entry = buildEntry({
+      deliveredKWh: undefined,
+      finalPlan: buildSnapshot({
+        rateConfidence: 'low',
+        acceptedSamples: null as unknown as number,
+      }),
+    });
+    expect(resolveDeferredPlanHistoryMissAttribution(entry).cause).toBe('unknown');
   });
 
   it('classifies energy_underestimate when delivery met/exceeded the planned floor', () => {
@@ -198,33 +297,42 @@ describe('resolveDeferredPlanHistoryMissAttribution', () => {
 });
 
 describe('formatRefinedMissCause', () => {
-  it('names the sample count when the estimate was still learning', () => {
+  it('says still learning, with no reading count, on a genuine cold start', () => {
     const entry = buildEntry({
-      deliveredKWh: 25,
-      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 3 }),
-    });
-    expect(formatRefinedMissCause(entry)).toBe(
-      "Still learning this device's energy use (3 readings).",
-    );
-  });
-
-  it('singularises a single reading', () => {
-    const entry = buildEntry({
-      deliveredKWh: 25,
-      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1 }),
-    });
-    expect(formatRefinedMissCause(entry)).toBe(
-      "Still learning this device's energy use (1 reading).",
-    );
-  });
-
-  it('omits the reading count when the sample count was not recorded', () => {
-    const entry = buildEntry({
-      deliveredKWh: 25,
-      finalPlan: buildSnapshot({ rateConfidence: 'low' }),
+      deliveredKWh: undefined,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 2 }),
     });
     expect(formatRefinedMissCause(entry)).toBe(
       "Still learning this device's energy use.",
+    );
+  });
+
+  it('explains no heat delivered for a temperature task', () => {
+    const entry = buildEntry({
+      deliveredKWh: 0.01,
+      startProgressC: 18.3,
+      finalProgressC: 18.6,
+      finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1141 }),
+    });
+    expect(formatRefinedMissCause(entry)).toBe(
+      'Delivered almost no heat before the deadline.',
+    );
+  });
+
+  it('explains no charge delivered for an EV task', () => {
+    const entry = buildEntry({
+      objectiveKind: 'ev_soc',
+      targetTemperatureC: null,
+      targetPercent: 80,
+      startProgressC: null,
+      finalProgressC: null,
+      startProgressPercent: 41,
+      finalProgressPercent: 41.4,
+      deliveredKWh: 0.02,
+      finalPlan: buildSnapshot({ rateConfidence: 'high', acceptedSamples: 30 }),
+    });
+    expect(formatRefinedMissCause(entry)).toBe(
+      'Delivered almost no charge before the deadline.',
     );
   });
 
@@ -248,5 +356,28 @@ describe('formatRefinedMissCause', () => {
     });
     expect(formatRefinedMissCause(budgetEntry)).toBeNull();
     expect(formatRefinedMissCause(capacityEntry)).toBeNull();
+  });
+
+  it('never emits a multi-digit reading count, even on a well-sampled low band', () => {
+    // Guard for the original defect: a thermal device with 1090 accepted samples
+    // and a permanently-low band used to render "still learning (1090 readings)".
+    // It must now never produce that self-contradictory copy under any delivery
+    // shape.
+    const shapes: Partial<DeferredObjectivePlanHistoryEntry>[] = [
+      { deliveredKWh: 25 }, // delivered above floor -> energy_underestimate
+      { deliveredKWh: 12 }, // delivered below floor -> capacity_shortfall (null copy)
+      { deliveredKWh: undefined }, // unmeasured -> unknown (null copy)
+      { deliveredKWh: 0.01, startProgressC: 18.3, finalProgressC: 18.6 }, // no_delivery
+    ];
+    for (const shape of shapes) {
+      const entry = buildEntry({
+        ...shape,
+        finalPlan: buildSnapshot({ rateConfidence: 'low', acceptedSamples: 1090 }),
+      });
+      const copy = formatRefinedMissCause(entry);
+      expect(copy ?? '').not.toMatch(/\d{4} readings/);
+      expect(copy ?? '').not.toContain('(1090 readings)');
+      expect(copy ?? '').not.toContain('readings');
+    }
   });
 });

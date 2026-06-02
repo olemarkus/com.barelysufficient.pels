@@ -363,7 +363,8 @@ const pickLastPlan = (
 export const formatPlanHistoryMissedReason = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh'
+    'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh' | 'objectiveKind'
+    | 'startProgressC' | 'startProgressPercent' | 'finalProgressC' | 'finalProgressPercent'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
