@@ -28,7 +28,7 @@ describe('swap lifecycle completion', () => {
       .toBe(true);
   });
 
-  it('keeps a stepped target pending while on at a lower requested step', () => {
+  it('keeps a stepped target pending while reported at a lower requested step', () => {
     const swapState = emptySwapState();
     swapState.pendingSwapTargets.add('target');
     swapState.requestedTargetByDevice.set('target', { targetStepId: 'max' });
@@ -37,13 +37,13 @@ describe('swap lifecycle completion', () => {
       id: 'target',
       currentState: 'on',
       currentOn: true,
-      selectedStepId: 'medium',
+      reportedStepId: 'medium',
     });
 
     expect(isSwapTargetComplete(target, swapState)).toBe(false);
   });
 
-  it('clears a stepped target after the requested step is observed', () => {
+  it('clears a stepped target after the requested step is reported', () => {
     const swapState = emptySwapState();
     swapState.pendingSwapTargets.add('target');
     swapState.requestedTargetByDevice.set('target', { targetStepId: 'medium' });
@@ -52,10 +52,44 @@ describe('swap lifecycle completion', () => {
       id: 'target',
       currentState: 'on',
       currentOn: true,
-      selectedStepId: 'max',
+      reportedStepId: 'max',
     });
 
     expect(isSwapTargetComplete(target, swapState)).toBe(true);
+  });
+
+  it('does not complete on optimistic selectedStepId ahead of the reported step', () => {
+    const swapState = emptySwapState();
+    swapState.pendingSwapTargets.add('target');
+    swapState.requestedTargetByDevice.set('target', { targetStepId: 'max' });
+
+    // Planner-effective selectedStepId already reaches the requested step, but the device has
+    // only confirmed a lower reportedStepId — completion must wait for confirmed evidence.
+    const target = steppedPlanDevice({
+      id: 'target',
+      currentState: 'on',
+      currentOn: true,
+      selectedStepId: 'max',
+      reportedStepId: 'medium',
+    });
+
+    expect(isSwapTargetComplete(target, swapState)).toBe(false);
+  });
+
+  it('does not complete while reportedStepId is unknown even if selectedStepId reached the request', () => {
+    const swapState = emptySwapState();
+    swapState.pendingSwapTargets.add('target');
+    swapState.requestedTargetByDevice.set('target', { targetStepId: 'max' });
+
+    const target = steppedPlanDevice({
+      id: 'target',
+      currentState: 'on',
+      currentOn: true,
+      selectedStepId: 'max',
+      reportedStepId: undefined,
+    });
+
+    expect(isSwapTargetComplete(target, swapState)).toBe(false);
   });
 
   it('does not clear a stepped pending target without a requested step', () => {
@@ -66,7 +100,7 @@ describe('swap lifecycle completion', () => {
       id: 'target',
       currentState: 'on',
       currentOn: true,
-      selectedStepId: 'max',
+      reportedStepId: 'max',
       desiredStepId: undefined,
       targetStepId: undefined,
     });
@@ -197,13 +231,15 @@ describe('swap lifecycle blocking and cleanup', () => {
     swapState.requestedTargetByDevice.set('target', { targetStepId: 'medium' });
     swapState.swappedOutFor.set('lower', 'target');
 
-    // First pass: target is on but still at a lower step than requested — must stay pending.
+    // First pass: target reports a lower step than requested — must stay pending. The optimistic
+    // selectedStepId already reaches the request, but completion must wait for confirmed evidence.
     const belowRequestedMap = new Map([
       ['target', steppedPlanDevice({
         id: 'target',
         currentState: 'on',
         currentOn: true,
-        selectedStepId: 'low',
+        selectedStepId: 'medium',
+        reportedStepId: 'low',
       })],
       ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
     ]);
@@ -218,20 +254,47 @@ describe('swap lifecycle blocking and cleanup', () => {
       lower: { swappedOutFor: 'target' },
     });
 
-    // Second pass: target now at or above the requested step — clear pending metadata and
+    // Second pass: target now reports at or above the requested step — clear pending metadata and
     // the linked direct swap, but preserve the measurement watermark for orphan deferral.
     const atRequestedMap = new Map([
       ['target', steppedPlanDevice({
         id: 'target',
         currentState: 'on',
         currentOn: true,
-        selectedStepId: 'medium',
+        reportedStepId: 'medium',
       })],
       ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
     ]);
     cleanupCompletedSwaps(swapState, atRequestedMap);
     expect(exportSwapState(swapState).swapByDevice).toEqual({
       target: { lastPlanMeasurementTs: 123 },
+    });
+  });
+
+  it('does not release a swapped-out source while the target only optimistically selected the step', () => {
+    const swapState = emptySwapState();
+    swapState.pendingSwapTargets.add('target');
+    swapState.requestedTargetByDevice.set('target', { targetStepId: 'max' });
+    swapState.swappedOutFor.set('lower', 'target');
+    const deviceMap = new Map([
+      ['target', steppedPlanDevice({
+        id: 'target',
+        name: 'Target',
+        currentState: 'on',
+        currentOn: true,
+        selectedStepId: 'max',
+        reportedStepId: 'low',
+      })],
+      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', currentOn: false })],
+    ]);
+
+    // The source must stay shed: the target has not confirmed the requested step yet.
+    expect(isBlockedBySwapState(deviceMap.get('lower')!, deviceMap, swapState)).toBe(true);
+    expect(deviceMap.get('lower')?.reason).toMatchObject({ code: PLAN_REASON_CODES.swapPending });
+    cleanupCompletedSwaps(swapState, deviceMap);
+    expect(exportSwapState(swapState).swapByDevice).toMatchObject({
+      target: { pendingTarget: true },
+      lower: { swappedOutFor: 'target' },
     });
   });
 });
