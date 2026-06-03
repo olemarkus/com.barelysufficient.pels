@@ -402,6 +402,66 @@
   var ONE_MINUTE_MS = 60 * 1e3;
   var ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 
+  // widgets/_shared/widgetRuntime.ts
+  var applyPreviewTheme = (widgetDocument, searchParams) => {
+    const theme = searchParams.get("theme");
+    if (theme === "dark") {
+      widgetDocument.body.classList.add("homey-dark-mode");
+    } else if (theme === "light") {
+      widgetDocument.body.classList.remove("homey-dark-mode");
+    }
+  };
+  var createRefreshLoop = (config) => {
+    const { widgetWindow, widgetDocument, intervalMs, onTick } = config;
+    const onVisible = config.onVisible ?? onTick;
+    let refreshTimer = null;
+    let visibilityBound = false;
+    const handleVisibilityChange = () => {
+      if (widgetDocument.visibilityState === "visible") onVisible();
+    };
+    return {
+      start: () => {
+        if (refreshTimer !== null) widgetWindow.clearInterval(refreshTimer);
+        refreshTimer = widgetWindow.setInterval(onTick, intervalMs);
+      },
+      bindVisibility: () => {
+        if (visibilityBound) return;
+        widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = true;
+      },
+      stop: () => {
+        if (refreshTimer !== null) {
+          widgetWindow.clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        if (!visibilityBound) return;
+        widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = false;
+      }
+    };
+  };
+  var installWidget = (config) => {
+    const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
+    const targets = resolveTargets2(widgetDocument);
+    if (!targets) return null;
+    const base = createController({ targets, widgetDocument, widgetWindow });
+    const controller = config.wrapController ? config.wrapController(base) : base;
+    const installWindow = widgetWindow;
+    installWindow.onHomeyReady = (homey) => {
+      config.onHomeyClient?.(homey);
+      controller.bootstrap(homey);
+    };
+    const bootstrapWithoutHomey = () => {
+      if (!installWindow.Homey) controller.bootstrap(null);
+    };
+    if (widgetDocument.readyState === "loading") {
+      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
+    } else {
+      bootstrapWithoutHomey();
+    }
+    return controller;
+  };
+
   // widgets/smart_tasks/src/public/previewPayloads.ts
   var T = 17e11;
   var H = 60 * 60 * 1e3;
@@ -1096,14 +1156,6 @@
       targets.detailBackBtn.removeEventListener("click", onBack);
     };
   };
-  var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
-    const theme = searchParams.get("theme");
-    if (theme === "dark") {
-      widgetDocument.body.classList.add("homey-dark-mode");
-    } else if (theme === "light") {
-      widgetDocument.body.classList.remove("homey-dark-mode");
-    }
-  };
   var GENERIC_TARGET_SELECTORS = {
     listView: "[data-list-view]",
     detailView: "[data-detail-view]",
@@ -1148,8 +1200,6 @@
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
-    let refreshTimer = null;
-    let visibilityListenerBound = false;
     let lastPayload = null;
     let view = { kind: "list" };
     let teardownInteraction = null;
@@ -1169,7 +1219,7 @@
       try {
         const searchParams = new URLSearchParams(widgetWindow.location.search);
         const preview = searchParams.get("preview") === "1";
-        maybeApplyPreviewTheme(widgetDocument, searchParams);
+        applyPreviewTheme(widgetDocument, searchParams);
         const payload = preview || !homeyRef ? PREVIEW_SMART_TASKS_PAYLOAD : await homeyRef.api("GET", "/smart_tasks");
         if (destroyed || loadId !== loadSequence) return;
         consecutiveLoadFailures = 0;
@@ -1195,24 +1245,14 @@
         }
       }
     };
-    const handleVisibilityChange = () => {
-      if (widgetDocument.visibilityState === "visible") {
+    const refresh = createRefreshLoop({
+      widgetWindow,
+      widgetDocument,
+      intervalMs: REFRESH_INTERVAL_MS,
+      onTick: () => {
         void loadAndRender();
       }
-    };
-    const startRefreshLoop = () => {
-      if (refreshTimer !== null) {
-        widgetWindow.clearInterval(refreshTimer);
-      }
-      refreshTimer = widgetWindow.setInterval(() => {
-        void loadAndRender();
-      }, REFRESH_INTERVAL_MS);
-    };
-    const bindVisibilityReload = () => {
-      if (visibilityListenerBound) return;
-      widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
-      visibilityListenerBound = true;
-    };
+    });
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
@@ -1225,60 +1265,48 @@
       }));
       render();
       void loadAndRender();
-      startRefreshLoop();
-      bindVisibilityReload();
+      refresh.start();
+      refresh.bindVisibility();
     };
     const destroy = () => {
       destroyed = true;
-      if (refreshTimer !== null) {
-        widgetWindow.clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
+      refresh.stop();
       teardownInteraction?.();
       teardownInteraction = null;
-      if (!visibilityListenerBound) return;
-      widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
-      visibilityListenerBound = false;
     };
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget = (widgetWindow, widgetDocument) => {
-    const targets = resolveTargets(widgetDocument);
-    if (!targets) return null;
+  var installWidget2 = (widgetWindow, widgetDocument) => {
     let activeHomey = null;
-    const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
-    const controller = createWidgetController({
-      targets,
-      widgetDocument,
+    let heightReporter = null;
+    return installWidget({
       widgetWindow,
-      reportHeight: () => heightReporter.report()
+      widgetDocument,
+      resolveTargets,
+      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
+        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
+        return createWidgetController({
+          targets,
+          widgetDocument: doc,
+          widgetWindow: win,
+          reportHeight: () => heightReporter?.report()
+        });
+      },
+      onHomeyClient: (homey) => {
+        activeHomey = homey;
+        heightReporter?.observe();
+      },
+      wrapController: (controller) => ({
+        ...controller,
+        destroy: () => {
+          controller.destroy();
+          heightReporter?.disconnect();
+          activeHomey = null;
+        }
+      })
     });
-    const installWindow = widgetWindow;
-    installWindow.onHomeyReady = (homey) => {
-      activeHomey = homey;
-      heightReporter.observe();
-      controller.bootstrap(homey);
-    };
-    const bootstrapWithoutHomey = () => {
-      if (!widgetWindow.Homey) {
-        controller.bootstrap(null);
-      }
-    };
-    if (widgetDocument.readyState === "loading") {
-      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
-    } else {
-      bootstrapWithoutHomey();
-    }
-    return {
-      ...controller,
-      destroy: () => {
-        controller.destroy();
-        heightReporter.disconnect();
-        activeHomey = null;
-      }
-    };
   };
 
   // widgets/smart_tasks/src/public/index.ts
-  var widgetController = installWidget(window, document);
+  var widgetController = installWidget2(window, document);
 })();

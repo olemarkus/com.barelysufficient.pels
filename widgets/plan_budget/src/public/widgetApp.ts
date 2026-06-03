@@ -4,6 +4,12 @@ import {
   renderWidget,
   resolveSummaryText,
 } from './chart';
+import {
+  applyPreviewTheme,
+  createRefreshLoop,
+  installWidget as installSharedWidget,
+  type WidgetController as SharedWidgetController,
+} from '../../../_shared/widgetRuntime';
 import { resolvePreviewPayload } from './previewPayloads';
 import {
   PLAN_PRICE_WIDGET_EMPTY,
@@ -38,11 +44,7 @@ export type WidgetWindow = Window & {
   onHomeyReady?: (homey: WidgetHomey) => void;
 };
 
-export type WidgetController = {
-  bootstrap: (homey: WidgetHomey | null) => void;
-  destroy: () => void;
-  loadAndRender: () => Promise<void>;
-};
+export type WidgetController = SharedWidgetController<WidgetHomey>;
 
 export type WidgetTargets = {
   chartEl: SVGSVGElement;
@@ -89,17 +91,9 @@ export const resolveInitialHalf = (payload: PlanPriceWidgetPayload | null): Plan
   return 'morning';
 };
 
-export const maybeApplyPreviewTheme = (
-  widgetDocument: Document,
-  searchParams: URLSearchParams,
-): void => {
-  const theme = searchParams.get('theme');
-  if (theme === 'dark') {
-    widgetDocument.body.classList.add('homey-dark-mode');
-  } else if (theme === 'light') {
-    widgetDocument.body.classList.remove('homey-dark-mode');
-  }
-};
+// Re-exported under the widget-local name the browser test imports; the
+// implementation is the shared runtime's `applyPreviewTheme`.
+export const maybeApplyPreviewTheme = applyPreviewTheme;
 
 const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
   const chartEl = widgetDocument.getElementById('chart');
@@ -206,8 +200,6 @@ export const createWidgetController = (
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
-  let refreshTimer: number | null = null;
-  let visibilityListenerBound = false;
   let unbindTabs: (() => void) | null = null;
   let lastPayload: PlanPriceWidgetPayload | null = null;
   let half: PlanPriceWidgetHalf = 'morning';
@@ -256,7 +248,7 @@ export const createWidgetController = (
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       const preview = searchParams.get('preview') === '1';
 
-      maybeApplyPreviewTheme(widgetDocument, searchParams);
+      applyPreviewTheme(widgetDocument, searchParams);
 
       const target = resolveTarget(getWidgetSettings(homeyRef), searchParams);
       const payload = preview || !homeyRef
@@ -281,28 +273,12 @@ export const createWidgetController = (
     }
   };
 
-  const handleVisibilityChange = (): void => {
-    if (widgetDocument.visibilityState === 'visible') {
-      void loadAndRender();
-    }
-  };
-
-  const startRefreshLoop = (): void => {
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-    }
-
-    refreshTimer = widgetWindow.setInterval(() => {
-      void loadAndRender();
-    }, REFRESH_INTERVAL_MS);
-  };
-
-  const bindVisibilityReload = (): void => {
-    if (visibilityListenerBound) return;
-
-    widgetDocument.addEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = true;
-  };
+  const refresh = createRefreshLoop({
+    widgetWindow,
+    widgetDocument,
+    intervalMs: REFRESH_INTERVAL_MS,
+    onTick: () => { void loadAndRender(); },
+  });
 
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
@@ -311,23 +287,14 @@ export const createWidgetController = (
     labelTabs();
     bindInteraction();
     void loadAndRender();
-    startRefreshLoop();
-    bindVisibilityReload();
+    refresh.start();
+    refresh.bindVisibility();
   };
 
   const destroy = (): void => {
     destroyed = true;
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-      refreshTimer = null;
-    }
-
+    refresh.stop();
     unbindInteraction();
-
-    if (!visibilityListenerBound) return;
-
-    widgetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = false;
   };
 
   return {
@@ -340,34 +307,9 @@ export const createWidgetController = (
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-) => {
-  const targets = resolveTargets(widgetDocument);
-  if (!targets) {
-    return null;
-  }
-
-  const controller = createWidgetController({
-    targets,
-    widgetDocument,
-    widgetWindow,
-  });
-  const installWindow = widgetWindow;
-
-  installWindow.onHomeyReady = (homey: WidgetHomey) => {
-    controller.bootstrap(homey);
-  };
-
-  const bootstrapWithoutHomey = (): void => {
-    if (!widgetWindow.Homey) {
-      controller.bootstrap(null);
-    }
-  };
-
-  if (widgetDocument.readyState === 'loading') {
-    widgetDocument.addEventListener('DOMContentLoaded', bootstrapWithoutHomey, { once: true });
-  } else {
-    bootstrapWithoutHomey();
-  }
-
-  return controller;
-};
+): WidgetController | null => installSharedWidget<WidgetTargets, WidgetHomey, WidgetWindow>({
+  widgetWindow,
+  widgetDocument,
+  resolveTargets,
+  createController: createWidgetController,
+});

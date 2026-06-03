@@ -427,6 +427,66 @@
     renderReadyState(chartEl, payload, half);
   };
 
+  // widgets/_shared/widgetRuntime.ts
+  var applyPreviewTheme = (widgetDocument, searchParams) => {
+    const theme = searchParams.get("theme");
+    if (theme === "dark") {
+      widgetDocument.body.classList.add("homey-dark-mode");
+    } else if (theme === "light") {
+      widgetDocument.body.classList.remove("homey-dark-mode");
+    }
+  };
+  var createRefreshLoop = (config) => {
+    const { widgetWindow, widgetDocument, intervalMs, onTick } = config;
+    const onVisible = config.onVisible ?? onTick;
+    let refreshTimer = null;
+    let visibilityBound = false;
+    const handleVisibilityChange = () => {
+      if (widgetDocument.visibilityState === "visible") onVisible();
+    };
+    return {
+      start: () => {
+        if (refreshTimer !== null) widgetWindow.clearInterval(refreshTimer);
+        refreshTimer = widgetWindow.setInterval(onTick, intervalMs);
+      },
+      bindVisibility: () => {
+        if (visibilityBound) return;
+        widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = true;
+      },
+      stop: () => {
+        if (refreshTimer !== null) {
+          widgetWindow.clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        if (!visibilityBound) return;
+        widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = false;
+      }
+    };
+  };
+  var installWidget = (config) => {
+    const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
+    const targets = resolveTargets2(widgetDocument);
+    if (!targets) return null;
+    const base = createController({ targets, widgetDocument, widgetWindow });
+    const controller = config.wrapController ? config.wrapController(base) : base;
+    const installWindow = widgetWindow;
+    installWindow.onHomeyReady = (homey) => {
+      config.onHomeyClient?.(homey);
+      controller.bootstrap(homey);
+    };
+    const bootstrapWithoutHomey = () => {
+      if (!installWindow.Homey) controller.bootstrap(null);
+    };
+    if (widgetDocument.readyState === "loading") {
+      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
+    } else {
+      bootstrapWithoutHomey();
+    }
+    return controller;
+  };
+
   // widgets/plan_budget/src/public/previewPayloads.ts
   var buildBucketLabels = () => Array.from(
     { length: 24 },
@@ -627,14 +687,6 @@
     }
     return "morning";
   };
-  var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
-    const theme = searchParams.get("theme");
-    if (theme === "dark") {
-      widgetDocument.body.classList.add("homey-dark-mode");
-    } else if (theme === "light") {
-      widgetDocument.body.classList.remove("homey-dark-mode");
-    }
-  };
   var resolveTargets = (widgetDocument) => {
     const chartEl = widgetDocument.getElementById("chart");
     const summaryEl = widgetDocument.querySelector("[data-summary]");
@@ -702,8 +754,6 @@
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
-    let refreshTimer = null;
-    let visibilityListenerBound = false;
     let unbindTabs = null;
     let lastPayload = null;
     let half = "morning";
@@ -741,7 +791,7 @@
       try {
         const searchParams = new URLSearchParams(widgetWindow.location.search);
         const preview = searchParams.get("preview") === "1";
-        maybeApplyPreviewTheme(widgetDocument, searchParams);
+        applyPreviewTheme(widgetDocument, searchParams);
         const target = resolveTarget(getWidgetSettings(homeyRef), searchParams);
         const payload = preview || !homeyRef ? resolvePreviewPayload(target) : await homeyRef.api("GET", `/chart?day=${encodeURIComponent(target)}`);
         if (destroyed || loadId !== loadSequence) return;
@@ -759,43 +809,27 @@
         }
       }
     };
-    const handleVisibilityChange = () => {
-      if (widgetDocument.visibilityState === "visible") {
+    const refresh = createRefreshLoop({
+      widgetWindow,
+      widgetDocument,
+      intervalMs: REFRESH_INTERVAL_MS,
+      onTick: () => {
         void loadAndRender();
       }
-    };
-    const startRefreshLoop = () => {
-      if (refreshTimer !== null) {
-        widgetWindow.clearInterval(refreshTimer);
-      }
-      refreshTimer = widgetWindow.setInterval(() => {
-        void loadAndRender();
-      }, REFRESH_INTERVAL_MS);
-    };
-    const bindVisibilityReload = () => {
-      if (visibilityListenerBound) return;
-      widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
-      visibilityListenerBound = true;
-    };
+    });
     const bootstrap = (homey) => {
       if (homey && homey === homeyRef) return;
       homeyRef = homey;
       labelTabs();
       bindInteraction();
       void loadAndRender();
-      startRefreshLoop();
-      bindVisibilityReload();
+      refresh.start();
+      refresh.bindVisibility();
     };
     const destroy = () => {
       destroyed = true;
-      if (refreshTimer !== null) {
-        widgetWindow.clearInterval(refreshTimer);
-        refreshTimer = null;
-      }
+      refresh.stop();
       unbindInteraction();
-      if (!visibilityListenerBound) return;
-      widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
-      visibilityListenerBound = false;
     };
     return {
       bootstrap,
@@ -803,33 +837,13 @@
       loadAndRender
     };
   };
-  var installWidget = (widgetWindow, widgetDocument) => {
-    const targets = resolveTargets(widgetDocument);
-    if (!targets) {
-      return null;
-    }
-    const controller = createWidgetController({
-      targets,
-      widgetDocument,
-      widgetWindow
-    });
-    const installWindow = widgetWindow;
-    installWindow.onHomeyReady = (homey) => {
-      controller.bootstrap(homey);
-    };
-    const bootstrapWithoutHomey = () => {
-      if (!widgetWindow.Homey) {
-        controller.bootstrap(null);
-      }
-    };
-    if (widgetDocument.readyState === "loading") {
-      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
-    } else {
-      bootstrapWithoutHomey();
-    }
-    return controller;
-  };
+  var installWidget2 = (widgetWindow, widgetDocument) => installWidget({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: createWidgetController
+  });
 
   // widgets/plan_budget/src/public/index.ts
-  var widgetController = installWidget(window, document);
+  var widgetController = installWidget2(window, document);
 })();

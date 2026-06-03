@@ -3,6 +3,13 @@ import {
   CREATE_SMART_TASK_WIDGET_COPY,
   resolveCreateSmartTaskRejectCopy,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
+import {
+  applyPreviewTheme,
+  installWidget as installSharedWidget,
+  type WidgetController as SharedWidgetController,
+  type WidgetHomeyBase,
+  type WidgetWindowBase,
+} from '../../../_shared/widgetRuntime';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -22,9 +29,7 @@ const READY_BY_PRESET_LOCAL_TIME: Record<string, string> = {
   night: '22:00',
 };
 
-export type WidgetWindow = Window & {
-  Homey?: unknown;
-  onHomeyReady?: (homey: WidgetHomey) => void;
+export type WidgetWindow = WidgetWindowBase & {
   // Declared explicitly: the lib.dom `Window` interface doesn't surface the
   // global `ResizeObserver` constructor as a property, and the widget reads it
   // off the injected window (optional so non-DOM test windows can omit it).
@@ -32,10 +37,9 @@ export type WidgetWindow = Window & {
 };
 
 // Homey widget API client. Unlike the observe-only widgets, this widget POSTs a
-// body for preview/create, so the signature includes the optional body arg.
-export type WidgetHomey = {
-  api: (method: string, path: string, body?: unknown) => Promise<unknown>;
-  ready?: () => void;
+// body for preview/create — `WidgetHomeyBase.api` already carries the optional
+// body arg.
+export type WidgetHomey = WidgetHomeyBase & {
   // Resize the widget iframe to fit content. This widget is a multi-step form
   // whose height varies per view (picker → compose → preview → created), so we
   // measure after every render and report the height — Homey widgets don't
@@ -43,11 +47,7 @@ export type WidgetHomey = {
   setHeight?: (height: number) => void;
 };
 
-export type WidgetController = {
-  bootstrap: (homey: WidgetHomey | null) => void;
-  destroy: () => void;
-  loadAndRender: () => Promise<void>;
-};
+export type WidgetController = SharedWidgetController<WidgetHomey>;
 
 // Keep the widget iframe sized to its content. Homey widgets don't scroll
 // internally — the dashboard scrolls between widgets and anything past the
@@ -92,15 +92,6 @@ const createHeightReporter = (
       observer = null;
     },
   };
-};
-
-const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
-  const theme = searchParams.get('theme');
-  if (theme === 'dark') {
-    widgetDocument.body.classList.add('homey-dark-mode');
-  } else if (theme === 'light') {
-    widgetDocument.body.classList.remove('homey-dark-mode');
-  }
 };
 
 // Preview-mode response (used when the widget runs with `?preview=1` or no
@@ -537,7 +528,7 @@ export const createWidgetController = (params: {
     const loadId = ++loadSequence;
     const searchParams = new URLSearchParams(widgetWindow.location.search);
     usePreviewData = searchParams.get('preview') === '1';
-    maybeApplyPreviewTheme(widgetDocument, searchParams);
+    applyPreviewTheme(widgetDocument, searchParams);
     const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get('state'));
     // Drop a torn-down or superseded load before touching the DOM (latest-wins).
     if (destroyed || loadId !== loadSequence) return;
@@ -574,40 +565,35 @@ export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
 ): WidgetController | null => {
-  const targets = resolveTargets(widgetDocument);
-  if (!targets) return null;
-
-  const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
   // Size the iframe to content (Homey.setHeight) only once a real Homey client
   // is wired — the no-Homey preview/harness path renders at natural page size.
+  // The reporter is created lazily inside `createController` (once the targets
+  // resolve), and its `observe`/`disconnect` are driven by the shared install's
+  // `onHomeyClient`/`wrapController` hooks.
   let activeHomey: WidgetHomey | null = null;
-  const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
+  let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
 
-  const installWindow = widgetWindow;
-  installWindow.onHomeyReady = (homey: WidgetHomey): void => {
-    activeHomey = homey;
-    heightReporter.observe();
-    controller.bootstrap(homey);
-  };
-
-  const bootstrapWithoutHomey = (): void => {
-    if (!widgetWindow.Homey) {
-      controller.bootstrap(null);
-    }
-  };
-  if (widgetDocument.readyState === 'loading') {
-    widgetDocument.addEventListener('DOMContentLoaded', bootstrapWithoutHomey, { once: true });
-  } else {
-    bootstrapWithoutHomey();
-  }
-  return {
-    ...controller,
-    destroy: (): void => {
-      controller.destroy();
-      heightReporter.disconnect();
-      // Drop the client so any late ResizeObserver callback short-circuits in
-      // getHomey() instead of calling setHeight on a torn-down widget.
-      activeHomey = null;
+  return installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
+      heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
+      return createWidgetController({ targets, widgetDocument: doc, widgetWindow: win });
     },
-  };
+    onHomeyClient: (homey) => {
+      activeHomey = homey;
+      heightReporter?.observe();
+    },
+    wrapController: (controller) => ({
+      ...controller,
+      destroy: (): void => {
+        controller.destroy();
+        heightReporter?.disconnect();
+        // Drop the client so any late ResizeObserver callback short-circuits in
+        // getHomey() instead of calling setHeight on a torn-down widget.
+        activeHomey = null;
+      },
+    }),
+  });
 };
