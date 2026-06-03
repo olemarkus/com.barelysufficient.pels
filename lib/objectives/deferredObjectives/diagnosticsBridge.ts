@@ -82,6 +82,12 @@ type BaseDeferredObjectiveDiagnostic = {
   energyExpectedKWh?: number | null;
   kWhPerPercent: number | null;
   kWhPerDegreeC: number | null;
+  // Buffered per-unit rate (`energyNeededKWh / remainingUnits`), kind-agnostic.
+  // The buffered-currency analog of the mean `kWhPerPercent`/`kWhPerDegreeC`.
+  // Consumed by the unit-milestone stamp so the cumulative milestone lands on
+  // target instead of overshooting by the buffer ratio. Optional/back-compatible:
+  // absent on legacy diagnostics, where the stamp falls back to the mean rate.
+  kWhPerUnitBuffered?: number | null;
   // Sample-driven global learned mean (kWh/unit), kind-agnostic. Distinct from
   // the kind-split `kWhPerPercent`/`kWhPerDegreeC`, which are the banded
   // remaining-interval display average and so shift as a task crosses bands.
@@ -516,6 +522,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
       energyNeededKWh: 0,
       energyExpectedKWh: 0,
       kWhPerUnit: null,
+      kWhPerUnitBuffered: null,
       kWhPerUnitMean: null,
       rateConfidence: null,
       displayConfidence: null,
@@ -717,12 +724,13 @@ const buildKnownEnergyFields = (params: {
 }): Pick<
   DeferredObjectiveDiagnostic,
   'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerPercent' | 'kWhPerDegreeC'
-  | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
+  | 'kWhPerUnitBuffered' | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
   energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
   kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
   kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
+  kWhPerUnitBuffered: params.profileEnergy.kWhPerUnitBuffered,
   kwhPerUnitLearnedMean: params.profileEnergy.kWhPerUnitMean,
   rateConfidence: params.profileEnergy.rateConfidence,
   displayConfidence: params.profileEnergy.displayConfidence,

@@ -205,6 +205,37 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       .toEqual([51, 52, 53]);
   });
 
+  it('stamps the milestone at the BUFFERED rate so the cumulative lands on target, not over it', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Anchor 50 °C, target 51.5 °C ⇒ 1.5 °C remaining. The plan books the buffered
+    // total (6 kWh) ⇒ buffered rate = 6 / 1.5 = 4.0 kWh/°C. Each 2 kWh hour adds
+    // 2 / 4 = 0.5 °C, so the staircase lands exactly on the 51.5 °C target.
+    // Converting at the MEAN rate (kWhPerDegreeC = 1.5) would add 2 / 1.5 ≈ 1.33 °C
+    // per hour → 51.33, 52.67, 54.0, overshooting the target by 2.5 °C and making
+    // the ahead-of-milestone gate under-fire.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      currentTemperatureC: 50,
+      targetTemperatureC: 51.5,
+      energyNeededKWh: 6,
+      kWhPerDegreeC: 1.5,
+      kWhPerUnitBuffered: 4,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2),
+        makeBucket(3 * HOUR_MS, 2),
+        makeBucket(4 * HOUR_MS, 2),
+      ]),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const milestones = saved()!.plansByDeviceId.dev.latest?.hours.map((hour) => hour.plannedUnitMilestone);
+    expect(milestones).toEqual([50.5, 51, 51.5]);
+    expect(milestones?.at(-1)).toBe(51.5); // final milestone == target, no buffer overshoot
+  });
+
   it('marks pending when the flow card fires before any horizon plan exists', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
