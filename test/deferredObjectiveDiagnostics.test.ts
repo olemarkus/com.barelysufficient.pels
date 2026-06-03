@@ -17,6 +17,7 @@ import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../packages/contracts/src/deferredObjectivePlanHistory';
+import { buildObjectiveSignature } from '../lib/objectives/deferredObjectives/activePlanSignature';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -976,6 +977,280 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS).toISOString())).toBeCloseTo(1);
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + HOUR_MS).toISOString())).toBe(0);
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + 2 * HOUR_MS).toISOString())).toBeCloseTo(1);
+  });
+
+  // Per-cycle commitment collapse: mid-hour the build serves a frozen read (no
+  // allocator); only the `:58` settle window / bootstrap re-allocates. The frozen
+  // assembler stamps `frozen-` bucket ids, which the allocator never produces — a
+  // reliable marker for "which path ran" without mocking the allocator.
+  const buildCommittedEvPlans = (deadlineAtMs: number): DeferredObjectiveActivePlansV1 => {
+    const hours = [
+      { startsAtMs: NOW_MS, plannedKWh: 1 },
+      { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 1 },
+    ];
+    const latest = {
+      revision: 1,
+      revisedAtMs: NOW_MS - HOUR_MS,
+      computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
+      reason: 'flow_card' as const,
+      hours,
+      energyNeededKWh: 2,
+      planStatus: 'on_track' as const,
+    };
+    return {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: JSON.stringify(['ev_soc', null, 50, deadlineAtMs, 'soft']),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
+          original: latest,
+          latest,
+        },
+      },
+    };
+  };
+
+  it('serves a frozen read mid-hour (no allocator) and re-allocates in the :58 settle window', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const activePlans = buildCommittedEvPlans(deadlineAtMs);
+    const run = (nowMs: number) => buildDeferredObjectiveDiagnostics({
+      nowMs,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    })[0];
+
+    // Mid-hour (NOW_MS is :00) ⇒ frozen read: every planned bucket carries a
+    // `frozen-` id, i.e. the allocator did NOT run.
+    const midHour = run(NOW_MS);
+    const midBuckets = midHour?.horizonPlan?.plannedBuckets ?? [];
+    expect(midBuckets.length).toBeGreaterThan(0);
+    expect(midBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
+
+    // :58 settle window ⇒ allocator re-runs: no `frozen-` ids.
+    const settle = run(NOW_MS + 58 * 60 * 1000);
+    const settleBuckets = settle?.horizonPlan?.plannedBuckets ?? [];
+    expect(settleBuckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
+    // No activePlans ⇒ resolveCommittedHours undefined ⇒ fresh allocation even mid-hour.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 })),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans: null,
+    });
+    const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  it('goes inactive (not frozen) when price optimization is OFF, even with a commitment', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: false, // deliberate config off — NOT a transient gap
+      activePlans: buildCommittedEvPlans(deadlineAtMs),
+    });
+    // Price-dependent objective with the feature off ⇒ inactive (device returns to
+    // normal control), NOT a frozen read of the stale price-optimized plan.
+    expect(diagnostic?.status).toBe('unknown');
+    expect(diagnostic?.reasonCode).toBe('objective_price_feature_disabled');
+    expect(diagnostic?.horizonPlan).toBeUndefined();
+  });
+
+  it('frozen read uses the settled latest.hours kWh, not the stale commitment floor', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    // A :58 kWh refinement (e.g. measured_deviation) on the SAME hour set updates
+    // `latest` but not `commitment` (the merge only re-commits on a schedule change).
+    const commitmentHours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
+    const latestHours = [{ startsAtMs: NOW_MS, plannedKWh: 3 }]; // refined up
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+          }),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
+          original: {
+            revision: 1, revisedAtMs: NOW_MS - HOUR_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'flow_card', hours: commitmentHours, energyNeededKWh: 1, planStatus: 'on_track',
+          },
+          latest: {
+            revision: 2, revisedAtMs: NOW_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'measured_deviation', hours: latestHours, energyNeededKWh: 3, planStatus: 'on_track',
+          },
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+    // Frozen read mid-hour ⇒ current bucket reflects the SETTLED 3 kWh, not the stale 1.
+    expect(diagnostic?.horizonPlan?.plannedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
+    expect(diagnostic?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh).toBe(3);
+  });
+
+  it('runs the allocator mid-hour when the commitment has no current-or-future hour (all elapsed)', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const elapsedHours = [
+      { startsAtMs: NOW_MS - 2 * HOUR_MS, plannedKWh: 1 },
+      { startsAtMs: NOW_MS - HOUR_MS, plannedKWh: 1 },
+    ];
+    const latest = {
+      revision: 1,
+      revisedAtMs: NOW_MS - 3 * HOUR_MS,
+      computedFromPricesUpTo: NOW_MS,
+      reason: 'flow_card' as const,
+      hours: elapsedHours,
+      energyNeededKWh: 2,
+      planStatus: 'on_track' as const,
+    };
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - 3 * HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+          }),
+          commitment: { committedAtMs: NOW_MS - 3 * HOUR_MS, hours: elapsedHours },
+          original: latest,
+          latest,
+        },
+      },
+    };
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+    const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    // All committed hours elapsed + a positive need ⇒ NOT frozen; the fresh allocator
+    // (phase-2 expansion) books the now-needed hours rather than idling until :58.
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  it('serves a behind-temperature committed device frozen mid-hour (no cold-start routing)', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildTemperatureSettings());
+    const deadlineAtMs = settings.objectivesByDeviceId['heater-1']!.deadlineAtMs;
+    const buildTempPlans = (currentHourBooked: boolean): DeferredObjectiveActivePlansV1 => {
+      const hours = [
+        ...(currentHourBooked ? [{ startsAtMs: NOW_MS, plannedKWh: 2 }] : []),
+        { startsAtMs: NOW_MS + 2 * HOUR_MS, plannedKWh: 2 },
+      ];
+      const latest = {
+        revision: 1,
+        revisedAtMs: NOW_MS - HOUR_MS,
+        computedFromPricesUpTo: NOW_MS + 2 * HOUR_MS,
+        reason: 'flow_card' as const,
+        hours,
+        energyNeededKWh: 8,
+        planStatus: 'on_track' as const,
+      };
+      return {
+        version: 1,
+        plansByDeviceId: {
+          'heater-1': {
+            deviceId: 'heater-1',
+            deviceName: 'Connected 300',
+            objectiveKind: 'temperature',
+            targetTemperatureC: 65,
+            targetPercent: null,
+            deadlineAtMs,
+            startedAtMs: NOW_MS - HOUR_MS,
+            pending: false,
+            objectiveSignature: buildObjectiveSignature({
+              objectiveKind: 'temperature', targetTemperatureC: 65, targetPercent: null, deadlineAtMs, enforcement: 'soft',
+            }),
+            commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
+            original: latest,
+            latest,
+          },
+        },
+      };
+    };
+    const run = (plans: DeferredObjectiveActivePlansV1) => buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildTemperatureDevice()],
+      settings,
+      powerTracker: buildTemperaturePowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans: plans,
+    })[0];
+
+    // Behind (55 °C vs 65 °C target) + current hour booked: NO cold-start routing —
+    // the device is served frozen and delivers up to the committed hour's milestone.
+    // Whether the current hour should have been booked at all is the allocator's
+    // `:58` decision, read off the commitment; mid-hour does no future-fit proof.
+    const booked = run(buildTempPlans(true));
+    const bookedBuckets = booked?.horizonPlan?.plannedBuckets ?? [];
+    expect(bookedBuckets.length).toBeGreaterThan(0);
+    expect(bookedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
+    // Current hour not booked (future-only) ⇒ also frozen; current bucket carries no
+    // energy so admission idles it this hour.
+    const deferred = run(buildTempPlans(false));
+    const deferredBuckets = deferred?.horizonPlan?.plannedBuckets ?? [];
+    expect(deferredBuckets.length).toBeGreaterThan(0);
+    expect(deferredBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
+    expect(deferred?.horizonPlan?.currentBucket).toBeNull();
   });
 
   it('plans a persisted temperature objective from learned kWh per degree', () => {
