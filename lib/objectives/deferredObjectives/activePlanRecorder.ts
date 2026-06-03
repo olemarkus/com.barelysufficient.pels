@@ -32,6 +32,7 @@ import {
   resolveProjectedFinishAtMs,
   sameHourSchedule,
   shouldFireNotification,
+  stampCheaperHourAhead,
   stampUnitMilestones,
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
@@ -751,8 +752,10 @@ export class DeferredObjectiveActivePlanRecorder {
     nowMs: number,
   ): void {
     // First commit: no prior commitment to merge, so stamp the live hours directly
-    // (the first hour seeds at the measured anchor; cumulative is correct).
-    const hours = stampUnitMilestones(rawHours, diag, nowMs);
+    // (the first hour seeds at the measured anchor; cumulative is correct). Stamp
+    // the frozen `cheaperHourAhead` flag here too so the first committed hours
+    // carry it from the start.
+    const hours = stampCheaperHourAhead(stampUnitMilestones(rawHours, diag, nowMs), diag);
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
     const previous = this.plans[diag.deviceId];
     const previousWasPending = previous !== undefined && (previous.pending || previous.latest === null);
@@ -866,17 +869,16 @@ export class DeferredObjectiveActivePlanRecorder {
     // or phase-2 expansion) extends the commitment while the existing
     // committed kWh is preserved as a floor against transient shrinkage —
     // see `mergeHoursPreservingCommitment` for the merge rules.
-    // Stamp the unit-trajectory milestones on the MERGED hours (not the pre-merge
-    // live plan): the Math.max floor can raise an earlier hour's kWh, and the
-    // milestone cumulative must include that or downstream milestones understate
-    // the target and the gate mis-releases. See `stampUnitMilestones`.
-    const effectiveHours = stampUnitMilestones(
-      objectiveChanged
-        ? hours
-        : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs),
-      diag,
-      nowMs,
-    );
+    // Stamp the unit-trajectory milestones AND the frozen `cheaperHourAhead` flag
+    // on the MERGED hours (not the pre-merge live plan): the Math.max floor can
+    // raise an earlier hour's kWh, and the milestone cumulative must include that
+    // or downstream milestones understate the target and the gate mis-releases.
+    // Both stamps freeze per hour at the booking revision and carry through later
+    // merges via `{ ...c }`. See `stampUnitMilestones` / `stampCheaperHourAhead`.
+    const mergedHours = objectiveChanged
+      ? hours
+      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs);
+    const effectiveHours = stampCheaperHourAhead(stampUnitMilestones(mergedHours, diag, nowMs), diag);
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);

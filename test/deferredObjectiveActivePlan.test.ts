@@ -236,6 +236,85 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(milestones?.at(-1)).toBe(51.5); // final milestone == target, no buffer overshoot
   });
 
+  it('freezes cheaperHourAhead per hour: true when a meaningfully-cheaper booked hour follows', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Hours 2h/3h at 100, hour 4h at 80 (≤ 100·0.95 ⇒ meaningfully cheaper).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(3 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(4 * HOUR_MS, 1.5, { price: 80 }),
+      ]),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    // 2h: later 4h is cheaper ⇒ true. 3h: later 4h cheaper ⇒ true. 4h: nothing
+    // later ⇒ false. Read straight off the current hour by the per-cycle release.
+    expect(saved()!.plansByDeviceId.dev.latest?.hours.map((hour) => hour.cheaperHourAhead))
+      .toEqual([true, true, false]);
+  });
+
+  it('does not flag cheaperHourAhead when no later hour clears the relative band', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // 4h at 97 is < 100 but within 5% ⇒ NOT meaningfully cheaper.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(3 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(4 * HOUR_MS, 1.5, { price: 97 }),
+      ]),
+    })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    expect(saved()!.plansByDeviceId.dev.latest?.hours.map((hour) => hour.cheaperHourAhead))
+      .toEqual([false, false, false]);
+  });
+
+  it('freezes committed hours\' cheaperHourAhead across a real revision; only new hours compute fresh', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First commit at 1h: 2h/3h dear, 4h cheap ⇒ [true, true, false].
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(3 * HOUR_MS, 1.5, { price: 100 }),
+        makeBucket(4 * HOUR_MS, 1.5, { price: 80 }),
+      ]),
+    })], HOUR_MS);
+    // Next settle (:58 of hour 2): a genuinely-new 5h hour is added (schedule
+    // change ⇒ a REAL revision is written), and prices are now flat. The already-
+    // committed hours must keep their frozen flag; only the new hour computes fresh.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS, // unchanged ⇒ same objective signature ⇒ merge path, not a reset
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5, { price: 90 }),
+        makeBucket(3 * HOUR_MS, 1.5, { price: 90 }),
+        makeBucket(4 * HOUR_MS, 1.5, { price: 90 }),
+        makeBucket(5 * HOUR_MS, 1.5, { price: 90 }),
+      ]),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+    recorder.flushIfDirty();
+
+    const latest = saved()!.plansByDeviceId.dev.latest;
+    // A real revision was written (not a no-op), so the freeze is exercised on the merge path.
+    expect(latest?.revision).toBe(2);
+    // 2h/3h/4h keep their frozen [true,true,false] (NOT recomputed against the new
+    // flat prices); the new 5h hour has no later hour ⇒ false.
+    expect(latest?.hours.map((hour) => hour.cheaperHourAhead)).toEqual([true, true, false, false]);
+  });
+
   it('marks pending when the flow card fires before any horizon plan exists', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
