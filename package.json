@@ -13,6 +13,7 @@
     "build": "tsc && npm run build:settings && npm run build:widgets && npm run sanitize:homey-build",
     "build:settings": "npm --workspace @pels/settings-ui run build && node scripts/sync-settings-ui.mjs",
     "build:widgets": "node scripts/build-widgets.mjs",
+    "build:nettleie-fallback": "node scripts/build-nettleie-fallback.mjs",
     "build:widgets:previews": "node widgets/headroom/scripts/build-previews.mjs",
     "widget-harness": "node tests/widget-harness/serve.mjs",
     "docs:widget-screenshots": "node scripts/build-doc-widget-screenshots.mjs",
@@ -110,7 +111,8 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.59.4",
     "vitepress": "^1.6.4",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "yaml": "^2.6.1"
   },
   "volta": {
     "node": "22.22.0",

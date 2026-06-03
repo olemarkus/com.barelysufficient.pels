@@ -1,3 +1,6 @@
+import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import { fetchAndNormalizeGridTariff, type GridTariffSettings } from './gridTariffUtils';
+
 type SpotPriceCacheDecisionParams = {
   cachedArea: unknown;
   priceArea: string;
@@ -69,4 +72,55 @@ export const buildGridTariffFallbackDates = (baseDate: Date): Array<{ label: str
     { label: 'week', date: weekAgo },
     { label: 'month', date: monthAgo },
   ];
+};
+
+export type GridTariffNveFetchResult = {
+  data: Array<Record<string, unknown>> | null;
+  attempts: Array<{ label: string; date: string }>;
+  logContext: string;
+};
+
+// Ordered, de-duplicated dates to try against NVE: today first, then the
+// historical fallbacks. Grid tariffs change rarely, so a recent day still yields
+// a usable curve when today's data has not been published yet.
+const buildGridTariffCandidateDates = (
+  baseDate: Date,
+  timeZone: string,
+): Array<{ label: string; date: string }> => {
+  const candidates = [
+    { label: 'today', date: getDateKeyInTimeZone(baseDate, timeZone) },
+    ...buildGridTariffFallbackDates(baseDate).map((fallback) => ({
+      label: fallback.label,
+      date: getDateKeyInTimeZone(fallback.date, timeZone),
+    })),
+  ];
+  return candidates.filter((candidate, index) => (
+    candidates.findIndex((other) => other.date === candidate.date) === index
+  ));
+};
+
+// Try NVE for today and then each historical fallback date, stopping at the
+// first non-empty response. Returns the data (or null), the dates attempted,
+// and the log suffix describing which date succeeded.
+export const fetchGridTariffWithDateFallback = async (params: {
+  settings: GridTariffSettings;
+  todayDate: Date;
+  timeZone: string;
+  log: (...args: unknown[]) => void;
+  errorLog?: (...args: unknown[]) => void;
+}): Promise<GridTariffNveFetchResult> => {
+  const {
+    settings, todayDate, timeZone, log, errorLog,
+  } = params;
+  const candidates = buildGridTariffCandidateDates(todayDate, timeZone);
+  for (const [index, candidate] of candidates.entries()) {
+    const data = await fetchAndNormalizeGridTariff({
+      date: candidate.date, settings, log, errorLog,
+    });
+    if (data) {
+      const logContext = index === 0 ? '' : ` (fallback ${candidate.label} ${candidate.date})`;
+      return { data, attempts: candidates.slice(0, index + 1), logContext };
+    }
+  }
+  return { data: null, attempts: candidates, logContext: '' };
 };
