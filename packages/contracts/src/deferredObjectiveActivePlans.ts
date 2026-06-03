@@ -92,6 +92,19 @@ export type DeferredObjectiveActivePlanHourV1 = {
   // (full-hour floor) or added whole (already-trimmed). Optional/back-compatible:
   // legacy entries persisted without it read as full-hour. Added 2026-06-01.
   coversFromMs?: number;
+  // Cumulative target progress in the objective's own unit (°C for temperature,
+  // % for ev_soc) the committed plan expects to have reached by the END of this
+  // hour. Computed ONCE at the revision that booked the hour, anchored at the
+  // measured value at that revision plus the cumulative booked energy through
+  // this hour converted at the revision's rate — i.e. the persisted unit
+  // trajectory. The mid-execution milestone gate (`isAheadOfHourMilestone`)
+  // compares the live measured value against this directly, so the "ahead of
+  // plan" decision never divides committed energy by a drifting live rate (kWh
+  // and units diverge under leakage / a wrong learned rate). Frozen with the
+  // hour like `coversFromMs`. Optional/back-compatible: legacy entries (or hours
+  // booked when the rate/measured anchor was unavailable) omit it, and the gate
+  // falls back to the energy comparison. Added 2026-06-03.
+  plannedUnitMilestone?: number;
 };
 
 export type DeferredObjectiveActivePlanCommitmentV1 = {

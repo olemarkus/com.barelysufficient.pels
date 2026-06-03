@@ -32,6 +32,7 @@ import {
   resolveProjectedFinishAtMs,
   sameHourSchedule,
   shouldFireNotification,
+  stampUnitMilestones,
 } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
@@ -506,15 +507,14 @@ const MAX_HISTORY_REVISIONS = 20;
 const resolveCommitment = (params: {
   objectiveChanged: boolean;
   scheduleChanged: boolean;
-  hours: DeferredObjectiveActivePlanHourV1[];
   effectiveHours: DeferredObjectiveActivePlanHourV1[];
   previous: DeferredObjectiveActivePlanV1['commitment'];
   nowMs: number;
 }): DeferredObjectiveActivePlanV1['commitment'] => {
-  if (params.objectiveChanged) {
-    return { committedAtMs: params.nowMs, hours: params.hours };
-  }
-  if (params.scheduleChanged) {
+  // `effectiveHours` carries the stamped unit milestones (for objectiveChanged it
+  // is the freshly-stamped live hours; for scheduleChanged the stamped merge), so
+  // the persisted commitment matches `latest.hours` exactly.
+  if (params.objectiveChanged || params.scheduleChanged) {
     return { committedAtMs: params.nowMs, hours: params.effectiveHours };
   }
   return params.previous;
@@ -618,7 +618,10 @@ export class DeferredObjectiveActivePlanRecorder {
     if (candidateHours === null) {
       // Diagnostic without horizonPlan (e.g. prices missing): can't compute a
       // revision. Auto-create a pending record so the UI knows the objective
-      // is being tracked.
+      // is being tracked. Unit milestones are stamped downstream — in
+      // `writeFirstRevision` (no merge) and `maybeWriteReplanRevision` (on the
+      // MERGED hours) — never on these pre-merge candidate hours, which the merge
+      // would then preserve at the wrong (pre-floor / live-anchored) value.
       this.ensurePendingRecord(diag, signature, nowMs);
       return;
     }
@@ -743,10 +746,13 @@ export class DeferredObjectiveActivePlanRecorder {
   private writeFirstRevision(
     diag: DeferredObjectiveDiagnostic,
     signature: string,
-    hours: DeferredObjectiveActivePlanHourV1[],
+    rawHours: DeferredObjectiveActivePlanHourV1[],
     reason: DeferredObjectiveActivePlanRevisionReason,
     nowMs: number,
   ): void {
+    // First commit: no prior commitment to merge, so stamp the live hours directly
+    // (the first hour seeds at the measured anchor; cumulative is correct).
+    const hours = stampUnitMilestones(rawHours, diag, nowMs);
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
     const previous = this.plans[diag.deviceId];
     const previousWasPending = previous !== undefined && (previous.pending || previous.latest === null);
@@ -860,9 +866,17 @@ export class DeferredObjectiveActivePlanRecorder {
     // or phase-2 expansion) extends the commitment while the existing
     // committed kWh is preserved as a floor against transient shrinkage —
     // see `mergeHoursPreservingCommitment` for the merge rules.
-    const effectiveHours = objectiveChanged
-      ? hours
-      : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs);
+    // Stamp the unit-trajectory milestones on the MERGED hours (not the pre-merge
+    // live plan): the Math.max floor can raise an earlier hour's kWh, and the
+    // milestone cumulative must include that or downstream milestones understate
+    // the target and the gate mis-releases. See `stampUnitMilestones`.
+    const effectiveHours = stampUnitMilestones(
+      objectiveChanged
+        ? hours
+        : mergeHoursPreservingCommitment(current.commitment?.hours ?? [], hours, nowMs),
+      diag,
+      nowMs,
+    );
     // Schedule change = user-visible "new plan" (set of charging hours).
     // Drives the `deadline_plan_changed` flow trigger.
     const scheduleChanged = !sameHourSchedule(latest.hours, effectiveHours);
@@ -956,7 +970,6 @@ export class DeferredObjectiveActivePlanRecorder {
       commitment: resolveCommitment({
         objectiveChanged,
         scheduleChanged,
-        hours,
         effectiveHours,
         previous: current.commitment,
         nowMs,

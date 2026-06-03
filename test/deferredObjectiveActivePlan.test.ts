@@ -12,6 +12,7 @@ import type {
   DeferredObjectivePlannedBucket,
 } from '../lib/objectives/deferredObjectives';
 import type {
+  DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 
@@ -100,6 +101,15 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   ...overrides,
 });
 
+// Schedule-shape view of persisted hours: drops the derived `plannedUnitMilestone`
+// (covered by its own test) so these assertions stay focused on which hours carry
+// what energy, not the unit-trajectory formula.
+const scheduleShape = (
+  hours: readonly DeferredObjectiveActivePlanHourV1[] | undefined,
+): Array<Omit<DeferredObjectiveActivePlanHourV1, 'plannedUnitMilestone'>> => (
+  (hours ?? []).map(({ plannedUnitMilestone: _drop, ...rest }) => rest)
+);
+
 const buildSeed = (overrides: Partial<ActivePlanFlowCardSeed> = {}): ActivePlanFlowCardSeed => ({
   deviceId: 'dev',
   deviceName: 'Water Heater',
@@ -170,7 +180,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pending).toBe(false);
     expect(plan.original?.revision).toBe(1);
     expect(plan.original?.reason).toBe('flow_card');
-    expect(plan.latest?.hours).toEqual([
+    expect(scheduleShape(plan.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
@@ -179,6 +189,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       committedAtMs: HOUR_MS,
       hours: plan.latest?.hours,
     });
+  });
+
+  it('persists the per-hour unit milestone (cumulative target by end of hour: anchor + ΣkWh ÷ rate)', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+    recorder.flushIfDirty();
+
+    // Anchor = measured 50 °C; rate = 1.5 kWh/°C; 1.5 kWh booked per hour ⇒ +1 °C
+    // of cumulative target per hour. So the gate can read end-of-hour targets
+    // straight off the commitment without dividing committed energy by a live rate.
+    expect(saved()!.plansByDeviceId.dev.latest?.hours.map((hour) => hour.plannedUnitMilestone))
+      .toEqual([51, 52, 53]);
   });
 
   it('marks pending when the flow card fires before any horizon plan exists', () => {
@@ -651,10 +675,47 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const expanded = recorder.getPlanForTests('dev');
 
     expect(expanded?.latest?.revision).toBe(2);
-    expect(expanded?.commitment?.hours).toEqual([
+    expect(scheduleShape(expanded?.commitment?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 5 * HOUR_MS, plannedKWh: 0.5 },
     ]);
+    // Regression: hour 5's milestone reflects the FLOORED hour-2 kWh (1.5), not
+    // the shrunk live value (1.0) — milestones are stamped on the MERGED hours.
+    // anchor 50, rate 1.5: cumulative through hour 5 = 1.5 (floored) + 0.5 = 2.0
+    // ⇒ 50 + 2.0/1.5 = 51.333…  (the pre-merge bug would have given 51.0).
+    expect(expanded?.commitment?.hours.find((h) => h.startsAtMs === 5 * HOUR_MS)?.plannedUnitMilestone)
+      .toBeCloseTo(51.333, 2);
+  });
+
+  it('keeps a committed hour\'s FROZEN milestone when re-stamping at :58 (no within-hour double-count)', () => {
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // First commit at measured 50 °C: hour 2 booked 1.5 kWh ⇒ milestone 51 (rate 1.5).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5)]),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.commitment?.hours
+      .find((h) => h.startsAtMs === 2 * HOUR_MS)?.plannedUnitMilestone).toBeCloseTo(51, 5);
+
+    // :58 settle of hour 2; the device has HEATED to 56 °C and expansion adds hour 3.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 6 * HOUR_MS,
+      currentTemperatureC: 56,
+      horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 1.5), makeBucket(3 * HOUR_MS, 1.5)]),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+    const after = recorder.getPlanForTests('dev');
+
+    // Hour 2 keeps its FROZEN 51 — NOT re-anchored at the now-measured 56 (which
+    // would give 57, double-counting the heating already delivered this hour).
+    expect(after?.commitment?.hours.find((h) => h.startsAtMs === 2 * HOUR_MS)?.plannedUnitMilestone)
+      .toBeCloseTo(51, 5);
+    // Hour 3 (new) builds ON TOP of the frozen 51: 51 + 1.5/1.5 = 52.
+    expect(after?.commitment?.hours.find((h) => h.startsAtMs === 3 * HOUR_MS)?.plannedUnitMilestone)
+      .toBeCloseTo(52, 5);
   });
 
   it('preserves committed hours when the live plan drops them mid-task (commitment cannot shrink)', () => {
@@ -721,7 +782,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       horizonPlan: makeHorizon([makeBucket(2 * HOUR_MS, 0.71)]),
     })], HOUR_MS);
     expect(recorder.getPlanForTests('dev')?.latest?.revision).toBe(1);
-    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+    expect(scheduleShape(recorder.getPlanForTests('dev')?.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
     ]);
 
@@ -746,7 +807,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // commitment is the minimum guarantee; the executor's step-climb
     // (and within-hour delivery) absorbs the extra demand against the
     // remaining bucket capacity without rewriting the commitment.
-    expect(stable?.commitment?.hours).toEqual([
+    expect(scheduleShape(stable?.commitment?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 0.71 },
     ]);
   });
@@ -773,7 +834,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(2);
     expect(plan?.original?.revision).toBe(1);
     expect(plan?.original?.hours[0]?.plannedKWh).toBe(1.5);
-    expect(plan?.latest?.hours).toEqual([
+    expect(scheduleShape(plan?.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 2 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 2 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 2 },
@@ -1447,7 +1508,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(1);
     expect(plan?.latest?.reason).toBe('flow_card');
     expect(plan?.latest?.energyNeededKWh).toBe(4.5);
-    expect(plan?.latest?.hours).toEqual([
+    expect(scheduleShape(plan?.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
@@ -1677,7 +1738,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // No growth revision: the commitment froze.
     expect(events).toEqual([]);
     // Schedule unchanged; 5h not adopted, 3h retained.
-    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+    expect(scheduleShape(recorder.getPlanForTests('dev')?.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
@@ -1732,7 +1793,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Exactly one growth event from the 5h adoption at nowMs=4h.
     expect(events).toEqual([{ reason: 'prices_revised', hours: 4 }]);
     // Elapsed hours preserved as floors; the new future hour adopted.
-    expect(recorder.getPlanForTests('dev')?.latest?.hours).toEqual([
+    expect(scheduleShape(recorder.getPlanForTests('dev')?.latest?.hours)).toEqual([
       { startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
       { startsAtMs: 4 * HOUR_MS, plannedKWh: 1.5 },
@@ -2492,7 +2553,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     })], midHour);
 
     const plan = recorder.getPlanForTests('dev');
-    expect(plan?.latest?.hours).toEqual([
+    expect(scheduleShape(plan?.latest?.hours)).toEqual([
       { startsAtMs: hourStart, plannedKWh: 1.0, coversFromMs: midHour },
       { startsAtMs: 3 * HOUR_MS, plannedKWh: 1.5 },
     ]);

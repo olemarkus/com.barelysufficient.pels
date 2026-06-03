@@ -158,6 +158,19 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Unit-milestone trajectory uses the mean rate, so it overshoots the real target (gate is
+      over-conservative).** `lib/objectives/deferredObjectives/activePlanSchedule.ts`
+      (`resolveUnitTrajectoryAnchor` / `withUnitMilestones`) converts cumulative booked energy at
+      `kWhPerDegreeC`/`kWhPerPercent` (the MEAN rate), but the booked `plannedKWh` is sized at the
+      BUFFERED rate (`energyNeededKWh = remainingUnits × bufferedRate`). So `finalMilestone` sits
+      ABOVE the objective's true target, and `isAheadOfHourMilestone` (single-milestone compare,
+      `measured ≥ thisHourMilestone`) requires the device to be *more* than a hop ahead before it
+      releases — safe, but it fires less often than it should, blunting the price deferral. Fix:
+      anchor the trajectory with the buffered rate `energyNeededKWh ÷ remainingUnits` (guard
+      `remainingUnits > ε`) so `finalMilestone == target`. Likely folded into the per-cycle
+      `:58`-commitment refactor that recomputes milestones anyway. Source: `pels-runtime-reality`
+      P2 on the unit-milestone PR.
+
 - [ ] **Extend cold-start release beyond `temperature` via observed-rate feasibility.**
       `lib/objectives/deferredObjectives/coldStartRelease.ts` (`resolveColdStartReleaseEligible`)
       fires ONLY for `temperature` objectives — bang-bang cap-off thermostats where PELS sets only

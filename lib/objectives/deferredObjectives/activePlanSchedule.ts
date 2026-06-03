@@ -30,7 +30,7 @@ export const buildHoursFromHorizonPlan = (
       byHour.set(hourStart, { plannedKWh: bucket.plannedUsefulEnergyKWh, earliestStartMs: bucket.startMs });
     }
   }
-  return [...byHour.entries()]
+  const hours = [...byHour.entries()]
     .map(([startsAtMs, { plannedKWh, earliestStartMs }]) => ({
       startsAtMs,
       plannedKWh: roundKWh(plannedKWh),
@@ -43,6 +43,71 @@ export const buildHoursFromHorizonPlan = (
       ...(earliestStartMs > startsAtMs ? { coversFromMs: earliestStartMs } : {}),
     }))
     .sort((left, right) => left.startsAtMs - right.startsAtMs);
+  // Milestones are NOT stamped here: they must reflect the committed kWh AFTER
+  // `mergeHoursPreservingCommitment` applies its floors (an earlier hour's kWh can
+  // win the Math.max, which raises the cumulative for downstream hours). The
+  // recorder calls `stampUnitMilestones` on the merged `effectiveHours` instead.
+  return hours;
+};
+
+// Resolve the anchor (measured value at this revision) and the kWh-per-unit rate
+// for the unit-milestone trajectory, kind-split. Null when either is unavailable
+// (cold-start before a rate is learned, stale read) — the hour then omits
+// `plannedUnitMilestone` and the gate falls back to its energy comparison.
+const resolveUnitTrajectoryAnchor = (
+  diag: DeferredObjectiveDiagnostic,
+): { anchorUnit: number; ratePerUnit: number } | null => {
+  const anchorUnit = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  const ratePerUnit = diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC : diag.kWhPerPercent;
+  if (typeof anchorUnit !== 'number' || !Number.isFinite(anchorUnit)) return null;
+  if (typeof ratePerUnit !== 'number' || !Number.isFinite(ratePerUnit) || ratePerUnit <= 0) return null;
+  return { anchorUnit, ratePerUnit };
+};
+
+// Stamp each hour with the cumulative target progress (in the objective's unit)
+// the plan expects by the END of that hour — `plannedUnitMilestone` in the
+// contract — so the mid-execution gate compares the live measured value against an
+// absolute target without dividing committed energy by a drifting live rate.
+//
+// Each hour's milestone is FROZEN when the hour is first committed and is NEVER
+// re-anchored afterward. Re-anchoring a committed hour at the live measured value
+// would double-count the progress already delivered within that hour (the live
+// reading already includes it). So this:
+//   - keeps any hour that already carries a milestone (committed at an earlier
+//     revision — `mergeHoursPreservingCommitment` carries it via `{ ...c }`),
+//   - stamps only genuinely-NEW hours (expansion adds, or the very first commit),
+//     accumulating each on top of the last frozen milestone so the staircase
+//     reflects the MERGED (floored) committed energy of the earlier hours — and
+//     seeds the first hour of a brand-new plan at the live measured anchor.
+// Elapsed hours are left untouched (their milestone is history) but still advance
+// the running base so a later hour after a gap accumulates correctly.
+export const stampUnitMilestones = (
+  hours: DeferredObjectiveActivePlanHourV1[],
+  diag: DeferredObjectiveDiagnostic,
+  nowMs: number,
+): DeferredObjectiveActivePlanHourV1[] => {
+  const anchor = resolveUnitTrajectoryAnchor(diag);
+  if (!anchor) return hours;
+  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  let lastMilestone: number | null = null;
+  return [...hours]
+    .sort((left, right) => left.startsAtMs - right.startsAtMs)
+    .map((hour) => {
+      const existing = hour.plannedUnitMilestone;
+      const hasExisting = typeof existing === 'number' && Number.isFinite(existing);
+      // Keep a frozen milestone (elapsed or already-committed hour); advance base.
+      if (hasExisting) {
+        lastMilestone = existing;
+        return hour;
+      }
+      // Elapsed hour with no milestone (legacy) — leave it, don't fabricate history.
+      if (hour.startsAtMs < currentHourStartMs) return hour;
+      // New current/future hour: build on the last frozen milestone, or seed the
+      // very first hour of a brand-new plan at the live measured anchor.
+      const base = lastMilestone ?? anchor.anchorUnit;
+      lastMilestone = base + hour.plannedKWh / anchor.ratePerUnit;
+      return { ...hour, plannedUnitMilestone: lastMilestone };
+    });
 };
 
 export const resolveProjectedFinishAtMs = (

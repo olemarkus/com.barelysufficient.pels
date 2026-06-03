@@ -105,3 +105,120 @@ describe('isAheadOfHourMilestone', () => {
     })).toBe(true);
   });
 });
+
+describe('isAheadOfHourMilestone — unit trajectory (bug 1)', () => {
+  // Committed hours carrying the persisted per-hour unit milestone (cumulative
+  // target value by END of hour). Current hour at HOUR_START, then future hours.
+  const milestoneHours = (
+    currentMilestone: number,
+    futureMilestones: number[],
+  ): DeferredObjectiveActivePlanHourV1[] => [
+    { startsAtMs: HOUR_START, plannedKWh: 2, plannedUnitMilestone: currentMilestone },
+    ...futureMilestones.map((plannedUnitMilestone, i) => ({
+      startsAtMs: HOUR_START + (i + 1) * HOUR_MS,
+      plannedKWh: 2,
+      plannedUnitMilestone,
+    })),
+  ];
+
+  it('decides on UNITS and ignores a drifted energy figure (the bug-1 fix)', () => {
+    // This hour's frozen target is 52; measured 53 is at/above it AND future hours
+    // exist ⇒ ahead — regardless of energyNeededKWh, which a drifted/leaky rate
+    // could make wildly wrong. Single-milestone compare: no cross-hour subtraction.
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 999, // would say NOT ahead via the energy gate
+      measuredValue: 53,
+      committedHours: milestoneHours(52, [54, 56]),
+      nowMs: NOW_MS,
+    })).toBe(true);
+  });
+
+  it('is not ahead when measured is behind this hour\'s milestone', () => {
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 0, // energy gate would say ahead; the unit gate overrides
+      measuredValue: 51, // below this hour's target of 52
+      committedHours: milestoneHours(52, [54, 56]),
+      nowMs: NOW_MS,
+    })).toBe(false);
+  });
+
+  it('is ahead exactly at this hour\'s milestone', () => {
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 999,
+      measuredValue: 52, // exactly at this hour's target
+      committedHours: milestoneHours(52, [54, 56]),
+      nowMs: NOW_MS,
+    })).toBe(true);
+  });
+
+  it('is not ahead when there are no future committed hours to defer into', () => {
+    // At/above this hour's milestone, but nothing later to carry the rest ⇒ keep
+    // heating (releasing would just stop with no fallback).
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 999,
+      measuredValue: 60,
+      committedHours: milestoneHours(52, []), // only the current hour, no future
+      nowMs: NOW_MS,
+    })).toBe(false);
+  });
+
+  it('falls back to the energy gate when no measured value is supplied', () => {
+    // No measuredValue ⇒ unit path inapplicable ⇒ energy comparison (future 4 kWh).
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 6, // 6 ≤ 4 × 0.98 is false
+      committedHours: milestoneHours(52, [54, 56]),
+      nowMs: NOW_MS,
+    })).toBe(false);
+  });
+
+  it('falls back to the energy gate when the commitment has no persisted milestones', () => {
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 6,
+      measuredValue: 54,
+      committedHours: [{ startsAtMs: HOUR_START, plannedKWh: 4 }, ...futureHours([5, 5])], // 10 kWh ⇒ 6 ≤ 9.8 true
+      nowMs: NOW_MS,
+    })).toBe(true);
+  });
+
+  it('mixed-anchor commitment: uses ONLY this hour\'s milestone (locks the P1 closed)', () => {
+    // Simulates what mergeHoursPreservingCommitment produces: the current hour's
+    // milestone was frozen at an EARLIER revision (lower measured anchor), while
+    // the future hours were re-anchored later at a much higher measured value —
+    // so their milestones (80, 90) are on a different scale than the current
+    // hour's (52). The old code subtracted across these (final − current) and
+    // could mis-release; the single-milestone compare reads ONLY the current
+    // hour's 52, so the inflated future scale is irrelevant to the result.
+    const mixedAnchorHours: DeferredObjectiveActivePlanHourV1[] = [
+      { startsAtMs: HOUR_START, plannedKWh: 2, plannedUnitMilestone: 52 }, // old, lower anchor
+      { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 80 }, // new, higher anchor
+      { startsAtMs: HOUR_START + 2 * HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 90 },
+    ];
+    // Below this hour's target (52) ⇒ NOT ahead, despite the inflated future milestones.
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 999, measuredValue: 51, committedHours: mixedAnchorHours, nowMs: NOW_MS,
+    })).toBe(false);
+    // At/above this hour's target ⇒ ahead, again independent of the future scale.
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 0, measuredValue: 53, committedHours: mixedAnchorHours, nowMs: NOW_MS,
+    })).toBe(true);
+  });
+
+  it('current hour committed but milestone missing ⇒ energy fallback (no stale earlier substitution)', () => {
+    // Latest started hour is the CURRENT hour (HOUR_START), which lacks a milestone
+    // (booked before a rate existed); an EARLIER elapsed hour has one (40). The gate
+    // must NOT reach back to the earlier 40 — it falls through to the energy gate.
+    const hours: DeferredObjectiveActivePlanHourV1[] = [
+      { startsAtMs: HOUR_START - HOUR_MS, plannedKWh: 2, plannedUnitMilestone: 40 }, // elapsed, has milestone
+      { startsAtMs: HOUR_START, plannedKWh: 2 }, // current hour, NO milestone
+      { startsAtMs: HOUR_START + HOUR_MS, plannedKWh: 5 }, // future
+    ];
+    // If it (wrongly) used the stale 40, measured 60 ≥ 40 ⇒ true. The fix takes the
+    // energy path instead: future 5 kWh, need 6 ⇒ 6 ≤ 5 × 0.98 is false.
+    expect(isAheadOfHourMilestone({
+      energyNeededKWh: 6,
+      measuredValue: 60,
+      committedHours: hours,
+      nowMs: NOW_MS,
+    })).toBe(false);
+  });
+});
