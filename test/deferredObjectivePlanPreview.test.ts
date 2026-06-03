@@ -563,10 +563,12 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       recorder.observe(diagnostics, NOW_MS);
       const persisted = recorder.getPlanForTests(deviceId);
       const recorderHours = persisted?.latest?.hours ?? [];
-      // The recorder stamps `plannedUnitMilestone` (a control-gate field); the
-      // preview/schedule fidelity is about which hours carry what energy, so
-      // compare the schedule shape without it.
-      const recorderSchedule = recorderHours.map(({ plannedUnitMilestone: _m, ...hour }) => hour);
+      // The recorder stamps `plannedUnitMilestone` and `cheaperHourAhead`
+      // (control-gate fields); the preview/schedule fidelity is about which hours
+      // carry what energy, so compare the schedule shape without them.
+      const recorderSchedule = recorderHours.map(
+        ({ plannedUnitMilestone: _m, cheaperHourAhead: _c, ...hour }) => hour,
+      );
       const recorderEnergyKWh = persisted?.latest?.energyNeededKWh ?? null;
       const recorderFinishAtMs = resolveProjectedFinishAtMs(diag);
       // Sanity-check the recorder produced a non-trivial schedule from the

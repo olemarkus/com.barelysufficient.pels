@@ -105,6 +105,17 @@ export type DeferredObjectiveActivePlanHourV1 = {
   // booked when the rate/measured anchor was unavailable) omit it, and the gate
   // falls back to the energy comparison. Added 2026-06-03.
   plannedUnitMilestone?: number;
+  // Whether, at the revision that booked this hour, a meaningfully-cheaper
+  // (relative `isMeaningfullyCheaper` band), booked, non-reserve hour existed
+  // strictly LATER in the plan than this one. Frozen with the hour like
+  // `plannedUnitMilestone` (computed ONCE at the booking revision), so the
+  // mid-execution price-deferral release can read "is there a cheaper hour
+  // ahead?" straight off the current hour without re-scanning a live price
+  // series each cycle (the per-power-cycle clock stays a pure read of frozen
+  // state; only the `:58` settle re-plans). Optional/back-compatible: legacy
+  // entries (or hours booked when the plan carried no comparable prices) omit
+  // it, and the consumer treats absence as `false`. Added 2026-06-03.
+  cheaperHourAhead?: boolean;
 };
 
 export type DeferredObjectiveActivePlanCommitmentV1 = {
