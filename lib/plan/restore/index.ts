@@ -236,7 +236,8 @@ export function applyRestorePlan(params: {
     });
   } else if (effectiveTiming.inRestoreCooldown) {
     ({ availableHeadroom, restoredOneThisCycle } = applyRestorePlanInCooldown({
-      deviceMap, state, effectiveTiming, deps, availableHeadroom, restoredOneThisCycle,
+      deviceMap, swapState, state, effectiveTiming, deps,
+      availableHeadroom, restoredOneThisCycle, restoredThisCycle,
     }));
   }
 
@@ -286,6 +287,38 @@ function applyRestoreCandidates(params: {
   return { availableHeadroom, restoredOneThisCycle };
 }
 
+// Single shared entry for every stepped-restore path. It applies the pending-swap source-off
+// hold (a stepped-swap target must not be restored while its swapped-out sources are still on)
+// and then routes through planRestoreForSteppedDevice with the stepped-swap executor context.
+// Funnelling normal restore, restore cooldown, meter-settling, and active stepped-upgrade paths
+// through here keeps both admission wrappers applied uniformly.
+function planSteppedRestoreThroughSourceHold(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  swapState: SwapState;
+  state: PlanEngineState;
+  timing: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
+  availableHeadroom: number;
+  restoredOneThisCycle: boolean;
+  debugStructured: RestoreDeps['debugStructured'];
+  steppedSwapExecutor: SteppedSwapExecutor;
+}): RestoreLoopState {
+  const { dev, deviceMap, swapState, availableHeadroom, restoredOneThisCycle } = params;
+  if (holdPendingSwapTargetUntilSourcesAreOff({ swapState, targetDevice: dev, deviceMap })) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
+  return planRestoreForSteppedDevice({
+    dev,
+    deviceMap,
+    state: params.state,
+    timing: params.timing,
+    availableHeadroom,
+    restoredOneThisCycle,
+    debugStructured: params.debugStructured,
+    swapExecutor: params.steppedSwapExecutor,
+  });
+}
+
 function applyActiveSteppedRestoreCandidates(params: {
   deviceMap: Map<string, DevicePlanDevice>;
   swapState: SwapState;
@@ -300,23 +333,17 @@ function applyActiveSteppedRestoreCandidates(params: {
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
     .filter((dev) => isObservedOn(dev));
   for (const dev of activeSteppedDevices) {
-    if (holdPendingSwapTargetUntilSourcesAreOff({
-      swapState: params.swapState,
-      targetDevice: dev,
-      deviceMap: params.deviceMap,
-    })) continue;
-    const result = planRestoreForSteppedDevice({
+    ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
       dev,
       deviceMap: params.deviceMap,
+      swapState: params.swapState,
       state: params.state,
       timing: params.timing,
       availableHeadroom,
       restoredOneThisCycle,
       debugStructured: params.debugStructured,
-      swapExecutor: params.steppedSwapExecutor,
-    });
-    availableHeadroom = result.availableHeadroom;
-    restoredOneThisCycle = result.restoredOneThisCycle;
+      steppedSwapExecutor: params.steppedSwapExecutor,
+    }));
   }
   return { availableHeadroom, restoredOneThisCycle };
 }
@@ -362,15 +389,16 @@ function applyRestoreCandidate(params: {
     });
   }
   if (params.candidate.kind === 'stepped' && isOffSteppedRestoreCandidate(dev)) {
-    return planRestoreForSteppedDevice({
+    return planSteppedRestoreThroughSourceHold({
       dev,
       deviceMap: params.deviceMap,
+      swapState: params.swapState,
       state: params.state,
       timing: params.timing,
       availableHeadroom: params.availableHeadroom,
       restoredOneThisCycle: params.restoredOneThisCycle,
       debugStructured: params.deps.debugStructured,
-      swapExecutor: params.steppedSwapExecutor,
+      steppedSwapExecutor: params.steppedSwapExecutor,
     });
   }
   return currentState;
@@ -408,14 +436,25 @@ function buildSteppedSwapExecutor(params: {
 // cognitive complexity within the allowed ceiling.
 function applyRestorePlanInCooldown(params: {
   deviceMap: Map<string, DevicePlanDevice>;
+  swapState: SwapState;
   state: PlanEngineState;
-  effectiveTiming: Parameters<typeof planRestoreForSteppedDevice>[0]['timing'];
+  effectiveTiming: RestoreTiming;
   deps: RestoreDeps;
   availableHeadroom: number;
   restoredOneThisCycle: boolean;
+  restoredThisCycle: Set<string>;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
-  const { deviceMap, state, effectiveTiming, deps } = params;
+  const { deviceMap, swapState, state, effectiveTiming, deps, restoredThisCycle } = params;
   let { availableHeadroom, restoredOneThisCycle } = params;
+  const steppedSwapExecutor = buildSteppedSwapExecutor({
+    deviceMap,
+    onDevices: getOnDevices(Array.from(deviceMap.values()), deps.getShedBehavior),
+    swapState,
+    state,
+    timing: effectiveTiming,
+    restoredThisCycle,
+    deps,
+  });
   const meterSettlingRemainingSec = resolveMeterSettlingRemainingSec({
     timing: effectiveTiming,
     lastRestoreTs: state.lastRestoreMs,
@@ -435,17 +474,26 @@ function applyRestorePlanInCooldown(params: {
   // stepped devices bypass it (they were already drawing power before the last restore).
   // In the meter-settling sub-path, off stepped devices are already marked above, so only
   // active devices need processing.
+  //
+  // Funnel through planSteppedRestoreThroughSourceHold so the pending-swap source-off hold and
+  // stepped-swap executor context apply here exactly as they do on the normal restore path —
+  // an active stepped-swap target must not escalate while its swapped-out sources are still on.
   const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   const eligibleStepped = meterSettlingRemainingSec !== null
     ? steppedCandidates.filter((dev) => isObservedOn(dev))
     : steppedCandidates;
   for (const dev of eligibleStepped) {
-    const result = planRestoreForSteppedDevice({
-      dev, deviceMap, state, timing: effectiveTiming,
-      availableHeadroom, restoredOneThisCycle, debugStructured: deps.debugStructured,
-    });
-    availableHeadroom = result.availableHeadroom;
-    restoredOneThisCycle = result.restoredOneThisCycle;
+    ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
+      dev,
+      deviceMap,
+      swapState,
+      state,
+      timing: effectiveTiming,
+      availableHeadroom,
+      restoredOneThisCycle,
+      debugStructured: deps.debugStructured,
+      steppedSwapExecutor,
+    }));
   }
   return { availableHeadroom, restoredOneThisCycle };
 }

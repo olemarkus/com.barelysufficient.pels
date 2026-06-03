@@ -1317,6 +1317,294 @@ describe('restore cooldown backoff', () => {
     expect(reasonText(steppedDevice?.reason)).toBe('shed invariant: low -> medium blocked (1 device(s) shed, max step: low)');
   });
 
+  it('holds an active stepped-swap target during restore cooldown while a swapped-out source is still on', () => {
+    // Regression: the restore-cooldown path used to call planRestoreForSteppedDevice directly
+    // without the pending-swap source-off hold, so an active stepped-swap target could escalate
+    // its step before its swapped-out source was confirmed off. Funnelling the cooldown path
+    // through the shared wrapper now applies the hold here too.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.swapByDevice = {
+      'dev-source': { swappedOutFor: 'dev-step' },
+      'dev-step': { pendingTarget: true, timestamp: now },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        // Swapped-out source has NOT been confirmed off yet (still observed on).
+        buildPlanDevice({
+          id: 'dev-source',
+          name: 'Source heater',
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'shed',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          currentOn: true,
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    // The target is held pending — it must not escalate past its current step.
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(reasonText(steppedDevice?.reason)).toBe('swap pending');
+  });
+
+  it('holds an active stepped-swap target during meter settling while a swapped-out source is still on', () => {
+    // Meter-settling is the inRestoreCooldown sub-path where the whole-home sample has not yet
+    // refreshed past the last restore. Active stepped devices are still processed here, so the
+    // source-off hold must apply.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.swapByDevice = {
+      'dev-source': { swappedOutFor: 'dev-step' },
+      'dev-step': { pendingTarget: true, timestamp: now },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        buildPlanDevice({
+          id: 'dev-source',
+          name: 'Source heater',
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'shed',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          currentOn: true,
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
+        powerTracker: { lastTimestamp: null } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    expect(steppedDevice?.plannedState).toBe('keep');
+    expect(steppedDevice?.desiredStepId).toBe('low');
+    expect(reasonText(steppedDevice?.reason)).toBe('swap pending');
+  });
+
+  it('lets an active stepped-swap target escalate during restore cooldown once its source is off', () => {
+    // Contrast to the hold cases: with the swapped-out source confirmed off, the source-off hold
+    // releases and the active stepped device escalates as before (cooldown gate bypassed for
+    // active devices). Proves the hold is the only added gate, not a blanket cooldown block.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+    state.swapByDevice = {
+      'dev-source': { swappedOutFor: 'dev-step' },
+      'dev-step': { pendingTarget: true, timestamp: now },
+    };
+
+    const result = applyRestorePlan({
+      planDevices: [
+        // Source is now confirmed off — the hold should release.
+        buildPlanDevice({
+          id: 'dev-source',
+          name: 'Source heater',
+          currentState: 'off',
+          currentOn: false,
+          plannedState: 'shed',
+          powerKw: 2,
+          expectedPowerKw: 2,
+        }),
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Tank',
+          currentState: 'on',
+          currentOn: true,
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 5, headroom: 5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+
+    // No longer held by the source-off hold: the device is not parked on the swap-pending reason
+    // and is free to progress through the normal stepped-restore gates (shed invariant / admit).
+    expect(reasonText(steppedDevice?.reason)).not.toBe('swap pending');
+    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.shedInvariant });
+  });
+
+  it('admits a stepped-swap for an active boosted device during restore cooldown by shedding a lower-priority peer', () => {
+    // Behavioral consequence of threading the stepped-swap executor into the restore-cooldown
+    // path. For an ACTIVE stepped device applySteppedDeviceGates zeroes inRestoreCooldown, so it
+    // reaches admitSteppedRestore. Previously the cooldown branch passed no swapExecutor, so the
+    // `if (swapExecutor && canUseSwapForSteppedRestore(...))` guard was false and the device was
+    // rejected for insufficient headroom. With the executor now threaded, a boosted active device
+    // can fire a swap during cooldown — shedding a lower-priority on-peer — exactly as it does on
+    // the normal restore path. This makes cooldown consistent with the normal path.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'keep',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          temperatureBoostActive: true,
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 2,
+        }),
+      ],
+      // Headroom too small to escalate low -> medium outright (needs ~0.95kW), forcing the swap
+      // branch. The fresh whole-home sample (measurementTs > lastRestoreMs) keeps us on the
+      // restore-cooldown path rather than meter settling, and lets the swap admit (not defer).
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        powerTracker: { lastTimestamp: state.lastRestoreMs + 1 } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const steppedDevice = result.planDevices.find((device) => device.id === 'dev-step');
+    const sourceDevice = result.planDevices.find((device) => device.id === 'lower-priority');
+
+    // The active boosted target acquired a pending swap (it would have been rejected for
+    // insufficient headroom without the executor on the cooldown path).
+    expect(steppedDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.swapPending });
+    // The lower-priority peer is shed for the swap, and the swap link is recorded.
+    expect(sourceDevice?.plannedState).toBe('shed');
+    expect(sourceDevice?.reason).toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
+    expect(result.stateUpdates.swapByDevice['lower-priority']?.swappedOutFor).toBe('dev-step');
+    // Swaps do not consume the per-cycle restore slot (mirrors the normal-path swap behavior).
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
+  it('defers a stepped-swap during meter settling for an active boosted device until a fresh sample arrives', () => {
+    // Same active-boosted-swap setup, but on the meter-settling sub-path (no whole-home sample
+    // past lastRestoreMs → measurementTs null). attemptSwapRestore must NOT fire the swap: no
+    // peer is shed and no swap link is recorded, so meter settling still gates swap admission
+    // even though the executor is now threaded into the cooldown branch.
+    const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+    vi.setSystemTime(now);
+    const state = createPlanEngineState();
+    state.lastRestoreMs = now - 5_000;
+
+    const result = applyRestorePlan({
+      planDevices: [
+        steppedPlanDevice({
+          id: 'dev-step',
+          name: 'Priority tank',
+          priority: 1,
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'keep',
+          selectedStepId: 'low',
+          desiredStepId: 'low',
+          temperatureBoostActive: true,
+          measuredPowerKw: 1.25,
+          planningPowerKw: 1.25,
+        }),
+        buildPlanDevice({
+          id: 'lower-priority',
+          name: 'Lower priority heater',
+          priority: 5,
+          currentState: 'on',
+          currentOn: true,
+          plannedState: 'keep',
+          controllable: true,
+          powerKw: 2,
+        }),
+      ],
+      context: buildContext({ headroomRaw: 0.5, headroom: 0.5 }),
+      state,
+      sheddingActive: false,
+      deps: {
+        // Stale whole-home sample (no fresh measurement past lastRestoreMs) → meter settling.
+        powerTracker: { lastTimestamp: null } as PowerTrackerState,
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+        log: vi.fn(),
+        logDebug: vi.fn(),
+      },
+    });
+
+    const sourceDevice = result.planDevices.find((device) => device.id === 'lower-priority');
+
+    // No swap fired during meter settling: the lower-priority peer is not shed for the swap.
+    expect(sourceDevice?.reason).not.toMatchObject({ code: PLAN_REASON_CODES.swappedOut });
+    expect(result.stateUpdates.swapByDevice['lower-priority']?.swappedOutFor).toBeUndefined();
+    expect(result.restoredOneThisCycle).toBe(false);
+  });
+
   it('keeps meter settling bounded to 60 seconds even when restore cooldown backs off longer', () => {
     const now = Date.UTC(2024, 0, 1, 0, 1, 0);
     vi.setSystemTime(now);
