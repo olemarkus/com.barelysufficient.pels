@@ -24,11 +24,18 @@ body {
 /* ----- Projected summary line ----- */
 
 .summary {
+  /* Hold the full status legible at real device widths (320–480 px): never let
+     the flex chart below squeeze it (flex-shrink: 0), and let it wrap instead of
+     clipping. `overflow-wrap: anywhere` keeps a long number/unit from spilling
+     past the tile even when the segments can't break on the ` · ` separators. */
+  flex: 0 0 auto;
   margin: 0;
   font-size: var(--pw-font-size-title, 17px);
   line-height: var(--pw-line-title, 24px);
   font-weight: var(--pw-weight-medium, 500);
   color: var(--pw-text, #1f252a);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .summary:empty {

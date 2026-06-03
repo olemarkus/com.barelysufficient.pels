@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import {
   renderEmptyState,
   renderWidget,
   resolveSummaryText,
 } from '../widgets/plan_budget/src/public/chart';
+import { findRuleBlock, parseCssRuleBlocks } from './cssTestUtils';
 import { PREVIEW_TODAY_PAYLOAD } from '../widgets/plan_budget/src/public/previewPayloads';
 import type { PlanPriceWidgetReadyPayload } from '../widgets/plan_budget/src/planPriceWidgetTypes';
 import {
@@ -417,5 +421,33 @@ describe('plan budget widget browser', () => {
     document.body.innerHTML = '<main></main>';
 
     expect(installWidget(window as WidgetWindow, document)).toBeNull();
+  });
+});
+
+// The status/summary line must stay fully legible at real device widths
+// (320–480 px). jsdom does not compute layout (no real wrapping or scrollWidth),
+// so we pin the source rule that keeps the line from truncating instead:
+//   - `flex: 0 0 auto`  → the flex chart below can never squeeze the summary,
+//   - `white-space: normal` + `overflow-wrap: anywhere` → it wraps rather than
+//     clipping, even for a long unbreakable number/unit that can't break on the
+//     ` · ` separators.
+describe('plan budget widget summary CSS', () => {
+  const css = readFileSync(
+    resolve(process.cwd(), 'widgets/plan_budget/src/public/index.css'),
+    'utf8',
+  );
+  const summary = findRuleBlock(parseCssRuleBlocks(css), '.summary');
+
+  test('the .summary rule exists', () => {
+    expect(summary).toBeDefined();
+  });
+
+  test('the summary cannot be squeezed by the flex chart', () => {
+    expect(summary?.body).toMatch(/flex\s*:\s*0\s+0\s+auto/);
+  });
+
+  test('the summary wraps instead of truncating, even for unbreakable tokens', () => {
+    expect(summary?.body).toMatch(/white-space\s*:\s*normal/);
+    expect(summary?.body).toMatch(/overflow-wrap\s*:\s*anywhere/);
   });
 });

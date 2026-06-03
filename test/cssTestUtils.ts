@@ -64,6 +64,18 @@ export const isUnguardedDisplayRule = (
   });
 };
 
+/**
+ * Find the first rule block whose selector list contains `sel` as a complete
+ * class token (so `.summary` matches `.summary` and `.summary:empty` but not a
+ * `.summary-foo` neighbour). Returns `undefined` when no block targets it.
+ */
+export const findRuleBlock = (
+  ruleBlocks: readonly CssRuleBlock[],
+  sel: string,
+): CssRuleBlock | undefined => ruleBlocks.find(
+  (b) => b.selectors.split(',').some((member) => targetsSelector(member.trim(), sel)),
+);
+
 /** Find the blanket `[hidden]` reset rule that also sets `display`, if present. */
 export const findBlanketHiddenReset = (
   ruleBlocks: readonly CssRuleBlock[],
