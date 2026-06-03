@@ -112,11 +112,11 @@ export const sameHourSchedule = (
 //
 // We split `committed` relative to the ACTUAL current hour
 // (`floor(nowMs / ONE_HOUR_MS)`), NOT relative to the live plan's earliest
-// hour. The horizon allocator is a price/policy optimizer
-// (`bucketAllocation.ts` sorts by reserve→preference→policyScore→time, and
+// hour. The horizon allocator is a price optimizer
+// (`bucketAllocation.ts` sorts by reserve→relative-price-band→time, and
 // `buildHoursFromHorizonPlan` DROPS every bucket with
-// `plannedUsefulEnergyKWh <= 0`), so when near-term hours are expensive or
-// carry an `avoid` price level they are allocated 0 kWh and vanish from the
+// `plannedUsefulEnergyKWh <= 0`), so when near-term hours are relatively
+// expensive they are allocated 0 kWh and vanish from the
 // live set. The live plan's earliest populated hour can therefore be a FUTURE
 // hour while the current hour is still pending — keying the partition off the
 // live earliest hour would misclassify still-pending committed hours as

@@ -413,19 +413,22 @@ describe('resolveDeferredObjectiveDeadline', () => {
 });
 
 describe('buildDeferredObjectivePolicyHorizon', () => {
-  it('marks expensive raw-price buckets as avoid when price factors are unavailable', () => {
+  it('carries the raw per-bucket price through to the horizon buckets', () => {
     const result = buildDeferredObjectivePolicyHorizon({
       nowMs: NOW_MS,
       deadlineAtMs: NOW_MS + 4 * HOUR_MS,
       priceOptimizationEnabled: true,
       dailyBudgetSnapshot: buildSnapshot({
-        includePriceFactor: false,
         prices: Array.from({ length: 24 }, (_, index) => (index === 18 ? 100 : 10)),
       }),
     });
 
     expect(result.reasonCode).toBeNull();
-    expect(result.buckets.map((bucket) => bucket.preference)).toContain('avoid');
+    // The raw price is the sole price signal the allocator orders on; the
+    // expensive hour carries its dear price unchanged, the rest the cheap one.
+    const prices = result.buckets.map((bucket) => bucket.price);
+    expect(prices).toContain(100);
+    expect(prices).toContain(10);
   });
 
   it('sets per-bucket maxUsefulEnergyKWh from per-bucket budget minus uncontrolled forecast', () => {
@@ -797,7 +800,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       requestedMinimumStepId: 'low',
       horizonBucketCount: 5,
     });
-    expect(diagnostic?.horizonPlan?.plannedBuckets.some((bucket) => bucket.preference === 'preferred')).toBe(true);
+    expect(diagnostic?.horizonPlan?.plannedBuckets.every((bucket) => bucket.price === 5)).toBe(true);
   });
 
   it('reports zero budget-exhausted buckets for an exempt-from-budget task on an exhausted budget', () => {

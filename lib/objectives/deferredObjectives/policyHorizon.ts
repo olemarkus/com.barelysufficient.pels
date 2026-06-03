@@ -34,7 +34,6 @@ type PolicyBucketSource = {
   startMs: number;
   endMs: number;
   price: number;
-  priceFactor: number | null;
   backgroundKWh: number | null;
   perBucketBudgetKWh: number | null;
   // True when the per-bucket budget collapsed to 0 specifically because
@@ -112,8 +111,8 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
 // the SAME `collectSnapshotPriceBuckets` source the policy horizon consumes,
 // so a cost estimate computed by multiplying planned kWh by these prices uses
 // exactly the price data the planner saw. Returns an empty map when the
-// snapshot has no usable price buckets. Used by the plan-preview composition;
-// the live planner does not need raw prices (it ranks them into `policyScore`).
+// snapshot has no usable price buckets. Used by the plan-preview composition,
+// which needs the raw per-bucket price to cost the plan.
 export const buildDeferredObjectivePolicyBucketPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
 ): Map<string, number> => {
@@ -242,14 +241,12 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
     ) {
       return [];
     }
-    const priceFactor = day.buckets.priceFactor?.[index] ?? null;
     const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
     return [{
       id: startIso,
       startMs,
       endMs,
       price,
-      priceFactor: typeof priceFactor === 'number' && Number.isFinite(priceFactor) ? priceFactor : null,
       backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
       perBucketBudgetKWh,
       dailyBudgetExhausted: isDailyBudgetExhausted({
@@ -333,7 +330,6 @@ const mapPolicyBuckets = (
   hardCapKw: number | null,
   concurrentEligibleCount: number | ((bucketStartMs: number) => number),
 ): DeferredObjectiveHorizonBucket[] => {
-  const ranked = rankPrices(buckets.map((bucket) => bucket.price));
   // Resolve the eligible count per bucket so a task that drops out of
   // eligibility mid-horizon (its deadline passes) stops dividing the
   // reserved headroom on later buckets. Number callers collapse to a
@@ -343,20 +339,18 @@ const mapPolicyBuckets = (
       ? resolveEligibleShare(concurrentEligibleCount(bucketStartMs))
       : resolveEligibleShare(concurrentEligibleCount)
   );
-  return buckets.map((bucket, index) => {
-    const priceFactor = bucket.priceFactor;
-    const rankedScore = ranked[index] ?? 1;
+  return buckets.map((bucket) => {
     const cap = resolveMaxUsefulEnergyKWh(bucket, exemptFromBudget);
     const reservedHeadroomKw = resolveReservedHeadroomKw(bucket, hardCapKw, shareForBucket(bucket.startMs));
     return {
       id: bucket.id,
       startMs: bucket.startMs,
       endMs: bucket.endMs,
-      preference: resolveBucketPreference(priceFactor, rankedScore),
-      policyScore: priceFactor ?? rankedScore,
-      // Raw price carried for the relative price-deferral test (ratio-based,
-      // unit-invariant). `collectSnapshotPriceBuckets` already guarantees a
-      // finite price on every source bucket.
+      // Raw price is the sole price signal. The allocator fills hours
+      // cheapest-first by comparing these relatively (currency-invariant band)
+      // and the live deferral compares them by ratio.
+      // `collectSnapshotPriceBuckets` already guarantees a finite price on every
+      // source bucket.
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),
@@ -411,23 +405,4 @@ const resolveMaxUsefulEnergyKWh = (
   if (exemptFromBudget) return null;
   if (bucket.perBucketBudgetKWh === null || bucket.backgroundKWh === null) return null;
   return Math.max(0, bucket.perBucketBudgetKWh - bucket.backgroundKWh);
-};
-
-const rankPrices = (prices: number[]): number[] => {
-  if (prices.length === 0) return [];
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const spread = max - min;
-  if (spread <= 0) return prices.map(() => 1);
-  return prices.map((price) => 0.8 + ((max - price) / spread) * 0.4);
-};
-
-const resolveBucketPreference = (
-  priceFactor: number | null,
-  rankedScore: number,
-): DeferredObjectiveHorizonBucket['preference'] => {
-  const score = priceFactor ?? rankedScore;
-  if (score >= 1.1) return 'preferred';
-  if (score <= 0.9) return 'avoid';
-  return 'neutral';
 };

@@ -112,8 +112,9 @@ export class DeferredObjectiveDecorationController {
 }
 
 // Devices whose smart task is on track AND has no allocated energy this hour
-// (current bucket is `preference: 'avoid'`, or the task is between planned
-// hours). Used downstream by `normalizeShedReasons` to render the
+// (the current hour was relatively expensive so the allocator booked the load
+// into cheaper hours, or the task is between planned hours). Used downstream by
+// `normalizeShedReasons` to render the
 // `deferredObjectiveAvoid` reason ("Waiting for cheaper hours") instead of the
 // misleading capacity/dailyBudget fallback when the device ends up held.
 //
@@ -122,7 +123,7 @@ export class DeferredObjectiveDecorationController {
 // will be met. `at_risk` / `cannot_meet` tasks must fall through to the
 // physical-constraint framing so the Overview doesn't mask a failure the user
 // already got notified about. `inactive` / `satisfied` / `invalid` never reach
-// this branch because they don't co-occur with a current-bucket avoid.
+// this branch because they don't co-occur with an unbooked current hour.
 export const resolveDeferredAvoidDeviceIds = (
   evaluations: readonly DeferredObjectiveDiagnostic[],
 ): Set<string> => {
@@ -140,8 +141,8 @@ export const resolveDeferredAvoidDeviceIds = (
     }
     if (diag.status !== 'on_track') continue;
     const currentBucket = diag.horizonPlan?.currentBucket;
-    const isAvoidBucket = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
-    if (isAvoidBucket) avoidIds.add(diag.deviceId);
+    const currentHourUnbooked = !currentBucket || currentBucket.plannedUsefulEnergyKWh <= 0;
+    if (currentHourUnbooked) avoidIds.add(diag.deviceId);
   }
   return avoidIds;
 };

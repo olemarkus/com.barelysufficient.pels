@@ -19,8 +19,7 @@ import type {
 //   `none`          = no shortfall (target met or `unplannedUsefulEnergyKWh
 //                     <= epsilonKWh`), or the reasonCode is one of the
 //                     non-shortfall variants (`planned_with_margin`,
-//                     `planned_using_deadline_reserve`,
-//                     `planned_using_policy_avoid`, etc.). Persisting `none`
+//                     `planned_using_deadline_reserve`, etc.). Persisting `none`
 //                     is the byte-stable "no budget-bound recourse" shape;
 //                     the recorder only writes the field on the cases where
 //                     it's meaningful.

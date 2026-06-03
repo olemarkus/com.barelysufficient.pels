@@ -62,8 +62,9 @@ export const PLAN_STATE_DAILY_BUDGET_STATUS = "Limited by today's daily budget";
 export const PLAN_STATE_HOURLY_BUDGET_STATUS = 'Limited — this hour is near the hard cap';
 
 // Status line for devices held because the smart task is between planned hours
-// (current bucket is `preference: avoid`, or the task hasn't started yet, or it
-// already finished). The smart-task framing wins over capacity/daily framing
+// (the current hour was relatively expensive so the load was booked into cheaper
+// hours, or the task has not started yet, or it has already finished). The
+// smart-task framing wins over capacity/daily framing
 // when both apply because the user opted into the price-aware plan and that's
 // the intent being honoured. Set by `normalizeShedReasons` in
 // `lib/plan/planReasons.ts` from the deferred-objective admission decisions.

@@ -4424,6 +4424,8 @@ module.exports = __toCommonJS(api_exports);
 
 // lib/objectives/deferredObjectives/bucketAllocation.ts
 var HOUR_MS = 60 * 60 * 1e3;
+var PRICE_BAND_MARGIN = 0.05;
+var PRICE_BAND_LOG_BASE = Math.log(1 + PRICE_BAND_MARGIN);
 
 // lib/logging/logger.ts
 var import_pino = __toESM(require_pino());

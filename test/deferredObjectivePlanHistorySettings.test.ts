@@ -22,7 +22,6 @@ const v2Entry = {
   outcome: 'met',
   metAtMs: HOUR_MS - 1,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [{ fromMs: 0, toMs: HOUR_MS }],
   discoveredFrom: 'observation',
 };
@@ -76,6 +75,26 @@ describe('normalizeDeferredObjectivePlanHistory v2 → v3 migration', () => {
     });
     expect(result.entries).toHaveLength(1);
     expect(result.entries[0]!.id).toBe('fixed-id-1');
+  });
+
+  it('loads a legacy entry that still carries the removed `usedPolicyAvoid` field', () => {
+    // `usedPolicyAvoid` was dropped from the schema and its validator check.
+    // Entries persisted before that removal still carry the field; the validator
+    // must tolerate the extra key (never reject/drop the entry) so pre-refactor
+    // history keeps loading. Locks in the forward-compat guarantee.
+    const legacyEntry = {
+      ...v2Entry,
+      id: 'legacy-with-policy-avoid',
+      originalPlan: null,
+      finalPlan: null,
+      usedPolicyAvoid: true,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 3,
+      entries: [legacyEntry],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.id).toBe('legacy-with-policy-avoid');
   });
 });
 

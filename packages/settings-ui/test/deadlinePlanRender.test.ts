@@ -45,7 +45,6 @@ const buildHistoryEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry>
   outcome: 'met',
   metAtMs: Date.UTC(2026, 4, 6, 4, 42, 0),
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [{
     fromMs: Date.UTC(2026, 4, 6, 0, 0, 0),
     toMs: Date.UTC(2026, 4, 6, 6, 0, 0),

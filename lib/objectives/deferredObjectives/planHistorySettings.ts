@@ -228,7 +228,6 @@ const hasValidProgress = (v: Record<string, unknown>): boolean => (
 const hasValidOutcome = (v: Record<string, unknown>): boolean => {
   if (!isOutcome(v.outcome)) return false;
   if (typeof v.usedDeadlineReserve !== 'boolean') return false;
-  if (typeof v.usedPolicyAvoid !== 'boolean') return false;
   // `metReason` is optional and only meaningful on `met` outcomes. Reject
   // entries that carry it on any other outcome (treat as schema tamper)
   // so the consumer never has to disambiguate "stalled but missed".

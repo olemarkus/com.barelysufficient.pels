@@ -60,7 +60,6 @@ const makeEntry = (params: {
     outcome,
     metAtMs: outcome === 'met' ? deadlineAtMs - HOUR : null,
     usedDeadlineReserve: false,
-    usedPolicyAvoid: false,
     observedIntervals: [{ fromMs: startedAtMs, toMs: deadlineAtMs }],
     discoveredFrom: 'observation',
     originalPlan: {

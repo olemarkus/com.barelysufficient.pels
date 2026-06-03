@@ -62,7 +62,6 @@ const bucketsTo = (nowMs: number, deadlineAtMs: number): DeferredObjectiveHorizo
       id: new Date(h).toISOString(),
       startMs: Math.max(h, nowMs),
       endMs: h + HOUR_MS,
-      preference: 'preferred',
     });
   }
   return buckets;

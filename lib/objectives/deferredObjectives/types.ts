@@ -5,11 +5,6 @@ export type DeferredObjectiveKind =
   | 'generic_energy'
   | 'temperature';
 
-export type DeferredObjectiveBucketPreference =
-  | 'avoid'
-  | 'neutral'
-  | 'preferred';
-
 export type DeferredObjectiveHorizonStatus =
   | 'at_risk'
   | 'cannot_meet'
@@ -30,7 +25,6 @@ export type DeferredObjectiveHorizonStatusDetail =
   | 'missing_active_step'
   | 'no_bucket_capacity'
   | 'planned_using_deadline_reserve'
-  | 'planned_using_policy_avoid'
   | 'planned_with_margin'
   | 'target_cannot_be_met';
 
@@ -72,13 +66,13 @@ export type DeferredObjectiveHorizonBucket = {
   id: string;
   startMs: number;
   endMs: number;
-  preference?: DeferredObjectiveBucketPreference;
-  policyScore?: number;
   // Raw per-bucket price in the source currency (øre, EUR, eurocent, … — the
   // series carries no unit at this layer; see `collectSnapshotPriceBuckets`).
-  // Consumed ONLY by the relative price-deferral test, which compares hours by
-  // ratio so it stays unit-invariant. Optional/back-compat: missing → no price
-  // → the deferral test treats the hour as non-comparable.
+  // The SOLE price signal: the allocator fills hours cheapest-first by comparing
+  // these prices relatively (currency-invariant band, see `bucketAllocation.ts`)
+  // and the live deferral compares them by ratio. Optional/back-compat: missing →
+  // no price → the hour sorts last in fill order and is non-comparable for
+  // deferral.
   price?: number | null;
   maxUsefulEnergyKWh?: number;
   // Producer-resolved per-bucket forecast of physical headroom available to a
@@ -125,10 +119,9 @@ export type DeferredObjectivePlannedBucket = {
   startMs: number;
   endMs: number;
   durationHours: number;
-  preference: DeferredObjectiveBucketPreference;
-  policyScore: number;
-  // Raw per-bucket price carried through from the horizon bucket for the
-  // relative price-deferral comparison. `null` when the source had no price.
+  // Raw per-bucket price carried through from the horizon bucket. Drives the
+  // cheapest-first fill order and the relative price-deferral comparison. `null`
+  // when the source had no price.
   price: number | null;
   reserve: boolean;
   current: boolean;
@@ -160,7 +153,6 @@ export type DeferredObjectiveHorizonPlan = {
   currentBucket: DeferredObjectiveCurrentBucketPlan | null;
   plannedBuckets: DeferredObjectivePlannedBucket[];
   usesDeadlineReserve: boolean;
-  usesPolicyAvoid: boolean;
   // Per-cycle price-deferral control signal (mid-execution price deferral). True
   // when BOTH hold for the current hour: (1) the device's measured value is
   // already at/above the committed plan's end-of-this-hour milestone in the

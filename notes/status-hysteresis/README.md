@@ -124,8 +124,8 @@ The shipped status values live on the diagnostic type
   evaluate.
 - `on_track` — conservative projected completion is before the deadline
   minus the (flat) deadline-reserve margin.
-- `at_risk` — projected completion is inside the reserve, or the plan
-  relies on policy-avoid hours to land.
+- `at_risk` — projected completion is inside the reserve. Relative price
+  never drives this status; it reflects only deadline feasibility.
 - `cannot_meet` — even the highest allowed hard-cap-safe behavior cannot
   plausibly meet the target before the deadline.
 - `satisfied` — current progress is at or above target. (Live; if a later

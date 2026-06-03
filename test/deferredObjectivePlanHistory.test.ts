@@ -46,7 +46,6 @@ const makeHorizon = (
   currentBucket: null,
   plannedBuckets: [],
   usesDeadlineReserve: false,
-  usesPolicyAvoid: false,
   priceDeferralEligible: false,
   ...overrides,
 });
@@ -358,27 +357,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       targetPercent: null,
     }], 0, 7 * HOUR_MS);
     expect(events).toHaveLength(3);
-  });
-
-  it('preserves `usedPolicyAvoid` once a backup hour was used and rolls it into the entry', () => {
-    const { deps, saved } = buildPersistDeps();
-    const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-    const deadlineAtMs = 6 * HOUR_MS;
-
-    recorder.observe([makeDiag({
-      deviceId: 'dev', deadlineAtMs, horizonPlan: makeHorizon({ usesPolicyAvoid: false }),
-    })], 0);
-    recorder.observe([makeDiag({
-      deviceId: 'dev', deadlineAtMs, horizonPlan: makeHorizon({ usesPolicyAvoid: true }),
-    })], 3 * HOUR_MS);
-    // Subsequent cycle without the avoid flag must not flip it back to false.
-    recorder.observe([makeDiag({
-      deviceId: 'dev', deadlineAtMs, horizonPlan: makeHorizon({ usesPolicyAvoid: false }),
-    })], 4 * HOUR_MS);
-    recorder.observe([], 6 * HOUR_MS);
-    recorder.flushIfDirty();
-
-    expect(saved()!.entries[0]!.usedPolicyAvoid).toBe(true);
   });
 
   it('finalizes as `abandoned` when the diagnostic disappears before the deadline', () => {
@@ -746,7 +724,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           outcome: 'met',
           metAtMs: HOUR_MS - 1,
           usedDeadlineReserve: false,
-          usedPolicyAvoid: false,
           observedIntervals: [{ fromMs: 0, toMs: HOUR_MS }],
           discoveredFrom: 'observation',
           originalPlan: null,

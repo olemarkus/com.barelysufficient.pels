@@ -62,7 +62,6 @@ const historyEntry = () => ({
   outcome: 'met' as const,
   metAtMs: T0 + HOUR_MS,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation' as const,
   originalPlan: null,
