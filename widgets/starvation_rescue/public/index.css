@@ -264,7 +264,10 @@
   gap: var(--pw-su-1, 4px);
   background: transparent;
   border: none;
-  color: inherit;
+  /* Bind to the widget text token instead of `inherit`, which would fall
+     through to the host body colour the widget never sets (near-black on the
+     dark card). Covers the chevron + name, which both inherit from here. */
+  color: var(--pw-text, inherit);
   font: inherit;
   font-size: var(--pw-font-size-title, 17px);
   line-height: var(--pw-line-title, 24px);

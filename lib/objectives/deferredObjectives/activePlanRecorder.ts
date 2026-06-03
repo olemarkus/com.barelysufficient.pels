@@ -85,7 +85,7 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // and revises immediately (a signature change also forces a fresh build-time
 // plan). The `:58` mark is shared with the build-time gate via `./settleWindow`
 // so the two clocks agree. See
-// notes/deferred-load-objectives/per-cycle-commitment-collapse.md.
+// notes/deferred-load-objectives/execution-adaptation.md.
 
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;

@@ -135,7 +135,7 @@ export const stampUnitMilestones = (
 // unit milestone) to a flat boolean, so the per-power-cycle release path can read
 // it off the current hour instead of re-scanning a live price series every cycle
 // (`feedback_layering_resolution_in_producer`; the two-clock model in
-// notes/deferred-load-objectives/per-cycle-commitment-collapse.md).
+// notes/deferred-load-objectives/execution-adaptation.md).
 //
 // FROZEN per hour like `plannedUnitMilestone`: an hour that already carries the
 // flag (committed at an earlier revision, carried through the merge via `{ ...c }`)

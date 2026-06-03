@@ -113,6 +113,27 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       change (part of the deferred plan-device/provenance theme — do deliberately, not as a quick
       win). Source: codex P2 on PR #1417, 2026-06-01.
 
+*2026-06-03 review-findings investigation (pels-copy-and-terminology / pels-m3-critic).
+The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
+title colour were fixed in the same change; items below are the deferred remainder.*
+
+- [ ] **Hoist starvation-reason + held-back diagnostics labels into shared-domain.**
+      `STARVATION_REASON_LABELS` and the held-back status strings are inlined in
+      `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` (~L109-156) instead of a
+      `packages/shared-domain/**` helper, and duplicate copy that `planStarvation.ts`'s
+      `formatStarvationReason` already owns (e.g. "Waiting for available power"). A label can
+      therefore drift between the device-detail panel and the runtime log breadcrumb — breaks the
+      log/UI-parity rule (`feedback_ui_text_shared_with_logs`). Move the map + formatters into
+      shared-domain and have both the settings UI and runtime logging consume the one source.
+      Source: pels-copy-and-terminology, 2026-06-03 review-findings investigation.
+
+- [ ] **`plan_budget` widget reads half-empty above the fold.** At 320/480 px a large empty
+      vertical band sits above the bottom-anchored chart (header `flex: 0 0 auto`, chart
+      `flex: 1 1 auto` in `widgets/plan_budget/src/public/index.css`), so the card looks
+      half-filled before the chart paints. Confirm against the widget render-gate at both widths,
+      then rebalance (centre the chart or fill the band with meta/legend). Pre-existing layout
+      pass, not a regression. Source: pels-m3-critic, 2026-06-03 review-findings investigation.
+
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
