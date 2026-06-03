@@ -1837,6 +1837,17 @@ md-filled-button.is-busy {
   color: var(--pels-text-secondary);
 }
 
+/* Cross-link to the device's usage page. Without an explicit colour the
+ * bare `<a>` falls back to the UA's `rgb(0,0,238)` browser-blue underline,
+ * which clashes with the dark theme and reads as foreign chrome. Match the
+ * canonical PELS inline-link treatment (`.field__hint a`): accent green with
+ * a toned 2 px underline offset so it reads as an in-app link. */
+.plan-history-detail__usage-link-anchor {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Missed-only postmortem sentence under the progress line. Tone matches the
  * outcome chip's warning rung so the "why" reads as an extension of the
  * "what happened" signal already on the hero. Sits in the supporting font
@@ -2703,9 +2714,19 @@ md-filled-button.is-busy {
  * back to the ghost identity: transparent background, narrower padding,
  * inherited font-weight (so the button label doesn't compete with the
  * H2), and an info-color focus outline (the canonical accent green
- * would clash on the ghost ground). */
+ * would clash on the ghost ground).
+ *
+ * width / flex: the narrow-viewport `.pels-button { width: 100% }` rule
+ * (max-width: 480px, meant for the full-width recourse CTA) would also
+ * stretch this toggle to fill the `.budget-card-header` flex row, leaving
+ * the sibling H2 title 0 px wide. The decorator's higher specificity
+ * ((0,2,0) bare / (1,2,1) panel-scoped, both > the media-query rule's
+ * (0,1,0)) holds the toggle to its intrinsic content width so the title
+ * keeps its flex-grow space. */
 .plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
   align-self: flex-start;
+  width: auto;
+  flex: 0 0 auto;
   padding: var(--spacing-1) var(--spacing-3);
   border-color: var(--color-border-default);
   background: transparent;
@@ -2725,6 +2746,8 @@ md-filled-button.is-busy {
 
 #deadline-plan-panel button.plan-history-detail__chart-toggle.plan-history-detail__chart-toggle {
   align-self: flex-start;
+  width: auto;
+  flex: 0 0 auto;
   padding: var(--spacing-1) var(--spacing-3);
   border-color: var(--color-border-default);
   background: transparent;

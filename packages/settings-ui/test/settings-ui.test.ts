@@ -1196,4 +1196,69 @@ describe('Settings UI', () => {
       expect(layout.hasTitle).toBe(true);
     });
   });
+
+  describe('Smart-task history-detail chart card', () => {
+    // At the Homey iframe width (<=480px) the narrow-viewport
+    // `.pels-button { width: 100% }` rule used by the recourse CTA would also
+    // stretch the chart-card "Hide details" toggle to fill the
+    // `.budget-card-header` flex row, collapsing the sibling H2 title to 0 px.
+    // The panel-scoped `.plan-history-detail__chart-toggle` decorator must hold
+    // the toggle to intrinsic content width so the title keeps its grow space.
+    const renderChartCardHeader = async () => {
+      const mockScript = `
+        document.addEventListener('DOMContentLoaded', () => {
+          document.querySelectorAll('.panel').forEach(p => {
+            p.classList.toggle('hidden', p.dataset.panel !== 'deadline-plan');
+          });
+          const root = document.getElementById('deadline-plan-root');
+          if (root) {
+            root.innerHTML = [
+              '<article class="plan-history-detail">',
+              '  <section class="pels-surface-card budget-redesign-card deadline-horizon-card">',
+              '    <div class="budget-card-header">',
+              '      <h2 class="plan-card__title">Estimated schedule for this run</h2>',
+              '      <button type="button" class="pels-button plan-history-detail__chart-toggle hy-nostyle" aria-expanded="true">Hide details</button>',
+              '    </div>',
+              '  </section>',
+              '</article>',
+            ].join('');
+          }
+        });
+      `;
+
+      await recreatePage({
+        viewport: { width: 480, height: 800 },
+        isMobile: false,
+        hasTouch: false,
+      });
+
+      const html = prepareHtml(mockScript);
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      await sleep(50);
+    };
+
+    test('keeps the H2 title visible and the toggle auto-width at 480px', async () => {
+      await renderChartCardHeader();
+
+      const layout = await page.evaluate(() => {
+        const header = document.querySelector('#deadline-plan-panel .budget-card-header');
+        const title = document.querySelector('#deadline-plan-panel .plan-card__title');
+        const toggle = document.querySelector('#deadline-plan-panel .plan-history-detail__chart-toggle');
+        if (!header || !title || !toggle) return null;
+        return {
+          headerWidth: header.getBoundingClientRect().width,
+          titleWidth: title.getBoundingClientRect().width,
+          toggleWidth: toggle.getBoundingClientRect().width,
+        };
+      });
+
+      // Fail clearly if the header/title/toggle didn't render, rather than null-deref.
+      expect(layout).not.toBeNull();
+      const { headerWidth, titleWidth, toggleWidth } = layout!;
+      // Title must occupy real space (was 0 px before the fix).
+      expect(titleWidth).toBeGreaterThan(0);
+      // Toggle must be its intrinsic content width, not the full header row.
+      expect(toggleWidth).toBeLessThan(headerWidth * 0.6);
+    });
+  });
 });
