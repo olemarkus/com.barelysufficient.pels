@@ -5,7 +5,8 @@ import {
   MODE_TARGET_GRACE_CYCLES,
   cleanupMissingModeTargetDevices,
 } from '../lib/plan/planModeTargetGuard';
-import { createPlanEngineState } from '../lib/plan/planState';
+import { createPlanEngineState, type PlanEngineState } from '../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../lib/plan/planContext';
 import type { PlanDevicesDeps } from '../lib/plan/planDevices';
 import { buildExecutableTargetIntent } from '../lib/executor/executableTargetProjection';
@@ -28,6 +29,13 @@ const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   restoreMarginPlanning: 0.2,
 });
 
+// Shared empty pending-binary-command store for the many cases that do not
+// seed pending state. Tests that DO seed `state.pendingBinaryCommands` bind a
+// store to their own state (see `pendingStoreFor`).
+const emptyPendingStore = createPendingBinaryCommandStore({});
+const pendingStoreFor = (state: PlanEngineState) =>
+  createPendingBinaryCommandStore(state.pendingBinaryCommands);
+
 const defaultDeps: PlanDevicesDeps = {
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
@@ -35,6 +43,7 @@ const defaultDeps: PlanDevicesDeps = {
   isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
+  pendingBinaryCommandStore: emptyPendingStore,
 };
 
 let logCapture: LoggerCapture;
@@ -237,6 +246,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -284,6 +294,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -333,6 +344,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -383,6 +395,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -423,6 +436,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -467,6 +481,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -499,6 +514,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -531,6 +547,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: pendingStoreFor(state),
       },
     });
 
@@ -557,6 +574,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -579,6 +597,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -608,6 +627,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: pendingStoreFor(state),
       },
     });
 
@@ -636,6 +656,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -671,6 +692,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -706,6 +728,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -738,6 +761,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -774,6 +798,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -809,6 +834,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -844,6 +870,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -874,6 +901,7 @@ describe('buildInitialPlanDevices', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: emptyPendingStore,
       },
     });
 
@@ -895,6 +923,7 @@ const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevices
   isCurrentHourExpensive: () => false,
   getPriceOptimizationEnabled: () => false,
   getPriceOptimizationSettings: () => ({}),
+  pendingBinaryCommandStore: emptyPendingStore,
   ...overrides,
 });
 

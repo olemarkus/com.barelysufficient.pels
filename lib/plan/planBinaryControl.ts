@@ -1,6 +1,6 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { PlanEngineState } from './planState';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { getLogger } from '../logging/logger';
 import {
   type BinaryControlActuationMode,
@@ -31,7 +31,7 @@ export {
 const logger = getLogger('plan/binary-control');
 
 type BinaryControlDeps = {
-  state: PlanEngineState;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceObservation: DeviceObservation;
 };
 
@@ -57,7 +57,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   lifecycleRelease?: boolean;
 }): BinaryControlDecision | null {
   const {
-    state, deviceObservation,
+    pendingBinaryCommandStore, deviceObservation,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason,
     actuationMode = 'plan', lifecycleRelease,
   } = params;
@@ -71,7 +71,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     actuationMode,
     name,
     snapshot,
-    state,
+    pendingBinaryCommandStore,
   })) {
     return null;
   }

@@ -1,8 +1,6 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { PlanEngineState } from './planState';
-import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import { getPendingBinaryCommandWindowMs } from '../observer/pendingBinaryCommandTypes';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
@@ -58,7 +56,7 @@ export function shouldSkipBinaryControl(params: {
   actuationMode: BinaryControlActuationMode;
   name: string;
   snapshot?: TargetDeviceSnapshot;
-  state: PlanEngineState;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
 }): boolean {
   const {
     controlPlan,
@@ -69,7 +67,7 @@ export function shouldSkipBinaryControl(params: {
     actuationMode,
     name,
     snapshot,
-    state,
+    pendingBinaryCommandStore,
   } = params;
   if (!controlPlan) {
     const hasTargets = Array.isArray(snapshot?.targets) && snapshot.targets.length > 0;
@@ -115,7 +113,7 @@ export function shouldSkipBinaryControl(params: {
     });
     return true;
   }
-  if (hasPendingMatchingBinaryCommand({ state, deviceId, controlPlan, desired })) {
+  if (hasPendingMatchingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
     logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'already_pending',
@@ -146,39 +144,18 @@ export function shouldSkipAlreadyMatched(params: {
 }
 
 export function hasPendingMatchingBinaryCommand(params: {
-  state: PlanEngineState;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceId: string;
   controlPlan: BinaryControlPlan;
   desired: boolean;
 }): boolean {
-  const { state, deviceId, controlPlan, desired } = params;
-  const pending = getPendingBinaryCommand(state, deviceId);
+  const { pendingBinaryCommandStore, deviceId, controlPlan, desired } = params;
+  // `get` (not `peek`): this read owns freshness-eviction — a stale
+  // in-flight entry must not suppress a fresh actuation. Eviction is
+  // performed once, inside the store.
+  const pending = pendingBinaryCommandStore.get(deviceId);
   if (!pending) return false;
   return pending.capabilityId === controlPlan.capabilityId && pending.desired === desired;
-}
-
-export function getPendingBinaryCommand(
-  state: PlanEngineState,
-  deviceId: string,
-): PlanEngineState['pendingBinaryCommands'][string] | undefined {
-  const pendingBinaryCommands = state.pendingBinaryCommands;
-  const entry = pendingBinaryCommands[deviceId];
-  if (!entry) return undefined;
-  const nowMs = Date.now();
-  if (isPendingBinaryCommandActive({ pending: entry, nowMs })) {
-    return entry;
-  }
-  delete pendingBinaryCommands[deviceId];
-  logger.debug({
-    event: 'pending_binary_command_cleared',
-    reason: 'stale_age',
-    deviceId,
-    capabilityId: entry.capabilityId,
-    desired: entry.desired,
-    ageMs: nowMs - entry.startedMs,
-    timeoutMs: getPendingBinaryCommandWindowMs(entry),
-  });
-  return undefined;
 }
 
 /**

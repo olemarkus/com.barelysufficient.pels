@@ -1,5 +1,4 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type { PlanEngineState } from '../plan/planState';
 import {
   type BinaryControlActuationMode,
   type BinaryControlDecision,
@@ -71,7 +70,6 @@ const logger = getLogger('executor/binary-dispatch');
  * second `DeviceObservation` parameter.
  */
 export async function decideAndDispatchBinaryControl(params: {
-  state: PlanEngineState;
   transport: BinaryControlTransport;
   deviceId: string;
   name: string;
@@ -84,11 +82,11 @@ export async function decideAndDispatchBinaryControl(params: {
   lifecycleRelease?: boolean;
 }): Promise<boolean> {
   const {
-    state, transport, deviceId, name, desired, snapshot, logContext,
+    transport, deviceId, name, desired, snapshot, logContext,
     restoreSource, reason, actuationMode, lifecycleRelease,
   } = params;
   const decision = decideBinaryControl({
-    state,
+    pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
     deviceObservation: transport.observation,
     deviceId,
     name,

@@ -4,6 +4,9 @@ import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import { steppedInputDevice } from './utils/planTestUtils';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -53,6 +56,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog: structuredLog as any,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -104,6 +108,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog: structuredLog as any,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -157,6 +162,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog: { info: vi.fn() } as any,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, state);
 
     const plan = await builder.buildDevicePlanSnapshot([
@@ -211,6 +217,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog: structuredLog as any,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, state);
 
     const devices = [
@@ -267,6 +274,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       structuredLog: structuredLog as any,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, state);
 
     await builder.buildDevicePlanSnapshot([
@@ -321,6 +329,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       const devices = [
@@ -385,6 +394,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       const devices = [
@@ -450,6 +460,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       capacityGuard.reportTotalPower(0.6);
@@ -527,6 +538,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       capacityGuard.reportTotalPower(0.4);
@@ -632,6 +644,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       capacityGuard.reportTotalPower(0.4);
@@ -742,6 +755,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       capacityGuard.reportTotalPower(0.4);
@@ -851,6 +865,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
         structuredLog: structuredLog as any,
         log: vi.fn(),
         logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
       }, state);
 
       capacityGuard.reportTotalPower(0.4);

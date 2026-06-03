@@ -10,6 +10,9 @@ import {
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveRescuePermissions,
 } from '../lib/objectives/deferredObjectives';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 // GATE TRACE (PR3 step 0): prove that a smart task carrying `rescue.exemptFromBudget`
 // on a CAP-ON (controllable=true), daily-budget-starved temperature device actually
@@ -170,6 +173,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     log: vi.fn(),
     logDebug: vi.fn(),
+    pendingBinaryCommandStore: emptyPendingStore,
   }, createPlanEngineState());
 };
 

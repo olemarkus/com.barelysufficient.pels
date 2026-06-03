@@ -3,6 +3,7 @@ import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import { isObservedOff } from '../../observer/observedState';
 import { getCurrentDrawKw } from '../../observer/observedPower';
+import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import {
   getSteppedLoadShedTargetStep,
   isSteppedLoadDevice,
@@ -129,7 +130,10 @@ function addCandidatePower(params: {
   state: PlanEngineState;
   nowTs: number;
   needed: number;
-  deps: Pick<SheddingDeps, 'getPriorityForDevice' | 'getShedBehavior' | 'logDebug'>;
+  deps: Pick<
+    SheddingDeps,
+    'getPriorityForDevice' | 'getShedBehavior' | 'logDebug' | 'pendingBinaryCommandStore'
+  >;
 }): ShedCandidate | null {
   const {
     device,
@@ -155,6 +159,7 @@ function addCandidatePower(params: {
       recentlyRestored,
       state,
       getShedBehavior: deps.getShedBehavior,
+      pendingBinaryCommandStore: deps.pendingBinaryCommandStore,
     });
   }
   const shedBehavior = deps.getShedBehavior(device.id);
@@ -172,21 +177,25 @@ function addCandidatePower(params: {
       });
     }
   }
-  return buildBinaryCandidate(device, priority, recentlyRestored, state);
+  return buildBinaryCandidate(device, priority, recentlyRestored, deps.pendingBinaryCommandStore);
 }
 
 function buildBinaryCandidate(
   device: PlanInputDevice,
   priority: number,
   recentlyRestored: boolean,
-  state: PlanEngineState,
+  pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): BinaryShedCandidate | null {
   const power = getCurrentDrawKw(device);
   if (power <= 0) return null;
+  // Raw read: activeness is evaluated here with the device's
+  // communication model, so `peek` (not `get`) keeps the prior
+  // field-read behaviour without store eviction at this site.
+  const pendingEntry = pendingBinaryCommandStore.peek(device.id);
   const pendingBinary = isPendingBinaryCommandActive({
-    pending: state.pendingBinaryCommands[device.id],
+    pending: pendingEntry,
     communicationModel: device.communicationModel,
-  }) ? state.pendingBinaryCommands[device.id] : undefined;
+  }) ? pendingEntry : undefined;
   return {
     ...device,
     kind: 'binary',
@@ -240,6 +249,7 @@ function buildSteppedCandidate(params: {
   recentlyRestored: boolean;
   state: PlanEngineState;
   getShedBehavior: SheddingDeps['getShedBehavior'];
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
 }): ShedCandidate | null {
   const {
     device,
@@ -248,6 +258,7 @@ function buildSteppedCandidate(params: {
     recentlyRestored,
     state,
     getShedBehavior,
+    pendingBinaryCommandStore,
   } = params;
   const deviceSteppedProfile = device.steppedLoadProfile;
   if (!deviceSteppedProfile) return null;
@@ -284,7 +295,7 @@ function buildSteppedCandidate(params: {
       priority,
       recentlyRestored,
       shedAction: steppedShedAction,
-      state,
+      pendingBinaryCommandStore,
     });
     if (preparedBinaryOffCandidate) return preparedBinaryOffCandidate;
     return buildUnknownCurrentMeasuredSteppedCandidate({
@@ -337,7 +348,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   priority: number;
   recentlyRestored: boolean;
   shedAction: 'turn_off' | 'set_step';
-  state: Pick<PlanEngineState, 'pendingBinaryCommands'>;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
 }): ShedCandidate | null {
   const {
     device,
@@ -346,7 +357,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
     priority,
     recentlyRestored,
     shedAction,
-    state,
+    pendingBinaryCommandStore,
   } = params;
   if (
     shedAction !== 'turn_off'
@@ -360,10 +371,13 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   if (!selectedStep || isSteppedLoadOffStep(steppedProfile, selectedStep.id)) return null;
   const effectivePower = getCurrentDrawKw(device);
   if (effectivePower <= 0) return null;
+  // Raw read: activeness is computed here with the device's communication
+  // model, so `peek` (not `get`) preserves the prior field-read behaviour.
+  const pendingEntry = pendingBinaryCommandStore.peek(device.id);
   const pendingBinary = isPendingBinaryCommandActive({
-    pending: state.pendingBinaryCommands[device.id],
+    pending: pendingEntry,
     communicationModel: device.communicationModel,
-  }) ? state.pendingBinaryCommands[device.id] : undefined;
+  }) ? pendingEntry : undefined;
   return {
     ...device,
     kind: 'stepped',

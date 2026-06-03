@@ -7,6 +7,9 @@ import {
 } from '../lib/plan/planPowerFreshness';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -147,6 +150,7 @@ describe('planner behavior under stale power freshness states', () => {
       structuredLog: params.structuredLog as never,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
   }
 

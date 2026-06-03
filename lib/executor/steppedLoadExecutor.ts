@@ -362,7 +362,6 @@ export const applySteppedLoadShedOff = async (
   const name = action.name;
   try {
     const applied = await decideAndDispatchBinaryControl({
-      state: ctx.state,
       transport: ctx.buildBinaryControlTransport(),
       deviceId: action.id,
       name,
@@ -690,7 +689,6 @@ const executeSteppedLoadRestoreBinary = async (
   ctx.state.pendingRestores.add(action.id);
   try {
     const applied = await decideAndDispatchBinaryControl({
-      state: ctx.state,
       transport: ctx.buildBinaryControlTransport(),
       deviceId: action.id,
       name,
