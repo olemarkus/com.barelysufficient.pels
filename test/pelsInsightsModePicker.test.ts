@@ -73,8 +73,10 @@ class FakeDeviceBase {
     this.capabilityValues.set(capabilityId, value);
   }
 
-  async setCapabilityOptions(): Promise<void> {
-    /* no-op for tests */
+  public setCapabilityOptionsCalls: unknown[][] = [];
+
+  async setCapabilityOptions(...args: unknown[]): Promise<void> {
+    this.setCapabilityOptionsCalls.push(args);
   }
 
   registerCapabilityListener(capabilityId: string, listener: CapabilityListener): void {
@@ -112,6 +114,13 @@ const tapMode = async (device: DeviceUnderTest, value: unknown): Promise<void> =
   const listener = device.capabilityListeners.get('mode_indicator');
   expect(listener).toBeDefined();
   await listener?.(value);
+};
+
+// Drain the macrotask queue so any pending `setImmediate`-coalesced refresh runs.
+const flushImmediates = async (): Promise<void> => {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  // A second tick lets the async refresh body settle before assertions.
+  await new Promise<void>((resolve) => setImmediate(resolve));
 };
 
 describe('pels_insights mode-picker listener', () => {
@@ -183,5 +192,125 @@ describe('pels_insights mode-picker listener', () => {
     expect(device.homey.settings.get(OPERATING_MODE_SETTING)).toBe('Home');
     expect(device.capabilityValues.has('mode_indicator')).toBe(false);
     expect(device.errorCalls).toHaveLength(0);
+  });
+});
+
+describe('pels_insights mode-options refresh coalescing', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const initDevice = async (committedMode: string): Promise<DeviceUnderTest> => {
+    const device = createDevice(committedMode);
+    await device.onInit();
+    // Drop the onInit baseline so assertions only see post-init SDK calls.
+    device.setCapabilityOptionsCalls.length = 0;
+    return device;
+  };
+
+  // Mutate a mode-source setting to add a new mode, producing a new option set.
+  const reorderPriorities = (device: DeviceUnderTest, modes: string[]): void => {
+    const priorities = Object.fromEntries(
+      modes.map((mode, index) => [mode, { [`device-${index}`]: index + 1 }]),
+    );
+    device.homey.settings.set('capacity_priorities', priorities);
+  };
+
+  it('coalesces a burst of mode-source writes into one setCapabilityOptions call', async () => {
+    const device = await initDevice('Home');
+    const refreshSpy = vi.spyOn(device as unknown as { refreshModeOptions: () => Promise<void> }, 'refreshModeOptions');
+
+    // Simulate a 10-device priority reorder: many writes in the same tick.
+    for (let index = 0; index < 10; index += 1) {
+      device.homey.settings.set('capacity_priorities', {
+        Home: { 'device-a': index + 1 },
+        Away: { 'device-b': index + 1 },
+      });
+    }
+
+    expect(device.setCapabilityOptionsCalls).toHaveLength(0);
+    expect(refreshSpy).not.toHaveBeenCalled();
+
+    await flushImmediates();
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(device.setCapabilityOptionsCalls).toHaveLength(1);
+  });
+
+  it('skips the SDK roundtrip when the option set is unchanged', async () => {
+    const device = await initDevice('Home');
+
+    // Two separate bursts that resolve to the SAME mode set.
+    reorderPriorities(device, ['Home', 'Away']);
+    await flushImmediates();
+    expect(device.setCapabilityOptionsCalls).toHaveLength(1);
+
+    reorderPriorities(device, ['Home', 'Away']);
+    await flushImmediates();
+
+    // Options unchanged → no second roundtrip.
+    expect(device.setCapabilityOptionsCalls).toHaveLength(1);
+  });
+
+  it('applies the final state after a burst (does not drop the last write)', async () => {
+    const device = await initDevice('Home');
+
+    reorderPriorities(device, ['Home', 'Away']);
+    reorderPriorities(device, ['Home', 'Away', 'Sleep']);
+    await flushImmediates();
+
+    expect(device.setCapabilityOptionsCalls).toHaveLength(1);
+    const [, options] = device.setCapabilityOptionsCalls[0] as [string, { values: { id: string }[] }];
+    const ids = options.values.map((value) => value.id);
+    expect(ids).toContain('Sleep');
+  });
+
+  it('serializes a write that lands while a refresh is in flight (last state wins)', async () => {
+    const device = await initDevice('Home');
+
+    // Gate the first setCapabilityOptions so a second write can land while the
+    // first refresh is still awaiting the SDK.
+    let releaseFirst: (() => void) | null = null;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const realApply = device.setCapabilityOptions.bind(device);
+    let applyCalls = 0;
+    vi.spyOn(device, 'setCapabilityOptions').mockImplementation(async (...args: unknown[]) => {
+      applyCalls += 1;
+      if (applyCalls === 1) await firstGate;
+      return realApply(...(args as [string, unknown]));
+    });
+
+    // Burst A arms the coalesced flush.
+    reorderPriorities(device, ['Home', 'Away']);
+    // One tick: the device's setImmediate fires and the first refresh blocks on the gate.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    // A newer write lands mid-flight — it must not race a second overlapping refresh.
+    reorderPriorities(device, ['Home', 'Away', 'Sleep']);
+
+    // Release the in-flight write; the in-flight loop re-runs for the pending state.
+    releaseFirst?.();
+    await flushImmediates();
+
+    // Both writes applied, serialized; the LAST applied option set is the newest.
+    expect(device.setCapabilityOptionsCalls).toHaveLength(2);
+    const [, lastOptions] = device.setCapabilityOptionsCalls.at(-1) as [
+      string,
+      { values: { id: string }[] },
+    ];
+    expect(lastOptions.values.map((value) => value.id)).toContain('Sleep');
+  });
+
+  it('does not call setCapabilityOptions after the device is uninited', async () => {
+    const device = await initDevice('Home');
+
+    reorderPriorities(device, ['Home', 'Away']);
+    await (device as unknown as { onUninit: () => Promise<void> }).onUninit();
+
+    await flushImmediates();
+
+    expect(device.setCapabilityOptionsCalls).toHaveLength(0);
   });
 });

@@ -1,7 +1,7 @@
 import Homey from 'homey';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 import { getAllModes } from '../../lib/utils/capacityHelpers';
-import { buildModeEnumValues } from './modeEnum';
+import { buildModeEnumValues, type ModeEnumValue } from './modeEnum';
 
 type StatusData = {
   headroomKw?: number;
@@ -138,8 +138,11 @@ class PelsInsightsDevice extends Homey.Device {
     });
 
     this.homey.settings.on('set', async (key: string) => {
+      if (this.destroyed) return;
       if (MODE_SOURCE_SETTING_KEYS.has(key)) {
-        await this.refreshModeOptions();
+        // A single priority reorder can fire many `set` events in one tick;
+        // coalesce them into one refresh instead of one SDK roundtrip each.
+        this.scheduleModeOptionsRefresh();
       }
 
       if (key === 'capacity_in_shortfall') {
@@ -150,6 +153,54 @@ class PelsInsightsDevice extends Homey.Device {
         await this.updateFromStatus();
       }
     });
+  }
+
+  async onUninit(): Promise<void> {
+    // Stop any coalesced refresh from touching the SDK after teardown.
+    this.destroyed = true;
+    if (this.modeOptionsRefreshTimer !== null) {
+      clearImmediate(this.modeOptionsRefreshTimer);
+      this.modeOptionsRefreshTimer = null;
+    }
+  }
+
+  private destroyed = false;
+
+  private modeOptionsRefreshTimer: ReturnType<typeof setImmediate> | null = null;
+
+  private modeOptionsRefreshInFlight = false;
+
+  private modeOptionsRefreshPending = false;
+
+  // Serialized snapshot of the last `setCapabilityOptions` values we applied, so
+  // a refresh that resolves to the same option set skips the SDK roundtrip.
+  private lastAppliedModeOptions: string | null = null;
+
+  private scheduleModeOptionsRefresh(): void {
+    if (this.destroyed) return;
+    // Record that a refresh is owed, then only arm a flush when one isn't already
+    // scheduled or running — a write landing mid-flight sets the pending flag so the
+    // in-flight loop re-runs against the latest settings rather than racing a second
+    // overlapping refresh (which could clobber lastAppliedModeOptions out of order).
+    this.modeOptionsRefreshPending = true;
+    if (this.modeOptionsRefreshTimer !== null || this.modeOptionsRefreshInFlight) return;
+    this.modeOptionsRefreshTimer = setImmediate(() => {
+      void this.runCoalescedModeOptionsRefresh();
+    });
+  }
+
+  private async runCoalescedModeOptionsRefresh(): Promise<void> {
+    this.modeOptionsRefreshTimer = null;
+    if (this.destroyed || this.modeOptionsRefreshInFlight) return;
+    this.modeOptionsRefreshInFlight = true;
+    try {
+      while (this.modeOptionsRefreshPending && !this.destroyed) {
+        this.modeOptionsRefreshPending = false;
+        await this.refreshModeOptions();
+      }
+    } finally {
+      this.modeOptionsRefreshInFlight = false;
+    }
   }
 
   private modeSelectionSeq = 0;
@@ -195,12 +246,24 @@ class PelsInsightsDevice extends Homey.Device {
   async refreshModeOptions(): Promise<void> {
     const activeMode = this.getActiveMode();
     const values = buildModeEnumValues(activeMode, this.getConfiguredModes());
+    await this.applyModeOptions(values);
+    if (this.destroyed) return;
+    await this.updateMode(activeMode);
+  }
+
+  private async applyModeOptions(values: ModeEnumValue[]): Promise<void> {
+    // Skip the SDK roundtrip when the effective option set is unchanged.
+    const serialized = JSON.stringify(values);
+    if (serialized === this.lastAppliedModeOptions) return;
     try {
       await this.setCapabilityOptions('mode_indicator', { values });
+      // Late-resolving write after teardown must not touch state.
+      if (this.destroyed) return;
+      this.lastAppliedModeOptions = serialized;
     } catch (error) {
+      if (this.destroyed) return;
       this.error('Failed to refresh mode_indicator values', error);
     }
-    await this.updateMode(activeMode);
   }
 
   async updateMode(mode: string): Promise<void> {
