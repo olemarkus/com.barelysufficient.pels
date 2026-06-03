@@ -18,7 +18,7 @@ import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { formatDeadlineLocalTime } from './deadline';
 import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import { resolveObjectiveSteps } from './objectiveSteps';
-import { resolveCommittedHours } from './resolveCommittedHours';
+import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { isPastHourSettleMark } from './settleWindow';
 import { buildFrozenHorizonPlan } from './frozenHorizonPlan';
@@ -48,9 +48,9 @@ import {
 } from './concurrentEligibleTasks';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
 
-// Frozen mid-hour metadata sourced from the persisted commitment's latest
-// revision. Present ⇒ the per-cycle path reads the frozen commitment instead of
-// running the allocator (see `buildFrozenHorizonPlan`).
+// Frozen mid-hour metadata sourced from the coherent active committed-plan view.
+// Present ⇒ the per-cycle path reads the frozen plan instead of running the
+// allocator (see `buildFrozenHorizonPlan`).
 type FrozenReadInputs = {
   planStatus: DeferredObjectiveActivePlanStatusV1;
   dailyBudgetExhaustedBucketCount: number;
@@ -85,17 +85,11 @@ const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
 };
 
 // Resolve the frozen-read inputs for the per-cycle (mid-hour) path, or null when
-// the allocator must run instead: bootstrap (no commitment covers the active
-// hour — also covers an objective edit via `resolveCommittedHours`'s signature
-// check) or the `:58` settle window. See execution-adaptation.md
-// ("Interaction with the per-cycle frozen read").
-// Frozen-read fallback data from the persisted commitment, available WHENEVER a
-// commitment covers the active hour (current hour onward) — independent of the
-// `:58` settle. Null when there is nothing to serve frozen: no commitment
-// (bootstrap), an objective edit (signature mismatch ⇒ `resolveCommittedHours`
-// undefined), or an empty/all-elapsed commitment whose need just turned positive
-// again (those must run the fresh allocator / phase-2 expansion). The caller
-// decides whether to USE this vs re-plan — re-planning runs the allocator only at
+// the allocator must run instead. A frozen read requires a coherent active plan
+// (`commitment` + `latest`) whose commitment still covers the active hour; legacy
+// or corrupt shapes without `latest` are left to the fresh path. See
+// execution-adaptation.md ("Interaction with the per-cycle frozen read"). The
+// caller decides whether to use this vs re-plan — re-planning runs the allocator only at
 // the `:58` settle AND when the price horizon is available, so a committed device
 // is never dropped to inactive on a transient horizon gap.
 const resolveFrozenReadInputs = (params: {
@@ -104,21 +98,22 @@ const resolveFrozenReadInputs = (params: {
   objective: DeferredObjectiveSettingsEntry;
   nowMs: number;
 }): FrozenReadInputs | null => {
-  const committedHours = resolveCommittedHours({
+  const activePlan = resolveActiveCommittedPlan({
     activePlans: params.activePlans,
     deviceId: params.deviceId,
     objective: params.objective,
   });
-  if (committedHours === undefined) return null;
+  if (activePlan === undefined) return null;
   const currentHourStartMs = Math.floor(params.nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  if (!committedHours.some((hour) => hour.startsAtMs >= currentHourStartMs)) return null;
-  const latest = params.activePlans?.plansByDeviceId?.[params.deviceId]?.latest ?? null;
+  if (!activePlan.commitmentHours.some((hour) => hour.startsAtMs >= currentHourStartMs)) return null;
+  const { latest } = activePlan;
   return {
-    planStatus: latest?.planStatus ?? 'on_track',
-    dailyBudgetExhaustedBucketCount: latest?.dailyBudgetExhaustedBucketCount ?? 0,
-    // Settled revision's hours (freshest floored plan); fall back to the committed
-    // floor only if `latest` is somehow absent (defensive — they are written together).
-    hours: latest?.hours ?? committedHours,
+    planStatus: latest.planStatus,
+    dailyBudgetExhaustedBucketCount: latest.dailyBudgetExhaustedBucketCount ?? 0,
+    // Settled revision's hours (freshest floored plan). The active-plan accessor
+    // already rejected legacy/corrupt shapes without a latest revision, so the
+    // frozen path never falls back to the commitment floor for control data.
+    hours: latest.hours,
   };
 };
 
@@ -713,17 +708,21 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     }, 'objective_missing_charge_rate');
   }
 
-  const commitment = resolveCommittedHours({
+  const activeCommittedPlan = resolveActiveCommittedPlan({
     activePlans,
     deviceId,
     objective,
   });
+  const commitment = activeCommittedPlan?.commitmentHours;
+  const milestoneHours = frozenRead ? frozenRead.hours : (activeCommittedPlan?.latest.hours ?? []);
   // Trajectory gate for mid-execution price deferral. Resolved here (not in the
   // planner) because it compares the buffered energy still needed
   // (`profileEnergy.energyNeededKWh`, derived from the RAW measured value) against
   // the committed plan's future hours — the planner sees neither the measured
-  // value nor the commitment. `commitment === undefined` ⇒ no committed future
-  // hours ⇒ never ahead.
+  // value nor the committed/frozen hours. Use the SAME latest-hour source that
+  // drives `buildFrozenHorizonPlan`; same-schedule settle revisions can refine
+  // milestones in `latest` while leaving the allocator's commitment envelope
+  // intact. No hours ⇒ never ahead.
   //
   // PRECONDITION: this point is only reached on `progress.reasonCode === null`
   // (every stale/missing/invalid read short-circuits to `withUnknown` above) and
@@ -736,7 +735,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     // unit-milestone comparison (rate-free); `energyNeededKWh` is the legacy
     // fallback for commitments without persisted `plannedUnitMilestone`.
     measuredValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
-    committedHours: commitment ?? [],
+    committedHours: milestoneHours,
     nowMs,
   });
   // Mid-hour frozen read: assemble from the persisted commitment + the live measured
@@ -793,7 +792,7 @@ const buildFreshDiagnostic = (params: {
   priceOptimizationEnabled: boolean;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   steps: DeferredObjectiveStep[];
-  commitment: ReturnType<typeof resolveCommittedHours>;
+  commitment: DeferredObjectiveActivePlanHourV1[] | undefined;
   aheadOfHourMilestone: boolean;
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
   hardCapKw?: number | null;
@@ -966,4 +965,3 @@ const buildKnownEnergyFields = (params: {
   displayConfidence: params.profileEnergy.displayConfidence,
   kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
 });
-

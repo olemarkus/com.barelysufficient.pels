@@ -1132,6 +1132,179 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.horizonPlan?.currentBucket?.plannedUsefulEnergyKWh).toBe(3);
   });
 
+  it('does not serve a frozen read from a committed plan with no latest revision', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const hours = [{ startsAtMs: NOW_MS, plannedKWh: 1 }];
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+          }),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours },
+          original: null,
+          latest: null,
+        },
+      },
+    };
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice()],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+    const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  it('frozen milestone deferral uses latest.hours, not stale commitment.hours', () => {
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const commitmentHours = [
+      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+    ];
+    const latestHours = [
+      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+    ];
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+          }),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
+          original: {
+            revision: 1, revisedAtMs: NOW_MS - HOUR_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'flow_card', hours: commitmentHours, energyNeededKWh: 2, planStatus: 'on_track',
+          },
+          latest: {
+            revision: 2, revisedAtMs: NOW_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'measured_deviation', hours: latestHours, energyNeededKWh: 2, planStatus: 'on_track',
+          },
+        },
+      },
+    };
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({ stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: NOW_MS } })],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+
+    expect(diagnostic?.horizonPlan?.plannedBuckets.every((b) => b.id.startsWith('frozen-'))).toBe(true);
+    expect(diagnostic?.horizonPlan?.priceDeferralEligible).toBe(true);
+  });
+
+  it('settle milestone deferral uses latest.hours, not stale commitment.hours', () => {
+    const settleNowMs = NOW_MS + 58 * 60 * 1000;
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
+    const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;
+    const commitmentHours = [
+      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 46, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+    ];
+    const latestHours = [
+      { startsAtMs: NOW_MS, plannedKWh: 1, plannedUnitMilestone: 42, cheaperHourAhead: true },
+      { startsAtMs: NOW_MS + HOUR_MS, plannedKWh: 1, plannedUnitMilestone: 48 },
+    ];
+    const activePlans: DeferredObjectiveActivePlansV1 = {
+      version: 1,
+      plansByDeviceId: {
+        'ev-1': {
+          deviceId: 'ev-1',
+          deviceName: 'Driveway EV',
+          objectiveKind: 'ev_soc',
+          targetTemperatureC: null,
+          targetPercent: 50,
+          deadlineAtMs,
+          startedAtMs: NOW_MS - HOUR_MS,
+          pending: false,
+          objectiveSignature: buildObjectiveSignature({
+            objectiveKind: 'ev_soc', targetTemperatureC: null, targetPercent: 50, deadlineAtMs, enforcement: 'soft',
+          }),
+          commitment: { committedAtMs: NOW_MS - HOUR_MS, hours: commitmentHours },
+          original: {
+            revision: 1, revisedAtMs: NOW_MS - HOUR_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'flow_card', hours: commitmentHours, energyNeededKWh: 2, planStatus: 'on_track',
+          },
+          latest: {
+            revision: 2, revisedAtMs: NOW_MS, computedFromPricesUpTo: NOW_MS,
+            reason: 'measured_deviation', hours: latestHours, energyNeededKWh: 2, planStatus: 'on_track',
+          },
+        },
+      },
+    };
+    const prices = Array.from({ length: 24 }, () => 30);
+    prices[new Date(NOW_MS + HOUR_MS).getUTCHours()] = 5;
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: settleNowMs,
+      timeZone: 'UTC',
+      devices: [buildDevice({ stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: settleNowMs } })],
+      settings,
+      powerTracker: buildPowerTracker({
+        objectiveProfiles: {
+          'ev-1': {
+            kind: 'ev_soc',
+            updatedAtMs: settleNowMs,
+            lastSample: { observedAtMs: settleNowMs, value: 43, unit: 'percent' },
+            kwhPerUnit: {
+              sampleCount: 4,
+              mean: 0.2,
+              m2: 0,
+              min: 0.2,
+              max: 0.2,
+              confidence: 'medium',
+              lastUpdatedMs: settleNowMs,
+            },
+            acceptedSamples: 4,
+            rejectedSamples: 0,
+          },
+        },
+      }),
+      dailyBudgetSnapshot: buildSnapshot({ nowMs: settleNowMs, prices }),
+      priceOptimizationEnabled: true,
+      activePlans,
+    });
+
+    const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+    expect(diagnostic?.horizonPlan?.priceDeferralEligible).toBe(true);
+  });
+
   it('runs the allocator mid-hour when the commitment has no current-or-future hour (all elapsed)', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineLocalTime: '20:00', targetPercent: 50 }));
     const deadlineAtMs = settings.objectivesByDeviceId['ev-1']!.deadlineAtMs;

@@ -351,12 +351,14 @@ and it is wrong for a non-obvious reason, so it keeps being re-raised (with a re
 
 Why it is wrong: **WI-2 price-deferral is the mid-hour backstop.** The cold-start hour's
 `plannedUnitMilestone` is **seeded at the measured value when the hour is first committed**
-(`stampUnitMilestones`; committed milestones are frozen thereafter, never re-anchored), so for a
-cold tank it is **low** — roughly `measured + currentHourFloorBooking / rate`. The device
-is driven at its real element (≫ the floor step), so it crosses that low milestone after delivering
-only its **floor booking** (~`FLOOR_KW` for the hour). The moment it crosses, `isAheadOfHourMilestone`
-flips true; with a meaningfully cheaper hour ahead (`cheaperHourAhead`, frozen at booking),
-`priceDeferralEligible` fires and admission idles the device for the rest of the hour. So:
+(`stampUnitMilestones`; the commitment floor is frozen thereafter), so for a cold tank it is
+**low** — roughly `measured + currentHourFloorBooking / rate`. Runtime milestone reads use the
+settled `latest.hours` revision, not a loose fallback to `commitment.hours`, so same-schedule
+refinements can update the control milestone without rewriting the commitment envelope. The
+device is driven at its real element (≫ the floor step), so it crosses that low milestone after
+delivering only its **floor booking** (~`FLOOR_KW` for the hour). The moment it crosses,
+`isAheadOfHourMilestone` flips true; with a meaningfully cheaper hour ahead, `priceDeferralEligible`
+fires and admission idles the device for the rest of the hour. So:
 
 - The residual peak draw is only the **floor bookings that spilled onto the expensive hours**
   (~`FLOOR_KW` per peak hour), **not** the full bang-bang element run. On the prod replay shape

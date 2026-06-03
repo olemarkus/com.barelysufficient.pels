@@ -3141,6 +3141,29 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       expect(normalized.plansByDeviceId.dev?.commitment).toEqual(commitment);
     });
 
+    it('drops a committed plan without a latest revision', () => {
+      // Runtime consumers read committed active plans through a coherent accessor:
+      // `commitment` is the execution envelope, while `latest` carries the
+      // status/fresh hour metadata. A persisted shape with only the commitment
+      // would force every consumer to invent its own fallback, so reject it at
+      // the persistence boundary instead.
+      const persisted = {
+        version: 1,
+        plansByDeviceId: {
+          dev: {
+            ...basePlan({ reason: 'flow_card' }),
+            commitment: {
+              committedAtMs: HOUR_MS,
+              hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
+            },
+            latest: null,
+          },
+        },
+      };
+      const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+      expect(normalized.plansByDeviceId.dev).toBeUndefined();
+    });
+
     it('drops a plan whose initialPlanningSpeedKw is non-positive', () => {
       const persisted = {
         version: 1,
