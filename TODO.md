@@ -41,46 +41,12 @@ the release-review cleanup PR.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
-### P1 — v2.11.0..HEAD release-review findings (2026-06-02, six-agent fan-out:
-`pels-runtime-reality` + `pels-layering-guardian` + `pels-ux-fit` + `pels-m3-critic` +
-`pels-copy-and-terminology` + codex adversarial). The P0 (stale Usage range in
-`docs/configuration.md`) shipped in the same release-review cleanup PR; the deviceTransport
-transient-empty-read adapter-teardown P1 shipped as its own runtime PR. Items below are the
-non-blocking carry-forward.
-
-- [ ] **Extract a shared widget runtime — duplication is now a correctness hazard.**
-      Its own gate ("must land before any 4th widget") has been breached: **5** widgets —
-      `plan_budget`, `headroom`, `smart_tasks`, `create_smart_task`, `starvation_rescue` — each
-      carry a verbatim ~150 LOC copy of the widget runtime (`WidgetWindow`/`WidgetHomey`/
-      `WidgetController` types, the race-guarded `createWidgetController` = load-sequence + refresh
-      loop + visibility handler + bootstrap/destroy, and `installWidget`). A race / visibility /
-      teardown fix in one silently misses the other four — divergent lifecycle behaviour across
-      shipped widgets is a live data-integrity/correctness risk, not future hygiene. Extract to
-      `widgets/_shared/widgetRuntime.ts` and teach `scripts/build-widgets.mjs` to bundle the shared
-      module into each widget's `public/index.js` IIFE. (Promoted from P2 2026-06-03 — gate breached,
-      copies grew 3→5.) Source: adversarial-review on the headroom (2026-05-25) and smart_tasks
-      (2026-05-26) widget PRs; P2-pass audit 2026-06-03.
-- [ ] **History-detail chart-card title renders at 0px width behind the full-width toggle
-      (pre-existing, v2.7.2 — not a regression).** `pels-ux-fit` rendered the surface and
-      measured `h2.plan-card__title` width === 0 while the
-      `.plan-history-detail__chart-toggle` button took the full `.budget-card-header` width.
-      The header CSS already declares `> h2 { flex: 1 1 auto }` / `> button { flex-shrink: 0 }`,
-      so the button's full-width must come from a subtler `#deadline-plan-panel`-scoped
-      `.pels-button` override that beats the doubled-class decorator — pin the exact winning
-      rule via the render-gate harness before patching, then constrain the toggle (likely a
-      panel-scoped `width: auto; flex: 0 0 auto`) and add a `test:layout` computed-style
-      assertion (the pre-commit hook skips that suite). Files:
-      `packages/settings-ui/public/style.css` + `settings/style.css` (~2707, ~5210),
-      `packages/settings-ui/src/ui/views/DeadlinePlanHistoryDetail.tsx` (~1202-1213).
-      Source: `pels-ux-fit`, v2.11.0..HEAD release-review.
-- [ ] **History-detail Usage cross-link renders as default browser-blue hyperlink
-      (pre-existing, v2.7.2 — not a regression).** `.plan-history-detail__usage-link-anchor`
-      computes `color: rgb(0,0,238)` with `text-decoration: underline` — off-palette and
-      low-contrast on the dark surface, reading like a broken/placeholder link. Add a
-      token-bound rule (e.g. `color: var(--color-base-accent-default)`, tone the underline to
-      match other PELS inline links). Files: `packages/settings-ui/public/style.css` +
-      `settings/style.css`, `DeadlinePlanHistoryDetail.tsx` (~849-861). Source: `pels-ux-fit`,
-      v2.11.0..HEAD release-review.
+*The bulk of the P1 backlog shipped in the 2026-06-03 reconciliation train (PRs #1450–#1461):
+insights mode-options coalescing, headroom over-cap overage, the history-detail title/link fixes,
+deviceOverview canonical-string routing, the flow-reported / pendingBinaryCommands /
+stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.ts flake, the
+plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
+What remains open is below.*
 
 ### P1 — Widget loveability follow-ups (demoted from P0, 2026-05-31)
 
@@ -94,19 +60,10 @@ rows no longer render bare units, smart-task recourse copy is non-imperative, an
 public docs now describe all five widgets. Remaining work is desirability polish,
 not a release gate.*
 
-- [ ] **Available power (`headroom`) not loveable.** Re-check hierarchy, the price
-      chip's visual weight, and at-limit/over-cap tone in the harness
-      (`headroom-480`, `-at_pace`, `-over_cap`).
-
-- [ ] **Budget and Price (`plan_budget`) not loveable.** The projected summary can
-      dominate the chart and still truncates status on real device widths
-      (`plan_budget-480`).
-
-- [ ] **Held-back devices (`starvation_rescue`) confirm-sheet polish.** Remaining
-      non-blocking work: inherit the create widget's plan-graph chart, show a
-      canonical read-only `Extra permissions` summary on the confirm sheet, and
-      add a real at-cap honesty signal for cases where the in-isolation preview
-      overstates what can run.
+- [ ] **Widget desirability (`headroom` / `plan_budget`), residual & subjective.** The concrete
+      defects shipped (plan_budget status-line truncation, PR #1458). Remaining is subjective only —
+      `headroom` hierarchy / price-chip weight / over-cap tone, and the `plan_budget` projected
+      summary dominating the chart — which needs a hands-on harness walk, not an autonomous PR.
 
 - [ ] **P3: create-screen `Extra permissions` opt-out is additive-only.**
       `createDeferredObjective` uses the `preserve` rescue policy, and the compose
@@ -114,54 +71,11 @@ not a release gate.*
       via Flow / the rescue lane. Surface the current standing permission in the
       compose view when the screen should read as authoritative.
 
-*v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
-release-review pass, 2026-05-26 — the original entry committed as
-`6dea64be` on the v2.9.1 release branch never propagated to main).*
+### P1 — targeted refactors (deferred)
 
-*Status (2026-05-28 release-review): the rescue-lane stuck-at-peak bullet
-was resolved by commit `61807892 fix(admission): generalise smart-task
-lifecycle-end release beyond EV` + new integration coverage at
-`test/lifecycleEndReleaseNonEv.integration.test.ts`. The fix generalised
-`shouldEmitSatisfiedPause` → `shouldEmitTerminalRelease` so non-EV cap-off
-devices (thermostats, water heaters) now receive a `shed_release` intent
-on lifecycle end and the executor routes it through `getShedBehavior`
-(`set_temperature` for thermostats, binary off otherwise). The later residual
-gap for stepped-only devices without `onoff`/`evcharger_charging` was closed in
-the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
-`set_step` shed command and gating disarm until the stepped target is observed.*
-
-*v2.9.1..main release-review findings (2026-05-26, six-agent fan-out:
-`pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
-`pels-m3-critic` + `pels-ux-fit` + inline scope-cutter).*
-
-*Widget-polish train shipped across PRs #1313–#1317 (lint enforcement #1305; see
-`notes/widget-review.md` § Shipped). Remaining widget follow-ups, deferred / low urgency:*
-
-  - [x] **No CI guard that committed widget bundles match source** — DONE 2026-06-02.
-        Generated widget artifacts (`api.js`/`*WidgetPayload.js` at `widgets/<name>/` root **and**
-        `public/index.css`/`index.js`) drifted from `src/` with nothing failing CI — `4bd1ce94`
-        shipped stale `plan_budget`/`create_smart_task` API bundles after a `shared-domain` change
-        the `bundleApi: true` widgets inline. Fixed by regenerating the bundles and adding a
-        post-`npm run build` `git diff --exit-code` step in `test.yml` (covers all generated
-        artifacts, not just `widgets/*/public`). Source: adversarial-review (low), widget
-        token-strategy train 2026-05-31.
-  - [ ] **`settings.test.ts` full-suite flake** — "renders devices with target
-        temperature capabilities" fails intermittently under full-suite load (`test:ui`
-        / `test:ui:unit`) but passes in isolation; cost three pre-push retries during
-        the widget train. Stabilize (likely shared-DOM/async teardown bleed between
-        tests). Source: widget-polish train, 2026-05-30.
-- [ ] Insights mode picker — throttle / coalesce `refreshModeOptions` so a
-      bulk priority edit doesn't issue one `setCapabilityOptions` per
-      setting write. A 10-device priority reorder currently fires 10
-      sequential SDK roundtrips. Coalesce on the `settings.on('set', ...)`
-      callback with a `setImmediate` (or microtask) flush; only re-run when
-      the effective mode-options set differs. Files:
-      `drivers/pels_insights/device.ts:140-152`. Source: release-review
-      pels-runtime-reality, 2026-05-26.
-
-### P1 — targeted refactors (promoted from P2, 2026-06-03 scrutiny pass)
-
-*Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).*
+*Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
+The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
+deviceOverview entries shipped in the 2026-06-03 train; the two below remain deferred.*
 
 - [ ] **Remove the legacy stepped-load optional fields from persisted/API contracts** (after a
       release cut). Planner/executor semantics stay behind typed stepped-state adapters; retire the
@@ -173,33 +87,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
       fields as one nullable bag; discriminate by control kind so the compiler enforces per-variant
       field presence (removes a class of nullable-field bugs). Files: `packages/contracts/src/types.ts`,
       `lib/plan/planTypes.ts`, `lib/plan/planBuilder.ts`, settings UI contract tests.
-- [ ] **Normalize the deeply-partial flow-reported capability state at the boundary** into a
-      required-field runtime representation. Files: `lib/device/transport/flowReportedCapabilities.ts`.
-- [ ] **Migrate the plan/executor `state.pendingBinaryCommands[id]` reads onto the
-      `pendingBinaryCommandStore.peek/get` API** so the field can be removed from `PlanEngineState`
-      and observer becomes the single source of truth both directions. Read sites: `planBuilder.ts`,
-      `planDevices.ts`, `shedding/candidates.ts`, `planStateHelpers.ts`, `planBinaryControlHelpers.ts`
-      (last also drops the in-place eviction side-effect in `getPendingBinaryCommand`); type refs
-      `planExecutor.ts`, `planExecutorPredicates.ts`.
-- [ ] **Unify the stepped-restore admission wrappers** so pending-swap source-off holds and
-      stepped-swap executor context apply consistently across normal restore planning, restore
-      cooldown, meter-settling, and active stepped-upgrade paths (a new branch calling
-      `planRestoreForSteppedDevice` directly currently bypasses them). Files: `lib/plan/restore/**`,
-      stepped-swap / restore-cooldown tests.
-- [ ] **Use confirmed step evidence for stepped-swap completion** instead of planner-effective
-      `selectedStepId`. `cleanupCompletedSwaps()` treats a pending stepped-swap target as complete
-      when `selectedStepId ≥ requested`, but that field can be an observer-resolved planning fallback,
-      not materialized/reported state — so a lower-priority swapped-out device can be released before
-      the target step is actually confirmed. Move the check to `reportedStepId`. Files:
-      `lib/plan/swap/completion.ts`, `lib/plan/swap/lifecycle.ts`, `lib/plan/restore/**`, stepped-swap
-      lifecycle tests.
-- [ ] **Move presentation text out of `shared-domain/deviceOverview.ts`.** The overview generator
-      emits user-facing English (`'Charging requested'`, `'Restoring'`, `'Active (temperature-managed)'`,
-      `'Shed (powered off)'`, `insufficient headroom to restore`, `shortfall (...)`, `cooldown (restore,
-      … remaining)`) into `stateMsg`/`statusMsg`/`reasonText`, coupling shared-domain to one UI language
-      and bypassing `notes/ui-terminology.md` canonical strings. Files:
-      `packages/shared-domain/src/deviceOverview.ts`, `packages/contracts/src/settingsUiApi.ts`,
-      settings UI render call sites.
 
 ## P2 Product, Observability, and Maintainability
 
