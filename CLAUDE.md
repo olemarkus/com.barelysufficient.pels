@@ -12,7 +12,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 ├── api.ts                    # REST API handlers for the settings UI
 ├── app.json                  # Auto-generated from .homeycompose — do not edit directly
 ├── package.json              # npm workspace root (Node 22, npm 10.9.4)
-├── jest.config.cjs           # Jest config (80% coverage threshold)
+├── vitest.config.*.mts       # vitest configs (80% coverage threshold)
 ├── eslint.config.mjs         # ESLint (strict, sonarjs, functional, unicorn)
 ├── .dependency-cruiser.cjs   # Enforced architecture boundary rules
 ├── .homeycompose/            # Source configs for app.json, capabilities, flows
@@ -23,7 +23,7 @@ PELS is a Homey Pro app that implements an hourly electricity capacity controlle
 ├── drivers/                  # pels_insights virtual device driver
 ├── widgets/                  # plan_budget widget
 ├── settings/                 # Generated settings UI bundle (do not edit directly)
-├── test/                     # Jest test suites and mocks
+├── test/                     # vitest test suites and mocks
 ├── docs/                     # VitePress documentation site
 ├── notes/                    # Internal engineering notes (invariants, design constraints)
 └── .github/workflows/        # CI/CD pipelines
@@ -119,10 +119,10 @@ When `.homeycompose/` changes, run `homey app validate` — this regenerates roo
 ### Testing
 
 ```bash
-npm run test:unit           # Fast Jest suite (no coverage, lighter config)
-npm run test:unit:ci        # Full Jest suite with coverage
+npm run test:unit           # Fast vitest suite (no coverage, lighter config)
+npm run test:unit:ci        # Full vitest suite with coverage
 npm run test:unit:tz        # Timezone-sensitive tests
-npm run test:ui             # Settings UI Jest tests
+npm run test:ui             # Settings UI vitest tests
 npm run test:e2e            # Playwright E2E (chromium + firefox mobile)
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
@@ -132,6 +132,7 @@ npm run ci:full             # Complete CI: checks + runtime + settings UI + Play
 **Testing rules:**
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
 - Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API.
+- **Deferred-objective / planner e2e simulate only the Homey SDK boundary** (device temperature/SoC, prices, clock) and drive the real bridge + recorder + admission — never mock PELS internals like `aheadOfHourMilestone` or the fresh/frozen dispatch. Mocking those confirms your assumptions instead of the system's behaviour (it once turned a non-existent cold-start "catastrophe" into a phantom P0). See `lib/objectives/deferredObjectives/AGENTS.md` and `test/deferredObjectiveColdStartSdkE2E.test.ts`.
 
 ### Linting and Checks
 
@@ -182,7 +183,7 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 
 1. **checks** — `npm run ci:checks` (all lints, architecture, dead code, typecheck) followed by `npm run build` and `npm run validate`.
 2. **docs** — VitePress build validation.
-3. **runtime-tests** — `npm run ci:test:runtime` (Jest + timezone tests).
+3. **runtime-tests** — `npm run ci:test:runtime` (vitest + timezone tests).
 4. **settings-ui-tests** — `npm run ci:test:settings-ui`.
 5. **playwright** — E2E matrix (chromium mobile + firefox mobile).
 
