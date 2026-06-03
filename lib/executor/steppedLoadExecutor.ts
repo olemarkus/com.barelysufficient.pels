@@ -15,7 +15,14 @@ import {
 import {
   type BinaryControlTransport,
   decideAndDispatchBinaryControl,
+  dispatchBinaryControlDecision,
 } from './binaryControlDispatch';
+import { resolveObservedBinaryStateFromSnapshot } from './executablePlanProjection';
+import { getBinaryControlPlan } from '../plan/planBinaryControl';
+import {
+  hasPendingMatchingBinaryCommand,
+  isFlowBackedBinaryControl,
+} from '../plan/planBinaryControlHelpers';
 import type { DeviceObservation } from '../device/deviceObservation';
 import { resolveSteppedLoadCommandPendingMs } from '../plan/planObservationPolicy';
 import {
@@ -34,6 +41,23 @@ import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnostics
 import { getLogger } from '../logging/logger';
 
 const logger = getLogger('executor/stepped-load');
+
+/**
+ * Outcome of a stepped-load restore evaluation.
+ * - `ready`: the binary is on (or was already on), so the caller may proceed to
+ *   issue the step command.
+ * - `wroteBinary`: a binary device write was actually dispatched this cycle, so
+ *   the caller should count it as an applied device write (drives the
+ *   post-actuation refresh).
+ */
+type SteppedLoadRestoreResult = {
+  /** Binary is on (or already was) — the caller may proceed to set the step. */
+  ready: boolean;
+  /** A binary device write was dispatched this cycle (counts as an applied write). */
+  wroteBinary: boolean;
+};
+
+const NOT_RESTORED: SteppedLoadRestoreResult = { ready: false, wroteBinary: false };
 
 export type PlanExecutorSteppedContext = {
   state: PlanEngineState;
@@ -211,6 +235,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     stepViolated: boolean;
     desiredStepId?: string;
     preRestoreStepIssued?: boolean;
+    observationUnknown: boolean;
   },
 ): false | null => {
   const {
@@ -223,6 +248,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     stepViolated,
     desiredStepId,
     preRestoreStepIssued,
+    observationUnknown,
   } = params;
   if (!snapshot) {
     return logSteppedLoadRestoreSkip(ctx, {
@@ -262,7 +288,11 @@ const maybeSkipSteppedLoadRestoreBinary = (
       desiredStepId,
     });
   }
-  if (snapshot.currentOn !== false && !stepNeedsAdjustment) {
+  // `currentOn !== false` is the producer's optimistic default when there is no
+  // trusted binary evidence; it is not proof the device is on. When the
+  // observation is unknown we must still drive a defensive binary-on, so do not
+  // treat the optimistic value as "no keep violation".
+  if (snapshot.currentOn !== false && !stepNeedsAdjustment && !observationUnknown) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
       mode,
@@ -283,9 +313,9 @@ export const applySteppedLoadRestore = async (
   mode: PlanActuationMode,
   hasShedDevices: boolean,
   options: { preRestoreStepIssued?: boolean } = {},
-): Promise<boolean> => {
+): Promise<SteppedLoadRestoreResult> => {
   const name = action.name;
-  if (action.desired.on !== true) return false;
+  if (action.desired.on !== true) return NOT_RESTORED;
   const {
     stepActuation,
     matchingRestoreAttempt,
@@ -293,27 +323,51 @@ export const applySteppedLoadRestore = async (
   } = action;
   const effectiveCurrentOn = action.current.on;
   const requestedStepId = action.desired.stepId;
+  // Trusted binary evidence absent (onoff/evcharger read back non-boolean):
+  // `current.on` and `snapshot.currentOn` carry the producer's optimistic
+  // default, not proof the device is on. The plan correctly treats it as on
+  // (no churn); the executor must still ensure a binary-on lands, or the device
+  // sits at 0 kW while the objective reads on_track (silent cold-water bug,
+  // prod 2026-06-03). When the observation is unknown we bypass the
+  // optimistic-`currentOn` short-circuits below and the plan-layer
+  // already-matched skip in `decideBinaryControl` (see
+  // `executeSteppedLoadRestoreBinary`), while keeping the real guards
+  // (not-setable, already-in-progress, and the shed invariant). Scoped to
+  // `purpose === 'keep'`: a shed device (including step-down-while-on, which
+  // also carries `desired.on === true`) must never be defensively turned on.
+  const observationUnknown = action.purpose === 'keep'
+    && snapshot !== undefined
+    && resolveObservedBinaryStateFromSnapshot(snapshot) === 'unknown';
+  // The optimistic `effectiveCurrentOn === true` must not defer the restore when
+  // the observation is unknown — that is exactly the prod failure mode: the step
+  // command is awaiting confirmation (so a matchingRestoreAttempt exists) while
+  // the binary-on never lands. We still honour an explicit `retry_backoff` so the
+  // restore cooldown is respected; the binary dispatch keeps its own pending
+  // dampener.
   const shouldDeferRestoreForAttempt = stepNeedsAdjustment && matchingRestoreAttempt
-    && (effectiveCurrentOn === true || matchingRestoreAttempt.status === 'retry_backoff');
+    && ((effectiveCurrentOn === true && !observationUnknown)
+      || matchingRestoreAttempt.status === 'retry_backoff');
   if (shouldDeferRestoreForAttempt) {
-    return logSteppedLoadRestoreAttemptSkip(ctx, {
+    logSteppedLoadRestoreAttemptSkip(ctx, {
       action,
       mode,
       matchingRestoreAttempt,
     });
+    return NOT_RESTORED;
   }
   logSteppedLoadRestoreViolations(ctx, action, name, {
     desiredStepId: requestedStepId,
     stepNeedsAdjustment,
   });
 
-  if (effectiveCurrentOn === true) {
-    if (stepNeedsAdjustment) return false;
-    return logSteppedLoadRestoreSkip(ctx, {
+  if (effectiveCurrentOn === true && !observationUnknown) {
+    if (stepNeedsAdjustment) return NOT_RESTORED;
+    logSteppedLoadRestoreSkip(ctx, {
       action,
       mode,
       reasonCode: 'no_keep_violation',
     });
+    return NOT_RESTORED;
   }
   const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
   if (snapshot?.currentOn === false) {
@@ -322,7 +376,7 @@ export const applySteppedLoadRestore = async (
       msg: `Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`,
     });
   }
-  if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return false;
+  if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return NOT_RESTORED;
   // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
   delete ctx.state.keepInvariantShedBlockedByDevice[action.id];
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
@@ -335,17 +389,26 @@ export const applySteppedLoadRestore = async (
     stepViolated,
     desiredStepId: requestedStepId,
     preRestoreStepIssued: options.preRestoreStepIssued,
+    observationUnknown,
   });
-  if (binaryRestoreSkip === false) return false;
-  if (snapshot?.currentOn !== false) return true;
-  return executeSteppedLoadRestoreBinary(ctx, {
+  if (binaryRestoreSkip === false) return NOT_RESTORED;
+  // `maybeSkipSteppedLoadRestoreBinary` already returns `false` (handled above)
+  // when the snapshot is missing, so it is defined here; this guard only narrows
+  // the type for the dispatch call below.
+  if (!snapshot) return NOT_RESTORED;
+  // Binary already on (no write needed) but the restore is "ready" so the caller
+  // can proceed to issue the step command.
+  if (snapshot.currentOn !== false && !observationUnknown) return { ready: true, wroteBinary: false };
+  const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,
     mode,
     name,
-    onoffViolated: snapshot?.currentOn === false,
+    onoffViolated: snapshot.currentOn === false,
     stepViolated,
+    observationUnknown,
   });
+  return { ready: wroteBinary, wroteBinary };
 };
 /* eslint-enable max-params, complexity */
 
@@ -667,6 +730,66 @@ const logSteppedLoadRestoreSkip = (
   return false;
 };
 
+// Dispatch the restore binary-on. With a trusted observation we go through the
+// normal decide-and-dispatch path. When the observation is unknown the device's
+// `currentOn` is the producer's optimistic default, which would make
+// `decideBinaryControl`'s already-matched gate (it reads `currentOn === desired`)
+// suppress the command forever. We must not change that plan-layer gate, so for
+// the unknown case we build the decision here and dispatch it directly — keeping
+// decide's legitimate guards (control-plan presence, `canSet`, and the
+// pending-command dampener) and dropping only the optimistic already-matched skip.
+const dispatchSteppedLoadRestoreBinaryCommand = async (
+  ctx: PlanExecutorSteppedContext,
+  params: {
+    action: ExecutableSteppedLoadDevice;
+    snapshot: TargetDeviceSnapshot;
+    mode: PlanActuationMode;
+    name: string;
+    observationUnknown: boolean;
+  },
+): Promise<boolean> => {
+  const { action, snapshot, mode, name, observationUnknown } = params;
+  const transport = ctx.buildBinaryControlTransport();
+  if (!observationUnknown) {
+    return decideAndDispatchBinaryControl({
+      transport,
+      deviceId: action.id,
+      name,
+      desired: true,
+      snapshot,
+      logContext: 'capacity',
+      restoreSource: ctx.getRestoreLogSource(action.id),
+      actuationMode: mode,
+    });
+  }
+  const controlPlan = getBinaryControlPlan(snapshot);
+  if (!controlPlan || !controlPlan.canSet) return false;
+  if (hasPendingMatchingBinaryCommand({
+    pendingBinaryCommandStore: transport.pendingBinaryCommandStore,
+    deviceId: action.id,
+    controlPlan,
+    desired: true,
+  })) {
+    return false;
+  }
+  const result = await dispatchBinaryControlDecision({
+    decision: {
+      deviceId: action.id,
+      name,
+      capabilityId: controlPlan.capabilityId,
+      desired: true,
+      flowBackedControl: isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId),
+      logContext: 'capacity',
+      actuationMode: mode,
+      restoreSource: ctx.getRestoreLogSource(action.id),
+      isEv: controlPlan.isEv,
+    },
+    transport,
+    snapshot,
+  });
+  return result.ok;
+};
+
 const executeSteppedLoadRestoreBinary = async (
   ctx: PlanExecutorSteppedContext,
   params: {
@@ -676,6 +799,7 @@ const executeSteppedLoadRestoreBinary = async (
     name: string;
     onoffViolated: boolean;
     stepViolated: boolean;
+    observationUnknown: boolean;
   },
 ): Promise<boolean> => {
   const {
@@ -685,18 +809,16 @@ const executeSteppedLoadRestoreBinary = async (
     name,
     onoffViolated,
     stepViolated,
+    observationUnknown,
   } = params;
   ctx.state.pendingRestores.add(action.id);
   try {
-    const applied = await decideAndDispatchBinaryControl({
-      transport: ctx.buildBinaryControlTransport(),
-      deviceId: action.id,
-      name,
-      desired: true,
+    const applied = await dispatchSteppedLoadRestoreBinaryCommand(ctx, {
+      action,
       snapshot,
-      logContext: 'capacity',
-      restoreSource: ctx.getRestoreLogSource(action.id),
-      actuationMode: mode,
+      mode,
+      name,
+      observationUnknown,
     });
     if (!applied) return false;
     logger.info({
@@ -710,6 +832,7 @@ const executeSteppedLoadRestoreBinary = async (
       mode,
       onoffViolated,
       stepViolated,
+      ...(observationUnknown ? { binaryObservationUnknown: true } : {}),
       reasonCode: 'keep_invariant',
     });
     if (mode === 'plan') {

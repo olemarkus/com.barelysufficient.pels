@@ -556,7 +556,7 @@ export class PlanExecutor {
     mode: PlanActuationMode,
     hasShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
-  ): Promise<boolean> {
+  ) {
     return action
       ? applySteppedLoadRestore(
         this.buildSteppedExecutorContext(),
@@ -566,7 +566,7 @@ export class PlanExecutor {
         hasShedDevices,
         options,
       )
-      : false;
+      : { ready: false, wroteBinary: false };
   }
 
   private async applySteppedLoadShedOff(
@@ -756,7 +756,7 @@ export class PlanExecutor {
               )
               : false;
             if (preRestoreStepIssued) commandRequestCount += 1;
-            const stepRestoreReady = await this.applySteppedLoadRestore(
+            const stepRestore = await this.applySteppedLoadRestore(
               steppedAction,
               snapshot,
               mode,
@@ -764,18 +764,19 @@ export class PlanExecutor {
               { preRestoreStepIssued },
             );
             if (
-              stepRestoreReady
+              stepRestore.ready
               && !onoffViolated
               && await this.applySteppedLoadCommand(steppedAction, mode, snapshot)
             ) commandRequestCount += 1;
-            if (stepRestoreReady && onoffViolated) deviceWriteCount += 1;
+            if (stepRestore.wroteBinary) deviceWriteCount += 1;
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
           if (intent.steppedLoad) {
             if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
             if (await this.applySteppedLoadShedOff(steppedAction, snapshot, mode)) deviceWriteCount += 1;
-            await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasShedDevices);
+            const restored = await this.applySteppedLoadRestore(steppedAction, snapshot, mode, hasShedDevices);
+            if (restored.wroteBinary) deviceWriteCount += 1;
             if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
             continue;
           }
