@@ -15,10 +15,15 @@ export function isSwapTargetComplete(
   if (!requestedStepId || !device.steppedLoadProfile) return false;
 
   const requestedStep = getSteppedLoadStep(device.steppedLoadProfile, requestedStepId);
-  const currentStep = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
-  if (!requestedStep || !currentStep) return false;
+  // Decide completion from CONFIRMED evidence (reportedStepId), not the planner-effective
+  // selectedStepId — the latter can be an observer-resolved planning fallback that has not yet
+  // materialized on the device. A null/unknown reportedStepId yields a null step here, so we
+  // treat the swap as NOT complete and keep the lower-priority source shed until the target's
+  // step is actually confirmed.
+  const reportedStep = getSteppedLoadStep(device.steppedLoadProfile, device.reportedStepId);
+  if (!requestedStep || !reportedStep) return false;
 
-  return currentStep.planningPowerW >= requestedStep.planningPowerW;
+  return reportedStep.planningPowerW >= requestedStep.planningPowerW;
 }
 
 function resolveRequestedStepId(
