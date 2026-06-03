@@ -108,6 +108,66 @@
   var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => reason === "deadline_passed" ? STARVATION_RESCUE_WIDGET_COPY.deadlinePassed : STARVATION_RESCUE_WIDGET_COPY.rescueError;
 
+  // widgets/_shared/widgetRuntime.ts
+  var applyPreviewTheme = (widgetDocument, searchParams) => {
+    const theme = searchParams.get("theme");
+    if (theme === "dark") {
+      widgetDocument.body.classList.add("homey-dark-mode");
+    } else if (theme === "light") {
+      widgetDocument.body.classList.remove("homey-dark-mode");
+    }
+  };
+  var createRefreshLoop = (config) => {
+    const { widgetWindow, widgetDocument, intervalMs, onTick } = config;
+    const onVisible = config.onVisible ?? onTick;
+    let refreshTimer = null;
+    let visibilityBound = false;
+    const handleVisibilityChange = () => {
+      if (widgetDocument.visibilityState === "visible") onVisible();
+    };
+    return {
+      start: () => {
+        if (refreshTimer !== null) widgetWindow.clearInterval(refreshTimer);
+        refreshTimer = widgetWindow.setInterval(onTick, intervalMs);
+      },
+      bindVisibility: () => {
+        if (visibilityBound) return;
+        widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = true;
+      },
+      stop: () => {
+        if (refreshTimer !== null) {
+          widgetWindow.clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
+        if (!visibilityBound) return;
+        widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+        visibilityBound = false;
+      }
+    };
+  };
+  var installWidget = (config) => {
+    const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
+    const targets = resolveTargets2(widgetDocument);
+    if (!targets) return null;
+    const base = createController({ targets, widgetDocument, widgetWindow });
+    const controller = config.wrapController ? config.wrapController(base) : base;
+    const installWindow = widgetWindow;
+    installWindow.onHomeyReady = (homey) => {
+      config.onHomeyClient?.(homey);
+      controller.bootstrap(homey);
+    };
+    const bootstrapWithoutHomey = () => {
+      if (!installWindow.Homey) controller.bootstrap(null);
+    };
+    if (widgetDocument.readyState === "loading") {
+      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
+    } else {
+      bootstrapWithoutHomey();
+    }
+    return controller;
+  };
+
   // widgets/starvation_rescue/src/public/previewPayloads.ts
   var PREVIEW_STARVATION_RESCUE_DEVICES = {
     state: "ready",
@@ -886,14 +946,6 @@
   var C2 = STARVATION_RESCUE_WIDGET_COPY;
   var REFRESH_INTERVAL_MS = 10 * 1e3;
   var DONE_FLASH_MS = 1800;
-  var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
-    const theme = searchParams.get("theme");
-    if (theme === "dark") {
-      widgetDocument.body.classList.add("homey-dark-mode");
-    } else if (theme === "light") {
-      widgetDocument.body.classList.remove("homey-dark-mode");
-    }
-  };
   var HOUR_MS2 = 60 * 60 * 1e3;
   var PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS2) * HOUR_MS2;
   var PREVIEW_RESPONSE = {
@@ -1012,7 +1064,6 @@
     let view = { kind: "list" };
     let listenersBound = false;
     let usePreviewData = false;
-    let refreshTimer = null;
     let doneResetTimer = null;
     let destroyed = false;
     let requestSeq = 0;
@@ -1080,14 +1131,17 @@
     const reloadListOnly = () => {
       if (view.kind === "list") void loadAndRender();
     };
-    const handleVisibilityChange = () => {
-      if (widgetDocument.visibilityState === "visible") reloadListOnly();
-    };
+    const refresh = createRefreshLoop({
+      widgetWindow,
+      widgetDocument,
+      intervalMs: REFRESH_INTERVAL_MS,
+      onTick: reloadListOnly
+    });
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       usePreviewData = searchParams.get("preview") === "1";
-      maybeApplyPreviewTheme(widgetDocument, searchParams);
+      applyPreviewTheme(widgetDocument, searchParams);
       const payload = await fetchDevices(homeyRef, usePreviewData);
       if (destroyed) return;
       if (loadId === loadSequence) {
@@ -1104,46 +1158,30 @@
       homeyRef = homey;
       if (!listenersBound) {
         targets.root.addEventListener("click", handleClick);
-        widgetDocument.addEventListener("visibilitychange", handleVisibilityChange);
-        refreshTimer = widgetWindow.setInterval(reloadListOnly, REFRESH_INTERVAL_MS);
+        refresh.bindVisibility();
+        refresh.start();
         listenersBound = true;
       }
       void loadAndRender();
     };
     const destroy = () => {
       destroyed = true;
-      if (refreshTimer !== null) widgetWindow.clearInterval(refreshTimer);
+      refresh.stop();
       if (doneResetTimer !== null) widgetWindow.clearTimeout(doneResetTimer);
-      refreshTimer = null;
       doneResetTimer = null;
       if (!listenersBound) return;
       targets.root.removeEventListener("click", handleClick);
-      widgetDocument.removeEventListener("visibilitychange", handleVisibilityChange);
       listenersBound = false;
     };
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget = (widgetWindow, widgetDocument) => {
-    const targets = resolveTargets(widgetDocument);
-    if (!targets) return null;
-    const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
-    const installWindow = widgetWindow;
-    installWindow.onHomeyReady = (homey) => {
-      controller.bootstrap(homey);
-    };
-    const bootstrapWithoutHomey = () => {
-      if (!widgetWindow.Homey) {
-        controller.bootstrap(null);
-      }
-    };
-    if (widgetDocument.readyState === "loading") {
-      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
-    } else {
-      bootstrapWithoutHomey();
-    }
-    return controller;
-  };
+  var installWidget2 = (widgetWindow, widgetDocument) => installWidget({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: createWidgetController
+  });
 
   // widgets/starvation_rescue/src/public/index.ts
-  var widgetController = installWidget(window, document);
+  var widgetController = installWidget2(window, document);
 })();

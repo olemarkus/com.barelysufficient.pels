@@ -2,6 +2,14 @@ import {
   STARVATION_RESCUE_WIDGET_COPY,
   resolveStarvationRescueRejectCopy,
 } from '../../../../packages/shared-domain/src/planStarvation';
+import {
+  applyPreviewTheme,
+  createRefreshLoop,
+  installWidget as installSharedWidget,
+  type WidgetController as SharedWidgetController,
+  type WidgetHomeyBase,
+  type WidgetWindowBase,
+} from '../../../_shared/widgetRuntime';
 import { PREVIEW_STARVATION_RESCUE_DEVICES } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -15,30 +23,11 @@ const C = STARVATION_RESCUE_WIDGET_COPY;
 const REFRESH_INTERVAL_MS = 10 * 1000;
 const DONE_FLASH_MS = 1800;
 
-export type WidgetWindow = Window & {
-  Homey?: unknown;
-  onHomeyReady?: (homey: WidgetHomey) => void;
-};
+export type WidgetWindow = WidgetWindowBase;
 
-export type WidgetHomey = {
-  api: (method: string, path: string, body?: unknown) => Promise<unknown>;
-  ready?: () => void;
-};
+export type WidgetHomey = WidgetHomeyBase;
 
-export type WidgetController = {
-  bootstrap: (homey: WidgetHomey | null) => void;
-  destroy: () => void;
-  loadAndRender: () => Promise<void>;
-};
-
-const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
-  const theme = searchParams.get('theme');
-  if (theme === 'dark') {
-    widgetDocument.body.classList.add('homey-dark-mode');
-  } else if (theme === 'light') {
-    widgetDocument.body.classList.remove('homey-dark-mode');
-  }
-};
+export type WidgetController = SharedWidgetController<WidgetHomey>;
 
 const HOUR_MS = 60 * 60 * 1000;
 const PREVIEW_NEXT_HOUR_MS = Math.ceil(Date.now() / HOUR_MS) * HOUR_MS;
@@ -211,7 +200,6 @@ export const createWidgetController = (params: {
   let view: ViewState = { kind: 'list' };
   let listenersBound = false;
   let usePreviewData = false;
-  let refreshTimer: number | null = null;
   let doneResetTimer: number | null = null;
   let destroyed = false;
   // Latest-request-wins token: a slow preview/create that resolves after the
@@ -292,15 +280,20 @@ export const createWidgetController = (params: {
   // Refresh ONLY the list view — neither the periodic poll nor a visibility
   // regain may disturb an in-progress confirm flow.
   const reloadListOnly = (): void => { if (view.kind === 'list') void loadAndRender(); };
-  const handleVisibilityChange = (): void => {
-    if (widgetDocument.visibilityState === 'visible') reloadListOnly();
-  };
+
+  // List-only on both the periodic tick and the visibility regain (shared loop).
+  const refresh = createRefreshLoop({
+    widgetWindow,
+    widgetDocument,
+    intervalMs: REFRESH_INTERVAL_MS,
+    onTick: reloadListOnly,
+  });
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
     const searchParams = new URLSearchParams(widgetWindow.location.search);
     usePreviewData = searchParams.get('preview') === '1';
-    maybeApplyPreviewTheme(widgetDocument, searchParams);
+    applyPreviewTheme(widgetDocument, searchParams);
     const payload = await fetchDevices(homeyRef, usePreviewData);
     if (destroyed) return;
     if (loadId === loadSequence) {
@@ -320,8 +313,8 @@ export const createWidgetController = (params: {
     homeyRef = homey;
     if (!listenersBound) {
       targets.root.addEventListener('click', handleClick);
-      widgetDocument.addEventListener('visibilitychange', handleVisibilityChange);
-      refreshTimer = widgetWindow.setInterval(reloadListOnly, REFRESH_INTERVAL_MS);
+      refresh.bindVisibility();
+      refresh.start();
       listenersBound = true;
     }
     void loadAndRender();
@@ -329,13 +322,11 @@ export const createWidgetController = (params: {
 
   const destroy = (): void => {
     destroyed = true;
-    if (refreshTimer !== null) widgetWindow.clearInterval(refreshTimer);
+    refresh.stop();
     if (doneResetTimer !== null) widgetWindow.clearTimeout(doneResetTimer);
-    refreshTimer = null;
     doneResetTimer = null;
     if (!listenersBound) return;
     targets.root.removeEventListener('click', handleClick);
-    widgetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
     listenersBound = false;
   };
 
@@ -345,25 +336,9 @@ export const createWidgetController = (params: {
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-): WidgetController | null => {
-  const targets = resolveTargets(widgetDocument);
-  if (!targets) return null;
-
-  const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
-  const installWindow = widgetWindow;
-  installWindow.onHomeyReady = (homey: WidgetHomey): void => {
-    controller.bootstrap(homey);
-  };
-
-  const bootstrapWithoutHomey = (): void => {
-    if (!widgetWindow.Homey) {
-      controller.bootstrap(null);
-    }
-  };
-  if (widgetDocument.readyState === 'loading') {
-    widgetDocument.addEventListener('DOMContentLoaded', bootstrapWithoutHomey, { once: true });
-  } else {
-    bootstrapWithoutHomey();
-  }
-  return controller;
-};
+): WidgetController | null => installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+  widgetWindow,
+  widgetDocument,
+  resolveTargets,
+  createController: createWidgetController,
+});

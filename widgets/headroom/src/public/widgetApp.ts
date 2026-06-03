@@ -1,4 +1,12 @@
 import { HEADROOM_WIDGET_COPY } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
+import {
+  applyPreviewTheme,
+  createRefreshLoop,
+  installWidget as installSharedWidget,
+  type WidgetController as SharedWidgetController,
+  type WidgetHomeyBase,
+  type WidgetWindowBase,
+} from '../../../_shared/widgetRuntime';
 import { resolveHeadroomPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets } from './render';
 import type { HeadroomWidgetPayload } from '../headroomWidgetTypes';
@@ -6,30 +14,11 @@ import type { HeadroomWidgetPayload } from '../headroomWidgetTypes';
 const REFRESH_INTERVAL_MS = 10 * 1000;
 const LOAD_ERROR_SUBTITLE = HEADROOM_WIDGET_COPY.loadErrorSubtitle;
 
-export type WidgetWindow = Window & {
-  Homey?: unknown;
-  onHomeyReady?: (homey: WidgetHomey) => void;
-};
+export type WidgetWindow = WidgetWindowBase;
 
-export type WidgetHomey = {
-  api: (method: string, path: string) => Promise<unknown>;
-  ready?: () => void;
-};
+export type WidgetHomey = WidgetHomeyBase;
 
-export type WidgetController = {
-  bootstrap: (homey: WidgetHomey | null) => void;
-  destroy: () => void;
-  loadAndRender: () => Promise<void>;
-};
-
-const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
-  const theme = searchParams.get('theme');
-  if (theme === 'dark') {
-    widgetDocument.body.classList.add('homey-dark-mode');
-  } else if (theme === 'light') {
-    widgetDocument.body.classList.remove('homey-dark-mode');
-  }
-};
+export type WidgetController = SharedWidgetController<WidgetHomey>;
 
 const resolveTargets = (widgetDocument: Document): RenderTargets | null => {
   const root = widgetDocument.getElementById('widget-root');
@@ -69,8 +58,6 @@ export const createWidgetController = (params: {
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
-  let refreshTimer: number | null = null;
-  let visibilityListenerBound = false;
   let destroyed = false;
 
   const loadAndRender = async (): Promise<void> => {
@@ -78,7 +65,7 @@ export const createWidgetController = (params: {
     try {
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       const preview = searchParams.get('preview') === '1';
-      maybeApplyPreviewTheme(widgetDocument, searchParams);
+      applyPreviewTheme(widgetDocument, searchParams);
       const payload: HeadroomWidgetPayload = preview || !homeyRef
         ? resolveHeadroomPreviewPayload(searchParams.get('state'))
         : await homeyRef.api('GET', '/headroom') as HeadroomWidgetPayload;
@@ -96,44 +83,24 @@ export const createWidgetController = (params: {
     }
   };
 
-  const handleVisibilityChange = (): void => {
-    if (widgetDocument.visibilityState === 'visible') {
-      void loadAndRender();
-    }
-  };
-
-  const startRefreshLoop = (): void => {
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-    }
-    refreshTimer = widgetWindow.setInterval(() => {
-      void loadAndRender();
-    }, REFRESH_INTERVAL_MS);
-  };
-
-  const bindVisibilityReload = (): void => {
-    if (visibilityListenerBound) return;
-    widgetDocument.addEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = true;
-  };
+  const refresh = createRefreshLoop({
+    widgetWindow,
+    widgetDocument,
+    intervalMs: REFRESH_INTERVAL_MS,
+    onTick: () => { void loadAndRender(); },
+  });
 
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
     homeyRef = homey;
     void loadAndRender();
-    startRefreshLoop();
-    bindVisibilityReload();
+    refresh.start();
+    refresh.bindVisibility();
   };
 
   const destroy = (): void => {
     destroyed = true;
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-      refreshTimer = null;
-    }
-    if (!visibilityListenerBound) return;
-    widgetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = false;
+    refresh.stop();
   };
 
   return { bootstrap, destroy, loadAndRender };
@@ -142,25 +109,9 @@ export const createWidgetController = (params: {
 export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
-): WidgetController | null => {
-  const targets = resolveTargets(widgetDocument);
-  if (!targets) return null;
-
-  const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
-  const installWindow = widgetWindow;
-  installWindow.onHomeyReady = (homey: WidgetHomey): void => {
-    controller.bootstrap(homey);
-  };
-
-  const bootstrapWithoutHomey = (): void => {
-    if (!widgetWindow.Homey) {
-      controller.bootstrap(null);
-    }
-  };
-  if (widgetDocument.readyState === 'loading') {
-    widgetDocument.addEventListener('DOMContentLoaded', bootstrapWithoutHomey, { once: true });
-  } else {
-    bootstrapWithoutHomey();
-  }
-  return controller;
-};
+): WidgetController | null => installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+  widgetWindow,
+  widgetDocument,
+  resolveTargets,
+  createController: createWidgetController,
+});

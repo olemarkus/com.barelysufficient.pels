@@ -1,4 +1,12 @@
 import { SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE } from '../../../../packages/shared-domain/src/deadlineLabels';
+import {
+  applyPreviewTheme,
+  createRefreshLoop,
+  installWidget as installSharedWidget,
+  type WidgetController as SharedWidgetController,
+  type WidgetHomeyBase,
+  type WidgetWindowBase,
+} from '../../../_shared/widgetRuntime';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from './previewPayloads';
 import { renderLoading, renderWidget, type RenderTargets } from './render';
 import type { SmartTasksWidgetPayload } from '../smartTasksWidgetTypes';
@@ -8,17 +16,13 @@ const REFRESH_INTERVAL_MS = 60 * 1000;
 // render and shows the error state — ~3 × 60 s grace for transient SDK blips.
 const MAX_CONSECUTIVE_LOAD_FAILURES = 3;
 
-export type WidgetWindow = Window & {
-  Homey?: unknown;
-  onHomeyReady?: (homey: WidgetHomey) => void;
+export type WidgetWindow = WidgetWindowBase & {
   // Declared so the typed lint resolves the constructor when the height
   // reporter reads the global `ResizeObserver` off the widget window.
   ResizeObserver?: typeof globalThis.ResizeObserver;
 };
 
-export type WidgetHomey = {
-  api: (method: string, path: string) => Promise<unknown>;
-  ready?: () => void;
+export type WidgetHomey = WidgetHomeyBase & {
   // Resize the widget iframe to fit content. The list (active rows + a
   // "Recently ended" section) and the detail (chart + legend) both vary in
   // height and exceed any single fixed compose height — Homey widgets don't
@@ -77,11 +81,7 @@ const createHeightReporter = (
   };
 };
 
-export type WidgetController = {
-  bootstrap: (homey: WidgetHomey | null) => void;
-  destroy: () => void;
-  loadAndRender: () => Promise<void>;
-};
+export type WidgetController = SharedWidgetController<WidgetHomey>;
 
 // Internal navigation state. `detail` keeps the selected row's deviceId so a
 // refresh can rehydrate the same task; the controller drops back to `list`
@@ -159,15 +159,6 @@ const wireInteraction = (
   };
 };
 
-const maybeApplyPreviewTheme = (widgetDocument: Document, searchParams: URLSearchParams): void => {
-  const theme = searchParams.get('theme');
-  if (theme === 'dark') {
-    widgetDocument.body.classList.add('homey-dark-mode');
-  } else if (theme === 'light') {
-    widgetDocument.body.classList.remove('homey-dark-mode');
-  }
-};
-
 // The detail panel's plain HTMLElement slots, keyed by the RenderTargets field
 // name. `root` (id lookup), `rowTemplate` (HTMLTemplateElement) and
 // `detailBackBtn` (HTMLButtonElement) are resolved separately because they need
@@ -237,8 +228,6 @@ export const createWidgetController = (params: {
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
-  let refreshTimer: number | null = null;
-  let visibilityListenerBound = false;
   let lastPayload: SmartTasksWidgetPayload | null = null;
   let view: ViewState = { kind: 'list' };
   let teardownInteraction: (() => void) | null = null;
@@ -268,7 +257,7 @@ export const createWidgetController = (params: {
     try {
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       const preview = searchParams.get('preview') === '1';
-      maybeApplyPreviewTheme(widgetDocument, searchParams);
+      applyPreviewTheme(widgetDocument, searchParams);
       const payload: SmartTasksWidgetPayload = preview || !homeyRef
         ? PREVIEW_SMART_TASKS_PAYLOAD
         : await homeyRef.api('GET', '/smart_tasks') as SmartTasksWidgetPayload;
@@ -302,26 +291,12 @@ export const createWidgetController = (params: {
     }
   };
 
-  const handleVisibilityChange = (): void => {
-    if (widgetDocument.visibilityState === 'visible') {
-      void loadAndRender();
-    }
-  };
-
-  const startRefreshLoop = (): void => {
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-    }
-    refreshTimer = widgetWindow.setInterval(() => {
-      void loadAndRender();
-    }, REFRESH_INTERVAL_MS);
-  };
-
-  const bindVisibilityReload = (): void => {
-    if (visibilityListenerBound) return;
-    widgetDocument.addEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = true;
-  };
+  const refresh = createRefreshLoop({
+    widgetWindow,
+    widgetDocument,
+    intervalMs: REFRESH_INTERVAL_MS,
+    onTick: () => { void loadAndRender(); },
+  });
 
   const bootstrap = (homey: WidgetHomey | null): void => {
     if (homey && homey === homeyRef) return;
@@ -335,21 +310,15 @@ export const createWidgetController = (params: {
     // trip shows "Loading…" rather than a blank panel.
     render();
     void loadAndRender();
-    startRefreshLoop();
-    bindVisibilityReload();
+    refresh.start();
+    refresh.bindVisibility();
   };
 
   const destroy = (): void => {
     destroyed = true;
-    if (refreshTimer !== null) {
-      widgetWindow.clearInterval(refreshTimer);
-      refreshTimer = null;
-    }
+    refresh.stop();
     teardownInteraction?.();
     teardownInteraction = null;
-    if (!visibilityListenerBound) return;
-    widgetDocument.removeEventListener('visibilitychange', handleVisibilityChange);
-    visibilityListenerBound = false;
   };
 
   return { bootstrap, destroy, loadAndRender };
@@ -359,45 +328,40 @@ export const installWidget = (
   widgetWindow: WidgetWindow,
   widgetDocument: Document,
 ): WidgetController | null => {
-  const targets = resolveTargets(widgetDocument);
-  if (!targets) return null;
-
   // Size the iframe to content (Homey.setHeight) once a real client is wired;
-  // the no-Homey preview/harness path renders at natural page size. Created
-  // before the controller so its `report` can be wired into every render.
+  // the no-Homey preview/harness path renders at natural page size. The reporter
+  // is created lazily inside `createController` (once the targets resolve) so its
+  // `report` can be wired into every render, and its `observe`/`disconnect` are
+  // driven by the shared install's `onHomeyClient`/`wrapController` hooks.
   let activeHomey: WidgetHomey | null = null;
-  const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
-  const controller = createWidgetController({
-    targets,
-    widgetDocument,
-    widgetWindow,
-    reportHeight: () => heightReporter.report(),
-  });
-  const installWindow = widgetWindow;
-  installWindow.onHomeyReady = (homey: WidgetHomey): void => {
-    activeHomey = homey;
-    heightReporter.observe();
-    controller.bootstrap(homey);
-  };
+  let heightReporter: ReturnType<typeof createHeightReporter> | null = null;
 
-  const bootstrapWithoutHomey = (): void => {
-    if (!widgetWindow.Homey) {
-      controller.bootstrap(null);
-    }
-  };
-  if (widgetDocument.readyState === 'loading') {
-    widgetDocument.addEventListener('DOMContentLoaded', bootstrapWithoutHomey, { once: true });
-  } else {
-    bootstrapWithoutHomey();
-  }
-  return {
-    ...controller,
-    destroy: (): void => {
-      controller.destroy();
-      heightReporter.disconnect();
-      // Drop the client so a late ResizeObserver callback short-circuits in
-      // getHomey() instead of calling setHeight on a torn-down widget.
-      activeHomey = null;
+  return installSharedWidget<RenderTargets, WidgetHomey, WidgetWindow>({
+    widgetWindow,
+    widgetDocument,
+    resolveTargets,
+    createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
+      heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
+      return createWidgetController({
+        targets,
+        widgetDocument: doc,
+        widgetWindow: win,
+        reportHeight: () => heightReporter?.report(),
+      });
     },
-  };
+    onHomeyClient: (homey) => {
+      activeHomey = homey;
+      heightReporter?.observe();
+    },
+    wrapController: (controller) => ({
+      ...controller,
+      destroy: (): void => {
+        controller.destroy();
+        heightReporter?.disconnect();
+        // Drop the client so a late ResizeObserver callback short-circuits in
+        // getHomey() instead of calling setHeight on a torn-down widget.
+        activeHomey = null;
+      },
+    }),
+  });
 };

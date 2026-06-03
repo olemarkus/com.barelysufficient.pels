@@ -470,6 +470,37 @@
     return `Cost ${APPROX_GLYPH} ${plannedLabel}`;
   };
 
+  // widgets/_shared/widgetRuntime.ts
+  var applyPreviewTheme = (widgetDocument, searchParams) => {
+    const theme = searchParams.get("theme");
+    if (theme === "dark") {
+      widgetDocument.body.classList.add("homey-dark-mode");
+    } else if (theme === "light") {
+      widgetDocument.body.classList.remove("homey-dark-mode");
+    }
+  };
+  var installWidget = (config) => {
+    const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
+    const targets = resolveTargets2(widgetDocument);
+    if (!targets) return null;
+    const base = createController({ targets, widgetDocument, widgetWindow });
+    const controller = config.wrapController ? config.wrapController(base) : base;
+    const installWindow = widgetWindow;
+    installWindow.onHomeyReady = (homey) => {
+      config.onHomeyClient?.(homey);
+      controller.bootstrap(homey);
+    };
+    const bootstrapWithoutHomey = () => {
+      if (!installWindow.Homey) controller.bootstrap(null);
+    };
+    if (widgetDocument.readyState === "loading") {
+      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
+    } else {
+      bootstrapWithoutHomey();
+    }
+    return controller;
+  };
+
   // widgets/create_smart_task/src/public/previewPayloads.ts
   var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
     // Gallery thumbnail: one temperature device and one EV charger so the gallery
@@ -1091,14 +1122,6 @@
       }
     };
   };
-  var maybeApplyPreviewTheme = (widgetDocument, searchParams) => {
-    const theme = searchParams.get("theme");
-    if (theme === "dark") {
-      widgetDocument.body.classList.add("homey-dark-mode");
-    } else if (theme === "light") {
-      widgetDocument.body.classList.remove("homey-dark-mode");
-    }
-  };
   var HOUR_MS2 = 60 * 60 * 1e3;
   var PREVIEW_NEXT_HOUR_MS = (() => {
     const base = /* @__PURE__ */ new Date();
@@ -1407,7 +1430,7 @@
       const loadId = ++loadSequence;
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       usePreviewData = searchParams.get("preview") === "1";
-      maybeApplyPreviewTheme(widgetDocument, searchParams);
+      applyPreviewTheme(widgetDocument, searchParams);
       const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get("state"));
       if (destroyed || loadId !== loadSequence) return;
       devicesPayload = payload;
@@ -1433,38 +1456,32 @@
     };
     return { bootstrap, destroy, loadAndRender };
   };
-  var installWidget = (widgetWindow, widgetDocument) => {
-    const targets = resolveTargets(widgetDocument);
-    if (!targets) return null;
-    const controller = createWidgetController({ targets, widgetDocument, widgetWindow });
+  var installWidget2 = (widgetWindow, widgetDocument) => {
     let activeHomey = null;
-    const heightReporter = createHeightReporter(targets.root, widgetWindow, () => activeHomey);
-    const installWindow = widgetWindow;
-    installWindow.onHomeyReady = (homey) => {
-      activeHomey = homey;
-      heightReporter.observe();
-      controller.bootstrap(homey);
-    };
-    const bootstrapWithoutHomey = () => {
-      if (!widgetWindow.Homey) {
-        controller.bootstrap(null);
-      }
-    };
-    if (widgetDocument.readyState === "loading") {
-      widgetDocument.addEventListener("DOMContentLoaded", bootstrapWithoutHomey, { once: true });
-    } else {
-      bootstrapWithoutHomey();
-    }
-    return {
-      ...controller,
-      destroy: () => {
-        controller.destroy();
-        heightReporter.disconnect();
-        activeHomey = null;
-      }
-    };
+    let heightReporter = null;
+    return installWidget({
+      widgetWindow,
+      widgetDocument,
+      resolveTargets,
+      createController: ({ targets, widgetDocument: doc, widgetWindow: win }) => {
+        heightReporter = createHeightReporter(targets.root, win, () => activeHomey);
+        return createWidgetController({ targets, widgetDocument: doc, widgetWindow: win });
+      },
+      onHomeyClient: (homey) => {
+        activeHomey = homey;
+        heightReporter?.observe();
+      },
+      wrapController: (controller) => ({
+        ...controller,
+        destroy: () => {
+          controller.destroy();
+          heightReporter?.disconnect();
+          activeHomey = null;
+        }
+      })
+    });
   };
 
   // widgets/create_smart_task/src/public/index.ts
-  var widgetController = installWidget(window, document);
+  var widgetController = installWidget2(window, document);
 })();
