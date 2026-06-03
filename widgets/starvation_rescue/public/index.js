@@ -952,18 +952,39 @@
     ok: true,
     deadlineAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS2,
     deadlineLabel: "Today 17:00",
-    scheduledWindowLabel: "14:00\u201316:00",
+    scheduledWindowLabel: "13:00\u201315:00",
     estimate: {
       status: "on_track",
+      // Scheduled across the current hour + the next one, so the fixture can honestly
+      // demonstrate the at-cap note (which is about running in the CURRENT clock hour).
       scheduledHours: [
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 },
-        { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2, plannedKWh: 1.5 }
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS2, plannedKWh: 1.5 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS, plannedKWh: 1.5 }
       ],
-      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS2,
+      projectedFinishAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2,
       energyEstimateKWh: 3,
       energyExpectedKWh: 2.7,
       costEstimate: 3.1,
-      costUnit: "kr"
+      costUnit: "kr",
+      // A meaningfully-cheaper scheduled window against pricier later hours, so the
+      // preview / render-gate exercises the price chart + scheduled-hour highlight.
+      // Ascending by startsAtMs; prices are unit-less shape values (no chart axis).
+      priceSeries: [
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS - HOUR_MS2, price: 38 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS, price: 45 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + HOUR_MS2, price: 92 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 2 * HOUR_MS2, price: 120 },
+        { startsAtMs: PREVIEW_NEXT_HOUR_MS + 3 * HOUR_MS2, price: 104 }
+      ],
+      // The candidate runs in the current hour while the measured whole-home draw is
+      // already at the physical cap — surfaces the at-cap honesty note.
+      atCapNow: true,
+      // Both extra permissions survived the per-device gate — exercises the "Extra
+      // permissions" summary with its canonical labels.
+      grantedRescuePermissions: {
+        exemptFromBudget: true,
+        limitLowerPriorityDevices: true
+      }
     }
   };
   var resolveTargets = (d) => {

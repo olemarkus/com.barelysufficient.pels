@@ -87,7 +87,8 @@ const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
 // Resolve the frozen-read inputs for the per-cycle (mid-hour) path, or null when
 // the allocator must run instead: bootstrap (no commitment covers the active
 // hour — also covers an objective edit via `resolveCommittedHours`'s signature
-// check) or the `:58` settle window. See per-cycle-commitment-collapse.
+// check) or the `:58` settle window. See execution-adaptation.md
+// ("Interaction with the per-cycle frozen read").
 // Frozen-read fallback data from the persisted commitment, available WHENEVER a
 // commitment covers the active hour (current hour onward) — independent of the
 // `:58` settle. Null when there is nothing to serve frozen: no commitment
@@ -583,7 +584,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   // Otherwise we serve the frozen commitment — a committed device is NEVER dropped
   // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
   // a gap that coincides with the settle window). See
-  // notes/deferred-load-objectives/per-cycle-commitment-collapse.md.
+  // notes/deferred-load-objectives/execution-adaptation.md.
   const frozenFallback = resolveFrozenReadInputs({ activePlans, deviceId, objective, nowMs });
   const rawPolicyHorizon = buildDeferredObjectivePolicyHorizon({
     nowMs,
