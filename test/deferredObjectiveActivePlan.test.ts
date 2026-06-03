@@ -58,7 +58,7 @@ const makeHorizon = (
     energyNeededKWh: planned,
     plannedUsefulEnergyKWh: planned,
     unplannedUsefulEnergyKWh: 0,
-    requestedMinimumStepId: 'low',
+    expectedStepId: 'low',
     currentBucket: null,
     plannedBuckets: buckets,
     usesDeadlineReserve: false,
@@ -92,7 +92,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 3,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: 'low',
+  expectedStepId: 'low',
   horizonPlan: makeHorizon([
     makeBucket(2 * HOUR_MS, 1.5),
     makeBucket(3 * HOUR_MS, 1.5),

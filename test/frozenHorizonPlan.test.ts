@@ -42,8 +42,8 @@ describe('buildFrozenHorizonPlan', () => {
     expect(plan.status).toBe('at_risk');
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBe(2);
     // 2 kWh in one hour ⇒ the lowest step that delivers it is 'low' (2 kW).
-    expect(plan.currentBucket?.requestedMinimumStepId).toBe('low');
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.currentBucket?.expectedStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     // Source ids match the allocator's hour-aligned ISO convention.
     expect(plan.plannedBuckets.map((b) => b.sourceBucketId)).toEqual([
       new Date(NOW_MS).toISOString(),

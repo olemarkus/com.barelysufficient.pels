@@ -42,7 +42,7 @@ const makeHorizon = (
   energyNeededKWh: 1.5,
   plannedUsefulEnergyKWh: 1.5,
   unplannedUsefulEnergyKWh: 0,
-  requestedMinimumStepId: 'low',
+  expectedStepId: 'low',
   currentBucket: null,
   plannedBuckets: [],
   usesDeadlineReserve: false,
@@ -73,7 +73,7 @@ const makeDiag = (
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: 'low',
+  expectedStepId: 'low',
   horizonPlan: makeHorizon(),
   ...overrides,
 });

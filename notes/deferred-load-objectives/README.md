@@ -589,7 +589,7 @@ Connected 300-style devices are stepped loads. Objective evaluation should compu
 that keeps the objective on plan:
 
 ```ts
-requestedMinimumStepId?: string;
+expectedStepId?: string;
 ```
 
 Evaluate configured steps in order:
@@ -856,7 +856,7 @@ one wins) while preserving deadline margin. Status resolves from the result usin
 `planned_with_margin`, `planned_using_deadline_reserve`, `target_cannot_be_met`,
 `no_bucket_capacity`, or `energy_already_met` (see §"Reason Codes"). The horizon planner recomputes
 on every relevant plan cycle and emits its current-bucket recommendation as
-`requestedMinimumStepId`.
+`expectedStepId`.
 
 The priority-adjusted horizon model and the energy-based milestone framework are deferred — see
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). What
@@ -984,7 +984,7 @@ Useful fields:
 - `rateConfidence`
 - `deadlineMarginMs`
 - `projectedCompletionAtMs`
-- `requestedMinimumStepId`
+- `expectedStepId`
 - `dailyBudgetExhaustedBucketCount` (public diagnostic — number of horizon buckets the daily
   budget reports as exhausted; UI consumes to explain `cannot_meet` outcomes due to budget vs.
   device limits)
@@ -1136,7 +1136,7 @@ cover their cases (or because the slice they belong to is deferred):
 **Shipped (v1):** learned objective profiling, versioned EV-SoC + soft-temperature settings,
 write-time `deadlineAtMs` resolution, price-feature-gated soft-temperature admission/target
 overrides, the horizon scheduler (budget-friendly buckets with deadline margin), stepped
-`requestedMinimumStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
+`expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
 `satisfied`→pause on cap-off via `applyDeferredEvCommand`), deadline auto-disable on pass
 (`statusTransitions.ts`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit aged-out temperature (thermostats fall silent at

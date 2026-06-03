@@ -138,7 +138,7 @@ export const buildFrozenHorizonPlan = (params: {
       bucketId: `frozen-${currentHourStartMs}`,
       sourceBucketId: new Date(currentHourStartMs).toISOString(),
       plannedUsefulEnergyKWh: currentBookedKWh,
-      requestedMinimumStepId: requestedStep?.id ?? null,
+      expectedStepId: requestedStep?.id ?? null,
     }
     : null;
 
@@ -167,7 +167,7 @@ export const buildFrozenHorizonPlan = (params: {
     // current+future energy); the authoritative value is recomputed at the `:58`
     // settle. Keeps a `cannot_meet`/`at_risk` plan from reporting a 0 kWh shortfall.
     unplannedUsefulEnergyKWh: Math.max(0, energyNeededKWh - plannedUsefulEnergyKWh),
-    requestedMinimumStepId: currentBucket?.requestedMinimumStepId ?? null,
+    expectedStepId: currentBucket?.expectedStepId ?? null,
     currentBucket,
     plannedBuckets,
     // Representative, kept consistent with the (representative) `statusDetail`; the

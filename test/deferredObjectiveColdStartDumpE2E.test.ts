@@ -102,7 +102,7 @@ const diagnosticFor = (
   kwhPerUnitSource: 'learned',
   horizonBucketCount: plan.plannedBuckets.length,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: plan.requestedMinimumStepId,
+  expectedStepId: plan.expectedStepId,
   horizonPlan: plan,
 });
 

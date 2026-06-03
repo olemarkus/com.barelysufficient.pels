@@ -74,7 +74,7 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('on_track');
-    expect(plan.requestedMinimumStepId).toBeNull();
+    expect(plan.expectedStepId).toBeNull();
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
@@ -106,7 +106,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // longer a risk signal; status reflects only feasibility.
     expect(plan.status).toBe('on_track');
     expect(plan.statusDetail).toBe('planned_with_margin');
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
   });
@@ -123,7 +123,7 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('on_track');
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     expect(plan.currentBucket?.plannedUsefulEnergyKWh).toBeCloseTo(1);
   });
 
@@ -150,7 +150,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // Honours the committed hours (h0, h2) over the cheaper fresh-optimal h1; the
     // need fits, and running in the dearer committed hours is not a risk signal.
     expect(plan.status).toBe('on_track');
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(1);
@@ -903,11 +903,11 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.plannedBuckets[0]?.plannedUsefulEnergyKWh).toBeCloseTo(1);
   });
 
-  it('current-bucket requestedMinimumStepId reflects planned kWh, not the promoted floor-step ceiling', () => {
+  it('current-bucket expectedStepId reflects planned kWh, not the promoted floor-step ceiling', () => {
     // Per-bucket promotion can put a generous bucket at `max` step capacity
     // (e.g. 3 kWh available in 1 h), but the planner may only NEED to fill
     // a small slice of that capacity (e.g. 0.3 kWh in the current hour to
-    // hit the target on time). The executor's `requestedMinimumStepId`
+    // hit the target on time). The executor's `expectedStepId`
     // must reflect what the executor actually needs to run NOW — the
     // smallest step that fits the planned kWh — not the promoted ceiling.
     // Otherwise the executor would over-climb and trip the hard cap.
@@ -929,8 +929,8 @@ describe('planDeferredObjectiveHorizon', () => {
     // covers that comfortably, so the executor only needs to run at low.
     // The PER-BUCKET PROMOTION (max @ 3 kW useful) is a CEILING for the
     // commitment, not a floor for the executor's setpoint.
-    expect(plan.requestedMinimumStepId).toBe('low');
-    expect(plan.currentBucket?.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
+    expect(plan.currentBucket?.expectedStepId).toBe('low');
   });
 
   it('is a no-op for single-step devices (the only available step is already the floor)', () => {
@@ -970,7 +970,7 @@ describe('planDeferredObjectiveHorizon', () => {
 
     expect(plan.status).toBe('on_track');
     expect(plan.usesDeadlineReserve).toBe(false);
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBe(0);
@@ -1046,7 +1046,7 @@ describe('planDeferredObjectiveHorizon', () => {
     // The cheap hour caps at 0.4 kWh, so the remaining 0.8 kWh comes from the
     // dearer current hour. The need still fits before the deadline → on_track.
     expect(plan.status).toBe('on_track');
-    expect(plan.requestedMinimumStepId).toBe('low');
+    expect(plan.expectedStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(0.4);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.8);
   });
@@ -1136,7 +1136,7 @@ describe('planDeferredObjectiveHorizon', () => {
     });
 
     expect(plan.status).toBe('satisfied');
-    expect(plan.requestedMinimumStepId).toBeNull();
+    expect(plan.expectedStepId).toBeNull();
     expect(plan.plannedBuckets).toEqual([]);
   });
 

@@ -481,7 +481,7 @@ const buildPlanFromAllocation = (params: {
     energyNeededKWh,
     plannedUsefulEnergyKWh: allocation.plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: allocation.unplannedUsefulEnergyKWh,
-    requestedMinimumStepId: currentBucket?.requestedMinimumStepId ?? null,
+    expectedStepId: currentBucket?.expectedStepId ?? null,
     currentBucket,
     plannedBuckets: allocation.plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
@@ -512,7 +512,7 @@ const resolveCurrentBucketPlan = (params: {
     bucketId: currentBucket.id,
     sourceBucketId: currentBucket.sourceBucketId,
     plannedUsefulEnergyKWh: currentBucket.plannedUsefulEnergyKWh,
-    requestedMinimumStepId: requestedStep?.id ?? null,
+    expectedStepId: requestedStep?.id ?? null,
   };
 };
 
@@ -594,7 +594,7 @@ const buildEmptyPlan = (params: {
     energyNeededKWh,
     plannedUsefulEnergyKWh: 0,
     unplannedUsefulEnergyKWh: status === 'satisfied' ? 0 : energyNeededKWh,
-    requestedMinimumStepId: null,
+    expectedStepId: null,
     currentBucket: null,
     plannedBuckets: [],
     usesDeadlineReserve: false,

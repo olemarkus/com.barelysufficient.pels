@@ -217,7 +217,7 @@ const buildHoursRemainingDiagnostic = (
   planningSpeedKw: 2,
   horizonBucketCount: 2,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: null,
+  expectedStepId: null,
   ...overrides,
 });
 

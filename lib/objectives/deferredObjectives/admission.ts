@@ -12,7 +12,7 @@ export type DeferredAdmissionDecision =
       kind: 'planned';
       budgetExempt: boolean;
       engageBoost: boolean;
-      requestedMinimumStepId: string | null;
+      expectedStepId: string | null;
       releaseIntent?: 'ev_resume';
     }
   | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' };
@@ -116,7 +116,7 @@ const resolveDecision = (
     kind: 'planned',
     budgetExempt,
     engageBoost,
-    requestedMinimumStepId: horizonPlan.currentBucket?.requestedMinimumStepId ?? null,
+    expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
     ...(isEvObjective ? { releaseIntent: 'ev_resume' as const } : {}),
   };
 };

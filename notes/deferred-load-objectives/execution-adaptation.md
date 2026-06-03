@@ -25,7 +25,7 @@ A soft `reach 65 °C by 06:00` objective on a stepped water heater. From the pro
   `entry.startProgressC` (the temperature at *task creation*) plus cumulative booked
   energy. They are never rebased onto measured progress.
 - Overnight, with measured at 62–64 °C and status `on_track`, the objective kept emitting
-  `requestedMinimumStepId = low` and re-booking ~1 kWh every hour. The device did not
+  `expectedStepId = low` and re-booking ~1 kWh every hour. The device did not
   overheat **only because its own thermostat cut out** (`near_target_idle`, 0 kW draw) —
   PELS leaned on the appliance to stop; its own plan never did.
 
@@ -40,7 +40,7 @@ is fast enough that it reached target well before the deadline, so it did not ac
 the expensive hours.
 
 The objective expresses "run this device" to the planner as a **floor only**
-(`requestedMinimumStepId`, derived in `horizonPlanner.resolveCurrentBucketPlan` →
+(`expectedStepId`, derived in `horizonPlanner.resolveCurrentBucketPlan` →
 `stepSelection.selectMinimumStepForEnergy`, which returns `null` at ≤ ε energy). There is no
 price-aware **ceiling**: whenever capacity headroom exists, the device runs at its full
 element power regardless of the hour's price tier. Combined with the cold-start
