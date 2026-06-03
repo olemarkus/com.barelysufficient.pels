@@ -19,10 +19,25 @@ export type FlowReportedCapabilityEntry = {
   source: 'flow';
 };
 
-export type FlowReportedCapabilitiesByDevice = Partial<
-  Record<string, Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>>
->;
+/**
+ * Per-device map of flow-reported capability entries. This stays *sparse* on
+ * the capability axis on purpose: a device only ever reports the capabilities
+ * its flow cards actually fired for, so an absent capability key is genuine
+ * domain state ("never reported"), not a missing field to default away.
+ */
 export type FlowReportedCapabilitiesForDevice = Partial<Record<FlowReportedCapabilityId, FlowReportedCapabilityEntry>>;
+
+/**
+ * Normalized by-device structure produced once at the parse boundary. The
+ * *device* axis is total (`Record`, not `Partial<Record>`): every key present
+ * in the structure maps to a defined per-device entry, so internal consumers
+ * iterate and index it without threading `?.` / `?? {}` on the device level.
+ *
+ * Looking up an *arbitrary* device id that may not be tracked yet still has to
+ * default explicitly — use {@link readFlowReportedCapabilitiesForDevice} for
+ * that one legitimate optional read, rather than re-introducing the chain.
+ */
+export type FlowReportedCapabilitiesByDevice = Record<string, FlowReportedCapabilitiesForDevice>;
 export type FlowReportedCapabilityUpdateResult = {
   valueChanged: boolean;
   freshnessAdvanced: boolean;
@@ -80,6 +95,22 @@ export function parseFlowReportedCapabilities(value: unknown): FlowReportedCapab
   }
 
   return parsed;
+}
+
+/**
+ * Single legitimate optional read against the normalized structure: an
+ * arbitrary device id may not be tracked yet. Returns an empty (but defined)
+ * per-device map so callers read a total structure without `?? {}`.
+ *
+ * The returned `{}` represents "this device has no flow reports", which is
+ * indistinguishable from a tracked device that has reported nothing — both
+ * are genuinely empty. It does NOT fabricate capability entries.
+ */
+export function readFlowReportedCapabilitiesForDevice(
+  state: FlowReportedCapabilitiesByDevice | undefined,
+  deviceId: string,
+): FlowReportedCapabilitiesForDevice {
+  return state?.[deviceId] ?? {};
 }
 
 export function upsertFlowReportedCapability(params: {
