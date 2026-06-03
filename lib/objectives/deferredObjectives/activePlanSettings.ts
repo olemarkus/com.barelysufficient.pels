@@ -236,6 +236,10 @@ const isCommitment = (value: unknown): value is DeferredObjectiveActivePlanCommi
     && v.hours.every(isPlanHour);
 };
 
+const hasCoherentCommitmentState = (v: Record<string, unknown>): boolean => (
+  v.commitment === undefined || v.latest !== null
+);
+
 // Identity-and-target fields the persisted plan must carry verbatim. Split
 // out so `isActivePlan` keeps its complexity score below the codebase ceiling
 // — the optional-snapshot / revision / provenance checks all live in their
@@ -273,6 +277,7 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && isKwhPerUnitProvenance(v.kwhPerUnitProvenance)
     && hasValidPlanLevelDurationSnapshot(v)
     && isCommitment(v.commitment)
+    && hasCoherentCommitmentState(v)
     && isOptionalRevisionHistory(v.history);
 };
 

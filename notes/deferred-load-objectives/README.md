@@ -214,6 +214,13 @@ instead of re-sorting by fresh price or daily-budget optimizer output. A committ
 still revise status/source metadata, but optimizer churn alone must not move selected hours
 or fire `deadline_plan_changed`.
 
+Runtime consumers must not read `commitment` and `latest` independently. Use the coherent
+active committed-plan accessor: `commitment.hours` is the allocator envelope, while the
+settled `latest.hours` revision is the control source for frozen reads and trajectory
+milestones. Same-schedule revisions may refine kWh or unit milestones in `latest` without
+rewriting the commitment envelope; falling back from `latest` to `commitment` would make
+mid-hour and `:58` release decisions stale.
+
 The per-hour `plannedKWh` on each committed hour is a **floor** — the minimum kWh the
 recorder will guarantee for that hour against future optimizer churn — not a ceiling on
 how much the allocator may schedule into the hour on later cycles. The per-hour ceiling
