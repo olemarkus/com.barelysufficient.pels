@@ -108,3 +108,14 @@ export const headroomAvailableLabel = (availableKwText: string): string => (
 export const headroomHeldBackLabel = (shedCount: number): string => (
   shedCount === 1 ? '1 held back' : `${shedCount} held back`
 );
+
+/**
+ * "X kW over hard cap" — how far the current draw exceeds the physical hard
+ * cap, the severity signal for the `over_cap` state. States the overage
+ * factually; the hard cap is physical (notes/ui-terminology.md § "Hard cap is
+ * physical"), so the copy never invites raising it. The caller passes the
+ * already-formatted kW magnitude so the widget owns its kW number formatting.
+ */
+export const headroomOverCapLabel = (overageKwText: string): string => (
+  `${overageKwText} kW over hard cap`
+);

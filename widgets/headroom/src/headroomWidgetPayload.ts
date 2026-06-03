@@ -80,6 +80,12 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
   const priceLevel = resolvePriceLevel(status.priceLevel);
   const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
+  // Positive amount over the physical hard cap (0 when at/under it). Negative
+  // hard-cap headroom is the exceedance magnitude; resolve it to a flat kW here
+  // so the renderer reads one number, never the signed source value.
+  const overageKw = hardCapHeadroomKw !== null && hardCapHeadroomKw < 0
+    ? -hardCapHeadroomKw
+    : 0;
 
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
@@ -94,6 +100,7 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
     currentKw,
     hourBudgetKw,
     headroomKw,
+    overageKw,
     shedCount,
     priceLevel,
     limitState,

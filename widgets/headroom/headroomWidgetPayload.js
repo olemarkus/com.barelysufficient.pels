@@ -77,6 +77,7 @@ var buildHeadroomWidgetPayload = (input) => {
   const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
   const priceLevel = resolvePriceLevel(status.priceLevel);
   const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
+  const overageKw = hardCapHeadroomKw !== null && hardCapHeadroomKw < 0 ? -hardCapHeadroomKw : 0;
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
   const timeStale = lastUpdate === null ? true : nowMs - lastUpdate > STALE_AFTER_MS;
@@ -86,6 +87,7 @@ var buildHeadroomWidgetPayload = (input) => {
     currentKw,
     hourBudgetKw,
     headroomKw,
+    overageKw,
     shedCount,
     priceLevel,
     limitState,

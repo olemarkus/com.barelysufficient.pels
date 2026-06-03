@@ -66,6 +66,30 @@ describe('buildHeadroomWidgetPayload', () => {
     expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
   });
 
+  test('exposes the over-cap overage as the positive magnitude of negative hard-cap headroom', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: -1.4 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap', overageKw: 1.4 });
+  });
+
+  test('reports zero overage when under the hard cap', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 1, hourlyLimitKw: 6.3, hardCapHeadroomKw: 1.7 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', overageKw: 0 });
+  });
+
+  test('reports zero overage when hard-cap headroom is absent', () => {
+    const payload = buildHeadroomWidgetPayload({
+      status: { headroomKw: 1, hourlyLimitKw: 6.3 },
+      nowMs: NOW,
+    });
+    expect(payload).toMatchObject({ state: 'ready', overageKw: 0 });
+  });
+
   test('does not escalate to over_cap when hard-cap headroom is absent', () => {
     const payload = buildHeadroomWidgetPayload({
       status: { headroomKw: -0.5, hourlyLimitKw: 6 },
