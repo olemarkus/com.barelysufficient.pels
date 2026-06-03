@@ -15,15 +15,21 @@ const defaultSteps: DeferredObjectiveStep[] = [
   { id: 'max', usefulPowerKw: 3 },
 ];
 
+// Relative price tier for a bucket. The allocator fills cheapest-first, so a
+// lower price behaves like the old `'preferred'`; these representative values
+// keep `preferred < neutral < avoid` ordering so the cheapest-first expectations
+// in the fixtures below are unchanged. Pass an explicit `price` in `overrides` to
+// override.
+const PRICE_BY_TIER = { preferred: 10, neutral: 50, avoid: 100 } as const;
 const bucket = (
   hourOffset: number,
-  preference: DeferredObjectiveHorizonBucket['preference'] = 'neutral',
+  tier: keyof typeof PRICE_BY_TIER = 'neutral',
   overrides: Partial<DeferredObjectiveHorizonBucket> = {},
 ): DeferredObjectiveHorizonBucket => ({
   id: `h${hourOffset}`,
   startMs: NOW_MS + (hourOffset * HOUR_MS),
   endMs: NOW_MS + ((hourOffset + 1) * HOUR_MS),
-  preference,
+  price: PRICE_BY_TIER[tier],
   ...overrides,
 });
 
@@ -95,9 +101,11 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('at_risk');
-    expect(plan.statusDetail).toBe('planned_using_policy_avoid');
-    expect(plan.usesPolicyAvoid).toBe(true);
+    // Both hours are needed to fit 2 kWh at the 1 kW low step, so the dearer
+    // current hour is booked too — running in a relatively pricier hour is no
+    // longer a risk signal; status reflects only feasibility.
+    expect(plan.status).toBe('on_track');
+    expect(plan.statusDetail).toBe('planned_with_margin');
     expect(plan.requestedMinimumStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(1);
@@ -139,7 +147,9 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('at_risk');
+    // Honours the committed hours (h0, h2) over the cheaper fresh-optimal h1; the
+    // need fits, and running in the dearer committed hours is not a risk signal.
+    expect(plan.status).toBe('on_track');
     expect(plan.requestedMinimumStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(1);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBe(0);
@@ -990,7 +1000,10 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h2')).toBeCloseTo(0.5);
   });
 
-  it('classifies soft avoided-bucket use as risky while hard objectives can remain on track', () => {
+  it('stays on_track when running in relatively expensive hours — price tier is not a risk signal', () => {
+    // Both remaining hours are the dearest available, and the need fits in them.
+    // `at_risk` means only "the objective might not be met"; being scheduled into
+    // comparatively pricier hours is not a risk, so neither soft nor hard flips.
     const common = {
       nowMs: NOW_MS,
       steps: [
@@ -1011,13 +1024,13 @@ describe('planDeferredObjectiveHorizon', () => {
       objective: objective({ energyNeededKWh: 2, enforcement: 'hard' }),
     });
 
-    expect(softPlan.status).toBe('at_risk');
-    expect(softPlan.statusDetail).toBe('planned_using_policy_avoid');
+    expect(softPlan.status).toBe('on_track');
+    expect(softPlan.statusDetail).toBe('planned_with_margin');
     expect(hardPlan.status).toBe('on_track');
     expect(hardPlan.statusDetail).toBe('planned_with_margin');
   });
 
-  it('uses current avoided capacity when future preferred capacity is not enough', () => {
+  it('uses current dearer capacity when the cheaper future hour cannot hold the whole need', () => {
     const plan = planDeferredObjectiveHorizon({
       nowMs: NOW_MS,
       objective: objective({ energyNeededKWh: 1.2, deadlineAtMs: NOW_MS + (2 * HOUR_MS) }),
@@ -1030,7 +1043,9 @@ describe('planDeferredObjectiveHorizon', () => {
       ],
     });
 
-    expect(plan.status).toBe('at_risk');
+    // The cheap hour caps at 0.4 kWh, so the remaining 0.8 kWh comes from the
+    // dearer current hour. The need still fits before the deadline → on_track.
+    expect(plan.status).toBe('on_track');
     expect(plan.requestedMinimumStepId).toBe('low');
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h1')).toBeCloseTo(0.4);
     expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeCloseTo(0.8);

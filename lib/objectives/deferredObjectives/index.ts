@@ -83,7 +83,6 @@ export type {
 } from './settings';
 export type {
   DeferredObjective,
-  DeferredObjectiveBucketPreference,
   DeferredObjectiveCurrentBucketPlan,
   DeferredObjectiveEnforcement,
   DeferredObjectiveHorizonBucket,

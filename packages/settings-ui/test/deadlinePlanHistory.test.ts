@@ -23,7 +23,6 @@ const buildEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}):
   outcome: 'met',
   metAtMs: Date.UTC(2026, 4, 6, 4, 42, 0),
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [{
     fromMs: Date.UTC(2026, 4, 6, 0, 0, 0),
     toMs: Date.UTC(2026, 4, 6, 6, 0, 0),
@@ -109,14 +108,6 @@ describe('DeadlinePlanHistory', () => {
     const entry = buildEntry({ outcome: 'abandoned', metAtMs: null });
     const mount = mountIntoBody(h(DeadlinePlanHistory, { entries: [entry], timeZone: 'UTC' }));
     expect(mount.querySelector('.plan-history-card__reason')).toBeNull();
-  });
-
-  it('does not show the stale backup-hours pill when the run leaned on avoid buckets', () => {
-    const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [buildEntry({ usedPolicyAvoid: true })],
-      timeZone: 'UTC',
-    }));
-    expect(mount.textContent).not.toContain('Backup hours');
   });
 
   it('renders a backfilled entry with a "reconstructed from settings" note', () => {

@@ -78,13 +78,15 @@ relationship section below.
 ## Relationship to shipped v1
 
 Shipped v1 has the horizon planner, the bucket allocator, and a
-deadline-reserve mechanism. Status resolution uses the planner result codes
-`planned_with_margin`, `planned_using_deadline_reserve`, and
-`planned_using_policy_avoid` to express the "we can wait through expensive
-hours" intent that milestones would otherwise express. That gives
-approximately the same user-visible behavior (a soft objective in an
-expensive window does not flip to `at_risk` just because no energy has
-landed yet) without computing explicit milestones.
+deadline-reserve mechanism. The "we can wait through expensive hours" intent
+that milestones would otherwise express comes from the bucket allocator filling
+the cheapest hours first: a soft objective in an expensive window simply has no
+energy booked into the current hour, so the device idles there while the status
+stays `on_track`. Status resolution uses the planner result codes
+`planned_with_margin` and `planned_using_deadline_reserve`; relative price never
+flips the status (`at_risk` reflects only deadline feasibility). That gives
+approximately the same user-visible behavior without computing explicit
+milestones.
 
 Open question for when this work resumes: are milestones additive on top of
 reason-code precision (e.g. to drive logging and trigger tokens with a

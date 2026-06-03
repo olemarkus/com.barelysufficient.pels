@@ -294,7 +294,6 @@ test.describe('Deadline recorder → history UI round-trip', () => {
         outcome: 'met' as const,
         metAtMs: T0 + 5 * HOUR,
         usedDeadlineReserve: false,
-        usedPolicyAvoid: false,
         observedIntervals: [{ fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR }],
         discoveredFrom: 'observation' as const,
         // Plan values chosen so labels include a leading digit > 0: ECharts

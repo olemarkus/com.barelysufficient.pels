@@ -63,7 +63,6 @@ const buildEntry = (
   outcome: 'met',
   metAtMs: DEADLINE_MS - HOUR_MS,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [{ fromMs: DEADLINE_MS - 6 * HOUR_MS, toMs: DEADLINE_MS - 3 * HOUR_MS }],
   discoveredFrom: 'observation',
   originalPlan: null,

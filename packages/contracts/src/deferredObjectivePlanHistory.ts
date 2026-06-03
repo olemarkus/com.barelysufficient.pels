@@ -190,7 +190,6 @@ export type DeferredObjectivePlanHistoryEntry = {
   metReason?: DeferredObjectivePlanMetReason;
   metAtMs: number | null;
   usedDeadlineReserve: boolean;
-  usedPolicyAvoid: boolean;
   observedIntervals: DeferredObjectivePlanHistoryObservedInterval[];
   discoveredFrom: DeferredObjectivePlanHistoryDiscoveredFrom;
   // First revision recorded for this run. `null` when no plan was ever

@@ -576,7 +576,6 @@ const buildHistoryEntry = (
   outcome: 'met',
   metAtMs: NOW - HOUR,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: {

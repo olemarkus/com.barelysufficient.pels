@@ -312,7 +312,6 @@ export const startRecord = (
     initialEnergyNeededKWh: diag.energyNeededKWh ?? 0,
     metAtMs: currentlySatisfied ? nowMs : null,
     usedDeadlineReserve: diag.horizonPlan?.usesDeadlineReserve ?? false,
-    usedPolicyAvoid: diag.horizonPlan?.usesPolicyAvoid ?? false,
     observedIntervals: [{ fromMs: nowMs, toMs: nowMs }],
     satisfied: currentlySatisfied,
     metReason: null,
@@ -495,7 +494,6 @@ export const mergeRecord = (
     finalProgressC: merged.finalProgressC,
     finalProgressPercent: merged.finalProgressPercent,
     usedDeadlineReserve: record.usedDeadlineReserve || (diag.horizonPlan?.usesDeadlineReserve ?? false),
-    usedPolicyAvoid: record.usedPolicyAvoid || (diag.horizonPlan?.usesPolicyAvoid ?? false),
     observedIntervals: extendIntervals(record.observedIntervals, nowMs),
     satisfied: merged.satisfied,
     metAtMs: merged.metAtMs,
@@ -659,7 +657,6 @@ export const finalizeRecord = (
     // `unknown` should not carry a `met`-only field into history.
     ...(outcome === 'met' && record.metReason !== null ? { metReason: record.metReason } : {}),
     usedDeadlineReserve: record.usedDeadlineReserve,
-    usedPolicyAvoid: record.usedPolicyAvoid,
     observedIntervals: record.observedIntervals.slice(),
     discoveredFrom: 'observation',
     originalPlan: attachEnergyExpectedKWh(record.originalPlan, record.energyExpectedKWhAtFinalize),

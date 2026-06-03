@@ -70,7 +70,6 @@ const historyEntry = (o: Partial<DeferredObjectivePlanHistoryEntry> = {}): Defer
   outcome: 'met',
   metAtMs: NOW - H,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: {

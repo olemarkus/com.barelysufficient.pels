@@ -1,6 +1,7 @@
 import {
   allocateCommittedEnergyToBuckets,
   allocateEnergyToBuckets,
+  isMeaningfullyCheaper,
   normalizeHorizonBuckets,
   type BucketAllocationResult,
   type StepForBucket,
@@ -356,12 +357,6 @@ const resolveBudgetBoundFeasibility = (params: {
   return uncapped.unplannedUsefulEnergyKWh <= params.epsilonKWh;
 };
 
-// Relative price margin a later hour must beat to be worth deferring into. A
-// pure ratio (later ≤ current × (1 − margin)) — unit-invariant, since the price
-// series carries no currency at this layer — so near-equal hours keep the
-// earlier (safer-to-heat-early) slot. ~5%.
-const PRICE_DEFERRAL_MARGIN = 0.05;
-
 // Price-deferral release probe (mid-execution price deferral). Eligible when
 // BOTH hold:
 //  1. `aheadOfHourMilestone` — the device's MEASURED value is already at/above
@@ -370,12 +365,15 @@ const PRICE_DEFERRAL_MARGIN = 0.05;
 //     has no measured value or committed rate). Being at/ahead of a trajectory
 //     that was built to meet the deadline makes coasting this hour self-feasible
 //     — so no residual re-allocation safety check is needed.
-//  2. A later, NON-reserve hour is cheaper than the current hour by more than
-//     `PRICE_DEFERRAL_MARGIN` (raw-price ratio). Deadline-reserve hours are
-//     excluded so we never defer into the reserve; a negative later price
-//     naturally satisfies the inequality (heat when paid). The current hour must
-//     still carry booked energy (else it is already idle and admission releases
-//     it via the `plannedUsefulEnergyKWh ≤ 0` branch — nothing to defer).
+//  2. A later, NON-reserve hour is more than `PRICE_BAND_MARGIN` cheaper than the
+//     current hour (`isMeaningfullyCheaper`, a raw-price ratio — the SAME
+//     relative margin the build-time allocator bands hours by, so build-time fill
+//     order and live deferral agree on "worth shifting load"). Deadline-reserve
+//     hours are excluded so we never defer into the reserve. The current hour
+//     must still carry booked energy (else it is already idle and admission
+//     releases it via the `plannedUsefulEnergyKWh ≤ 0` branch — nothing to
+//     defer). A non-positive current price makes the ratio meaningless, so
+//     `isMeaningfullyCheaper` returns false there — run now rather than defer.
 // When true the decoration controller's admission idles the device this cycle so
 // a cheaper hour carries the load. Classification only — never writes a revision.
 const resolvePriceDeferralEligible = (params: {
@@ -386,11 +384,6 @@ const resolvePriceDeferralEligible = (params: {
   if (!params.aheadOfHourMilestone) return false;
   const current = params.allocation.plannedBuckets.find((bucket) => bucket.current);
   if (!current || current.plannedUsefulEnergyKWh <= params.epsilonKWh) return false;
-  const currentPrice = current.price;
-  if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return false;
-  }
-  const threshold = currentPrice * (1 - PRICE_DEFERRAL_MARGIN);
   return params.allocation.plannedBuckets.some((bucket) => (
     !bucket.current
     && !bucket.reserve
@@ -403,9 +396,7 @@ const resolvePriceDeferralEligible = (params: {
     // pricier) committed hours at the next settle. Requiring booked energy keeps
     // the price signal aligned with where the load really goes.
     && bucket.plannedUsefulEnergyKWh > params.epsilonKWh
-    && typeof bucket.price === 'number'
-    && Number.isFinite(bucket.price)
-    && bucket.price <= threshold
+    && isMeaningfullyCheaper(bucket.price, current.price)
   ));
 };
 
@@ -435,7 +426,6 @@ const buildPlanFromAllocation = (params: {
   } = params;
   const statusResult = resolveStatus({
     allocation,
-    enforcement: input.objective.enforcement,
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetBound,
@@ -464,7 +454,6 @@ const buildPlanFromAllocation = (params: {
     currentBucket,
     plannedBuckets: allocation.plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
-    usesPolicyAvoid: allocation.usesPolicyAvoid,
     priceDeferralEligible,
   };
 };
@@ -497,7 +486,6 @@ const resolveCurrentBucketPlan = (params: {
 
 const resolveStatus = (params: {
   allocation: BucketAllocationResult;
-  enforcement: DeferredObjectiveHorizonInput['objective']['enforcement'];
   epsilonKWh: number;
   feasibleOnClimbedBand: boolean;
   budgetBound: boolean;
@@ -505,7 +493,6 @@ const resolveStatus = (params: {
 }): { status: DeferredObjectiveHorizonStatus; statusDetail: DeferredObjectiveHorizonStatusDetail } => {
   const {
     allocation,
-    enforcement,
     epsilonKWh,
     feasibleOnClimbedBand,
     budgetBound,
@@ -545,9 +532,6 @@ const resolveStatus = (params: {
   if (allocation.usesDeadlineReserve) {
     return { status: 'at_risk', statusDetail: 'planned_using_deadline_reserve' };
   }
-  if (enforcement === 'soft' && allocation.usesPolicyAvoid) {
-    return { status: 'at_risk', statusDetail: 'planned_using_policy_avoid' };
-  }
   return { status: 'on_track', statusDetail: 'planned_with_margin' };
 };
 
@@ -582,7 +566,6 @@ const buildEmptyPlan = (params: {
     currentBucket: null,
     plannedBuckets: [],
     usesDeadlineReserve: false,
-    usesPolicyAvoid: false,
     priceDeferralEligible: false,
   };
 };

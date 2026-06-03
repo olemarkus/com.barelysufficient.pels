@@ -90,9 +90,8 @@ Storage rules:
   EV card hardcodes `'soft'`) and there is no deadline-first admission mode — so deadlines are
   soft-only from the user's perspective. A persisted `'hard'` value is not a complete no-op: it
   still widens the planner's variance buffer (`BUFFER_K_HARD` vs `BUFFER_K_SOFT` in
-  `profileEnergyResolution.ts`) and skips the `planned_using_policy_avoid` at-risk downgrade in
-  `horizonPlanner.ts`. Cleanup must preserve those semantics for any existing `'hard'` entry rather
-  than treat the field as dead. The "push past the daily budget" need is met by rescue /
+  `profileEnergyResolution.ts`). Cleanup must preserve that semantic for any existing `'hard'` entry
+  rather than treat the field as dead. The "push past the daily budget" need is met by rescue /
   exempt-from-budget, not by promoting `'hard'`.
 
 The bridge reads this settings payload during plan construction, normalizes it, evaluates each
@@ -784,8 +783,9 @@ The shipped status values on the diagnostic
   planner's safety buffer); every earlier hour has enough headroom to land the required
   energy.
 - `at_risk` — the planner has dipped into the reserved final hour to land the required
-  energy (every earlier hour is fully booked at planning power), or the plan relies on
-  policy-avoid hours to land.
+  energy (every earlier hour is fully booked at planning power). `at_risk` means only that
+  the objective might not be met; it never reflects *which* hours (cheap vs expensive) the
+  load runs in — relative price shapes the fill order, not the status.
 - `cannot_meet` — even using the reserve hour at the highest allowed hard-cap-safe
   behavior cannot plausibly meet the target before the deadline. (`hard-cap-safe` here
   means within the physical capacity hard cap.)
@@ -850,18 +850,20 @@ Every deferred objective creates a planning horizon:
 now -> deadline
 ```
 
-Within that horizon, PELS allocates the required useful energy into hourly buckets, preferring
-cheap or budget-friendly windows while preserving deadline margin. Status resolves from the
-result using the reason codes `planned_with_margin`, `planned_using_deadline_reserve`,
-`planned_using_policy_avoid`, `target_cannot_be_met`, `no_bucket_capacity`, or
-`energy_already_met` (see §"Reason Codes"). The horizon planner recomputes on every relevant plan
-cycle and emits its current-bucket recommendation as `requestedMinimumStepId`.
+Within that horizon, PELS allocates the required useful energy into hourly buckets, filling the
+cheapest hours first (a currency-relative price comparison; hours within ~5% tie and the earlier
+one wins) while preserving deadline margin. Status resolves from the result using the reason codes
+`planned_with_margin`, `planned_using_deadline_reserve`, `target_cannot_be_met`,
+`no_bucket_capacity`, or `energy_already_met` (see §"Reason Codes"). The horizon planner recomputes
+on every relevant plan cycle and emits its current-bucket recommendation as
+`requestedMinimumStepId`.
 
 The priority-adjusted horizon model and the energy-based milestone framework are deferred — see
 [`notes/planning-horizon-milestones/README.md`](../planning-horizon-milestones/README.md). What
-shipped covers the same intent ("let soft objectives wait through expensive hours without
-flipping to at-risk") via the `planned_using_policy_avoid` reason and the deadline-reserve
-margin, without computing explicit milestones.
+shipped covers the same intent ("let soft objectives wait through expensive hours"): the
+cheapest-first allocation simply books no energy into the relatively expensive current hour, so the
+device idles there, and the status stays `on_track` — running in a comparatively pricier hour was
+never a risk. The deadline-reserve margin still guards the final hour.
 
 ### Rate Bootstrap (EV SoC only)
 
@@ -1103,7 +1105,6 @@ Horizon planner result (`horizonPlanner.ts`):
 - `energy_already_met`
 - `planned_with_margin`
 - `planned_using_deadline_reserve`
-- `planned_using_policy_avoid`
 - `target_cannot_be_met`
 - `no_bucket_capacity`
 

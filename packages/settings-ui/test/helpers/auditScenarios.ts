@@ -366,7 +366,6 @@ const buildSampleHistoryEntry = (
   outcome,
   metAtMs: outcome === 'met' ? finalizedAtMs - 30 * 60 * 1000 : null,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [
     { fromMs: finalizedAtMs - 6 * HOUR_MS, toMs: finalizedAtMs },
   ],

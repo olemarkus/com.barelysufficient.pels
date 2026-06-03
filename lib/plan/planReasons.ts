@@ -360,11 +360,11 @@ export function normalizeShedReasons(params: {
   shedCooldownRemainingSec: number | null;
   shedCooldownStartedAtMs?: number | null;
   shedCooldownTotalSec?: number | null;
-  // Devices whose active smart task is between planned hours (current bucket
-  // marked `preference: avoid` in the deferred-objective horizon, or the task
-  // has not started yet / already finished). When the device ends up held this
-  // cycle, this framing wins over capacity/dailyBudget because it reflects the
-  // user's opt-in to the price-aware plan. See
+  // Devices whose active smart task is between planned hours: the current hour
+  // was relatively expensive so the load was booked into cheaper hours, or the
+  // task has not started yet, or it has already finished. When the device ends up
+  // held this cycle, this framing wins over capacity/dailyBudget because it
+  // reflects the user's opt-in to the price-aware plan. See
   // `packages/shared-domain/src/planStateLabels.ts` §
   // PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS.
   deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;

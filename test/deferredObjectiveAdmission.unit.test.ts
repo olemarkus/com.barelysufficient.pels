@@ -63,7 +63,6 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   },
   plannedBuckets: [],
   usesDeadlineReserve: false,
-  usesPolicyAvoid: false,
   priceDeferralEligible: false,
   ...overrides,
 });
@@ -472,14 +471,14 @@ describe('resolveDeferredAvoidDeviceIds', () => {
     // the load, so it gets the "waiting for cheaper hours" framing — not capacity /
     // daily-budget framing (which would miscount the pause as starvation). The
     // current bucket still carries booked energy and the status may be `at_risk`
-    // from leaning on the current `avoid` hour, so the price-deferral case must
-    // bypass both the no-energy and the on_track gates.
+    // (e.g. the floor undershoots and only climbing fits), so the price-deferral
+    // case must bypass both the no-energy and the on_track gates.
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       status: 'at_risk',
       horizonPlan: buildHorizonPlan({
         status: 'at_risk',
-        statusDetail: 'planned_using_policy_avoid',
+        statusDetail: 'feasible_above_floor',
         priceDeferralEligible: true,
       }),
     });

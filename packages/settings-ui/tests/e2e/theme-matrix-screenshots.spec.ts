@@ -29,7 +29,7 @@ const seedSmartTasks = (nowMs: number) => {
       id, deviceId, deviceName, objectiveKind: 'temperature', targetTemperatureC: targetC, targetPercent: null,
       deadlineAtMs, startedAtMs, finalizedAtMs, startProgressC: targetC - 12, startProgressPercent: null,
       finalProgressC: outcome === 'met' ? targetC : targetC - 4, finalProgressPercent: null, initialEnergyNeededKWh: 4,
-      outcome, metAtMs: outcome === 'met' ? deadlineAtMs - HOUR : null, usedDeadlineReserve: false, usedPolicyAvoid: false,
+      outcome, metAtMs: outcome === 'met' ? deadlineAtMs - HOUR : null, usedDeadlineReserve: false,
       observedIntervals: [{ fromMs: startedAtMs, toMs: deadlineAtMs }], discoveredFrom: 'observation',
       originalPlan: { hours: [{ startsAtMs: startedAtMs, plannedKWh: 1 }], energyNeededKWh: 4, planStatus: 'on_track', revisedAtMs: startedAtMs },
       finalPlan: null, revisionCount: 1,

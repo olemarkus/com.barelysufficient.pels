@@ -48,7 +48,6 @@ const buildEntry = (
   outcome: 'missed',
   metAtMs: null,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: null,

@@ -94,7 +94,6 @@ const synthesizeBackfillEntry = (
   outcome: 'unknown',
   metAtMs: null,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'backfill',
   originalPlan: null,

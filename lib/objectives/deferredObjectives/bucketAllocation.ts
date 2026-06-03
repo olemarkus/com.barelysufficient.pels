@@ -1,5 +1,4 @@
 import type {
-  DeferredObjectiveBucketPreference,
   DeferredObjectiveCommittedHour,
   DeferredObjectiveHorizonBucket,
   DeferredObjectivePlannedBucket,
@@ -7,6 +6,91 @@ import type {
 } from './types';
 
 const HOUR_MS = 60 * 60 * 1000;
+
+// Relative price margin (~5%) below which two hours are treated as equally
+// priced for fill ordering. RELATIVE (ratio-based), not a fixed offset, so it is
+// invariant to the price currency — the price series carries no unit at this
+// layer. The same constant gates the mid-execution deferral
+// (`horizonPlanner.resolvePriceDeferralEligible` via `isMeaningfullyCheaper`):
+// both express "a later hour must be more than ~5% cheaper to be worth shifting
+// load to". Below the margin, the earlier hour wins (heat early; don't churn
+// load between near-equal hours).
+export const PRICE_BAND_MARGIN = 0.05;
+
+// Width of one relative price band on the log grid `priceFillBand` quantises
+// positive prices onto. Quantisation is what makes the fill order a transitive
+// total order (a pairwise within-margin comparator is NOT transitive on a price
+// ramp: a≈b and b≈c does not imply a≈c). The trade-off is that the grid only
+// APPROXIMATES the margin at its edges: two prices within `PRICE_BAND_MARGIN` can
+// fall in adjacent bands (treated as a real difference) and two prices up to
+// ~2× the margin apart can share a band (treated as a tie). So the build-time
+// fill order (this grid) and the live deferral (the exact `isMeaningfullyCheaper`
+// ratio) can disagree near a band edge for spreads close to the margin. That is
+// an accepted approximation, not a bug — both still express "~5% relative".
+const PRICE_BAND_LOG_BASE = Math.log(1 + PRICE_BAND_MARGIN);
+
+// The minimum positive price across the buckets being ordered. The band grid is
+// anchored here so band membership depends only on PRICE RATIOS (`price / min`),
+// never on the absolute magnitude — i.e. the same price curve produces the same
+// fill order whether the feed is in øre, eurocents, or €/kWh. (A fixed grid
+// anchored at `1` would, e.g., tie `100` vs `96` but split `1.00` vs `0.96` for
+// the same ~4% spread — the currency-dependence this avoids.) `null` when no
+// bucket carries a positive price, in which case there are no tier-1 buckets to
+// rank against each other.
+const resolvePriceAnchor = (buckets: readonly { price: number | null }[]): number | null => {
+  let min: number | null = null;
+  for (const bucket of buckets) {
+    const price = bucket.price;
+    if (typeof price === 'number' && Number.isFinite(price) && price > 0 && (min === null || price < min)) {
+      min = price;
+    }
+  }
+  return min;
+};
+
+// True when `candidatePrice` is cheaper than `referencePrice` by MORE than the
+// relative margin (a pure ratio, so unit-invariant). Used by the live deferral
+// to decide a later hour is worth shifting load into. A non-finite or
+// non-positive reference makes the ratio meaningless (you cannot be "5% cheaper
+// than free/negative"), so it returns false — run now rather than defer on a
+// meaningless comparison. A non-finite candidate is non-comparable → false.
+export const isMeaningfullyCheaper = (
+  candidatePrice: number | null,
+  referencePrice: number | null,
+): boolean => {
+  if (typeof referencePrice !== 'number' || !Number.isFinite(referencePrice) || referencePrice <= 0) {
+    return false;
+  }
+  if (typeof candidatePrice !== 'number' || !Number.isFinite(candidatePrice)) return false;
+  return candidatePrice <= referencePrice * (1 - PRICE_BAND_MARGIN);
+};
+
+// Currency-relative fill-ordering key. Cheaper hours sort first. Returned as a
+// `(tier, key)` pair compared lexicographically — a single total order, so the
+// induced sort is transitive (a pairwise within-margin comparator would NOT be:
+// a≈b and b≈c does not imply a≈c on a price ramp).
+//
+//   tier 0 — non-positive price (free / paid-to-consume): always cheaper than
+//            any priced hour. `key` is the raw price so a deeper-negative hour
+//            still sorts ahead of a shallow one (genuinely cheaper).
+//   tier 1 — positive price: `key` is `price / anchor` quantised onto a log grid
+//            of relative width `(1 + PRICE_BAND_MARGIN)`, where `anchor` is the
+//            set's min positive price. Banding on the RATIO makes it
+//            currency-invariant (see `resolvePriceAnchor`); two hours within ~5%
+//            of each other land in the same band → they tie on price and the time
+//            tiebreak (earlier first) decides.
+//   tier 2 — missing/non-finite price: sorts last (fill only as a last resort).
+const priceFillBand = (
+  price: number | null,
+  anchor: number | null,
+): { tier: number; key: number } => {
+  if (typeof price !== 'number' || !Number.isFinite(price)) return { tier: 2, key: 0 };
+  if (price <= 0) return { tier: 0, key: price };
+  // `anchor` (set min positive price) is `null` only when there are no positive
+  // prices — then this is the sole tier-1 bucket and the key is irrelevant.
+  const ratio = anchor === null ? 1 : price / anchor;
+  return { tier: 1, key: Math.round(Math.log(ratio) / PRICE_BAND_LOG_BASE) };
+};
 
 type NormalizedBucket = Omit<DeferredObjectivePlannedBucket,
 | 'plannedUsefulEnergyKWh'
@@ -37,8 +121,6 @@ type BucketSegment = {
   startMs: number;
   endMs: number;
   durationHours: number;
-  preference: DeferredObjectiveBucketPreference;
-  policyScore: number;
   price: number | null;
   reserve: boolean;
   current: boolean;
@@ -59,7 +141,6 @@ export type BucketAllocationResult = {
   plannedUsefulEnergyKWh: number;
   unplannedUsefulEnergyKWh: number;
   usesDeadlineReserve: boolean;
-  usesPolicyAvoid: boolean;
 };
 
 export const normalizeHorizonBuckets = (params: {
@@ -106,7 +187,6 @@ export const allocateEnergyToBuckets = (params: {
   let remainingKWh = Math.max(0, energyNeededKWh);
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
-  let usesPolicyAvoid = false;
   const allocationOrder = sortBucketsForAllocation(buckets);
 
   for (const bucket of allocationOrder) {
@@ -118,7 +198,6 @@ export const allocateEnergyToBuckets = (params: {
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
     usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
-    usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
   return {
@@ -126,7 +205,6 @@ export const allocateEnergyToBuckets = (params: {
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
-    usesPolicyAvoid,
   };
 };
 
@@ -167,7 +245,6 @@ export const allocateCommittedEnergyToBuckets = (params: {
   let remainingKWh = Math.max(0, energyNeededKWh);
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
-  let usesPolicyAvoid = false;
   const bucketsByTime = sortBucketsByTime(buckets);
 
   for (const bucket of bucketsByTime) {
@@ -181,7 +258,6 @@ export const allocateCommittedEnergyToBuckets = (params: {
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
     usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
-    usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
 
   // Phase-2 expansion fires only when the committed hours, filled up to their
@@ -214,7 +290,6 @@ export const allocateCommittedEnergyToBuckets = (params: {
     plannedUsefulEnergyKWh += expansion.plannedUsefulEnergyKWh;
     remainingKWh = expansion.remainingKWh;
     usesDeadlineReserve = usesDeadlineReserve || expansion.usesDeadlineReserve;
-    usesPolicyAvoid = usesPolicyAvoid || expansion.usesPolicyAvoid;
   }
 
   return {
@@ -222,7 +297,6 @@ export const allocateCommittedEnergyToBuckets = (params: {
     plannedUsefulEnergyKWh,
     unplannedUsefulEnergyKWh: Math.max(0, remainingKWh),
     usesDeadlineReserve,
-    usesPolicyAvoid,
   };
 };
 
@@ -280,7 +354,6 @@ const expandCommittedAllocation = (params: {
   plannedUsefulEnergyKWh: number;
   remainingKWh: number;
   usesDeadlineReserve: boolean;
-  usesPolicyAvoid: boolean;
 } => {
   const {
     buckets, stepForBucket, epsilonKWh, plannedByBucketId, committedHours,
@@ -288,7 +361,6 @@ const expandCommittedAllocation = (params: {
   let remainingKWh = params.remainingKWh;
   let plannedUsefulEnergyKWh = 0;
   let usesDeadlineReserve = false;
-  let usesPolicyAvoid = false;
   const committedHourSet = buildCommittedHourSet(committedHours);
   for (const bucket of sortBucketsForAllocation(buckets)) {
     if (remainingKWh <= epsilonKWh) break;
@@ -310,10 +382,9 @@ const expandCommittedAllocation = (params: {
     plannedUsefulEnergyKWh += plannedKWh;
     remainingKWh -= plannedKWh;
     usesDeadlineReserve = usesDeadlineReserve || bucket.reserve;
-    usesPolicyAvoid = usesPolicyAvoid || bucket.preference === 'avoid';
   }
   return {
-    plannedUsefulEnergyKWh, remainingKWh, usesDeadlineReserve, usesPolicyAvoid,
+    plannedUsefulEnergyKWh, remainingKWh, usesDeadlineReserve,
   };
 };
 
@@ -428,8 +499,6 @@ const buildBucketSegment = (params: {
     startMs,
     endMs,
     durationHours,
-    preference: normalizePreference(bucket.preference),
-    policyScore: normalizePolicyScore(bucket.policyScore, bucket.preference),
     price: normalizePrice(bucket.price),
     reserve,
     current: startMs <= nowMs && endMs > nowMs,
@@ -465,26 +534,6 @@ const isValidBucket = (bucket: DeferredObjectiveHorizonBucket): boolean => (
   && bucket.endMs > bucket.startMs
 );
 
-const normalizePreference = (
-  preference: DeferredObjectiveBucketPreference | undefined,
-): DeferredObjectiveBucketPreference => preference ?? 'neutral';
-
-const normalizePolicyScore = (
-  policyScore: number | undefined,
-  preference: DeferredObjectiveBucketPreference | undefined,
-): number => {
-  if (typeof policyScore === 'number' && Number.isFinite(policyScore)) return policyScore;
-  switch (preference) {
-    case 'preferred':
-      return 2;
-    case 'avoid':
-      return 0;
-    case 'neutral':
-    default:
-      return 1;
-  }
-};
-
 const resolveSegmentUsefulEnergyCapKWh = (params: {
   maxUsefulEnergyKWh: number | undefined;
   segmentDurationMs: number;
@@ -504,9 +553,14 @@ const resolveSegmentUsefulEnergyCapKWh = (params: {
 
 const sortBucketsForAllocation = (
   buckets: NormalizedBucket[],
-): NormalizedBucket[] => (
-  [...buckets].sort(compareBucketsForAllocation)
-);
+): NormalizedBucket[] => {
+  // Resolve the price anchor (set min positive price) ONCE for the whole sort so
+  // every bucket bands against the same reference — that keeps `priceFillBand` a
+  // pure function of price within the sort, so the induced order stays a
+  // transitive total order.
+  const anchor = resolvePriceAnchor(buckets);
+  return [...buckets].sort((left, right) => compareBucketsForAllocation(left, right, anchor));
+};
 
 const sortBucketsByTime = (
   buckets: NormalizedBucket[],
@@ -517,10 +571,10 @@ const sortBucketsByTime = (
 const compareBucketsForAllocation = (
   left: NormalizedBucket,
   right: NormalizedBucket,
+  anchor: number | null,
 ): number => (
   compareReserve(left, right)
-  || comparePreference(left, right)
-  || right.policyScore - left.policyScore
+  || comparePrice(left, right, anchor)
   || left.startMs - right.startMs
   || left.endMs - right.endMs
 );
@@ -541,22 +595,18 @@ const compareReserve = (
   return left.reserve ? 1 : -1;
 };
 
-const comparePreference = (
-  left: Pick<NormalizedBucket, 'preference'>,
-  right: Pick<NormalizedBucket, 'preference'>,
-): number => preferenceRank(right.preference) - preferenceRank(left.preference);
-
-const preferenceRank = (preference: DeferredObjectiveBucketPreference): number => {
-  switch (preference) {
-    case 'preferred':
-      return 2;
-    case 'neutral':
-      return 1;
-    case 'avoid':
-      return 0;
-    default:
-      return 1;
-  }
+// Cheapest-first on the currency-relative band (`priceFillBand`). Hours within
+// ~`PRICE_BAND_MARGIN` of each other tie here and fall through to the time
+// tiebreak (earlier first), so the allocator never churns load between
+// near-equal hours for a sub-margin saving.
+const comparePrice = (
+  left: Pick<NormalizedBucket, 'price'>,
+  right: Pick<NormalizedBucket, 'price'>,
+  anchor: number | null,
+): number => {
+  const a = priceFillBand(left.price, anchor);
+  const b = priceFillBand(right.price, anchor);
+  return a.tier - b.tier || a.key - b.key;
 };
 
 // Per-hour kWh ceiling. Three caps stacked via Math.min:
@@ -596,8 +646,6 @@ const buildPlannedBuckets = (params: {
     startMs: bucket.startMs,
     endMs: bucket.endMs,
     durationHours: bucket.durationHours,
-    preference: bucket.preference,
-    policyScore: bucket.policyScore,
     price: bucket.price,
     reserve: bucket.reserve,
     current: bucket.current,

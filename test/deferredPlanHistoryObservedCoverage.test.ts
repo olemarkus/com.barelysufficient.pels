@@ -50,7 +50,6 @@ const buildEntry = (
   outcome: 'met',
   metAtMs: DEADLINE_MS - 18 * 60 * 1000,
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: buildSnapshot(),

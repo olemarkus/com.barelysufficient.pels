@@ -278,7 +278,6 @@ test.describe('Settings UI chart layout', () => {
       outcome: 'met';
       metAtMs: number;
       usedDeadlineReserve: boolean;
-      usedPolicyAvoid: boolean;
       observedIntervals: Array<{ fromMs: number; toMs: number }>;
       discoveredFrom: 'observation';
       originalPlan: {
@@ -361,7 +360,6 @@ test.describe('Settings UI chart layout', () => {
       outcome: 'met',
       metAtMs: T0 + 3 * HOUR,
       usedDeadlineReserve: false,
-      usedPolicyAvoid: false,
       observedIntervals: [{ fromMs: T0, toMs: T0 + 3 * HOUR }],
       discoveredFrom: 'observation',
       originalPlan: buildPlan(),

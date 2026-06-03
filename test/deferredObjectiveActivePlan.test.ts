@@ -32,8 +32,6 @@ const makeBucket = (
   startMs,
   endMs: startMs + HOUR_MS,
   durationHours: 1,
-  preference: 'neutral',
-  policyScore: 0,
   reserve: false,
   current: false,
   usefulEnergyCapacityKWh: 3,
@@ -63,7 +61,6 @@ const makeHorizon = (
     currentBucket: null,
     plannedBuckets: buckets,
     usesDeadlineReserve: false,
-    usesPolicyAvoid: false,
     priceDeferralEligible: false,
     ...overrides,
   };

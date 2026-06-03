@@ -60,7 +60,6 @@ const buildEntry = (
   outcome: 'met',
   metAtMs: DEADLINE_MS - 18 * 60 * 1000, // 18 min before deadline
   usedDeadlineReserve: false,
-  usedPolicyAvoid: false,
   observedIntervals: [],
   discoveredFrom: 'observation',
   originalPlan: buildSnapshot(),
