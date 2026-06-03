@@ -11,6 +11,7 @@ import {
   normalizeObjectiveSteps,
   selectMinimumStepForEnergy,
 } from './stepSelection';
+import { resolveColdStartReleaseEligible } from './coldStartRelease';
 import type {
   DeferredObjectiveCurrentBucketPlan,
   DeferredObjectiveHorizonInput,
@@ -118,7 +119,7 @@ export const planDeferredObjectiveHorizon = (
     energyNeededKWh,
     epsilonKWh,
   });
-  const feasibleOnClimbedBand = resolveClimbedBandFeasibility({
+  const { feasibleOnClimbedBand, budgetBound } = resolveFloorFeasibility({
     activeSteps,
     buckets,
     committed,
@@ -128,19 +129,17 @@ export const planDeferredObjectiveHorizon = (
     floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
     stepForBucket,
   });
-  const budgetBound = resolveBudgetBoundFeasibility({
-    activeSteps,
-    buckets,
-    committed,
-    committedHours: input.committedHours,
-    energyNeededKWh,
-    epsilonKWh,
-    floorUnplannedKWh: allocation.unplannedUsefulEnergyKWh,
-    feasibleOnClimbedBand,
-  });
   const priceDeferralEligible = resolvePriceDeferralEligible({
     allocation,
     aheadOfHourMilestone: input.aheadOfHourMilestone ?? false,
+    epsilonKWh,
+  });
+  const coldStartReleaseEligible = resolveColdStartReleaseEligible({
+    objectiveKind: input.objective.kind,
+    buckets,
+    stepForBucket,
+    climbStep: activeSteps[activeSteps.length - 1],
+    energyNeededKWh,
     epsilonKWh,
   });
   return buildPlanFromAllocation({
@@ -154,7 +153,37 @@ export const planDeferredObjectiveHorizon = (
     feasibleOnClimbedBand,
     budgetBound,
     priceDeferralEligible,
+    coldStartReleaseEligible,
   });
+};
+
+// Resolve both floor-feasibility signals together: whether the target fits by
+// climbing to a higher step (`feasibleOnClimbedBand`) and whether the only
+// binding constraint is the soft daily budget (`budgetBound`). `budgetBound`
+// consumes `feasibleOnClimbedBand`, so they are resolved here in one pass to keep
+// `planDeferredObjectiveHorizon` lean.
+const resolveFloorFeasibility = (params: {
+  activeSteps: NonEmptyObjectiveSteps;
+  buckets: Parameters<typeof allocateEnergyToBuckets>[0]['buckets'];
+  committed: boolean;
+  committedHours: DeferredObjectiveHorizonInput['committedHours'];
+  energyNeededKWh: number;
+  epsilonKWh: number;
+  floorUnplannedKWh: number;
+  stepForBucket: StepForBucket;
+}): { feasibleOnClimbedBand: boolean; budgetBound: boolean } => {
+  const feasibleOnClimbedBand = resolveClimbedBandFeasibility(params);
+  const budgetBound = resolveBudgetBoundFeasibility({
+    activeSteps: params.activeSteps,
+    buckets: params.buckets,
+    committed: params.committed,
+    committedHours: params.committedHours,
+    energyNeededKWh: params.energyNeededKWh,
+    epsilonKWh: params.epsilonKWh,
+    floorUnplannedKWh: params.floorUnplannedKWh,
+    feasibleOnClimbedBand,
+  });
+  return { feasibleOnClimbedBand, budgetBound };
 };
 
 // Backward-compatible resolution of the committed flag. New callers pass an
@@ -411,6 +440,7 @@ const buildPlanFromAllocation = (params: {
   budgetBound: boolean;
   varianceMarginKWh: number;
   priceDeferralEligible: boolean;
+  coldStartReleaseEligible: boolean;
 }): DeferredObjectiveHorizonPlan => {
   const {
     input,
@@ -423,6 +453,7 @@ const buildPlanFromAllocation = (params: {
     budgetBound,
     varianceMarginKWh,
     priceDeferralEligible,
+    coldStartReleaseEligible,
   } = params;
   const statusResult = resolveStatus({
     allocation,
@@ -455,6 +486,7 @@ const buildPlanFromAllocation = (params: {
     plannedBuckets: allocation.plannedBuckets,
     usesDeadlineReserve: allocation.usesDeadlineReserve,
     priceDeferralEligible,
+    coldStartReleaseEligible,
   };
 };
 

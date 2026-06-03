@@ -1297,4 +1297,75 @@ describe('planDeferredObjectiveHorizon', () => {
     expect(plan.currentBucket?.plannedUsefulEnergyKWh ?? 0).toBe(0);
     expect(plan.priceDeferralEligible).toBe(false);
   });
+
+  // Cold-start release: the floor step (low = 1 kW) can't fit the need, so the
+  // cheapest-first allocator spills the residual onto the expensive current hour
+  // — but the device can climb (max = 3 kW) and the meaningfully-cheaper future
+  // hours cover the FULL need at that step, so the current hour is released.
+  // defaultSteps = off/low(1)/medium(2)/max(3); PRICE_BY_TIER avoid=100, preferred=10.
+  it('flags coldStartReleaseEligible: expensive current hour, need fits the cheaper future at the climbed step', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ kind: 'temperature', energyNeededKWh: 5 }), // > floor capacity (4h × 1 kW), ≤ climb in 3 cheap hours (3 × 3)
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
+      committed: false,
+    });
+
+    // The floor allocation DID spill onto the expensive current hour (the false premise)…
+    expect(plannedBySourceBucket(plan.plannedBuckets, 'h0')).toBeGreaterThan(0);
+    // …but the cold-start release fires so admission idles it.
+    expect(plan.coldStartReleaseEligible).toBe(true);
+  });
+
+  it('does not flag coldStartReleaseEligible when no future hour is meaningfully cheaper than now', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
+      steps: defaultSteps,
+      // Current hour is the cheapest; later hours are dearer → nothing to defer toward.
+      buckets: [bucket(0, 'preferred'), bucket(1, 'avoid'), bucket(2, 'avoid'), bucket(3, 'avoid')],
+      committed: false,
+    });
+
+    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+  });
+
+  it('does not flag coldStartReleaseEligible when the cheaper future cannot cover the need even at the climbed step', () => {
+    // Only one cheaper future hour (h1) at max 3 kW = 3 kWh < 5 kWh need → the
+    // expensive current hour is genuinely needed, so do not release it.
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ kind: 'temperature', energyNeededKWh: 5, deadlineAtMs: NOW_MS + (2 * HOUR_MS) }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred')],
+      committed: false,
+    });
+
+    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+  });
+
+  it('does not flag coldStartReleaseEligible for a single-step device (no climb capacity)', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
+      steps: [{ id: 'off', usefulPowerKw: 0 }, { id: 'low', usefulPowerKw: 1 }],
+      buckets: [bucket(0, 'avoid'), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
+      committed: false,
+    });
+
+    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+  });
+
+  it('does not flag coldStartReleaseEligible when the current hour is free or negative', () => {
+    const plan = planDeferredObjectiveHorizon({
+      nowMs: NOW_MS,
+      objective: objective({ kind: 'temperature', energyNeededKWh: 5 }),
+      steps: defaultSteps,
+      buckets: [bucket(0, 'avoid', { price: 0 }), bucket(1, 'preferred'), bucket(2, 'preferred'), bucket(3, 'preferred')],
+      committed: false,
+    });
+
+    expect(plan.coldStartReleaseEligible ?? false).toBe(false);
+  });
 });
