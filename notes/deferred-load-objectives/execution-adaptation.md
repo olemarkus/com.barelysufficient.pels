@@ -338,6 +338,43 @@ max step is an upper bound a capacity-shed device may not reach, which could ero
 bringing them in safely needs observed-rate feasibility (TODO). Two independent reviewers
 (`pels-runtime-reality`, Codex) flagged the unscoped version; the kind-scoping is the resolution.
 
+### Interaction with the per-cycle frozen read — the misread almost every reviewer makes
+
+After the per-cycle commitment collapse (the allocator runs only at the `:58` settle / bootstrap;
+between settles a frozen read serves the committed plan — see `frozenHorizonPlan.ts`), it *looks*
+like cold-start release is defeated mid-hour: `buildFrozenHorizonPlan` hardcodes
+`coldStartReleaseEligible: false`, and `resolveColdStartReleaseEligible` runs only on the fresh
+path. A reviewer reading just that code concludes "the booked expensive current hour is driven the
+whole hour until the next `:58`, reintroducing the WI-4 catastrophe." **This conclusion is wrong**,
+and it is wrong for a non-obvious reason, so it keeps being re-raised (with a reproduction that
+*appears* to confirm it — see below).
+
+Why it is wrong: **WI-2 price-deferral is the mid-hour backstop.** The cold-start hour's
+`plannedUnitMilestone` is **seeded at the measured value when the hour is first committed**
+(`stampUnitMilestones`; committed milestones are frozen thereafter, never re-anchored), so for a
+cold tank it is **low** — roughly `measured + currentHourFloorBooking / rate`. The device
+is driven at its real element (≫ the floor step), so it crosses that low milestone after delivering
+only its **floor booking** (~`FLOOR_KW` for the hour). The moment it crosses, `isAheadOfHourMilestone`
+flips true; with a meaningfully cheaper hour ahead (`cheaperHourAhead`, frozen at booking),
+`priceDeferralEligible` fires and admission idles the device for the rest of the hour. So:
+
+- The residual peak draw is only the **floor bookings that spilled onto the expensive hours**
+  (~`FLOOR_KW` per peak hour), **not** the full bang-bang element run. On the prod replay shape
+  this is ~3 kWh across the two peak hours and ~0.4 kr versus the price-deferral-only ideal — a
+  marginal optimisation gap, **not** a regression.
+- The "re-evaluated every cycle" guarantee from WI-4 is satisfied **in practice** by cold-start at
+  each settle **plus** price-deferral every cycle. Cold-start release on the frozen path would only
+  trim that residual floor booking; mid-hour it is **largely redundant** with price-deferral.
+
+Do **not** "fix" this by mocking. An e2e that pins `aheadOfHourMilestone` (or otherwise mocks the
+fresh/frozen dispatch or the allocator) **severs the backstop** and resurrects the phantom
+catastrophe — it confirms the reviewer's assumption instead of the system's behaviour. The
+authoritative check is `test/deferredObjectiveColdStartSdkE2E.test.ts`: it simulates **only** the
+Homey SDK boundary (device temperature, prices, clock) and drives the real bridge + recorder +
+admission, asserting the backstop bounds peak consumption to the floor bookings. Treat any future
+claim of a "cold-start mid-hour regression" as unproven until it reproduces through that
+SDK-boundary harness, unmocked.
+
 ## Work item 3 — Draw-down / reheat anchor (start-above-target objectives) — DONE
 
 **Scope: display-only, both trajectory producers.** WI-1 re-anchored only the *revised* history
