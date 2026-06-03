@@ -28,11 +28,20 @@
         <p class="consequence" data-confirm-consequence></p>
         <div class="preview-body">
           <p class="preview-line preview-line--cost" data-confirm-cost hidden></p>
+          <p class="preview-line preview-line--cost-subtext" data-confirm-at-cap hidden></p>
+          <div class="preview-chart" data-confirm-chart hidden></div>
           <p class="preview-line preview-line--when" data-confirm-when hidden></p>
           <p class="preview-line preview-line--energy" data-confirm-energy hidden></p>
           <p class="preview-line preview-line--unavailable" data-confirm-unavailable hidden></p>
           <p class="preview-line preview-line--caveat" data-confirm-caveat hidden></p>
           <p class="preview-line preview-line--error" data-confirm-error hidden></p>
+          <!-- Read-only summary of the standing permissions the rescue grants.
+               Not toggles (the rescue always grants both) — informational, so
+               the user sees exactly what confirming will allow. -->
+          <div class="extra-perms-summary" data-confirm-perms hidden>
+            <p class="extra-perms-summary__title" data-confirm-perms-title></p>
+            <ul class="extra-perms-summary__list" data-confirm-perms-list></ul>
+          </div>
         </div>
         <button type="button" class="primary-btn" data-confirm-btn></button>
       </section>

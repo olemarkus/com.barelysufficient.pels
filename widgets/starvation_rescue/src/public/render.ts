@@ -11,10 +11,18 @@ import {
   formatEnergyEstimateKWh,
   formatDeadlineCostMetaLine,
   resolveSmartTaskPreviewStatusCopy,
+  SMART_TASK_EXTRA_PERMISSION_LABELS,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import {
   composeSmartTaskScheduledLine,
 } from '../../../../packages/shared-domain/src/smartTaskDeadlineFormat';
+// DRY: reuse the create-task widget's self-contained price-curve chart. Sibling
+// widget imports are an explicitly allowed dependency edge (.dependency-cruiser
+// `no-widget-to-runtime-except-node-entries`), the module is browser-safe and
+// payload-agnostic (it takes price series + scheduled hours), and esbuild bundles
+// it into this widget's `public/index.js` — so the confirm sheet renders the
+// identical chart with no duplicated render logic.
+import { renderPreviewChart } from '../../../create_smart_task/src/public/previewChart';
 import type {
   StarvationRescueDevice,
   StarvationRescueDevicesPayload,
@@ -54,10 +62,15 @@ export type RenderTargets = {
   confirmTitle: HTMLElement;
   confirmConsequenceEl: HTMLElement;
   confirmCostEl: HTMLElement;
+  confirmAtCapEl: HTMLElement;
+  confirmChartEl: HTMLElement;
   confirmWhenEl: HTMLElement;
   confirmEnergyEl: HTMLElement;
   confirmUnavailableEl: HTMLElement;
   confirmCaveatEl: HTMLElement;
+  confirmPermsEl: HTMLElement;
+  confirmPermsTitleEl: HTMLElement;
+  confirmPermsListEl: HTMLElement;
   confirmErrorEl: HTMLElement;
   confirmBtn: HTMLButtonElement;
   // Done flash
@@ -218,10 +231,56 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
   });
 };
 
+// Read-only "Extra permissions" summary: the standing permissions the rescue
+// grants, shown so the user sees exactly what confirming will allow. The rescue
+// requests both `exemptFromBudget` + `limitLowerPriorityDevices`, but the backend
+// GATES `limitLowerPriorityDevices` (`App.gateCandidateExtraPermissions`): it is
+// dropped unless the device is stepped-load eligible AND at top priority — a
+// permission the planner would otherwise ignore. So the summary is derived from
+// the already-gated `estimate.grantedRescuePermissions` (only the SURVIVING
+// permissions), never a fixed both-listed assumption, or it would claim a grant
+// the rescue won't make. Copy is the canonical SMART_TASK_EXTRA_PERMISSION_LABELS
+// the create widget's toggles and runtime log breadcrumbs use — never re-worded.
+const resolveGrantedPermissionLabels = (
+  granted: NonNullable<OkPreview['estimate']['grantedRescuePermissions']>,
+): string[] => {
+  const labels: string[] = [];
+  if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+  if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+  return labels;
+};
+
+const renderExtraPermissionsSummary = (targets: RenderTargets, labels: string[]): void => {
+  setLine(targets.confirmPermsTitleEl, C.extraPermissionsTitle);
+  clearChildren(targets.confirmPermsListEl);
+  const doc = targets.confirmPermsListEl.ownerDocument;
+  for (const label of labels) {
+    const item = doc.createElement('li');
+    item.className = 'extra-perms-summary__item';
+    item.textContent = label;
+    targets.confirmPermsListEl.appendChild(item);
+  }
+  setVisible(targets.confirmPermsEl, true);
+};
+
 const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
   const projectable = isProjectable(response);
   const estimated = response.estimate.status !== 'unavailable';
   setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
+  // Factual at-cap honesty signal: the in-isolation preview can show the device
+  // running now, but the backend flags `atCapNow` when the measured whole-home
+  // draw is already at the physical limit, so power may have to wait for room.
+  // Names the measured fact, never a prompt to raise the (physical) limit.
+  setLine(targets.confirmAtCapEl, projectable && response.estimate.atCapNow === true ? C.atCapNote : null);
+  // The price curve with the scheduled hours highlighted — the SAME chart the
+  // create widget renders. Shown only when projectable and a price series is
+  // present; falls back to the text lines otherwise.
+  const charted = projectable && response.estimate.priceSeries !== undefined
+    && renderPreviewChart(targets.confirmChartEl, {
+      priceSeries: response.estimate.priceSeries,
+      scheduledHours: response.estimate.scheduledHours,
+    });
+  setVisible(targets.confirmChartEl, charted);
   setLine(targets.confirmWhenEl, formatWhenLine(response));
   setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
   setLine(
@@ -229,13 +288,23 @@ const renderOkPreview = (targets: RenderTargets, response: OkPreview): void => {
     resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason),
   );
   setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== 'satisfied' ? C.estimateCaveat : null);
+  // Show the summary only when projectable (confirm is a live option) AND the
+  // backend reported surviving granted permissions; derive the listed labels
+  // from the gated set so it never claims a permission the rescue won't grant.
+  const granted = response.estimate.grantedRescuePermissions;
+  const permissionLabels = projectable && granted ? resolveGrantedPermissionLabels(granted) : [];
+  if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
+  else hide(targets.confirmPermsEl);
 };
 
 const hideConfirmLines = (targets: RenderTargets): void => {
   hide(targets.confirmCostEl);
+  hide(targets.confirmAtCapEl);
+  hide(targets.confirmChartEl);
   hide(targets.confirmWhenEl);
   hide(targets.confirmEnergyEl);
   hide(targets.confirmCaveatEl);
+  hide(targets.confirmPermsEl);
 };
 
 const renderConfirm = (

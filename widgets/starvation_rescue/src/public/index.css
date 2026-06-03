@@ -257,6 +257,94 @@
   font-weight: var(--pw-weight-medium, 500);
 }
 
+/* At-cap honesty note, riding under the cost like the create widget's cost
+   subtext. Warning-toned (a caution, not an error) so it reads as "heads up,
+   the limit is full" — never as a failure or a prompt to raise the limit. */
+.preview-line--cost-subtext {
+  color: var(--pw-text-warning, #b9770e);
+  font-weight: var(--pw-weight-medium, 500);
+}
+
+/* ----- Preview price chart (shared with create_smart_task) ----- */
+
+/* The compact price curve sits between the cost headline and the when-line.
+   Mirrors the create widget's chart styling so the SAME renderPreviewChart
+   output looks identical across both widgets. Fixed band so the surrounding
+   lines don't reflow as the SVG scales to width; `flex: none` stops the flex
+   column from stretching it. */
+.preview-chart {
+  flex: none;
+  width: 100%;
+  height: 132px;
+  margin: var(--pw-su-1, 4px) 0;
+}
+
+.pchart {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Shaded band over the scheduled hours — the "runs here" window. */
+.pchart__band {
+  fill: color-mix(in srgb, var(--pw-success, #58c56a) 15%, transparent);
+}
+
+/* The price line — price/danger tone, stroked only. `stroke-width` is a raw SVG
+   geometry value (Homey ships no stroke-width token); colour stays tokenised. */
+.pchart__line {
+  fill: none;
+  stroke: var(--pw-red, #f0696c);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.pchart__dot {
+  fill: var(--pw-success, #58c56a);
+}
+
+.pchart__axis {
+  fill: var(--pw-text-muted, #6d7680);
+  font-size: var(--pw-font-size-body, 14px);
+  font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+/* ----- Extra permissions (read-only summary) ----- */
+
+/* A bordered informational block listing the standing permissions the rescue
+   grants. Read-only — the rescue always grants both — so it has no toggles,
+   just a title and a list. */
+.extra-perms-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+  padding: var(--pw-su-2, 8px);
+  border: 1px solid var(--pw-line, rgba(15, 23, 28, 0.12));
+  border-radius: var(--pw-radius-small, 6px);
+}
+
+.extra-perms-summary__title {
+  margin: 0;
+  font-size: var(--pw-font-size-body, 14px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text, inherit);
+}
+
+.extra-perms-summary__list {
+  margin: 0;
+  padding-left: var(--pw-su-3, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pw-su-1, 4px);
+}
+
+.extra-perms-summary__item {
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
 /* ----- Primary action ----- */
 
 .primary-btn {

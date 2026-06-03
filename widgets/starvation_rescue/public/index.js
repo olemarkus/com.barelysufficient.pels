@@ -49,6 +49,19 @@
     // Same in-isolation caveat the create widget uses — the estimate ignores
     // re-plans and competing tasks.
     estimateCaveat: "Estimate \u2014 the actual run may differ as prices and other tasks change.",
+    // Heading for the read-only "what this grants" summary on the confirm sheet.
+    // Reuses the create widget's canonical "Extra permissions" wording (via
+    // SMART_TASK_EXTRA_PERMISSION_LABELS for the line items) so the two surfaces
+    // describe the same permissions identically; here it is informational, not a
+    // set of toggles — the rescue always grants both.
+    extraPermissionsTitle: "Extra permissions",
+    // Factual at-cap honesty signal. The in-isolation preview can show the device
+    // running now, but if the house is already pressed against the physical hard
+    // cap there is no room until something frees up. Names the real measured
+    // fact (at the hard cap), NOT a prompt to raise it — the hard cap is physical
+    // (feedback_hard_cap_is_physical). Pairs with the "Running as soon as there’s
+    // room" flash for the same honesty when the rescue is committed.
+    atCapNote: "Your hard cap is maxed out right now, so it may wait for room before running.",
     // Preview couldn't be projected (no prices yet, missing reading, price
     // optimisation off). Distinct from a hard error.
     previewUnavailable: "Can\u2019t preview this yet \u2014 PELS needs more current data for this window.",
@@ -297,6 +310,10 @@
     at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
     cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
     satisfied: null
+  };
+  var SMART_TASK_EXTRA_PERMISSION_LABELS = {
+    exemptFromBudget: "May go over daily budget",
+    limitLowerPriorityDevices: "May limit lower-priority devices"
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
@@ -568,6 +585,112 @@
     return `${params.scheduledLabel} ${params.scheduledWindowLabel} \xB7 ${readyByPart}`;
   };
 
+  // widgets/create_smart_task/src/public/previewChart.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var VIEW = { width: 480, height: 132 };
+  var PLOT = { left: 10, right: 470, top: 14, bottom: 104 };
+  var X_LABEL_Y = 124;
+  var PLOT_WIDTH = PLOT.right - PLOT.left;
+  var PLOT_HEIGHT = PLOT.bottom - PLOT.top;
+  var createSvg = (doc, tag, attrs, text) => {
+    const el = doc.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, String(value));
+    if (text !== void 0) el.textContent = text;
+    return el;
+  };
+  var bucketWidth = (count) => PLOT_WIDTH / Math.max(1, count);
+  var bucketLeft = (index, count) => PLOT.left + bucketWidth(count) * index;
+  var bucketCenter = (index, count) => bucketLeft(index, count) + bucketWidth(count) / 2;
+  var makeYScale = (prices) => {
+    const finite = prices.filter((p) => Number.isFinite(p));
+    const min = Math.min(...finite);
+    const max = Math.max(...finite);
+    const pad = max > min ? (max - min) * 0.14 : Math.max(1, Math.abs(max) * 0.1);
+    const lo = min - pad;
+    const span = max + pad - lo;
+    return (price) => PLOT.bottom - (price - lo) / span * PLOT_HEIGHT;
+  };
+  var hourLabel = (startsAtMs) => String(new Date(startsAtMs).getHours()).padStart(2, "0");
+  var scheduledRuns = (scheduledIndexes) => {
+    const sorted = [...scheduledIndexes].sort((a, b) => a - b);
+    const runs = [];
+    for (const index of sorted) {
+      const last = runs[runs.length - 1];
+      if (last && index === last.end + 1) last.end = index;
+      else runs.push({ start: index, end: index });
+    }
+    return runs;
+  };
+  var buildStepPath = (ys, count) => {
+    let path = "";
+    let penDown = false;
+    ys.forEach((y, index) => {
+      if (y === null) {
+        penDown = false;
+        return;
+      }
+      const left = bucketLeft(index, count);
+      const right = left + bucketWidth(count);
+      path += `${penDown ? "L" : "M"}${left.toFixed(1)} ${y.toFixed(1)} L${right.toFixed(1)} ${y.toFixed(1)} `;
+      penDown = true;
+    });
+    return path.trim();
+  };
+  var renderPreviewChart = (container, { priceSeries, scheduledHours }) => {
+    const doc = container.ownerDocument;
+    while (container.firstChild) container.removeChild(container.firstChild);
+    const count = priceSeries.length;
+    const prices = priceSeries.map((point) => point.price).filter((p) => Number.isFinite(p));
+    if (count < 2 || prices.length === 0) return false;
+    const yScale = makeYScale(prices);
+    const ys = priceSeries.map((point) => Number.isFinite(point.price) ? yScale(point.price) : null);
+    const scheduledStarts = new Set(scheduledHours.map((hour) => hour.startsAtMs));
+    const scheduledIndexes = priceSeries.map((point, index) => scheduledStarts.has(point.startsAtMs) ? index : -1).filter((index) => index >= 0);
+    const svg = createSvg(doc, "svg", {
+      class: "pchart",
+      viewBox: `0 0 ${VIEW.width} ${VIEW.height}`,
+      preserveAspectRatio: "none",
+      role: "img"
+    });
+    for (const run of scheduledRuns(scheduledIndexes)) {
+      const x1 = bucketLeft(run.start, count);
+      const x2 = bucketLeft(run.end, count) + bucketWidth(count);
+      svg.appendChild(createSvg(doc, "rect", {
+        class: "pchart__band",
+        x: x1,
+        y: PLOT.top,
+        width: Math.max(0, x2 - x1),
+        height: PLOT_HEIGHT,
+        rx: 3
+      }));
+    }
+    const stepPath = buildStepPath(ys, count);
+    if (stepPath) svg.appendChild(createSvg(doc, "path", { class: "pchart__line", d: stepPath }));
+    for (const index of scheduledIndexes) {
+      const y = ys[index];
+      if (y !== null) {
+        svg.appendChild(createSvg(doc, "circle", {
+          class: "pchart__dot",
+          cx: bucketCenter(index, count),
+          cy: y,
+          r: 4
+        }));
+      }
+    }
+    priceSeries.forEach((point, index) => {
+      const show = index === 0 || index === count - 1 || index % 3 === 0 && count - 1 - index >= 2;
+      if (!show) return;
+      svg.appendChild(createSvg(doc, "text", {
+        class: "pchart__axis",
+        x: bucketCenter(index, count),
+        y: X_LABEL_Y,
+        "text-anchor": "middle"
+      }, hourLabel(point.startsAtMs)));
+    });
+    container.appendChild(svg);
+    return true;
+  };
+
   // widgets/starvation_rescue/src/public/render.ts
   var C = STARVATION_RESCUE_WIDGET_COPY;
   var clearChildren = (el) => {
@@ -666,10 +789,34 @@
       costUnit: estimate.costUnit
     });
   };
+  var resolveGrantedPermissionLabels = (granted) => {
+    const labels = [];
+    if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
+    if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+    return labels;
+  };
+  var renderExtraPermissionsSummary = (targets, labels) => {
+    setLine(targets.confirmPermsTitleEl, C.extraPermissionsTitle);
+    clearChildren(targets.confirmPermsListEl);
+    const doc = targets.confirmPermsListEl.ownerDocument;
+    for (const label of labels) {
+      const item = doc.createElement("li");
+      item.className = "extra-perms-summary__item";
+      item.textContent = label;
+      targets.confirmPermsListEl.appendChild(item);
+    }
+    setVisible(targets.confirmPermsEl, true);
+  };
   var renderOkPreview = (targets, response) => {
     const projectable = isProjectable(response);
     const estimated = response.estimate.status !== "unavailable";
     setLine(targets.confirmCostEl, projectable ? formatCostLine(response.estimate) : null);
+    setLine(targets.confirmAtCapEl, projectable && response.estimate.atCapNow === true ? C.atCapNote : null);
+    const charted = projectable && response.estimate.priceSeries !== void 0 && renderPreviewChart(targets.confirmChartEl, {
+      priceSeries: response.estimate.priceSeries,
+      scheduledHours: response.estimate.scheduledHours
+    });
+    setVisible(targets.confirmChartEl, charted);
     setLine(targets.confirmWhenEl, formatWhenLine(response));
     setLine(targets.confirmEnergyEl, estimated ? formatEnergyLine(response.estimate) : null);
     setLine(
@@ -677,12 +824,19 @@
       resolveSmartTaskPreviewStatusCopy(response.estimate.status, response.estimate.unavailableReason)
     );
     setLine(targets.confirmCaveatEl, estimated && response.estimate.status !== "satisfied" ? C.estimateCaveat : null);
+    const granted = response.estimate.grantedRescuePermissions;
+    const permissionLabels = projectable && granted ? resolveGrantedPermissionLabels(granted) : [];
+    if (permissionLabels.length > 0) renderExtraPermissionsSummary(targets, permissionLabels);
+    else hide(targets.confirmPermsEl);
   };
   var hideConfirmLines = (targets) => {
     hide(targets.confirmCostEl);
+    hide(targets.confirmAtCapEl);
+    hide(targets.confirmChartEl);
     hide(targets.confirmWhenEl);
     hide(targets.confirmEnergyEl);
     hide(targets.confirmCaveatEl);
+    hide(targets.confirmPermsEl);
   };
   var renderConfirm = (targets, view) => {
     const { device, response, submitting, error } = view;
@@ -773,10 +927,15 @@
       confirmTitle: "[data-confirm-title]",
       confirmConsequenceEl: "[data-confirm-consequence]",
       confirmCostEl: "[data-confirm-cost]",
+      confirmAtCapEl: "[data-confirm-at-cap]",
+      confirmChartEl: "[data-confirm-chart]",
       confirmWhenEl: "[data-confirm-when]",
       confirmEnergyEl: "[data-confirm-energy]",
       confirmUnavailableEl: "[data-confirm-unavailable]",
       confirmCaveatEl: "[data-confirm-caveat]",
+      confirmPermsEl: "[data-confirm-perms]",
+      confirmPermsTitleEl: "[data-confirm-perms-title]",
+      confirmPermsListEl: "[data-confirm-perms-list]",
       confirmErrorEl: "[data-confirm-error]",
       doneView: "[data-done-view]",
       doneMsgEl: "[data-done-msg]"

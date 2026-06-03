@@ -5135,6 +5135,10 @@ var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
 var ONE_HOUR_MS5 = 60 * 60 * 1e3;
 var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
 
+// lib/objectives/deferredObjectives/planPreview.ts
+var ONE_HOUR_MS6 = 60 * 60 * 1e3;
+var AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1e3;
+
 // lib/utils/perfCounters.ts
 var state = {
   startedAt: Date.now(),
