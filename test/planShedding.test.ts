@@ -3,10 +3,16 @@ import type { PowerTrackerState } from '../lib/power/tracker';
 import type { PlanContext } from '../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../lib/plan/planConstants';
 import { createPlanEngineState } from '../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
 import { buildSheddingPlan } from '../lib/plan/shedding';
 import { resolveSoftOvershootDecision } from '../lib/plan/planOvershoot';
 import { reasonText } from './utils/deviceReasonTestUtils';
+
+// Shared empty pending-binary-command store for deps blocks that build their
+// engine state inline (or declare it after the deps object) and never seed
+// pending state.
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'dev',
@@ -94,6 +100,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -149,6 +156,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -195,6 +203,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -251,6 +260,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: Date.now() - (2 * 60 * 1000) } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -315,6 +325,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-at-temp'
             ? { action: 'set_temperature', temperature: 15 }
@@ -380,6 +391,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-high' ? 1 : 3),
         log: vi.fn(),
@@ -434,6 +446,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 456 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-restore' ? 100 : 50),
         log: vi.fn(),
@@ -482,6 +495,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -535,6 +549,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1000 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -602,6 +617,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -674,6 +690,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-heater'
             ? { action: 'set_temperature', temperature: 15, stepId: null }
@@ -754,6 +771,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-heater'
             ? { action: 'set_temperature', temperature: 15, stepId: null }
@@ -815,6 +833,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 600 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 18, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -878,6 +897,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 111 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
@@ -944,6 +964,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 113 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
@@ -1009,6 +1030,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 115 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
@@ -1076,6 +1098,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 116 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 20 : 10),
         log: vi.fn(),
@@ -1145,6 +1168,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 114 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
@@ -1209,6 +1233,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 112 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1277,6 +1302,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 222 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1346,6 +1372,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 223 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1415,6 +1442,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 224 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1482,6 +1510,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 333 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1542,6 +1571,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 334 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -1603,6 +1633,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 335 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -1669,6 +1700,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 444 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1741,6 +1773,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1814,6 +1847,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 445 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1887,6 +1921,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 555 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'connected-300'
             ? { action: 'set_step', temperature: null, stepId: 'off' }
@@ -1958,6 +1993,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 700 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         // Binary device has higher priority (10 > 1) so would normally shed first
         getPriorityForDevice: (deviceId: string) => (deviceId === 'heater' ? 1 : 10),
@@ -2037,6 +2073,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 10,
         log: vi.fn(),
@@ -2098,6 +2135,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 666 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'bath' ? 10 : 5),
         log: vi.fn(),
@@ -2168,6 +2206,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 667 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 10 : 5),
         log: vi.fn(),
@@ -2220,6 +2259,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1_000 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2256,6 +2296,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2304,6 +2345,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2358,6 +2400,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2406,6 +2449,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2475,6 +2519,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2527,6 +2572,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2586,6 +2632,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
@@ -2639,6 +2686,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
@@ -2691,6 +2739,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
@@ -2750,6 +2799,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
@@ -2809,6 +2859,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
@@ -2869,6 +2920,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 300 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
@@ -2910,6 +2962,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -2946,6 +2999,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 200 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3012,6 +3066,7 @@ describe('buildSheddingPlan', () => {
     const baseDeps = {
       capacityGuard,
       powerTracker: { lastTimestamp: 900 } as PowerTrackerState,
+      pendingBinaryCommandStore: emptyPendingStore,
       getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
       // Distinct priorities: binary highest (20), stepped-a mid (15), stepped-b low (10).
       // Without preemptive ordering, binary would shed first.
@@ -3138,6 +3193,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3193,6 +3249,7 @@ describe('buildSheddingPlan', () => {
       {
         ...deps,
         powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
     );
 
@@ -3210,6 +3267,7 @@ describe('buildSheddingPlan', () => {
       {
         ...deps,
         powerTracker: { lastTimestamp: 501 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       },
     );
 
@@ -3265,6 +3323,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3319,6 +3378,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1006 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3387,6 +3447,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1007 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId) => (deviceId === 'second' ? 200 : 100),
         log: vi.fn(),
@@ -3456,6 +3517,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1008 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId) => (deviceId === 'temp'
           ? { action: 'set_temperature', temperature: 17, stepId: null }
           : { action: 'set_step', temperature: null, stepId: null }),
@@ -3516,6 +3578,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 1009 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3567,6 +3630,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3626,6 +3690,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3675,6 +3740,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3723,6 +3789,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 500 } as PowerTrackerState,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3758,6 +3825,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3796,6 +3864,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3833,6 +3902,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         powerTracker: { lastTimestamp: 800 } as PowerTrackerState,
+        pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
@@ -3867,6 +3937,7 @@ describe('buildSheddingPlan', () => {
       {
         capacityGuard: guard,
         powerTracker: { lastTimestamp: 801 } as PowerTrackerState,
+        pendingBinaryCommandStore: emptyPendingStore,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),

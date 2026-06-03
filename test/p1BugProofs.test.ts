@@ -235,9 +235,10 @@ describe('P1 bug proofs', () => {
       measuredPowerKw: undefined,
     });
 
+    const planState = createPlanEngineState();
     const [planDevice] = buildInitialPlanDevices({
       context: buildPlanningContext([rawDevice]),
-      state: createPlanEngineState(),
+      state: planState,
       shedSet: new Set(),
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -248,6 +249,7 @@ describe('P1 bug proofs', () => {
         isCurrentHourExpensive: () => false,
         getPriceOptimizationEnabled: () => false,
         getPriceOptimizationSettings: () => ({}),
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(planState.pendingBinaryCommands),
       },
     });
 

@@ -8,6 +8,9 @@ import {
   DeferredObjectiveDecorationController,
   type DeferredObjectiveSettingsV1,
 } from '../lib/objectives/deferredObjectives';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEVICE_ID = 'dev_water_heater';
@@ -179,6 +182,7 @@ const buildBuilder = (
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
     log: vi.fn(),
     logDebug: vi.fn(),
+    pendingBinaryCommandStore: emptyPendingStore,
   }, createPlanEngineState());
 };
 
@@ -312,6 +316,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
     vi.setSystemTime(new Date(DAY_START_UTC));
@@ -551,6 +556,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
     const snapshot = await builder.buildDevicePlanSnapshot([

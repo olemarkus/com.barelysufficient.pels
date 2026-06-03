@@ -40,7 +40,7 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
     const observation = buildObservation();
 
     const decision = decideBinaryControl({
-      state,
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       deviceObservation: observation,
       deviceId: 'socket1',
       name: 'Socket',
@@ -76,7 +76,7 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
     const observation = buildObservation();
 
     const decision = decideBinaryControl({
-      state,
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       deviceObservation: observation,
       deviceId: 'socket1',
       name: 'Socket',
@@ -100,7 +100,7 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
     const observation = buildObservation();
 
     const decision = decideBinaryControl({
-      state,
+      pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
       deviceObservation: observation,
       deviceId: 'ev1',
       name: 'EV',
@@ -279,7 +279,6 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
     const transport = buildTransport(state, { setCapability });
 
     const ok = await decideAndDispatchBinaryControl({
-      state,
       transport,
       deviceId: 'socket1',
       name: 'Socket',

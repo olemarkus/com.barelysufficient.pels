@@ -40,6 +40,7 @@ import {
   SOFT_OVERSHOOT_DEADBAND_KW,
 } from './planConstants';
 import { isObservedOff } from '../observer/observedState';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
 import type {
@@ -72,6 +73,11 @@ export type PlanBuilderDeps = {
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
+  // Observer-owned pending-binary-command store. Plan-side reads consult
+  // `peek(id)` (raw read) through this facade rather than touching
+  // `state.pendingBinaryCommands[id]` directly, so the store stays the
+  // single source of truth for that map (observer/transport split).
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
@@ -307,6 +313,7 @@ export class PlanBuilder {
         powerTracker: this.powerTracker,
         getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+        pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         log: (...args: unknown[]) => this.deps.log(...args),
         logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
         structuredLog: this.deps.structuredLog,
@@ -348,7 +355,11 @@ export class PlanBuilder {
     } = params;
     const overshootActive = overshootDecision.actionable;
     const prevOvershoot = this.state.wasOvershoot;
-    const trackedPlanDevicesById = trackPlanDevicesForOvershoot(planDevices, this.state);
+    const trackedPlanDevicesById = trackPlanDevicesForOvershoot(
+      planDevices,
+      this.state,
+      this.deps.pendingBinaryCommandStore,
+    );
     const lastPowerUpdateMs = this.powerTracker.lastTimestamp ?? null;
     const overshootTimingFields = this.buildOvershootTimingFields(nowTs, lastPowerUpdateMs);
     if (overshootActive && !prevOvershoot) {
@@ -497,6 +508,7 @@ export class PlanBuilder {
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
         getOperatingMode: () => this.operatingMode,
+        pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         debugStructured: this.deps.debugStructured,
       },
     }));
@@ -971,8 +983,12 @@ function buildOvershootContributor(
 function trackPlanDeviceForOvershoot(
   device: DevicePlanDevice,
   state: PlanEngineState,
+  pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): OvershootTrackedPlanDevice {
-  const pendingBinaryCommand = state.pendingBinaryCommands[device.id];
+  // Raw read: activeness is computed below with the device's
+  // communication model, so `peek` (not `get`) preserves the prior
+  // field-read semantics without triggering store eviction here.
+  const pendingBinaryCommand = pendingBinaryCommandStore.peek(device.id);
   const pendingBinaryCommandActive = isPendingBinaryCommandActive({
     pending: pendingBinaryCommand,
     communicationModel: device.communicationModel,
@@ -1000,9 +1016,13 @@ function trackPlanDeviceForOvershoot(
 function trackPlanDevicesForOvershoot(
   planDevices: DevicePlanDevice[],
   state: PlanEngineState,
+  pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): Record<string, OvershootTrackedPlanDevice> {
   return Object.fromEntries(
-    planDevices.map((device) => [device.id, trackPlanDeviceForOvershoot(device, state)]),
+    planDevices.map((device) => [
+      device.id,
+      trackPlanDeviceForOvershoot(device, state, pendingBinaryCommandStore),
+    ]),
   );
 }
 

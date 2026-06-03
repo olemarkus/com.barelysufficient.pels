@@ -83,8 +83,9 @@ export class PlanEngine {
   public readonly state: PlanEngineState;
   /**
    * Observer-owned facade over `state.pendingBinaryCommands`. The executor's
-   * binary-control dispatcher writes/deletes through this store; plan-side
-   * read sites still consult the backing `Record` directly. See
+   * binary-control dispatcher writes/deletes through this store, and plan-
+   * and executor-side read sites consult it via `get`/`peek`; nothing
+   * reads or evicts the backing `Record` directly. See
    * `notes/state-management/observer-transport-split.md` (PR #4).
    */
   public readonly pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -121,6 +122,7 @@ export class PlanEngine {
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
       decorateDeferredObjectives: deps.decorateDeferredObjectives,
+      pendingBinaryCommandStore: this.pendingBinaryCommandStore,
       log: deps.log,
       logDebug: deps.logDebug,
     };

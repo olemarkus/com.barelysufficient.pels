@@ -4,8 +4,10 @@ import {
   getBinaryControlPlan,
   getEvRestoreBlockReason,
 } from '../lib/plan/planBinaryControl';
-import { syncPendingBinaryCommands } from '../lib/observer/pendingBinaryCommands';
-import { getPendingBinaryCommand } from '../lib/plan/planBinaryControlHelpers';
+import {
+  createPendingBinaryCommandStore,
+  syncPendingBinaryCommands,
+} from '../lib/observer/pendingBinaryCommands';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
 import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 import { runBinaryControlCycle as setBinaryControl } from './utils/binaryControlTestHelpers';
@@ -1229,8 +1231,9 @@ describe('plan binary control helpers', () => {
     });
   });
 
-  it('removes an expired entry when getPendingBinaryCommand observes a stale pending', () => {
+  it('evicts an expired entry when the store get() observes a stale pending', () => {
     const state = createPlanEngineState();
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     state.pendingBinaryCommands.socket1 = {
       capabilityId: 'onoff',
       desired: false,
@@ -1238,7 +1241,7 @@ describe('plan binary control helpers', () => {
     };
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
-    const pending = getPendingBinaryCommand(state, 'socket1');
+    const pending = store.get('socket1');
     nowSpy.mockRestore();
 
     expect(pending).toBeUndefined();
@@ -1255,6 +1258,7 @@ describe('plan binary control helpers', () => {
 
   it('does not emit pending_binary_command_cleared when the pending entry is still active', () => {
     const state = createPlanEngineState();
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
     state.pendingBinaryCommands.socket1 = {
       capabilityId: 'onoff',
       desired: false,
@@ -1262,7 +1266,25 @@ describe('plan binary control helpers', () => {
     };
 
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 5_000);
-    const pending = getPendingBinaryCommand(state, 'socket1');
+    const pending = store.get('socket1');
+    nowSpy.mockRestore();
+
+    expect(pending).toBeDefined();
+    expect(state.pendingBinaryCommands.socket1).toBeDefined();
+    expect(logCapture.findEvent('pending_binary_command_cleared')).toBeUndefined();
+  });
+
+  it('peek() returns a stale entry without evicting it', () => {
+    const state = createPlanEngineState();
+    const store = createPendingBinaryCommandStore(state.pendingBinaryCommands);
+    state.pendingBinaryCommands.socket1 = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: 1_000,
+    };
+
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000 + 20_000);
+    const pending = store.peek('socket1');
     nowSpy.mockRestore();
 
     expect(pending).toBeDefined();

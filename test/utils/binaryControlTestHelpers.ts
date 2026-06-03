@@ -48,8 +48,9 @@ export async function runBinaryControlCycle(params: {
     state, deviceManager, triggerFlowBackedBinaryControlRequest,
     deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
   } = params;
+  const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
   const decision = decideBinaryControl({
-    state,
+    pendingBinaryCommandStore,
     deviceObservation: deviceManager,
     deviceId,
     name,
@@ -63,7 +64,7 @@ export async function runBinaryControlCycle(params: {
   if (!decision) return false;
   const transport: BinaryControlTransport = {
     observation: deviceManager,
-    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    pendingBinaryCommandStore,
     setCapability: (id, cap, value) => deviceManager.setCapability(id, cap, value),
     triggerFlowBackedBinaryControlRequest,
   };

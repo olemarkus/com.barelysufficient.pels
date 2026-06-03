@@ -12,16 +12,15 @@
  * - Reads happen in plan/executor predicates that need to know "is a
  *   command in flight for this device?".
  *
- * The store is the canonical mutator owner. To minimise blast radius
- * across the many plan-side read sites that still consult
- * `state.pendingBinaryCommands[id]`, the store binds to a backing
- * `Record` provided by `PlanEngine`. Reads keep using the field; the
- * store's `record` / `clear` / `prune` methods are the only paths that
- * mutate it. Post-PR-#5 end state: `pendingBinaryCommands` is the
- * canonical read API for plan- and executor-side consumers and the
- * store is the only mutator. Migrating those reads to a
- * `store.peek(id)` API is a future-cleanup option captured in
- * `TODO.md`; it is not blocked or scheduled.
+ * The store is the canonical owner in BOTH directions: writes go through
+ * `record` / `clear`, and reads go through `get` (freshness-evicting) or
+ * `peek` (raw). Plan- and executor-side consumers no longer touch
+ * `state.pendingBinaryCommands[id]` directly — the store binds to that
+ * backing `Record` (supplied by `PlanEngine`) but is the only path that
+ * mutates or evicts it. The field survives only as the store's backing
+ * store, the legacy state-form of `syncPendingBinaryCommands`, and the
+ * `isPlanActivelyConverging` emptiness probe; no consumer reads or
+ * evicts it in place.
  */
 import {
   type PendingBinaryCommand,
@@ -40,9 +39,10 @@ const logger = getLogger('observer/pending-binary-commands');
 
 /**
  * Observer-owned facade over the pending-binary-command map. The backing
- * `Record` is supplied by the engine at construction so plan-side read
- * sites can keep consulting `state.pendingBinaryCommands[id]` without
- * change while observer remains the canonical mutator.
+ * `Record` is supplied by the engine at construction; it is the only
+ * thing the store mutates, and plan-/executor-side consumers read it
+ * exclusively through `get` (freshness-evicting) or `peek` (raw) so the
+ * store is the single source of truth in both directions.
  */
 export type PendingBinaryCommandStore = {
   /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
@@ -79,8 +79,18 @@ export function createPendingBinaryCommandStore(
     get(deviceId) {
       const entry = backing[deviceId];
       if (!entry) return undefined;
-      if (isPendingBinaryCommandActive({ pending: entry })) return entry;
+      const nowMs = Date.now();
+      if (isPendingBinaryCommandActive({ pending: entry, nowMs })) return entry;
       delete backing[deviceId];
+      logger.debug({
+        event: 'pending_binary_command_cleared',
+        reason: 'stale_age',
+        deviceId,
+        capabilityId: entry.capabilityId,
+        desired: entry.desired,
+        ageMs: nowMs - entry.startedMs,
+        timeoutMs: getPendingBinaryCommandWindowMs(entry),
+      });
       return undefined;
     },
     peek(deviceId) {

@@ -15,6 +15,7 @@ import {
 import { getRestoreDrawKw } from '../observer/observedPower';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
+import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   getPrimaryTargetCapability,
   normalizeTargetCapabilityValue,
@@ -61,6 +62,9 @@ export type PlanDevicesDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   getOperatingMode?: () => string;
+  // Observer-owned pending-binary-command store; plan-side raw reads go
+  // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
   debugStructured?: StructuredDebugEmitter;
 };
 
@@ -142,9 +146,9 @@ export function buildInitialPlanDevices(params: {
       priority,
       recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: isPendingBinaryCommandActive({
-        pending: state.pendingBinaryCommands[dev.id],
+        pending: deps.pendingBinaryCommandStore.peek(dev.id),
         communicationModel: dev.communicationModel,
-      }) && state.pendingBinaryCommands[dev.id]?.desired === true,
+      }) && deps.pendingBinaryCommandStore.peek(dev.id)?.desired === true,
       currentState,
       currentTarget,
       plannedTarget,

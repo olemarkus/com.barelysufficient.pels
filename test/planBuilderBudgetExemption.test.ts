@@ -3,6 +3,9 @@ import { PlanBuilder } from '../lib/plan/planBuilder';
 import { createPlanEngineState } from '../lib/plan/planState';
 import type { DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
 import type { PlanInputDevice } from '../lib/plan/planTypes';
+import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+
+const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDailyBudgetSnapshot = (params: {
   nowIso: string;
@@ -119,6 +122,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot(devices);
@@ -169,6 +173,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);
@@ -215,6 +220,7 @@ describe('PlanBuilder budget exemption handling', () => {
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),
+      pendingBinaryCommandStore: emptyPendingStore,
     }, createPlanEngineState());
 
     const plan = await builder.buildDevicePlanSnapshot([]);

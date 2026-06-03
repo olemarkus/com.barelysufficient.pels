@@ -71,7 +71,6 @@ const runBinaryControl = async (params: {
     lifecycleRelease,
   } = params;
   return decideAndDispatchBinaryControl({
-    state: ctx.state,
     transport: ctx.buildBinaryControlTransport(),
     deviceId,
     name,
