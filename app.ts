@@ -185,6 +185,7 @@ import {
   getFlowReportedDeviceIds,
   getFlowRefreshRequestedDeviceIds,
   isFlowReportedObservationCapabilityId,
+  readFlowReportedCapabilitiesForDevice,
   upsertFlowReportedCapability,
   type FlowReportedCapabilityId,
   type FlowReportedCapabilitiesByDevice,
@@ -569,7 +570,7 @@ class PelsApp extends Homey.App {
   }
 
   private getFlowReportedCapabilitiesForDevice = (deviceId: string): FlowReportedCapabilitiesForDevice => (
-    this.flowReportedCapabilities[deviceId] ?? {}
+    readFlowReportedCapabilitiesForDevice(this.flowReportedCapabilities, deviceId)
   );
 
   private getFlowReportedDeviceIds = (): string[] => (
@@ -1610,7 +1611,7 @@ class PelsApp extends Homey.App {
     const next: FlowReportedCapabilitiesByDevice = {};
     for (const [deviceId, entries] of Object.entries(state)) {
       const filteredEntries = Object.fromEntries(
-        Object.entries(entries ?? {}).filter(([capabilityId]) => (
+        Object.entries(entries).filter(([capabilityId]) => (
           this.isFlowReportedCapabilityAvailable(capabilityId as FlowReportedCapabilityId)
         )),
       ) as FlowReportedCapabilitiesForDevice;
