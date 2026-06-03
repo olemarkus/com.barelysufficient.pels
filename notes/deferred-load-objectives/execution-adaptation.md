@@ -179,6 +179,27 @@ the cheaper hours at the next `:58` settle — one honest revision, not churn.
    feature targets). `futureCommittedKWh` is frozen within the hour (settled at `:58`), so it is the
    stable reference: capacity arbitration jerking the mid-hour trajectory around cannot chatter it,
    and a rate drift between commit and now only shifts the comparison in the safe direction.
+
+   **Update (2026-06-03) — persisted unit trajectory (was: energy expressing units).** The gate now
+   PREFERS a real unit comparison and keeps the energy form above only as a back-compat fallback.
+   Each committed hour persists `plannedUnitMilestone` (contract `DeferredObjectiveActivePlanHourV1`)
+   — the cumulative target value in the objective's own unit (°C / %) by the END of that hour,
+   computed ONCE at the booking revision as `measuredAtRevision + Σ(plannedKWh≤H) ÷ rate` and frozen
+   (`buildHoursFromHorizonPlan` → `withUnitMilestones`). `isAheadOfHourMilestone` then does a
+   **single-milestone compare**: `ahead ⟺ live measured ≥ THIS hour's frozen milestone` (and there are
+   future committed hours to carry the rest). It deliberately does NOT subtract two hours' milestones:
+   hours are first-committed at different `:58` revisions, each anchored at the measured value at that
+   revision (the `Math.max` floor preserves old hours across replans, so a snapshot legitimately mixes
+   anchors). Each milestone is an internally-consistent ABSOLUTE target ("be at X by the end of this
+   hour"), so comparing measured against ONE is always valid; subtracting two would mix anchors and
+   read garbage (it inflated `futureCommitted` and mis-released early — caught in review). No margin is
+   needed: the end-of-hour target checked against measured at the START of the hour already requires a
+   full booked hour of lead before releasing (early-is-safer); cooldowns absorb jitter. Either way the
+   decision never divides committed energy by a *drifting live* rate (kWh and units diverge under
+   leakage / a wrong learned rate; that was the residual weakness of the energy form). Hours booked
+   before a rate/anchor exists omit the milestone and fall through to the energy comparison, so legacy
+   commitments are unchanged. Display is untouched — the chart still builds its own (identical)
+   staircase; the persisted milestone feeds only the gate.
 2. **Relative-price gate.** A later, **non-reserve** hour must be cheaper than the current hour by
    more than `PRICE_DEFERRAL_MARGIN` (~5%), tested on the **raw price ratio**
    (`later ≤ current × (1 − margin)`). Pure ratio ⇒ unit-invariant across currencies (the price

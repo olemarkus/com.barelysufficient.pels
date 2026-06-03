@@ -563,11 +563,15 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       recorder.observe(diagnostics, NOW_MS);
       const persisted = recorder.getPlanForTests(deviceId);
       const recorderHours = persisted?.latest?.hours ?? [];
+      // The recorder stamps `plannedUnitMilestone` (a control-gate field); the
+      // preview/schedule fidelity is about which hours carry what energy, so
+      // compare the schedule shape without it.
+      const recorderSchedule = recorderHours.map(({ plannedUnitMilestone: _m, ...hour }) => hour);
       const recorderEnergyKWh = persisted?.latest?.energyNeededKWh ?? null;
       const recorderFinishAtMs = resolveProjectedFinishAtMs(diag);
       // Sanity-check the recorder produced a non-trivial schedule from the
       // shared helper so the comparison below is meaningful.
-      expect(recorderHours).toEqual(buildHoursFromHorizonPlan(diag));
+      expect(recorderSchedule).toEqual(buildHoursFromHorizonPlan(diag));
       expect(recorderHours.length).toBeGreaterThan(0);
 
       // Preview path: same inputs, no persisted state.
@@ -578,7 +582,7 @@ describe('previewDeferredObjectivePlan fidelity vs activePlanRecorder', () => {
       });
 
       // Scheduled hours must match exactly (same shared `buildHoursFromHorizonPlan`).
-      expect(estimate.scheduledHours).toEqual(recorderHours);
+      expect(estimate.scheduledHours).toEqual(recorderSchedule);
       // Energy must match the persisted buffered figure exactly (same rounding).
       expect(estimate.energyEstimateKWh).toBe(recorderEnergyKWh);
       // Finish must match within a small tolerance.

@@ -559,6 +559,10 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   // falsely read "ahead" — so the gate must never be relocated past that guard.
   const aheadOfHourMilestone = isAheadOfHourMilestone({
     energyNeededKWh: profileEnergy.energyNeededKWh,
+    // Live measured progress in the objective's own unit — drives the preferred
+    // unit-milestone comparison (rate-free); `energyNeededKWh` is the legacy
+    // fallback for commitments without persisted `plannedUnitMilestone`.
+    measuredValue: progressCurrentValue({ progress, objectiveKind: objective.kind }),
     committedHours: commitment ?? [],
     nowMs,
   });
