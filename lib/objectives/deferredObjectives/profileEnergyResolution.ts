@@ -23,6 +23,14 @@ export type DeferredObjectiveEnergyResolution = {
   // learned rate (`kWhPerUnit`) and the low end of the range stay at the mean.
   energyExpectedKWh: number;
   kWhPerUnit: number | null;
+  // Buffered per-unit rate: `energyNeededKWh / remainingUnits` (the BUFFERED
+  // planned total over the remaining units). The buffered-currency analog of
+  // `kWhPerUnit` (which is the mean `energyExpectedKWh / remainingUnits`). Used
+  // by the unit-milestone stamp so converting buffered planned energy back to
+  // units lands the cumulative milestone exactly on target instead of
+  // overshooting by the buffer ratio. Equals `kWhPerUnit` when there is no
+  // buffer (bootstrap / steady device). Null when no rate is resolved.
+  kWhPerUnitBuffered: number | null;
   // Sample-driven global learned mean (kWh per unit), independent of how much
   // progress remains. Unlike `kWhPerUnit` — which is the banded average over
   // the *remaining* interval and therefore shifts as the task crosses bands
@@ -48,6 +56,7 @@ export type DeferredObjectiveEnergyResolution = {
   energyNeededKWh: null;
   energyExpectedKWh: null;
   kWhPerUnit: null;
+  kWhPerUnitBuffered: null;
   kWhPerUnitMean: null;
   rateConfidence: null;
   displayConfidence: null;
@@ -145,6 +154,8 @@ export const resolveProfileEnergy = (params: {
       energyNeededKWh: bootstrapEnergyKWh,
       energyExpectedKWh: bootstrapEnergyKWh,
       kWhPerUnit: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT,
+      // No learned σ yet, so buffered == mean == the bootstrap constant.
+      kWhPerUnitBuffered: BOOTSTRAP_EV_SOC_KWH_PER_PERCENT,
       // No learned mean yet — bootstrap constant is not a measurement, so the
       // deviation detector must stay silent until real samples land.
       kWhPerUnitMean: null,
@@ -158,6 +169,7 @@ export const resolveProfileEnergy = (params: {
     energyNeededKWh: null,
     energyExpectedKWh: null,
     kWhPerUnit: null,
+    kWhPerUnitBuffered: null,
     kWhPerUnitMean: null,
     rateConfidence: null,
     displayConfidence: null,
@@ -193,10 +205,15 @@ const buildLearnedResolution = (params: {
   // remainingUnits) so "Energy needed per °C" reflects what PELS measured, not
   // the planning buffer; for the unbanded fallback this collapses to globalMean.
   const effectiveKwhPerUnit = remainingUnits > 0 ? energyExpectedKWh / remainingUnits : globalMean;
+  // Buffered-currency rate for the milestone stamp: the buffered planned total
+  // over the same remaining units, so milestones built from buffered `plannedKWh`
+  // land on target rather than overshooting by the buffer ratio.
+  const bufferedKwhPerUnit = remainingUnits > 0 ? energyNeededKWh / remainingUnits : globalMean;
   return {
     energyNeededKWh,
     energyExpectedKWh,
     kWhPerUnit: effectiveKwhPerUnit,
+    kWhPerUnitBuffered: bufferedKwhPerUnit,
     // Stable cross-time statistic for measured_deviation (see the type comment).
     kWhPerUnitMean: globalMean,
     rateConfidence: kWhPerUnit.confidence,

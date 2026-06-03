@@ -183,6 +183,10 @@ describe('resolveProfileEnergy variance buffer', () => {
     expect(result.energyNeededKWh).toBeCloseTo(6, 6); // 10 * (0.4 + 2 * 0.1)
     // Displayed learned rate stays at the measured mean, not the buffer.
     expect(result.kWhPerUnit).toBeCloseTo(0.4, 6);
+    // Buffered per-unit rate = energyNeededKWh / remainingUnits = 6 / 10 = 0.6,
+    // strictly above the mean — this is what the milestone stamp converts at so
+    // the cumulative milestone lands on target instead of overshooting.
+    expect(result.kWhPerUnitBuffered).toBeCloseTo(0.6, 6);
   });
 
   it('uses a gentler k for soft objectives', () => {
