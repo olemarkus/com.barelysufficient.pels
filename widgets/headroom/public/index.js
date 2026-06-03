@@ -48,6 +48,7 @@
   var headroomLimitStateLabel = (state) => LIMIT_STATE_LABELS[state];
   var headroomAvailableLabel = (availableKwText) => `${availableKwText} kW available`;
   var headroomHeldBackLabel = (shedCount) => shedCount === 1 ? "1 held back" : `${shedCount} held back`;
+  var headroomOverCapLabel = (overageKwText) => `${overageKwText} kW over hard cap`;
 
   // widgets/headroom/src/public/previewPayloads.ts
   var PREVIEW_HEADROOM_PAYLOADS = {
@@ -56,6 +57,7 @@
       currentKw: 3.2,
       hourBudgetKw: 7,
       headroomKw: 3.8,
+      overageKw: 0,
       shedCount: 2,
       priceLevel: "cheap",
       limitState: "under",
@@ -66,6 +68,7 @@
       currentKw: 6.3,
       hourBudgetKw: 7,
       headroomKw: 0.7,
+      overageKw: 0,
       shedCount: 2,
       priceLevel: "normal",
       limitState: "near",
@@ -76,6 +79,7 @@
       currentKw: 7,
       hourBudgetKw: 7,
       headroomKw: 0,
+      overageKw: 0,
       shedCount: 3,
       priceLevel: "expensive",
       limitState: "at_pace",
@@ -86,6 +90,7 @@
       currentKw: 8.4,
       hourBudgetKw: 7,
       headroomKw: 0,
+      overageKw: 1.4,
       shedCount: 4,
       priceLevel: "expensive",
       limitState: "over_cap",
@@ -157,7 +162,8 @@
     const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
     const resolveMetaText = () => {
       if (payload.limitState === "over_cap") {
-        return payload.shedCount > 0 ? heldBackLabel : "";
+        const overLabel = headroomOverCapLabel(formatKw(payload.overageKw));
+        return payload.shedCount > 0 ? `${overLabel} \xB7 ${heldBackLabel}` : overLabel;
       }
       return payload.shedCount > 0 ? `${availableLabel} \xB7 ${heldBackLabel}` : availableLabel;
     };

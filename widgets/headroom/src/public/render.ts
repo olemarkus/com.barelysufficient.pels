@@ -3,6 +3,7 @@ import {
   headroomAvailableLabel,
   headroomHeldBackLabel,
   headroomLimitStateLabel,
+  headroomOverCapLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
   type HeadroomWidgetLimitState,
@@ -92,14 +93,14 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
   const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
   // Over the hard cap there is no available power, so the clamped
-  // "0 kW available" would be misleading. The "Over hard cap" state pill + red
-  // bar carry the severity; the meta line shows just the held-back count (empty
-  // when nothing is held back). The actual overage isn't on the payload yet —
-  // tracked in TODO.md to surface "X kW over hard cap" later. The aria-label
-  // reuses this same text so assistive tech never hears the dropped figure.
+  // "0 kW available" would be misleading. Instead the meta line leads with the
+  // actual overage ("X kW over hard cap") as the severity signal, and still
+  // appends the held-back count when devices are paused. The aria-label reuses
+  // this same text so assistive tech hears the same figure.
   const resolveMetaText = (): string => {
     if (payload.limitState === 'over_cap') {
-      return payload.shedCount > 0 ? heldBackLabel : '';
+      const overLabel = headroomOverCapLabel(formatKw(payload.overageKw));
+      return payload.shedCount > 0 ? `${overLabel} · ${heldBackLabel}` : overLabel;
     }
     return payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
   };

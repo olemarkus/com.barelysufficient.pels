@@ -1,5 +1,6 @@
 import {
   headroomHeldBackLabel,
+  headroomOverCapLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
 } from '../packages/shared-domain/src/headroomWidgetCopy';
@@ -11,6 +12,18 @@ describe('headroomHeldBackLabel', () => {
 
   it('uses "held back" for the plural count', () => {
     expect(headroomHeldBackLabel(3)).toBe('3 held back');
+  });
+});
+
+describe('headroomOverCapLabel', () => {
+  it('states the overage factually as "X kW over hard cap"', () => {
+    expect(headroomOverCapLabel('1.4')).toBe('1.4 kW over hard cap');
+  });
+
+  it('never invites raising the physical hard cap', () => {
+    const label = headroomOverCapLabel('1.4').toLowerCase();
+    expect(label).not.toContain('raise');
+    expect(label).not.toContain('increase');
   });
 });
 

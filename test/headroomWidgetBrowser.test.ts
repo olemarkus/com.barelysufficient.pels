@@ -111,28 +111,44 @@ describe('headroom widget browser', () => {
     expect(targets.metaEl.dataset.tone).toBe('danger');
   });
 
-  test('over_cap meta omits the misleading "0 kW available" and shows only the held-back count', () => {
+  test('over_cap meta leads with the overage and appends the held-back count', () => {
     const targets = resolveTargets();
     renderWidget(targets, {
-      ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 3,
+      ...READY,
+      currentKw: 6.7,
+      hourBudgetKw: 6.3,
+      headroomKw: -0.4,
+      overageKw: 0.4,
+      limitState: 'over_cap',
+      shedCount: 3,
     });
 
+    // The misleading clamped "0 kW available" never appears; the overage figure
+    // is the severity signal, with the held-back count appended.
     expect(targets.metaEl.textContent).not.toContain('available');
-    expect(targets.metaEl.textContent).toBe('3 held back');
-    // The aria-label must match the visible meta — assistive tech must not hear
-    // the dropped "0 kW available" either.
+    expect(targets.metaEl.textContent).toBe('0.4 kW over hard cap · 3 held back');
+    // The aria-label must match the visible meta — assistive tech hears the
+    // same overage figure.
     const aria = targets.root.getAttribute('aria-label') ?? '';
     expect(aria).not.toContain('available');
+    expect(aria).toContain('0.4 kW over hard cap');
     expect(aria).toContain('3 held back');
   });
 
-  test('over_cap meta is empty when nothing is held back (no false "0 kW available")', () => {
+  test('over_cap meta shows just the overage when nothing is held back', () => {
     const targets = resolveTargets();
     renderWidget(targets, {
-      ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap', shedCount: 0,
+      ...READY,
+      currentKw: 6.7,
+      hourBudgetKw: 6.3,
+      headroomKw: -0.4,
+      overageKw: 0.4,
+      limitState: 'over_cap',
+      shedCount: 0,
     });
 
-    expect(targets.metaEl.textContent).toBe('');
+    expect(targets.metaEl.textContent).toBe('0.4 kW over hard cap');
+    expect(targets.metaEl.textContent).not.toContain('available');
   });
 
   test('non-over_cap states still show the available-power meta fragment', () => {

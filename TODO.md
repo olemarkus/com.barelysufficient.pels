@@ -150,15 +150,6 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
         / `test:ui:unit`) but passes in isolation; cost three pre-push retries during
         the widget train. Stabilize (likely shared-DOM/async teardown bleed between
         tests). Source: widget-polish train, 2026-05-30.
-  - [ ] **`headroom` over_cap overage figure** — the over-cap meta line now omits the
-        misleading clamped "0 kW available" and shows only the paused count, but it
-        doesn't yet surface the *actual* overage ("X kW over hard cap"). That needs the
-        payload builder to expose the hard-cap overage (current − cap) on the headroom
-        payload so the renderer can show how far over the physical ceiling we are.
-        Files: `widgets/headroom/src/headroomWidgetPayload.ts` (add overage field) +
-        `widgets/headroom/src/public/render.ts` + `headroomWidgetCopy.ts` (copy helper).
-        Source: widget-polish round 2, 2026-05-30.
-
 - [ ] Insights mode picker — throttle / coalesce `refreshModeOptions` so a
       bulk priority edit doesn't issue one `setCapabilityOptions` per
       setting write. A 10-device priority reorder currently fires 10
