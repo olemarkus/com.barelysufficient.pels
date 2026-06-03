@@ -86,7 +86,7 @@ describe('device overview formatter', () => {
       reason: r('meter settling (10s remaining)'),
     })).toEqual({
       powerMsg: 'off',
-      stateMsg: 'Restoring',
+      stateMsg: 'Resuming',
       usageMsg: 'Unknown',
       statusMsg: 'Waiting for power meter to stabilise (10s)',
     });
@@ -190,7 +190,7 @@ describe('device overview formatter', () => {
       targetStepId: 'low',
       planningPowerKw: 1.25,
       reason: r('restore off -> low (need 1.25kW)'),
-    }).stateMsg).toBe('Restoring');
+    }).stateMsg).toBe('Resuming');
   });
 
   it('keeps steady on-like stepped devices active without a transition arrow', () => {
