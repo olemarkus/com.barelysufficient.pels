@@ -50,18 +50,21 @@ const resolveReleaseIntentForCapOff = (
 );
 
 // A deferred current hour is "released" when the device is idled this cycle rather
-// than run. Three causes: there is no current bucket, the current bucket carries no
-// booked energy, or the producer flagged the hour price-deferral-eligible (the
-// device is already at/above this hour's trajectory milestone AND a later hour is
-// cheaper, so a cheaper hour can carry the load). Single source of
-// truth shared by `resolveDecision` (which idles the device) and
-// `buildDeferredTargetOverrides` (which must NOT stamp a deadline floor target on a
-// released device — otherwise `resolvePlannedTarget` would command it to run
-// despite the release).
+// than run. Four causes: there is no current bucket, the current bucket carries no
+// booked energy, the producer flagged the hour price-deferral-eligible (the device
+// is already at/above this hour's trajectory milestone AND a later hour is
+// cheaper), or the producer flagged a cold-start release (a later hour is
+// meaningfully cheaper and the full need fits into the cheaper future hours at the
+// device's real/climbed step — so a fast device must not dump its catch-up into
+// this expensive hour). Single source of truth shared by `resolveDecision` (which
+// idles the device) and `buildDeferredTargetOverrides` (which must NOT stamp a
+// deadline floor target on a released device — otherwise `resolvePlannedTarget`
+// would command it to run despite the release).
 const isReleasedCurrentHour = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
   !horizonPlan.currentBucket
   || horizonPlan.currentBucket.plannedUsefulEnergyKWh <= 0
   || horizonPlan.priceDeferralEligible === true
+  || horizonPlan.coldStartReleaseEligible === true
 );
 
 const resolveDecision = (
