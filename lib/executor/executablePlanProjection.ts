@@ -160,7 +160,7 @@ export function buildExecutableObservedDeviceState(
  * snapshot's `currentOn` is a default — never a real observation — so the
  * projection reports the binary state as `'unknown'`.
  */
-const resolveObservedBinaryStateFromSnapshot = (
+export const resolveObservedBinaryStateFromSnapshot = (
   snapshot: TargetDeviceSnapshot,
 ): 'on' | 'off' | 'unknown' => {
   const observation = snapshot.binaryControlObservation;
