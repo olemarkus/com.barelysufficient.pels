@@ -35,6 +35,7 @@ import {
   stampCheaperHourAhead,
   stampUnitMilestones,
 } from './activePlanSchedule';
+import { SCHEDULE_SETTLE_OFFSET_MS } from './settleWindow';
 import { roundKWh } from './activePlanMath';
 import { buildObjectiveSignature, compareObjectiveSignatures } from './activePlanSignature';
 
@@ -76,12 +77,15 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // on every plan cycle. By `:58` the elapsed hour's outcome is known and the
 // upcoming hour can be scheduled in; settling earlier would churn the persisted
 // record on the current hour's capacity trimming (the device may still climb to
-// deliver before the hour ends — "we don't know until the end of the hour"). The
-// planner's per-cycle live allocation is unaffected (it still reacts every cycle,
-// e.g. `expandCommittedAllocation`'s current-hour fill); only the RECORD waits.
-// A user objective edit (`objectiveChanged`) is an external event and revises
-// immediately. See notes/deferred-load-objectives/execution-adaptation.md.
-const SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1000;
+// deliver before the hour ends — "we don't know until the end of the hour").
+// Mid-hour the diagnostics build serves a FROZEN read of this commitment (no
+// allocator — see `frozenHorizonPlan.ts`), so the executor's per-cycle control
+// still reacts to live measured power while the plan itself is fixed until the
+// next settle. A user objective edit (`objectiveChanged`) is an external event
+// and revises immediately (a signature change also forces a fresh build-time
+// plan). The `:58` mark is shared with the build-time gate via `./settleWindow`
+// so the two clocks agree. See
+// notes/deferred-load-objectives/per-cycle-commitment-collapse.md.
 
 export type ActivePlanPersistDeps = {
   load: () => DeferredObjectiveActivePlansV1 | null;

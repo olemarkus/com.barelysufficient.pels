@@ -4697,6 +4697,13 @@ var DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
 // lib/objectives/deferredObjectives/trajectoryMilestone.ts
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 
+// lib/objectives/deferredObjectives/settleWindow.ts
+var ONE_HOUR_MS2 = 60 * 60 * 1e3;
+var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/frozenHorizonPlan.ts
+var ONE_HOUR_MS3 = 60 * 60 * 1e3;
+
 // lib/objectives/rejectionLogging.ts
 var OBJECTIVE_PROFILE_REJECTION_LOG_THROTTLE_MS = 15 * 60 * 1e3;
 
@@ -4717,6 +4724,8 @@ var OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1e3;
 var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/diagnosticsBridge.ts
+var FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
+var ONE_HOUR_MS4 = 60 * 60 * 1e3;
 var logger = getLogger("plan/deferred-diag-bridge");
 
 // lib/objectives/deferredObjectives/hoursRemainingCrossings.ts
@@ -5114,10 +5123,10 @@ var deadlineLabels = (kind) => DEADLINE_LABELS[kind];
 var EV_CARD_HOUR_MS = 60 * 60 * 1e3;
 var SAMPLE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 var ONE_MINUTE_MS = 60 * 1e3;
-var ONE_HOUR_MS2 = 60 * ONE_MINUTE_MS;
+var ONE_HOUR_MS5 = 60 * ONE_MINUTE_MS;
 
 // lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
-var ONE_HOUR_MS3 = 60 * 60 * 1e3;
+var ONE_HOUR_MS6 = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/planHistoryInProgressState.ts
 var INTERVAL_MERGE_GAP_MS = 5 * 60 * 1e3;
@@ -5127,16 +5136,15 @@ var logger2 = getLogger("plan/deferred-history");
 var ABANDON_GRACE_MS = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/activePlanSchedule.ts
-var ONE_HOUR_MS4 = 60 * 60 * 1e3;
+var ONE_HOUR_MS7 = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/activePlanRecorder.ts
 var logger3 = getLogger("plan/deferred-active");
 var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
-var ONE_HOUR_MS5 = 60 * 60 * 1e3;
-var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
+var ONE_HOUR_MS8 = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/planPreview.ts
-var ONE_HOUR_MS6 = 60 * 60 * 1e3;
+var ONE_HOUR_MS9 = 60 * 60 * 1e3;
 var AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1e3;
 
 // lib/utils/perfCounters.ts
