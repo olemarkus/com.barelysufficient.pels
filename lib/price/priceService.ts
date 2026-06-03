@@ -15,15 +15,14 @@ import {
 } from '../utils/settingsKeys';
 import {
   addDays,
-  buildGridTariffFallbackDates,
+  fetchGridTariffWithDateFallback,
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
 import { getFlowPricePayload } from './flowPriceUtils';
-import {
-  fetchAndNormalizeGridTariff,
-  shouldUseGridTariffCache,
-} from './gridTariffUtils';
+import { shouldUseGridTariffCache } from './gridTariffUtils';
+import { resolveGridTariffFallback } from './staticGridTariffFallback';
+import { NETTLEIE_FALLBACK_GENERATED_AT } from './nettleieFallbackData.generated';
 import {
   buildHomeyEnergyDateInfo,
   fetchHomeyEnergyResults,
@@ -52,6 +51,12 @@ import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatter
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 import { toStableFingerprint } from '../utils/stableFingerprint';
+
+const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
+  keepCache: 'Keeping cached tariff data (NVE returned empty list)',
+  clearStaleFallback: 'Cleared stale fallback (NVE unavailable, no static fallback for current operator)',
+  noData: 'NVE unavailable and no static fallback for this operator',
+};
 
 const stripLastFetched = (value: unknown): unknown => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -208,43 +213,57 @@ export default class PriceService {
     const todayDate = new Date();
     const timeZone = this.homey.clock.getTimezone();
     const today = getDateKeyInTimeZone(todayDate, timeZone);
-    const existingData = this.getSettingValue('nettleie_data') as Array<{ dateKey?: string; datoId?: string }> | null;
+    const existingData = this.getSettingValue('nettleie_data') as
+      Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
     if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.logDebug)) {
       this.updateCombinedPrices();
       return;
     }
 
-    const attempts: Array<{ label: string; date: string }> = [{ label: 'today', date: today }];
-    const normalized = await fetchAndNormalizeGridTariff({
-      date: today,
+    const { data, attempts, logContext } = await fetchGridTariffWithDateFallback({
       settings: requestSettings,
+      todayDate,
+      timeZone,
       log: this.log,
       errorLog: this.errorLog,
     });
-    if (normalized) {
-      this.storeGridTariffData(normalized, '');
+    if (data) {
+      this.storeGridTariffData(data, logContext);
       return;
     }
 
-    for (const fallback of buildGridTariffFallbackDates(todayDate)) {
-      const fallbackDate = getDateKeyInTimeZone(fallback.date, timeZone);
-      if (attempts.some((attempt) => attempt.date === fallbackDate)) {
-        continue;
-      }
-      attempts.push({ label: fallback.label, date: fallbackDate });
-      const fallbackData = await fetchAndNormalizeGridTariff({
-        date: fallbackDate,
-        settings: requestSettings,
-        log: this.log,
-        errorLog: this.errorLog,
-      });
-      if (fallbackData) {
-        this.storeGridTariffData(fallbackData, ` (fallback ${fallback.label} ${fallbackDate})`);
-        return;
-      }
+    // All NVE attempts failed. Keep real cached data if any; otherwise — a new
+    // user with nothing cached — seed the static fallback so prices still work
+    // until NVE recovers. The fallback is flagged so it never suppresses the
+    // next NVE retry (see shouldUseGridTariffCache).
+    const outcome = resolveGridTariffFallback({
+      existingData,
+      organizationNumber: requestSettings.organizationNumber,
+      tariffGroup: requestSettings.tariffGroup,
+      date: todayDate,
+      timeZone,
+    });
+    if (outcome.kind === 'store') {
+      this.storeGridTariffData(
+        outcome.entries,
+        ` (static fallback — NVE unavailable, no cached tariff; snapshot ${NETTLEIE_FALLBACK_GENERATED_AT})`,
+      );
+      return;
     }
-
-    this.errorLog?.('Grid tariff: Keeping cached tariff data (NVE returned empty list)', {
+    if (outcome.kind === 'fallbackCurrent') {
+      // Fallback already matches today; recompute combined prices in memory but
+      // skip the redundant settings write (flash wear) while NVE stays down.
+      this.updateCombinedPrices();
+      return;
+    }
+    if (outcome.kind === 'clearStaleFallback') {
+      // The cached data is a stale fallback for an operator we can no longer
+      // serve (e.g. the org number changed). Clear it so combined prices don't
+      // keep using another operator's tariff.
+      this.homey.settings.set('nettleie_data', []);
+      this.updateCombinedPrices();
+    }
+    this.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, {
       attempts,
       countyCode: requestSettings.countyCode,
       organizationNumber: requestSettings.organizationNumber,

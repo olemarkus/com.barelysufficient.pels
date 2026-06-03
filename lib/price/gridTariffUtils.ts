@@ -4,11 +4,39 @@ export type GridTariffSettings = {
   tariffGroup: string;
 };
 
+// Marks `nettleie_data` entries produced by the static fallback rather than the
+// NVE API, so the cache layer can tell a real fetch from a stopgap.
+export const GRID_TARIFF_SOURCE_FALLBACK = 'fallback' as const;
+
+export type GridTariffEntryWithSource = {
+  time: number;
+  energyFeeExVat: number;
+  energyFeeIncVat: number;
+  fixedFeeExVat: number;
+  fixedFeeIncVat: number;
+  dateKey: string;
+  source: typeof GRID_TARIFF_SOURCE_FALLBACK;
+};
+
+// True when the cached tariff data was written by the static fallback (i.e. NVE
+// was unreachable and nothing real was cached). Such data must never block a
+// fresh NVE attempt, nor count as a "real" cache worth preserving.
+export const isGridTariffFallbackData = (
+  existingData: Array<{ source?: unknown }> | null,
+): boolean => (
+  Array.isArray(existingData)
+  && existingData.length > 0
+  && existingData[0]?.source === GRID_TARIFF_SOURCE_FALLBACK
+);
+
 export const shouldUseGridTariffCache = (
-  existingData: Array<{ dateKey?: string; datoId?: string }> | null,
+  existingData: Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null,
   today: string,
   logDebug: (...args: unknown[]) => void,
 ): boolean => {
+  // Fallback data serves prices but must not suppress NVE retries — keep trying
+  // the API every cycle until a real tariff comes back.
+  if (isGridTariffFallbackData(existingData)) return false;
   if (existingData && Array.isArray(existingData) && existingData.length > 0) {
     const firstEntry = existingData[0];
     const dateKey = typeof firstEntry?.dateKey === 'string' ? firstEntry.dateKey : firstEntry?.datoId;

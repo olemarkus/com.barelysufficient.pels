@@ -798,17 +798,18 @@ describe('Grid tariff fetching', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('handles NVE API errors gracefully', async () => {
+  it('seeds the static fallback when NVE fails and nothing is cached', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
 
+    // Elvia (980489698) is present in the static fallback table.
     mockHomeyInstance.settings.set('nettleie_fylke', '03');
     mockHomeyInstance.settings.set('nettleie_orgnr', '980489698');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
-    // Mock fetch to return error
+    // Mock fetch to return error for every NVE attempt
     (global.fetch as vi.Mock).mockResolvedValue({
       ok: false,
       status: 500,
@@ -828,9 +829,95 @@ describe('Grid tariff fetching', () => {
       setAllowConsoleError(false);
     }
 
-    // No data stored due to error
+    // A full day of static fallback data is seeded so prices still work.
+    const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
+    expect(Array.isArray(gridTariffData)).toBe(true);
+    expect(gridTariffData).toHaveLength(24);
+    expect(gridTariffData.map((e: { time: number }) => e.time)).toEqual(
+      Array.from({ length: 24 }, (_, h) => h),
+    );
+    for (const entry of gridTariffData) {
+      // Flagged as fallback so it never suppresses the next NVE retry.
+      expect(entry.source).toBe('fallback');
+      // Elvia household tariff: 12.99 øre/kWh base, 20.99 on weekday peak hours.
+      expect([12.99, 20.99]).toContain(entry.energyFeeExVat);
+      expect(entry.energyFeeIncVat).toBeCloseTo(entry.energyFeeExVat * 1.25, 2);
+    }
+  });
+
+  it('stores nothing when NVE fails and the operator has no static fallback', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // An org number that is not present in the static fallback table.
+    mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '999999999');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    const { setAllowConsoleError } = require('./setup.ts');
+    setAllowConsoleError(true);
+    try {
+      const app = createApp();
+      await app.onInit();
+      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+      await flushPromises();
+    } finally {
+      setAllowConsoleError(false);
+    }
+
+    // No fallback available and nothing cached → nothing stored.
     const gridTariffData = mockHomeyInstance.settings.get('nettleie_data');
     expect(gridTariffData).toBeUndefined();
+  });
+
+  it('clears stale fallback data when the operator no longer has a fallback', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    // Org switched to one with no static fallback, but a previous operator's
+    // fallback is still cached.
+    mockHomeyInstance.settings.set('nettleie_fylke', '03');
+    mockHomeyInstance.settings.set('nettleie_orgnr', '999999999');
+    mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
+    mockHomeyInstance.settings.set('nettleie_data', [{
+      time: 0,
+      energyFeeExVat: 18.56,
+      energyFeeIncVat: 23.2,
+      fixedFeeExVat: 0,
+      fixedFeeIncVat: 0,
+      dateKey: '2026-06-03T00:00:00',
+      source: 'fallback',
+    }]);
+
+    (global.fetch as vi.Mock).mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    const { setAllowConsoleError } = require('./setup.ts');
+    setAllowConsoleError(true);
+    try {
+      const app = createApp();
+      await app.onInit();
+      mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
+      await flushPromises();
+    } finally {
+      setAllowConsoleError(false);
+    }
+
+    // Stale fallback for the wrong operator is cleared, not left serving.
+    expect(mockHomeyInstance.settings.get('nettleie_data')).toEqual([]);
   });
 
   it('uses correct URL format with encoded parameters', async () => {
@@ -924,7 +1011,7 @@ describe('Grid tariff fetching', () => {
     }
   });
 
-  it('logs when all grid tariff fallback attempts are empty', async () => {
+  it('keeps real cached tariff data when all NVE attempts are empty', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -933,6 +1020,20 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_fylke', '46');
     mockHomeyInstance.settings.set('nettleie_orgnr', '976944801');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
+
+    // A real (non-fallback) cache from an earlier successful fetch. Its old date
+    // means the top-level cache check misses, so NVE is retried; once every
+    // attempt comes back empty, this real cache must be preserved (not replaced
+    // by the static fallback).
+    const realCache = [{
+      time: 0,
+      energyFeeExVat: 11.11,
+      energyFeeIncVat: 13.89,
+      fixedFeeExVat: 0,
+      fixedFeeIncVat: 0,
+      dateKey: '2020-01-01T00:00:00',
+    }];
+    mockHomeyInstance.settings.set('nettleie_data', realCache);
 
     const now = new Date(2026, 0, 3, 12, 0, 0);
     const MockDate = class extends Date {
@@ -988,6 +1089,8 @@ describe('Grid tariff fetching', () => {
         { label: 'week', date: week },
         { label: 'month', date: month },
       ]);
+      // The real cache is preserved untouched — not overwritten by the fallback.
+      expect(mockHomeyInstance.settings.get('nettleie_data')).toEqual(realCache);
     } finally {
       errorSpy.mockRestore();
       global.Date = originalDate;

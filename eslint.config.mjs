@@ -111,6 +111,7 @@ export default tseslint.config(
       'test/screenshots/**',
       'packages/settings-ui/test/screenshots/**',
       'echarts-modules.d.ts',
+      'lib/price/nettleieFallbackData.generated.ts',
       'playwright.config.ts',
       'vitest.config*.ts',
       'vitest.config*.mts',
