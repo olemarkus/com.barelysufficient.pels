@@ -10,6 +10,31 @@ import {
   isOnLikeState,
   normalizeDeviceState,
 } from './deviceStatePredicates';
+import {
+  DEVICE_OVERVIEW_ACTIVE,
+  DEVICE_OVERVIEW_ACTIVE_CHARGING,
+  DEVICE_OVERVIEW_ACTIVE_TEMPERATURE_MANAGED,
+  DEVICE_OVERVIEW_CAPACITY_CONTROL_OFF,
+  DEVICE_OVERVIEW_CHARGING_PAUSED,
+  DEVICE_OVERVIEW_CHARGING_REQUESTED,
+  DEVICE_OVERVIEW_INACTIVE,
+  DEVICE_OVERVIEW_INACTIVE_CAR_NOT_CHARGING,
+  DEVICE_OVERVIEW_INACTIVE_CAR_UNPLUGGED,
+  DEVICE_OVERVIEW_INACTIVE_DISCHARGING,
+  DEVICE_OVERVIEW_LIMITED,
+  DEVICE_OVERVIEW_LOWERED,
+  DEVICE_OVERVIEW_LOWERED_BY_PELS,
+  DEVICE_OVERVIEW_RESUME_REQUESTED,
+  DEVICE_OVERVIEW_RESUMING,
+  DEVICE_OVERVIEW_STATE_UNKNOWN,
+  DEVICE_OVERVIEW_TURNED_OFF,
+  DEVICE_OVERVIEW_TURNED_OFF_BY_PELS,
+  DEVICE_OVERVIEW_UNAVAILABLE,
+  DEVICE_OVERVIEW_UNKNOWN,
+  DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER,
+  deviceOverviewEvBatteryStatus,
+  deviceOverviewLimitedToStep,
+} from './deviceOverviewStrings';
 
 export type DeviceOverviewSnapshot = {
   currentState?: string;
@@ -66,9 +91,9 @@ export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot):
 // devices read as "Turned off by PELS"; everything else (set_temperature,
 // set_step, missing shedAction) reads as "Lowered by PELS".
 export const resolveHeldStateActionLabel = (device: DeviceOverviewSnapshot): string => {
-  if (isEvChargerDevice(device)) return 'Charging paused';
-  if (device.shedAction === 'turn_off') return 'Turned off by PELS';
-  return 'Lowered by PELS';
+  if (isEvChargerDevice(device)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
+  if (device.shedAction === 'turn_off') return DEVICE_OVERVIEW_TURNED_OFF_BY_PELS;
+  return DEVICE_OVERVIEW_LOWERED_BY_PELS;
 };
 
 const getTargetStepId = (device: DeviceOverviewSnapshot): string | undefined => (
@@ -132,40 +157,43 @@ const resolvePlannedPowerState = (
 };
 
 const resolveShedStateMsg = (device: DeviceOverviewSnapshot): string => {
-  if (isEvChargerDevice(device)) return 'Charging paused';
-  if (device.shedAction === 'set_temperature') return 'Lowered';
+  if (isEvChargerDevice(device)) return DEVICE_OVERVIEW_CHARGING_PAUSED;
+  if (device.shedAction === 'set_temperature') return DEVICE_OVERVIEW_LOWERED;
   if (device.shedAction === 'set_step') {
-    return getTargetStepId(device) ? `Limited to ${getTargetStepId(device)}` : 'Limited';
+    const targetStepId = getTargetStepId(device);
+    return targetStepId ? deviceOverviewLimitedToStep(targetStepId) : DEVICE_OVERVIEW_LIMITED;
   }
-  return 'Turned off';
+  return DEVICE_OVERVIEW_TURNED_OFF;
 };
 
 const resolveEvInactiveStateMsg = (evState: string): string => {
   switch (evState) {
     case 'plugged_out':
-      return 'Inactive (car unplugged)';
+      return DEVICE_OVERVIEW_INACTIVE_CAR_UNPLUGGED;
     case 'plugged_in':
     case 'plugged_in_paused':
-      return 'Inactive (car not charging)';
+      return DEVICE_OVERVIEW_INACTIVE_CAR_NOT_CHARGING;
     case 'plugged_in_discharging':
-      return 'Inactive (discharging)';
+      return DEVICE_OVERVIEW_INACTIVE_DISCHARGING;
     default:
-      return 'Inactive';
+      return DEVICE_OVERVIEW_INACTIVE;
   }
 };
 
 const resolveEvKeepStateMsg = (device: DeviceOverviewSnapshot, evState: string): string | null => {
-  if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Charging requested';
+  if (device.binaryCommandPending && isOffLikeState(device.currentState)) {
+    return DEVICE_OVERVIEW_CHARGING_REQUESTED;
+  }
   switch (evState) {
     case 'plugged_in_charging':
-      return 'Active (charging)';
+      return DEVICE_OVERVIEW_ACTIVE_CHARGING;
     case 'plugged_out':
-      return 'Inactive (car unplugged)';
+      return DEVICE_OVERVIEW_INACTIVE_CAR_UNPLUGGED;
     case 'plugged_in':
     case 'plugged_in_paused':
-      return 'Inactive (car not charging)';
+      return DEVICE_OVERVIEW_INACTIVE_CAR_NOT_CHARGING;
     case 'plugged_in_discharging':
-      return 'Inactive (discharging)';
+      return DEVICE_OVERVIEW_INACTIVE_DISCHARGING;
     default:
       return null;
   }
@@ -175,7 +203,7 @@ const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
   if (!isEvChargerDevice(device)) return null;
   const evState = normalizeDeviceState(device.evChargingState);
 
-  if (device.plannedState === 'shed') return 'Charging paused';
+  if (device.plannedState === 'shed') return DEVICE_OVERVIEW_CHARGING_PAUSED;
   if (device.plannedState === 'inactive') return resolveEvInactiveStateMsg(evState);
   if (device.plannedState === 'keep') return resolveEvKeepStateMsg(device, evState);
   return null;
@@ -184,16 +212,20 @@ const resolveEvStateMsg = (device: DeviceOverviewSnapshot): string | null => {
 const resolveKeepStateMsg = (device: DeviceOverviewSnapshot): string => {
   const evStateMsg = resolveEvStateMsg(device);
   if (evStateMsg) return evStateMsg;
-  if (device.binaryCommandPending && isOffLikeState(device.currentState)) return 'Resume requested';
-  if (isOffLikeState(device.currentState)) return 'Restoring';
-  if (normalizeDeviceState(device.currentState) === 'not_applicable') return 'Active (temperature-managed)';
-  return 'Active';
+  if (device.binaryCommandPending && isOffLikeState(device.currentState)) {
+    return DEVICE_OVERVIEW_RESUME_REQUESTED;
+  }
+  if (isOffLikeState(device.currentState)) return DEVICE_OVERVIEW_RESUMING;
+  if (normalizeDeviceState(device.currentState) === 'not_applicable') {
+    return DEVICE_OVERVIEW_ACTIVE_TEMPERATURE_MANAGED;
+  }
+  return DEVICE_OVERVIEW_ACTIVE;
 };
 
 const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
-  if (device.controllable === false) return 'Capacity control off';
+  if (device.controllable === false) return DEVICE_OVERVIEW_CAPACITY_CONTROL_OFF;
   if (isGrayStateDevice(device)) {
-    return device.available === false ? 'Unavailable' : 'State unknown';
+    return device.available === false ? DEVICE_OVERVIEW_UNAVAILABLE : DEVICE_OVERVIEW_STATE_UNKNOWN;
   }
   const evStateMsg = resolveEvStateMsg(device);
   if (evStateMsg) return evStateMsg;
@@ -201,9 +233,9 @@ const resolveStateMsg = (device: DeviceOverviewSnapshot): string => {
     return `Active (${getSteppedModeTransitionText(device)})`;
   }
   if (device.plannedState === 'shed') return resolveShedStateMsg(device);
-  if (device.plannedState === 'inactive') return 'Inactive';
+  if (device.plannedState === 'inactive') return DEVICE_OVERVIEW_INACTIVE;
   if (device.plannedState === 'keep') return resolveKeepStateMsg(device);
-  return 'Unknown';
+  return DEVICE_OVERVIEW_UNKNOWN;
 };
 
 const formatEvSocStatus = (
@@ -212,8 +244,7 @@ const formatEvSocStatus = (
   if (!stateOfCharge || stateOfCharge.status === 'unknown' || stateOfCharge.status === 'invalid') {
     return null;
   }
-  const staleSuffix = stateOfCharge.status === 'stale' ? ', stale' : '';
-  return `EV battery: ${stateOfCharge.percent} %${staleSuffix}`;
+  return deviceOverviewEvBatteryStatus(stateOfCharge.percent, stateOfCharge.status === 'stale');
 };
 
 const formatUsageText = (params: {
@@ -228,18 +259,16 @@ const formatUsageText = (params: {
   }
   if (hasExpected) return `Expected: ${expectedKw.toFixed(2)} kW`;
   if (hasMeasured) return `Measured: ${measuredKw.toFixed(2)} kW`;
-  return 'Unknown';
+  return DEVICE_OVERVIEW_UNKNOWN;
 };
 
 export const getDeviceOverviewExpectedPowerKw = (device: DeviceOverviewSnapshot): number | undefined => (
   isSteppedLoadDevice(device) ? (device.planningPowerKw ?? device.expectedPowerKw) : device.expectedPowerKw
 );
 
-const WAITING_FOR_AVAILABLE_POWER = 'Waiting for available power';
-
 const appendOverviewStatus = (statusMsg: string, extraStatus: string | null): string => {
   if (!extraStatus) return statusMsg;
-  if (statusMsg === '' || statusMsg === WAITING_FOR_AVAILABLE_POWER) return extraStatus;
+  if (statusMsg === '' || statusMsg === DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER) return extraStatus;
   // Em-dash separator matches the device-card status copy convention. Spec:
   // notes/ui-terminology.md:9, TODO #8 (2026-05-16).
   return `${statusMsg} — ${extraStatus}`;
@@ -265,7 +294,7 @@ export const formatDeviceOverview = (device: DeviceOverviewSnapshot): DeviceOver
 
   const statusMsg = appendOverviewStatus(
     device.reason.code === PLAN_REASON_CODES.none
-      ? WAITING_FOR_AVAILABLE_POWER
+      ? DEVICE_OVERVIEW_WAITING_FOR_AVAILABLE_POWER
       : formatDeviceReasonUserFacing(device.reason),
     formatEvSocStatus(device.stateOfCharge),
   );

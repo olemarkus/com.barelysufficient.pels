@@ -776,7 +776,7 @@ describe('PlanService', () => {
     expect(overviewDebugStructured.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
       powerMsg: 'off',
-      stateMsg: 'Restoring',
+      stateMsg: 'Resuming',
     }));
     expect(overviewDebugStructured.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
       event: 'device_overview_changed',
