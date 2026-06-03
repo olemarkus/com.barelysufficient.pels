@@ -129,13 +129,15 @@ export const resolveDeferredAvoidDeviceIds = (
 ): Set<string> => {
   const avoidIds = new Set<string>();
   for (const diag of evaluations) {
-    // Price-deferral release: the device is idled this cycle because it is already
-    // at/above this hour's trajectory milestone and a later hour is cheaper, so it
-    // gets the "waiting for cheaper hours" framing too — even though the current
-    // bucket carries booked energy and the plan status may be `at_risk`. Without
-    // this the reason falls through to capacity/daily-budget framing and the pause
-    // is miscounted as starvation.
-    if (diag.horizonPlan?.priceDeferralEligible) {
+    // Price-deferral / cold-start release: the device is idled this cycle because
+    // either it is already at/above this hour's trajectory milestone and a later
+    // hour is cheaper (`priceDeferralEligible`), or a later hour is meaningfully
+    // cheaper and the current hour's catch-up fits there at its real step
+    // (`coldStartReleaseEligible`). Both get the "waiting for cheaper hours"
+    // framing — even though the current bucket carries booked energy and the plan
+    // status may be `at_risk`. Without this the reason falls through to
+    // capacity/daily-budget framing and the pause is miscounted as starvation.
+    if (diag.horizonPlan?.priceDeferralEligible || diag.horizonPlan?.coldStartReleaseEligible) {
       avoidIds.add(diag.deviceId);
       continue;
     }

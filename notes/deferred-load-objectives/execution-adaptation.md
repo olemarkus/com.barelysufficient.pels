@@ -271,22 +271,51 @@ release would add control churn for no benefit and is not pursued.
 (The strict `>= target` satiation check in `planHistoryInProgressState.diagnosticProgressAtTarget`
 and the `near_target_idle → 'stalled' → met` classification stay as-is.)
 
-## Deferred — feasibility / throughput accuracy (not in these two work items)
+## Work item 4 — Cold-start release (don't dump the catch-up into an expensive hour) — DONE
 
-Work item 2 acts on the **committed plan's** trajectory and is conservative by construction — it
-only releases when the measured value is at/above this hour's committed milestone (ahead by the
-deadband). So it is **correct without resolving how pessimistic the cold-start `cannot_meet`
-was**: a pessimistic plan books more committed energy, which raises the per-hour milestone, so
-item 2 releases less often, never unsafely.
+Work item 2 only releases once the device is **ahead** of its milestone, so it cannot help the
+**cold first hour**, where the device is behind. A prod replay (Connected 300, captured in
+`/tmp/pels/window_since_8pm.stdout.log`) showed the resulting waste: a cold tank made
+`energyNeededKWh` ~19–29 kWh while each bucket was sized at the committed `low`/`medium` step
+(1.25 / 1.67 kWh). The floor allocation can't fit that, so `cannot_meet`/`feasible_above_floor`
+booked the (relatively expensive) current hour cheapest-last, and — for a cap-off temperature
+device, where PELS only sets the target and the element runs bang-bang at full power, **not** the
+booked step — the catch-up ran at ~5 kW in the dearest hour. The cheap window then sat unused.
 
-Deferred question (revisit after the two work items land): whether the ~1.25–1.67 kWh/hour
-bucket cap on the motivating night came from the booked `low` step (`step.usefulPowerKw` —
-capacity *underestimated* vs the real ~2.87 kW element → false `cannot_meet`) or from the
-`reservedHeadroomKw` hard-cap headroom forecast (`policyHorizon.ts` — genuine ~1.3 kW/hour
-scarcity). That fork only affects how *often* item 2 can release (a less pessimistic
-feasibility model would free more expensive hours), not its correctness. Resolving it later
-means reading the bucket `usefulEnergyCapacityKWh` breakdown / the `policyHorizon` headroom
-forecast on prod.
+Root cause resolved (the fork above): the bucket cap came from the **booked `low` step**, not a
+genuine `reservedHeadroomKw` scarcity. The device's real element far exceeds the floor step the
+commitment is sized at, so the floor's "can't fit → run the expensive hour now" is a **false
+premise** for a climbable device.
+
+**The fix** (`lib/objectives/deferredObjectives/coldStartRelease.ts`, `resolveColdStartReleaseEligible`,
+producer-resolved flag `coldStartReleaseEligible` on the plan, consumed by admission's
+`isReleasedCurrentHour` exactly like `priceDeferralEligible`): for a **`temperature` objective**
+(bang-bang cap-off thermostat — PELS sets only the target, the element runs at full power, so the
+climb step equals the real deliverable rate), release (idle) the current hour when a later hour is
+**meaningfully cheaper** (the shared `isMeaningfullyCheaper` band) AND the **full buffered need fits
+into those cheaper future hours at the climbed (real-element) step**. Unlike
+work item 2 it does **not** require the device to be ahead (cold start: it is behind) and does
+**not** require the cheaper hours to already be booked at the floor step — it proves they can
+absorb the need at the real step. Reserve hours are excluded so it never leans on the deadline
+reserve; a non-positive current price makes `isMeaningfullyCheaper` false (run now). Re-evaluated
+every cycle, so a shrinking cheap window — or a device slower than its climb step — naturally
+resumes driving; the shed/restore cooldowns backstop control flap. Classification only — like the
+other release flags it never writes a revision, so the recorder stays insulated.
+
+**Tests.** `deferredObjectiveColdStartDumpE2E.test.ts` drives the real planner + admission against
+a bang-bang thermal model whose element (5 kW) ≫ floor step (1.25 kW) over the
+cold-start/expensive-then-cheap scenario and asserts the expensive hours carry ~no load (RED
+before the fix). `deferredObjectiveHorizon.test.ts` pins the gate branches (releases when the
+cheaper future covers the need at the climb step; not when no future hour is meaningfully cheaper;
+not when the cheaper future can't cover even climbed; not for a single-step device; not on a
+free/negative current price).
+
+**Safety posture.** Scoped to `temperature` (bang-bang) objectives, where the climb step *is* the
+real deliverable rate, so the feasibility proof is exact — no upper-bound optimism. Reserve hours
+excluded; re-checked each cycle. Throttleable kinds (`ev_soc`) are deliberately excluded: there the
+max step is an upper bound a capacity-shed device may not reach, which could erode the deadline;
+bringing them in safely needs observed-rate feasibility (TODO). Two independent reviewers
+(`pels-runtime-reality`, Codex) flagged the unscoped version; the kind-scoping is the resolution.
 
 ## Work item 3 — Draw-down / reheat anchor (start-above-target objectives) — DONE
 

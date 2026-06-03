@@ -167,4 +167,16 @@ export type DeferredObjectiveHorizonPlan = {
   // hours at the next `:58` settle. See
   // notes/deferred-load-objectives/execution-adaptation.md work item 2.
   priceDeferralEligible: boolean;
+  // Per-cycle COLD-START price release. True when a later hour is meaningfully
+  // cheaper than the current hour AND the full buffered need fits into those
+  // cheaper future hours at the device's CLIMBED (real-element) step. The
+  // floor-step allocation spills the residual onto an expensive current hour
+  // whenever the floor can't fit the whole need, but for a device that can climb
+  // that spill is a false premise — the real element will finish in the cheaper
+  // window. Read by admission (idles the device this cycle) exactly like
+  // `priceDeferralEligible`, but does NOT require the device to be ahead of its
+  // milestone (cold start: it is behind). Re-evaluated each cycle. Optional/
+  // back-compat: absent ⇒ not released. See
+  // notes/deferred-load-objectives/execution-adaptation.md (cold-start feasibility).
+  coldStartReleaseEligible?: boolean;
 };

@@ -158,6 +158,20 @@ the 2026-05-31 release-review cleanup by issuing a direct lifecycle-clock
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Extend cold-start release beyond `temperature` via observed-rate feasibility.**
+      `lib/objectives/deferredObjectives/coldStartRelease.ts` (`resolveColdStartReleaseEligible`)
+      fires ONLY for `temperature` objectives — bang-bang cap-off thermostats where PELS sets only
+      the target and the element runs at full power, so the climb (max) step equals the real
+      deliverable rate and the feasibility proof (need fits in the cheaper future at the climb step)
+      is exact. Throttleable kinds (`ev_soc` amp steps, dimmable) are excluded because the max step
+      is an upper bound the device may not reach when capacity-shed in the cheaper hours, so
+      releasing on it could keep deferring until the window can no longer finish — eroding the
+      deadline. To bring EV/generic into the release safely, size the cheaper-future feasibility
+      against the device's **observed recent delivery rate** (resolved producer-side in
+      `diagnosticsBridge.ts` where the measured power lives) instead of the upper-bound step.
+      Source: `pels-runtime-reality` + Codex P2 on PR #1443; the `temperature` scoping was the
+      shipped mitigation.
+
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
 - [ ] **Insights mode-tile revert can show a stale mode on overlapping async writes.**
