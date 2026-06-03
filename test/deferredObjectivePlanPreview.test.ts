@@ -311,6 +311,130 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.priceSeries).toBeUndefined();
   });
 
+  // ── At-cap honesty signal (atCapNow) ──────────────────────────────────────
+  // The in-isolation preview is optimistic about headroom. `atCapNow` corrects
+  // its "runs now" implication with a measured FACT: the candidate is scheduled
+  // in the current clock hour AND the measured whole-home draw is already at the
+  // physical hard cap.
+  const CURRENT_HOUR_START_MS = Math.floor(NOW_MS / HOUR_MS) * HOUR_MS;
+
+  it('flags atCapNow when the current hour is scheduled and measured draw is at the hard cap', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    // A tight deadline forces the planner to schedule the current hour.
+    const estimate = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
+    });
+    expect(estimate.scheduledHours.some((hour) => hour.startsAtMs === CURRENT_HOUR_START_MS)).toBe(true);
+    expect(estimate.atCapNow).toBe(true);
+  });
+
+  it('does not flag atCapNow when measured draw is comfortably below the hard cap', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker({ lastPowerW: 2_000, lastTimestamp: NOW_MS }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
+    });
+    expect(estimate.atCapNow).toBe(false);
+  });
+
+  it('omits atCapNow when the measured sample is stale (no honest claim off a dead reading)', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      // At cap, but the sample is 10 minutes old → too stale to assert "at cap now".
+      powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS - 10 * 60 * 1000 }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
+    });
+    expect(estimate.atCapNow).toBeUndefined();
+  });
+
+  it('omits atCapNow when the measured sample has a negative age (future timestamp / clock drift)', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      // At cap, but the sample is timestamped in the future → negative age must
+      // fail the freshness contract just like a too-stale reading.
+      powerTracker: buildEvPowerTracker({ lastPowerW: 10_000, lastTimestamp: NOW_MS + 5 * 60 * 1000 }),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-1', candidate: evCandidate({ deadlineAtMs: DEADLINE_TIGHT_MS }), ctx,
+    });
+    expect(estimate.atCapNow).toBeUndefined();
+  });
+
+  // ── Granted rescue permissions (honest "Extra permissions" summary) ────────
+  // The producer is handed the ALREADY-GATED candidate (the caller runs
+  // `App.gateCandidateExtraPermissions` first), so it reflects the surviving
+  // permission set verbatim. A non-eligible device's gated candidate carries
+  // only `exemptFromBudget`, so the summary must NOT claim the boost.
+  it('reflects both granted rescue permissions when the gated candidate carries both', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({
+      deviceId: 'ev-1',
+      candidate: evCandidate({ rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' } }),
+      ctx,
+    });
+    expect(estimate.grantedRescuePermissions).toEqual({
+      exemptFromBudget: true,
+      limitLowerPriorityDevices: true,
+    });
+  });
+
+  it('reports limitLowerPriorityDevices:false when the gate dropped the boost (non-eligible device)', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    // The gate keeps only `exemptFromBudget` for a device that can't use the boost.
+    const estimate = runPreview({
+      deviceId: 'ev-1',
+      candidate: evCandidate({ rescue: { exemptFromBudget: 'always' } }),
+      ctx,
+    });
+    expect(estimate.grantedRescuePermissions).toEqual({
+      exemptFromBudget: true,
+      limitLowerPriorityDevices: false,
+    });
+  });
+
+  it('omits grantedRescuePermissions when the candidate carries no rescue permissions', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice(),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+    expect(estimate.grantedRescuePermissions).toBeUndefined();
+  });
+
   it('projects an on-track temperature candidate as an estimate', () => {
     const ctx: PreviewContext = {
       device: buildTemperatureDevice(),

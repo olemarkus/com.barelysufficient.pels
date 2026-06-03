@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { STARVATION_RESCUE_WIDGET_COPY } from '../packages/shared-domain/src/planStarvation';
+import { SMART_TASK_EXTRA_PERMISSION_LABELS } from '../packages/shared-domain/src/deadlineLabels';
 import { installWidget } from '../widgets/starvation_rescue/src/public/widgetApp';
 import type { WidgetHomey, WidgetWindow } from '../widgets/starvation_rescue/src/public/widgetApp';
 import type {
@@ -26,11 +27,17 @@ const WIDGET_MARKUP = `
       <p class="consequence" data-confirm-consequence></p>
       <div class="preview-body">
         <p class="preview-line" data-confirm-cost hidden></p>
+        <p class="preview-line" data-confirm-at-cap hidden></p>
+        <div class="preview-chart" data-confirm-chart hidden></div>
         <p class="preview-line" data-confirm-when hidden></p>
         <p class="preview-line" data-confirm-energy hidden></p>
         <p class="preview-line" data-confirm-unavailable hidden></p>
         <p class="preview-line" data-confirm-caveat hidden></p>
         <p class="preview-line" data-confirm-error hidden></p>
+        <div class="extra-perms-summary" data-confirm-perms hidden>
+          <p class="extra-perms-summary__title" data-confirm-perms-title></p>
+          <ul class="extra-perms-summary__list" data-confirm-perms-list></ul>
+        </div>
       </div>
       <button type="button" class="primary-btn" data-confirm-btn>Confirm</button>
     </section>
@@ -71,6 +78,10 @@ const READY_PAYLOAD: StarvationRescueDevicesPayload = {
   ],
 };
 
+// Floor to the current clock hour so a scheduled "current hour" entry matches
+// what the at-cap backend derivation compares against.
+const HOUR_FLOOR = Math.floor(Date.now() / (60 * 60 * 1000)) * (60 * 60 * 1000);
+
 const OK_PREVIEW = {
   ok: true as const,
   deadlineAtMs: Date.now() + 3 * 60 * 60 * 1000,
@@ -78,12 +89,20 @@ const OK_PREVIEW = {
   scheduledWindowLabel: '14:00–16:00',
   estimate: {
     status: 'on_track' as const,
-    scheduledHours: [{ startsAtMs: Date.now(), plannedKWh: 1.5 }],
+    scheduledHours: [{ startsAtMs: HOUR_FLOOR, plannedKWh: 1.5 }],
     projectedFinishAtMs: Date.now() + 2 * 60 * 60 * 1000,
     energyEstimateKWh: 1.5,
     energyExpectedKWh: 1.4,
     costEstimate: 2.1,
     costUnit: 'kr',
+    // A two-point price curve so the shared chart has something to draw.
+    priceSeries: [
+      { startsAtMs: HOUR_FLOOR, price: 0.9 },
+      { startsAtMs: HOUR_FLOOR + 60 * 60 * 1000, price: 1.4 },
+    ],
+    // The default fixture is an eligible (stepped-load, top-priority) device, so
+    // both rescue permissions survive the backend gate.
+    grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: true },
   },
 };
 
@@ -241,6 +260,139 @@ describe('starvation rescue widget browser', () => {
     );
   });
 
+  test('the confirm sheet renders the shared price-graph chart for the rescued device', async () => {
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(buildHomey());
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    // The same chart the create widget renders: an SVG price curve with the
+    // scheduled hour shaded. Shown because the preview carries a price series.
+    const chart = document.querySelector('[data-confirm-chart]') as HTMLElement;
+    expect(chart.hidden).toBe(false);
+    const svg = chart.querySelector('svg.pchart');
+    expect(svg).not.toBeNull();
+    // Stepped price line + the scheduled-hour band the shared renderer draws.
+    expect(chart.querySelector('.pchart__line')).not.toBeNull();
+    expect(chart.querySelector('.pchart__band')).not.toBeNull();
+  });
+
+  test('an eligible device shows BOTH canonical granted Extra permissions', async () => {
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(buildHomey());
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    const perms = document.querySelector('[data-confirm-perms]') as HTMLElement;
+    expect(perms.hidden).toBe(false);
+    expect((document.querySelector('[data-confirm-perms-title]') as HTMLElement).textContent)
+      .toBe(STARVATION_RESCUE_WIDGET_COPY.extraPermissionsTitle);
+    // Both standing permissions the rescue grants, using the canonical labels
+    // (shared with the create widget's toggles + runtime log breadcrumbs).
+    const items = Array.from(document.querySelectorAll('[data-confirm-perms-list] li'))
+      .map((li) => li.textContent);
+    expect(items).toEqual([
+      SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget,
+      SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices,
+    ]);
+  });
+
+  test('a non-eligible device shows ONLY the budget permission (honest gated summary)', async () => {
+    // The backend gate dropped `limitLowerPriorityDevices` (the device can't use
+    // the boost), so the estimate reports only `exemptFromBudget` as granted — the
+    // summary must not claim a permission the rescue won't grant.
+    const homey = buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') {
+          return {
+            ...OK_PREVIEW,
+            estimate: {
+              ...OK_PREVIEW.estimate,
+              grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: false },
+            },
+          };
+        }
+        if (path === '/rescue') return { ok: true, runsCurrentHour: true };
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    const perms = document.querySelector('[data-confirm-perms]') as HTMLElement;
+    expect(perms.hidden).toBe(false);
+    const items = Array.from(document.querySelectorAll('[data-confirm-perms-list] li'))
+      .map((li) => li.textContent);
+    expect(items).toEqual([SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget]);
+  });
+
+  test('a preview with no granted permissions hides the Extra permissions summary', async () => {
+    const homey = buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') {
+          const { grantedRescuePermissions: _omit, ...estimate } = OK_PREVIEW.estimate;
+          return { ...OK_PREVIEW, estimate };
+        }
+        if (path === '/rescue') return { ok: true, runsCurrentHour: true };
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    const perms = document.querySelector('[data-confirm-perms]') as HTMLElement;
+    expect(perms.hidden).toBe(true);
+  });
+
+  test('an at-cap preview surfaces the factual honesty note', async () => {
+    const homey = buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') return READY_PAYLOAD;
+        if (path === '/preview') {
+          return { ...OK_PREVIEW, estimate: { ...OK_PREVIEW.estimate, atCapNow: true } };
+        }
+        if (path === '/rescue') return { ok: true, runsCurrentHour: false };
+        throw new Error(`unexpected ${path}`);
+      }),
+    });
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(homey);
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    const atCap = document.querySelector('[data-confirm-at-cap]') as HTMLElement;
+    expect(atCap.hidden).toBe(false);
+    expect(atCap.textContent).toBe(STARVATION_RESCUE_WIDGET_COPY.atCapNote);
+  });
+
+  test('a preview that is NOT at cap hides the at-cap note', async () => {
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(buildHomey());
+    await flushPromises();
+
+    click('[data-rescue-button]');
+    await flushPromises();
+
+    // OK_PREVIEW carries no `atCapNow`, so the honesty note stays hidden.
+    expect((document.querySelector('[data-confirm-at-cap]') as HTMLElement).hidden).toBe(true);
+  });
+
   test('a still-queued create confirms to the honest "queued" flash, not "on the way"', async () => {
     // The create response (authoritative, post-persist) reports the device is NOT
     // running in the current hour — still queued behind cheaper later hours — so
@@ -376,5 +528,7 @@ registerHiddenGuardSuite({
     '.list-title', // header (hidden in the calm empty state)
     '.list-more', '.empty', // list affordances
     '.consequence', '.preview-line', '.done-msg', '.row__note', // toggled text lines
+    '.preview-chart', // shared price chart (hidden when nothing chartable)
+    '.extra-perms-summary', // read-only permissions summary
   ],
 });

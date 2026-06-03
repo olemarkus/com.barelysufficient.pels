@@ -112,6 +112,19 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // Same in-isolation caveat the create widget uses — the estimate ignores
   // re-plans and competing tasks.
   estimateCaveat: 'Estimate — the actual run may differ as prices and other tasks change.',
+  // Heading for the read-only "what this grants" summary on the confirm sheet.
+  // Reuses the create widget's canonical "Extra permissions" wording (via
+  // SMART_TASK_EXTRA_PERMISSION_LABELS for the line items) so the two surfaces
+  // describe the same permissions identically; here it is informational, not a
+  // set of toggles — the rescue always grants both.
+  extraPermissionsTitle: 'Extra permissions',
+  // Factual at-cap honesty signal. The in-isolation preview can show the device
+  // running now, but if the house is already pressed against the physical hard
+  // cap there is no room until something frees up. Names the real measured
+  // fact (at the hard cap), NOT a prompt to raise it — the hard cap is physical
+  // (feedback_hard_cap_is_physical). Pairs with the "Running as soon as there’s
+  // room" flash for the same honesty when the rescue is committed.
+  atCapNote: 'Your hard cap is maxed out right now, so it may wait for room before running.',
   // Preview couldn't be projected (no prices yet, missing reading, price
   // optimisation off). Distinct from a hard error.
   previewUnavailable: 'Can’t preview this yet — PELS needs more current data for this window.',

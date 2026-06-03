@@ -1,4 +1,5 @@
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { DeferredObjectiveRescuePermissions } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { PowerTrackerState } from '../../power/tracker';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -80,7 +81,69 @@ export const previewDeferredObjectivePlan = (
     priceRateLabel: params.priceRateLabel,
     nowMs: params.nowMs,
     deadlineAtMs: params.candidate.deadlineAtMs,
+    powerTracker: params.powerTracker,
+    hardCapKw: params.hardCapKw,
+    // The candidate handed to this producer is ALREADY gated by the caller
+    // (`App.gateCandidateExtraPermissions` runs before this), so its `rescue`
+    // is the surviving permission set — reflect it onto the estimate verbatim.
+    rescue: params.candidate.rescue,
   });
+};
+
+// Reflect the (already-gated) candidate rescue permissions onto a flat
+// surviving-permissions shape for the estimate, so a summary UI renders only
+// what the rescue would actually grant. Absent when the candidate carried no
+// rescue permissions at all (older candidate / no opt-in) so the UI hides the
+// block rather than claiming a permission the rescue won't grant.
+const resolveGrantedRescuePermissions = (
+  rescue: DeferredObjectiveRescuePermissions | undefined,
+): { exemptFromBudget: boolean; limitLowerPriorityDevices: boolean } | undefined => {
+  if (rescue === undefined) return undefined;
+  return {
+    exemptFromBudget: rescue.exemptFromBudget !== undefined,
+    limitLowerPriorityDevices: rescue.limitLowerPriorityDevices !== undefined,
+  };
+};
+
+const ONE_HOUR_MS = 60 * 60 * 1000;
+// A measured-draw sample older than this is treated as too stale to make an
+// at-cap claim against. PELS polls every ~10s (homey_energy) or on flow events;
+// two minutes is generous enough to tolerate a flow gap while still refusing to
+// assert "at cap right now" off a long-dead reading.
+const AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1000;
+// Fraction of the hard cap the measured draw must reach to count as "at cap".
+// The preview is in-isolation optimistic about headroom; only flag when the
+// house is genuinely pressed against the physical ceiling, not merely busy.
+const AT_CAP_THRESHOLD = 0.98;
+
+// Factual at-cap signal: is the candidate scheduled to run in the CURRENT clock
+// hour while the measured whole-home draw is already at/above the physical hard
+// cap? The in-isolation estimate is optimistic about headroom and cannot see the
+// live cap pressure, so this corrects its "runs now" implication with a measured
+// fact (draw vs cap), NEVER a suggestion to raise the cap (the cap is physical).
+// Returns undefined when the inputs can't support the claim (no scheduled current
+// hour, no/zero hard cap, or no fresh measured sample) so the UI omits the line
+// rather than guessing.
+const resolveAtCapNow = (params: {
+  scheduledHours: DeferredObjectivePlanPreviewHour[];
+  powerTracker: PowerTrackerState;
+  hardCapKw: number | null;
+  nowMs: number;
+}): boolean | undefined => {
+  const { scheduledHours, powerTracker, hardCapKw, nowMs } = params;
+  if (typeof hardCapKw !== 'number' || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return undefined;
+  const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+  const runsCurrentHour = scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+  if (!runsCurrentHour) return undefined;
+  const { lastPowerW, lastTimestamp } = powerTracker;
+  if (typeof lastPowerW !== 'number' || !Number.isFinite(lastPowerW)) return undefined;
+  if (typeof lastTimestamp !== 'number') return undefined;
+  // Treat a negative age (clock drift / a future-dated timestamp) as not-fresh,
+  // alongside the too-stale case — both fail the freshness contract, so neither
+  // can support an at-cap claim.
+  const ageMs = nowMs - lastTimestamp;
+  if (ageMs < 0 || ageMs > AT_CAP_SAMPLE_FRESHNESS_MS) return undefined;
+  return lastPowerW / 1000 >= hardCapKw * AT_CAP_THRESHOLD;
 };
 
 // Re-attach `enabled: true`, building each union member explicitly per `kind`.
@@ -132,8 +195,12 @@ const buildEstimateFromDiagnostic = (params: {
   priceRateLabel: string | undefined;
   nowMs: number;
   deadlineAtMs: number;
+  powerTracker: PowerTrackerState;
+  hardCapKw: number | null;
+  rescue: DeferredObjectiveRescuePermissions | undefined;
 }): DeferredObjectivePlanPreviewEstimate => {
-  const { diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs } = params;
+  const { diag, dailyBudgetSnapshot, priceRateLabel, nowMs, deadlineAtMs, powerTracker, hardCapKw, rescue } = params;
+  const grantedRescuePermissions = resolveGrantedRescuePermissions(rescue);
   // No horizon plan attached → the planner could not project (missing prices,
   // missing device reading, price feature off, …). Surface `unavailable` with
   // null numerics rather than inventing a plan. When the cause is specifically a
@@ -149,6 +216,7 @@ const buildEstimateFromDiagnostic = (params: {
       energyEstimateKWh: null,
       energyExpectedKWh: null,
       costEstimate: null,
+      ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
     };
   }
   const scheduledHours: DeferredObjectivePlanPreviewHour[] = buildHoursFromHorizonPlan(diag) ?? [];
@@ -163,6 +231,7 @@ const buildEstimateFromDiagnostic = (params: {
   // the same basis as `scheduledHours`, so the widget joins them by `startsAtMs`.
   const priceSeries = buildDeferredObjectivePolicyWindowPrices(dailyBudgetSnapshot, nowMs, deadlineAtMs)
     .map((point) => ({ startsAtMs: point.startMs, price: point.price }));
+  const atCapNow = resolveAtCapNow({ scheduledHours, powerTracker, hardCapKw, nowMs });
   return {
     status: resolvePreviewStatus(diag.horizonPlan.status),
     scheduledHours,
@@ -174,6 +243,8 @@ const buildEstimateFromDiagnostic = (params: {
     costEstimate: cost,
     ...(cost !== null && costUnit ? { costUnit } : {}),
     ...(priceSeries.length > 0 ? { priceSeries } : {}),
+    ...(atCapNow !== undefined ? { atCapNow } : {}),
+    ...(grantedRescuePermissions ? { grantedRescuePermissions } : {}),
   };
 };
 

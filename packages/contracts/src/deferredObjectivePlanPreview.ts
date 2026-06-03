@@ -129,4 +129,27 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // as a shape (no y-axis values), so a rate label has nothing to label. Add one
   // when/if the chart grows axis values.
   priceSeries?: DeferredObjectivePlanPreviewPricePoint[];
+  // At-cap honesty flag. The preview is computed IN ISOLATION and is OPTIMISTIC
+  // about headroom (see the file-header caveat): it assumes the candidate owns
+  // the reserved headroom and ignores the physical hard cap pressure the live
+  // house is under right now. `atCapNow` is true when the candidate's plan would
+  // run the device in the CURRENT clock hour BUT the measured whole-home draw is
+  // already at/above the configured hard cap — so the in-isolation "runs now"
+  // shown above OVERSTATES what can physically run until something frees up. It
+  // is a FACTUAL signal (measured draw vs the physical cap), NOT a prompt to
+  // raise the cap (the cap is physical). Absent when there is no usable
+  // measured-draw / hard-cap reading, or the current hour is not scheduled.
+  atCapNow?: boolean;
+  // The rescue "Extra permissions" that SURVIVED the candidate's per-device
+  // gate (`App.gateCandidateExtraPermissions`). The producer is handed the
+  // already-gated candidate, so this reflects exactly what the rescue would
+  // persist — a non-eligible device sees `limitLowerPriorityDevices: false`
+  // even though it requested it, because the gate drops a grant the planner
+  // would ignore. A summary UI must derive its permission list from THIS, not
+  // from the user's pre-gate request, or it claims a permission the rescue
+  // won't grant. Absent when the candidate carried no rescue permissions at all.
+  grantedRescuePermissions?: {
+    exemptFromBudget: boolean;
+    limitLowerPriorityDevices: boolean;
+  };
 };
