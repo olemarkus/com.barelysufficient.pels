@@ -798,7 +798,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       targetPercent: 60,
       energyNeededKWh: 4,
       kWhPerPercent: 0.2,
-      requestedMinimumStepId: 'low',
+      expectedStepId: 'low',
       horizonBucketCount: 5,
     });
     expect(diagnostic?.horizonPlan?.plannedBuckets.every((bucket) => bucket.price === 5)).toBe(true);
@@ -973,7 +973,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     const plannedBuckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
-    expect(diagnostic?.requestedMinimumStepId).toBe('low');
+    expect(diagnostic?.expectedStepId).toBe('low');
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS).toISOString())).toBeCloseTo(1);
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + HOUR_MS).toISOString())).toBe(0);
     expect(plannedBySourceBucket(plannedBuckets, new Date(NOW_MS + 2 * HOUR_MS).toISOString())).toBeCloseTo(1);
@@ -1272,7 +1272,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       targetTemperatureC: 65,
       energyNeededKWh: 8,
       kWhPerDegreeC: 0.8,
-      requestedMinimumStepId: 'heat',
+      expectedStepId: 'heat',
       horizonBucketCount: 4,
     });
   });
@@ -1714,7 +1714,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentPercent: 70,
       targetPercent: 60,
       energyNeededKWh: 0,
-      requestedMinimumStepId: null,
+      expectedStepId: null,
     });
   });
 
@@ -1773,7 +1773,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
         currentTemperatureC: 66,
         targetTemperatureC: 65,
         energyNeededKWh: 0,
-        requestedMinimumStepId: null,
+        expectedStepId: null,
       });
     }
   });
@@ -2043,11 +2043,11 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic!.energyNeededKWh).toBeCloseTo(0.9012, 3);
     expect(diagnostic!.kWhPerDegreeC).toBeCloseTo(0.3004, 3);
     // Horizon plan was built — the fallback step plumbed through to the
-    // bucket allocator. `requestedMinimumStepId` is the synthetic `charge`
+    // bucket allocator. `expectedStepId` is the synthetic `charge`
     // step the producer emitted; consumers that previously short-circuited
     // on a `null` minimum step now have an actionable plan to render.
     expect(diagnostic!.horizonPlan).toBeDefined();
-    expect(diagnostic!.requestedMinimumStepId).toBe('charge');
+    expect(diagnostic!.expectedStepId).toBe('charge');
     // The closing assertion: an active-plan recorder fed this diagnostic
     // would now write a non-pending revision (the schedule is non-empty),
     // so `pendingReason: 'missing_capacity'` no longer pins the hero.
@@ -2112,7 +2112,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
 
     expect(diagnostic!.reasonCode).not.toBe('objective_missing_charge_rate');
     expect(diagnostic!.horizonPlan).toBeDefined();
-    expect(diagnostic!.requestedMinimumStepId).toBe('charge');
+    expect(diagnostic!.expectedStepId).toBe('charge');
   });
 
   it('still reports missing_charge_rate for a thermostat without any usable power source', () => {
@@ -2198,7 +2198,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       status: 'satisfied',
       reasonCode: 'energy_already_met',
       energyNeededKWh: 0,
-      requestedMinimumStepId: null,
+      expectedStepId: null,
     });
   });
 
@@ -2631,14 +2631,14 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       });
       // Sanity witness on the committed task. The 1 kWh/h commitment cap
       // masks ev-1's status from distinguishing the split on its own, but
-      // `requestedMinimumStepId` still pins the current-bucket step the
+      // `expectedStepId` still pins the current-bucket step the
       // planner asked for. If a compound regression both dropped ev-1's
       // commitment AND gave it the full 3 kW headroom alone (count = 1
       // just for it), the fresh optimizer would pack the cheapest hours at
-      // top step (3 kWh/bucket) and `requestedMinimumStepId` would flip to
+      // top step (3 kWh/bucket) and `expectedStepId` would flip to
       // `top`. Catches that combined-failure mode that the fresh-task
       // verdict alone would miss.
-      expect(byDevice.get('ev-1')?.requestedMinimumStepId).toBe('min');
+      expect(byDevice.get('ev-1')?.expectedStepId).toBe('min');
     });
   });
 });

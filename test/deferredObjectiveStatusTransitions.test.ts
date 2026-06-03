@@ -27,7 +27,7 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   rateConfidence: null,
   horizonBucketCount: 1,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: null,
+  expectedStepId: null,
   ...overrides,
 });
 

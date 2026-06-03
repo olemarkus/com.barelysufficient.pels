@@ -37,7 +37,7 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   rateConfidence: 'high',
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
-  requestedMinimumStepId: 'low',
+  expectedStepId: 'low',
   ...overrides,
 });
 
@@ -54,12 +54,12 @@ const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {})
   energyNeededKWh: 1.5,
   plannedUsefulEnergyKWh: 1.5,
   unplannedUsefulEnergyKWh: 0,
-  requestedMinimumStepId: 'low',
+  expectedStepId: 'low',
   currentBucket: {
     bucketId: 'b0',
     sourceBucketId: 'b0',
     plannedUsefulEnergyKWh: 1.5,
-    requestedMinimumStepId: 'low',
+    expectedStepId: 'low',
   },
   plannedBuckets: [],
   usesDeadlineReserve: false,
@@ -74,7 +74,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan(),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false });
   });
 
   it('adds an EV resume intent for an EV objective in a planned bucket', () => {
@@ -93,7 +93,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       kind: 'planned',
       budgetExempt: false,
       engageBoost: false,
-      requestedMinimumStepId: 'low',
+      expectedStepId: 'low',
       releaseIntent: 'ev_resume',
     });
   });
@@ -102,7 +102,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'dev1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, requestedMinimumStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
@@ -121,7 +121,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, requestedMinimumStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
@@ -228,11 +228,11 @@ describe('applyDeferredObjectiveAdmission', () => {
         statusDetail: 'target_cannot_be_met',
         plannedUsefulEnergyKWh: 1,
         unplannedUsefulEnergyKWh: 0.5,
-        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, requestedMinimumStepId: 'low' },
+        currentBucket: { bucketId: 'b0', sourceBucketId: 'b0', plannedUsefulEnergyKWh: 1, expectedStepId: 'low' },
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('dev1')).toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: false });
+    expect(decisions.get('dev1')).toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: false });
   });
 
   it('returns inactive when the horizon plan is missing', () => {
@@ -254,7 +254,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('marks the decision budget-exempt when exempt-from-budget is applied to the plan', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', budgetExemptApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: true, engageBoost: false });
+      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: true, engageBoost: false });
 
     // Not applied once the task is no longer being pursued.
     const satisfied = buildDiagnostic({
@@ -276,7 +276,7 @@ describe('applyDeferredObjectiveAdmission', () => {
           bucketId: 'b1',
           sourceBucketId: 'b1',
           plannedUsefulEnergyKWh: 0,
-          requestedMinimumStepId: null,
+          expectedStepId: null,
         },
       }),
     });
@@ -299,7 +299,7 @@ describe('applyDeferredObjectiveAdmission', () => {
   it('engages boost on a planned limit-lower-priority task, but not once it is satisfied', () => {
     const planned = buildDiagnostic({ deviceId: 'dev1', limitLowerPriorityApplied: true, horizonPlan: buildHorizonPlan() });
     expect(applyDeferredObjectiveAdmission([planned]).get('dev1'))
-      .toEqual({ kind: 'planned', requestedMinimumStepId: 'low', budgetExempt: false, engageBoost: true });
+      .toEqual({ kind: 'planned', expectedStepId: 'low', budgetExempt: false, engageBoost: true });
 
     const satisfied = buildDiagnostic({
       deviceId: 'dev2',
@@ -380,7 +380,7 @@ describe('buildDeferredTargetOverrides', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'heater1',
       horizonPlan: buildHorizonPlan({
-        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, requestedMinimumStepId: null },
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
       }),
     });
     expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});

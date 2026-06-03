@@ -41,7 +41,7 @@ type DeferredObjectiveDiagnosticLike = {
   kWhPerDegreeC: number | null;
   rateConfidence: string | null;
   horizonBucketCount: number;
-  requestedMinimumStepId: string | null;
+  expectedStepId: string | null;
 };
 
 type PlanHistoryRecorderLike = {
@@ -126,7 +126,7 @@ const buildTemperatureDiag = (overrides: TemperatureDiagOverrides): DeferredObje
   kWhPerDegreeC: 1.5,
   rateConfidence: 'high',
   horizonBucketCount: 6,
-  requestedMinimumStepId: null,
+  expectedStepId: null,
 });
 
 const runRecorder = async (): Promise<DeferredObjectivePlanHistoryV4> => {

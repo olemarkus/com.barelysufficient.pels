@@ -171,7 +171,7 @@ const buildFrozenDiagnostic = (params: {
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: frozenRead.hours.length,
     dailyBudgetExhaustedBucketCount: frozenRead.dailyBudgetExhaustedBucketCount,
-    requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
+    expectedStepId: horizonPlan.expectedStepId,
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(horizonPlan),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
@@ -259,7 +259,7 @@ type BaseDeferredObjectiveDiagnostic = {
   // bucket. Lets the UI explain a `cannot_meet` outcome that would otherwise
   // look like a device or schedule problem.
   dailyBudgetExhaustedBucketCount: number;
-  requestedMinimumStepId: string | null;
+  expectedStepId: string | null;
   horizonPlan?: DeferredObjectiveHorizonPlan;
   // True only while the current bucket is a planned bucket for a smart task whose "exempt
   // from budget" rescue permission is active. Admission consumes this flat flag to set the
@@ -834,7 +834,7 @@ const buildFreshDiagnostic = (params: {
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
     dailyBudgetExhaustedBucketCount,
-    requestedMinimumStepId: horizonPlan.requestedMinimumStepId,
+    expectedStepId: horizonPlan.expectedStepId,
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(horizonPlan),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
@@ -902,7 +902,7 @@ const buildDiagnosticBase = (params: {
     planningSpeedKw: resolvePlanningSpeedKw(params.device),
     horizonBucketCount: 0,
     dailyBudgetExhaustedBucketCount: 0,
-    requestedMinimumStepId: null,
+    expectedStepId: null,
   };
   if (params.objective.kind === 'temperature') {
     return {
@@ -944,7 +944,7 @@ const withUnknown = (
   ...diagnostic,
   status: 'unknown',
   reasonCode,
-  requestedMinimumStepId: null,
+  expectedStepId: null,
 });
 
 const buildKnownEnergyFields = (params: {

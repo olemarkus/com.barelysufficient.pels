@@ -370,7 +370,7 @@ describe('app init plan service wiring', () => {
       kWhPerDegreeC: 1,
       rateConfidence: 'high',
       horizonBucketCount: 6,
-      requestedMinimumStepId: null,
+      expectedStepId: null,
     }], 0);
     recorder.observe([], 6 * 60 * 60 * 1000); // deadline-passed → finalized → dirty
     expect(recorder.flushIfDirty()).toBe(false);
@@ -483,7 +483,7 @@ describe('app init plan service wiring', () => {
       kWhPerDegreeC: 1,
       rateConfidence: 'high',
       horizonBucketCount: 6,
-      requestedMinimumStepId: null,
+      expectedStepId: null,
     }], 0);
     recorder.observe([], 1_000);
     expect(recorder.isDirty()).toBe(true);
@@ -592,7 +592,7 @@ describe('app init plan service wiring', () => {
       kWhPerDegreeC: 1,
       rateConfidence: 'high',
       horizonBucketCount: 6,
-      requestedMinimumStepId: null,
+      expectedStepId: null,
     });
 
     const collectDeadbandWrites = (

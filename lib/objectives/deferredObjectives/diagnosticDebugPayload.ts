@@ -73,7 +73,7 @@ export const buildDeferredObjectiveDebugPayload = (
   deadlineLocalTime: diagnostic.deadlineLocalTime,
   horizonBucketCount: diagnostic.horizonBucketCount,
   dailyBudgetExhaustedBucketCount: diagnostic.dailyBudgetExhaustedBucketCount,
-  requestedMinimumStepId: diagnostic.requestedMinimumStepId,
+  expectedStepId: diagnostic.expectedStepId,
   ...rescueFields(diagnostic),
   ...horizonPlanFields(diagnostic.horizonPlan),
 });

@@ -133,7 +133,7 @@ export type DeferredObjectiveCurrentBucketPlan = {
   bucketId: string;
   sourceBucketId: string;
   plannedUsefulEnergyKWh: number;
-  requestedMinimumStepId: string | null;
+  expectedStepId: string | null;
 };
 
 export type DeferredObjectiveHorizonPlan = {
@@ -149,7 +149,7 @@ export type DeferredObjectiveHorizonPlan = {
   energyNeededKWh: number;
   plannedUsefulEnergyKWh: number;
   unplannedUsefulEnergyKWh: number;
-  requestedMinimumStepId: string | null;
+  expectedStepId: string | null;
   currentBucket: DeferredObjectiveCurrentBucketPlan | null;
   plannedBuckets: DeferredObjectivePlannedBucket[];
   usesDeadlineReserve: boolean;

@@ -116,7 +116,7 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   kwhPerUnitSource: 'learned',
   horizonBucketCount: plan.plannedBuckets.length,
   dailyBudgetExhaustedBucketCount: 0,
-  requestedMinimumStepId: plan.requestedMinimumStepId,
+  expectedStepId: plan.expectedStepId,
   horizonPlan: plan,
 });
 
