@@ -48,7 +48,13 @@
             <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
           </summary>
           <p class="extra-perms__hint" data-extra-perms-hint></p>
-          <label class="perm-toggle">
+          <!-- Read-only context: the device's CURRENT standing permissions
+               (granted via Flow / the rescue-boost lane). Shown only when some
+               stand, so the toggles below read as additive on top — not the
+               whole picture. Hidden (no standing grant) → section behaves as
+               before. -->
+          <p class="extra-perms__standing" data-standing-perms hidden></p>
+          <label class="perm-toggle" data-perm-budget hidden>
             <input type="checkbox" class="perm-toggle__input" data-perm-budget-input>
             <span class="perm-toggle__text" data-perm-budget-label></span>
           </label>

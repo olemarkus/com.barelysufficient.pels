@@ -1,3 +1,6 @@
+import type {
+  DeferredObjectiveRescuePermissions,
+} from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
@@ -23,12 +26,24 @@ import type {
 export const EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices;
 export const EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
 
-const buildDevice = (device: TargetDeviceSnapshot): CreateSmartTaskDevice | null => {
+// Resolve a device's currently-persisted standing rescue permissions (granted
+// via Flow / the rescue-boost lane). Optional so the design-preview / test
+// payloads that have no settings store still build; returns undefined when the
+// device has no standing grant.
+export type ResolveStandingRescue = (
+  deviceId: string,
+) => DeferredObjectiveRescuePermissions | undefined;
+
+const buildDevice = (
+  device: TargetDeviceSnapshot,
+  resolveStandingRescue?: ResolveStandingRescue,
+): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
   if (kind === null) return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
   const currentValue = resolveSmartTaskCurrentValue(device, kind);
   const name = device.name?.trim();
+  const standingRescue = resolveStandingRescue?.(device.id);
   return {
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
@@ -49,18 +64,26 @@ const buildDevice = (device: TargetDeviceSnapshot): CreateSmartTaskDevice | null
       device.controlModel === 'stepped_load'
       && device.steppedLoadProfile?.model === 'stepped_load'
       && device.priority === 1,
+    // Read-only context for the compose screen's "Extra permissions" section so
+    // the toggles read as additive on top of existing standing grants. Omitted
+    // when the device has none (the section behaves as before).
+    ...(standingRescue ? { standingRescue } : {}),
   };
 };
 
 export type CreateSmartTaskWidgetInput = {
   devices: ReadonlyArray<TargetDeviceSnapshot>;
+  // Optional resolver for each device's standing rescue permissions. Threaded
+  // (rather than baked into the snapshot) so the design-preview / test payloads
+  // stay store-free; absent → no standing-permission context is surfaced.
+  resolveStandingRescue?: ResolveStandingRescue;
 };
 
 export const buildCreateSmartTaskDevicesPayload = (
   input: CreateSmartTaskWidgetInput,
 ): CreateSmartTaskDevicesPayload => {
   const devices = input.devices
-    .map(buildDevice)
+    .map((device) => buildDevice(device, input.resolveStandingRescue))
     .filter((device): device is CreateSmartTaskDevice => device !== null)
     // Group by device family (heating devices → EV chargers), then by name
     // within each group, so the managed-device subset reads as a deliberately

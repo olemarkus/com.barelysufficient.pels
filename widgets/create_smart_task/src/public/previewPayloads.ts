@@ -15,6 +15,11 @@ import type { CreateSmartTaskDevicesPayload } from '../createSmartTaskWidgetType
 // exercises the limit-lower-priority toggle; thermostats/water heaters leave it
 // off (the common non-stepped case) so the preview also shows the budget-only
 // disclosure.
+//
+// `standingRescue` on the default EV charger seeds the read-only "Already
+// allowed (set via Flow)" context line so the design-preview / screenshot
+// harness exercises a device that already carries a standing grant; the other
+// sample devices omit it so the preview also shows the no-standing case.
 export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskDevicesPayload> = {
   // Gallery thumbnail: one temperature device and one EV charger so the gallery
   // shows both goal kinds (°C stepper and % stepper).
@@ -46,6 +51,7 @@ export const PREVIEW_CREATE_SMART_TASK_PAYLOADS: Record<string, CreateSmartTaskD
         defaultGoal: 80,
         currentValue: 42,
         supportsLimitLowerPriority: true,
+        standingRescue: { exemptFromBudget: 'always' },
       },
     ],
   },

@@ -2,6 +2,7 @@ import type {
   DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import type {
+  DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
@@ -32,6 +33,14 @@ export type CreateSmartTaskDevice = {
   // offers a permission that would be a no-op for this device. The budget-exempt
   // toggle has no such gate (any device can exceed the soft daily budget).
   supportsLimitLowerPriority: boolean;
+  // The device's CURRENT standing rescue permissions (granted via Flow / the
+  // rescue-boost lane), if any. Read-only CONTEXT for the compose screen so the
+  // "Extra permissions" toggles read as additive on top of what already stands —
+  // not the whole picture. Undefined when the device has no standing grant (the
+  // section then behaves as before). This never changes the additive write
+  // semantics (the create path's `preserve` policy is untouched); it is purely
+  // for visibility/authoritativeness.
+  standingRescue?: DeferredObjectiveRescuePermissions;
 };
 
 export type CreateSmartTaskDevicesPayload = {

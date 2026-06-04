@@ -507,6 +507,20 @@
   color: var(--pw-text-muted, #6d7680);
 }
 
+/* Read-only standing-permissions context: the grants already set via Flow / the
+   rescue-boost lane, shown so the toggles below read as additive on top. A muted
+   inset note (not a toggle) — no accent, no touch target — so it never reads as
+   another control. Homey widget tokens only. */
+.extra-perms__standing {
+  margin: 0 0 var(--pw-su-2, 8px);
+  padding: var(--pw-su-1, 4px) var(--pw-su-2, 8px);
+  border-radius: var(--pw-radius-small, 6px);
+  background: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  color: var(--pw-text-muted, #6d7680);
+}
+
 /* A toggle row: native checkbox + its label, a full 48 px touch target. */
 .perm-toggle {
   display: flex;

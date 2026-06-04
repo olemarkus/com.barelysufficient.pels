@@ -4830,6 +4830,16 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   // breadcrumb, and runtime logs all read identically.
   extraPermissionsTitle: "Extra permissions",
   extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+  // Read-only context shown above the toggles when the device ALREADY has
+  // standing permissions. Deliberately route-agnostic ("Already allowed:", not
+  // "set via Flow"): the grant can come from a Flow card OR the rescue-boost lane
+  // ("Get power now" / "Let it run now"), so naming a single route would be wrong
+  // for the other — and this string also feeds runtime log breadcrumbs, so a false
+  // attribution would mislead there too. Names the scope-current state, not how it
+  // got there. Joined with the formatted permission value via
+  // `formatSmartTaskStandingPermissionsLine`; reuses the same canonical permission
+  // labels as the settings-UI breadcrumb so the wording can't drift.
+  standingPermissionsPrefix: "Already allowed:",
   // Shown under the limit-lower-priority toggle when it is disabled: that
   // permission only has any effect alongside the budget one, so it is gated on it.
   limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
@@ -5350,12 +5360,13 @@ var compareSmartTaskPickerRows = (a, b) => {
 // widgets/create_smart_task/src/createSmartTaskWidgetPayload.ts
 var EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices;
 var EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
-var buildDevice = (device) => {
+var buildDevice = (device, resolveStandingRescue2) => {
   const kind = resolveSmartTaskDeviceKind(device);
   if (kind === null) return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
   const currentValue = resolveSmartTaskCurrentValue(device, kind);
   const name = device.name?.trim();
+  const standingRescue = resolveStandingRescue2?.(device.id);
   return {
     deviceId: device.id,
     deviceName: name && name.length > 0 ? name : device.id,
@@ -5372,11 +5383,15 @@ var buildDevice = (device) => {
     // floor is `priority === 1`). The stepped predicate mirrors app.ts
     // `deviceSupportsLimitLowerPriority`; the extra `priority === 1` keeps the
     // compose toggle from ever being offered where it would be a no-op.
-    supportsLimitLowerPriority: device.controlModel === "stepped_load" && device.steppedLoadProfile?.model === "stepped_load" && device.priority === 1
+    supportsLimitLowerPriority: device.controlModel === "stepped_load" && device.steppedLoadProfile?.model === "stepped_load" && device.priority === 1,
+    // Read-only context for the compose screen's "Extra permissions" section so
+    // the toggles read as additive on top of existing standing grants. Omitted
+    // when the device has none (the section behaves as before).
+    ...standingRescue ? { standingRescue } : {}
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {
-  const devices = input.devices.map(buildDevice).filter((device) => device !== null).sort(compareSmartTaskPickerRows);
+  const devices = input.devices.map((device) => buildDevice(device, input.resolveStandingRescue)).filter((device) => device !== null).sort(compareSmartTaskPickerRows);
   if (devices.length === 0) {
     return { state: "empty", subtitle: EMPTY_NO_DEVICES_SUBTITLE, hint: EMPTY_NO_DEVICES_HINT };
   }
@@ -5433,19 +5448,30 @@ var resolveCreateDeadline = (request, timeZone, nowMs) => {
   if (deadlineAtMs === null) return { ok: false, reason: "invalid_ready_by" };
   return { ok: true, deadlineAtMs };
 };
-var buildCandidateRescue = (request) => {
+var buildRequestedRescue = (request) => {
   const rescue = {
     ...request.exemptFromBudget ? { exemptFromBudget: "always" } : {},
     ...request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: "always" } : {}
   };
   return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : void 0;
 };
-var buildValidCandidate = (request, deadlineAtMs) => {
+var buildEffectiveRescue = (request, standing) => {
+  const requested = buildRequestedRescue(request);
+  const exemptFromBudget = standing?.exemptFromBudget ?? requested?.exemptFromBudget;
+  const limitLowerPriorityDevices = standing?.limitLowerPriorityDevices ?? requested?.limitLowerPriorityDevices;
+  const merged = {
+    ...exemptFromBudget ? { exemptFromBudget } : {},
+    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}
+  };
+  return merged.exemptFromBudget || merged.limitLowerPriorityDevices ? merged : void 0;
+};
+var buildValidCandidate = (request, deadlineAtMs, standing) => {
   const base = request.kind === "ev_soc" ? { kind: "ev_soc", enforcement: "soft", targetPercent: request.target, deadlineAtMs } : { kind: "temperature", enforcement: "soft", targetTemperatureC: request.target, deadlineAtMs };
-  const rescue = buildCandidateRescue(request);
+  const rescue = buildEffectiveRescue(request, standing);
   const candidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry2({ ...candidate, enabled: true }) ? candidate : null;
 };
+var resolveStandingRescue = (homey, deviceId) => typeof homey.app?.getDeviceStandingRescue === "function" ? homey.app.getDeviceStandingRescue(deviceId) : void 0;
 var previewReject = (reason) => ({
   ok: false,
   reason
@@ -5463,7 +5489,8 @@ var mapAppReason = (reason) => {
 };
 var getCreateSmartTaskDevices = async ({ homey }) => {
   const devices = typeof homey.app?.getCreateSmartTaskCandidateDevices === "function" ? homey.app.getCreateSmartTaskCandidateDevices() : [];
-  return buildCreateSmartTaskDevicesPayload({ devices });
+  const resolveStandingRescue2 = typeof homey.app?.getDeviceStandingRescue === "function" ? (deviceId) => homey.app?.getDeviceStandingRescue?.(deviceId) : void 0;
+  return buildCreateSmartTaskDevicesPayload({ devices, resolveStandingRescue: resolveStandingRescue2 });
 };
 var previewCreateSmartTask = async ({ homey, body }) => {
   const request = parseCandidateRequest(body);
@@ -5473,7 +5500,7 @@ var previewCreateSmartTask = async ({ homey, body }) => {
   const nowMs = Date.now();
   const deadlineAtMs = resolveDeadline(request, timeZone, nowMs);
   if (deadlineAtMs === null) return previewReject("invalid_ready_by");
-  const candidate = buildValidCandidate(request, deadlineAtMs);
+  const candidate = buildValidCandidate(request, deadlineAtMs, resolveStandingRescue(homey, request.deviceId));
   if (!candidate) return previewReject("invalid_candidate");
   const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
@@ -5494,7 +5521,7 @@ var createCreateSmartTask = async ({ homey, body }) => {
   const nowMs = Date.now();
   const deadline = resolveCreateDeadline(request, timeZone, nowMs);
   if (!deadline.ok) return createReject(deadline.reason);
-  const candidate = buildValidCandidate(request, deadline.deadlineAtMs);
+  const candidate = buildValidCandidate(request, deadline.deadlineAtMs, resolveStandingRescue(homey, request.deviceId));
   if (!candidate) return createReject("invalid_candidate");
   const result = homey.app.createDeferredObjective(request.deviceId, candidate);
   if (result.ok) return { ok: true };

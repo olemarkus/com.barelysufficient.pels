@@ -161,6 +161,8 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     readyByEchoEl: '[data-ready-by-echo]',
     extraPermsTitle: '[data-extra-perms-title]',
     extraPermsHint: '[data-extra-perms-hint]',
+    standingPermsEl: '[data-standing-perms]',
+    permBudgetToggle: '[data-perm-budget]',
     permBudgetLabel: '[data-perm-budget-label]',
     permLimitToggle: '[data-perm-limit]',
     permLimitLabel: '[data-perm-limit-label]',

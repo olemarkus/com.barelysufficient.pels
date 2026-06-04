@@ -126,6 +126,7 @@ import {
   type DeferredObjectiveHoursRemainingTracker,
   type DeferredObjectivePlanPreviewCandidate,
   type DeferredObjectivePlanRevisionBus,
+  type DeferredObjectiveRescuePermissions,
   type DeferredObjectiveSettingsEntry,
   type DeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
@@ -1968,6 +1969,22 @@ class PelsApp extends Homey.App {
     const entry = this.readDeferredObjectiveEntry(deviceId);
     if (!entry) return false;
     return entry.enabled || entry.deadlineAtMs > this.getNow().getTime();
+  }
+  // The device's currently-persisted standing rescue permissions (granted via
+  // Flow / the rescue-boost lane), or undefined when none stand. Read-only
+  // CONTEXT for the create-smart-task compose screen so its "Extra permissions"
+  // toggles read as additive on top of what already stands — never the write
+  // authority (the create path's `preserve` policy is untouched). Backs the
+  // widget API's `getDeviceStandingRescue`.
+  //
+  // Gated on `hasDeferredObjectiveForDevice` so the rescue of a DISABLED
+  // past-deadline entry (history, not an open task) is never surfaced — otherwise
+  // an expired task's grant would read as "already allowed" and get merged into a
+  // fresh task. Resolution stays in the producer: callers receive a flat applies/
+  // doesn't-apply value, never the raw entry to re-judge.
+  public getDeviceStandingRescue(deviceId: string): DeferredObjectiveRescuePermissions | undefined {
+    if (!this.hasDeferredObjectiveForDevice(deviceId)) return undefined;
+    return this.readDeferredObjectiveEntry(deviceId)?.rescue;
   }
   // Only stepped-load devices (EV chargers + stepped thermal) can honour the
   // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,

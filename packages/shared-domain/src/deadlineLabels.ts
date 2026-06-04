@@ -351,6 +351,16 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   // breadcrumb, and runtime logs all read identically.
   extraPermissionsTitle: 'Extra permissions',
   extraPermissionsHint: 'Off unless you turn them on — only used to hit this deadline.',
+  // Read-only context shown above the toggles when the device ALREADY has
+  // standing permissions. Deliberately route-agnostic ("Already allowed:", not
+  // "set via Flow"): the grant can come from a Flow card OR the rescue-boost lane
+  // ("Get power now" / "Let it run now"), so naming a single route would be wrong
+  // for the other — and this string also feeds runtime log breadcrumbs, so a false
+  // attribution would mislead there too. Names the scope-current state, not how it
+  // got there. Joined with the formatted permission value via
+  // `formatSmartTaskStandingPermissionsLine`; reuses the same canonical permission
+  // labels as the settings-UI breadcrumb so the wording can't drift.
+  standingPermissionsPrefix: 'Already allowed:',
   // Shown under the limit-lower-priority toggle when it is disabled: that
   // permission only has any effect alongside the budget one, so it is gated on it.
   limitLowerPriorityNeedsBudget: 'Turn on “May go over daily budget” to use this.',
@@ -645,6 +655,20 @@ export const formatSmartTaskExtraPermissionsValue = (
   }
   if (parts.length === 0) return null;
   return parts.join(' · ');
+};
+
+// The create-smart-task compose screen's read-only standing-permissions line:
+// "Already allowed: May go over daily budget". Reuses the
+// canonical `formatSmartTaskExtraPermissionsValue` for the permission clause so
+// the wording matches the settings-UI breadcrumb and runtime log breadcrumbs.
+// Returns null when the device has no standing grant, so the line is suppressed
+// cleanly and the section behaves exactly as before.
+export const formatSmartTaskStandingPermissionsLine = (
+  rescue: DeferredObjectiveRescuePermissions | undefined,
+): string | null => {
+  const value = formatSmartTaskExtraPermissionsValue(rescue);
+  if (value === null) return null;
+  return `${CREATE_SMART_TASK_WIDGET_COPY.standingPermissionsPrefix} ${value}`;
 };
 
 // "currently 18.5 °C" / "currently 45 %" line shown on Smart-tasks list cards

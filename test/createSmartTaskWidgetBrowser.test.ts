@@ -43,7 +43,8 @@ const WIDGET_MARKUP = `
           <span class="extra-perms__chevron" aria-hidden="true">&#9662;</span>
         </summary>
         <p class="extra-perms__hint" data-extra-perms-hint></p>
-        <label class="perm-toggle">
+        <p class="extra-perms__standing" data-standing-perms hidden></p>
+        <label class="perm-toggle" data-perm-budget hidden>
           <input type="checkbox" class="perm-toggle__input" data-perm-budget-input />
           <span class="perm-toggle__text" data-perm-budget-label></span>
         </label>
@@ -626,6 +627,62 @@ describe('create smart task widget browser', () => {
       click('[data-perm-budget-input]'); // budget off → limit must reset off + disable
       expect(input('[data-perm-limit-input]').checked).toBe(false);
       expect(input('[data-perm-limit-input]').disabled).toBe(true);
+    });
+
+    test('surfaces standing permissions as read context and drops the toggles that echo them', async () => {
+      const deviceWithStanding = {
+        ...steppedDevice,
+        standingRescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' },
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([deviceWithStanding], []));
+      await flushPromises();
+      click('[data-device-button]');
+
+      const standing = document.querySelector('[data-standing-perms]') as HTMLElement;
+      expect(standing.hidden).toBe(false);
+      // Names the canonical permission labels (shared-domain), route-agnostic prefix.
+      expect(standing.textContent).toContain('Already allowed');
+      expect(standing.textContent).toContain('May go over daily budget');
+      expect(standing.textContent).toContain('May limit lower-priority devices');
+      // Both permissions already stand → neither is offered as an opt-in toggle, so
+      // no off checkbox can contradict the "Already allowed" line above.
+      expect((document.querySelector('[data-perm-budget]') as HTMLElement).hidden).toBe(true);
+      expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(true);
+      // With nothing left to opt into, the "turn them on" hint is suppressed too.
+      expect((document.querySelector('[data-extra-perms-hint]') as HTMLElement).hidden).toBe(true);
+    });
+
+    test('a standing budget grant hides only the budget toggle and ungates the still-offered limit toggle', async () => {
+      const deviceWithBudgetStanding = {
+        ...steppedDevice,
+        standingRescue: { exemptFromBudget: 'always' },
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([deviceWithBudgetStanding], []));
+      await flushPromises();
+      click('[data-device-button]');
+
+      const standing = document.querySelector('[data-standing-perms]') as HTMLElement;
+      expect(standing.textContent).toContain('May go over daily budget');
+      // Budget already stands → its toggle is dropped (shown only on the line above).
+      expect((document.querySelector('[data-perm-budget]') as HTMLElement).hidden).toBe(true);
+      // Limit isn't standing → still offered, and ENABLED because the standing
+      // budget grant satisfies its gate without the user re-toggling budget.
+      expect((document.querySelector('[data-perm-limit]') as HTMLElement).hidden).toBe(false);
+      expect(input('[data-perm-limit-input]').disabled).toBe(false);
+      expect((document.querySelector('[data-perm-limit-note]') as HTMLElement).hidden).toBe(true);
+    });
+
+    test('hides the standing-permissions line for a device with no standing grant', async () => {
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(buildHomey([plainDevice], []));
+      await flushPromises();
+      click('[data-device-button]');
+
+      const standing = document.querySelector('[data-standing-perms]') as HTMLElement;
+      expect(standing.hidden).toBe(true);
+      expect(standing.textContent).toBe('');
     });
   });
 

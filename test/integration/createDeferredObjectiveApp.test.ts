@@ -354,6 +354,33 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
 
+    it('getDeviceStandingRescue surfaces an active grant but not an expired (disabled past-deadline) one', async () => {
+      const app = await initApp();
+      // Active (paused-but-future) entry with a standing grant → surfaced.
+      mockHomeyInstance.settings.set('deferred_objective.heater-1', {
+        enabled: false,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 60,
+        deadlineAtMs: Date.now() + 60 * 60 * 1000,
+        rescue: { exemptFromBudget: 'always' },
+      });
+      expect(app.getDeviceStandingRescue('heater-1')).toEqual({ exemptFromBudget: 'always' });
+
+      // Expired (disabled, past-deadline) entry = history, not an open task → its
+      // grant must NOT leak into a fresh task as "already allowed".
+      mockHomeyInstance.settings.set('deferred_objective.heater-1', {
+        enabled: false,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 60,
+        deadlineAtMs: Date.now() - 60 * 1000,
+        rescue: { exemptFromBudget: 'always' },
+      });
+      expect(app.getDeviceStandingRescue('heater-1')).toBeUndefined();
+      await app.onUninit?.();
+    });
+
     it('still treats a disabled future objective as an open paused task', async () => {
       const app = await initApp();
       const futureEntry = {

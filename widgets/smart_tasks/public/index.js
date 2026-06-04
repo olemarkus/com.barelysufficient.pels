@@ -108,6 +108,16 @@
     // breadcrumb, and runtime logs all read identically.
     extraPermissionsTitle: "Extra permissions",
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+    // Read-only context shown above the toggles when the device ALREADY has
+    // standing permissions. Deliberately route-agnostic ("Already allowed:", not
+    // "set via Flow"): the grant can come from a Flow card OR the rescue-boost lane
+    // ("Get power now" / "Let it run now"), so naming a single route would be wrong
+    // for the other — and this string also feeds runtime log breadcrumbs, so a false
+    // attribution would mislead there too. Names the scope-current state, not how it
+    // got there. Joined with the formatted permission value via
+    // `formatSmartTaskStandingPermissionsLine`; reuses the same canonical permission
+    // labels as the settings-UI breadcrumb so the wording can't drift.
+    standingPermissionsPrefix: "Already allowed:",
     // Shown under the limit-lower-priority toggle when it is disabled: that
     // permission only has any effect alongside the budget one, so it is gated on it.
     limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",

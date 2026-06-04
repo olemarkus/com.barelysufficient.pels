@@ -34,6 +34,12 @@ type CreateSmartTaskApiApp = {
   // offers ONLY these so it never presents a device whose create would be
   // rejected as `device_not_planned`. See app.getCreateSmartTaskCandidateDevices.
   getCreateSmartTaskCandidateDevices?: () => TargetDeviceSnapshot[];
+  // The device's CURRENT standing rescue permissions (granted via Flow / the
+  // rescue-boost lane), or undefined when none stand. Surfaced read-only on the
+  // compose screen so the "Extra permissions" toggles read as additive on top of
+  // what already stands — never trusted as the write authority (the create path's
+  // `preserve` policy is unchanged). Optional so a stub app omits it cleanly.
+  getDeviceStandingRescue?: (deviceId: string) => DeferredObjectiveRescuePermissions | undefined;
   previewDeferredObjectivePlan?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -158,12 +164,9 @@ const resolveCreateDeadline = (
 // sees an optimistic preview for a candidate the create would reject. Returns
 // null when the per-kind target is out of range. The runtime create path
 // re-validates and additionally checks device-kind eligibility.
-// Map the request's opt-in permission booleans to the candidate's `rescue`
-// shape (`'always'` mode). Returns undefined when neither is on, so a task with
-// no extra permissions carries NO `rescue` — and the create path's `preserve`
-// policy then leaves any standing permission set elsewhere intact. The server
-// re-gates `limitLowerPriorityDevices` against the device.
-const buildCandidateRescue = (
+// Map the request's opt-in permission booleans to the `'always'`-mode rescue
+// shape. Returns undefined when neither is on.
+const buildRequestedRescue = (
   request: CreateSmartTaskCandidateRequest,
 ): DeferredObjectiveRescuePermissions | undefined => {
   const rescue: DeferredObjectiveRescuePermissions = {
@@ -173,17 +176,54 @@ const buildCandidateRescue = (
   return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : undefined;
 };
 
+// The candidate's EFFECTIVE rescue = the device's existing standing grant UNION
+// the user's opt-in toggles. The compose screen shows standing grants read-only
+// and suppresses their toggles (additive framing), so the candidate driving both
+// preview AND create must carry them — otherwise (a) a preview runs without the
+// standing budget/priority and falsely reports `cannot_meet`, and (b) the create
+// overwrites the standing grant with the toggles-only set (the `preserve` policy
+// only copies the previous rescue when the candidate carries NONE). The standing
+// grant wins on MODE (e.g. an existing `at_risk` is kept, not flattened to
+// `always`); a toggle only ADDS a permission the device doesn't already stand on.
+// The server still re-gates `limitLowerPriorityDevices` against the device.
+const buildEffectiveRescue = (
+  request: CreateSmartTaskCandidateRequest,
+  standing: DeferredObjectiveRescuePermissions | undefined,
+): DeferredObjectiveRescuePermissions | undefined => {
+  const requested = buildRequestedRescue(request);
+  const exemptFromBudget = standing?.exemptFromBudget ?? requested?.exemptFromBudget;
+  const limitLowerPriorityDevices = standing?.limitLowerPriorityDevices ?? requested?.limitLowerPriorityDevices;
+  const merged: DeferredObjectiveRescuePermissions = {
+    ...(exemptFromBudget ? { exemptFromBudget } : {}),
+    ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
+  };
+  return merged.exemptFromBudget || merged.limitLowerPriorityDevices ? merged : undefined;
+};
+
 const buildValidCandidate = (
   request: CreateSmartTaskCandidateRequest,
   deadlineAtMs: number,
+  standing: DeferredObjectiveRescuePermissions | undefined,
 ): DeferredObjectivePlanPreviewCandidate | null => {
   const base: DeferredObjectivePlanPreviewCandidate = request.kind === 'ev_soc'
     ? { kind: 'ev_soc', enforcement: 'soft', targetPercent: request.target, deadlineAtMs }
     : { kind: 'temperature', enforcement: 'soft', targetTemperatureC: request.target, deadlineAtMs };
-  const rescue = buildCandidateRescue(request);
+  const rescue = buildEffectiveRescue(request, standing);
   const candidate: DeferredObjectivePlanPreviewCandidate = rescue ? { ...base, rescue } : base;
   return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
 };
+
+// Read the device's persisted standing rescue (when the app exposes the reader),
+// called through `homey.app` to preserve `this` (mirrors the preview/create
+// call-site rationale). Undefined when no grant stands or the reader is absent.
+const resolveStandingRescue = (
+  homey: WidgetApiContext['homey'],
+  deviceId: string,
+): DeferredObjectiveRescuePermissions | undefined => (
+  typeof homey.app?.getDeviceStandingRescue === 'function'
+    ? homey.app.getDeviceStandingRescue(deviceId)
+    : undefined
+);
 
 const previewReject = (reason: CreateSmartTaskRejectReason): CreateSmartTaskPreviewResponse => ({
   ok: false,
@@ -213,7 +253,15 @@ export const getCreateSmartTaskDevices = async (
   const devices = typeof homey.app?.getCreateSmartTaskCandidateDevices === 'function'
     ? homey.app.getCreateSmartTaskCandidateDevices()
     : [];
-  return buildCreateSmartTaskDevicesPayload({ devices });
+  // Bind the standing-rescue reader (when the app exposes it) so each candidate
+  // carries its current standing permissions as read-only compose context. The
+  // method relies on `this`, so call it through `homey.app` rather than a
+  // detached reference (mirrors the preview/create call-site rationale).
+  const resolveStandingRescue = typeof homey.app?.getDeviceStandingRescue === 'function'
+    ? (deviceId: string): DeferredObjectiveRescuePermissions | undefined =>
+      homey.app?.getDeviceStandingRescue?.(deviceId)
+    : undefined;
+  return buildCreateSmartTaskDevicesPayload({ devices, resolveStandingRescue });
 };
 
 export const previewCreateSmartTask = async (
@@ -231,7 +279,7 @@ export const previewCreateSmartTask = async (
   const deadlineAtMs = resolveDeadline(request, timeZone, nowMs);
   if (deadlineAtMs === null) return previewReject('invalid_ready_by');
 
-  const candidate = buildValidCandidate(request, deadlineAtMs);
+  const candidate = buildValidCandidate(request, deadlineAtMs, resolveStandingRescue(homey, request.deviceId));
   if (!candidate) return previewReject('invalid_candidate');
   const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
@@ -260,7 +308,7 @@ export const createCreateSmartTask = async (
   const deadline = resolveCreateDeadline(request, timeZone, nowMs);
   if (!deadline.ok) return createReject(deadline.reason);
 
-  const candidate = buildValidCandidate(request, deadline.deadlineAtMs);
+  const candidate = buildValidCandidate(request, deadline.deadlineAtMs, resolveStandingRescue(homey, request.deviceId));
   if (!candidate) return createReject('invalid_candidate');
   const result = homey.app.createDeferredObjective(request.deviceId, candidate);
   if (result.ok) return { ok: true };

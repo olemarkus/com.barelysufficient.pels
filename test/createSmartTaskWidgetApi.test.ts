@@ -40,6 +40,7 @@ const evDevice: TargetDeviceSnapshot = {
 
 type AppMock = {
   getCreateSmartTaskCandidateDevices: ReturnType<typeof vi.fn>;
+  getDeviceStandingRescue: ReturnType<typeof vi.fn>;
   previewDeferredObjectivePlan: ReturnType<typeof vi.fn>;
   createDeferredObjective: ReturnType<typeof vi.fn>;
 };
@@ -79,6 +80,26 @@ describe('getCreateSmartTaskDevices', () => {
   it('returns empty when the app method is missing', async () => {
     const payload = await getCreateSmartTaskDevices(buildContext({}));
     expect(payload.state).toBe('empty');
+  });
+
+  it('surfaces each device\'s standing rescue permissions as read context', async () => {
+    const getCreateSmartTaskCandidateDevices = vi.fn(() => [evDevice]);
+    const getDeviceStandingRescue = vi.fn((deviceId: string) => (
+      deviceId === 'ev-1' ? { exemptFromBudget: 'always' as const } : undefined
+    ));
+    const payload = await getCreateSmartTaskDevices(
+      buildContext({ getCreateSmartTaskCandidateDevices, getDeviceStandingRescue }),
+    );
+    expect(getDeviceStandingRescue).toHaveBeenCalledWith('ev-1');
+    if (payload.state !== 'ready') throw new Error('expected ready');
+    expect(payload.devices[0].standingRescue).toEqual({ exemptFromBudget: 'always' });
+  });
+
+  it('omits standingRescue when the app does not expose the reader', async () => {
+    const getCreateSmartTaskCandidateDevices = vi.fn(() => [evDevice]);
+    const payload = await getCreateSmartTaskDevices(buildContext({ getCreateSmartTaskCandidateDevices }));
+    if (payload.state !== 'ready') throw new Error('expected ready');
+    expect(payload.devices[0]).not.toHaveProperty('standingRescue');
   });
 });
 
@@ -196,6 +217,23 @@ describe('previewCreateSmartTask', () => {
     expect(received!.rescue).toBeUndefined();
   });
 
+  it('merges the device standing grant into the preview candidate so feasibility reflects it', async () => {
+    // The user opts in nothing, but the device already stands `exemptFromBudget`.
+    // The preview must project WITH that grant, or a budget-bound task is falsely
+    // reported `cannot_meet` despite the create preserving the standing exemption.
+    let received: DeferredObjectivePlanPreviewCandidate | null = null;
+    const previewDeferredObjectivePlan = vi.fn((_id: string, candidate: DeferredObjectivePlanPreviewCandidate) => {
+      received = candidate;
+      return buildEstimate();
+    });
+    const getDeviceStandingRescue = vi.fn(() => ({ exemptFromBudget: 'always' as const }));
+    await previewCreateSmartTask({
+      ...buildContext({ previewDeferredObjectivePlan, getDeviceStandingRescue }),
+      body: { deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00' },
+    });
+    expect(received!.rescue).toEqual({ exemptFromBudget: 'always' });
+  });
+
   it('rolls a ready-by that already passed today to tomorrow', async () => {
     const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
     const result = await previewCreateSmartTask({
@@ -243,6 +281,28 @@ describe('createCreateSmartTask', () => {
       targetTemperatureC: 65,
       deadlineAtMs: expectedDeadline('07:00'),
     });
+  });
+
+  it('unions a standing grant with the opted-in toggle so create never drops the standing permission', async () => {
+    // Device already stands `limitLowerPriorityDevices` (mode `at_risk`); the user
+    // turns on only budget. The created candidate must carry BOTH — and keep the
+    // standing `at_risk` mode, not flatten it to `always` — or the create's
+    // toggles-only rescue would overwrite and silently revoke the limit grant.
+    let received: DeferredObjectivePlanPreviewCandidate | null = null;
+    const createDeferredObjective = vi.fn((_id: string, candidate: DeferredObjectivePlanPreviewCandidate) => {
+      received = candidate;
+      return { ok: true as const };
+    });
+    const getDeviceStandingRescue = vi.fn(() => ({ limitLowerPriorityDevices: 'at_risk' as const }));
+    const result = await createCreateSmartTask({
+      ...buildContext({ createDeferredObjective, getDeviceStandingRescue }),
+      body: {
+        deviceId: 'heater-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00',
+        exemptFromBudget: true,
+      },
+    });
+    expect(result).toEqual({ ok: true });
+    expect(received!.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'at_risk' });
   });
 
   it('maps an app rejection reason to the response', async () => {

@@ -473,15 +473,14 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
-- [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
-      *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects
-      the compose screen to reflect the standing permissions already granted for the device.
-      *Hypothesis:* because `createDeferredObjective` preserves existing smart-task permissions,
-      a user can read the compose screen as authoritative while it only shows additive opt-ins.
-      *Why it's needed:* surfacing current standing permission state would make the create flow
-      honest when permissions came from Flow cards or the Held-back devices lane.
-      Files: `widgets/create_smart_task/src/public/render.ts`,
-      `widgets/create_smart_task/src/api.ts`, `packages/shared-domain/src/deadlineLabels.ts`.
+- [x] **Create-screen `Extra permissions` opt-out is additive-only.** (done 2026-06-04)
+      The compose screen now surfaces the selected device's CURRENT standing rescue
+      permissions as a read-only "Already allowed (set via Flow): …" line above the
+      toggles, so the section reads as additive on top of standing grants rather than
+      authoritative. Threaded via a new `app.getDeviceStandingRescue` →
+      widget `/devices` payload (`CreateSmartTaskDevice.standingRescue`) →
+      `formatSmartTaskStandingPermissionsLine` (reuses `formatSmartTaskExtraPermissionsValue`).
+      Additive write semantics (the `preserve` policy) unchanged — visibility only.
 
 - [ ] **Surface the learned thermostat deadband to the owner.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) — the

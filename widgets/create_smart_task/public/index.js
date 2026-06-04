@@ -100,6 +100,16 @@
     // breadcrumb, and runtime logs all read identically.
     extraPermissionsTitle: "Extra permissions",
     extraPermissionsHint: "Off unless you turn them on \u2014 only used to hit this deadline.",
+    // Read-only context shown above the toggles when the device ALREADY has
+    // standing permissions. Deliberately route-agnostic ("Already allowed:", not
+    // "set via Flow"): the grant can come from a Flow card OR the rescue-boost lane
+    // ("Get power now" / "Let it run now"), so naming a single route would be wrong
+    // for the other — and this string also feeds runtime log breadcrumbs, so a false
+    // attribution would mislead there too. Names the scope-current state, not how it
+    // got there. Joined with the formatted permission value via
+    // `formatSmartTaskStandingPermissionsLine`; reuses the same canonical permission
+    // labels as the settings-UI breadcrumb so the wording can't drift.
+    standingPermissionsPrefix: "Already allowed:",
     // Shown under the limit-lower-priority toggle when it is disabled: that
     // permission only has any effect alongside the budget one, so it is gated on it.
     limitLowerPriorityNeedsBudget: "Turn on \u201CMay go over daily budget\u201D to use this.",
@@ -189,6 +199,30 @@
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
     limitLowerPriorityDevices: "May limit lower-priority devices"
+  };
+  var SMART_TASK_RESCUE_MODE_SUFFIX = {
+    always: "",
+    at_risk: " if at risk"
+  };
+  var formatSmartTaskExtraPermissionsValue = (rescue) => {
+    const parts = [];
+    if (rescue?.exemptFromBudget) {
+      parts.push(
+        `${SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget}${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.exemptFromBudget]}`
+      );
+    }
+    if (rescue?.limitLowerPriorityDevices) {
+      parts.push(
+        `${SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices}${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.limitLowerPriorityDevices]}`
+      );
+    }
+    if (parts.length === 0) return null;
+    return parts.join(" \xB7 ");
+  };
+  var formatSmartTaskStandingPermissionsLine = (rescue) => {
+    const value = formatSmartTaskExtraPermissionsValue(rescue);
+    if (value === null) return null;
+    return `${CREATE_SMART_TASK_WIDGET_COPY.standingPermissionsPrefix} ${value}`;
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
@@ -532,7 +566,8 @@
           goalStep: 1,
           defaultGoal: 80,
           currentValue: 42,
-          supportsLimitLowerPriority: true
+          supportsLimitLowerPriority: true,
+          standingRescue: { exemptFromBudget: "always" }
         }
       ]
     },
@@ -958,6 +993,8 @@
     const {
       extraPermsTitle,
       extraPermsHint,
+      standingPermsEl,
+      permBudgetToggle,
       permBudgetInput,
       permBudgetLabel,
       permLimitToggle,
@@ -966,15 +1003,22 @@
       permLimitNote
     } = targets;
     extraPermsTitle.textContent = C.extraPermissionsTitle;
-    extraPermsHint.textContent = C.extraPermissionsHint;
+    const standing = view.device.standingRescue;
+    const standingBudget = Boolean(standing?.exemptFromBudget);
+    const standingLimit = Boolean(standing?.limitLowerPriorityDevices);
+    setLine(standingPermsEl, formatSmartTaskStandingPermissionsLine(standing));
+    const offerBudget = !standingBudget;
+    setVisible(permBudgetToggle, offerBudget);
     permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
     permBudgetInput.checked = view.exemptFromBudget;
+    const budgetActive = standingBudget || view.exemptFromBudget;
     permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
-    const offerLimit = view.device.supportsLimitLowerPriority;
+    const offerLimit = view.device.supportsLimitLowerPriority && !standingLimit;
     setVisible(permLimitToggle, offerLimit);
     permLimitInput.checked = view.limitLowerPriorityDevices;
-    permLimitInput.disabled = !view.exemptFromBudget;
-    setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
+    permLimitInput.disabled = !budgetActive;
+    setLine(permLimitNote, offerLimit && !budgetActive ? C.limitLowerPriorityNeedsBudget : null);
+    setLine(extraPermsHint, offerBudget || offerLimit ? C.extraPermissionsHint : null);
   };
   var renderCompose = (targets, view) => {
     const { device, goal, readyById } = view;
@@ -1174,6 +1218,8 @@
       readyByEchoEl: "[data-ready-by-echo]",
       extraPermsTitle: "[data-extra-perms-title]",
       extraPermsHint: "[data-extra-perms-hint]",
+      standingPermsEl: "[data-standing-perms]",
+      permBudgetToggle: "[data-perm-budget]",
       permBudgetLabel: "[data-perm-budget-label]",
       permLimitToggle: "[data-perm-limit]",
       permLimitLabel: "[data-perm-limit-label]",

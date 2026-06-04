@@ -3,6 +3,7 @@ import {
   CREATE_SMART_TASK_READY_BY_PRESETS,
   SMART_TASK_EXTRA_PERMISSION_LABELS,
   formatEnergyEstimateKWh,
+  formatSmartTaskStandingPermissionsLine,
   formatDeadlineCostMetaLine,
   formatSmartTaskGoalValue,
   formatSmartTaskGoalContextLine,
@@ -84,6 +85,8 @@ export type RenderTargets = {
   // Extra permissions disclosure
   extraPermsTitle: HTMLElement;
   extraPermsHint: HTMLElement;
+  standingPermsEl: HTMLElement;
+  permBudgetToggle: HTMLElement;
   permBudgetInput: HTMLInputElement;
   permBudgetLabel: HTMLElement;
   permLimitToggle: HTMLElement;
@@ -259,20 +262,42 @@ const renderExtraPermissions = (
   view: Extract<ViewState, { kind: 'compose' }>,
 ): void => {
   const {
-    extraPermsTitle, extraPermsHint,
-    permBudgetInput, permBudgetLabel,
+    extraPermsTitle, extraPermsHint, standingPermsEl,
+    permBudgetToggle, permBudgetInput, permBudgetLabel,
     permLimitToggle, permLimitInput, permLimitLabel, permLimitNote,
   } = targets;
   extraPermsTitle.textContent = C.extraPermissionsTitle;
-  extraPermsHint.textContent = C.extraPermissionsHint;
+  // Read-only context: the device's CURRENT standing permissions, so the toggles
+  // below read as additive on top — not the whole picture. Suppressed (line
+  // hidden) when the device has no standing grant, so the section behaves as before.
+  const standing = view.device.standingRescue;
+  const standingBudget = Boolean(standing?.exemptFromBudget);
+  const standingLimit = Boolean(standing?.limitLowerPriorityDevices);
+  setLine(standingPermsEl, formatSmartTaskStandingPermissionsLine(standing));
+
+  // A permission that ALREADY stands is shown only on the read-only line above,
+  // never ALSO as an opt-in toggle — an off checkbox echoing an "Already allowed"
+  // line reads as a bug/foot-gun. The `preserve` write policy means omitting the
+  // toggle never revokes the standing grant, so dropping it is safe.
+  const offerBudget = !standingBudget;
+  setVisible(permBudgetToggle, offerBudget);
   permBudgetLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget;
   permBudgetInput.checked = view.exemptFromBudget;
+  // Budget exemption counts as active for gating the limit toggle when it already
+  // stands OR the user just turned it on this session.
+  const budgetActive = standingBudget || view.exemptFromBudget;
+
   permLimitLabel.textContent = SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices;
-  const offerLimit = view.device.supportsLimitLowerPriority;
+  const offerLimit = view.device.supportsLimitLowerPriority && !standingLimit;
   setVisible(permLimitToggle, offerLimit);
   permLimitInput.checked = view.limitLowerPriorityDevices;
-  permLimitInput.disabled = !view.exemptFromBudget;
-  setLine(permLimitNote, offerLimit && !view.exemptFromBudget ? C.limitLowerPriorityNeedsBudget : null);
+  permLimitInput.disabled = !budgetActive;
+  setLine(permLimitNote, offerLimit && !budgetActive ? C.limitLowerPriorityNeedsBudget : null);
+
+  // When every applicable permission already stands (no toggle is offered), the
+  // "Off unless you turn them on" hint would be misleading — hide it; the standing
+  // line alone tells the story.
+  setLine(extraPermsHint, offerBudget || offerLimit ? C.extraPermissionsHint : null);
 };
 
 const renderCompose = (
