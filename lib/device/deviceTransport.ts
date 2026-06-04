@@ -1822,6 +1822,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 nextSnapshot: snapshot,
                 devices: effectiveList,
                 logger: this.logger,
+                debugStructured: this.debugStructured,
             });
             this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
             // Skip both the snapshot commit AND the raw-device cache update when the

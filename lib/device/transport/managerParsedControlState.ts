@@ -51,11 +51,10 @@ export function resolveDeviceParsedControlState(params: {
   } = params;
   const observedCurrentOn = getCurrentOn({ deviceClassKey, capabilityObj, controlCapabilityId });
   const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, controlCapabilityId });
-  const candidateCurrentOn = observedCurrentOn ?? (
-    invalidControlPayload
-      ? resolvePreviousCurrentOn({ previousSnapshot, controlCapabilityId })
-      : true
-  );
+  // `currentOn` ("whether the device may draw power") is strictly `boolean`, so
+  // an unobserved control needs a fallback — see `resolveUnobservedControlFallback`.
+  const candidateCurrentOn = observedCurrentOn
+    ?? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, controlCapabilityId });
   const parsedControlState = resolveParsedControlState({
     debugStructured,
     deviceId,
@@ -84,6 +83,29 @@ export function resolveDeviceParsedControlState(params: {
     canSetControl: parsedControlState.canSetControl,
     observedCurrentOn,
   };
+}
+
+function resolveUnobservedControlFallback(params: {
+  invalidControlPayload: boolean;
+  previousSnapshot?: TargetDeviceSnapshot;
+  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+}): boolean | undefined {
+  const { invalidControlPayload, previousSnapshot, controlCapabilityId } = params;
+  // A wrong-typed value is a different anomaly — latch the previous observation
+  // (coupled to device-drop handling).
+  if (invalidControlPayload) return resolvePreviousCurrentOn({ previousSnapshot, controlCapabilityId });
+  // Binary device (control capability present) with a missing value → the
+  // should-never-happen anomaly → non-optimistic `false` (logged at error). We
+  // never fabricate an optimistic `true`: that let an unobserved load look
+  // already-restored.
+  if (controlCapabilityId !== undefined) return false;
+  // No control capability NOW. If the device was binary on the previous
+  // snapshot, this is a transient capability drop (a partial update) — preserve
+  // the prior state rather than synthesising an on-transition.
+  if (previousSnapshot?.controlCapabilityId !== undefined) return previousSnapshot.currentOn;
+  // Genuinely non-binary (no off-switch, setpoint-controlled) → `true`: it may
+  // always draw, so it must stay sheddable (a `false` reads as 0-draw).
+  return true;
 }
 
 function resolvePreviousCurrentOn(params: {

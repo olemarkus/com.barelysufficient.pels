@@ -492,6 +492,7 @@ describe('MyApp initialization', () => {
 
   it('emits stepped_feedback_reported event for the first reported step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -518,6 +519,7 @@ describe('MyApp initialization', () => {
 
   it('emits stepped_feedback_confirmed event when reported step matches pending desired step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -552,6 +554,7 @@ describe('MyApp initialization', () => {
 
   it('emits stepped_feedback_confirmed with stale=true for delayed feedback matching desired step', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -598,6 +601,7 @@ describe('MyApp initialization', () => {
 
   it('emits stepped_feedback_external_change when reported step changes outside PELS', async () => {
     const heater = new MockDevice('dev-1', 'Water heater', ['onoff']);
+    heater.setCapabilityValue('onoff', true); // Stepped-load device under control is on → honest currentOn=true.
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });

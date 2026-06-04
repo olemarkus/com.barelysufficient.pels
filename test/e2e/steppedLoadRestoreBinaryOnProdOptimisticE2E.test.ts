@@ -5,12 +5,14 @@
  *
  * This models the EXACT verified-from-logs prod failure sequence. The
  * load-bearing condition: the `onoff` capability value is ABSENT in the mock
- * Homey device. The REAL parseDevice therefore yields the OPTIMISTIC
- * `snapshot.currentOn === true` and NO trusted binary observation
- * (`binaryControlObservation === undefined`, observed binary state 'unknown').
- * That optimism is the prod trigger: the planner keeps treating the device as
- * on, and before the fix the executor's restore path read the same optimistic
- * currentOn and short-circuited the binary onoff=true dispatch.
+ * Homey device (a should-never-happen anomaly). The REAL parseDevice now
+ * honestly resolves `snapshot.currentOn === false` with NO trusted binary
+ * observation (`binaryControlObservation === undefined`, observed binary state
+ * 'unknown'). The missing binary observation is the prod trigger: historically
+ * the parser fabricated an optimistic `currentOn:true`, and before the fix the
+ * executor's restore path read that optimistic currentOn and short-circuited the
+ * binary onoff=true dispatch. The executor now keys the defensive turn-on off the
+ * 'unknown' binary observation, so the onoff=true write is issued regardless.
  *
  * It drives the REAL executor pipeline (PlanExecutor → executable-plan
  * projection → steppedLoadExecutor → binary-control dispatch) and the REAL
@@ -30,11 +32,12 @@
  *     write of the native max_power step reaches the boundary (prod's
  *     max_power_3000=1 write at 20:00:02), binary deferred.
  *   - Between cycles: native step materializes to LOW (max_power_2000
- *     'low_power' → reportedStepId='low'); onoff STAYS ABSENT (currentOn remains
- *     optimistic TRUE — the device never actually turned on). Clock advances
- *     ~5 min.
- *   - Cycle 2 + Cycle 3: re-run on the SAME executor with materialized-low,
- *     optimistic-on. The load-bearing prod symptom reproduces: binary
+ *     'low_power' → reportedStepId='low'); onoff STAYS ABSENT (currentOn stays the
+ *     honest FALSE, binary observation still 'unknown' — the device never actually
+ *     turned on). Clock advances ~5 min.
+ *   - Cycle 2 + Cycle 3: re-run on the SAME executor with materialized-low and the
+ *     still-missing binary observation. The load-bearing prod symptom (before the
+ *     fix) was that binary
  *     onoff=true is NEVER issued (prod's 17-min stuck window: restore admitted
  *     every cycle, no turn-on). NOTE: this harness re-issues the native
  *     max_power step each cycle, where prod suppressed it once the device had
@@ -109,18 +112,18 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
 // The native `max_power_2000` capability value the device reports. 'high_power'
 // → parsed reportedStepId 'max'; 'low_power' → 'low'. onoff is ABSENT in both
 // (capability advertised but capabilitiesObj.onoff unset), so the REAL parser
-// yields optimistic currentOn:true + NO binaryControlObservation.
+// honestly resolves currentOn:false + NO binaryControlObservation.
 const buildHoiaxDevice = (params: { nativeStepValue: unknown; freshIso: string }): HomeyDeviceLike => {
   const { nativeStepValue, freshIso } = params;
   const capabilitiesObj: Record<string, CapabilityValue<unknown> | undefined> = {
     measure_power: { value: 0, lastUpdated: freshIso },
     target_temperature: { value: 65, setable: true, lastUpdated: freshIso },
     measure_temperature: { value: 60, lastUpdated: freshIso },
-    // Prod-observed OPTIMISTIC trigger: onoff capability VALUE is ABSENT
-    // (capabilitiesObj.onoff left unset). The capability is still advertised in
-    // `capabilities`, so controlCapabilityId resolves to 'onoff', but the
-    // parser has no boolean to trust → currentOn optimistic true,
-    // binaryControlObservation undefined.
+    // Prod-observed trigger: onoff capability VALUE is ABSENT (a
+    // should-never-happen anomaly; capabilitiesObj.onoff left unset). The
+    // capability is still advertised in `capabilities`, so controlCapabilityId
+    // resolves to 'onoff', but the parser has no boolean to trust → currentOn
+    // honest false, binaryControlObservation undefined (observed state 'unknown').
     // CONNECTED_200 profile: off(0)/low(700)/medium(1300)/max(2000).
     max_power_2000: { value: nativeStepValue, setable: true, lastUpdated: freshIso },
   };
@@ -214,7 +217,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
     // Route step writes through the actuator over the SAME device-manager stepped
-    // method, preserving the prod-optimistic restore behavior this e2e asserts.
+    // method, preserving the prod restore behavior this e2e asserts.
     actuator: createDeviceActuator({
       setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
       applyDeviceTargets: async () => undefined,
@@ -244,18 +247,20 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
 };
 
 // A deferred objective wants this Høiax kept on at step 'low'. The plan device
-// carries the optimistic currentOn:true (the planner sees the same optimism the
-// parser produced) and the selected step the planner observed this cycle (prod:
-// 'max' first, then 'low' once the native step materialized).
+// mirrors the honestly-parsed snapshot (currentOn:false, no trusted binary
+// observation because the onoff readback is absent) and the selected step the
+// planner observed this cycle (prod: 'max' first, then 'low' once the native
+// step materialized).
 const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
   devices: [{
     id: DEVICE_ID,
     name: 'Connected 300',
     deviceClass: 'water_heater',
-    // Optimistic on — mirrors the parsed snapshot's currentOn:true (the prod
-    // planner treats the device as on because the onoff readback is absent).
-    currentOn: true,
+    // Honest false — mirrors the parsed snapshot's currentOn:false (the onoff
+    // readback is absent, so there is no trusted binary observation; the
+    // defensive turn-on keys off the 'unknown' observation, not currentOn).
+    currentOn: false,
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
@@ -280,13 +285,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('stepped-load restore binary onoff — prod-EXACT optimistic-currentOn multi-cycle e2e', () => {
-  it('eventually writes onoff=true across cycles when restoring a Høiax (max->low, optimistic-on, native)', async () => {
+describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-cycle e2e', () => {
+  it('eventually writes onoff=true across cycles when restoring a Høiax (max->low, missing-onoff anomaly, native)', async () => {
     const logger = createLogger();
 
     // Cycle 1 clock + snapshot: native step at MAX, onoff readback ABSENT so the
-    // parser yields optimistic currentOn:true. Drive the executor's Date.now()
-    // with fake timers from this base.
+    // parser honestly resolves currentOn:false with no binary observation. Drive
+    // the executor's Date.now() with fake timers from this base.
     const cycle1Iso = '2026-06-03T12:00:00.000Z';
     const cycle1Ms = Date.parse(cycle1Iso);
     vi.useFakeTimers();
@@ -299,9 +304,10 @@ describe('stepped-load restore binary onoff — prod-EXACT optimistic-currentOn 
       logger,
     });
 
-    // Pin the prod-observed OPTIMISTIC parsed state (this is the trigger):
-    // currentOn true, NO trusted binary observation, native step at max.
-    expect(cycle1Snapshot.currentOn).toBe(true);
+    // Pin the prod-observed parsed state (the missing-onoff anomaly is the
+    // trigger): currentOn honest false, NO trusted binary observation (observed
+    // state 'unknown'), native step at max.
+    expect(cycle1Snapshot.currentOn).toBe(false);
     expect(cycle1Snapshot.binaryControlObservation).toBeUndefined();
     expect(cycle1Snapshot.controlModel).toBe('stepped_load');
     expect(cycle1Snapshot.controlCapabilityId).toBe('onoff');
@@ -318,9 +324,9 @@ describe('stepped-load restore binary onoff — prod-EXACT optimistic-currentOn 
 
     // ── Between cycles: the native step materializes to 'low' (the executor's
     // step write took effect at the device). onoff STAYS ABSENT (the device did
-    // NOT turn on — the whole point), so currentOn stays optimistic true.
-    // Advance the clock ~5 minutes past the 60-300s restore cooldown and
-    // re-parse via the REAL parseDevice.
+    // NOT turn on — the whole point), so currentOn stays the honest false and the
+    // binary observation stays 'unknown'. Advance the clock ~5 minutes past the
+    // 60-300s restore cooldown and re-parse via the REAL parseDevice.
     const cycle2Ms = cycle1Ms + 5 * 60 * 1000;
     const cycle2Iso = new Date(cycle2Ms).toISOString();
     vi.setSystemTime(cycle2Ms);
@@ -330,15 +336,16 @@ describe('stepped-load restore binary onoff — prod-EXACT optimistic-currentOn 
       nowMs: cycle2Ms + 1_000,
       logger,
     });
-    // The materialized-low, still-optimistic-on prod state.
-    expect(cycle2Snapshot.currentOn).toBe(true);
+    // The materialized-low, still-missing-onoff prod state (currentOn honest
+    // false, binary observation still absent).
+    expect(cycle2Snapshot.currentOn).toBe(false);
     expect(cycle2Snapshot.binaryControlObservation).toBeUndefined();
     expect(cycle2Snapshot.reportedStepId).toBe('low');
     snapshotHolder.current = cycle2Snapshot;
 
     await executor.applyPlanActions(buildRestoreToLowPlan('low'), 'plan');
 
-    // ── CYCLE 3: same materialized-low, optimistic-on state, another ~5 min on.
+    // ── CYCLE 3: same materialized-low, missing-onoff state, another ~5 min on.
     const cycle3Ms = cycle2Ms + 5 * 60 * 1000;
     const cycle3Iso = new Date(cycle3Ms).toISOString();
     vi.setSystemTime(cycle3Ms);
