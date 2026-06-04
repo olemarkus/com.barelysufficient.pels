@@ -5,6 +5,7 @@ import {
   PLAN_PRICE_WIDGET_ARIA,
   PLAN_PRICE_WIDGET_EMPTY,
   formatPlanPriceSummary,
+  formatPlanPriceSummaryParts,
   resolvePlanPriceCostDisplay,
 } from '../../packages/shared-domain/src/planPriceWidgetCopy';
 
@@ -99,5 +100,27 @@ describe('plan price widget copy', () => {
       costUnit: 'kr',
       tone: null,
     })).toBe('Projected 5.0 kWh');
+  });
+
+  test('splits the summary into headline + toned status parts (single source with the flat line)', () => {
+    expect(formatPlanPriceSummaryParts({
+      projectedKwh: 12.42,
+      projectedCost: 9.8,
+      costUnit: 'kr',
+      tone: 'on_track',
+    })).toEqual({
+      headline: 'Projected 12.4 kWh · 9.80 kr',
+      status: 'On track',
+      tone: 'on_track',
+    });
+
+    // No tone → no status, and the flat line equals the headline alone.
+    const params = { projectedKwh: 5, projectedCost: 4, costUnit: '', tone: null } as const;
+    expect(formatPlanPriceSummaryParts(params)).toEqual({
+      headline: 'Projected 5.0 kWh',
+      status: '',
+      tone: null,
+    });
+    expect(formatPlanPriceSummary(params)).toBe('Projected 5.0 kWh');
   });
 });

@@ -21,25 +21,68 @@ body {
   padding: var(--pw-su-2, 8px);
 }
 
-/* ----- Projected summary line ----- */
+/* ----- Projected summary (two-tier) ----- */
 
 .summary {
-  /* Hold the full status legible at real device widths (320–480 px): never let
+  /* Hold the full summary legible at real device widths (320–480 px): never let
      the flex chart below squeeze it (flex-shrink: 0), and let it wrap instead of
      clipping. `overflow-wrap: anywhere` keeps a long number/unit from spilling
-     past the tile even when the segments can't break on the ` · ` separators. */
+     past the tile even when the segments can't break on the ` · ` separators.
+     Stacks the prominent headline over a toned status chip. */
+  display: flex;
   flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pw-su-1, 4px);
   margin: 0;
-  font-size: var(--pw-font-size-title, 17px);
-  line-height: var(--pw-line-title, 24px);
-  font-weight: var(--pw-weight-medium, 500);
-  color: var(--pw-text, #1f252a);
   white-space: normal;
   overflow-wrap: anywhere;
 }
 
-.summary:empty {
+/* Collapse the whole header when there's nothing to show. The container always
+   holds its two child spans, so `:empty` can't fire; the renderer toggles
+   `hidden`, and an author rule is needed because `display: flex` above outranks
+   the UA `[hidden] { display: none }`. */
+.summary[hidden] {
   display: none;
+}
+
+/* Tier 1: prominent projected number(s). */
+.summary__headline {
+  font-size: var(--pw-font-size-title, 17px);
+  line-height: var(--pw-line-title, 24px);
+  font-weight: var(--pw-weight-bold, 700);
+  color: var(--pw-text, #1f252a);
+}
+
+/* Tier 2: status as a toned chip. A neutral wash carries the pill; the text/tint
+   colour switches per tone (set by the `summary--*` modifier on this element).
+   Built minimally from Homey tokens — same neutral-wash + tone language the chart
+   already uses; never the settings-UI `.plan-chip`/`--pels-*`. */
+.summary__status {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--pw-su-1, 4px) var(--pw-su-2, 8px);
+  border-radius: var(--pw-radius-small, 6px);
+  background: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+  font-size: var(--pw-font-size-body, 14px);
+  line-height: var(--pw-line-body, 20px);
+  font-weight: var(--pw-weight-medium, 500);
+  color: var(--pw-text-muted, #6d7680);
+}
+
+.summary__status[hidden] {
+  display: none;
+}
+
+.summary--on-track .summary__status {
+  background: color-mix(in srgb, var(--pw-success, #58c56a) 14%, transparent);
+  color: var(--pw-text-success, #2f8f47);
+}
+
+.summary--over .summary__status {
+  background: color-mix(in srgb, var(--pw-danger, #f0696c) 14%, transparent);
+  color: var(--pw-text-danger, #f0696c);
 }
 
 /* ----- AM/PM segmented control ----- */

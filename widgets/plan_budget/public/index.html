@@ -9,7 +9,10 @@
   </head>
   <body class="homey-widget-full">
     <main id="widget-root" class="homey-widget widget-root">
-      <p id="summary" class="summary" data-summary aria-live="polite"></p>
+      <div id="summary" class="summary" data-summary aria-live="polite">
+        <span class="summary__headline" data-summary-headline></span>
+        <span class="summary__status" data-summary-status hidden></span>
+      </div>
       <div
         id="tabs"
         class="tabs"
@@ -39,7 +42,7 @@
         id="chart"
         class="chart"
         viewBox="0 0 480 360"
-        preserveAspectRatio="xMidYMid meet"
+        preserveAspectRatio="none"
         role="img"
         aria-label="Budget and price chart"
       ></svg>
