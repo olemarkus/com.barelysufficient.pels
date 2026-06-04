@@ -77,6 +77,27 @@ surface, not the scope. State that first because it resolves the only genuine am
 - One function that touches the **clock or SDK** → **integration**, not unit.
 - "Whole app" is a *consequence* of the external-seam rule for e2e, not its definition.
 
+## Reshaping an integration test into e2e: only where there's an observable effect
+
+A common temptation is to treat every `createApp` + `getLatestTargetSnapshotForTests` /
+`getLatestPlanSnapshotForTests` spec as "an e2e wearing integration clothes." It usually
+isn't. The deciding question is **does the scenario produce an externally observable effect?**
+
+- **Control / effect behaviour** (shed turns a device off, a command is issued, a capability is
+  written, a notification fires) → **reshapeable to e2e.** Drive the input through the SDK seam
+  (e.g. report total power via the real `getEnergyLiveReport` poll, not by reaching into
+  `powerSamplePipeline.recordPowerSample`), and assert on the SDK effect (`api.put(...)`) +
+  structured logs. Drop the snapshot/plan reads. See
+  `test/e2e/onoffShedControl.e2e.test.ts` (extracted from the on/off integration spec).
+- **Classification / estimation internals** (which power source PELS picked, `expectedPowerKw`,
+  whether a device is included in the snapshot) where the scenario **takes no action** → **stays
+  integration.** There is no SDK effect or distinctive log to observe, so a "pure black-box"
+  rewrite would have to *fabricate* observability (add production logs just to test). Don't —
+  that's the tail wagging the dog. The on/off integration spec keeps exactly these cases.
+
+So a reshape often **splits** a spec: the effect-producing cases move to `e2e/`; the
+classification cases stay in `integration/`. Don't force-convert a whole file.
+
 ## Folder layout
 
 ```
