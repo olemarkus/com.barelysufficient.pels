@@ -394,5 +394,8 @@
   },
   "2.11.2": {
     "en": "Tweaks for widgets and improved trajectory estimates."
+  },
+  "2.11.3": {
+    "en": "Fixed a bug in the smart task planner. Also includes various UI tweaks."
   }
 }
