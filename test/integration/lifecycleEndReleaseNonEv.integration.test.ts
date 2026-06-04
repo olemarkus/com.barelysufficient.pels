@@ -1,6 +1,6 @@
 /**
  * Integration test for the smart-task lifecycle-end release path for non-EV
- * devices. Mirrors the EaseeMockCharger pattern in `evDevices.integration.test.ts`
+ * devices. Mirrors the EaseeMockCharger pattern in `test/integration/evDevices.integration.test.ts`
  * for two non-EV shapes:
  *   1. Binary heater (`controlCapabilityId: 'onoff'`, shedBehavior `turn_off`).
  *   2. Thermostat (`target_temperature` capability, shedBehavior
@@ -27,21 +27,21 @@
  * production-faithful. Closes TODO §"Integration test: thermostat + binary
  * device lifecycle-end release."
  */
-import { applyShedReleaseIntent } from '../lib/executor/shedReleaseActuation';
-import { applyBinarySheddingToDevice, type PlanExecutorBinaryContext } from '../lib/executor/binaryExecutor';
-import type { PlanExecutorTargetContext } from '../lib/executor/targetExecutor';
-import { createPlanEngineState } from '../lib/plan/planState';
+import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';
+import { applyBinarySheddingToDevice, type PlanExecutorBinaryContext } from '../../lib/executor/binaryExecutor';
+import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutor';
+import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   createPendingBinaryCommandStore,
   type PendingBinaryCommandStore,
-} from '../lib/observer/pendingBinaryCommands';
-import type { DeviceObservation } from '../lib/device/deviceObservation';
+} from '../../lib/observer/pendingBinaryCommands';
+import type { DeviceObservation } from '../../lib/device/deviceObservation';
 import type {
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
-} from '../lib/executor/executablePlan';
+} from '../../lib/executor/executablePlan';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { ShedAction } from '../lib/plan/planTypes';
+import type { ShedAction } from '../../lib/plan/planTypes';
 
 // ---------------------------------------------------------------------------
 // Minimal mock device scaffolding (~80 LOC). The EaseeMockCharger pattern is

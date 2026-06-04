@@ -8,6 +8,7 @@ Repo-wide instructions only:
 - For settings-only work, start from `packages/settings-ui` and stay out of `app.ts`, `drivers/`, `flowCards/`, and `lib/` unless a missing contract blocks the task.
 - For Settings UI Material Design work, use `@material/web` components when a matching component exists and fits the semantics. If Material Web is not a fit, reuse or create a shared PELS primitive built on the existing design tokens; do not add page-local custom chips, cards, buttons, or segmented controls.
 - Runtime code uses TypeScript with strict mode and vitest with the mock SDK in `test/mocks/homey.ts`. If a runtime change uses a new Homey SDK API, update that mock.
+- Tests are classified into three tiers — unit / integration / e2e. Before adding or moving a test, read `notes/testing-taxonomy.md` (and `test/AGENTS.md` for the short rules). New runtime specs go in `test/unit/`, `test/integration/`, or `test/e2e/` by tier; shared mocks/helpers/setup stay at `test/` root.
 - When `.homeycompose` changes, `homey app validate` updates root `app.json`; include that generated change.
 - Runtime logging is structured (pino, `lib/logging/`). New logs go through `logger.info/warn/error/debug()` with stable field names. Legacy `this.log()` / `this.logDebug()` calls exist but must not be added to. Debug topics in `lib/utils/debugLogging.ts` gate whether debug events fire.
 - Internal engineering notes for Homey state trust, freshness, and drift/reconcile pitfalls live under `notes/`. Read those before changing snapshot/realtime merge logic.

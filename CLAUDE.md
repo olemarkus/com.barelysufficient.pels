@@ -119,20 +119,24 @@ When `.homeycompose/` changes, run `homey app validate` — this regenerates roo
 ### Testing
 
 ```bash
-npm run test:unit           # Fast vitest suite (no coverage, lighter config)
-npm run test:unit:ci        # Full vitest suite with coverage
+npm run test:unit           # Whole fast vitest suite, all tiers (no coverage, lighter config)
+npm run test:unit:ci        # Whole vitest suite with coverage
 npm run test:unit:tz        # Timezone-sensitive tests
+npm run test:integration    # test/integration/ tier only (fast)
+npm run test:e2e:runtime    # test/e2e/ runtime SDK-boundary tier only (fast)
 npm run test:ui             # Settings UI vitest tests
-npm run test:e2e            # Playwright E2E (chromium + firefox mobile)
+npm run test:e2e            # Settings-UI Playwright E2E (chromium + firefox mobile); alias: test:e2e:ui
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
+
+**Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Specs live in `test/unit/`, `test/integration/`, `test/e2e/`; shared mocks/helpers/setup stay at `test/` root. Most flat `test/*.test.ts` files are not yet migrated — move the one you touch into its tier folder (bumping import depth). Full reference: `notes/testing-taxonomy.md`.
 
 **Coverage threshold:** 80% across branches, functions, lines, statements. Collected from all `*.ts` files under `<rootDir>` (excluding `test/**`, `settings/**`, `packages/**`), which includes root entry points (`app.ts`, `api.ts`), `lib/**`, `flowCards/**`, and `drivers/**`.
 
 **Testing rules:**
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
 - Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API.
-- **Deferred-objective / planner e2e simulate only the Homey SDK boundary** (device temperature/SoC, prices, clock) and drive the real bridge + recorder + admission — never mock PELS internals like `aheadOfHourMilestone` or the fresh/frozen dispatch. Mocking those confirms your assumptions instead of the system's behaviour (it once turned a non-existent cold-start "catastrophe" into a phantom P0). See `lib/objectives/deferredObjectives/AGENTS.md` and `test/deferredObjectiveColdStartSdkE2E.test.ts`.
+- **Deferred-objective / planner e2e simulate only the Homey SDK boundary** (device temperature/SoC, prices, clock) and drive the real bridge + recorder + admission — never mock PELS internals like `aheadOfHourMilestone` or the fresh/frozen dispatch. Mocking those confirms your assumptions instead of the system's behaviour (it once turned a non-existent cold-start "catastrophe" into a phantom P0). See `lib/objectives/deferredObjectives/AGENTS.md` and `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts`.
 
 ### Linting and Checks
 

@@ -276,7 +276,7 @@ and the per-hour release above retires each expensive hour as it arrives.
   not when not ahead; not when no later hour beats the margin; not into the deadline-reserve hour;
   not when current price ≤ 0; flags on a negative later price; not when the current hour carries
   no booked energy.
-- `deferredObjectiveAdmission.unit.test.ts` (unchanged): the consumer path still idles /
+- `test/unit/deferredObjectiveAdmission.unit.test.ts` (unchanged): the consumer path still idles /
   shed_releases / ev_pauses on the flag — the regression guard that the recorder stays insulated
   and the admission contract is intact.
 
@@ -323,7 +323,7 @@ every cycle, so a shrinking cheap window — or a device slower than its climb s
 resumes driving; the shed/restore cooldowns backstop control flap. Classification only — like the
 other release flags it never writes a revision, so the recorder stays insulated.
 
-**Tests.** `deferredObjectiveColdStartDumpE2E.test.ts` drives the real planner + admission against
+**Tests.** `test/e2e/deferredObjectiveColdStartDumpE2E.test.ts` drives the real planner + admission against
 a bang-bang thermal model whose element (5 kW) ≫ floor step (1.25 kW) over the
 cold-start/expensive-then-cheap scenario and asserts the expensive hours carry ~no load (RED
 before the fix). `deferredObjectiveHorizon.test.ts` pins the gate branches (releases when the
@@ -371,7 +371,7 @@ fires and admission idles the device for the rest of the hour. So:
 Do **not** "fix" this by mocking. An e2e that pins `aheadOfHourMilestone` (or otherwise mocks the
 fresh/frozen dispatch or the allocator) **severs the backstop** and resurrects the phantom
 catastrophe — it confirms the reviewer's assumption instead of the system's behaviour. The
-authoritative check is `test/deferredObjectiveColdStartSdkE2E.test.ts`: it simulates **only** the
+authoritative check is `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts`: it simulates **only** the
 Homey SDK boundary (device temperature, prices, clock) and drives the real bridge + recorder +
 admission, asserting the backstop bounds peak consumption to the floor bookings. Treat any future
 claim of a "cold-start mid-hour regression" as unproven until it reproduces through that

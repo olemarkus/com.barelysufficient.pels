@@ -18,17 +18,17 @@
 // lands in the cheap hours and the expensive current hour is left unbooked → the
 // device idles in it. Everything is held equal across scenarios except the price
 // curve, which is flipped/scaled to prove the comparison is relative, not absolute.
-import { planDeferredObjectiveHorizon } from '../lib/objectives/deferredObjectives';
-import { buildDeferredObjectivePolicyHorizon } from '../lib/objectives/deferredObjectives/policyHorizon';
-import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
+import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
   DeferredObjective,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
-} from '../lib/objectives/deferredObjectives';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { PlanInputDevice } from '../packages/planner-types/src/planInputDevice';
+} from '../../lib/objectives/deferredObjectives';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_START_MS = Date.UTC(2026, 0, 1, 0);

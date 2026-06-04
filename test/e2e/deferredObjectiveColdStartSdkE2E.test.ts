@@ -21,13 +21,13 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
-} from '../lib/objectives/deferredObjectives';
-import { buildDeferredObjectiveDiagnostics } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
-import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
-import { DeferredObjectiveActivePlanRecorder } from '../lib/objectives/deferredObjectives/activePlanRecorder';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
+} from '../../lib/objectives/deferredObjectives';
+import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;

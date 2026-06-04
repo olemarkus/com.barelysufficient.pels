@@ -16,16 +16,16 @@
 // (1.25 kW). It asserts the DESIRED behavior — the expensive hours carry ~no load
 // — so it is RED on today's code (which dumps into the expensive hour) and GREEN
 // once feasibility is sized against the device's real throughput.
-import { planDeferredObjectiveHorizon } from '../lib/objectives/deferredObjectives';
-import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
   DeferredObjective,
   DeferredObjectiveHorizonBucket,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
-} from '../lib/objectives/deferredObjectives';
-import type { PlanInputDevice } from '../packages/planner-types/src/planInputDevice';
+} from '../../lib/objectives/deferredObjectives';
+import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY = Date.UTC(2026, 0, 1, 0);

@@ -96,7 +96,7 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
   `plugged_in_charging` and resume when `plugged_in_paused`;
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableEvDeadlineActuation`). Integration tests under
-  `test/evDevices.integration.test.ts` cover the resume and pause transitions
+  `test/integration/evDevices.integration.test.ts` cover the resume and pause transitions
   (e.g. `deferredReleaseIntent: 'ev_resume'` for a paused plugged-in charger).
 
 ## Where the trust gap is today
@@ -122,11 +122,11 @@ EV-aware executor intent (`ev_resume` / `ev_pause`) is emitted by admission,
 propagated through the planner, and applied by the binary executor. A
 planned EV bucket resumes a paused plugged-in charger; an idle bucket
 pauses a charging one. Cooldowns and the stale-power failsafe are honored.
-Integration coverage lives in `test/evDevices.integration.test.ts`.
+Integration coverage lives in `test/integration/evDevices.integration.test.ts`.
 
 Files (for reference): `lib/plan/admission/deferredObjective.ts`,
 `lib/plan/planBuilder.ts`, `lib/executor/binaryExecutor.ts`,
-`lib/executor/planExecutor.ts`, `test/evDevices.integration.test.ts`.
+`lib/executor/planExecutor.ts`, `test/integration/evDevices.integration.test.ts`.
 
 ### Trust-surface follow-ups (shipped)
 

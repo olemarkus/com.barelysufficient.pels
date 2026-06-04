@@ -86,6 +86,18 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Finish migrating flat `test/*.test.ts` specs into their tier folders.** The testing
+      taxonomy (`notes/testing-taxonomy.md`) and folder scaffolding (`test/unit/`,
+      `test/integration/`, `test/e2e/`) landed with only the already-named specs moved
+      (`*.integration.test.ts`, `*.unit.test.ts`, `deferredObjective*E2E`). ~278 flat
+      `test/*.test.ts` files remain unclassified. Migrate opportunistically — when you touch a
+      spec, move it into its tier folder and bump its relative-import depth (`'../X'` →
+      `'../../X'`, `'./X'` → `'../X'`). When every spec is under a tier folder, re-scope
+      `test:unit` from the whole-suite glob to `test/unit/` so the three tier commands partition
+      the runtime suite, and (optionally) split CI into per-tier jobs (see the CI-actions note
+      below). Persona: contributor; hypothesis: a path-obvious tier speeds review and lets CI
+      fan out unit→integration→e2e for faster signal.
+
 - [ ] **Render-gate seed misses the two genuinely-new pixel paths shipped this range.** The
       populated `Cost ≈ X kr · Y kWh delivered` past-list meta line and the "Revised trajectory"
       overlay / re-anchored staircase ship in v2.11.0..HEAD but the standing gate

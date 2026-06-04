@@ -1,9 +1,9 @@
 import {
   mockHomeyInstance,
   setMockDrivers,
-} from './mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
-import { CAPACITY_DRY_RUN } from '../lib/utils/settingsKeys';
+} from '../mocks/homey';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
+import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
