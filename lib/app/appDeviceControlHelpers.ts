@@ -180,7 +180,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
     previousStepId: currentDesired?.previousStepId,
     planningPowerKw,
     currentOn: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }),
-    lastDesiredStepChangeAt: currentDesired?.changedAtMs,
     lastStepCommandIssuedAt: currentDesired?.lastIssuedAtMs,
     stepCommandRetryCount: currentDesired?.retryCount,
     nextStepCommandRetryAtMs: currentDesired?.nextRetryAtMs,
