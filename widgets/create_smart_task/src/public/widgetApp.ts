@@ -180,6 +180,7 @@ const resolveTargets = (d: Document): RenderTargets | null => {
     createdMsgEl: '[data-created-msg]',
   } as const;
   const buttons = {
+    pickerRetryBtn: '[data-picker-retry]',
     composeBackBtn: '[data-compose-back]',
     goalDecBtn: '[data-goal-dec]',
     goalIncBtn: '[data-goal-inc]',
@@ -315,7 +316,8 @@ type ClickAction =
   | { kind: 'toggle-limit' }
   | { kind: 'preview' }
   | { kind: 'create' }
-  | { kind: 'back' };
+  | { kind: 'back' }
+  | { kind: 'retry-load' };
 
 const closestDataValue = (target: Element, selector: string, key: string): string | null => {
   const el = target.closest(selector);
@@ -349,10 +351,12 @@ const fetchDevices = async (
     return await homeyRef.api('GET', '/devices') as CreateSmartTaskDevicesPayload;
   } catch (error) {
     console.error('Failed to load create_smart_task widget', error);
-    // Shared copy (not an inlined literal) so the load-failure subtitle stays in
-    // lock-step with the rest of the widget vocabulary per
-    // `feedback_ui_text_shared_with_logs`.
-    return { state: 'empty', subtitle: C.loadError, hint: null };
+    // A real fetch that FAILED — the distinct `error` state, not `empty`. It
+    // carries a tap-to-retry affordance (see render + resolveClickAction) so a
+    // stuck load recovers in place. Shared copy (not an inlined literal) so the
+    // load-failure subtitle stays in lock-step with the rest of the widget
+    // vocabulary per `feedback_ui_text_shared_with_logs`.
+    return { state: 'error' };
   }
 };
 
@@ -393,6 +397,9 @@ export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction
   if (!(eventTarget instanceof Element)) return null;
   const deviceId = closestDataValue(eventTarget, '[data-device-button]', 'deviceId');
   if (deviceId) return { kind: 'select-device', deviceId };
+  // Retry the device fetch in place after a load error (see the `error` payload
+  // state) — re-runs loadAndRender so a stuck load recovers without a reopen.
+  if (eventTarget.closest('[data-picker-retry]')) return { kind: 'retry-load' };
   const readyById = closestDataValue(eventTarget, '[data-ready-by]', 'readyById');
   if (readyById) return { kind: 'select-ready-by', readyById };
   if (eventTarget.closest('[data-goal-dec]')) return { kind: 'goal-dec' };
@@ -429,9 +436,7 @@ export const createWidgetController = (params: {
   // resolves after the user moved on is dropped, not applied. See runPreview.
   let requestSeq = 0;
 
-  const render = (): void => {
-    renderWidget(targets, devicesPayload, view);
-  };
+  const render = (): void => renderWidget(targets, devicesPayload, view);
 
   // Single mutation seam: set the view and re-render. Every view change bumps
   // the request token so any in-flight preview/create that resolves afterwards
@@ -505,6 +510,7 @@ export const createWidgetController = (params: {
       case 'preview': void runPreview(); return;
       case 'create': void runCreate(); return;
       case 'back': setView(backView(view)); return;
+      case 'retry-load': void loadAndRender(); return;
       default: {
         const unhandled: never = action; // exhaustiveness guard: a new ClickAction is a type error here
         void unhandled;

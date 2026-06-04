@@ -68,6 +68,7 @@ export type RenderTargets = {
   pickerList: HTMLElement;
   pickerEmpty: HTMLElement;
   pickerEmptyHint: HTMLElement;
+  pickerRetryBtn: HTMLButtonElement;
   deviceTemplate: HTMLTemplateElement;
   // Compose
   composeView: HTMLElement;
@@ -168,10 +169,17 @@ const renderDeviceRow = (
 };
 
 const renderPicker = (targets: RenderTargets, payload: CreateSmartTaskDevicesPayload | null): void => {
-  const { pickerPrompt, pickerCaption, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
+  const {
+    pickerPrompt, pickerCaption, pickerList, pickerEmpty, pickerEmptyHint, pickerRetryBtn, deviceTemplate,
+  } = targets;
   pickerPrompt.textContent = C.pickDevicePrompt;
   clearChildren(pickerList);
-  if (!payload || payload.state === 'empty') {
+  if (!payload || payload.state !== 'ready') {
+    // Two non-ready shapes share the empty-state layout but read differently:
+    // `error` (a failed fetch, or a null payload before the first load) offers
+    // tap-to-retry; `empty` (no eligible devices) is a calm dead-end with an
+    // eligibility hint and no retry — retrying would change nothing.
+    const isError = !payload || payload.state === 'error';
     // The empty state's own hint already explains eligibility — don't double up
     // with the caption.
     setLine(pickerCaption, null);
@@ -185,12 +193,15 @@ const renderPicker = (targets: RenderTargets, payload: CreateSmartTaskDevicesPay
     } else {
       pickerEmptyHint.hidden = true;
     }
+    pickerRetryBtn.hidden = !isError;
+    pickerRetryBtn.textContent = C.loadErrorRetry;
     return;
   }
   setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
   pickerList.hidden = false;
   pickerEmpty.hidden = true;
   pickerEmptyHint.hidden = true;
+  pickerRetryBtn.hidden = true;
   for (const device of payload.devices) {
     pickerList.appendChild(renderDeviceRow(deviceTemplate, device));
   }

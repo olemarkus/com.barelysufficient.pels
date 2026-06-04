@@ -1,10 +1,10 @@
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
-} from '../packages/shared-domain/src/deadlineLabels';
-import { installWidget } from '../widgets/create_smart_task/src/public/widgetApp';
-import type { WidgetHomey, WidgetWindow } from '../widgets/create_smart_task/src/public/widgetApp';
-import type { CreateSmartTaskPreviewResponse } from '../widgets/create_smart_task/src/createSmartTaskWidgetTypes';
-import { registerHiddenGuardSuite } from './cssTestUtils';
+} from '../../packages/shared-domain/src/deadlineLabels';
+import { installWidget } from '../../widgets/create_smart_task/src/public/widgetApp';
+import type { WidgetHomey, WidgetWindow } from '../../widgets/create_smart_task/src/public/widgetApp';
+import type { CreateSmartTaskPreviewResponse } from '../../widgets/create_smart_task/src/createSmartTaskWidgetTypes';
+import { registerHiddenGuardSuite } from '../cssTestUtils';
 
 // Mirrors the production index.html markup the renderer queries against, so the
 // controller wires up exactly as it would in the Homey webview.
@@ -16,6 +16,7 @@ const WIDGET_MARKUP = `
       <ol class="rows" data-device-list></ol>
       <p class="empty" data-picker-empty hidden></p>
       <p class="empty-hint" data-picker-empty-hint hidden></p>
+      <button type="button" class="retry-btn" data-picker-retry hidden>Try again</button>
     </section>
     <section class="compose-view" data-compose-view hidden>
       <header class="step-header">
@@ -254,6 +255,83 @@ describe('create smart task widget browser', () => {
       const errorEl = document.querySelector('[data-preview-error]') as HTMLElement;
       expect(errorEl.hidden).toBe(false);
       expect(errorEl.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.createError);
+    });
+  });
+
+  // A failed device fetch must surface the distinct ERROR state (not collapse
+  // into the calm "no eligible devices" empty state) and offer a tap-to-retry
+  // affordance that re-runs the load in place — so a stuck load recovers without
+  // closing and reopening the widget.
+  describe('device-fetch error offers tap-to-retry', () => {
+    test('a failed /devices shows the error subtitle + a retry button; retry reloads in place', async () => {
+      let devicesCalls = 0;
+      const homey: WidgetHomey = {
+        api: async (method: string, path: string) => {
+          if (method === 'GET' && path === '/devices') {
+            devicesCalls += 1;
+            // First fetch fails; the retry tap re-runs the load and succeeds.
+            if (devicesCalls === 1) throw new Error('boom');
+            return { state: 'ready', devices: [DEVICE_A] };
+          }
+          throw new Error(`unexpected api ${method} ${path}`);
+        },
+        ready: () => undefined,
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey);
+      await flushPromises();
+
+      const list = document.querySelector('[data-device-list]') as HTMLElement;
+      const empty = document.querySelector('[data-picker-empty]') as HTMLElement;
+      const hint = document.querySelector('[data-picker-empty-hint]') as HTMLElement;
+      const retry = document.querySelector('[data-picker-retry]') as HTMLButtonElement;
+      // The error state: the failure subtitle is shown, the eligibility hint is
+      // NOT (this is not the "no devices yet" dead-end), and the retry button is
+      // visible with the shared retry copy.
+      expect(empty.hidden).toBe(false);
+      expect(empty.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.loadError);
+      expect(hint.hidden).toBe(true);
+      expect(retry.hidden).toBe(false);
+      expect(retry.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.loadErrorRetry);
+      expect(list.hidden).toBe(true);
+
+      // Tapping retry re-runs the load; the second fetch succeeds and the device
+      // list renders in place — no reopen needed.
+      retry.click();
+      await flushPromises();
+      expect(devicesCalls).toBe(2);
+      expect(retry.hidden).toBe(true);
+      expect(empty.hidden).toBe(true);
+      expect(list.hidden).toBe(false);
+      expect(list.querySelectorAll('[data-device-button]')).toHaveLength(1);
+    });
+
+    test('the calm "no eligible devices" empty state shows the hint and NO retry button', async () => {
+      const homey: WidgetHomey = {
+        api: async (method: string, path: string) => {
+          if (method === 'GET' && path === '/devices') {
+            return {
+              state: 'empty',
+              subtitle: CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices,
+              hint: CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint,
+            };
+          }
+          throw new Error(`unexpected api ${method} ${path}`);
+        },
+        ready: () => undefined,
+      };
+      installWidget(window as WidgetWindow, document);
+      (window as WidgetWindow).onHomeyReady?.(homey);
+      await flushPromises();
+
+      const empty = document.querySelector('[data-picker-empty]') as HTMLElement;
+      const hint = document.querySelector('[data-picker-empty-hint]') as HTMLElement;
+      const retry = document.querySelector('[data-picker-retry]') as HTMLButtonElement;
+      expect(empty.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices);
+      expect(hint.hidden).toBe(false);
+      expect(hint.textContent).toBe(CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint);
+      // No retry on the calm dead-end: retrying changes nothing.
+      expect(retry.hidden).toBe(true);
     });
   });
 
@@ -706,7 +784,7 @@ registerHiddenGuardSuite({
   hiddenToggledSelectors: [
     '.picker-view', '.compose-view', '.preview-view', '.created-view', // step views
     '.rows', // device list (hidden when there are no devices)
-    '.empty', '.empty-hint', // picker affordances
+    '.empty', '.empty-hint', '.retry-btn', // picker affordances (retry shown only on load error)
     '.goal-context', '.ready-by-echo', // compose context lines
     '.perm-toggle', '.perm-toggle__note', // limit-lower-priority toggle + its gated note
     '.preview-line', // toggled preview text lines

@@ -45,7 +45,7 @@ export default defineConfig({
     exclude: [
       'test/settings-ui.test.ts',
       'test/planPriceWidgetBrowser.test.ts',
-      'test/createSmartTaskWidgetBrowser.test.ts',
+      'test/unit/createSmartTaskWidgetBrowser.test.ts',
       'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
       'test/headroomWidgetBrowser.test.ts',

@@ -264,6 +264,40 @@
   text-align: center;
 }
 
+/* Tap-to-retry for the failed-load state (Material text button): neutral text
+   label on a transparent surface with a background-tint hover, mirroring the
+   `.back-btn` text-button language (the success/accent tone is reserved for
+   positive states, not a fetch failure). Centred under the "Could not load"
+   subtitle, with the 48px minimum touch target. Sits below the subtitle and
+   pushes up off the bottom so it reads as the recovery action. Hidden for the
+   calm `empty` (no eligible devices) state, where retrying changes nothing. */
+.retry-btn {
+  margin: 0 auto auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 var(--pw-su-3, 12px);
+  border: none;
+  border-radius: var(--pw-radius-default, 10px);
+  background: transparent;
+  color: var(--pw-text, currentColor);
+  font: inherit;
+  font-size: var(--pw-font-size-title, 17px);
+  font-weight: var(--pw-weight-bold, 700);
+  cursor: pointer;
+  transition: background 200ms ease-out;
+}
+
+.retry-btn:focus-visible {
+  outline: 2px solid var(--pw-text, currentColor);
+  outline-offset: 2px;
+}
+
+.retry-btn:hover {
+  background-color: color-mix(in srgb, var(--pw-text, currentColor) 6%, transparent);
+}
+
 /* ----- Step header / back ----- */
 
 .step-header {

@@ -43,7 +43,7 @@ export default defineConfig({
     environment: 'jsdom',
     include: [
       'test/planPriceWidgetBrowser.test.ts',
-      'test/createSmartTaskWidgetBrowser.test.ts',
+      'test/unit/createSmartTaskWidgetBrowser.test.ts',
       'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
       'test/headroomWidgetBrowser.test.ts',

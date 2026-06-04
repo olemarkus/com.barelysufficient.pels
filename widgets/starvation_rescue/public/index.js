@@ -223,7 +223,12 @@
     // action, so a user with nothing yet knows exactly how to make a device
     // appear here rather than hitting a dead end.
     emptyNoDevicesHint: "Add a thermostat, water heater, or EV charger in Homey and it\u2019ll appear here.",
-    loadError: "Could not load devices. Try again later.",
+    loadError: "Could not load devices.",
+    // Tap target paired with `loadError`: re-runs the device fetch in place so a
+    // stuck load recovers without closing and reopening the widget. Imperative
+    // verb (Material text-button convention) rather than the "Try again later"
+    // resignation in the subtitle.
+    loadErrorRetry: "Try again",
     // Shown while the widget is still wiring up to the Homey app (the SDK bridge
     // hasn't supplied a real API client yet). Distinct from `loadError` (a real
     // fetch that failed): this is a transient "not ready yet" state that resolves
