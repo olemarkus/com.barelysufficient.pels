@@ -22,18 +22,18 @@
 // to price alone.
 //
 // See notes/deferred-load-objectives/execution-adaptation.md (work item 2).
-import { planDeferredObjectiveHorizon } from '../lib/objectives/deferredObjectives';
-import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
-import { isAheadOfHourMilestone } from '../lib/objectives/deferredObjectives/trajectoryMilestone';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import { isAheadOfHourMilestone } from '../../lib/objectives/deferredObjectives/trajectoryMilestone';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
   DeferredObjective,
   DeferredObjectiveHorizonBucket,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
-} from '../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveActivePlanHourV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
-import type { PlanInputDevice } from '../packages/planner-types/src/planInputDevice';
+} from '../../lib/objectives/deferredObjectives';
+import type { DeferredObjectiveActivePlanHourV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 
 const HOUR_MS = 60 * 60 * 1000;
 // Midnight UTC so absolute-ms hour edges line up with `hourIndex * HOUR_MS`.

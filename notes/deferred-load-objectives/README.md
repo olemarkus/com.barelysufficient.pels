@@ -1172,7 +1172,7 @@ cover this surface:
 
 - **Feasibility & horizon**: `deferredObjectiveHorizon.test.ts`, `deferredObjectiveHoursRemainingCrossings.test.ts`,
   `dailyBudgetServiceDeadlineHorizon.test.ts`.
-- **Admission**: `deferredObjectiveAdmission.test.ts`, `deferredObjectiveAdmission.unit.test.ts`.
+- **Admission**: `deferredObjectiveAdmission.test.ts`, `test/unit/deferredObjectiveAdmission.unit.test.ts`.
 - **Diagnostics / status transitions**: `deferredObjectiveDiagnostics.test.ts`,
   `deferredObjectiveStatusTransitions.test.ts`, `deferredObjectiveObjectiveChange.test.ts`.
 - **Active plan & history**: `deferredObjectiveActivePlan.test.ts`,

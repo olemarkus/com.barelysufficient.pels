@@ -15,7 +15,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
  * `overrides`, so tests never accidentally rely on a fabricated value.
  *
  * Existing inline fixtures (e.g. the local `buildEvDevice` in
- * `test/deferredObjectiveAdmission.unit.test.ts`) follow the same shape; this
+ * `test/unit/deferredObjectiveAdmission.unit.test.ts`) follow the same shape; this
  * helper centralises the pattern so the upcoming planner-detype refactor can
  * add fields without churning every fixture by hand.
  */

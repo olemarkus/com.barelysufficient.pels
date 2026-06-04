@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { isUnguardedDisplayRule } from './cssTestUtils';
+import { isUnguardedDisplayRule } from '../cssTestUtils';
 
 // Direct coverage for the `[hidden]`-guard detector. The shared suite only runs
 // it on the belt-and-suspenders path (when a stylesheet has NO blanket reset),

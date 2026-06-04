@@ -4,14 +4,14 @@ import {
   setMockDrivers,
   MockDevice,
   MockDriver,
-} from './mocks/homey';
-import * as homeyApi from '../lib/device/transport/managerHomeyApi';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
+} from '../mocks/homey';
+import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
-} from '../lib/utils/settingsKeys';
+} from '../../lib/utils/settingsKeys';
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 

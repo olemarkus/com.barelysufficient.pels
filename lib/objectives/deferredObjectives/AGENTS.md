@@ -14,7 +14,7 @@ SDK boundary — **device temperature / SoC, prices, and the clock** — and dri
 `buildDeferredObjectiveDiagnostics` + `DeferredObjectiveActivePlanRecorder` +
 `applyDeferredObjectiveAdmission`. Loop: read `recorder.getActivePlansSnapshot()` → bridge →
 `recorder.observe()` → admission → apply the decision to a thermal/SoC model → advance the clock.
-See `test/deferredObjectiveColdStartSdkE2E.test.ts` for the canonical harness.
+See `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts` for the canonical harness.
 
 **Never mock PELS internals** — `aheadOfHourMilestone`, the fresh/frozen dispatch, the allocator,
 the milestone stamping. Mocking any of them makes the test confirm your *assumptions* instead of the

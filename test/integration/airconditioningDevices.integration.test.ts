@@ -1,8 +1,8 @@
 import {
     mockHomeyInstance,
     setMockDrivers,
-} from './mocks/homey';
-import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from './utils/appTestUtils';
+} from '../mocks/homey';
+import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
 
