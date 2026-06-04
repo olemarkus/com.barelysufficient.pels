@@ -505,15 +505,6 @@ disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1
 dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
 **PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
 
-- [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
-      `test/integration/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
-      no-op; the emit side (status-transition publish, hours-remaining crossing, and especially the
-      `onDeadlinePassed` → disable firing through the clock tick) is only covered indirectly
-      (migrated `appInit.test.ts` + the per-module `statusTransitions`/`hoursRemainingCrossings`
-      tests). Add a direct emitter test that constructs a deadline-passed diagnostic and asserts the
-      disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
-      pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
-
 ## P3 Future and Exploratory Work
 
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
