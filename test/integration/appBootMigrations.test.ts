@@ -1,6 +1,6 @@
 import type Homey from 'homey';
-import { runBootMigrations } from '../lib/app/appBootMigrations';
-import { MANAGED_DEVICES } from '../lib/utils/settingsKeys';
+import { runBootMigrations } from '../../lib/app/appBootMigrations';
+import { MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
 
 const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';
 const ORPHAN_EV_SUPPORT_KEY = 'experimental_ev_support_enabled';

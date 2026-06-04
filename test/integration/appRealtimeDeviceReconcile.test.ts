@@ -2,10 +2,10 @@ import {
   createRealtimeDeviceReconcileState,
   flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
-} from '../lib/app/appRealtimeDeviceReconcile';
-import { shouldQueueRealtimeDeviceReconcile } from '../lib/app/appRealtimeDeviceReconcileRuntime';
-import type { Logger, StructuredDebugEmitter } from '../lib/logging/logger';
-import { buildBinaryObservation } from './utils/binaryObservationTestUtils';
+} from '../../lib/app/appRealtimeDeviceReconcile';
+import { shouldQueueRealtimeDeviceReconcile } from '../../lib/app/appRealtimeDeviceReconcileRuntime';
+import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
+import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 
 describe('appRealtimeDeviceReconcile', () => {
   const createDebugStructuredMock = (): StructuredDebugEmitter => vi.fn() as unknown as StructuredDebugEmitter;

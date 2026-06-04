@@ -1,5 +1,5 @@
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { Logger } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { Logger } from '../../lib/utils/types';
 import {
   getCanSetControl,
   getControlCapabilityId,
@@ -9,18 +9,18 @@ import {
   logEvCapabilityAccepted,
   logEvCapabilityRequest,
   logEvSnapshotChanges,
-} from '../lib/device/managerControl';
+} from '../../lib/device/managerControl';
 import {
   buildTargets,
   getExactPowerCapabilityValue,
   getCurrentTemperature,
   resolveDeviceCapabilities,
-} from '../lib/device/transport/managerParse';
-import { getBinaryControlPlan } from '../lib/plan/planBinaryControl';
+} from '../../lib/device/transport/managerParse';
+import { getBinaryControlPlan } from '../../lib/plan/planBinaryControl';
 import {
   reconcileRealtimeDeviceUpdate,
   updateLastKnownPower,
-} from '../lib/device/managerRuntime';
+} from '../../lib/device/managerRuntime';
 import {
   getRawDevice,
   getRawDevices,
@@ -30,8 +30,8 @@ import {
   setRawCapabilityValue,
   setRestClient,
   writeErrorToStderr,
-} from '../lib/device/transport/managerHomeyApi';
-import { fetchDevicesByIds } from '../lib/device/transport/managerFetch';
+} from '../../lib/device/transport/managerHomeyApi';
+import { fetchDevicesByIds } from '../../lib/device/transport/managerFetch';
 
 const createLogger = () => ({
   log: vi.fn(),

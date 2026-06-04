@@ -96,12 +96,15 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 - [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
       *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
-      imports → `unit/`, `*E2E` → `e2e/`). ~165 flat specs remain — the ones whose tier needs
-      per-file judgment: multi-subsystem imports without the app harness (unit vs sub-layer
-      integration), specs that import the SDK mock but don't spin up the app, and the 7
-      environment-special `*Browser.test.ts` / `settings-ui.test.ts` / `*.perf.test.ts` (jsdom /
-      explicit-include in the dom configs — moving them needs the dom/perf config include lists
-      updated too). Migrate opportunistically — when you touch a spec, move it into its tier
+      imports → `unit/`, `*E2E` → `e2e/`); then a careful per-file pass over the
+      `dailyBudget*` / `device*` / `app*` clusters (read each, unit vs integration by subject).
+      ~134 flat specs remain — mostly the `plan*` (38) and `deferred*`/`objective*` clusters,
+      which need dedicated passes, plus odds-and-ends needing per-file judgment, the
+      `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
+      manual path fix to move), and the 7 environment-special `*Browser.test.ts` /
+      `settings-ui.test.ts` / `*.perf.test.ts` (jsdom / explicit-include in the dom/perf configs
+      — moving them needs those include lists updated too). Migrate opportunistically — when you
+      touch a spec, move it into its tier
       folder and bump its relative-import depth (`'../X'` → `'../../X'`, `'./X'` → `'../X'`), then
       run `knip` (type-only imports pass vitest but fail `deadcode:check` on wrong depth). When
       every spec is under a tier folder, re-scope

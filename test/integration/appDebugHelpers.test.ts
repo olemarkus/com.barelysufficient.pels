@@ -1,15 +1,15 @@
 import type { Mock } from 'vitest';
-import type { DeviceTransport } from '../lib/device/deviceTransport';
-import type { HomeyDeviceLike } from '../lib/utils/types';
+import type { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 import {
   getHomeyDevicesForDebugFromApp,
   logHomeyDeviceComparisonForDebugFromApp,
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
-} from '../lib/app/appDebugHelpers';
-import { resetRestClient, setRestClient } from '../lib/device/transport/managerHomeyApi';
-import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+} from '../../lib/app/appDebugHelpers';
+import { resetRestClient, setRestClient } from '../../lib/device/transport/managerHomeyApi';
+import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];

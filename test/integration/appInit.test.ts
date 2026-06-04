@@ -10,7 +10,7 @@ const {
   capturedFlowCardDeps: { current: null as null | Record<string, unknown> },
 }));
 
-vi.mock('../lib/plan/planEngine', () => ({
+vi.mock('../../lib/plan/planEngine', () => ({
   PlanEngine: class MockPlanEngine {
     deps: Record<string, unknown>;
 
@@ -24,7 +24,7 @@ vi.mock('../lib/plan/planEngine', () => ({
 // The clock-driven smart-task lifecycle emitter now owns the disable +
 // observe/watermark closures (moved out of createPlanEngine). Capture its deps
 // the same way so the wiring tests below exercise them.
-vi.mock('../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
+vi.mock('../../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
   DeferredObjectiveLifecycleEmitter: class MockEmitter {
     deps: Record<string, unknown>;
 
@@ -37,7 +37,7 @@ vi.mock('../lib/objectives/deferredObjectives/lifecycleEmitter', () => ({
   },
 }));
 
-vi.mock('../lib/price/priceCoordinator', () => ({
+vi.mock('../../lib/price/priceCoordinator', () => ({
   PriceCoordinator: class MockPriceCoordinator {
     deps: Record<string, unknown>;
 
@@ -48,7 +48,7 @@ vi.mock('../lib/price/priceCoordinator', () => ({
   },
 }));
 
-vi.mock('../flowCards/registerFlowCards', () => ({
+vi.mock('../../flowCards/registerFlowCards', () => ({
   registerFlowCards: (deps: Record<string, unknown>) => {
     capturedFlowCardDeps.current = deps;
   },
@@ -62,16 +62,16 @@ import {
   createPriceCoordinator,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
-} from '../setup/appInit';
-import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives';
-import { disableDeferredObjectiveInSettings } from '../setup/appInit/deferredRecorders';
+} from '../../setup/appInit';
+import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives';
+import { disableDeferredObjectiveInSettings } from '../../setup/appInit/deferredRecorders';
 import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
   LEARNED_THERMOSTAT_DEADBAND_C,
-} from '../lib/utils/settingsKeys';
-import type { AppContext } from '../lib/app/appContext';
-import { createAppContextMock } from './helpers/appContextTestHelpers';
+} from '../../lib/utils/settingsKeys';
+import type { AppContext } from '../../lib/app/appContext';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
 describe('app init plan service wiring', () => {
   it('fails fast when device manager wiring is missing', () => {

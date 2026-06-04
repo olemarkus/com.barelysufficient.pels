@@ -10,9 +10,9 @@ import {
   getProfileBlendConfidence,
   normalizeWeights,
   resolveCurrentBucketIndex,
-} from '../lib/dailyBudget/dailyBudgetMath';
-import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeries } from '../lib/dailyBudget/dailyBudgetPrices';
-import { buildPlanBreakdown } from '../lib/dailyBudget/dailyBudgetBreakdown';
+} from '../../lib/dailyBudget/dailyBudgetMath';
+import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeries } from '../../lib/dailyBudget/dailyBudgetPrices';
+import { buildPlanBreakdown } from '../../lib/dailyBudget/dailyBudgetBreakdown';
 
 describe('allocateBudgetWithCaps', () => {
   it('caps all buckets when every bucket hits its cap', () => {

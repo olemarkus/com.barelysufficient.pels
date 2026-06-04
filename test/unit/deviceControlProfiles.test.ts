@@ -11,8 +11,8 @@ import {
   normalizeSteppedLoadProfile,
   resolveSteppedLoadPlanningPowerKw,
   sortSteppedLoadSteps,
-} from '../lib/utils/deviceControlProfiles';
-import type { SteppedLoadProfile } from '../packages/contracts/src/types';
+} from '../../lib/utils/deviceControlProfiles';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const buildProfile = (): SteppedLoadProfile => ({
   model: 'stepped_load',

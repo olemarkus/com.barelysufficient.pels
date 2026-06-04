@@ -9,16 +9,16 @@
  *     the field reflects the calibration store's `hasRecentDrawAt` answer.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { toPlanDevice } from '../setup/appInit';
+import { toPlanDevice } from '../../setup/appInit';
 import {
   createEmptyPowerCalibrationSnapshot,
   POWER_CALIBRATION_CONSTANTS,
   recordSample,
-} from '../lib/device/devicePowerCalibration';
-import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
-import { createAppContextMock } from './helpers/appContextTestHelpers';
-import type { AppContext } from '../lib/app/appContext';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+} from '../../lib/device/devicePowerCalibration';
+import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const HOIAX_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',

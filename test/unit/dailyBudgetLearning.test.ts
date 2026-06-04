@@ -2,21 +2,21 @@ import {
   buildBucketUsageSplit,
   finalizePreviousDayLearning,
   hasUnreliableOverlap,
-} from '../lib/dailyBudget/dailyBudgetLearning';
-import { ensureObservedHourlyStats, getObservedStatsConfigKey } from '../lib/dailyBudget/dailyBudgetObservedStats';
-import { buildDefaultProfile } from '../lib/dailyBudget/dailyBudgetManager';
+} from '../../lib/dailyBudget/dailyBudgetLearning';
+import { ensureObservedHourlyStats, getObservedStatsConfigKey } from '../../lib/dailyBudget/dailyBudgetObservedStats';
+import { buildDefaultProfile } from '../../lib/dailyBudget/dailyBudgetManager';
 import {
   buildLocalDayBuckets,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   getZonedParts,
-} from '../lib/utils/dateUtils';
+} from '../../lib/utils/dateUtils';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,
   OBSERVED_HOURLY_PEAK_WINDOW_DAYS,
   OBSERVED_HOURLY_QUANTILE_MIN_SAMPLES,
-} from '../lib/dailyBudget/dailyBudgetConstants';
+} from '../../lib/dailyBudget/dailyBudgetConstants';
 
 describe('daily budget learning DST handling', () => {
   it('aggregates repeated fall-back hour buckets into the same local hour', () => {

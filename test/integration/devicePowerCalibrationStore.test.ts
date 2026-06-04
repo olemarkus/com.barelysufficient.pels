@@ -4,13 +4,13 @@ import {
   loadPowerCalibrationStore,
   persistPowerCalibrationFlush,
   persistPowerCalibrationIfDue,
-} from '../lib/device/devicePowerCalibrationStore';
+} from '../../lib/device/devicePowerCalibrationStore';
 import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
-} from '../lib/device/devicePowerCalibration';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../lib/utils/settingsKeys';
+} from '../../lib/device/devicePowerCalibration';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../../lib/utils/settingsKeys';
 
 const CONNECTED_300_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',

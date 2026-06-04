@@ -11,11 +11,11 @@
  * end-to-end.
  */
 import { describe, expect, it } from 'vitest';
-import { projectPreviewPlanDevice, toPlanDevice } from '../setup/appInit';
-import { createAppContextMock } from './helpers/appContextTestHelpers';
-import type { AppContext } from '../lib/app/appContext';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { COMMANDABLE_NOW_GRACE_MS } from '../lib/device/deviceActionProjection';
+import { projectPreviewPlanDevice, toPlanDevice } from '../../setup/appInit';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { COMMANDABLE_NOW_GRACE_MS } from '../../lib/device/deviceActionProjection';
 
 const FIXED_NOW = new Date('2026-05-26T12:00:00Z').getTime();
 

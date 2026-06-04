@@ -9,12 +9,12 @@ import {
   resolveEffectiveSteppedLoadProfile,
   reportSteppedLoadActualStep,
   resolveDefaultControlModel,
-} from '../lib/app/appDeviceControlHelpers';
+} from '../../lib/app/appDeviceControlHelpers';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const steppedProfiles: DeviceControlProfiles = {
   'dev-1': {

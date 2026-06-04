@@ -1,5 +1,5 @@
-import { resolveShedIntent } from '../lib/device/deviceActionProjection';
-import type { TargetCapabilitySnapshot } from '../packages/contracts/src/types';
+import { resolveShedIntent } from '../../lib/device/deviceActionProjection';
+import type { TargetCapabilitySnapshot } from '../../packages/contracts/src/types';
 
 const target = (
   overrides: Partial<TargetCapabilitySnapshot> = {},

@@ -3,9 +3,9 @@ import {
   buildBudgetUsageViews,
   buildDailyBudgetSnapshot,
   buildDayContext,
-} from '../lib/dailyBudget/dailyBudgetState';
-import type { BudgetState, DayContext } from '../lib/dailyBudget/dailyBudgetState';
-import type { DailyBudgetSettings } from '../lib/dailyBudget/dailyBudgetTypes';
+} from '../../lib/dailyBudget/dailyBudgetState';
+import type { BudgetState, DayContext } from '../../lib/dailyBudget/dailyBudgetState';
+import type { DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
 
 describe('daily budget state helpers', () => {
   it('buildBucketUsage clamps split data to total usage', () => {

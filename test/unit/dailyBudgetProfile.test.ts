@@ -1,5 +1,5 @@
-import { buildDefaultProfile } from '../lib/dailyBudget/dailyBudgetMath';
-import { getEffectiveProfileData } from '../lib/dailyBudget/dailyBudgetProfile';
+import { buildDefaultProfile } from '../../lib/dailyBudget/dailyBudgetMath';
+import { getEffectiveProfileData } from '../../lib/dailyBudget/dailyBudgetProfile';
 
 describe('daily budget profile helpers', () => {
   it('returns defaults when no learned profiles exist', () => {

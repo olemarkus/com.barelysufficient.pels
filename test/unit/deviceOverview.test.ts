@@ -4,10 +4,10 @@ import {
   getDeviceOverviewReportedStepId,
   isDeviceOverviewSteppedModeTransition,
   resolveHeldStateActionLabel,
-} from '../packages/shared-domain/src/deviceOverview';
-import { PLAN_REASON_CODES } from '../packages/shared-domain/src/planReasonSemantics';
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../packages/shared-domain/src/planStateLabels';
-import { legacyDeviceReason } from './utils/deviceReasonTestUtils';
+} from '../../packages/shared-domain/src/deviceOverview';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
+import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const r = legacyDeviceReason;
 
