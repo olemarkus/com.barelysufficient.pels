@@ -128,11 +128,11 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       `dailyBudget*` / `device*` / `app*`, `deferred*` / `objective*`, and `plan*` clusters (read
       each, unit vs integration by subject — plan-layer logic biased to integration), plus
       device-suite e2e reshapes.
-      ~66 flat specs remain — long-tail odds-and-ends needing per-file judgment, the
+      ~64 flat specs remain — long-tail odds-and-ends needing per-file judgment, the
       `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
-      manual path fix to move), and the 7 environment-special `*Browser.test.ts` /
-      `settings-ui.test.ts` / `*.perf.test.ts` (jsdom / explicit-include in the dom/perf configs
-      — moving them needs those include lists updated too). Migrate opportunistically — when you
+      manual path fix to move), and the 5 environment-special `*Browser.test.ts` /
+      `settings-ui.test.ts` specs (jsdom / explicit-include in the dom config — moving them needs
+      that include list updated too). Migrate opportunistically — when you
       touch a spec, move it into its tier
       folder and bump its relative-import depth (`'../X'` → `'../../X'`, `'./X'` → `'../X'`), then
       run `knip` (type-only imports pass vitest but fail `deadcode:check` on wrong depth). When
@@ -145,7 +145,7 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 - [ ] **Migrate `test/planPriceWidgetBrowser.test.ts` into the `test/unit` tier (per `test/AGENTS.md`).**
       The spec imports concrete plan_budget widget files (`chart`, `chartGeometry`, `widgetApp`) and
       belongs under `test/unit/` like the other single-module browser specs. Deferred to avoid a
-      conflict with the active test-taxonomy migration (it is one of the 7 environment-special
+      conflict with the active test-taxonomy migration (it is one of the 5 environment-special
       `*Browser.test.ts` specs the migration item above tracks — moving it also needs the dom-config
       include list updated). Do the move as part of that taxonomy pass, not piecemeal. Persona:
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
