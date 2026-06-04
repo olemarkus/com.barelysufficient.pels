@@ -12,7 +12,7 @@ import {
   applyShedBehavior,
   type ShedActuationCommand,
   type ShedActuationObservedState,
-} from '../../lib/device/shedBehaviorActuation';
+} from '../../lib/actuator/terminalShedActuation';
 import { getLogger } from '../../lib/logging/logger';
 import { resolveFlowBackedBinaryTriggerCardId } from '../../lib/executor/planExecutorPredicates';
 import {
@@ -24,7 +24,8 @@ import {
   getSteppedLoadOffStep,
   getSteppedLoadStep,
 } from '../../lib/utils/deviceControlProfiles';
-import type { ShedActuationTransport } from '../../lib/device/shedBehaviorActuation';
+import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
+import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
@@ -62,7 +63,7 @@ export const resolveTerminalShedCommand = (
   // target capability to write to — keyed on the capability's PRESENCE, not its
   // current value. A present capability whose value is transiently unreadable is
   // the self-healing case we must preserve: the actuation
-  // (`shedBehaviorActuation.ts`) no-ops while `observed.targetValue` is non-numeric
+  // (`terminalShedActuation.ts`) no-ops while `observed.targetValue` is non-numeric
   // and the disarm grace keeps the task enabled, so the setpoint is applied as soon
   // as a trusted observation arrives. Falling through to a binary handle (or `skip`)
   // there would drop the diagnostic before the value returns and the configured
@@ -126,26 +127,23 @@ const resolvePlanningCurrentA = (device: PlanInputDevice, planningPowerW: number
   return 0;
 };
 
-// Compose the actuation transport the thin primitive needs: the device-manager
+// Compose the actuator the terminal-shed primitive needs: the device-manager
 // writes plus a flow-backed binary control trigger (Homey Flow card) for devices
-// whose binary capability is flow-backed. Mirrors the executor's
-// `triggerFlowBackedBinaryControlRequest` (planExecutor) but reachable from the
-// app wiring without the plan→executor actuation surface.
-export const buildShedActuationTransport = (ctx: AppContext): ShedActuationTransport | null => {
+// whose binary capability is flow-backed. Reachable from app wiring without the
+// plan→executor actuation surface. Transport stays the sole SDK owner; this wraps
+// it as the injected write surface behind the actuator seam.
+export const buildShedActuator = (ctx: AppContext): Actuator | null => {
   const transport = ctx.deviceManager;
   if (!transport) return null;
+  // Bind so the optional stepped wrapper keeps its DeviceTransport receiver, then
+  // spread the bound fn straight onto the surface (no Parameters<...> wrapper needed).
   const requestSteppedLoadStep = transport.requestSteppedLoadStep?.bind(transport);
-  return {
+  const actuatorTransport: ActuatorTransport = {
     setCapability: (deviceId, capabilityId, value) => transport.setCapability(deviceId, capabilityId, value),
     applyDeviceTargets: (targets, contextInfo) => transport.applyDeviceTargets(targets, contextInfo),
-    ...(requestSteppedLoadStep === undefined
-      ? {}
-      : {
-        requestSteppedLoadStep: (
-          params: Parameters<NonNullable<ShedActuationTransport['requestSteppedLoadStep']>>[0],
-        ) => requestSteppedLoadStep(params),
-      }),
-    markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
+    // `=== undefined` (not truthiness): the type says it's always defined, but tests pass a
+    // partial deviceManager without it, so the runtime guard is real.
+    ...(requestSteppedLoadStep === undefined ? {} : { requestSteppedLoadStep }),
     triggerFlowBackedBinaryControl: async (deviceId, capabilityId, desired) => {
       const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
       const triggerCard = ctx.homey.flow?.getTriggerCard?.(triggerCardId);
@@ -153,6 +151,7 @@ export const buildShedActuationTransport = (ctx: AppContext): ShedActuationTrans
       await triggerCard.trigger({}, { deviceId });
     },
   };
+  return createDeviceActuator(actuatorTransport);
 };
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
@@ -261,9 +260,9 @@ export const handleDeferredDeadlineReached = (
   // Cap-on → the planner owns the device on its normal lane; just disarm (no
   // terminal release, no actuation needed, device presence irrelevant).
   if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }
-  const transport = buildShedActuationTransport(ctx);
+  const actuator = buildShedActuator(ctx);
   const device = ctx.planService?.getPlanDevices().find((candidate) => candidate.id === deviceId);
-  if (!transport || !device) {
+  if (!actuator || !device) {
     // Cap-off device temporarily absent (startup / snapshot flicker) — the
     // settings-derived diagnostic still fires, but we can't actuate yet.
     // DON'T disarm immediately, or we'd remove the diagnostic before the device
@@ -288,7 +287,15 @@ export const handleDeferredDeadlineReached = (
     // trusted observation). Fire-and-forget: the tick is synchronous and must not
     // block on a transport write; a dropped write self-heals on the next tick
     // (the task stays enabled until settled or grace).
-    void applyShedBehavior({ deviceId, name: device.name, command, observed, transport })
+    void applyShedBehavior({
+      deviceId,
+      name: device.name,
+      command,
+      observed,
+      actuator,
+      markSteppedLoadDesiredStepIssued: (markParams) =>
+        ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(markParams),
+    })
       .catch((error: unknown) => {
         terminalReleaseLogger.warn({ event: 'terminal_release_failed', deviceId, error: String(error) });
       });

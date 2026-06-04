@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor)/' },
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator)/' },
       to: { path: '^lib/app/' },
     },
     {
@@ -157,6 +157,17 @@ module.exports = {
       severity: 'error',
       from: { path: '^lib/observer/' },
       to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|executor)/' },
+    },
+    {
+      name: 'no-actuator-to-peer',
+      comment: 'Actuator is the single write seam: it maps channel-blind DeviceCommands onto '
+        + 'an injected transport write surface (transport stays the sole SDK owner). It is a pure '
+        + 'leaf — it must not import any peer (device/transport included; the write surface is '
+        + 'injected as a local interface, never imported). See '
+        + 'notes/state-management/actuator-write-seam.md.',
+      severity: 'error',
+      from: { path: '^lib/actuator/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor)/' },
     },
     {
       name: 'no-price-to-peer',

@@ -1,14 +1,15 @@
 import {
-  buildShedActuationTransport,
+  buildShedActuator,
   planTerminalEnding,
   resolveTerminalShedCommand,
 } from '../../setup/appInit/deferredObjectiveLifecycle';
-import { applyShedBehavior } from '../../lib/device/shedBehaviorActuation';
-import type {
-  ShedActuationCommand,
-  ShedActuationObservedState,
-  ShedActuationTransport,
-} from '../../lib/device/shedBehaviorActuation';
+import {
+  applyShedBehavior,
+  type ShedActuationCommand,
+  type ShedActuationObservedState,
+} from '../../lib/actuator/terminalShedActuation';
+import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
+import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
@@ -185,17 +186,17 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
       [],
     );
     const setCapability = vi.fn(async () => undefined);
-    const transport: ShedActuationTransport = {
+    const actuator = createDeviceActuator({
       setCapability,
       applyDeviceTargets: vi.fn(async () => undefined),
       triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
-    };
+    });
     const wrote = await applyShedBehavior({
       deviceId: 'd1',
       name: 'Panel heater',
       command,
       observed: { binaryState: 'on', targetValue: null },
-      transport,
+      actuator,
     });
     expect(wrote).toBe(true);
     expect(setCapability).toHaveBeenCalledWith('d1', 'onoff', false);
@@ -270,20 +271,20 @@ describe('applyShedBehavior — stepped terminal release', () => {
   it('requests the target step and records the pending step when observed above target', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, transport: 'flow' as const }));
     const markSteppedLoadDesiredStepIssued = vi.fn();
-    const transport: ShedActuationTransport = {
+    const actuator = createDeviceActuator({
       setCapability: vi.fn(async () => undefined),
       applyDeviceTargets: vi.fn(async () => undefined),
       triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
       requestSteppedLoadStep,
-      markSteppedLoadDesiredStepIssued,
-    };
+    });
 
     const wrote = await applyShedBehavior({
       deviceId: 'stepped-1',
       name: 'Stepped heater',
       command: setStep,
       observed: { stepId: 'high' },
-      transport,
+      actuator,
+      markSteppedLoadDesiredStepIssued,
     });
 
     expect(wrote).toBe(true);
@@ -302,19 +303,19 @@ describe('applyShedBehavior — stepped terminal release', () => {
 
   it('does not step up when the observed step is already below the target', async () => {
     const requestSteppedLoadStep = vi.fn(async () => ({ requested: true as const, transport: 'flow' as const }));
-    const transport: ShedActuationTransport = {
+    const actuator = createDeviceActuator({
       setCapability: vi.fn(async () => undefined),
       applyDeviceTargets: vi.fn(async () => undefined),
       triggerFlowBackedBinaryControl: vi.fn(async () => undefined),
       requestSteppedLoadStep,
-    };
+    });
 
     const wrote = await applyShedBehavior({
       deviceId: 'stepped-1',
       name: 'Stepped heater',
       command: setStep,
       observed: { stepId: 'off' },
-      transport,
+      actuator,
     });
 
     expect(wrote).toBe(false);
@@ -335,21 +336,23 @@ describe('applyShedBehavior — stepped terminal release', () => {
       },
     } as unknown as AppContext;
 
-    const transport = buildShedActuationTransport(ctx);
+    const actuator = buildShedActuator(ctx);
 
-    expect(transport).not.toBeNull();
-    expect(transport?.requestSteppedLoadStep).toBeUndefined();
+    expect(actuator).not.toBeNull();
+    // No stepped-load surface on the device manager → the actuator cannot issue a
+    // step command, so applying one resolves false (the wrapper is omitted inside).
     await expect(applyShedBehavior({
       deviceId: 'stepped-1',
       name: 'Stepped heater',
       command: setStep,
       observed: observed({ stepId: 'high' }),
-      transport: transport as ShedActuationTransport,
+      actuator: actuator as Actuator,
+      markSteppedLoadDesiredStepIssued: vi.fn(),
     })).resolves.toBe(false);
   });
 
   it('binds the optional stepped request wrapper to the device manager receiver', async () => {
-    type StepRequestParams = Parameters<NonNullable<ShedActuationTransport['requestSteppedLoadStep']>>[0];
+    type StepRequestParams = Parameters<NonNullable<ActuatorTransport['requestSteppedLoadStep']>>[0];
     const deviceManager = {
       setCapability: vi.fn(async () => undefined),
       applyDeviceTargets: vi.fn(async () => undefined),
@@ -368,13 +371,14 @@ describe('applyShedBehavior — stepped terminal release', () => {
       },
     } as unknown as AppContext;
 
-    const transport = buildShedActuationTransport(ctx) as ShedActuationTransport;
+    const actuator = buildShedActuator(ctx) as Actuator;
     const wrote = await applyShedBehavior({
       deviceId: 'stepped-1',
       name: 'Stepped heater',
       command: setStep,
       observed: observed({ stepId: 'high' }),
-      transport,
+      actuator,
+      markSteppedLoadDesiredStepIssued: vi.fn(),
     });
 
     expect(wrote).toBe(true);
