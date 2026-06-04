@@ -50,6 +50,13 @@ surface, not the scope. State that first because it resolves the only genuine am
   **structured logs**. Two seam-families both count as e2e:
   - **runtime e2e** — drive through the Homey SDK boundary (device temperature/SoC, prices,
     the clock), observe through SDK reads + structured logs. Vitest. Lives in `test/e2e/`.
+  - **flow e2e** — drive by invoking a Flow card the real app registered (the Homey Flow seam:
+    `mockHomeyInstance.flow._actionCardListeners` / `_conditionCardListeners` /
+    `_triggerCardRunListeners`), observe through the card's return value, a fired trigger
+    (`_triggerCardTriggers`), or the resulting SDK/settings effect. A flow-card spec
+    that spins up the full app (`createApp` + `onInit`/`registerFlowCards`) and asserts only on
+    those observable outputs — no `planEngine`/snapshot reads — is e2e, not integration. Vitest,
+    `test/e2e/`. (A spec that stubs `planEngine`/calls `planService` directly is integration.)
   - **ui e2e** — drive through the rendered settings UI, observe through the DOM. Playwright,
     in `packages/settings-ui` (`npm run test:e2e:ui`).
 - **Mocks:** only the external boundary itself, and it is *simulated*, never mocked-internal.
