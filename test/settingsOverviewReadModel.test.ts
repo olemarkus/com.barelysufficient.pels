@@ -99,9 +99,7 @@ describe('settingsOverviewReadModel', () => {
   it('does not expose assumed or selected steps as observed stepped-load UI truth', () => {
     const device = steppedPlanDevice({
       reportedStepId: undefined,
-      actualStepId: 'medium',
-      actualStepSource: 'assumed',
-      assumedStepId: 'medium',
+      // Fallback-only effective step must not surface as observed UI truth.
       selectedStepId: 'medium',
       targetStepId: 'max',
       desiredStepId: 'max',

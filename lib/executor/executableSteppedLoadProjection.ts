@@ -120,13 +120,15 @@ const toExecutableSteppedStepState = (
   observed: ExecutableObservedSteppedLoadState | null | undefined,
   requestedStepId?: string,
 ): ExecutableSteppedStepState => {
-  const observedStepId = observed?.actualStepSource === 'reported' && observed.actualStepId
-    ? observed.actualStepId
-    : observed?.reportedStepId;
+  const observedStepId = observed?.reportedStepId;
+  // The effective `stepId` is the planning fallback only when there is no
+  // reported step; when a report exists `stepId` mirrors it and is not a
+  // separate fallback.
+  const fallbackStepId = observedStepId ? undefined : observed?.stepId;
   return {
     requestedStepId,
     observedStep: observedStepId ? { kind: 'reported', stepId: observedStepId } : { kind: 'unknown' },
-    fallbackStepId: observed?.assumedStepId,
+    fallbackStepId,
   };
 };
 

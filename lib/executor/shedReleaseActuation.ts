@@ -183,7 +183,7 @@ const buildShedReleaseSteppedAction = (params: {
       observedStep: observedStepId
         ? { kind: 'reported', stepId: observedStepId }
         : { kind: 'unknown' },
-      fallbackStepId: observed?.steppedLoad?.assumedStepId,
+      fallbackStepId: observed?.steppedLoad?.stepId,
     },
   });
   return {

@@ -55,9 +55,6 @@ export type DeviceOverviewSnapshot = {
   targetStepId?: string;
   selectedStepId?: string;
   desiredStepId?: string;
-  actualStepId?: string;
-  assumedStepId?: string;
-  actualStepSource?: 'reported' | 'assumed' | 'profile_default';
   binaryCommandPending?: boolean;
   observationStale?: boolean;
   stateOfCharge?: {
@@ -81,7 +78,7 @@ const isEvChargerDevice = (device: DeviceOverviewSnapshot): boolean => (
 );
 
 export const getDeviceOverviewReportedStepId = (device: DeviceOverviewSnapshot): string | undefined => (
-  (device.actualStepSource === 'reported' ? device.actualStepId : undefined) ?? device.reportedStepId
+  device.reportedStepId
 );
 
 // Secondary text under a Limited chip names the action PELS took. Source of

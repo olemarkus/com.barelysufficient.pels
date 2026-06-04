@@ -197,10 +197,11 @@ const readTerminalObserved = (
   };
 };
 
+// Only the reported step is trusted telemetry; the producer populates
+// `reportedStepId` exclusively from native/flow reports, so it is exactly the
+// previous `actualStepSource === 'reported'` step.
 const resolveTrustedStepId = (device: PlanInputDevice): string | undefined => (
-  device.actualStepSource === 'reported' && device.actualStepId
-    ? device.actualStepId
-    : device.reportedStepId
+  device.reportedStepId
 );
 
 const isAtOrBelowStep = (

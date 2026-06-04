@@ -43,9 +43,6 @@ describe('planSteppedLoadState', () => {
       targetStepId: 'max',
       desiredStepId: 'max',
       selectedStepId: undefined,
-      actualStepId: undefined,
-      assumedStepId: undefined,
-      actualStepSource: undefined,
       restorePreparedStepId: undefined,
     });
   });
@@ -63,9 +60,6 @@ describe('planSteppedLoadState', () => {
       targetStepId: undefined,
       desiredStepId: undefined,
       selectedStepId: 'low',
-      actualStepId: undefined,
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
       restorePreparedStepId: undefined,
     });
   });

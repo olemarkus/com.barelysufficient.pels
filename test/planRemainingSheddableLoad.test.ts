@@ -310,7 +310,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
   // fallback) doesn't accidentally regress production behavior.
   //
   // Background: `RemainingSheddableSteppedFields` in this module strips
-  // `reportedStepId` / `actualStepId` / `assumedStepId` when projecting a
+  // `reportedStepId` (and the device's other step evidence) when projecting a
   // `PlanInputDevice` into a `RemainingSheddableDevice`. As a result the
   // legacy `resolveSteppedUnknownCurrentMeasuredShedding` (which gates on
   // `resolvePlannerEffectiveStepId`) sees an effectively unknown step state

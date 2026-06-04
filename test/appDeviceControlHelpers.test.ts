@@ -180,9 +180,7 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.targetStepId).toBeUndefined();
     expect(decorated.selectedStepId).toBe('low');
-    expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBe('low');
-    expect(decorated.actualStepSource).toBe('assumed');
+    // No reported step → selectedStepId is the planning fallback (lowest active).
     expect(decorated.planningPowerKw).toBe(1.25);
     // expectedPowerKw is NOT overwritten — it retains the original snapshot value
     // (undefined here). Step-derived power is available via planningPowerKw.
@@ -219,8 +217,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.controlModel).toBe('stepped_load');
     expect(decorated.selectedStepId).toBe('low');
-    expect(decorated.assumedStepId).toBe('low');
-    expect(decorated.actualStepSource).toBe('assumed');
+    expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.currentOn).toBe(false);
   });
 
@@ -246,9 +243,6 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.reportedStepId).toBe('max');
     expect(decorated.selectedStepId).toBe('max');
-    expect(decorated.actualStepId).toBe('max');
-    expect(decorated.assumedStepId).toBeUndefined();
-    expect(decorated.actualStepSource).toBe('reported');
     expect(decorated.currentOn).toBe(false);
   });
 
@@ -272,9 +266,6 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.selectedStepId).toBe('low');
-    expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBe('low');
-    expect(decorated.actualStepSource).toBe('assumed');
     expect(decorated.currentOn).toBe(false);
   });
 
@@ -304,8 +295,6 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.reportedStepId).toBe('max');
     expect(decorated.selectedStepId).toBe('max');
-    expect(decorated.actualStepId).toBe('max');
-    expect(decorated.actualStepSource).toBe('reported');
     expect(decorated.targetStepId).toBe('max');
     expect(decorated.stepCommandStatus).toBe('success');
   });
@@ -338,8 +327,6 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.steppedLoadProfile).toBe(snapshotProfile);
     expect(decorated.reportedStepId).toBe('1500w');
     expect(decorated.selectedStepId).toBe('1500w');
-    expect(decorated.actualStepId).toBe('1500w');
-    expect(decorated.actualStepSource).toBe('reported');
     expect(decorated.planningPowerKw).toBe(1.5);
   });
 
@@ -374,9 +361,6 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.selectedStepId).toBe('low');
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.targetStepId).toBeUndefined();
-    expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBe('low');
-    expect(decorated.actualStepSource).toBe('assumed');
     expect(decorated.planningPowerKw).toBe(1.25);
   });
 
@@ -394,9 +378,6 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.selectedStepId).toBe('low');
     expect(decorated.reportedStepId).toBeUndefined();
-    expect(decorated.actualStepId).toBeUndefined();
-    expect(decorated.assumedStepId).toBe('low');
-    expect(decorated.actualStepSource).toBe('assumed');
     expect(decorated.planningPowerKw).toBe(1.25);
   });
 
@@ -421,8 +402,6 @@ describe('appDeviceControlHelpers', () => {
     expect(pendingDecorated.targetStepId).toBe('low');
     expect(pendingDecorated.reportedStepId).toBeUndefined();
     expect(pendingDecorated.selectedStepId).toBe('low');
-    expect(pendingDecorated.assumedStepId).toBe('low');
-    expect(pendingDecorated.actualStepSource).toBe('assumed');
     expect(pendingDecorated.stepCommandPending).toBe(true);
     expect(pendingDecorated.stepCommandStatus).toBe('pending');
 
@@ -448,9 +427,6 @@ describe('appDeviceControlHelpers', () => {
     expect(reportedDecorated.selectedStepId).toBe('low');
     expect(reportedDecorated.reportedStepId).toBe('low');
     expect(reportedDecorated.targetStepId).toBe('low');
-    expect(reportedDecorated.actualStepId).toBe('low');
-    expect(reportedDecorated.assumedStepId).toBeUndefined();
-    expect(reportedDecorated.actualStepSource).toBe('reported');
     expect(reportedDecorated.stepCommandPending).toBe(false);
     expect(reportedDecorated.stepCommandStatus).toBe('success');
 
@@ -515,8 +491,6 @@ describe('appDeviceControlHelpers', () => {
     });
     expect(offDecorated.selectedStepId).toBe('off');
     expect(offDecorated.reportedStepId).toBe('off');
-    expect(offDecorated.actualStepId).toBe('off');
-    expect(offDecorated.actualStepSource).toBe('reported');
     expect(offDecorated.currentOn).toBe(false);
     expect(offDecorated.planningPowerKw).toBe(0);
 

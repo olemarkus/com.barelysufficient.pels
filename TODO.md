@@ -71,11 +71,18 @@ not a release gate.*
 The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
 deviceOverview entries shipped in the 2026-06-03 train; the two below remain deferred.*
 
-- [ ] **Remove the legacy stepped-load optional fields from persisted/API contracts** (after a
-      release cut). Planner/executor semantics stay behind typed stepped-state adapters; retire the
-      compatibility fields (`selectedStepId`, `actualStepId`, `assumedStepId`, related provenance)
-      from public snapshots via an explicit contract migration. Files: `packages/contracts/src/types.ts`,
-      `lib/plan/planTypes.ts`, settings UI contract + persisted-snapshot compatibility tests.
+- [x] **Remove the legacy stepped-load evidence fields from persisted/API contracts.** Shipped:
+      retired the redundant raw-evidence trio `actualStepId` / `assumedStepId` / `actualStepSource`
+      (type `SteppedLoadActualStepSource`) from `TargetDeviceSnapshot`, `PlanInputDevice`, and
+      `DevicePlanDevice`. Provenance now lives solely in the discriminated
+      `NormalizedSteppedLoadStepState` adapter (`lib/plan/planSteppedLoadState.ts`); producers stopped
+      emitting the trio and consumers gate on `reportedStepId` presence. No persisted-state migration
+      needed (snapshots are runtime-only, rebuilt from the Homey SDK each boot). `selectedStepId` was
+      intentionally KEPT: it is not a compatibility shim but the producer-resolved EFFECTIVE step
+      (`reportedStepId ?? planning fallback`) read by ~30 planner/executor/restore sites. Collapsing it
+      into per-site `resolveEffectiveStepId(...)` calls is a much larger, riskier rewrite tracked by the
+      discriminated-snapshots item below (which would discriminate stepped variants and naturally
+      subsume the effective-step read). Do not re-file `selectedStepId` removal as a standalone item.
 - [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
       `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
       fields as one nullable bag; discriminate by control kind so the compiler enforces per-variant

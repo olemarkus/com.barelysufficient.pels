@@ -66,9 +66,11 @@ describe('resolveSteppedStateLabel', () => {
     })).toBe('Level: Low');
   });
 
-  it('does not use actualStepId as observed UI truth', () => {
+  it('shows "Level unknown" without a reported step (no fallback/assumed leakage)', () => {
+    // Only the typed `steppedLoad.reportedStepId` is observed UI truth; a device
+    // with no reported step must not infer a level from any other field.
     expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', actualStepId: 'medium',
+      ...baseDevice, currentState: 'on',
     })).toBe('Level unknown');
   });
 

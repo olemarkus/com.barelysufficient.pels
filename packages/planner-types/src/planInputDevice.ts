@@ -5,7 +5,6 @@ import type {
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
   RestorePowerSource,
-  SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
@@ -35,15 +34,15 @@ export type PlanInputDevice = {
   steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
+  // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
+  // The retired raw-evidence trio (actualStepId / assumedStepId /
+  // actualStepSource) collapsed into this plus the typed stepped-state adapter.
   selectedStepId?: string;
   desiredStepId?: string;
   previousStepId?: string;
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
-  actualStepId?: string;
-  assumedStepId?: string;
-  actualStepSource?: SteppedLoadActualStepSource;
   hasBinaryControl?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;

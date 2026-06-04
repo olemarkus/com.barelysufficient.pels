@@ -1799,8 +1799,6 @@ describe('PlanExecutor stepped loads', () => {
       currentOn: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
     });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
@@ -1809,8 +1807,6 @@ describe('PlanExecutor stepped loads', () => {
       plannedState: 'keep',
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
       desiredStepId: 'low', // no step change needed
     }));
 
@@ -2655,8 +2651,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
     });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
@@ -2667,8 +2661,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
     }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
@@ -2680,24 +2672,19 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentState: 'on',
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
       desiredStepId: 'low',
     });
     const liveDevices = buildLiveDevices({
       currentOn: false,
+      // Fallback-only live state: no reported step, selectedStepId is the
+      // planning fallback.
       selectedStepId: 'low',
-      actualStepId: undefined,
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
     });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({
       reportedStepId: undefined,
-      actualStepId: undefined,
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
+      selectedStepId: 'low',
     }));
 
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
@@ -3030,8 +3017,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const snapshot = buildSnapshot({
       currentOn: false,
       selectedStepId: 'low',
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
@@ -3039,8 +3024,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentState: 'off',
       plannedState: 'keep',
       selectedStepId: 'low',
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
       desiredStepId: 'low',
     });
 
@@ -3097,8 +3080,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
@@ -3107,8 +3088,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       plannedState: 'keep',
       selectedStepId: 'low',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
       desiredStepId: 'low',
     });
 
@@ -3205,8 +3184,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       reportedStepId: 'max',
-      actualStepId: 'max',
-      actualStepSource: 'reported',
     });
     const liveDevices = buildLiveDevices({ currentOn: true });
 
@@ -3214,8 +3191,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({
       selectedStepId: 'max',
       reportedStepId: undefined,
-      actualStepId: undefined,
-      actualStepSource: undefined,
     }));
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
@@ -3493,8 +3468,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentOn: false,
       selectedStepId: 'max',
       reportedStepId: 'max',
-      actualStepId: 'max',
-      actualStepSource: 'reported',
     });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
@@ -3580,8 +3553,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         currentOn: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
@@ -3590,8 +3561,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         plannedState: 'keep',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
         desiredStepId: 'low', // non-zero, matches selected — no step change
       }));
 
@@ -3655,8 +3624,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         currentOn: false,
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
@@ -3665,8 +3632,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         plannedState: 'keep',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
         desiredStepId: 'low',
       }));
 

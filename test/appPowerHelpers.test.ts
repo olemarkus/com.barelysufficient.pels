@@ -2156,8 +2156,6 @@ describe('createCalibrationSnapshotMutationHook', () => {
       ],
     },
     reportedStepId: 'low',
-    actualStepId: 'low',
-    actualStepSource: 'reported',
     measuredPowerKw: 1.1,
     currentOn: true,
     lastFreshDataMs: start,
@@ -2202,7 +2200,7 @@ describe('createCalibrationSnapshotMutationHook', () => {
       getStore: () => store,
       debugStructured,
     });
-    hook(makeSnapshot({ actualStepSource: 'assumed' }), start);
+    hook(makeSnapshot({ reportedStepId: undefined }), start);
     expect(debugStructured).not.toHaveBeenCalled();
   });
 
@@ -2238,7 +2236,7 @@ describe('createCalibrationSnapshotMutationHook', () => {
       debugStructured,
       minIntervalMs: 30_000,
     });
-    hook(makeSnapshot({ actualStepSource: 'assumed', measuredPowerKw: 1.1 }), start);
+    hook(makeSnapshot({ reportedStepId: undefined, measuredPowerKw: 1.1 }), start);
     expect(debugStructured).not.toHaveBeenCalled();
     hook(makeSnapshot({ measuredPowerKw: 1.1 }), start + 1_000);
     expect(debugStructured).toHaveBeenCalledTimes(1);
@@ -2279,8 +2277,8 @@ describe('createCalibrationSnapshotMutationHook', () => {
       debugStructured,
       minIntervalMs: 30_000,
     });
-    hook(makeSnapshot({ reportedStepId: 'low', actualStepId: 'low', measuredPowerKw: 1.1 }), start);
-    hook(makeSnapshot({ reportedStepId: 'medium', actualStepId: 'medium', measuredPowerKw: 1.6 }), start + 1_000);
+    hook(makeSnapshot({ reportedStepId: 'low', measuredPowerKw: 1.1 }), start);
+    hook(makeSnapshot({ reportedStepId: 'medium', measuredPowerKw: 1.6 }), start + 1_000);
     expect(debugStructured).toHaveBeenCalledTimes(2);
   });
 });

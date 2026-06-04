@@ -20,9 +20,6 @@ const buildObservedState = (
   steppedLoadProfile: device.steppedLoadProfile,
   selectedStepId: device.selectedStepId,
   reportedStepId: device.reportedStepId,
-  actualStepId: device.actualStepId,
-  actualStepSource: device.actualStepSource,
-  assumedStepId: device.assumedStepId,
   measuredPowerKw: device.measuredPowerKw,
   ...overrides,
 });
@@ -43,8 +40,6 @@ describe('planExecutableSteppedLoad', () => {
       selectedStepId: 'low',
       desiredStepId: 'max',
       reportedStepId: 'low',
-      actualStepId: 'low',
-      actualStepSource: 'reported',
     }));
 
     expect(action).toMatchObject({
@@ -74,10 +69,9 @@ describe('planExecutableSteppedLoad', () => {
     const action = buildAction(steppedPlanDevice({
       currentState: 'off',
       plannedState: 'keep',
+      // Fallback-only: selectedStepId is the planning fallback, no reported step.
       selectedStepId: 'low',
       desiredStepId: 'low',
-      assumedStepId: 'low',
-      actualStepSource: 'assumed',
     }));
 
     expect(action?.stepActuation).toEqual({

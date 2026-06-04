@@ -149,7 +149,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
   const currentDesired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
-  const legacyStepFields = buildSteppedLoadSnapshotStepFields({
+  const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
     currentOn: snapshot.currentOn,
@@ -166,21 +166,18 @@ export const decorateSnapshotWithDeviceControl = (params: {
     },
     fallbackStepId,
   });
-  const selectedStepId = legacyStepFields.selectedStepId;
+  const selectedStepId = stepFields.selectedStepId;
   const planningPowerKw = resolveSteppedLoadPlanningPowerKw(profile, selectedStepId);
 
   return {
     ...snapshot,
     controlModel: 'stepped_load',
     steppedLoadProfile: profile,
-    reportedStepId: legacyStepFields.reportedStepId,
-    targetStepId: legacyStepFields.targetStepId,
+    reportedStepId: stepFields.reportedStepId,
+    targetStepId: stepFields.targetStepId,
     selectedStepId,
-    desiredStepId: legacyStepFields.desiredStepId,
+    desiredStepId: stepFields.desiredStepId,
     previousStepId: currentDesired?.previousStepId,
-    actualStepId: legacyStepFields.actualStepId,
-    assumedStepId: legacyStepFields.assumedStepId,
-    actualStepSource: legacyStepFields.actualStepSource,
     planningPowerKw,
     currentOn: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }),
     lastDesiredStepChangeAt: currentDesired?.changedAtMs,

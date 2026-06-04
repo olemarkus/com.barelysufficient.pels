@@ -51,9 +51,6 @@ const buildSteppedAction = (device: DevicePlanDevice) => buildExecutableSteppedL
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
     reportedStepId: device.reportedStepId,
-    actualStepId: device.actualStepId,
-    actualStepSource: device.actualStepSource,
-    assumedStepId: device.assumedStepId,
     measuredPowerKw: device.measuredPowerKw,
   }),
 );
@@ -708,7 +705,6 @@ describe('native stepped-load wiring', () => {
     expect(flowDecorated).toEqual(expect.objectContaining({
       reportedStepId: 'max',
       selectedStepId: 'max',
-      actualStepSource: 'reported',
     }));
 
     snapshots = [nativeSnapshot];
@@ -726,7 +722,6 @@ describe('native stepped-load wiring', () => {
     expect(afterNativeDisabled).toEqual(expect.objectContaining({
       reportedStepId: undefined,
       selectedStepId: 'low',
-      actualStepSource: 'assumed',
     }));
   });
 
