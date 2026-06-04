@@ -3,29 +3,20 @@ import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 /**
- * Subset of the device transport surface that the executor needs: read
- * snapshots (`DeviceObservation`) plus the actuation primitives it dispatches.
- * Defined locally so the executor does not have to import the concrete
- * `DeviceTransport` class — see PRs #2 and #3 of the observer/transport split
- * (`notes/state-management/observer-transport-split.md`). The transport
- * exposes these methods in the same shape that `DeviceTransport` does today.
+ * The executor's **read-only** view of the device transport: snapshot reads
+ * only (`DeviceObservation`). The executor issues no transport writes — every
+ * write intent (binary / target / step) routes through the injected `Actuator`
+ * seam (`deps.actuator`), so the device-transport view carries no write methods.
+ * This makes the "only the actuator writes" invariant structural: there is no
+ * write surface here to call. The abstract `DeviceObservation` interface keeps
+ * the executor off the concrete `DeviceTransport` class — see
+ * `notes/state-management/observer-transport-split.md` and
+ * `notes/state-management/actuator-write-seam.md`.
  */
-export type PlanExecutorDeviceTransport = DeviceObservation & {
-  setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
-  requestSteppedLoadStep: (params: {
-    deviceId: string;
-    profile: SteppedLoadProfile;
-    desiredStepId: string;
-    planningPowerW: number;
-    planningCurrentA: number;
-    actuationMode?: 'plan' | 'reconcile';
-    previousStepId?: string;
-  }) => Promise<SteppedLoadStepRequestResult>;
-};
+export type PlanExecutorDeviceTransport = DeviceObservation;
 import type {
   ExecutableBinaryIntent,
   ExecutableObservedDeviceState,

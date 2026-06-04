@@ -7,8 +7,12 @@ bullets that note left **deliberately deferred** (the transport `write(intent)`
 abstract API, and observer ownership of the snapshot store) and adds a third
 box the original split did not name — the actuator.
 
-> Status: **in progress** — PR 1 (the seam + terminal-shed consumer) implemented
-> on branch `actuator-split`; PR 1b/2/3 outstanding. Train sequence at the end.
+> Status: **in progress** — PR 1 (the seam + terminal-shed consumer) and the full
+> PR 1b executor migration are **shipped** (stepped #1485, target #1489, binary
+> #1490, and PR1b-final, which removed the executor's dead transport write members
+> and added the `no-actuator-bypass` cruiser rule). The actuator is now the sole
+> device write path. **PR 2 (store→observer) and PR 3 (tighten) remain
+> outstanding.** Train sequence at the end.
 > Read [`CLAUDE.md`](./CLAUDE.md) (device-state invariants) and
 > [`observer-transport-split.md`](./observer-transport-split.md) first — this
 > note assumes the `planned / commanded / observed / pending` vocabulary and
@@ -254,28 +258,44 @@ leaf**, like observer/price.
   (both `severity: 'error'`, already passing) keep plan/executor off the concrete
   `DeviceTransport`. There is **no** `todo-narrow-plan-device-dep` rule and never
   was; nothing is being promoted from warn→error here.
-- `no-actuator-bypass` *(the only NEW cruiser rule; PR1b-final close-out)* —
-  `lib/plan/**`, `lib/executor/**`, and `setup/**` must not import transport's
-  write methods/type directly; they go through the `Actuator` interface. This is
-  a **close-out item addable only after ALL executor write sites (binary / target
-  / step) are migrated** onto the actuator. It cannot land mid-migration because
-  the executor reaches transport via the *local* `PlanExecutorDeviceTransport`
-  interface (not an import), so an import-based rule can't see a partial bypass —
-  it would either be a no-op (no import to catch) or fire on the still-present
-  binary/target write bindings. Add it once the seam is the sole write path.
+- `no-actuator-bypass` *(NEW cruiser rule; **shipped in PR1b-final**)* —
+  `lib/plan/**` and `lib/executor/**` RECEIVE an injected `Actuator`; they must
+  not reach into the actuator package to build or wire their own write path. The
+  rule forbids any **value** import from `lib/actuator/**` — notably
+  `createDeviceActuator` (only `setup/**` may call it, via
+  `setup/appInit/buildDeviceActuator.ts`). The legitimate edge,
+  `import type { Actuator }`, is erased and therefore invisible to the cruise, so
+  it stays allowed automatically. **Scope:**
+  `from: ^lib/(plan|executor)/ → to: ^lib/actuator/`. It complements
+  `no-plan-to-device` / `no-executor-to-device-internals` (which only cover
+  `lib/device/**`) by closing the actuator-side bypass. **Verified real:** passes
+  clean on the shipped code (plan/executor hold only `import type` edges) AND
+  fires on a value-import probe of `createDeviceActuator`
+  (`error no-actuator-bypass: …→ lib/actuator/deviceActuator.ts`) — it is not a
+  hollow rule. (An earlier draft scoped it to the type-only
+  `lib/actuator/deviceCommand.ts`, which would have been hollow — that module
+  exports only types, and with `tsPreCompilationDeps` unset there is no value
+  import to catch.) Post-compilation, so it catches VALUE imports, not
+  `import type` edges; the residual "no raw `.setCapability()` call" guarantee is
+  **structural** (see the honesty note), not a cruiser rule.
 - `device-no-actuation` — `lib/device/**` hosts no control actuation. Achieved
   *structurally* in PR 1 by relocating the terminal-shed actuator out of
   `lib/device/`; the existing `no-device-to-peer-except-power` already blocks any
   attempt to re-add a `lib/device → lib/actuator` call.
 
-> Honesty note: dependency-cruiser is import-based, and the executor reaches its
-> write methods through the local `PlanExecutorDeviceTransport` interface rather
-> than an import, so the "only the actuator writes" invariant is enforced
-> *structurally* (one `Actuator` class, write methods behind an actuator-only
-> type) plus the rules above; there is no pure import rule that says "no
-> `.setCapability` call here." Code review covers the residue, and
-> `no-actuator-bypass` only becomes meaningful once every executor write site is
-> migrated.
+> Honesty note: dependency-cruiser is import-based, so the "only the actuator
+> writes" invariant is enforced *structurally* plus by the rules above, not by a
+> pure rule that says "no `.setCapability` call here." As of PR1b-final the
+> structural half is now load-bearing: the executor's transport view
+> (`PlanExecutorDeviceTransport`) is **`= DeviceObservation`** — read-only, with no
+> write members at all — and the `PlanExecutorTargetContext.deviceManager` lost its
+> `setCapability` member too, so there is no transport write surface for the
+> executor to call; every write goes through the injected `Actuator`. The
+> `no-actuator-bypass` rule (now shipped) additionally forbids plan/executor from
+> **value**-importing anything out of `lib/actuator/**` (notably
+> `createDeviceActuator`); the `import type { Actuator }` edge is erased and stays
+> allowed. Code review still covers the residue a post-compilation import rule
+> cannot see (a raw write call, an `import type` edge).
 
 ---
 
@@ -312,28 +332,42 @@ intent union + injected transport surface), so it became the natural seed.
   discriminant, flow-vs-native, step passthrough) + relocated
   `terminalShedActuation.test.ts` + reworked `deferredTerminalEnding.test.ts`.
 
-**PR 1b — migrate the executor dispatch subsystem onto the actuator.** Split into
-sub-PRs so each is independently shippable and behavior-preserving:
+**PR 1b — migrate the executor dispatch subsystem onto the actuator.** *Shipped.*
+Split into sub-PRs so each is independently shippable and behavior-preserving:
 
-- **PR1b-1 — stepped.** *(this PR)* Inject the shared `Actuator` into the plan
-  engine + executor (via wiring's `buildDeviceActuator`, lifted out of the
+- **PR1b-1 — stepped.** *Shipped (#1485).* Inject the shared `Actuator` into the
+  plan engine + executor (via wiring's `buildDeviceActuator`, lifted out of the
   terminal-shed `buildShedActuator` so both paths share one builder) and route the
   executor's stepped binding (`planExecutor` `requestSteppedLoadStep`) through
   `actuator.apply({ kind: 'step', ... })`. `steppedLoadExecutor.ts` is unchanged —
   only the binding routes through the actuator; behavior is identical.
-- **PR1b-2 — target.** Re-point `targetExecutor` / the `setCapability` setpoint
-  path through the actuator, adding the capability-addressed `target` variant
-  (`target.capabilityId`) to `DeviceCommand` for the per-capability setpoint write.
-- **PR1b-3 — binary.** Re-point `binaryControlDispatch` through the actuator; move
-  the flow-vs-native binary decision (`binaryControlDispatch.ts:159`
-  `isFlowBackedBinaryControl`) to the producer so the command carries a resolved
+- **PR1b-2 — target.** *Shipped (#1489).* Re-point `targetExecutor` / the
+  `setCapability` setpoint path through the actuator, adding the
+  capability-addressed `target` variant (`target.capabilityId`) to `DeviceCommand`
+  for the per-capability setpoint write.
+- **PR1b-3 — binary.** *Shipped (#1490).* Re-point `binaryControlDispatch` through
+  the actuator; move the flow-vs-native binary decision
+  (`isFlowBackedBinaryControl`) to the producer so the command carries a resolved
   `flowBacked`, matching the terminal-shed path; hoist the flow-log and delete the
-  now-redundant `isFlowBackedBinaryControl` recompute.
-- **PR1b-final — cruiser.** Add `no-actuator-bypass` once all three write sites are
-  migrated and the actuator is the sole write path (see the rules section for why
-  it cannot land earlier).
+  now-redundant `isFlowBackedBinaryControl` recompute on the dispatch path.
+- **PR1b-final — close out.** *Shipped (this PR).* Removed the now-dead transport
+  write members from the executor's transport view: `PlanExecutorDeviceTransport`
+  is now `= DeviceObservation` (read-only) and `PlanExecutorTargetContext`'s
+  `deviceManager` lost `setCapability`. Added the `no-actuator-bypass` cruiser rule
+  now that all three write sites are migrated and the actuator is the sole write
+  path (see the rules section for why it could not land earlier). No behavior
+  change.
 - Keep logging/pending/retry where they are unless a clean home emerges — this
   train is about the write seam, not relocating the executor's bookkeeping.
+
+  **Future cleanup (NOT this PR):** the binary path still *re-resolves* the
+  flow-vs-native decision after the write — `isFlowBackedBinaryControl(...)` is
+  recomputed at three post-write consumer sites in `binaryExecutor.ts`
+  (~lines 372 / 427 / 595) to decide whether the command was flow-backed when
+  recording confirmation. PR1b-3 hoisted the *dispatch-path* recompute but left
+  these consumer-side re-resolutions; folding them onto the producer-resolved
+  `flowBacked` the command already carries is a follow-up, decoupled from the write
+  seam.
 
 **PR 2 — move the snapshot store to observer (the read model).**
 - Relocate `latestSnapshot` / `latestSnapshotById` / `getHomePowerW` from
