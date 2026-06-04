@@ -56,7 +56,7 @@ Tap any row to open a compact **progress trajectory**: the planned line (where P
 
 ### Recently ended tasks
 
-Below the active list, a **Recently ended** section shows tasks that finished in the last 24 hours — whether they reached their target, missed it, or were cancelled — each with an outcome chip and the time it ended. Tap one to see how the run actually played out against its plan.
+Below the active list, a **Recently ended** section shows tasks that finished in the last 24 hours — whether they reached their target, missed it, or were abandoned — each with an outcome chip and the time it ended. Tap one to see how the run actually played out against its plan.
 
 ![Smart tasks widget: a Recently ended section listing a succeeded and a missed task, and the trajectory detail of a succeeded EV charge reaching its target](/screenshots/widgets/smart-tasks-ended.png)
 

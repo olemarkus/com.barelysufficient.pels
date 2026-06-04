@@ -21,7 +21,8 @@ below.
 ## Architecture decision records
 
 - `ev-soc-layering.md` — source-of-evidence SoC metadata stays in the observation layer.
-- `persisted-settings-state.md` — proposed shared persisted-settings/recorder state helper (open).
+- `persisted-settings-state.md` — cut shared persisted-settings helper proposal; rationale for keeping
+  recorder persistence feature-specific.
 - `objective-profile-bands.md` — learned-profile banding + display-confidence resolution model.
 - `desktop-light-mobile-dark.md` — *(shipped)* light-canvas-on-desktop / dark-on-mobile theme model.
 - `v2-7-2/postmortem-chart-policy.md` — active-vs-historic chart asymmetry policy.

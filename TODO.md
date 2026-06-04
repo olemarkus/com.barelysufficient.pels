@@ -65,12 +65,6 @@ not a release gate.*
       `headroom` hierarchy / price-chip weight / over-cap tone, and the `plan_budget` projected
       summary dominating the chart — which needs a hands-on harness walk, not an autonomous PR.
 
-- [ ] **P3: create-screen `Extra permissions` opt-out is additive-only.**
-      `createDeferredObjective` uses the `preserve` rescue policy, and the compose
-      screen still does not reflect a device's existing standing permission set
-      via Flow / the rescue lane. Surface the current standing permission in the
-      compose view when the screen should read as authoritative.
-
 ### P1 — targeted refactors (deferred)
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
@@ -398,15 +392,6 @@ live-walk screenshots.*
       fixed by the keep-invariant gate; the remaining work is internal-only refactor.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
-- [ ] ~~Extract a shared `PersistedSettingsState<T>` helper.~~ **CUT (layering review,
-      2026-05-31): do not do this.** The three stores share *vocabulary*
-      (dirty/debounce/flush) but not *semantics* — `planHistory.ts`'s abandon-grace is
-      objective-run-lifecycle logic (met/missed/abandoned finalization), not a generic
-      persistence timer; calibration and the active-plan recorder each have their own
-      finalize/grace policy. A generic `PersistedSettingsState<T>` would have to absorb
-      three different policies, *increasing* coupling and indirection (shared-base-class
-      trap) while removing little. Kept annotated so it isn't re-raised. Source:
-      `pels-layering-guardian` merit pass.
 - [ ] Add a "Picked the N cheapest hours of next M (avg P kr/kWh vs Q baseline)" caption under
       the live deadline-plan chart. The chart today is honest — price bars are tone-coded,
       planned hours stack on the same x-axis — but a skeptical user can't tell at a glance
@@ -458,29 +443,21 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       disable + status emit fire on `tick()`, to lock the behavioral contract of PR-C. Source:
       pels-runtime-reality on `feat/smarttask-clock`, 2026-05-30.
 
-- [x] **P2: dep-cruiser is type-edge-blind — `no-plan-to-smarttasks` is now `error` but only a
-      value-edge guard.** DONE (option b): `.dependency-cruiser.cjs` runs post-compilation
-      (`tsPreCompilationDeps` unset), so `import type` edges are invisible to every rule. The manual
-      `grep -rn "from .*objectives" lib/plan/` audit is now an enforced check — `npm run arch:grep`
-      (`scripts/check-plan-objectives-edge.mjs`), wired into `ci:checks` (so the pre-push hook and
-      the CI checks job cover it — NOT the pre-commit hook, which only runs lint-staged +
-      `scripts/pre-commit-extra-checks.mjs`) and an explicit workflow step. The scanner uses the
-      TypeScript compiler API (AST walk over module specifiers), so it ignores comments and catches
-      every import shape — value/type `import ... from`, `export ... from`, `import x = require(...)`,
-      and `import(...)`/`require(...)` with string OR template-literal args — naming the offending
-      file:line.
-      Scoped to the boundary the rule comment names (`no-plan-to-smarttasks`); the
-      `no-objectives-to-peer-except-power` gate was left out of scope as its comment documents no
-      type-edge audit. Option (a) — flipping `tsPreCompilationDeps: true` — was deliberately NOT
-      taken: it surfaces ~18 pre-existing type-only `no-circular` violations and doubles the cruised
-      graph (out of scope). Source: pels-layering-guardian on `feat/smarttask-lifecycle-producer`,
-      2026-05-30.
-
 ## P3 Future and Exploratory Work
 
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
+      *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects
+      the compose screen to reflect the standing permissions already granted for the device.
+      *Hypothesis:* because `createDeferredObjective` preserves existing smart-task permissions,
+      a user can read the compose screen as authoritative while it only shows additive opt-ins.
+      *Why it's needed:* surfacing current standing permission state would make the create flow
+      honest when permissions came from Flow cards or the Held-back devices lane.
+      Files: `widgets/create_smart_task/src/public/render.ts`,
+      `widgets/create_smart_task/src/api.ts`, `packages/shared-domain/src/deadlineLabels.ts`.
 
 - [ ] **Surface the learned thermostat deadband to the owner.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) — the
@@ -590,8 +567,9 @@ visitors (`notes/personas.md` #4–6).*
       *Why it's needed:* the v1 flow-card path works but imposes per-session friction; the
       daily charger is exactly the persona who tires of the ritual and stops trusting
       ready-by charging. Profile = enabled / target % or kWh / ready-by / enforcement / speed
-      mode / optional manual kW + derating, upserted via the flow-card path; persistence aligns
-      with `PersistedSettingsState<T>` (`notes/persisted-settings-state.md`). Design:
+      mode / optional manual kW + derating, upserted via the flow-card path; persistence should
+      stay feature-specific rather than reviving the cut shared-state helper
+      (`notes/persisted-settings-state.md`). Design:
       `notes/ev-ready-by/README.md`. Files: new `packages/contracts/src/evChargerDefaults.ts`,
       new wiring, `lib/device/transport/stateOfCharge.ts`, tests.
 - [ ] **EV deadline polish: manual override actions + imminent-deadline urgency rule.**

@@ -7,6 +7,7 @@ import {
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
 } from '../lib/objectives/deferredObjectives';
+import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
 import type {
   DeferredObjectivePlannedBucket,
 } from '../lib/objectives/deferredObjectives';
@@ -1044,6 +1045,33 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settle = run(NOW_MS + 58 * 60 * 1000);
     const settleBuckets = settle?.horizonPlan?.plannedBuckets ?? [];
     expect(settleBuckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+  });
+
+  it('releases an expired frozen commitment at the exact deadline boundary', () => {
+    const deadlineAtMs = NOW_MS;
+    const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs, targetPercent: 50 }));
+    const device = buildDevice({
+      controllable: false,
+      stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: NOW_MS },
+    });
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [device],
+      settings,
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot({ prices: Array.from({ length: 24 }, () => 30) }),
+      priceOptimizationEnabled: true,
+      activePlans: buildCommittedEvPlans(deadlineAtMs),
+    });
+
+    const buckets = diagnostic?.horizonPlan?.plannedBuckets ?? [];
+    expect(buckets.some((b) => b.id.startsWith('frozen-'))).toBe(false);
+    expect(diagnostic?.horizonPlan?.currentBucket ?? null).toBeNull();
+    expect(diagnostic?.status).toBe('cannot_meet');
+    expect(diagnostic?.reasonCode).toBe('deadline_passed');
+    const decision = applyDeferredObjectiveAdmission(diagnostic ? [diagnostic] : [], [device]).get('ev-1');
+    expect(decision).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
   });
 
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {

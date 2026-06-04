@@ -10,8 +10,8 @@ releasable feature, and the prioritized task list for closing the gap. Cross-ref
 
 - `notes/deferred-load-objectives/README.md` — technical model for deadline-aware loads. EV Ready
   By is the user-facing surface for the `ev_soc` slice of that model.
-- `notes/persisted-settings-state.md` — shared persistence helper that new EV-related settings
-  stores must align with.
+- `notes/persisted-settings-state.md` — cut shared-persistence-helper rationale; new EV-related
+  settings stores should stay feature-specific.
 - `notes/ui-terminology.md` — user-facing vocabulary rules.
 
 ## Product Goal
