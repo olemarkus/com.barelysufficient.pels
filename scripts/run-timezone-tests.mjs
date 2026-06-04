@@ -14,8 +14,8 @@ const TIME_ZONES = Object.freeze([
 ]);
 
 const TEST_FILES = Object.freeze([
-  'test/prices.test.ts',
-  'test/norgesprisPriceService.test.ts',
+  'test/integration/prices.test.ts',
+  'test/integration/norgesprisPriceService.test.ts',
   'test/tz/powerTrackerDst.test.ts',
   'test/tz/formatCheapestUpcomingHourDst.test.ts',
 ]);

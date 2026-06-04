@@ -131,11 +131,21 @@ avoid silently skipping un-migrated specs. Do not re-scope it early.
 
 ## Migration status (incremental)
 
-The taxonomy was adopted with the folder scaffolding and the already-named specs moved
-(`*.integration.test.ts`, `*.unit.test.ts`, the `deferredObjective*E2E` runtime specs). The
-remaining ~278 flat `test/*.test.ts` files are not yet classified. They are migrated
-opportunistically — when you touch a spec, move it into its tier folder (bumping import depth
-per the rule above) as part of the same change. Tracked in `TODO.md`.
+The taxonomy was adopted in waves:
+
+1. Folder scaffolding + the already-named specs (`*.integration.test.ts`, `*.unit.test.ts`,
+   `deferredObjective*E2E`).
+2. The *obviously-classified* specs: app/SDK-harness tests (`createApp`, `mockHomeyInstance`,
+   `setMockDrivers`, `MockDevice`) → `integration/`; specs importing exactly one concrete
+   production file with no SDK mock → `unit/`; `*E2E`-named → `e2e/`.
+
+~165 flat `test/*.test.ts` specs remain — the ones whose tier needs per-file judgment
+(multi-subsystem imports without the app harness, SDK-mock-but-no-app, and the
+environment-special `*Browser.test.ts` / `settings-ui.test.ts` / `*.perf.test.ts`, which are
+pinned by explicit include lists in the dom/perf vitest configs and need those lists updated
+when moved). They migrate opportunistically — when you touch a spec, move it into its tier
+folder (bumping import depth per the rule above, then `knip` to catch type-only-import depth
+errors) as part of the same change. Tracked in `TODO.md`.
 
 When in doubt about a flat spec's tier, apply the two border-case rules above; if it still
 isn't obvious, it is probably an integration test wearing a unit test's clothes.

@@ -93,13 +93,18 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **Finish migrating flat `test/*.test.ts` specs into their tier folders.** The testing
-      taxonomy (`notes/testing-taxonomy.md`) and folder scaffolding (`test/unit/`,
-      `test/integration/`, `test/e2e/`) landed with only the already-named specs moved
-      (`*.integration.test.ts`, `*.unit.test.ts`, `deferredObjective*E2E`). ~278 flat
-      `test/*.test.ts` files remain unclassified. Migrate opportunistically — when you touch a
-      spec, move it into its tier folder and bump its relative-import depth (`'../X'` →
-      `'../../X'`, `'./X'` → `'../X'`). When every spec is under a tier folder, re-scope
+- [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
+      The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
+      *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
+      imports → `unit/`, `*E2E` → `e2e/`). ~165 flat specs remain — the ones whose tier needs
+      per-file judgment: multi-subsystem imports without the app harness (unit vs sub-layer
+      integration), specs that import the SDK mock but don't spin up the app, and the 7
+      environment-special `*Browser.test.ts` / `settings-ui.test.ts` / `*.perf.test.ts` (jsdom /
+      explicit-include in the dom configs — moving them needs the dom/perf config include lists
+      updated too). Migrate opportunistically — when you touch a spec, move it into its tier
+      folder and bump its relative-import depth (`'../X'` → `'../../X'`, `'./X'` → `'../X'`), then
+      run `knip` (type-only imports pass vitest but fail `deadcode:check` on wrong depth). When
+      every spec is under a tier folder, re-scope
       `test:unit` from the whole-suite glob to `test/unit/` so the three tier commands partition
       the runtime suite, and (optionally) split CI into per-tier jobs (see the CI-actions note
       below). Persona: contributor; hypothesis: a path-obvious tier speeds review and lets CI
@@ -325,7 +330,7 @@ live-walk screenshots.*
       (the unconditional rebuild fires settings handlers that perturb the test's cooldown
       state). A conditional catch-up — only when `combined_prices` is from a prior local
       day — should be safe; verify it does not regress the plan throttle test.
-      Files: `lib/price/priceCoordinator.ts`, `test/plan.test.ts`, plan throttle tests.
+      Files: `lib/price/priceCoordinator.ts`, `test/integration/plan.test.ts`, plan throttle tests.
 - [ ] Improve overshoot attribution for hard-cap incidents.
       The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
       `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
