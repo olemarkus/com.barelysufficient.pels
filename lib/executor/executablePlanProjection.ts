@@ -157,19 +157,16 @@ export function buildExecutableObservedDeviceState(
 }
 
 /**
- * Trusted binary evidence is carried by `binaryControlObservation` (set by the
- * snapshot parser whenever a real `onoff`/`evcharger_charging` value or
- * `evcharger_charging_state` is present). When that evidence is absent, the
- * snapshot's `currentOn` is a default — never a real observation — so the
- * projection reports the binary state as `'unknown'`.
+ * The executor acts on the producer-resolved `currentOn` directly. Observation
+ * freshness/staleness is deliberately NOT consulted here: staleness only matters
+ * to the planner (to avoid over-committing capacity against stale data — an
+ * overshoot it can pre-empt); the executor just actuates against the observed
+ * value. So this never returns `'unknown'` — that state existed only to carry the
+ * old `binaryControlObservation` "no trusted evidence" signal.
  */
 export const resolveObservedBinaryStateFromSnapshot = (
   snapshot: TargetDeviceSnapshot,
-): 'on' | 'off' | 'unknown' => {
-  const observation = snapshot.binaryControlObservation;
-  if (!observation) return 'unknown';
-  return observation.observedValue ? 'on' : 'off';
-};
+): 'on' | 'off' => (snapshot.currentOn ? 'on' : 'off');
 
 const buildObservedTargetState = (snapshot: TargetDeviceSnapshot): ExecutableObservedTargetState | null => {
   const primaryTarget = snapshot.targets?.[0];

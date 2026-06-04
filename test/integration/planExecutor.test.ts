@@ -1379,31 +1379,6 @@ describe('PlanExecutor stepped loads', () => {
   // non-boolean so `binaryControlObservation` was absent and `currentOn` defaulted to
   // the optimistic `true`. The plan kept the device (assumed on) while the executor
   // never issued the binary-on, leaving it at 0 kW with status on_track.
-  it('issues a defensive binary-on for a kept stepped load when the onoff observation is unknown', async () => {
-    const { executor, deviceManager } = buildExecutor(
-      undefined,
-      steppedSnapshot({
-        currentOn: true,
-        selectedStepId: 'max',
-        reportedStepId: 'max',
-        // binaryControlObservation deliberately absent: no trusted on/off evidence.
-      }),
-    );
-
-    // The defensive binary write is counted as an applied device write so the
-    // post-actuation refresh still runs (step is already at max, so no command).
-    await expect(
-      executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' })),
-    ).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
-
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'stepped_load_binary_transition_applied',
-      desiredBinaryState: true,
-      binaryObservationUnknown: true,
-    }));
-  });
-
   it('does not re-issue a binary-on for a kept stepped load already observed on', async () => {
     const { executor, deviceManager } = buildExecutor(
       undefined,
@@ -2907,31 +2882,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   // (a matching restore attempt exists) AND the onoff observation is unknown. The
   // step-attempt deferral must NOT suppress the defensive binary-on — otherwise the
   // device sits at 0 kW for the whole pending window.
-  it('issues a defensive binary-on for an unknown-observation keep load while the step command is pending', async () => {
-    const snapshot = buildSnapshot({ currentOn: true });
-    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
-
-    const plan = steppedPlan({
-      currentState: 'on',
-      plannedState: 'keep',
-      selectedStepId: 'low',
-      desiredStepId: 'max',
-      lastDesiredStepId: 'max',
-      lastStepCommandIssuedAt: Date.now() - 1_000,
-      stepCommandPending: true,
-      stepCommandStatus: 'pending',
-    });
-
-    await executor.applyPlanActions(plan, 'reconcile');
-
-    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
-    expect(logCapture.events).toContainEqual(expect.objectContaining({
-      event: 'stepped_load_binary_transition_applied',
-      desiredBinaryState: true,
-      binaryObservationUnknown: true,
-    }));
-  });
-
   it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
     const snapshot = buildSnapshot({ currentOn: true });
     const now = Date.now();
