@@ -25,7 +25,12 @@
     // action, so a user with nothing yet knows exactly how to make a device
     // appear here rather than hitting a dead end.
     emptyNoDevicesHint: "Add a thermostat, water heater, or EV charger in Homey and it\u2019ll appear here.",
-    loadError: "Could not load devices. Try again later.",
+    loadError: "Could not load devices.",
+    // Tap target paired with `loadError`: re-runs the device fetch in place so a
+    // stuck load recovers without closing and reopening the widget. Imperative
+    // verb (Material text-button convention) rather than the "Try again later"
+    // resignation in the subtitle.
+    loadErrorRetry: "Try again",
     // Shown while the widget is still wiring up to the Homey app (the SDK bridge
     // hasn't supplied a real API client yet). Distinct from `loadError` (a real
     // fetch that failed): this is a transient "not ready yet" state that resolves
@@ -892,10 +897,19 @@
     return li;
   };
   var renderPicker = (targets, payload) => {
-    const { pickerPrompt, pickerCaption, pickerList, pickerEmpty, pickerEmptyHint, deviceTemplate } = targets;
+    const {
+      pickerPrompt,
+      pickerCaption,
+      pickerList,
+      pickerEmpty,
+      pickerEmptyHint,
+      pickerRetryBtn,
+      deviceTemplate
+    } = targets;
     pickerPrompt.textContent = C.pickDevicePrompt;
     clearChildren(pickerList);
-    if (!payload || payload.state === "empty") {
+    if (!payload || payload.state !== "ready") {
+      const isError = !payload || payload.state === "error";
       setLine(pickerCaption, null);
       pickerList.hidden = true;
       pickerEmpty.hidden = false;
@@ -907,12 +921,15 @@
       } else {
         pickerEmptyHint.hidden = true;
       }
+      pickerRetryBtn.hidden = !isError;
+      pickerRetryBtn.textContent = C.loadErrorRetry;
       return;
     }
     setLine(pickerCaption, SMART_TASK_DEVICE_PICKER_COPY.eligibilityCaption);
     pickerList.hidden = false;
     pickerEmpty.hidden = true;
     pickerEmptyHint.hidden = true;
+    pickerRetryBtn.hidden = true;
     for (const device of payload.devices) {
       pickerList.appendChild(renderDeviceRow(deviceTemplate, device));
     }
@@ -1193,6 +1210,7 @@
       createdMsgEl: "[data-created-msg]"
     };
     const buttons = {
+      pickerRetryBtn: "[data-picker-retry]",
       composeBackBtn: "[data-compose-back]",
       goalDecBtn: "[data-goal-dec]",
       goalIncBtn: "[data-goal-inc]",
@@ -1285,7 +1303,7 @@
       return await homeyRef.api("GET", "/devices");
     } catch (error) {
       console.error("Failed to load create_smart_task widget", error);
-      return { state: "empty", subtitle: C2.loadError, hint: null };
+      return { state: "error" };
     }
   };
   var fetchPreview = async (homeyRef, usePreviewData, request) => {
@@ -1312,6 +1330,7 @@
     if (!(eventTarget instanceof Element)) return null;
     const deviceId = closestDataValue(eventTarget, "[data-device-button]", "deviceId");
     if (deviceId) return { kind: "select-device", deviceId };
+    if (eventTarget.closest("[data-picker-retry]")) return { kind: "retry-load" };
     const readyById = closestDataValue(eventTarget, "[data-ready-by]", "readyById");
     if (readyById) return { kind: "select-ready-by", readyById };
     if (eventTarget.closest("[data-goal-dec]")) return { kind: "goal-dec" };
@@ -1337,9 +1356,7 @@
     let createdResetTimer = null;
     let destroyed = false;
     let requestSeq = 0;
-    const render = () => {
-      renderWidget(targets, devicesPayload, view);
-    };
+    const render = () => renderWidget(targets, devicesPayload, view);
     const setView = (next) => {
       view = next;
       requestSeq += 1;
@@ -1409,6 +1426,9 @@
           return;
         case "back":
           setView(backView(view));
+          return;
+        case "retry-load":
+          void loadAndRender();
           return;
         default: {
           const unhandled = action;

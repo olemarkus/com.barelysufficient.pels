@@ -217,15 +217,6 @@ title colour were fixed in the same change; items below are the deferred remaind
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Create-smart-task load-error — add a tap-to-retry affordance.** When the
-      device fetch fails, the picker shows `CREATE_SMART_TASK_WIDGET_COPY.loadError`
-      ("Could not load devices. Try again later.") as static text with no way to
-      retry without leaving and reopening the widget
-      (`widgets/create_smart_task/src/public/render.ts` empty/error branch). Give
-      the error state a retry tap target that re-runs `loadAndRender`. User-visible
-      outcome: a stuck load can be recovered in place. Source: PR #1274 fix-up,
-      2026-05-29.
-
 - [ ] **Migrate the remaining `lib/app/**` inhabitants to `setup/`.**
       `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
       as the long-term inhabitant. The `appInit` surface (`appInit.ts` +
