@@ -137,7 +137,6 @@ export type TargetDeviceSnapshot = {
     targetPowerConfig?: TargetPowerSteppedLoadConfig;
     powerKw?: number;
     expectedPowerKw?: number;
-    planningPowerKw?: number;
     expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
     loadKw?: number;
     priority?: number;
@@ -159,19 +158,6 @@ export type TargetDeviceSnapshot = {
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
     reportedStepId?: string;
-    targetStepId?: string;
-    desiredStepId?: string;
-    previousStepId?: string;
-    // Producer-resolved EFFECTIVE step: the reported step, or the planning
-    // fallback (lowest active step) when no report is available. The retired
-    // raw-evidence fields (actualStepId / assumedStepId / actualStepSource)
-    // collapsed into this plus the typed stepped-state adapter.
-    selectedStepId?: string;
-    lastStepCommandIssuedAt?: number;
-    stepCommandRetryCount?: number;
-    nextStepCommandRetryAtMs?: number;
-    stepCommandPending?: boolean;
-    stepCommandStatus?: SteppedLoadCommandStatus;
     powerCapable?: boolean;
     zone?: string;
     controllable?: boolean;
@@ -187,6 +173,39 @@ export type TargetDeviceSnapshot = {
     lastLocalWriteMs?: number;
     lastUpdated?: number;
 };
+
+/**
+ * Step-command / planning state the app-layer decorator
+ * (`lib/app/appDeviceControlHelpers.decorateSnapshotWithDeviceControl`)
+ * resolves for stepped-load devices and writes ON TOP of a
+ * `TargetDeviceSnapshot` after transport produces it. These fields do NOT
+ * originate in the transport-parsed snapshot; they are launders into the
+ * planner via `toPlanDevice` (which independently declares them on
+ * `PlanInputDevice`) and read by the settings-UI off the decorated carrier.
+ * Kept separate from `TargetDeviceSnapshot` so the raw observed-snapshot type
+ * carries no decoration the transport pipeline never writes.
+ */
+export type SteppedLoadDecoration = {
+    selectedStepId?: string;
+    planningPowerKw?: number;
+    targetStepId?: string;
+    desiredStepId?: string;
+    previousStepId?: string;
+    lastStepCommandIssuedAt?: number;
+    stepCommandRetryCount?: number;
+    nextStepCommandRetryAtMs?: number;
+    stepCommandPending?: boolean;
+    stepCommandStatus?: SteppedLoadCommandStatus;
+};
+
+/**
+ * The decoration carrier: a transport snapshot with the app-layer
+ * step-command/planning decoration applied. Returned by the decorator and
+ * consumed by the planner producer + settings-UI. Lives here in contracts so
+ * the settings-UI (which imports only from `packages/contracts`) can type the
+ * decorated device list it receives.
+ */
+export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration;
 
 export type SettingsUiLogLevel = 'info' | 'warn' | 'error';
 

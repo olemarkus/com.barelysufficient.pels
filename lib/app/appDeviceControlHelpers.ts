@@ -8,6 +8,7 @@ import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWi
 import type { Logger as PinoLogger } from '../logging/logger';
 import type { DevicePlan } from '../plan/planTypes';
 import type {
+  DecoratedDeviceSnapshot,
   DeviceControlModel,
   DeviceControlProfiles,
   SteppedLoadCommandStatus,
@@ -110,7 +111,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   profiles: DeviceControlProfiles;
   runtimeState: DeviceControlRuntimeState;
   nowMs?: number;
-}): TargetDeviceSnapshot => {
+}): DecoratedDeviceSnapshot => {
   const { snapshot, profiles, runtimeState, nowMs = Date.now() } = params;
   const nativeProfile = resolveNativeSteppedLoadProfile(snapshot);
   const profile = resolveEffectiveSteppedLoadProfile({
@@ -356,7 +357,7 @@ export class AppDeviceControlHelpers {
     });
   }
 
-  decorateTargetSnapshotList(snapshot: TargetDeviceSnapshot[]): TargetDeviceSnapshot[] {
+  decorateTargetSnapshotList(snapshot: TargetDeviceSnapshot[]): DecoratedDeviceSnapshot[] {
     const nowMs = Date.now();
     pruneStaleSteppedLoadCommandStates(this.runtimeState, nowMs);
     const profiles = this.deps.getProfiles();

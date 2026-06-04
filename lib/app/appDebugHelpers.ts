@@ -82,8 +82,6 @@ type PelsTargetSnapshotSummary = {
   expectedPowerKw?: number;
   measuredPowerKw?: number;
   reportedStepId?: string;
-  targetStepId?: string;
-  desiredStepId?: string;
   controllable?: boolean;
   managed?: boolean;
   available?: boolean;
@@ -444,8 +442,6 @@ const compactPelsTargetSnapshot = (
     expectedPowerKw: snapshot.expectedPowerKw,
     measuredPowerKw: snapshot.measuredPowerKw,
     reportedStepId: snapshot.reportedStepId,
-    targetStepId: snapshot.targetStepId,
-    desiredStepId: snapshot.desiredStepId,
     controllable: snapshot.controllable,
     managed: snapshot.managed,
     available: snapshot.available,

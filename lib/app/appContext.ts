@@ -27,6 +27,7 @@ import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import type {
+  DecoratedDeviceSnapshot,
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   EvBoostConfig,
@@ -199,9 +200,9 @@ export type AppContext = {
   set lastNotifiedOperatingMode(value: string);
   get powerSampleRebuildState(): PowerSampleRebuildState;
   set powerSampleRebuildState(value: PowerSampleRebuildState);
-  get latestTargetSnapshot(): TargetDeviceSnapshot[];
-  getUiPickerDevices(): TargetDeviceSnapshot[];
-  getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[];
+  get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
+  getUiPickerDevices(): DecoratedDeviceSnapshot[];
+  getCreateSmartTaskCandidateDevices(): DecoratedDeviceSnapshot[];
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard?: CapacityGuard;

@@ -68,11 +68,11 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     expect(outcome).toBeNull();
   });
 
-  it('returns null when a step command is pending', () => {
-    const store = new PowerCalibrationStore();
-    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ stepCommandPending: true }), 0);
-    expect(outcome).toBeNull();
-  });
+  // The former `stepCommandPending` ingest guard was removed in the snapshot
+  // decomposition: `stepCommandPending` is app-layer decoration the raw
+  // `getSnapshot()` ingest path never carried, so the guard was an
+  // always-false no-op in production. A real pending signal will be wired in a
+  // later slice (see TODO in devicePowerCalibrationStore.ts).
 
   it('returns null for off-step reports (planning 0W)', () => {
     const store = new PowerCalibrationStore();

@@ -19,8 +19,8 @@
  * dep-cruiser rule).
  */
 import type {
+  DecoratedDeviceSnapshot,
   RestorePowerSource,
-  TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import {
   resolveResidualKwRestore,
@@ -47,7 +47,7 @@ export type ResidualKwForPlanDeviceShedBehavior = {
 };
 
 export function buildResidualKwForPlanDevice(params: {
-  device: TargetDeviceSnapshot;
+  device: DecoratedDeviceSnapshot;
   hasBinaryControl: boolean;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
@@ -73,7 +73,7 @@ export function buildResidualKwForPlanDevice(params: {
 }
 
 function toRestoreSteppedLoad(
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
   hasBinaryControl: boolean,
   observationStale: boolean,
 ): ResidualKwRestoreSteppedDevice | undefined {
@@ -118,7 +118,7 @@ function toResidualShedBehavior(
 }
 
 function toResidualSteppedLoad(
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
   hasBinaryControl: boolean,
 ): ResidualKwShedSteppedDevice | undefined {
   if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
@@ -140,7 +140,7 @@ function toResidualSteppedLoad(
 }
 
 function toResidualTemperatureTarget(
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
 ): ResidualKwShedTemperatureTarget | undefined {
   const target = getPrimaryTargetCapability(device.targets);
   if (!target) return undefined;
