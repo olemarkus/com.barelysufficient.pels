@@ -6,7 +6,11 @@ moving the store wholesale is a risky dual-store with no behavior change). This 
 the right handle: **move the observation *contract* to the observer, decompose the
 god-struct, and seal the raw snapshot inside transport.**
 
-> Status: **design + in progress.** Slice 1 (dead-field cull) first. Read
+> Status: **design + in progress.** Shipped so far: `lastDesiredStepChangeAt`
+> cull (PR-1), step-command/planning cluster re-home onto `SteppedLoadDecoration`
+> (PR-2, #1502), `temperatureBoost`/`evBoost` removed from `TargetDeviceSnapshot`
+> (PR-3). Next substantive slice is stage 3 (`DeviceDescriptor` +
+> `ObservedDeviceState` read interfaces). Read
 > [`observer-transport-split.md`](./observer-transport-split.md) +
 > [`CLAUDE.md`](./CLAUDE.md) first.
 
@@ -86,11 +90,18 @@ the spread. The fields aren't dead; they originate on the *wrong type*.
   by cull. The fix is the **decoration rework**: make them originate on `PlanInputDevice`
   (or a dedicated decorated type), not on `TargetDeviceSnapshot`. This is a prerequisite
   of, not independent from, the surface split below.
-- **`temperatureBoost`, `evBoost`** — not written/read on a snapshot at runtime (sourced
-  by `toPlanDevice`'s explicit `ctx.get*BoostConfig`), BUT
-  `packages/contracts/src/settingsUiApi.ts:156,158` reference them via indexed-access
-  types (`TargetDeviceSnapshot['temperatureBoost']`). Removing breaks that contract type
-  — a separate, small, decision-gated change, not a behavior-preserving cull.
+- **`temperatureBoost`, `evBoost`** — DONE (PR-3): removed from `TargetDeviceSnapshot`.
+  The backend never populates them on the snapshot — the planner sources boost via
+  `toPlanDevice`'s explicit `ctx.get*BoostConfig` onto `PlanInputDevice` (which carries its
+  own canonical `TemperatureBoostConfig`/`EvBoostConfig` fields), and the decorator/transport
+  never set them. The only consumers were settings-UI: (a) the carrier's indexed-access types
+  in `settingsUiApi.ts`, repointed straight to the canonical config types, and (b) the
+  device-detail boost handlers (`deviceDetail/{evBoost,temperatureBoost}.ts`), which keep an
+  **optimistic mirror** of boost config on the live device object (authoritative source is
+  `state.{ev,temperature}BoostSettings`). That mirror now lives on a settings-UI-local
+  `SettingsUiDeviceView = DecoratedDeviceSnapshot & { temperatureBoost?; evBoost? }` (in
+  `state.ts`), not on the shared snapshot contract. tsc-clean (root + settings-UI), no behavior
+  change.
 - **`devicePowerCalibrationStore.ts:432`** (`stepCommandPending`) is a **latent
   always-false guard on the undecorated path** — flag, do not silently fix.
 

@@ -2,7 +2,9 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
+  EvBoostConfig,
   EvBoostSettings,
+  TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
 import {
@@ -25,6 +27,19 @@ export type PriceOptimizationConfig = {
   expensiveDelta: number;
 };
 
+/**
+ * Settings-UI device view: the decorated backend snapshot plus the UI's own
+ * optimistic mirror of boost config. `temperatureBoost`/`evBoost` are NOT part
+ * of the backend snapshot contract — the planner sources boost via the app
+ * context (`ctx.get*BoostConfig`), and the UI's authoritative source is
+ * `state.{temperature,ev}BoostSettings`. The device-detail handlers write these
+ * onto the live device object optimistically after a successful settings write.
+ */
+export type SettingsUiDeviceView = DecoratedDeviceSnapshot & {
+  temperatureBoost?: TemperatureBoostConfig;
+  evBoost?: EvBoostConfig;
+};
+
 export type UiState = {
   isBusy: boolean;
   initialLoadComplete: boolean;
@@ -34,7 +49,7 @@ export type UiState = {
   capacityPriorities: Record<string, Record<string, number>>;
   activeMode: string;
   editingMode: string;
-  latestDevices: DecoratedDeviceSnapshot[];
+  latestDevices: SettingsUiDeviceView[];
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
