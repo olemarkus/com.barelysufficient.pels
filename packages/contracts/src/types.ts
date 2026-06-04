@@ -144,6 +144,11 @@ export type TargetDeviceSnapshot = {
     // Unified binary observation for whether the device may draw power.
     // This is not the same as "is actively drawing power right now" for devices
     // with richer state, such as EV chargers or stepped loads.
+    // Non-optional by contract: the producer always resolves a concrete boolean
+    // at the parse boundary. The Homey SDK types don't guarantee a capability
+    // value, so on the (should-never-happen, type-driven) missing-value path the
+    // value is synthesized there — never optimistic — rather than left absent, so
+    // consumers never re-handle "missing". See `resolveUnobservedControlFallback`.
     currentOn: boolean;
     evCharging?: boolean;
     evChargingState?: string;
