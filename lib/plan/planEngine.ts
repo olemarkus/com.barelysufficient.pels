@@ -29,10 +29,12 @@ import {
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import type { Actuator } from '../actuator/deviceActuator';
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
   deviceManager: PlanExecutorDeps['deviceManager'];
+  actuator: Actuator;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
@@ -130,6 +132,7 @@ export class PlanEngine {
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
       deviceManager: deps.deviceManager,
+      actuator: deps.actuator,
       getCapacityGuard: deps.getCapacityGuard,
       getCapacitySettings: deps.getCapacitySettings,
       getCapacityDryRun: deps.getCapacityDryRun,

@@ -51,6 +51,7 @@ import {
 } from '../plan/planExecutorSupport';
 import { getLogger } from '../logging/logger';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import type { Actuator } from '../actuator/deviceActuator';
 
 const logger = getLogger('executor/plan');
 import {
@@ -99,6 +100,13 @@ import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
   deviceManager: PlanExecutorDeviceTransport;
+  /**
+   * The single device write seam. Step writes route through here
+   * (`apply({ kind: 'step', ... })`); binary/target write sites migrate onto
+   * the actuator in PR1b-2/PR1b-3. See
+   * `notes/state-management/actuator-write-seam.md`.
+   */
+  actuator: Actuator;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getCapacityDryRun: () => boolean;
@@ -405,7 +413,11 @@ export class PlanExecutor {
         recordShedActuation: this.boundRecordShedActuation,
         recordRestoreActuation: this.boundRecordRestoreActuation,
         getRestoreLogSource: this.boundGetRestoreLogSource,
-        requestSteppedLoadStep: (params) => this.deviceManager.requestSteppedLoadStep(params),
+        // Route step writes through the single actuator seam; the `{ requested: false }`
+        // fallback matches the absent-stepped-surface arm of SteppedLoadStepRequestResult.
+        requestSteppedLoadStep: (params) => this.deps.actuator
+          .apply({ kind: 'step', ...params })
+          .then((outcome) => outcome.steppedResult ?? { requested: false as const }),
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };
     }

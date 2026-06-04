@@ -5,6 +5,7 @@ import {
   type CommandableNowGraceEntry,
 } from '../lib/device/deviceActionProjection';
 import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
+import { buildDeviceActuator } from './appInit/buildDeviceActuator';
 import { PlanEngine as PlanEngineClass } from '../lib/plan/planEngine';
 import { PlanService } from '../lib/plan/planService';
 import { PriceCoordinator } from '../lib/price/priceCoordinator';
@@ -141,9 +142,20 @@ export function createPlanEngine(ctx: AppContext) {
     },
   });
 
+  // Resolve the device manager first so its absence surfaces the canonical
+  // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
+  // null when the device manager is absent, so past this guard the actuator is
+  // non-null; the assertion just satisfies the required dep type.
+  const deviceManager = requireDeviceManager(ctx);
+  const actuator = buildDeviceActuator(ctx);
+  if (!actuator) {
+    throw new Error('Device actuator must be initialized before plan engine setup.');
+  }
+
   return new PlanEngineClass({
     homey: ctx.homey,
-    deviceManager: requireDeviceManager(ctx),
+    deviceManager,
+    actuator,
     getCapacityGuard: () => ctx.capacityGuard,
     getCapacitySettings: () => ctx.capacitySettings,
     getCapacityDryRun: () => ctx.capacityDryRun,
