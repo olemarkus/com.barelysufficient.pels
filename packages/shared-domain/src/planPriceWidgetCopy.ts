@@ -135,30 +135,66 @@ const formatKwh = (value: number): string => {
   return `${rounded.toFixed(1)} ${PLAN_PRICE_WIDGET_AXIS.energy}`;
 };
 
+// The status word for a tone (`On track` / `Over budget`), or null when there's
+// no budget comparison to report (tomorrow). Single-sourced so the flat line and
+// the two-tier parts agree on the wording.
+const resolveStatusText = (tone: PlanPriceSummaryTone | null): string | null => {
+  if (tone === 'on_track') return 'On track';
+  if (tone === 'over') return 'Over budget';
+  return null;
+};
+
+export type PlanPriceSummaryParams = {
+  projectedKwh: number;
+  projectedCost: number | null;
+  costUnit: string;
+  tone: PlanPriceSummaryTone | null;
+};
+
+// The projected headline (kWh, plus cost when a usable unit is known). The cost
+// half is dropped when no usable cost unit is known (Flow/Homey placeholder).
+const formatHeadline = (params: PlanPriceSummaryParams): string => {
+  const parts: string[] = [`Projected ${formatKwh(Math.max(0, params.projectedKwh))}`];
+  const unit = params.costUnit.trim();
+  if (unit && params.projectedCost !== null && Number.isFinite(params.projectedCost)) {
+    parts.push(`${params.projectedCost.toFixed(2)} ${unit}`);
+  }
+  return parts.join(' · ');
+};
+
+export type PlanPriceSummaryParts = {
+  // Prominent projected line, e.g. `Projected 16.8 kWh · 19.60 kr`.
+  headline: string;
+  // Status word for the toned chip, e.g. `On track` / `Over budget`; empty when
+  // there's no budget comparison (tomorrow).
+  status: string;
+  // The tone driving the status chip colour; null when no status is shown.
+  tone: PlanPriceSummaryTone | null;
+};
+
+/**
+ * Split the projected summary into a prominent headline and a toned status, for
+ * the two-tier widget layout. The widget renders `headline` prominently and
+ * `status` as a tone-coloured chip; a log breadcrumb can quote
+ * `${headline} · ${status}`. Single source of truth with `formatPlanPriceSummary`
+ * (which joins these into one flat line) so the two never drift.
+ */
+export const formatPlanPriceSummaryParts = (params: PlanPriceSummaryParams): PlanPriceSummaryParts => {
+  const status = resolveStatusText(params.tone);
+  return {
+    headline: formatHeadline(params),
+    status: status ?? '',
+    tone: status === null ? null : params.tone,
+  };
+};
+
 /**
  * Build the projected-summary line shown above the chart, e.g.
  * `Projected 12.4 kWh · 9.80 kr · On track`. The cost half is dropped when no
  * usable cost unit is known (Flow/Homey placeholder). The tone word is dropped
  * when `tone` is null (e.g. tomorrow, where there's no budget comparison yet).
  */
-export const formatPlanPriceSummary = (params: {
-  projectedKwh: number;
-  projectedCost: number | null;
-  costUnit: string;
-  tone: PlanPriceSummaryTone | null;
-}): string => {
-  const parts: string[] = [`Projected ${formatKwh(Math.max(0, params.projectedKwh))}`];
-
-  const unit = params.costUnit.trim();
-  if (unit && params.projectedCost !== null && Number.isFinite(params.projectedCost)) {
-    parts.push(`${params.projectedCost.toFixed(2)} ${unit}`);
-  }
-
-  if (params.tone === 'on_track') {
-    parts.push('On track');
-  } else if (params.tone === 'over') {
-    parts.push('Over budget');
-  }
-
-  return parts.join(' · ');
+export const formatPlanPriceSummary = (params: PlanPriceSummaryParams): string => {
+  const { headline, status } = formatPlanPriceSummaryParts(params);
+  return status ? `${headline} · ${status}` : headline;
 };

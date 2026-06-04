@@ -66,6 +66,24 @@ export const PREVIEW_TOMORROW_PAYLOAD: PlanPriceWidgetReadyPayload = {
   summaryTone: null,
 };
 
-export const resolvePreviewPayload = (target: WidgetTarget): PlanPriceWidgetReadyPayload => (
-  target === 'tomorrow' ? PREVIEW_TOMORROW_PAYLOAD : PREVIEW_TODAY_PAYLOAD
-);
+// An over-budget variant of the today payload, so the screenshot harness can
+// exercise the red status chip (`summary--over`) — the on_track + null tones are
+// already covered by the today/tomorrow payloads, leaving the red chip otherwise
+// unguarded. Selected via `?tone=over` in preview (see resolvePreviewPayload).
+export const PREVIEW_OVER_PAYLOAD: PlanPriceWidgetReadyPayload = {
+  ...PREVIEW_TODAY_PAYLOAD,
+  projectedKwh: 24.3,
+  projectedCost: 31.2,
+  summaryTone: 'over',
+};
+
+// Resolve the preview payload for a target, with an optional tone override so the
+// render-gate can exercise each status chip. `?tone=over` forces the red
+// over-budget chip; otherwise today (on_track) / tomorrow (null) tones apply.
+export const resolvePreviewPayload = (
+  target: WidgetTarget,
+  tone?: string | null,
+): PlanPriceWidgetReadyPayload => {
+  if (tone === 'over') return PREVIEW_OVER_PAYLOAD;
+  return target === 'tomorrow' ? PREVIEW_TOMORROW_PAYLOAD : PREVIEW_TODAY_PAYLOAD;
+};

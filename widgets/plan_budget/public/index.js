@@ -32,41 +32,83 @@
     const rounded = Math.round(value * 10) / 10;
     return `${rounded.toFixed(1)} ${PLAN_PRICE_WIDGET_AXIS.energy}`;
   };
-  var formatPlanPriceSummary = (params) => {
+  var resolveStatusText = (tone) => {
+    if (tone === "on_track") return "On track";
+    if (tone === "over") return "Over budget";
+    return null;
+  };
+  var formatHeadline = (params) => {
     const parts = [`Projected ${formatKwh(Math.max(0, params.projectedKwh))}`];
     const unit = params.costUnit.trim();
     if (unit && params.projectedCost !== null && Number.isFinite(params.projectedCost)) {
       parts.push(`${params.projectedCost.toFixed(2)} ${unit}`);
     }
-    if (params.tone === "on_track") {
-      parts.push("On track");
-    } else if (params.tone === "over") {
-      parts.push("Over budget");
-    }
     return parts.join(" \xB7 ");
   };
-
-  // widgets/plan_budget/src/public/chart.ts
-  var SVG_NS = "http://www.w3.org/2000/svg";
-  var VIEWPORT = { width: 480, height: 360 };
-  var PANEL = { x: 12, y: 12, width: 456, height: 296, radius: 12 };
-  var PLOT = { left: 52, right: 416, top: 26, bottom: 252 };
-  var LEGEND_Y = 334;
-  var X_LABEL_Y = 284;
-  var AXIS_TITLE_Y = 20;
-  var GRID_LINES = 4;
-  var BAR_RADIUS = 3;
-  var DOT_RADIUS = 4;
-  var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
-  var DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
-  var HALF_SPLIT_HOUR = 12;
-  var parseBucketLocalHour = (label) => {
-    if (typeof label !== "string") return null;
-    const match = /^\s*(\d{1,2})/.exec(label);
-    if (!match) return null;
-    const hour = Number.parseInt(match[1], 10);
-    return Number.isFinite(hour) ? hour : null;
+  var formatPlanPriceSummaryParts = (params) => {
+    const status = resolveStatusText(params.tone);
+    return {
+      headline: formatHeadline(params),
+      status: status ?? "",
+      tone: status === null ? null : params.tone
+    };
   };
+
+  // widgets/plan_budget/src/public/chartGeometry.ts
+  var VIEWPORT_WIDTH = 480;
+  var VIEWPORT_MIN_HEIGHT = 360;
+  var VIEWPORT_MAX_HEIGHT = 1600;
+  var PANEL_X = { x: 12, width: 456, radius: 12 };
+  var PANEL_MARGIN = 12;
+  var PLOT_X = { left: 52, right: 416 };
+  var PLOT_TOP_OFFSET = 14;
+  var AXIS_TITLE_OFFSET = 6;
+  var X_LABEL_GAP = 32;
+  var LEGEND_GAP = 78;
+  var BLOCK_BOTTOM_PAD = 10;
+  var PLOT_BODY_MIN_PX = 180;
+  var PLOT_BODY_MAX_PX = 360;
+  var resolveViewportHeight = (desired) => {
+    if (!Number.isFinite(desired)) return VIEWPORT_MIN_HEIGHT;
+    return Math.min(VIEWPORT_MAX_HEIGHT, Math.max(VIEWPORT_MIN_HEIGHT, Math.round(desired)));
+  };
+  var BLOCK_OVERHEAD = PLOT_TOP_OFFSET + LEGEND_GAP + BLOCK_BOTTOM_PAD;
+  var resolveGeometry = (height, scale = 1) => {
+    const unitScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+    const plotBodyMin = PLOT_BODY_MIN_PX / unitScale;
+    const plotBodyMax = PLOT_BODY_MAX_PX / unitScale;
+    const panelHeight = height - PANEL_MARGIN * 2;
+    const availableBody = panelHeight - BLOCK_OVERHEAD;
+    const bandedBody = Math.min(plotBodyMax, Math.max(plotBodyMin, availableBody));
+    const plotBodyHeight = Math.max(0, Math.min(bandedBody, availableBody));
+    const blockHeight = plotBodyHeight + BLOCK_OVERHEAD;
+    const surplus = Math.max(0, panelHeight - blockHeight);
+    const blockTop = PANEL_MARGIN + surplus / 2;
+    const plotTop = blockTop + PLOT_TOP_OFFSET;
+    const plotBottom = plotTop + plotBodyHeight;
+    return {
+      viewport: { width: VIEWPORT_WIDTH, height },
+      panel: {
+        x: PANEL_X.x,
+        y: PANEL_MARGIN,
+        width: PANEL_X.width,
+        height: panelHeight,
+        radius: PANEL_X.radius
+      },
+      plot: {
+        left: PLOT_X.left,
+        right: PLOT_X.right,
+        top: plotTop,
+        bottom: plotBottom
+      },
+      legendY: plotBottom + LEGEND_GAP,
+      xLabelY: plotBottom + X_LABEL_GAP,
+      axisTitleY: plotTop - AXIS_TITLE_OFFSET
+    };
+  };
+
+  // widgets/plan_budget/src/public/chartSvg.ts
+  var SVG_NS = "http://www.w3.org/2000/svg";
   var createSvg = (chartDocument, tagName, attributes = {}, textContent = "") => {
     const node = chartDocument.createElementNS(SVG_NS, tagName);
     for (const [key, value] of Object.entries(attributes)) {
@@ -82,55 +124,6 @@
     while (node.firstChild) {
       node.removeChild(node.firstChild);
     }
-  };
-  var formatPlanTick = (value) => {
-    const rounded = Math.round(value * 10) / 10;
-    return rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1);
-  };
-  var formatPriceTick = (value) => String(Math.round(value));
-  var resolvePriceBounds = (payload) => {
-    if (!payload.hasPriceData) return { min: 0, max: 1 };
-    if (Math.abs(payload.priceMax - payload.priceMin) < 1e-3) {
-      return {
-        min: payload.priceMin - 1,
-        max: payload.priceMax + 1
-      };
-    }
-    return {
-      min: payload.priceMin,
-      max: payload.priceMax
-    };
-  };
-  var resolveVisibleBuckets = (payload, half) => {
-    const buckets = [];
-    payload.plannedKwh.forEach((_value, dayIndex) => {
-      const localHour = parseBucketLocalHour(payload.bucketLabels[dayIndex]) ?? dayIndex;
-      const inMorning = localHour < HALF_SPLIT_HOUR;
-      if (half === "morning" === inMorning) {
-        buckets.push({ localIndex: buckets.length, dayIndex });
-      }
-    });
-    return buckets;
-  };
-  var resolvePlotMetrics = (payload, half) => {
-    const plotWidth = PLOT.right - PLOT.left;
-    const plotHeight = PLOT.bottom - PLOT.top;
-    const buckets = resolveVisibleBuckets(payload, half);
-    const maxPlan = Math.max(1, payload.maxPlan * 1.08);
-    const priceBounds = resolvePriceBounds(payload);
-    const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
-    const stepWidth = plotWidth / Math.max(1, buckets.length);
-    const barWidth = Math.max(6, stepWidth * 0.62);
-    return {
-      barWidth,
-      buckets,
-      maxPlan,
-      plotHeight,
-      plotWidth,
-      priceBounds,
-      priceSpan,
-      stepWidth
-    };
   };
   var buildPathData = (points) => {
     const commands = [];
@@ -163,6 +156,71 @@
       "Z"
     ].join(" ");
   };
+
+  // widgets/plan_budget/src/public/chart.ts
+  var GRID_LINES = 4;
+  var BAR_RADIUS = 3;
+  var DOT_RADIUS = 4;
+  var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
+  var DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
+  var HALF_SPLIT_HOUR = 12;
+  var parseBucketLocalHour = (label) => {
+    if (typeof label !== "string") return null;
+    const match = /^\s*(\d{1,2})/.exec(label);
+    if (!match) return null;
+    const hour = Number.parseInt(match[1], 10);
+    return Number.isFinite(hour) ? hour : null;
+  };
+  var formatPlanTick = (value) => {
+    const rounded = Math.round(value * 10) / 10;
+    return rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1);
+  };
+  var formatPriceTick = (value) => String(Math.round(value));
+  var resolvePriceBounds = (payload) => {
+    if (!payload.hasPriceData) return { min: 0, max: 1 };
+    if (Math.abs(payload.priceMax - payload.priceMin) < 1e-3) {
+      return {
+        min: payload.priceMin - 1,
+        max: payload.priceMax + 1
+      };
+    }
+    return {
+      min: payload.priceMin,
+      max: payload.priceMax
+    };
+  };
+  var resolveVisibleBuckets = (payload, half) => {
+    const buckets = [];
+    payload.plannedKwh.forEach((_value, dayIndex) => {
+      const localHour = parseBucketLocalHour(payload.bucketLabels[dayIndex]) ?? dayIndex;
+      const inMorning = localHour < HALF_SPLIT_HOUR;
+      if (half === "morning" === inMorning) {
+        buckets.push({ localIndex: buckets.length, dayIndex });
+      }
+    });
+    return buckets;
+  };
+  var resolvePlotMetrics = (payload, half, geometry) => {
+    const { plot } = geometry;
+    const plotWidth = plot.right - plot.left;
+    const plotHeight = plot.bottom - plot.top;
+    const buckets = resolveVisibleBuckets(payload, half);
+    const maxPlan = Math.max(1, payload.maxPlan * 1.08);
+    const priceBounds = resolvePriceBounds(payload);
+    const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
+    const stepWidth = plotWidth / Math.max(1, buckets.length);
+    const barWidth = Math.max(6, stepWidth * 0.62);
+    return {
+      barWidth,
+      buckets,
+      maxPlan,
+      plotHeight,
+      plotWidth,
+      priceBounds,
+      priceSpan,
+      stepWidth
+    };
+  };
   var createChartGroups = (chartDocument) => {
     const chartGroup = createSvg(chartDocument, "g");
     const panelGroup = createSvg(chartDocument, "g");
@@ -178,46 +236,49 @@
       plotGroup
     };
   };
-  var appendPanel = (chartDocument, panelGroup) => {
+  var appendPanel = (chartDocument, panelGroup, geometry) => {
+    const { panel } = geometry;
     panelGroup.appendChild(createSvg(chartDocument, "rect", {
       class: "chart__panel",
-      x: PANEL.x,
-      y: PANEL.y,
-      width: PANEL.width,
-      height: PANEL.height,
-      rx: PANEL.radius,
-      ry: PANEL.radius
+      x: panel.x,
+      y: panel.y,
+      width: panel.width,
+      height: panel.height,
+      rx: panel.radius,
+      ry: panel.radius
     }));
   };
-  var appendAxisTitles = (chartDocument, labelsGroup, payload) => {
+  var appendAxisTitles = (chartDocument, labelsGroup, payload, geometry) => {
+    const { plot, axisTitleY } = geometry;
     labelsGroup.appendChild(createSvg(chartDocument, "text", {
       class: "chart__axis-title",
-      x: PLOT.left - 8,
-      y: AXIS_TITLE_Y,
+      x: plot.left - 8,
+      y: axisTitleY,
       "text-anchor": "start"
     }, PLAN_PRICE_WIDGET_AXIS.energy));
     if (!payload.hasPriceData || !payload.priceAxisUnit) return;
     labelsGroup.appendChild(createSvg(chartDocument, "text", {
       class: "chart__axis-title",
-      x: PLOT.right + 8,
-      y: AXIS_TITLE_Y,
+      x: plot.right + 8,
+      y: axisTitleY,
       "text-anchor": "end"
     }, payload.priceAxisUnit));
   };
-  var appendGridAndAxisLabels = (chartDocument, groups, payload, metrics) => {
+  var appendGridAndAxisLabels = (chartDocument, groups, payload, metrics, geometry) => {
+    const { plot } = geometry;
     for (let index = 0; index <= GRID_LINES; index += 1) {
       const ratio = index / GRID_LINES;
-      const y = PLOT.bottom - metrics.plotHeight * ratio;
+      const y = plot.bottom - metrics.plotHeight * ratio;
       groups.plotGroup.appendChild(createSvg(chartDocument, "line", {
         class: "chart__grid",
-        x1: PLOT.left,
+        x1: plot.left,
         y1: y,
-        x2: PLOT.right,
+        x2: plot.right,
         y2: y
       }));
       groups.labelsGroup.appendChild(createSvg(chartDocument, "text", {
         class: "chart__axis-label",
-        x: PLOT.left - 8,
+        x: plot.left - 8,
         y: y + 4,
         "text-anchor": "end"
       }, formatPlanTick(metrics.maxPlan * ratio)));
@@ -225,44 +286,47 @@
       const priceValue = metrics.priceBounds.min + metrics.priceSpan * ratio;
       groups.labelsGroup.appendChild(createSvg(chartDocument, "text", {
         class: "chart__axis-label",
-        x: PLOT.right + 8,
+        x: plot.right + 8,
         y: y + 4,
         "text-anchor": "start"
       }, formatPriceTick(priceValue)));
     }
   };
-  var appendNowMarker = (chartDocument, plotGroup, payload, metrics) => {
+  var appendNowMarker = (chartDocument, plotGroup, payload, metrics, geometry) => {
     if (!payload.showNow) return;
     const visible = metrics.buckets.find((bucket) => bucket.dayIndex === payload.currentIndex);
     if (!visible) return;
-    const currentX = PLOT.left + metrics.stepWidth * (visible.localIndex + 0.5);
+    const { plot } = geometry;
+    const currentX = plot.left + metrics.stepWidth * (visible.localIndex + 0.5);
     plotGroup.appendChild(createSvg(chartDocument, "line", {
       class: "chart__now",
       x1: currentX,
-      y1: PLOT.top,
+      y1: plot.top,
       x2: currentX,
-      y2: PLOT.bottom
+      y2: plot.bottom
     }));
   };
-  var appendPlanBars = (chartDocument, plotGroup, payload, metrics) => {
+  var appendPlanBars = (chartDocument, plotGroup, payload, metrics, geometry) => {
+    const { plot } = geometry;
     metrics.buckets.forEach((bucket) => {
       const value = payload.plannedKwh[bucket.dayIndex] ?? 0;
-      const x = PLOT.left + metrics.stepWidth * bucket.localIndex + (metrics.stepWidth - metrics.barWidth) / 2;
+      const x = plot.left + metrics.stepWidth * bucket.localIndex + (metrics.stepWidth - metrics.barWidth) / 2;
       const height = metrics.plotHeight * (value / metrics.maxPlan);
-      const y = PLOT.bottom - height;
+      const y = plot.bottom - height;
       plotGroup.appendChild(createSvg(chartDocument, "path", {
         class: "chart__bar",
         d: buildBarPath(x, y, metrics.barWidth, height, BAR_RADIUS)
       }));
     });
   };
-  var appendPriceSeries = (chartDocument, plotGroup, payload, metrics) => {
+  var appendPriceSeries = (chartDocument, plotGroup, payload, metrics, geometry) => {
+    const { plot } = geometry;
     const pricePoints = metrics.buckets.map((bucket) => {
       const value = payload.priceSeries[bucket.dayIndex];
       if (typeof value !== "number" || !Number.isFinite(value)) return null;
       return {
-        x: PLOT.left + metrics.stepWidth * (bucket.localIndex + 0.5),
-        y: PLOT.bottom - (value - metrics.priceBounds.min) / metrics.priceSpan * metrics.plotHeight
+        x: plot.left + metrics.stepWidth * (bucket.localIndex + 0.5),
+        y: plot.bottom - (value - metrics.priceBounds.min) / metrics.priceSpan * metrics.plotHeight
       };
     });
     const pricePath = buildPathData(pricePoints);
@@ -276,28 +340,30 @@
     const visible = metrics.buckets.find((bucket) => bucket.dayIndex === payload.currentIndex);
     if (!visible || !Number.isFinite(payload.priceSeries[payload.currentIndex])) return;
     const currentValue = payload.priceSeries[payload.currentIndex];
-    const currentPriceY = PLOT.bottom - (currentValue - metrics.priceBounds.min) / metrics.priceSpan * metrics.plotHeight;
+    const currentPriceY = plot.bottom - (currentValue - metrics.priceBounds.min) / metrics.priceSpan * metrics.plotHeight;
     plotGroup.appendChild(createSvg(chartDocument, "circle", {
       class: "chart__price-dot",
-      cx: PLOT.left + metrics.stepWidth * (visible.localIndex + 0.5),
+      cx: plot.left + metrics.stepWidth * (visible.localIndex + 0.5),
       cy: currentPriceY,
       r: DOT_RADIUS + 1
     }));
   };
-  var appendActualMarkers = (chartDocument, plotGroup, payload, metrics) => {
+  var appendActualMarkers = (chartDocument, plotGroup, payload, metrics, geometry) => {
     if (!payload.showActual) return;
+    const { plot } = geometry;
     metrics.buckets.forEach((bucket) => {
       const value = payload.actualKwh[bucket.dayIndex];
       if (typeof value !== "number" || !Number.isFinite(value) || bucket.dayIndex > payload.currentIndex) return;
       plotGroup.appendChild(createSvg(chartDocument, "circle", {
         class: "chart__actual",
-        cx: PLOT.left + metrics.stepWidth * (bucket.localIndex + 0.5),
-        cy: PLOT.bottom - value / metrics.maxPlan * metrics.plotHeight,
+        cx: plot.left + metrics.stepWidth * (bucket.localIndex + 0.5),
+        cy: plot.bottom - value / metrics.maxPlan * metrics.plotHeight,
         r: DOT_RADIUS
       }));
     });
   };
-  var appendBucketLabels = (chartDocument, labelsGroup, payload, metrics) => {
+  var appendBucketLabels = (chartDocument, labelsGroup, payload, metrics, geometry) => {
+    const { plot, xLabelY } = geometry;
     const labelEvery = 2;
     metrics.buckets.forEach((bucket) => {
       const label = payload.bucketLabels[bucket.dayIndex] ?? "";
@@ -305,22 +371,24 @@
       if (!isVisible || !label) return;
       labelsGroup.appendChild(createSvg(chartDocument, "text", {
         class: "chart__axis-label",
-        x: PLOT.left + metrics.stepWidth * (bucket.localIndex + 0.5),
-        y: X_LABEL_Y,
+        x: plot.left + metrics.stepWidth * (bucket.localIndex + 0.5),
+        y: xLabelY,
         "text-anchor": "middle"
       }, label));
     });
   };
-  var appendMissingPriceBadge = (chartDocument, labelsGroup, payload) => {
+  var appendMissingPriceBadge = (chartDocument, labelsGroup, payload, geometry) => {
     if (payload.hasPriceData) return;
+    const { panel } = geometry;
     labelsGroup.appendChild(createSvg(chartDocument, "text", {
       class: "chart__badge",
-      x: PANEL.x + PANEL.width - 12,
-      y: PANEL.y + 22,
+      x: panel.x + panel.width - 12,
+      y: panel.y + 22,
       "text-anchor": "end"
     }, PLAN_PRICE_WIDGET_PRICE_MISSING));
   };
-  var renderLegend = (chartDocument, legendGroup, payload) => {
+  var renderLegend = (chartDocument, legendGroup, payload, geometry) => {
+    const { legendY } = geometry;
     const legendItems = [
       { type: "plan", label: PLAN_PRICE_WIDGET_LEGEND.planned, x: 92 },
       ...payload.showActual ? [{ type: "actual", label: PLAN_PRICE_WIDGET_LEGEND.used, x: 214 }] : [],
@@ -331,7 +399,7 @@
         legendGroup.appendChild(createSvg(chartDocument, "rect", {
           class: "chart__legend-plan",
           x: item.x,
-          y: LEGEND_Y - 7,
+          y: legendY - 7,
           width: 16,
           height: 10,
           rx: 3,
@@ -341,90 +409,98 @@
         legendGroup.appendChild(createSvg(chartDocument, "circle", {
           class: "chart__legend-actual",
           cx: item.x + 8,
-          cy: LEGEND_Y - 2,
+          cy: legendY - 2,
           r: 5
         }));
       } else {
         legendGroup.appendChild(createSvg(chartDocument, "line", {
           class: "chart__legend-price",
           x1: item.x,
-          y1: LEGEND_Y - 2,
+          y1: legendY - 2,
           x2: item.x + 16,
-          y2: LEGEND_Y - 2
+          y2: legendY - 2
         }));
       }
       legendGroup.appendChild(createSvg(chartDocument, "text", {
         class: "chart__legend-text",
         x: item.x + 24,
-        y: LEGEND_Y - 2
+        y: legendY - 2
       }, item.label));
     });
   };
-  var renderEmptyState = (chartEl, payload) => {
+  var applyViewBox = (chartEl, viewport) => {
+    chartEl.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
+    chartEl.setAttribute("preserveAspectRatio", "none");
+  };
+  var renderEmptyState = (chartEl, payload, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
     const chartDocument = chartEl.ownerDocument;
+    const { panel, viewport } = resolveGeometry(resolveViewportHeight(height), scale);
     clearNode(chartEl);
+    applyViewBox(chartEl, viewport);
     chartEl.setAttribute("aria-label", payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
     chartEl.appendChild(createSvg(chartDocument, "rect", {
       class: "chart__panel",
-      x: PANEL.x,
-      y: PANEL.y,
-      width: PANEL.width,
-      height: PANEL.height,
-      rx: PANEL.radius,
-      ry: PANEL.radius
+      x: panel.x,
+      y: panel.y,
+      width: panel.width,
+      height: panel.height,
+      rx: panel.radius,
+      ry: panel.radius
     }));
     chartEl.appendChild(createSvg(chartDocument, "text", {
       class: "chart__empty-title",
-      x: VIEWPORT.width / 2,
-      y: PANEL.y + PANEL.height / 2 - 10,
+      x: viewport.width / 2,
+      y: panel.y + panel.height / 2 - 10,
       "text-anchor": "middle"
     }, payload.title || WIDGET_TITLE));
     chartEl.appendChild(createSvg(chartDocument, "text", {
       class: "chart__empty-subtitle",
-      x: VIEWPORT.width / 2,
-      y: PANEL.y + PANEL.height / 2 + 16,
+      x: viewport.width / 2,
+      y: panel.y + panel.height / 2 + 16,
       "text-anchor": "middle"
     }, payload.subtitle || DEFAULT_EMPTY_SUBTITLE));
   };
-  var renderReadyState = (chartEl, payload, half) => {
+  var renderReadyState = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
     const chartDocument = chartEl.ownerDocument;
+    const geometry = resolveGeometry(resolveViewportHeight(height), scale);
     const groups = createChartGroups(chartDocument);
-    const metrics = resolvePlotMetrics(payload, half);
+    const metrics = resolvePlotMetrics(payload, half, geometry);
     clearNode(chartEl);
+    applyViewBox(chartEl, geometry.viewport);
     chartEl.setAttribute(
       "aria-label",
       payload.target === "tomorrow" ? PLAN_PRICE_WIDGET_ARIA.tomorrow : PLAN_PRICE_WIDGET_ARIA.today
     );
     chartEl.appendChild(groups.chartGroup);
-    appendPanel(chartDocument, groups.panelGroup);
-    appendAxisTitles(chartDocument, groups.labelsGroup, payload);
-    appendGridAndAxisLabels(chartDocument, groups, payload, metrics);
-    appendNowMarker(chartDocument, groups.plotGroup, payload, metrics);
-    appendPlanBars(chartDocument, groups.plotGroup, payload, metrics);
-    appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics);
-    appendActualMarkers(chartDocument, groups.plotGroup, payload, metrics);
-    appendBucketLabels(chartDocument, groups.labelsGroup, payload, metrics);
-    appendMissingPriceBadge(chartDocument, groups.labelsGroup, payload);
-    renderLegend(chartDocument, groups.legendGroup, payload);
+    appendPanel(chartDocument, groups.panelGroup, geometry);
+    appendAxisTitles(chartDocument, groups.labelsGroup, payload, geometry);
+    appendGridAndAxisLabels(chartDocument, groups, payload, metrics, geometry);
+    appendNowMarker(chartDocument, groups.plotGroup, payload, metrics, geometry);
+    appendPlanBars(chartDocument, groups.plotGroup, payload, metrics, geometry);
+    appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics, geometry);
+    appendActualMarkers(chartDocument, groups.plotGroup, payload, metrics, geometry);
+    appendBucketLabels(chartDocument, groups.labelsGroup, payload, metrics, geometry);
+    appendMissingPriceBadge(chartDocument, groups.labelsGroup, payload, geometry);
+    renderLegend(chartDocument, groups.legendGroup, payload, geometry);
   };
-  var resolveSummaryText = (payload) => {
-    if (!payload || payload.state !== "ready") return "";
-    return formatPlanPriceSummary({
+  var resolveSummaryParts = (payload) => {
+    if (!payload || payload.state !== "ready") return null;
+    return formatPlanPriceSummaryParts({
       projectedKwh: payload.projectedKwh,
       projectedCost: payload.projectedCost,
       costUnit: payload.costUnit,
       tone: payload.summaryTone
     });
   };
-  var renderWidget = (chartEl, payload, half) => {
+  var renderWidget = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
     if (!payload || payload.state !== "ready") {
       renderEmptyState(chartEl, payload || {
         title: WIDGET_TITLE,
         subtitle: DEFAULT_EMPTY_SUBTITLE
-      });
+      }, height, scale);
       return;
     }
-    renderReadyState(chartEl, payload, half);
+    renderReadyState(chartEl, payload, half, height, scale);
   };
 
   // widgets/_shared/widgetRuntime.ts
@@ -661,7 +737,16 @@
     costUnit: "kr",
     summaryTone: null
   };
-  var resolvePreviewPayload = (target) => target === "tomorrow" ? PREVIEW_TOMORROW_PAYLOAD : PREVIEW_TODAY_PAYLOAD;
+  var PREVIEW_OVER_PAYLOAD = {
+    ...PREVIEW_TODAY_PAYLOAD,
+    projectedKwh: 24.3,
+    projectedCost: 31.2,
+    summaryTone: "over"
+  };
+  var resolvePreviewPayload = (target, tone) => {
+    if (tone === "over") return PREVIEW_OVER_PAYLOAD;
+    return target === "tomorrow" ? PREVIEW_TOMORROW_PAYLOAD : PREVIEW_TODAY_PAYLOAD;
+  };
 
   // widgets/plan_budget/src/public/widgetApp.ts
   var LOAD_ERROR_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.loadError;
@@ -690,23 +775,54 @@
   var resolveTargets = (widgetDocument) => {
     const chartEl = widgetDocument.getElementById("chart");
     const summaryEl = widgetDocument.querySelector("[data-summary]");
+    const summaryHeadlineEl = widgetDocument.querySelector("[data-summary-headline]");
+    const summaryStatusEl = widgetDocument.querySelector("[data-summary-status]");
     const tabsEl = widgetDocument.querySelector("[data-tabs]");
     const morningBtn = widgetDocument.querySelector('[data-tab="morning"]');
     const afternoonBtn = widgetDocument.querySelector('[data-tab="afternoon"]');
-    if (!(chartEl instanceof SVGSVGElement) || !(summaryEl instanceof HTMLElement) || !(tabsEl instanceof HTMLElement) || !(morningBtn instanceof HTMLButtonElement) || !(afternoonBtn instanceof HTMLButtonElement)) {
+    if (!(chartEl instanceof SVGSVGElement) || !(summaryEl instanceof HTMLElement) || !(summaryHeadlineEl instanceof HTMLElement) || !(summaryStatusEl instanceof HTMLElement) || !(tabsEl instanceof HTMLElement) || !(morningBtn instanceof HTMLButtonElement) || !(afternoonBtn instanceof HTMLButtonElement)) {
       return null;
     }
     return {
       chartEl,
       summaryEl,
+      summaryHeadlineEl,
+      summaryStatusEl,
       tabsEl,
       tabButtons: { morning: morningBtn, afternoon: afternoonBtn }
     };
   };
+  var SUMMARY_TONE_CLASS = {
+    on_track: "summary--on-track",
+    over: "summary--over"
+  };
+  var SUMMARY_TONE_CLASSES = Object.values(SUMMARY_TONE_CLASS);
+  var applySummary = (targets, payload) => {
+    const { summaryEl, summaryHeadlineEl, summaryStatusEl } = targets;
+    const parts = resolveSummaryParts(payload);
+    summaryEl.classList.remove(...SUMMARY_TONE_CLASSES);
+    summaryHeadlineEl.textContent = parts?.headline ?? "";
+    const status = parts?.status ?? "";
+    summaryStatusEl.textContent = status;
+    summaryStatusEl.hidden = status === "";
+    if (parts?.tone) summaryEl.classList.add(SUMMARY_TONE_CLASS[parts.tone]);
+    summaryEl.hidden = !parts;
+  };
+  var VIEWPORT_WIDTH2 = 480;
+  var measureChart = (chartEl) => {
+    const rect = chartEl.getBoundingClientRect?.();
+    const measured = rect?.height ?? 0;
+    const width = rect?.width ?? 0;
+    if (!Number.isFinite(measured) || measured <= 0 || width <= 0) {
+      return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
+    }
+    const scale = width / VIEWPORT_WIDTH2;
+    return { height: measured / scale, scale };
+  };
   var renderView = (targets, payload, half) => {
-    const { chartEl, summaryEl, tabsEl, tabButtons } = targets;
+    const { chartEl, tabsEl, tabButtons } = targets;
     tabsEl.hidden = payload?.state !== "ready";
-    summaryEl.textContent = resolveSummaryText(payload);
+    applySummary(targets, payload);
     HALVES.forEach((value) => {
       const selected = value === half;
       const button = tabButtons[value];
@@ -714,13 +830,15 @@
       button.tabIndex = selected ? 0 : -1;
       button.classList.toggle("tab--active", selected);
     });
-    renderWidget(chartEl, payload, half);
+    const { height, scale } = measureChart(chartEl);
+    renderWidget(chartEl, payload, half, height, scale);
   };
   var renderLoadErrorView = (targets, title, subtitle) => {
-    const { chartEl, summaryEl, tabsEl } = targets;
+    const { chartEl, tabsEl } = targets;
     tabsEl.hidden = true;
-    summaryEl.textContent = "";
-    renderEmptyState(chartEl, { title, subtitle });
+    applySummary(targets, null);
+    const { height, scale } = measureChart(chartEl);
+    renderEmptyState(chartEl, { title, subtitle }, height, scale);
   };
   var keyToHalf = (key) => {
     if (key === "ArrowRight" || key === "ArrowDown" || key === "End") return "afternoon";
@@ -750,7 +868,7 @@
     };
   };
   var createWidgetController = ({ targets, widgetDocument, widgetWindow }) => {
-    const { tabsEl, tabButtons } = targets;
+    const { chartEl, tabsEl, tabButtons } = targets;
     let homeyRef = null;
     let initialRenderDone = false;
     let loadSequence = 0;
@@ -758,13 +876,36 @@
     let lastPayload = null;
     let half = "morning";
     let halfPinned = false;
+    let resizeObserver = null;
+    let lastDrawnSignature = "";
+    const measurementSignature = (m) => `${Math.round(m.height)}:${m.scale.toFixed(3)}`;
     let destroyed = false;
+    let inErrorState = false;
     const labelTabs = () => {
       tabButtons.morning.textContent = PLAN_PRICE_WIDGET_TABS.morning;
       tabButtons.afternoon.textContent = PLAN_PRICE_WIDGET_TABS.afternoon;
     };
     const render = () => {
+      lastDrawnSignature = measurementSignature(measureChart(chartEl));
+      if (inErrorState) {
+        renderLoadErrorView(targets, WIDGET_TITLE2, LOAD_ERROR_SUBTITLE);
+        return;
+      }
       renderView(targets, lastPayload, half);
+    };
+    const handleResize = () => {
+      if (destroyed) return;
+      if (measurementSignature(measureChart(chartEl)) === lastDrawnSignature) return;
+      render();
+    };
+    const observeResize = () => {
+      if (resizeObserver || typeof widgetWindow.ResizeObserver !== "function") return;
+      resizeObserver = new widgetWindow.ResizeObserver(() => handleResize());
+      resizeObserver.observe(chartEl);
+    };
+    const disconnectResize = () => {
+      resizeObserver?.disconnect();
+      resizeObserver = null;
     };
     const selectHalf = (value, focus) => {
       halfPinned = true;
@@ -784,7 +925,8 @@
     };
     const renderLoadError = () => {
       lastPayload = null;
-      renderLoadErrorView(targets, WIDGET_TITLE2, LOAD_ERROR_SUBTITLE);
+      inErrorState = true;
+      render();
     };
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
@@ -793,9 +935,10 @@
         const preview = searchParams.get("preview") === "1";
         applyPreviewTheme(widgetDocument, searchParams);
         const target = resolveTarget(getWidgetSettings(homeyRef), searchParams);
-        const payload = preview || !homeyRef ? resolvePreviewPayload(target) : await homeyRef.api("GET", `/chart?day=${encodeURIComponent(target)}`);
+        const payload = preview || !homeyRef ? resolvePreviewPayload(target, searchParams.get("tone")) : await homeyRef.api("GET", `/chart?day=${encodeURIComponent(target)}`);
         if (destroyed || loadId !== loadSequence) return;
         lastPayload = payload;
+        inErrorState = false;
         if (!halfPinned) half = resolveInitialHalf(payload);
         render();
       } catch (error) {
@@ -822,6 +965,7 @@
       homeyRef = homey;
       labelTabs();
       bindInteraction();
+      observeResize();
       void loadAndRender();
       refresh.start();
       refresh.bindVisibility();
@@ -830,6 +974,7 @@
       destroyed = true;
       refresh.stop();
       unbindInteraction();
+      disconnectResize();
     };
     return {
       bootstrap,

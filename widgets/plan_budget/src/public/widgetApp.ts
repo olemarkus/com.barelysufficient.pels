@@ -1,8 +1,9 @@
 import {
+  VIEWPORT_MIN_HEIGHT,
   parseBucketLocalHour,
   renderEmptyState,
   renderWidget,
-  resolveSummaryText,
+  resolveSummaryParts,
 } from './chart';
 import {
   applyPreviewTheme,
@@ -42,6 +43,10 @@ export type WidgetHomey = {
 export type WidgetWindow = Window & {
   Homey?: WidgetHomey;
   onHomeyReady?: (homey: WidgetHomey) => void;
+  // Read off the window so the typed lint resolves the constructor when the
+  // chart's height-responsive observer is wired (absent in jsdom/preview, where
+  // the chart falls back to its 4:3 minimum height).
+  ResizeObserver?: typeof globalThis.ResizeObserver;
 };
 
 export type WidgetController = SharedWidgetController<WidgetHomey>;
@@ -49,6 +54,8 @@ export type WidgetController = SharedWidgetController<WidgetHomey>;
 export type WidgetTargets = {
   chartEl: SVGSVGElement;
   summaryEl: HTMLElement;
+  summaryHeadlineEl: HTMLElement;
+  summaryStatusEl: HTMLElement;
   tabsEl: HTMLElement;
   tabButtons: Record<PlanPriceWidgetHalf, HTMLButtonElement>;
 };
@@ -98,6 +105,8 @@ export const maybeApplyPreviewTheme = applyPreviewTheme;
 const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
   const chartEl = widgetDocument.getElementById('chart');
   const summaryEl = widgetDocument.querySelector('[data-summary]');
+  const summaryHeadlineEl = widgetDocument.querySelector('[data-summary-headline]');
+  const summaryStatusEl = widgetDocument.querySelector('[data-summary-status]');
   const tabsEl = widgetDocument.querySelector('[data-tabs]');
   const morningBtn = widgetDocument.querySelector('[data-tab="morning"]');
   const afternoonBtn = widgetDocument.querySelector('[data-tab="afternoon"]');
@@ -105,6 +114,8 @@ const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
   if (
     !(chartEl instanceof SVGSVGElement)
     || !(summaryEl instanceof HTMLElement)
+    || !(summaryHeadlineEl instanceof HTMLElement)
+    || !(summaryStatusEl instanceof HTMLElement)
     || !(tabsEl instanceof HTMLElement)
     || !(morningBtn instanceof HTMLButtonElement)
     || !(afternoonBtn instanceof HTMLButtonElement)
@@ -115,22 +126,82 @@ const resolveTargets = (widgetDocument: Document): WidgetTargets | null => {
   return {
     chartEl,
     summaryEl,
+    summaryHeadlineEl,
+    summaryStatusEl,
     tabsEl,
     tabButtons: { morning: morningBtn, afternoon: afternoonBtn },
   };
 };
 
+// The kebab-case CSS modifier for a tone (the domain tone is snake_case; CSS
+// classes are kebab per the stylelint BEM pattern). One per non-null tone.
+const SUMMARY_TONE_CLASS = {
+  on_track: 'summary--on-track',
+  over: 'summary--over',
+} as const;
+const SUMMARY_TONE_CLASSES = Object.values(SUMMARY_TONE_CLASS);
+
+// Write the two-tier summary: a prominent headline plus a toned status chip.
+// All strings come from shared-domain (`resolveSummaryParts`); the chip colour
+// is carried by a `summary--<tone>` modifier on the container. Empty payload →
+// blank headline + hidden chip + the whole header collapsed.
+const applySummary = (targets: WidgetTargets, payload: PlanPriceWidgetPayload | null): void => {
+  const { summaryEl, summaryHeadlineEl, summaryStatusEl } = targets;
+  const parts = resolveSummaryParts(payload);
+
+  summaryEl.classList.remove(...SUMMARY_TONE_CLASSES);
+  summaryHeadlineEl.textContent = parts?.headline ?? '';
+
+  const status = parts?.status ?? '';
+  summaryStatusEl.textContent = status;
+  summaryStatusEl.hidden = status === '';
+  if (parts?.tone) summaryEl.classList.add(SUMMARY_TONE_CLASS[parts.tone]);
+
+  // Collapse the whole header when there's nothing to show (the `:empty`
+  // selector can't fire on a container that always holds the two child spans).
+  summaryEl.hidden = !parts;
+};
+
+// The viewBox width is fixed; one viewBox unit spans `widthPx / 480` CSS px.
+const VIEWPORT_WIDTH = 480;
+
+type ChartMeasurement = {
+  // The container height expressed in viewBox units (measuredPx / scale).
+  height: number;
+  // The width scale `widthPx / 480`: how many CSS px one viewBox unit spans. Used
+  // to size the plot body in physical px so it stays the same size at any width.
+  scale: number;
+};
+
+// Measure the chart container's pixel height + width scale for the responsive
+// viewBox. Returns the 4:3 minimum at scale 1 when no layout box is available yet
+// (jsdom/preview/pre-paint), so the chart still renders at its natural ratio and
+// the geometry uses its fixed-unit fallback band.
+const measureChart = (chartEl: SVGSVGElement): ChartMeasurement => {
+  const rect = chartEl.getBoundingClientRect?.();
+  const measured = rect?.height ?? 0;
+  const width = rect?.width ?? 0;
+  if (!Number.isFinite(measured) || measured <= 0 || width <= 0) {
+    return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
+  }
+  // The viewBox keeps width 480; scale the measured pixel height into viewBox
+  // units so the chart fills the container's true aspect ratio (clamped in
+  // chart.ts).
+  const scale = width / VIEWPORT_WIDTH;
+  return { height: measured / scale, scale };
+};
+
 // Reflect the projected summary, tab visibility, and selected tab into the DOM,
-// then redraw the chart for the active half. Pulled out of the controller so
-// the closure stays small and lint-clean.
+// then redraw the chart for the active half at the container's measured height.
+// Pulled out of the controller so the closure stays small and lint-clean.
 const renderView = (
   targets: WidgetTargets,
   payload: PlanPriceWidgetPayload | null,
   half: PlanPriceWidgetHalf,
 ): void => {
-  const { chartEl, summaryEl, tabsEl, tabButtons } = targets;
+  const { chartEl, tabsEl, tabButtons } = targets;
   tabsEl.hidden = payload?.state !== 'ready';
-  summaryEl.textContent = resolveSummaryText(payload);
+  applySummary(targets, payload);
 
   HALVES.forEach((value) => {
     const selected = value === half;
@@ -140,7 +211,8 @@ const renderView = (
     button.classList.toggle('tab--active', selected);
   });
 
-  renderWidget(chartEl, payload, half);
+  const { height, scale } = measureChart(chartEl);
+  renderWidget(chartEl, payload, half, height, scale);
 };
 
 // Tear the view down to the load-error state. Destructured so the assignments
@@ -150,10 +222,11 @@ const renderLoadErrorView = (
   title: string,
   subtitle: string,
 ): void => {
-  const { chartEl, summaryEl, tabsEl } = targets;
+  const { chartEl, tabsEl } = targets;
   tabsEl.hidden = true;
-  summaryEl.textContent = '';
-  renderEmptyState(chartEl, { title, subtitle });
+  applySummary(targets, null);
+  const { height, scale } = measureChart(chartEl);
+  renderEmptyState(chartEl, { title, subtitle }, height, scale);
 };
 
 // Map a keydown to the half it selects, or null when the key is irrelevant.
@@ -196,7 +269,7 @@ const bindTabInteraction = (tabsEl: HTMLElement, selectHalf: SelectHalf): (() =>
 export const createWidgetController = (
   { targets, widgetDocument, widgetWindow }: WidgetControllerDeps,
 ): WidgetController => {
-  const { tabsEl, tabButtons } = targets;
+  const { chartEl, tabsEl, tabButtons } = targets;
   let homeyRef: WidgetHomey | null = null;
   let initialRenderDone = false;
   let loadSequence = 0;
@@ -204,9 +277,25 @@ export const createWidgetController = (
   let lastPayload: PlanPriceWidgetPayload | null = null;
   let half: PlanPriceWidgetHalf = 'morning';
   let halfPinned = false;
+  let resizeObserver: ResizeObserver | null = null;
+  // A signature of the last-drawn measurement (rounded unit-height + width scale);
+  // lets the resize handler skip re-rendering when neither changed (the observer
+  // fires on every sub-pixel reflow). Scale is part of the key because the
+  // physical-px plot-body cap depends on it, so a uniform tile growth (aspect
+  // ratio held, scale changed) must still redraw even though unit-height is equal.
+  let lastDrawnSignature = '';
+  const measurementSignature = (m: { height: number; scale: number }): string =>
+    `${Math.round(m.height)}:${m.scale.toFixed(3)}`;
   // Set once destroy() runs; guards in-flight async loads from rendering to a
   // detached DOM after teardown (destroy doesn't bump loadSequence).
   let destroyed = false;
+  // True while the view is showing the load-error state (a refresh failed after a
+  // prior render). `lastPayload` is null in this state — the SAME null as a
+  // genuine no-data payload — so a bare `render()` (e.g. from the ResizeObserver)
+  // would repaint the no-data empty state and wipe the error copy. Track the mode
+  // explicitly, mirroring the `destroyed` flag, so a resize re-renders the error
+  // view. Cleared on the next successful load.
+  let inErrorState = false;
 
   const labelTabs = (): void => {
     tabButtons.morning.textContent = PLAN_PRICE_WIDGET_TABS.morning;
@@ -214,7 +303,35 @@ export const createWidgetController = (
   };
 
   const render = (): void => {
+    lastDrawnSignature = measurementSignature(measureChart(chartEl));
+    if (inErrorState) {
+      renderLoadErrorView(targets, WIDGET_TITLE, LOAD_ERROR_SUBTITLE);
+      return;
+    }
     renderView(targets, lastPayload, half);
+  };
+
+  // The chart is `height: 100%` in a tall dashboard cell, so its pixel height
+  // changes when the tile is resized. Re-draw at the new measured height so the
+  // chart fills the cell (clamped 4:3…2:3 in chart.ts) instead of letterboxing.
+  // Guarded against teardown (mirrors the `destroyed` flag) and against no-op
+  // ticks (height unchanged after the clamp). ResizeObserver is read off the
+  // window so jsdom/preview (no constructor) simply skips the responsive path.
+  const handleResize = (): void => {
+    if (destroyed) return;
+    if (measurementSignature(measureChart(chartEl)) === lastDrawnSignature) return;
+    render();
+  };
+
+  const observeResize = (): void => {
+    if (resizeObserver || typeof widgetWindow.ResizeObserver !== 'function') return;
+    resizeObserver = new widgetWindow.ResizeObserver(() => handleResize());
+    resizeObserver.observe(chartEl);
+  };
+
+  const disconnectResize = (): void => {
+    resizeObserver?.disconnect();
+    resizeObserver = null;
   };
 
   const selectHalf: SelectHalf = (value, focus): void => {
@@ -238,7 +355,8 @@ export const createWidgetController = (
 
   const renderLoadError = (): void => {
     lastPayload = null;
-    renderLoadErrorView(targets, WIDGET_TITLE, LOAD_ERROR_SUBTITLE);
+    inErrorState = true;
+    render();
   };
 
   const loadAndRender = async (): Promise<void> => {
@@ -252,11 +370,12 @@ export const createWidgetController = (
 
       const target = resolveTarget(getWidgetSettings(homeyRef), searchParams);
       const payload = preview || !homeyRef
-        ? resolvePreviewPayload(target)
+        ? resolvePreviewPayload(target, searchParams.get('tone'))
         : await homeyRef.api('GET', `/chart?day=${encodeURIComponent(target)}`);
 
       if (destroyed || loadId !== loadSequence) return;
       lastPayload = payload;
+      inErrorState = false;
       // Only auto-pick the half on the first render; once the user has chosen a
       // tab, a background refresh must not yank them back to "now".
       if (!halfPinned) half = resolveInitialHalf(payload);
@@ -286,6 +405,7 @@ export const createWidgetController = (
     homeyRef = homey;
     labelTabs();
     bindInteraction();
+    observeResize();
     void loadAndRender();
     refresh.start();
     refresh.bindVisibility();
@@ -295,6 +415,7 @@ export const createWidgetController = (
     destroyed = true;
     refresh.stop();
     unbindInteraction();
+    disconnectResize();
   };
 
   return {

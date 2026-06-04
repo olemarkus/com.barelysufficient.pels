@@ -109,6 +109,12 @@ try {
     const { url } = indexUrl('headroom', `preview=1&theme=dark&state=${state}`);
     await capture(browser, { url, width: 480, name: `headroom-480-${state}` });
   }
+  // plan_budget over-budget tone (selected via ?tone=over), so the red status
+  // chip is exercised at both widths — on_track + null are the default captures.
+  for (const width of WIDTHS) {
+    const { url } = indexUrl('plan_budget', 'preview=1&theme=dark&tone=over');
+    await capture(browser, { url, width, name: `plan_budget-${width}-over` });
+  }
 } finally {
   await browser.close();
 }
