@@ -60,10 +60,25 @@ rows no longer render bare units, smart-task recourse copy is non-imperative, an
 public docs now describe all five widgets. Remaining work is desirability polish,
 not a release gate.*
 
-- [ ] **Widget desirability (`headroom` / `plan_budget`), residual & subjective.** The concrete
-      defects shipped (plan_budget status-line truncation, PR #1458). Remaining is subjective only —
-      `headroom` hierarchy / price-chip weight / over-cap tone, and the `plan_budget` projected
-      summary dominating the chart — which needs a hands-on harness walk, not an autonomous PR.
+- [ ] **Widget desirability (`headroom`), residual & subjective.** `plan_budget` is done:
+      status-line truncation (PR #1458), and the dead-band + flat-summary defects shipped via the
+      panel-fill responsive chart (height-derived viewBox maps 1:1 onto the tile, the card panel
+      fills the whole tile, the plot is capped + vertically centred with balanced padding inside the
+      card) + two-tier summary (bold projected headline over a toned status chip). The dead band is
+      fully eliminated at the common 480 px tall-tile case and strictly improved at every width (the
+      old 2:3-clamp + `meet` letterbox pooled an empty band below the chart; PR #1476 replaces it
+      with a panel-fill + physical-px-capped/centred plot, so no band appears outside the card and
+      bars never stretch into spaghetti). *Residual P2 (extreme aspect):* at a 320-wide × very-tall
+      tile the plot is held to a consistent physical size and centred, leaving modest breathing room
+      above/below it — a deliberate band-vs-stretched-bars tradeoff (ux-fit wanted the plot to grow
+      vertically to fill; that yields tall bars at this aspect). Owner chose to ship the capped/centred
+      version; revisit only if real 320×tall dashboard tiles read under-filled. To resolve later: let
+      the plot body grow vertically toward the card height on tall tiles (keep MIN_PX as a floor; bar
+      WIDTH — the spaghetti axis — is independent of vertical growth). `headroom` was assessed against the
+      widget render-gate and reads acceptable — hierarchy / price-chip weight / over-cap tone all
+      land (over-cap tone + plan_budget flex squeeze already shipped); no change made. Anything
+      further on `headroom` is subjective polish needing a hands-on harness walk, not an
+      autonomous PR.
 
 ### P1 — targeted refactors (deferred)
 
@@ -114,6 +129,15 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       below). Persona: contributor; hypothesis: a path-obvious tier speeds review and lets CI
       fan out unit→integration→e2e for faster signal.
 
+- [ ] **Migrate `test/planPriceWidgetBrowser.test.ts` into the `test/unit` tier (per `test/AGENTS.md`).**
+      The spec imports concrete plan_budget widget files (`chart`, `chartGeometry`, `widgetApp`) and
+      belongs under `test/unit/` like the other single-module browser specs. Deferred to avoid a
+      conflict with the active test-taxonomy migration (it is one of the 7 environment-special
+      `*Browser.test.ts` specs the migration item above tracks — moving it also needs the dom-config
+      include list updated). Do the move as part of that taxonomy pass, not piecemeal. Persona:
+      contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
+      list consistent. Source: Codex review of PR #1476.
+
 - [ ] **Render-gate seed misses the two genuinely-new pixel paths shipped this range.** The
       populated `Cost ≈ X kr · Y kWh delivered` past-list meta line and the "Revised trajectory"
       overlay / re-anchored staircase ship in v2.11.0..HEAD but the standing gate
@@ -148,13 +172,6 @@ title colour were fixed in the same change; items below are the deferred remaind
       log/UI-parity rule (`feedback_ui_text_shared_with_logs`). Move the map + formatters into
       shared-domain and have both the settings UI and runtime logging consume the one source.
       Source: pels-copy-and-terminology, 2026-06-03 review-findings investigation.
-
-- [ ] **`plan_budget` widget reads half-empty above the fold.** At 320/480 px a large empty
-      vertical band sits above the bottom-anchored chart (header `flex: 0 0 auto`, chart
-      `flex: 1 1 auto` in `widgets/plan_budget/src/public/index.css`), so the card looks
-      half-filled before the chart paints. Confirm against the widget render-gate at both widths,
-      then rebalance (centre the chart or fill the band with meta/legend). Pre-existing layout
-      pass, not a regression. Source: pels-m3-critic, 2026-06-03 review-findings investigation.
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +

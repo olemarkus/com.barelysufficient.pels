@@ -5,22 +5,32 @@ import {
   PLAN_PRICE_WIDGET_LEGEND,
   PLAN_PRICE_WIDGET_PRICE_MISSING,
   PLAN_PRICE_WIDGET_TITLE,
-  formatPlanPriceSummary,
+  formatPlanPriceSummaryParts,
+  type PlanPriceSummaryParts,
   type PlanPriceWidgetHalf,
 } from '../../../../packages/shared-domain/src/planPriceWidgetCopy';
+import {
+  VIEWPORT_MIN_HEIGHT,
+  resolveGeometry,
+  resolveViewportHeight,
+  type Geometry,
+} from './chartGeometry';
+import {
+  buildBarPath,
+  buildPathData,
+  clearNode,
+  createSvg,
+} from './chartSvg';
 import type {
   PlanPriceWidgetEmptyPayload,
   PlanPriceWidgetPayload,
   PlanPriceWidgetReadyPayload,
 } from '../planPriceWidgetTypes';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const VIEWPORT = { width: 480, height: 360 };
-const PANEL = { x: 12, y: 12, width: 456, height: 296, radius: 12 };
-const PLOT = { left: 52, right: 416, top: 26, bottom: 252 };
-const LEGEND_Y = 334;
-const X_LABEL_Y = 284;
-const AXIS_TITLE_Y = 20;
+// Re-export the viewport minimum so existing consumers/tests that import it from
+// `chart` keep working after the geometry split.
+export { VIEWPORT_MIN_HEIGHT } from './chartGeometry';
+
 const GRID_LINES = 4;
 const BAR_RADIUS = 3;
 const DOT_RADIUS = 4;
@@ -45,9 +55,6 @@ export const parseBucketLocalHour = (label: string | undefined): number | null =
   return Number.isFinite(hour) ? hour : null;
 };
 
-type SvgAttributeValue = number | string | null | undefined;
-type SvgAttributes = Record<string, SvgAttributeValue>;
-type Point = { x: number; y: number };
 type PriceBounds = { min: number; max: number };
 // A bucket index in the visible half, paired with its index in the full-day
 // arrays. `dayIndex` is needed for now/current lookups that are day-absolute.
@@ -68,29 +75,6 @@ type ChartGroups = {
   legendGroup: SVGGElement;
   panelGroup: SVGGElement;
   plotGroup: SVGGElement;
-};
-
-const createSvg = <TagName extends keyof SVGElementTagNameMap>(
-  chartDocument: Document,
-  tagName: TagName,
-  attributes: SvgAttributes = {},
-  textContent = '',
-): SVGElementTagNameMap[TagName] => {
-  const node = chartDocument.createElementNS(SVG_NS, tagName);
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined || value === null) continue;
-    node.setAttribute(key, String(value));
-  }
-  if (textContent) {
-    node.textContent = textContent;
-  }
-  return node;
-};
-
-const clearNode = (node: Node): void => {
-  while (node.firstChild) {
-    node.removeChild(node.firstChild);
-  }
 };
 
 const formatPlanTick = (value: number): string => {
@@ -137,9 +121,11 @@ const resolveVisibleBuckets = (
 const resolvePlotMetrics = (
   payload: PlanPriceWidgetReadyPayload,
   half: PlanPriceWidgetHalf,
+  geometry: Geometry,
 ): PlotMetrics => {
-  const plotWidth = PLOT.right - PLOT.left;
-  const plotHeight = PLOT.bottom - PLOT.top;
+  const { plot } = geometry;
+  const plotWidth = plot.right - plot.left;
+  const plotHeight = plot.bottom - plot.top;
   const buckets = resolveVisibleBuckets(payload, half);
   // Scale the y-axis to the whole day's peak so the two halves stay visually
   // comparable when the user toggles tabs.
@@ -163,44 +149,6 @@ const resolvePlotMetrics = (
   };
 };
 
-const buildPathData = (points: ReadonlyArray<Point | null>): string => {
-  const commands: string[] = [];
-  let pendingMove = true;
-
-  for (const point of points) {
-    if (!point) {
-      pendingMove = true;
-      continue;
-    }
-
-    commands.push(`${pendingMove ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`);
-    pendingMove = false;
-  }
-
-  return commands.join(' ');
-};
-
-const buildBarPath = (x: number, y: number, width: number, height: number, radius: number): string => {
-  const safeHeight = Math.max(0, height);
-  const safeRadius = Math.min(radius, width / 2, safeHeight);
-  const right = x + width;
-  const bottom = y + safeHeight;
-
-  if (safeRadius <= 0 || safeHeight <= 0) {
-    return `M ${x} ${bottom} L ${x} ${y} L ${right} ${y} L ${right} ${bottom} Z`;
-  }
-
-  return [
-    `M ${x} ${bottom}`,
-    `L ${x} ${y + safeRadius}`,
-    `Q ${x} ${y} ${x + safeRadius} ${y}`,
-    `L ${right - safeRadius} ${y}`,
-    `Q ${right} ${y} ${right} ${y + safeRadius}`,
-    `L ${right} ${bottom}`,
-    'Z',
-  ].join(' ');
-};
-
 const createChartGroups = (chartDocument: Document): ChartGroups => {
   const chartGroup = createSvg(chartDocument, 'g');
   const panelGroup = createSvg(chartDocument, 'g');
@@ -219,15 +167,16 @@ const createChartGroups = (chartDocument: Document): ChartGroups => {
   };
 };
 
-const appendPanel = (chartDocument: Document, panelGroup: SVGGElement): void => {
+const appendPanel = (chartDocument: Document, panelGroup: SVGGElement, geometry: Geometry): void => {
+  const { panel } = geometry;
   panelGroup.appendChild(createSvg(chartDocument, 'rect', {
     class: 'chart__panel',
-    x: PANEL.x,
-    y: PANEL.y,
-    width: PANEL.width,
-    height: PANEL.height,
-    rx: PANEL.radius,
-    ry: PANEL.radius,
+    x: panel.x,
+    y: panel.y,
+    width: panel.width,
+    height: panel.height,
+    rx: panel.radius,
+    ry: panel.radius,
   }));
 };
 
@@ -235,11 +184,13 @@ const appendAxisTitles = (
   chartDocument: Document,
   labelsGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
+  geometry: Geometry,
 ): void => {
+  const { plot, axisTitleY } = geometry;
   labelsGroup.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__axis-title',
-    x: PLOT.left - 8,
-    y: AXIS_TITLE_Y,
+    x: plot.left - 8,
+    y: axisTitleY,
     'text-anchor': 'start',
   }, PLAN_PRICE_WIDGET_AXIS.energy));
 
@@ -247,8 +198,8 @@ const appendAxisTitles = (
 
   labelsGroup.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__axis-title',
-    x: PLOT.right + 8,
-    y: AXIS_TITLE_Y,
+    x: plot.right + 8,
+    y: axisTitleY,
     'text-anchor': 'end',
   }, payload.priceAxisUnit));
 };
@@ -258,22 +209,24 @@ const appendGridAndAxisLabels = (
   groups: ChartGroups,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
+  const { plot } = geometry;
   for (let index = 0; index <= GRID_LINES; index += 1) {
     const ratio = index / GRID_LINES;
-    const y = PLOT.bottom - (metrics.plotHeight * ratio);
+    const y = plot.bottom - (metrics.plotHeight * ratio);
 
     groups.plotGroup.appendChild(createSvg(chartDocument, 'line', {
       class: 'chart__grid',
-      x1: PLOT.left,
+      x1: plot.left,
       y1: y,
-      x2: PLOT.right,
+      x2: plot.right,
       y2: y,
     }));
 
     groups.labelsGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__axis-label',
-      x: PLOT.left - 8,
+      x: plot.left - 8,
       y: y + 4,
       'text-anchor': 'end',
     }, formatPlanTick(metrics.maxPlan * ratio)));
@@ -283,7 +236,7 @@ const appendGridAndAxisLabels = (
     const priceValue = metrics.priceBounds.min + (metrics.priceSpan * ratio);
     groups.labelsGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__axis-label',
-      x: PLOT.right + 8,
+      x: plot.right + 8,
       y: y + 4,
       'text-anchor': 'start',
     }, formatPriceTick(priceValue)));
@@ -295,18 +248,20 @@ const appendNowMarker = (
   plotGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
   if (!payload.showNow) return;
   const visible = metrics.buckets.find((bucket) => bucket.dayIndex === payload.currentIndex);
   if (!visible) return;
 
-  const currentX = PLOT.left + (metrics.stepWidth * (visible.localIndex + 0.5));
+  const { plot } = geometry;
+  const currentX = plot.left + (metrics.stepWidth * (visible.localIndex + 0.5));
   plotGroup.appendChild(createSvg(chartDocument, 'line', {
     class: 'chart__now',
     x1: currentX,
-    y1: PLOT.top,
+    y1: plot.top,
     x2: currentX,
-    y2: PLOT.bottom,
+    y2: plot.bottom,
   }));
 };
 
@@ -315,12 +270,14 @@ const appendPlanBars = (
   plotGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
+  const { plot } = geometry;
   metrics.buckets.forEach((bucket) => {
     const value = payload.plannedKwh[bucket.dayIndex] ?? 0;
-    const x = PLOT.left + (metrics.stepWidth * bucket.localIndex) + ((metrics.stepWidth - metrics.barWidth) / 2);
+    const x = plot.left + (metrics.stepWidth * bucket.localIndex) + ((metrics.stepWidth - metrics.barWidth) / 2);
     const height = metrics.plotHeight * (value / metrics.maxPlan);
-    const y = PLOT.bottom - height;
+    const y = plot.bottom - height;
 
     plotGroup.appendChild(createSvg(chartDocument, 'path', {
       class: 'chart__bar',
@@ -334,13 +291,15 @@ const appendPriceSeries = (
   plotGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
+  const { plot } = geometry;
   const pricePoints = metrics.buckets.map((bucket) => {
     const value = payload.priceSeries[bucket.dayIndex];
     if (typeof value !== 'number' || !Number.isFinite(value)) return null;
     return {
-      x: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
-      y: PLOT.bottom - ((value - metrics.priceBounds.min) / metrics.priceSpan) * metrics.plotHeight,
+      x: plot.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
+      y: plot.bottom - ((value - metrics.priceBounds.min) / metrics.priceSpan) * metrics.plotHeight,
     };
   });
   const pricePath = buildPathData(pricePoints);
@@ -357,13 +316,13 @@ const appendPriceSeries = (
   if (!visible || !Number.isFinite(payload.priceSeries[payload.currentIndex])) return;
 
   const currentValue = payload.priceSeries[payload.currentIndex] as number;
-  const currentPriceY = PLOT.bottom - (
+  const currentPriceY = plot.bottom - (
     ((currentValue - metrics.priceBounds.min) / metrics.priceSpan) * metrics.plotHeight
   );
 
   plotGroup.appendChild(createSvg(chartDocument, 'circle', {
     class: 'chart__price-dot',
-    cx: PLOT.left + (metrics.stepWidth * (visible.localIndex + 0.5)),
+    cx: plot.left + (metrics.stepWidth * (visible.localIndex + 0.5)),
     cy: currentPriceY,
     r: DOT_RADIUS + 1,
   }));
@@ -374,17 +333,19 @@ const appendActualMarkers = (
   plotGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
   if (!payload.showActual) return;
 
+  const { plot } = geometry;
   metrics.buckets.forEach((bucket) => {
     const value = payload.actualKwh[bucket.dayIndex];
     if (typeof value !== 'number' || !Number.isFinite(value) || bucket.dayIndex > payload.currentIndex) return;
 
     plotGroup.appendChild(createSvg(chartDocument, 'circle', {
       class: 'chart__actual',
-      cx: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
-      cy: PLOT.bottom - (value / metrics.maxPlan) * metrics.plotHeight,
+      cx: plot.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
+      cy: plot.bottom - (value / metrics.maxPlan) * metrics.plotHeight,
       r: DOT_RADIUS,
     }));
   });
@@ -395,7 +356,9 @@ const appendBucketLabels = (
   labelsGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
+  geometry: Geometry,
 ): void => {
+  const { plot, xLabelY } = geometry;
   // ~12 bars per half stay legible with a label every other hour.
   const labelEvery = 2;
   metrics.buckets.forEach((bucket) => {
@@ -405,8 +368,8 @@ const appendBucketLabels = (
 
     labelsGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__axis-label',
-      x: PLOT.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
-      y: X_LABEL_Y,
+      x: plot.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
+      y: xLabelY,
       'text-anchor': 'middle',
     }, label));
   });
@@ -416,13 +379,15 @@ const appendMissingPriceBadge = (
   chartDocument: Document,
   labelsGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
+  geometry: Geometry,
 ): void => {
   if (payload.hasPriceData) return;
 
+  const { panel } = geometry;
   labelsGroup.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__badge',
-    x: PANEL.x + PANEL.width - 12,
-    y: PANEL.y + 22,
+    x: panel.x + panel.width - 12,
+    y: panel.y + 22,
     'text-anchor': 'end',
   }, PLAN_PRICE_WIDGET_PRICE_MISSING));
 };
@@ -431,7 +396,9 @@ const renderLegend = (
   chartDocument: Document,
   legendGroup: SVGGElement,
   payload: PlanPriceWidgetReadyPayload,
+  geometry: Geometry,
 ): void => {
+  const { legendY } = geometry;
   const legendItems = [
     { type: 'plan', label: PLAN_PRICE_WIDGET_LEGEND.planned, x: 92 },
     ...(payload.showActual ? [{ type: 'actual', label: PLAN_PRICE_WIDGET_LEGEND.used, x: 214 }] : []),
@@ -443,7 +410,7 @@ const renderLegend = (
       legendGroup.appendChild(createSvg(chartDocument, 'rect', {
         class: 'chart__legend-plan',
         x: item.x,
-        y: LEGEND_Y - 7,
+        y: legendY - 7,
         width: 16,
         height: 10,
         rx: 3,
@@ -453,54 +420,71 @@ const renderLegend = (
       legendGroup.appendChild(createSvg(chartDocument, 'circle', {
         class: 'chart__legend-actual',
         cx: item.x + 8,
-        cy: LEGEND_Y - 2,
+        cy: legendY - 2,
         r: 5,
       }));
     } else {
       legendGroup.appendChild(createSvg(chartDocument, 'line', {
         class: 'chart__legend-price',
         x1: item.x,
-        y1: LEGEND_Y - 2,
+        y1: legendY - 2,
         x2: item.x + 16,
-        y2: LEGEND_Y - 2,
+        y2: legendY - 2,
       }));
     }
 
     legendGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__legend-text',
       x: item.x + 24,
-      y: LEGEND_Y - 2,
+      y: legendY - 2,
     }, item.label));
   });
+};
+
+// Reflect the resolved viewBox height onto the SVG so the rendered geometry and
+// the viewBox agree. `viewBox` width stays 480; height is the (clamped) container
+// height in viewBox units. `preserveAspectRatio="none"` maps the viewBox 1:1 onto
+// the tile (no `meet` letterbox outside the panel) — and because the caller
+// passes a height that preserves the container's true aspect ratio, the x and y
+// scale factors are EQUAL, so `<circle>` dots stay round despite `none`. The
+// panel itself fills the viewBox (minus a small margin), so the card reaches the
+// tile edges at any height; the plot block is capped + centred inside it.
+const applyViewBox = (chartEl: SVGSVGElement, viewport: Geometry['viewport']): void => {
+  chartEl.setAttribute('viewBox', `0 0 ${viewport.width} ${viewport.height}`);
+  chartEl.setAttribute('preserveAspectRatio', 'none');
 };
 
 export const renderEmptyState = (
   chartEl: SVGSVGElement,
   payload: Pick<PlanPriceWidgetEmptyPayload, 'subtitle' | 'title'>,
+  height: number = VIEWPORT_MIN_HEIGHT,
+  scale = 1,
 ): void => {
   const chartDocument = chartEl.ownerDocument;
+  const { panel, viewport } = resolveGeometry(resolveViewportHeight(height), scale);
 
   clearNode(chartEl);
+  applyViewBox(chartEl, viewport);
   chartEl.setAttribute('aria-label', payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
   chartEl.appendChild(createSvg(chartDocument, 'rect', {
     class: 'chart__panel',
-    x: PANEL.x,
-    y: PANEL.y,
-    width: PANEL.width,
-    height: PANEL.height,
-    rx: PANEL.radius,
-    ry: PANEL.radius,
+    x: panel.x,
+    y: panel.y,
+    width: panel.width,
+    height: panel.height,
+    rx: panel.radius,
+    ry: panel.radius,
   }));
   chartEl.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__empty-title',
-    x: VIEWPORT.width / 2,
-    y: PANEL.y + (PANEL.height / 2) - 10,
+    x: viewport.width / 2,
+    y: panel.y + (panel.height / 2) - 10,
     'text-anchor': 'middle',
   }, payload.title || WIDGET_TITLE));
   chartEl.appendChild(createSvg(chartDocument, 'text', {
     class: 'chart__empty-subtitle',
-    x: VIEWPORT.width / 2,
-    y: PANEL.y + (PANEL.height / 2) + 16,
+    x: viewport.width / 2,
+    y: panel.y + (panel.height / 2) + 16,
     'text-anchor': 'middle',
   }, payload.subtitle || DEFAULT_EMPTY_SUBTITLE));
 };
@@ -509,12 +493,16 @@ export const renderReadyState = (
   chartEl: SVGSVGElement,
   payload: PlanPriceWidgetReadyPayload,
   half: PlanPriceWidgetHalf,
+  height: number = VIEWPORT_MIN_HEIGHT,
+  scale = 1,
 ): void => {
   const chartDocument = chartEl.ownerDocument;
+  const geometry = resolveGeometry(resolveViewportHeight(height), scale);
   const groups = createChartGroups(chartDocument);
-  const metrics = resolvePlotMetrics(payload, half);
+  const metrics = resolvePlotMetrics(payload, half, geometry);
 
   clearNode(chartEl);
+  applyViewBox(chartEl, geometry.viewport);
   chartEl.setAttribute(
     'aria-label',
     payload.target === 'tomorrow'
@@ -523,23 +511,26 @@ export const renderReadyState = (
   );
 
   chartEl.appendChild(groups.chartGroup);
-  appendPanel(chartDocument, groups.panelGroup);
-  appendAxisTitles(chartDocument, groups.labelsGroup, payload);
-  appendGridAndAxisLabels(chartDocument, groups, payload, metrics);
-  appendNowMarker(chartDocument, groups.plotGroup, payload, metrics);
-  appendPlanBars(chartDocument, groups.plotGroup, payload, metrics);
-  appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics);
-  appendActualMarkers(chartDocument, groups.plotGroup, payload, metrics);
-  appendBucketLabels(chartDocument, groups.labelsGroup, payload, metrics);
-  appendMissingPriceBadge(chartDocument, groups.labelsGroup, payload);
-  renderLegend(chartDocument, groups.legendGroup, payload);
+  appendPanel(chartDocument, groups.panelGroup, geometry);
+  appendAxisTitles(chartDocument, groups.labelsGroup, payload, geometry);
+  appendGridAndAxisLabels(chartDocument, groups, payload, metrics, geometry);
+  appendNowMarker(chartDocument, groups.plotGroup, payload, metrics, geometry);
+  appendPlanBars(chartDocument, groups.plotGroup, payload, metrics, geometry);
+  appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics, geometry);
+  appendActualMarkers(chartDocument, groups.plotGroup, payload, metrics, geometry);
+  appendBucketLabels(chartDocument, groups.labelsGroup, payload, metrics, geometry);
+  appendMissingPriceBadge(chartDocument, groups.labelsGroup, payload, geometry);
+  renderLegend(chartDocument, groups.legendGroup, payload, geometry);
 };
 
-// The projected summary line shown above the chart. Returns the text the
-// caller writes into the summary element (empty for non-ready payloads).
-export const resolveSummaryText = (payload: PlanPriceWidgetPayload | null): string => {
-  if (!payload || payload.state !== 'ready') return '';
-  return formatPlanPriceSummary({
+// The projected summary split into a prominent headline and a toned status, for
+// the two-tier widget header. Returns null for non-ready payloads so the caller
+// clears the header. All strings come from shared-domain (UI-text-shared-with-logs).
+export const resolveSummaryParts = (
+  payload: PlanPriceWidgetPayload | null,
+): PlanPriceSummaryParts | null => {
+  if (!payload || payload.state !== 'ready') return null;
+  return formatPlanPriceSummaryParts({
     projectedKwh: payload.projectedKwh,
     projectedCost: payload.projectedCost,
     costUnit: payload.costUnit,
@@ -551,14 +542,16 @@ export const renderWidget = (
   chartEl: SVGSVGElement,
   payload: PlanPriceWidgetPayload | null,
   half: PlanPriceWidgetHalf,
+  height: number = VIEWPORT_MIN_HEIGHT,
+  scale = 1,
 ): void => {
   if (!payload || payload.state !== 'ready') {
     renderEmptyState(chartEl, payload || {
       title: WIDGET_TITLE,
       subtitle: DEFAULT_EMPTY_SUBTITLE,
-    });
+    }, height, scale);
     return;
   }
 
-  renderReadyState(chartEl, payload, half);
+  renderReadyState(chartEl, payload, half, height, scale);
 };
