@@ -1,5 +1,4 @@
 import {
-  getLatestPlanSnapshotForTests,
   mockHomeyInstance,
   setMockDrivers,
   MockDevice,
@@ -7,11 +6,7 @@ import {
 } from '../mocks/homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
-import {
-  CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-} from '../../lib/utils/settingsKeys';
+import { CAPACITY_DRY_RUN } from '../../lib/utils/settingsKeys';
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
@@ -560,75 +555,8 @@ describe('On/off device integration', () => {
     expect(snapshot.find((entry) => entry.id === 'device-a')).toBeUndefined();
   });
 
-  it('sheds an on/off device by turning it off when headroom is insufficient', async () => {
-    const device = await buildOnOffDevice({ on: true, powerW: 2000 });
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [device]),
-    });
-
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-    mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
-    mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
-
-    const app = createApp();
-    await app.onInit();
-
-    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    vi.advanceTimersByTime(100);
-    await flushPromises();
-
-    expect(setCapSpy).toHaveBeenCalledWith(
-      'manager/devices/device/device-a/capability/onoff',
-      { value: false },
-    );
-  });
-
-  it('never uses set_temperature shed action without target_temperature', async () => {
-    const device = await buildOnOffDevice({ on: true, powerW: 2000 });
-    setMockDrivers({
-      driverA: new MockDriver('driverA', [device]),
-    });
-
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
-    mockHomeyInstance.settings.set('controllable_devices', { 'device-a': true });
-    mockHomeyInstance.settings.set('managed_devices', { 'device-a': true });
-    mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'device-a': { action: 'set_temperature', temperature: 40 },
-    });
-
-    const app = createApp();
-    await app.onInit();
-
-    const snapshot = (app as any).deviceManager.getSnapshot();
-    const snapDevice = snapshot.find((entry: any) => entry.id === 'device-a');
-    expect(snapDevice?.deviceType).toBe('onoff');
-    expect(snapDevice?.targets?.length ?? 0).toBe(0);
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    vi.advanceTimersByTime(100);
-    await flushPromises();
-
-    const plan = getLatestPlanSnapshotForTests();
-    const planDevice = plan.devices.find((entry: any) => entry.id === 'device-a');
-    expect(planDevice?.shedAction).toBe('turn_off');
-    expect(planDevice?.plannedTarget).toBeUndefined();
-    expect(planDevice?.currentTarget).toBeNull();
-    expect(planDevice?.shedTemperature).toBeNull();
-  });
+  // Capacity-shedding control behaviour (turn_off, and the set_temperature-misconfig
+  // fallback) is covered black-box, through the SDK boundary, in
+  // test/e2e/onoffShedControl.e2e.test.ts. This integration spec stays focused on
+  // power-estimation classification, which has no externally observable effect.
 });
