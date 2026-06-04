@@ -1,17 +1,10 @@
 import {
-    getLatestPlanSnapshotForTests,
     mockHomeyInstance,
     setMockDrivers,
     MockDevice,
     MockDriver,
 } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
-import {
-    CAPACITY_DRY_RUN,
-    CAPACITY_LIMIT_KW,
-    CAPACITY_MARGIN_KW,
-} from '../../lib/utils/settingsKeys';
-const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
 
 // Use fake timers to prevent resource leaks from periodic refresh and control timing deterministically
 vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'] });
@@ -135,101 +128,9 @@ describe('Heatpump device integration', () => {
         expect(tempTarget?.value).toBe(26.5);
     });
 
-    it('applies mode targets for heatpump devices with target_temperature', async () => {
-        const device = await buildHeatpumpDevice({ on: true, powerW: 0, targetTemperature: 22 });
-        setMockDrivers({
-            driverA: new MockDriver('driverA', [device]),
-        });
-
-        mockHomeyInstance.settings.set('mode_device_targets', { Home: { 'heatpump-a': 20 } });
-        mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-        mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
-        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
-
-        const app = createApp();
-        const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-        await app.onInit();
-        await flushPromises();
-
-        expect(setCapSpy).toHaveBeenCalledWith(
-            'manager/devices/device/heatpump-a/capability/target_temperature',
-            { value: 20 },
-        );
-        setCapSpy.mockRestore();
-    });
-
-    it('sheds a heatpump device by adjusting target_temperature when headroom is insufficient', async () => {
-        const device = await buildHeatpumpDevice({ on: true, powerW: 2000, targetTemperature: 22 });
-        setMockDrivers({
-            driverA: new MockDriver('driverA', [device]),
-        });
-
-        mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-        mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-        mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-        mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
-        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
-        mockHomeyInstance.settings.set('overshoot_behaviors', {
-            'heatpump-a': { action: 'set_temperature', temperature: 15 },
-        });
-
-        const app = createApp();
-        await app.onInit();
-
-        const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-        (app as any).computeDynamicSoftLimit = () => 1;
-        if ((app as any).capacityGuard?.setSoftLimitProvider) {
-            (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-        }
-
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
-        vi.advanceTimersByTime(100);
-        await flushPromises();
-
-        expect(setCapSpy).toHaveBeenCalledWith(
-            'manager/devices/device/heatpump-a/capability/target_temperature',
-            { value: 15 },
-        );
-    });
-
-    it('uses set_temperature shed action for heatpump with target_temperature', async () => {
-        const device = await buildHeatpumpDevice({ on: true, powerW: 2000, targetTemperature: 22 });
-        setMockDrivers({
-            driverA: new MockDriver('driverA', [device]),
-        });
-
-        mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-        mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-        mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, true);
-        mockHomeyInstance.settings.set('controllable_devices', { 'heatpump-a': true });
-        mockHomeyInstance.settings.set('managed_devices', { 'heatpump-a': true });
-        mockHomeyInstance.settings.set('overshoot_behaviors', {
-            'heatpump-a': { action: 'set_temperature', temperature: 15 },
-        });
-
-        const app = createApp();
-        await app.onInit();
-
-        const snapshot = (app as any).deviceManager.getSnapshot();
-        const snapDevice = snapshot.find((entry: any) => entry.id === 'heatpump-a');
-        expect(snapDevice?.deviceType).toBe('temperature');
-        expect(snapDevice?.targets?.length).toBeGreaterThan(0);
-
-        (app as any).computeDynamicSoftLimit = () => 1;
-        if ((app as any).capacityGuard?.setSoftLimitProvider) {
-            (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-        }
-
-        await (app as any).powerSamplePipeline.recordPowerSample(5000);
-        vi.advanceTimersByTime(100);
-        await flushPromises();
-
-        const plan = getLatestPlanSnapshotForTests();
-        const planDevice = plan.devices.find((entry: any) => entry.id === 'heatpump-a');
-        expect(planDevice?.shedAction).toBe('set_temperature');
-        expect(planDevice?.shedTemperature).toBe(15);
-    });
+    // Capacity shedding (lower target_temperature, never onoff) and mode-setpoint
+    // application are covered black-box, through the SDK boundary, in
+    // test/e2e/heatpumpShedControl.e2e.test.ts. This spec keeps the classification cases.
 
     it('includes heatpump devices without power capability but marks them unsupported', async () => {
         setMockDrivers({});

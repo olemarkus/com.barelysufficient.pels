@@ -98,6 +98,21 @@ isn't. The deciding question is **does the scenario produce an externally observ
 So a reshape often **splits** a spec: the effect-producing cases move to `e2e/`; the
 classification cases stay in `integration/`. Don't force-convert a whole file.
 
+### Device-suite disposition (worked example)
+
+Surveying the seven device integration suites against this rule:
+
+| Suite | Outcome |
+|---|---|
+| `onoff`, `heatpump`, `airtreatment` | **Reshaped** — capacity shedding writes an observable capability (`onoff:false` / lowered `target_temperature`). Effect cases → `test/e2e/*ShedControl.e2e.test.ts`. |
+| `airconditioning`, `flowBacked`, `unsupported` | **Stay integration** — classification/estimation only; no scenario takes a commandable action. |
+| `vthermo` | **Stays integration** — its one effect case is price-only mode-setpoint application, not capacity shedding. |
+| `ev` | **Stays integration** — the charger command log is already device-observable, but the suite's purpose is shed→cooldown→restore *hysteresis*, which it tests by manipulating `planEngine.state.lastRecoveryMs` / `capacityGuard.setSheddingActive` and asserting `plannedState`. That is intrinsically white-box (the `plan.test.ts` category). |
+
+So even across a whole family, the reshape touched 3 of 7 suites — the count of genuinely
+e2e-able specs is "scenarios with an observable effect," which is much smaller than "specs
+that spin up the app via the SDK mock."
+
 ## Folder layout
 
 ```

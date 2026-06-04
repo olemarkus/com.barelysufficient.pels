@@ -126,94 +126,10 @@ describe('Airtreatment device integration', () => {
     expect(overshootBehaviors['airtreatment-1']).toEqual({ action: 'set_temperature', temperature: 16 });
   });
 
-  it('sheds airtreatment devices by target_temperature, not onoff', async () => {
-    setMockDrivers({});
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-    mockHomeyInstance.settings.set('managed_devices', { 'airtreatment-1': true });
-    mockHomeyInstance.settings.set('controllable_devices', { 'airtreatment-1': true });
-    mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'airtreatment-1': { action: 'turn_off' },
-    });
-
-    const app = createApp();
-    await app.onInit();
-
-    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'airtreatment-1': buildTemperatureApiDevice({ targetTemperature: 19, measurePower: 245.73 }),
-    });
-    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    await (app as any).refreshTargetDevicesSnapshot();
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    vi.advanceTimersByTime(100);
-    await flushPromises();
-
-    expect(setCapSpy).toHaveBeenCalledWith(
-      'manager/devices/device/airtreatment-1/capability/target_temperature',
-      { value: 16 },
-    );
-
-    const onoffCalls = setCapSpy.mock.calls.filter(
-      (call: unknown[]) => typeof call[0] === 'string' && call[0].endsWith('/capability/onoff'),
-    );
-    expect(onoffCalls).toHaveLength(0);
-  });
-
-  it('sheds thermostat devices without onoff by target_temperature', async () => {
-    setMockDrivers({});
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-    mockHomeyInstance.settings.set('managed_devices', { 'thermostat-1': true });
-    mockHomeyInstance.settings.set('controllable_devices', { 'thermostat-1': true });
-    mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'thermostat-1': { action: 'turn_off' },
-    });
-
-    const app = createApp();
-    await app.onInit();
-
-    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'thermostat-1': buildTemperatureApiDevice({
-        id: 'thermostat-1',
-        name: 'Hall Thermostat',
-        class: 'thermostat',
-        capabilities: ['measure_power', 'measure_temperature', 'target_temperature'],
-        targetTemperature: 12,
-        measurePower: 245.73,
-      }),
-    });
-    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    await (app as any).refreshTargetDevicesSnapshot();
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    vi.advanceTimersByTime(100);
-    await flushPromises();
-
-    expect(setCapSpy).toHaveBeenCalledWith(
-      'manager/devices/device/thermostat-1/capability/target_temperature',
-      { value: 10 },
-    );
-
-    const onoffCalls = setCapSpy.mock.calls.filter(
-      (call: unknown[]) => typeof call[0] === 'string' && call[0].endsWith('/capability/onoff'),
-    );
-    expect(onoffCalls).toHaveLength(0);
-  });
+  // Capacity shedding (lower target_temperature for thermostat-class devices; turn_off
+  // for devices that expose onoff) is covered black-box, through the SDK boundary, in
+  // test/e2e/airtreatmentShedControl.e2e.test.ts. This spec keeps classification and the
+  // restore-retry hysteresis (a white-box scheduling concern).
 
   it('avoids repeated restore retries when reported target never leaves shed temperature', async () => {
     setMockDrivers({});
@@ -333,56 +249,4 @@ describe('Airtreatment device integration', () => {
     expect(restoreCalls).toHaveLength(1);
   });
 
-  it('sheds airtreatment devices with onoff by turning them off', async () => {
-    setMockDrivers({});
-    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 1);
-    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
-    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
-    mockHomeyInstance.settings.set('managed_devices', { 'airtreatment-onoff-1': true });
-    mockHomeyInstance.settings.set('controllable_devices', { 'airtreatment-onoff-1': true });
-    mockHomeyInstance.settings.set('overshoot_behaviors', {
-      'airtreatment-onoff-1': { action: 'turn_off' },
-    });
-
-    const app = createApp();
-    await app.onInit();
-
-    vi.spyOn(mockHomeyInstance.api, 'get').mockResolvedValue({
-      'airtreatment-onoff-1': buildTemperatureApiDevice({
-        id: 'airtreatment-onoff-1',
-        class: 'airtreatment',
-        capabilities: ['onoff', 'measure_power', 'measure_temperature', 'target_temperature', 'fan_mode'],
-        onoff: true,
-        targetTemperature: 19,
-        measurePower: 245.73,
-      }),
-    });
-    const setCapSpy = vi.spyOn(mockHomeyInstance.api, 'put');
-
-    await (app as any).refreshTargetDevicesSnapshot();
-
-    const overshootBehaviors = mockHomeyInstance.settings.get('overshoot_behaviors') as Record<string, { action: string; temperature?: number }>;
-    expect(overshootBehaviors['airtreatment-onoff-1']).toEqual({ action: 'turn_off' });
-
-    setCapSpy.mockClear();
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    await (app as any).powerSamplePipeline.recordPowerSample(5000);
-    vi.advanceTimersByTime(100);
-    await flushPromises();
-
-    expect(setCapSpy).toHaveBeenCalledWith(
-      'manager/devices/device/airtreatment-onoff-1/capability/onoff',
-      { value: false },
-    );
-
-    const setTempCalls = setCapSpy.mock.calls.filter(
-      (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('/capability/target_temperature'),
-    );
-    expect(setTempCalls).toHaveLength(0);
-  });
 });
