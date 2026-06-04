@@ -2,8 +2,17 @@
 
 ## Status
 
-Open design note. No code yet. The bug pattern that motivates this lives in three
-places today; consolidating them is the proposed fix.
+Cut as of the 2026-05-31 layering review. Do not build a shared
+`PersistedSettingsState<T>` helper from this proposal.
+
+The stores share vocabulary (`dirty`, debounce, flush) but not semantics:
+`planHistory.ts` owns objective-run lifecycle finalization, calibration owns its
+own data-quality gates, and the active-plan recorder owns commitment/freeze
+policy. A generic helper would have to absorb those different policies,
+increasing coupling and indirection while removing little. This note remains as
+the rationale for not re-raising the refactor.
+
+## Historical Proposal
 
 ## Why this note exists
 

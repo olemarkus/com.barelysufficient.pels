@@ -117,6 +117,15 @@ const resolveFrozenReadInputs = (params: {
   };
 };
 
+const resolveDeadlineBoundFrozenReadInputs = (params: {
+  activePlans?: DeferredObjectiveActivePlansV1 | null;
+  deviceId: string;
+  objective: DeferredObjectiveSettingsEntry;
+  nowMs: number;
+}): FrozenReadInputs | null => (
+  params.objective.deadlineAtMs > params.nowMs ? resolveFrozenReadInputs(params) : null
+);
+
 // Stand-in for the frozen mid-hour path, where the allocator is skipped so the
 // policy horizon is unused. (Also reused when the price horizon is temporarily
 // unavailable but a commitment exists — we serve frozen rather than going inactive.)
@@ -126,6 +135,14 @@ const EMPTY_POLICY_HORIZON: Extract<DeferredObjectivePolicyHorizonResult, { reas
   dailyBudgetExhaustedBucketCount: 0,
   reasonCode: null,
 };
+
+type DeferredObjectivePolicyHorizonParams = Parameters<typeof buildDeferredObjectivePolicyHorizon>[0];
+
+const buildDeadlineAwarePolicyHorizon = (
+  params: DeferredObjectivePolicyHorizonParams,
+): DeferredObjectivePolicyHorizonResult => (
+  params.deadlineAtMs <= params.nowMs ? EMPTY_POLICY_HORIZON : buildDeferredObjectivePolicyHorizon(params)
+);
 
 // Assemble the diagnostic from the persisted commitment + live measured value
 // (folded into `aheadOfHourMilestone`), skipping the allocator. Mirrors the shape
@@ -580,8 +597,8 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   // to inactive for want of a live horizon (transient price/budget-snapshot gap, or
   // a gap that coincides with the settle window). See
   // notes/deferred-load-objectives/execution-adaptation.md.
-  const frozenFallback = resolveFrozenReadInputs({ activePlans, deviceId, objective, nowMs });
-  const rawPolicyHorizon = buildDeferredObjectivePolicyHorizon({
+  const frozenFallback = resolveDeadlineBoundFrozenReadInputs({ activePlans, deviceId, objective, nowMs });
+  const rawPolicyHorizon = buildDeadlineAwarePolicyHorizon({
     nowMs,
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled,

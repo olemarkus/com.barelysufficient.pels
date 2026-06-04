@@ -85,7 +85,9 @@ Remaining work:
 ### Persisted settings state
 
 Calibration, active deadline plans, and deadline history still duplicate dirty/debounce/grace/flush
-state machines. See `notes/persisted-settings-state.md` for the proposed shared helper.
+vocabulary, but the shared-helper proposal was cut because their lifecycle semantics differ. Keep
+future cleanup feature-specific unless a concrete shared invariant appears. See
+`notes/persisted-settings-state.md` for the cut rationale.
 
 ## LOC Policy
 

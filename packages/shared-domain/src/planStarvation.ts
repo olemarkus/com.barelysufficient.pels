@@ -136,7 +136,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // power isn't instant — so don't promise "on the way" unconditionally.
   rescueDone: 'Power on the way',
   rescueDoneQueued: 'Running as soon as there’s room',
-  rescueError: 'Could not set up the rescue. Try again.',
+  rescueError: 'Could not let it run now. Try again.',
   // The previewed deadline slipped past while the user lingered — retryable.
   deadlinePassed: 'That timing just passed. Try again.',
 } as const;
