@@ -68,7 +68,7 @@ function resolveRestorePower(
 function resolveSteppedRestorePower(
   dev: DevicePlanDevice,
 ): { kw: number; source: RestorePowerSource } | null {
-  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+  if (!isSteppedLoadDevice(dev)) return null;
 
   if (dev.currentState !== 'off' && isFiniteNumber(dev.planningPowerKw) && dev.planningPowerKw > 0) {
     return { kw: dev.planningPowerKw, source: 'planning' };

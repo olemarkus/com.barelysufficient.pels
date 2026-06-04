@@ -110,7 +110,7 @@ function resolveSteppedRestoreReservation(
   dev: DevicePlanDevice,
   requestedStepId: string,
 ): { requestedPowerKw: number; baselinePowerKw: number; deltaKw: number } | null {
-  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+  if (!isSteppedLoadDevice(dev)) return null;
   if (dev.lastDesiredStepId !== requestedStepId) return null;
 
   const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);
@@ -143,7 +143,7 @@ function resolveSteppedRestoreBaseAttempt(
   deltaKw: number;
   reservation: { requestedPowerKw: number; baselinePowerKw: number; deltaKw: number } | null;
 } | null {
-  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+  if (!isSteppedLoadDevice(dev)) return null;
   if (dev.lastDesiredStepId !== requestedStepId) return null;
 
   const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);

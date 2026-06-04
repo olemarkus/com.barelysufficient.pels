@@ -317,7 +317,6 @@ function resolveSteppedExpectedPowerKw(params: {
     plannedState === 'keep'
     && currentState === 'off'
     && isSteppedLoadDevice(dev)
-    && dev.steppedLoadProfile
   ) {
     const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, effectiveDesiredStepId);
     if (desiredStep && desiredStep.planningPowerW > 0) {
@@ -327,7 +326,6 @@ function resolveSteppedExpectedPowerKw(params: {
   if (
     plannedState === 'shed'
     && isSteppedLoadDevice(dev)
-    && dev.steppedLoadProfile
     && isSteppedLoadOffStep(dev.steppedLoadProfile, dev.selectedStepId)
   ) {
     const lowestActiveStep = getSteppedLoadLowestActiveStep(dev.steppedLoadProfile);

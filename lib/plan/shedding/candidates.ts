@@ -444,7 +444,7 @@ function resolveSteppedShedTargetStep(params: {
   const forceLowestActiveStep = shedBehaviorAction === 'set_step'
     && devices.some((candidate) => candidate.id !== device.id && isNonSteppedDeviceRecovering(candidate, state));
   if (forceLowestActiveStep) {
-    if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile) return null;
+    if (!isSteppedLoadDevice(device)) return null;
     return getSteppedLoadLowestActiveStep(device.steppedLoadProfile);
   }
   return getSteppedLoadShedTargetStep({
