@@ -7,6 +7,7 @@ import {
   type ObservedStateChangedEvent,
   type PlanReconcileObservedEvent,
 } from './lib/observer/observedStateEvents';
+import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { PlanEngine } from './lib/plan/planEngine';
 import {
   clearAllPendingBinarySettleWindows,
@@ -394,6 +395,10 @@ class PelsApp extends Homey.App {
    * (notes/state-management/observer-transport-split.md).
    */
   private observedStateEmitter: ObservedStateEmitter = new ObservedStateEmitter();
+  // Observer-owned whole-home power scalar (PR2a of the observer/transport
+  // split). Transport pushes the Homey-SDK-sourced reading here via the
+  // dispatcher; wiring reads it back through `getHomePowerW()`.
+  private observedHomePower: ObservedHomePower = new ObservedHomePower();
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -497,6 +502,9 @@ class PelsApp extends Homey.App {
       (message, error) => this.error(message, error),
     ),
     recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
+    // Home power is owned by the observer (PR2a of the observer/transport
+    // split); transport pushes the Homey-SDK-sourced scalar there.
+    getHomePowerW: () => this.observedHomePower.getHomePowerW(),
   });
   private readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     homey: this.homey,
@@ -1248,7 +1256,7 @@ class PelsApp extends Homey.App {
       pendingPredicate: (deviceId, capabilityId) => (
         hasPendingBinarySettleWindow(this.observerBinarySettleState, deviceId, capabilityId)
       ),
-      observedStateDispatcher: this.observedStateEmitter.asDispatcher(),
+      observedStateDispatcher: this.observedStateEmitter.asDispatcher(this.observedHomePower),
     });
     await this.deviceManager.init();
     // Wiring subscribes to the observer-owned emitter rather than the

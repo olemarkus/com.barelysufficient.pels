@@ -241,6 +241,13 @@ export type DeviceTransportBinarySettleOps = {
 export type TransportObservedStateDispatcher = {
     observedStateChanged: (event: ObservedDeviceStateEvent) => void;
     planReconcile: (event: PlanRealtimeUpdateEvent) => void;
+    /**
+     * Push the whole-home power scalar resolved from a Homey SDK energy report
+     * into observer's home-power holder. PR2a of the observer/transport split:
+     * observer owns the home-power read; transport produces the value and hands
+     * it over here, no longer caching it locally.
+     */
+    setHomePowerW: (w: number | null) => void;
 };
 
 type DeviceTransportOptions = {
@@ -309,7 +316,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private emptySnapshotGrace: { firstSeenMs: number; reads: number } | null = null;
     private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
     private latestRawDevices: HomeyDeviceLike[] = [];
-    private latestHomePowerW: number | null = null;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -1697,7 +1703,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             purpose: 'ui_picker',
         });
     }
-    getHomePowerW(): number | null { return this.latestHomePowerW; }
     async pollHomePowerW(): Promise<number | null> {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
@@ -2173,7 +2178,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     private updateHomePowerFromReport(report: LivePowerReport): number | null {
-        this.latestHomePowerW = report.homePowerW;
+        // PR2a of the observer/transport split: observer owns the home-power
+        // read. Transport produces the scalar from the Homey SDK energy report
+        // and pushes it to observer's holder via the injected dispatcher; it no
+        // longer caches the value locally. The return value still feeds the
+        // direct `pollHomePowerW()` caller (homey_energy poll source).
+        this.observedStateDispatcher?.setHomePowerW(report.homePowerW);
         return report.homePowerW;
     }
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }

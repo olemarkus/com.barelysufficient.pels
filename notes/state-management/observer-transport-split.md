@@ -3,9 +3,11 @@
 This is the design-of-record for splitting `DeviceManager` into two physically
 separate modules. **The split shipped** across a 6-PR train (PRs #1095, #1102,
 #1107, #1140, #1148, #1158); `DeviceManager` was renamed to `DeviceTransport`
-and the observer now owns the typed-event emitter. (The snapshot store —
-`latestSnapshot` / `latestSnapshotById` / `getHomePowerW` — deliberately stayed
-on `DeviceTransport`; see the "Shipped vs original target" callout below.) The note
+and the observer now owns the typed-event emitter. A later follow-up (PR2a of the
+actuator-write-seam train) moved the home-power read scalar onto the observer
+(`lib/observer/observedHomePower.ts`, class `ObservedHomePower`); the snapshot
+store — `latestSnapshot` / `latestSnapshotById` — deliberately stays on
+`DeviceTransport`; see the "Shipped vs original target" callout below. The note
 is kept as the single source for "why is it shaped like this" — runtime code in
 `app.ts`, `lib/device/`, `lib/observer/`, `lib/plan/`, `lib/executor/`, and
 `.dependency-cruiser.cjs` points here for the layering rationale. The
@@ -46,11 +48,37 @@ the cruiser rule promote to error.
 > deferred: the transport's `write(intent)` / `subscribe(handler)`
 > abstract API never landed (executor still calls `setCapability` /
 > `requestSteppedLoadStep` directly on `DeviceTransport`); observer never
-> gained snapshot ownership (`latestSnapshot` / `latestSnapshotById` /
-> `getHomePowerW` are still on `DeviceTransport`); the realtime "subscribe
-> normalized events" surface was instead realised via the observer-owned
-> `ObservedStateEmitter` + the `observedStateDispatcher` callback bag
-> (PR #1158). For what actually shipped, see the **Sequencing** section.
+> gained full snapshot ownership (`latestSnapshot` / `latestSnapshotById` are
+> still on `DeviceTransport` — PR2b, deferred by decision, see below). The
+> home-power read scalar **did** move to the observer in PR2a of the
+> actuator-write-seam train (`lib/observer/observedHomePower.ts`); the realtime
+> "subscribe normalized events" surface was instead realised via the
+> observer-owned `ObservedStateEmitter` + the `observedStateDispatcher` callback
+> bag (PR #1158). For what actually shipped, see the **Sequencing** section.
+>
+> **PR2a — `getHomePowerW` shipped (actuator-write-seam train).** The observer
+> now owns the whole-home power read. `lib/observer/observedHomePower.ts`
+> (`ObservedHomePower`) holds the scalar; `DeviceTransport` no longer caches
+> `latestHomePowerW` or exposes `getHomePowerW()` (removed from the
+> `DeviceObservation` interface too). The *source* is unchanged — a Homey SDK
+> energy report read in the device layer (`managerFetch` → `managerHomeyApi` →
+> `managerEnergy`); `updateHomePowerFromReport` now pushes the resolved scalar
+> to observer via a new `setHomePowerW(w)` method on the `observedStateDispatcher`
+> callback bag (same injection pattern as the event dispatcher and
+> `pendingPredicate`; transport still does not import observer). Wiring
+> (`lib/app/appSnapshotHelpers.ts`) reads the value back from the observer via a
+> `getHomePowerW` dep wired in `app.ts` (lib/app → observer is an allowed edge).
+> Observer introduces **no** `lib/power/**` import — the correction to the
+> original "fed via event/contract from `lib/power/`" wording below.
+>
+> **PR2b — snapshot store move, DEFERRED BY DECISION.** Moving `latestSnapshot` /
+> `latestSnapshotById` onto the observer was evaluated and dropped. It would be a
+> dual-store: transport keeps the array as a pipeline scratchpad (the
+> parse/merge/realtime pipeline mutates it in place during `refreshSnapshot`),
+> and transport cannot import observer (`no-device-to-peer-except-power`). The
+> move buys no behaviour change while adding a high snapshot-rollback regression
+> surface. It is not worth doing until the read-side parse/merge pipeline itself
+> relocates out of transport.
 
 Two physical modules:
 
@@ -85,11 +113,18 @@ External API is uniform across native and flow:
 
 Owns the stored view, not the parse pipeline:
 
-- Snapshot store (`latestSnapshot`, `latestSnapshotById`)
+- Snapshot store (`latestSnapshot`, `latestSnapshotById`) — note: this stayed on
+  `DeviceTransport`; the move (PR2b) is deferred by decision (see the callout
+  above).
 - Freshness, realtime fanout
 - Pending-command tracking, settle reconciliation
-- `getHomePowerW()` (whole-home value, fed via event/contract from
-  `lib/power/` — observer must not statically import `lib/power/`)
+- `getHomePowerW()` (whole-home value) — **shipped to the observer in PR2a**
+  (`lib/observer/observedHomePower.ts`). The original design said this would be
+  "fed via event/contract from `lib/power/`"; that was wrong about the source.
+  The value originates from a **Homey SDK energy report read in the device
+  layer**, and transport pushes the resolved scalar to the observer via the
+  `observedStateDispatcher.setHomePowerW(w)` callback. Observer holds it without
+  importing `lib/device/` or `lib/power/`.
 - Today's pure interpretation helpers (`observedState.ts`,
   `observationFreshness.ts`, `observationTrust.ts`, `observedPower.ts`,
   `idleDetector.ts`, `devicePowerCalibration.ts`)
@@ -176,7 +211,7 @@ drift-against-plan-intent.
 | `no-observer-to-peer` (error) | Unchanged; observer remains a peer leaf. |
 | `todo-narrow-plan-device-dep` (warn, plan→device) | Promoted to **error**. |
 | (no rule today) | New error rule: `lib/executor/**` must not import `lib/device/**`. |
-| (no rule today) | New error rule: `lib/observer/**` must not statically import `lib/power/**` — `getHomePowerW` source flows via event/contract. |
+| (no rule today) | New error rule: `lib/observer/**` must not statically import `lib/power/**`. (PR2a reality: observer's `ObservedHomePower` receives the scalar from transport via the `observedStateDispatcher.setHomePowerW` callback — the *source* is a Homey SDK energy report in the device layer, not `lib/power/`. No `lib/power/` import is needed or introduced.) |
 
 ## Sequencing
 

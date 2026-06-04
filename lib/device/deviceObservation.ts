@@ -21,10 +21,4 @@ export type DeviceObservation = {
      * `getSnapshot().find(...)`.
      */
     getSnapshotByDeviceId(deviceId: string): TargetDeviceSnapshot | undefined;
-
-    /**
-     * Returns the whole-home power reading in watts as last observed, or
-     * `null` when no live reading is available.
-     */
-    getHomePowerW(): number | null;
 };

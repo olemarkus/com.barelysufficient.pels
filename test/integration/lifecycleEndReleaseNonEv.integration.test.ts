@@ -129,7 +129,6 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
   const observation: DeviceObservation = {
     getSnapshot: () => Array.from(snapshots.values()),
     getSnapshotByDeviceId: (id) => snapshots.get(id),
-    getHomePowerW: () => null,
   };
   const state = createPlanEngineState(1_730_000_000_000);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);
@@ -205,7 +204,6 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
   const observation: DeviceObservation = {
     getSnapshot: () => Array.from(snapshots.values()),
     getSnapshotByDeviceId: (id) => snapshots.get(id),
-    getHomePowerW: () => null,
   };
   const state = createPlanEngineState(1_730_000_000_000);
   const pendingBinaryCommandStore = createPendingBinaryCommandStore(state.pendingBinaryCommands);

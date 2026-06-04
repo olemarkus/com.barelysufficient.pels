@@ -21,7 +21,6 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
   const observation = {
     getSnapshot: () => [snapshot],
     getSnapshotByDeviceId: (id: string) => (id === snapshot.id ? snapshot : undefined),
-    getHomePowerW: () => null,
   } as unknown as DeviceObservation;
 
   // Mirror PlanExecutor.recordShedActuation: a capacity shed stamps both markers.
