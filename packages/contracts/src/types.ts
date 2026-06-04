@@ -153,8 +153,6 @@ export type TargetDeviceSnapshot = {
     evChargingState?: string;
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
-    temperatureBoost?: TemperatureBoostConfig;
-    evBoost?: EvBoostConfig;
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
     reportedStepId?: string;

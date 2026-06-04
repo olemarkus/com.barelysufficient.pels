@@ -5,9 +5,10 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsType
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type {
   DecoratedDeviceSnapshot,
+  EvBoostConfig,
   SettingsUiLogEntry,
   SteppedLoadProfile,
-  TargetDeviceSnapshot,
+  TemperatureBoostConfig,
 } from './types.js';
 import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
 
@@ -158,9 +159,9 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   priority?: number;
   zone?: string;
   budgetExempt?: boolean;
-  temperatureBoost?: TargetDeviceSnapshot['temperatureBoost'];
+  temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
-  evBoost?: TargetDeviceSnapshot['evBoost'];
+  evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   currentTemperature?: number;
   stateKind?: string;

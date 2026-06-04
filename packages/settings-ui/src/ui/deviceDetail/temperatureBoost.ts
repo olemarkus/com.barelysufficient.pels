@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot, TemperatureBoostSettings } from '../../../../contracts/src/types.ts';
+import type { TemperatureBoostSettings } from '../../../../contracts/src/types.ts';
 import { TEMPERATURE_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import {
   hasTemperatureBoostTarget,
@@ -12,7 +12,7 @@ import {
 } from '../dom.ts';
 import { getSetting } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
-import { state } from '../state.ts';
+import { state, type SettingsUiDeviceView } from '../state.ts';
 import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import { isSteppedLoadControlModel } from './steppedLoadDraft.ts';
 
@@ -21,7 +21,7 @@ const DEFAULT_BOOST_BELOW_C = 55;
 
 type TemperatureBoostHandlerDeps = {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceView | null;
   refreshOpenDeviceDetail: () => void;
 };
 
@@ -34,7 +34,7 @@ export const loadTemperatureBoostSettings = async () => {
   }
 };
 
-export const renderTemperatureBoostSettings = (device: TargetDeviceSnapshot | null) => {
+export const renderTemperatureBoostSettings = (device: SettingsUiDeviceView | null) => {
   if (!deviceDetailTemperatureBoost || !deviceDetailTemperatureBoostEnabled || !deviceDetailTemperatureBoostBelow) {
     return;
   }
