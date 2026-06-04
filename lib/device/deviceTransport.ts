@@ -1329,6 +1329,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 snapshot,
                 capabilityId: payload.capabilityId,
                 observedValue: payload.value,
+                incomingSeam: 'push',
             });
             this.applyCachedBinarySettleEvidenceToSnapshot(snapshot);
             return;
@@ -1418,6 +1419,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                     snapshot: deviceSnapshot,
                     capabilityId: payload.capabilityId,
                     observedValue: payload.value,
+                    incomingSeam: 'pull',
                 });
             }
         }
@@ -1500,15 +1502,38 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         snapshot: TargetDeviceSnapshot;
         capabilityId: BinaryControlObservation['capabilityId'];
         observedValue: boolean;
+        // The transport seam the contradicting read came in on. A `pull`
+        // (snapshot refresh) value with no timestamp may be Homey serving a
+        // cached capability, so it must not erase a fresher pushed observation.
+        // A `push` (device.update) is the device actively reporting its current
+        // state, so it stays authoritative even without a timestamp.
+        incomingSeam: 'pull' | 'push';
     }): void {
         const {
             deviceId,
             snapshot,
             capabilityId,
             observedValue,
+            incomingSeam,
         } = params;
         const existing = this.latestBinarySettleEvidenceByDeviceId.get(deviceId);
         if (!existing || existing.capabilityId !== capabilityId || existing.observedValue === observedValue) return;
+        // A timestamp-less PULL read carries no evidence it is newer than a
+        // pushed observation, so it must not erase a realtime/device_update
+        // observation (notes/state-management/CLAUDE.md "Never let an older full
+        // fetch erase a fresher local or realtime observation without evidence
+        // it is newer"). A genuine state change arrives via a push (realtime
+        // listener / device.update), so the retained evidence stays supersedable
+        // by any newer stamped read or push. The trusted observation wins and
+        // currentOn reconciles to it. A timestamp-less PUSH is not held: it is
+        // the device reporting its current state and stays authoritative.
+        if (
+            incomingSeam === 'pull'
+            && (existing.source === 'realtime_capability' || existing.source === 'device_update')
+        ) {
+            this.applyBinarySettleEvidenceToSnapshot(snapshot, existing);
+            return;
+        }
         this.clearBinarySettleEvidence(deviceId);
         delete snapshot.binaryControlObservation;
     }
