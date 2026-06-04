@@ -162,7 +162,6 @@ export type TargetDeviceSnapshot = {
     // raw-evidence fields (actualStepId / assumedStepId / actualStepSource)
     // collapsed into this plus the typed stepped-state adapter.
     selectedStepId?: string;
-    lastDesiredStepChangeAt?: number;
     lastStepCommandIssuedAt?: number;
     stepCommandRetryCount?: number;
     nextStepCommandRetryAtMs?: number;
