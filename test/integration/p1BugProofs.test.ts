@@ -7,6 +7,7 @@ import { getOffDevices, getSteppedRestoreCandidates } from '../../lib/plan/resto
 import { estimateRestorePower } from '../../lib/plan/restore/accounting';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import { updateGuardState } from '../../lib/plan/admission';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw, sumControlledUsageKw } from '../../lib/plan/planUsage';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -45,6 +46,13 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
     } as never,
     deviceManager: deviceManager as never,
+    // This proof never drives a step write; supply an actuator over the device
+    // manager's writes so the executor's stepped binding has a seam to call.
+    actuator: createDeviceActuator({
+      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
+      applyDeviceTargets: async () => undefined,
+      triggerFlowBackedBinaryControl: async () => undefined,
+    }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getCapacityDryRun: () => false,

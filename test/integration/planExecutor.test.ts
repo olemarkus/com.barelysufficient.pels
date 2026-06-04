@@ -4,6 +4,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
 import {
   observeNativeSteppedLoadCommandAdapter,
   setObservedNativeSteppedLoadStep,
@@ -139,6 +140,14 @@ const buildExecutor = (
       },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
+    // Route step writes through the actuator over the SAME device-manager stepped
+    // method, so the stepped binding behaves identically to production wiring.
+    actuator: createDeviceActuator({
+      setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
+      applyDeviceTargets: async () => undefined,
+      triggerFlowBackedBinaryControl: async () => undefined,
+      requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
+    }),
     getCapacityGuard: () => undefined,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
     getCapacityDryRun: () => false,

@@ -462,11 +462,13 @@ export default tseslint.config(
   {
     // planExecutor keeps the remaining binary-control dispatch table local so the actuation path
     // stays navigable in one place. Predicate helpers now live in `planExecutorPredicates.ts`
-    // and shed_release actuation lives in `shedReleaseActuation.ts`. Target: <=600 if the binary
-    // dispatch table itself is later split per control type.
+    // and shed_release actuation lives in `shedReleaseActuation.ts`. The cap ticks up as the
+    // actuator-write-seam migration (PR1b) routes write sites through the injected `Actuator`
+    // dep; it shrinks again once binary/target/step dispatch is fully migrated. Target: <=600 if
+    // the binary dispatch table itself is later split per control type.
     files: ['lib/executor/planExecutor.ts'],
     rules: {
-      'max-lines': ['warn', { max: 730, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 734, skipBlankLines: true, skipComments: true }],
     },
   },
   {
