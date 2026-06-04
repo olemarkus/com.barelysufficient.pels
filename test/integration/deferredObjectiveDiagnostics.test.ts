@@ -6,19 +6,19 @@ import {
   ELIGIBILITY_ABANDON_GRACE_MS,
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
-} from '../lib/objectives/deferredObjectives';
-import { applyDeferredObjectiveAdmission } from '../lib/objectives/deferredObjectives/admission';
+} from '../../lib/objectives/deferredObjectives';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import type {
   DeferredObjectivePlannedBucket,
-} from '../lib/objectives/deferredObjectives';
-import { buildDeferredObjectiveDebugPayload } from '../lib/objectives/deferredObjectives/diagnosticDebugPayload';
-import { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives/planHistory';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
-import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryV4 } from '../packages/contracts/src/deferredObjectivePlanHistory';
-import { buildObjectiveSignature } from '../lib/objectives/deferredObjectives/activePlanSignature';
+} from '../../lib/objectives/deferredObjectives';
+import { buildDeferredObjectiveDebugPayload } from '../../lib/objectives/deferredObjectives/diagnosticDebugPayload';
+import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { DeferredObjectivePlanHistoryV4 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);

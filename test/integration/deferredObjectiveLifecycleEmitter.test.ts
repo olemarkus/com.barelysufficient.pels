@@ -2,10 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   DeferredObjectiveLifecycleEmitter,
   type DeferredObjectiveLifecycleEmitterDeps,
-} from '../lib/objectives/deferredObjectives/lifecycleEmitter';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
-import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+} from '../../lib/objectives/deferredObjectives/lifecycleEmitter';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredObjectives/settings';
+import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const buildDeps = (
   overrides: Partial<DeferredObjectiveLifecycleEmitterDeps> = {},

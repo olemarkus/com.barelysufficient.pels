@@ -29,19 +29,19 @@ import {
   DeferredObjectiveActivePlanRecorder,
   type ActivePlanFlowCardSeed,
   type ActivePlanPersistDeps,
-} from '../lib/objectives/deferredObjectives/activePlanRecorder';
-import { resolveCommittedHours } from '../lib/objectives/deferredObjectives/resolveCommittedHours';
+} from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import { resolveCommittedHours } from '../../lib/objectives/deferredObjectives/resolveCommittedHours';
 import {
   planDeferredObjectiveHorizon,
-} from '../lib/objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjective,
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonBucket,
   DeferredObjectiveHorizonPlan,
   DeferredObjectiveStep,
-} from '../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveSettingsEntry } from '../lib/objectives/deferredObjectives/settings';
+} from '../../lib/objectives/deferredObjectives';
+import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
 
 const HOUR_MS = 60 * 60 * 1000;
 const BASE_HOUR = Date.UTC(2026, 4, 30, 20); // 22:00 local-ish; absolute, DST-agnostic

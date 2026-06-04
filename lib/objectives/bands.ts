@@ -11,7 +11,7 @@ export const OBJECTIVE_PROFILE_SAMPLE_BUFFER_SIZE = 64;
 // low-data band from dominating the estimate before it has enough evidence.
 //
 // SHS multi-band replay (2026-05-23, see
-// `test/objectiveProfileBandsShsReplay.test.ts`): a 6-sample buffer with a
+// `test/unit/objectiveProfileBandsShsReplay.test.ts`): a 6-sample buffer with a
 // textbook bimodal split — 3 samples at 0.30 kWh/°C, 3 at 0.50 kWh/°C — would
 // reduce SSE by 99.94% at the natural boundary if the gate were bypassed (far
 // above the 10% `MIN_SSE_REDUCTION_FRACTION` floor). The fitter still

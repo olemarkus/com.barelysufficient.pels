@@ -3,15 +3,15 @@ import {
   OBJECTIVE_PROFILE_RETENTION_MS,
   updateDeviceObjectiveProfile,
   updateObjectiveProfilesFromSnapshot,
-} from '../lib/objectives/profiles';
+} from '../../lib/objectives/profiles';
 import {
   OBJECTIVE_PROFILE_NO_POWER_SOURCE_THRESHOLD,
   resetNoPowerSourceDiagnosticForTests,
-} from '../lib/objectives/noPowerSourceDiagnostic';
-import { resolveProfileConfidence } from '../lib/objectives/stats';
-import type { DeviceObjectiveProfile } from '../lib/objectives/types';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+} from '../../lib/objectives/noPowerSourceDiagnostic';
+import { resolveProfileConfidence } from '../../lib/objectives/stats';
+import type { DeviceObjectiveProfile } from '../../lib/objectives/types';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 1, 0, 0, 0);
 const hourMs = 60 * 60 * 1000;

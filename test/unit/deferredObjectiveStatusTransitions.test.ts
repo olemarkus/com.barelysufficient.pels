@@ -1,8 +1,8 @@
 import {
   createDeferredObjectiveStatusBus,
   emitDeferredObjectiveStatusTransitions,
-} from '../lib/objectives/deferredObjectives';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+} from '../../lib/objectives/deferredObjectives';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 
 const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceId: string;

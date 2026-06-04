@@ -3,11 +3,11 @@
 // what did each hour cost?" surface — every conditional (cheap-hour glow,
 // planned-but-skipped outline, kWh fallback) is flattened here so the view
 // layer never branches on the entry shape.
-import { resolveHistoryDetailHourlyStrip } from '../packages/shared-domain/src/deferredPlanHistory';
+import { resolveHistoryDetailHourlyStrip } from '../../packages/shared-domain/src/deferredPlanHistory';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
-} from '../packages/contracts/src/deferredObjectivePlanHistory';
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 17, 8, 0, 0); // Sun 17 May 08:00 UTC

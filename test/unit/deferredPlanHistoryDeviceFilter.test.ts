@@ -9,10 +9,10 @@
 import {
   filterPlanHistoryByDevice,
   resolveSmartTaskHistoryFilterDevices,
-} from '../packages/shared-domain/src/deferredPlanHistoryDeviceFilter';
+} from '../../packages/shared-domain/src/deferredPlanHistoryDeviceFilter';
 import type {
   DeferredObjectivePlanHistoryEntry,
-} from '../packages/contracts/src/deferredObjectivePlanHistory';
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 type EntryShape = Pick<DeferredObjectivePlanHistoryEntry, 'deviceId' | 'deviceName'>;
 

@@ -96,10 +96,11 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 - [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
       *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
-      imports → `unit/`, `*E2E` → `e2e/`); then a careful per-file pass over the
-      `dailyBudget*` / `device*` / `app*` clusters (read each, unit vs integration by subject).
-      ~134 flat specs remain — mostly the `plan*` (38) and `deferred*`/`objective*` clusters,
-      which need dedicated passes, plus odds-and-ends needing per-file judgment, the
+      imports → `unit/`, `*E2E` → `e2e/`); then careful per-file passes over the
+      `dailyBudget*` / `device*` / `app*` and `deferred*` / `objective*` clusters (read each, unit
+      vs integration by subject), plus device-suite e2e reshapes.
+      ~103 flat specs remain — mostly the `plan*` (38) cluster, which needs a dedicated pass, plus
+      odds-and-ends needing per-file judgment, the
       `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
       manual path fix to move), and the 7 environment-special `*Browser.test.ts` /
       `settings-ui.test.ts` / `*.perf.test.ts` (jsdom / explicit-include in the dom/perf configs
@@ -462,7 +463,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 **PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
 
 - [ ] P2: direct emit-side test for `DeferredObjectiveLifecycleEmitter`. The current
-      `test/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
+      `test/integration/deferredObjectiveLifecycleEmitter.test.ts` covers recorder forwarding + the no-settings
       no-op; the emit side (status-transition publish, hours-remaining crossing, and especially the
       `onDeadlinePassed` → disable firing through the clock tick) is only covered indirectly
       (migrated `appInit.test.ts` + the per-module `statusTransitions`/`hoursRemainingCrossings`

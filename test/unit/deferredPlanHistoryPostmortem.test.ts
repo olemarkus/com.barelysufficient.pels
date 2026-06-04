@@ -16,15 +16,15 @@ import {
   formatPlanHistoryPostmortem,
   formatPlanHistoryProgressLine,
   formatPlanHistoryUsageDayLinkLabel,
-} from '../packages/shared-domain/src/deferredPlanHistory';
+} from '../../packages/shared-domain/src/deferredPlanHistory';
 import {
   formatPlanHistoryListCostAndDelivered,
   groupPlanHistoryByIsoWeek,
-} from '../packages/shared-domain/src/deferredPlanHistoryReceipt';
+} from '../../packages/shared-domain/src/deferredPlanHistoryReceipt';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../packages/contracts/src/deferredObjectivePlanHistory';
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 16, 0, 0); // Sat 16 May 16:00 UTC

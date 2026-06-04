@@ -2,8 +2,8 @@
 // widget). Mirrors the finished-run history producer's shape but anchors a
 // single planned staircase at the run's start progress and overlays the
 // observed-so-far line — no revised line, no "reached" marker.
-import { resolveActivePlanChartData } from '../packages/shared-domain/src/deferredActivePlanChartData';
-import type { DeferredObjectiveActivePlanV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import { resolveActivePlanChartData } from '../../packages/shared-domain/src/deferredActivePlanChartData';
+import type { DeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
 const START_MS = Date.UTC(2026, 4, 26, 10, 0, 0);

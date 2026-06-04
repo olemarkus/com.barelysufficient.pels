@@ -312,7 +312,7 @@ export const allocateCommittedEnergyToBuckets = (params: {
 //       (cheapest-first, like any other hour). Without that, a task that
 //       outlives its committed window strands its current hour at 0 kWh and
 //       the device is turned off while still behind target (see
-//       `test/deferredObjectiveCommitmentRolloverSimulation.test.ts`). The
+//       `test/integration/deferredObjectiveCommitmentRolloverSimulation.test.ts`). The
 //       cheapest-first sort still defers an expensive current hour behind
 //       cheaper future hours, so "wait for a cheaper hour" is preserved; the
 //       current hour is only filled when it is among the cheapest hours still

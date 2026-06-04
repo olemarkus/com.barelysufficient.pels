@@ -1,14 +1,14 @@
-import CapacityGuard from '../lib/power/capacityGuard';
-import { PlanBuilder } from '../lib/plan/planBuilder';
-import { createPlanEngineState } from '../lib/plan/planState';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { DevicePlanDevice, PlanInputDevice } from '../lib/plan/planTypes';
-import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
+import CapacityGuard from '../../lib/power/capacityGuard';
+import { PlanBuilder } from '../../lib/plan/planBuilder';
+import { createPlanEngineState } from '../../lib/plan/planState';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import {
   DeferredObjectiveDecorationController,
   type DeferredObjectiveSettingsV1,
-} from '../lib/objectives/deferredObjectives';
-import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+} from '../../lib/objectives/deferredObjectives';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 

@@ -4,11 +4,11 @@
 // feeds the past-tasks list card and the smart-task history-detail hero.
 import {
   formatPlanHistoryObservedCoverage,
-} from '../packages/shared-domain/src/deferredPlanHistory';
+} from '../../packages/shared-domain/src/deferredPlanHistory';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
-} from '../packages/contracts/src/deferredObjectivePlanHistory';
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 7, 0, 0); // Sat 16 May 07:00 UTC

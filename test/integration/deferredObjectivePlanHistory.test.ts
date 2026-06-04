@@ -1,29 +1,29 @@
 import {
   DeferredObjectivePlanHistoryRecorder,
   type PlanHistoryPersistDeps,
-} from '../lib/objectives/deferredObjectives/planHistory';
+} from '../../lib/objectives/deferredObjectives/planHistory';
 import {
   appendRevisionLogIfNew,
   buildFinalHourFlush,
   detectHourRollover,
   MAX_REVISIONS_PER_ENTRY,
-} from '../lib/objectives/deferredObjectives/planHistoryV4Helpers';
+} from '../../lib/objectives/deferredObjectives/planHistoryV4Helpers';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
-} from '../lib/objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
-} from '../packages/contracts/src/deferredObjectiveActivePlans';
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanHistoryV4,
-} from '../packages/contracts/src/deferredObjectivePlanHistory';
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   resolveDeferredPlanHistoryMissAttribution,
-} from '../packages/shared-domain/src/deferredPlanHistoryAttribution';
+} from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -2515,8 +2515,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // window and reports `capped_idle`; the recorder's
       // getStallClassification bridge promotes the run to
       // met/stalled_device_capped instead of finalising it as missed.
-      const { createIdleClassifier } = await import('../lib/observer/idleClassifier');
-      const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../lib/observer/idleDetector');
+      const { createIdleClassifier } = await import('../../lib/observer/idleClassifier');
+      const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../../lib/observer/idleDetector');
 
       const classifier = createIdleClassifier();
       const { deps, saved } = buildPersistDeps();
