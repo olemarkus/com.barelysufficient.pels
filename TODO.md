@@ -121,6 +121,17 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Verify early-satisfaction doesn't leave stale committed hours on the active plan.** When a
+      stalled/near-target smart task is reported satisfied mid-plan, `maybeWriteReplanRevision` merges
+      the now-empty live schedule via `mergeHoursPreservingCommitment`, whose `live.length === 0` branch
+      preserves ALL previously-committed hours. Internal to `lib/objectives` (NOT a daily-budget concern —
+      the budget producer never reads committed hours, so the earlier "release hours to the budget shaper"
+      framing was wrong and was cut). Open question: should those preserved hours be released so the
+      satisfied task's own re-plan/hysteresis reads don't treat it as still-committed? Confirm impact
+      (likely benign — the device draws ~0 W once satisfied); fix only if a concrete effect is found.
+      Source: codex on PR #1495, 2026-06-04.
+      Files: `lib/objectives/deferredObjectives/**` (`maybeWriteReplanRevision`, `mergeHoursPreservingCommitment`).
+
 - [ ] **Stop recording a synthesized `currentOn` as trusted binary evidence** (part of the
       binaryControlObservation/observed-state consolidation — see `project_binary_observation_removal`).
       `recordSnapshotControlObservation` records `snapshot.currentOn`, which on the unobserved-control
@@ -189,15 +200,16 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
 title colour were fixed in the same change; items below are the deferred remainder.*
 
-- [ ] **Hoist starvation-reason + held-back diagnostics labels into shared-domain.**
-      `STARVATION_REASON_LABELS` and the held-back status strings are inlined in
-      `packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` (~L109-156) instead of a
-      `packages/shared-domain/**` helper, and duplicate copy that `planStarvation.ts`'s
-      `formatStarvationReason` already owns (e.g. "Waiting for available power"). A label can
-      therefore drift between the device-detail panel and the runtime log breadcrumb — breaks the
-      log/UI-parity rule (`feedback_ui_text_shared_with_logs`). Move the map + formatters into
-      shared-domain and have both the settings UI and runtime logging consume the one source.
-      Source: pels-copy-and-terminology, 2026-06-03 review-findings investigation.
+- [ ] **Dedup the one starvation literal shared with shared-domain.** The string
+      `"Waiting for available power"` is hardcoded in `STARVATION_REASON_LABELS`
+      (`packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` ~L109-156) AND owned by
+      `planStarvation.ts`'s `formatStarvationReason` (`packages/shared-domain/`), so the two can
+      drift. Point the diagnostics map at the shared-domain string for that one label. (Scoped
+      down from a broader "hoist the whole ~20-entry map" framing: the original log/UI-parity
+      rationale does NOT hold — grep-confirmed no runtime/logging path consumes these labels, and
+      most of the diagnostics map has no shared-domain sibling and no log consumer, so a full hoist
+      would be a no-payoff base-class trap.) Source: pels-copy-and-terminology, 2026-06-03;
+      rescoped 2026-06-04 merit pass.
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -229,21 +241,6 @@ PRs. Items below are later polish.*
       `git mv` to `setup/` and rewrite import depths. `appContext.ts`
       stays in `lib/app/`.
 
-- [ ] **Release remaining planned-bucket hours back to the budget when a smart
-      task satisfies early.** The tight-gap `near_target_idle` path (1 °C /
-      1 min, added alongside learned thermostat deadband) lets a temperature
-      smart task finalise met/stalled mid-plan rather than at the deadline.
-      The currently-planned remaining hours stay reserved in
-      `plansByDeviceId` even though the device has nothing to do with them.
-      Releasing those reserved hours back to the daily-budget shaper would
-      hand cheap-hour headroom to lower-priority devices. Hook:
-      `DeferredObjectiveActivePlanRecorder` already observes plan
-      transitions; emit a `plan_released_early` revision when the planHistory
-      recorder fires `onMetStalledEntry`, and have the daily-budget producer
-      drop the reserved kWh for those buckets. Test gate: a second device's
-      `at_risk` verdict flips to `on_track` after the first device satisfies
-      early. Source: kontor smart-task forensics conversation, 2026-05-26.
-
 *v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
@@ -258,9 +255,16 @@ release-review pass, 2026-05-26 — the original entry committed as
       left thinking "PELS is handling it" while in reality the breach is structural
       until the opt-out device drops out on its own. Differentiate the hero subtext when
       `remainingSheddableLoad` for managed devices is ≤ 0 AND the breach attribution is
-      a capacity-control-off device: e.g. *"Above hard cap. <DeviceName> isn't under
-      PELS control — PELS has eased everything it can."* Files:
-      `packages/shared-domain/src/planHeroSummary.ts:~257` (subtitle composition),
+      a capacity-control-off device. (Example copy must be reworded to project voice — no
+      em-dash diagnostic shape, named-subject not first-person PELS, and name the real toggle
+      per `feedback_remedy_copy_names_real_toggle`; do not ship the literal example above.)
+      The condition is detectable at the call site: device `reason.code ===`
+      `PLAN_REASON_CODES.capacityControlOff` (PlanHero.tsx already counts devices by
+      `reason.code` for other codes — e.g. `deferredObjectiveAvoidCount` /
+      `dailyBudgetLimitedCount` — so this follows the established pattern)
+      plus no remaining sheddable managed load. Files:
+      `packages/shared-domain/src/planHeroSummary.ts` (rule 2 of `buildDecisionSentence`,
+      string at ~L328 — resolve a producer flag, don't branch in the view),
       `packages/settings-ui/src/ui/views/PlanHero.tsx`,
       `packages/shared-domain/src/planStateLabels.ts`,
       `notes/ui-terminology.md` (add the new subtitle variant). Source:
@@ -292,20 +296,6 @@ so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
 
-- [ ] `resolveDisplayConfidence` fallback misalignment. The fallback path
-      (integration interval extends outside band coverage) reads the now
-      band-aware `kwhPerUnit.confidence`, while the energy estimate for the
-      uncovered slice still uses the raw global `mean ± k·σ`. For thermal
-      devices with a uniform rate this is benign; for EV-style tapering where
-      the uncovered slice has a genuinely different rate, the chip could
-      over-promise. Cleanest fix: introduce a separate `bandedConfidence` field
-      on `ObjectiveProfileStat` so consumers opt in (chip reads
-      `bandedConfidence ?? confidence`; `resolveDisplayConfidence` fallback
-      keeps the raw `confidence`). Alternative: have the fallback re-compute
-      raw RSD from `{sampleCount, mean, m2}` directly. Files:
-      `lib/objectives/deferredObjectives/profileEnergyResolution.ts`,
-      `packages/contracts/src/objectiveProfileTypes.ts`,
-      `lib/objectives/profiles.ts`.
 *v2.7.4 train follow-ups (2026-05-19). Three items from the v2.7.3
 release-review fan-out that did not ride the train; deferred as
 maintenance-tier polish without user-visible impact at supported widths.
@@ -358,15 +348,16 @@ live-walk screenshots.*
 - [ ] Refresh `state.deferredObjectiveActivePlans` on plan revision events. Today the field
       is populated once during `loadBootstrapData` in `packages/settings-ui/src/ui/boot.ts`
       and never updates from runtime emissions. `EvDeadlineStateLine` reads the field every
-      render, so later replans, session changes (e.g. unplug mid-schedule), and updated
-      start/finish hours are not reflected on Overview device cards until the user reloads
-      the page. The runtime emits revision events via the active-plan recorder
-      (`active_plan_revision_written` / `active_plan_revision_pending`); subscribe at the
-      settings-UI API boundary and update the cached state, then re-render the affected
-      cards. Surfaced by Codex on PR #793 review.
-      Files: `packages/settings-ui/src/ui/boot.ts`, `lib/app/settingsUiApi.ts`,
-      `packages/contracts/src/settingsUiApi.ts` (a streaming endpoint or pull-with-version
-      contract).
+      render (component lives in `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`), so
+      later replans, session changes (e.g. unplug mid-schedule), and updated start/finish hours
+      are not reflected on Overview device cards until the user reloads the page. Surfaced by
+      Codex on PR #793 review.
+      Simpler fix than originally proposed (no new contract/stream needed): the recorder already
+      persists revised plans via `homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, …)`,
+      which fires a `settings.set` realtime event the UI already listens for — but the handler in
+      `packages/settings-ui/src/ui/realtime.ts` drops that key. Add a branch that re-reads the
+      setting into `state.deferredObjectiveActivePlans` and re-renders the affected cards.
+      Files: `packages/settings-ui/src/ui/realtime.ts`, `packages/settings-ui/src/ui/boot.ts`.
 - [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
       only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
       app boots after midnight the first rotation is delayed until the following midnight.
@@ -388,25 +379,6 @@ live-walk screenshots.*
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
-- [ ] Debounce or sequence plan rebuilds around budget/price-shaping toggle changes. Toggling daily
-      budget or price-shaping briefly produced `objective_missing_price_horizon` plan reasons
-      before recovering. The reason is correct in isolation, but the transient flash makes the
-      planner look unhealthy to users watching a live UI during settings edits. Either debounce
-      the rebuild until the dependent settings are coherent, or show an explicit "applying"
-      loading state on the plan surface so the user sees a pending state instead of an odd
-      reason. Confirm the recovery still happens within one rebuild cycle once settled.
-      Files: `lib/plan/planService.ts`, `lib/plan/rebuildScheduler/scheduler.ts`,
-      settings UI plan view loading states, plan-reason regression tests.
-- [ ] Clarify log severity and wording for expected planner states. Several normal outcomes look
-      like failures in log review: `cannot_meet` on a deadline objective, `failed: false` fields
-      where `false` is the success path, and expected EV learning sample rejections
-      (`no_progress`, `duplicate`, `too_small_rise`). Choose log severities that match real
-      operational impact (likely `info` or `debug` for expected states, reserve `warn`/`error`
-      for actual control or data faults), and reshape wording so logs read as state transitions
-      rather than failures. Keep field semantics stable; only adjust level and human-readable
-      messages.
-      Files: `lib/logging/**`, `lib/objectives/deferredObjectives/**`, EV learning sample-rejection
-      sites, log/wording regression tests.
 - [ ] Finish the planner/executor/device-transport state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceTransport` should
       provide observed current state and own native / flow / capability transport; executor should
@@ -421,15 +393,11 @@ live-walk screenshots.*
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
 - [ ] Split planner state from render-only explanation data so keep/shed/inactive decisions no
       longer depend on UI-facing `reason` objects.
-      Files: `lib/plan/planRestore.ts`, `lib/plan/planReasons.ts`, plan/executor/rendering
-      boundaries.
-- [ ] Keep executor-owned actuation metadata persistence from growing ad hoc now that
-      `lastControlledMs` is persisted out of `PlanExecutor`. If more per-device actuation state
-      needs durable storage, extract a small persistence helper/queue instead of adding more
-      direct settings writes to the executor.
-      Files: `lib/executor/planExecutor.ts`.
+      Files: `lib/plan/restore/index.ts` (returns `{ plannedState, reason }` bundled),
+      `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
+      plan/executor/rendering boundaries.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to split/trim `setup/appInit.ts` (still ~506 LOC, over the `setup/`
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~499 LOC, over the `setup/`
       one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
       it stays shared, and keep trimming any delegates that no longer buy readability or testability.
       Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
@@ -444,9 +412,10 @@ live-walk screenshots.*
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
       a live "current tier / cheap / expensive / last-fetched" summary card. That requires
       a new wiring path from the price service into the settings UI and was out of scope.
-      Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (done);
-      `packages/settings-ui/public/index.html` (Electricity prices panel hero — pending);
-      `packages/settings-ui/src/ui/electricityPrices.ts` (pending).
+      Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (lede done; the panel
+      is now a Preact surface — `#electricity-prices-surface` — so the live summary card lands
+      here too, NOT in `index.html`); price-service → UI wiring (the deadline surface already
+      reads `priceScheme`/`lastFetched`, e.g. `deadlinePlanPending.ts`, as a wiring reference).
 - [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
       underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
       where only core planning/admission sees both current and desired state; executable intents
@@ -480,8 +449,13 @@ live-walk screenshots.*
       `widgets/*/src/public/** -> lib|app|setup|...` edges, not the transitive
       `public/** -> *WidgetPayload.ts -> lib` path (the `*WidgetPayload.ts` node
       builders are allowlisted to import lib, and `public/render.ts` imports them
-      for constants/types). Today every payload->lib edge is type-only (erased at
-      build), but a future VALUE import in a payload builder would silently ship
+      for constants/types). Accuracy note (2026-06-04): the specific
+      `public -> *WidgetPayload -> lib` chain is NOT wired today — the only payload
+      builder importing lib (`plan_budget/src/planPriceWidgetPayload.ts`, type-only) is
+      not reachable from any `public/**` file; the builders public DOES value-import
+      (headroom, smart_tasks) touch only shared-domain/contracts. The hole is one edit
+      away, not already traversed: the rule structurally PERMITS a builder to both import
+      lib and be value-imported by public, so a future VALUE import would silently ship
       runtime code into the browser bundle while `arch:check` stays green. Fix:
       split the browser-safe constants/types into a shared browser-safe module,
       then add a rule forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`.
