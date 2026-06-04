@@ -913,6 +913,10 @@ describe('DeviceTransport', () => {
             expect(snapshot[0].deviceClass).toBe('airtreatment');
             expect(snapshot[0].deviceType).toBe('temperature');
             expect(snapshot[0].powerCapable).toBe(true);
+            // Non-binary device (no onoff/control capability): currentOn stays
+            // `true` — it has no off-switch and may always draw (setpoint-
+            // controlled), so it must remain sheddable. Only a BINARY device with
+            // a missing onoff value resolves to the non-optimistic `false`.
             expect(snapshot[0].currentOn).toBe(true);
             expect(snapshot[0].canSetControl).toBeUndefined();
         });
@@ -1743,6 +1747,21 @@ describe('DeviceTransport', () => {
         });
 
         it('tracks snapshot refresh and device.update sources for debug dumps', async () => {
+            // Seed a real timestamped onoff:true baseline so the injected
+            // onoff:false below is a genuine on→off change (the shared fixture's
+            // value-less onoff would baseline currentOn:false).
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                    },
+                },
+            });
             await deviceManager.refreshSnapshot();
 
             let observedSources = deviceManager.getDebugObservedSources('dev1');
@@ -1889,8 +1908,8 @@ describe('DeviceTransport', () => {
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
 
             // 3. Pull where Homey serves a cached device object that OMITS onoff;
-            //    the parser fabricates the optimistic currentOn:true with no
-            //    trusted binary observation.
+            //    the parser now honestly resolves currentOn:false (no value) with
+            //    no trusted binary observation.
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1', name: 'Heater', class: 'heater',
@@ -1903,12 +1922,52 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
 
             // The consolidated observed truth must remain the trusted realtime
-            // OFF: a fabricated optimistic true from a source that never observed
-            // onoff must not override it, and currentOn must not diverge from the
-            // retained binary evidence.
+            // OFF: neither the (now honest) false fallback nor a stale pull may
+            // diverge from the retained binary evidence.
             const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(dev1?.binaryControlObservation?.observedValue).toBe(false);
             expect(dev1?.currentOn).toBe(false);
+        });
+
+        it('logs the binary observation consolidated from pull + retained realtime sources', async () => {
+            // Establish a pull baseline, then a realtime push observes onoff=false
+            // (retained, freshly stamped). A later pull carries an OLDER onoff
+            // timestamp, so the observer consolidates to the retained realtime OFF
+            // — and logs both sources + the consolidated result for visibility.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            debugStructuredMock.mockClear();
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:01:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'binary_observation_consolidated',
+                deviceId: 'dev1',
+                capabilityId: 'onoff',
+                pull: expect.objectContaining({ value: true }),
+                retained: expect.objectContaining({ value: false, source: 'realtime_capability' }),
+                consolidated: expect.objectContaining({ value: false, winner: 'retained' }),
+            }));
         });
 
         it('keeps a realtime-off observation when a later pull reports onoff=true with no timestamp', async () => {
@@ -2656,6 +2715,21 @@ describe('DeviceTransport', () => {
         });
 
         it('emits reconcile event when onoff changes via device.update', async () => {
+            // Seed a real timestamped onoff:true baseline so the injected
+            // onoff:false below is a genuine true→false change (the shared
+            // fixture's value-less onoff would baseline currentOn:false).
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                    },
+                },
+            });
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
@@ -2915,7 +2989,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('stops preserving the local off-state after settle timeout so a later non-boolean device.update re-synthesizes the default on-state', async () => {
+        it('stops preserving the local off-state after settle timeout; a later non-boolean device.update honestly resolves currentOn:false (no re-synthesized on-state)', async () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
@@ -2955,16 +3029,19 @@ describe('DeviceTransport', () => {
                     },
                 });
 
+                // After the settle window expires the held off-state is released,
+                // but a binary-less device.update no longer re-synthesizes the old
+                // optimistic on-state — it honestly resolves currentOn:false, which
+                // matches the existing off-state, so the only change is the target.
                 expect(realtimeListener).toHaveBeenCalledOnce();
                 expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                     deviceId: 'dev1',
-                    changes: expect.arrayContaining([
-                        { capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' },
+                    changes: [
                         { capabilityId: 'target_temperature', previousValue: '20°C', nextValue: '21°C' },
-                    ]),
+                    ],
                 }));
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 21 })],
                 }));
             } finally {
@@ -3139,7 +3216,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('does not preserve the old desired onoff value after settle timeout when a later device.update omits the binary capability', async () => {
+        it('does not preserve the old desired onoff value after settle timeout; a binary-less device.update honestly resolves currentOn:false', async () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
@@ -3176,17 +3253,17 @@ describe('DeviceTransport', () => {
                     },
                 });
 
+                // The held off-state is released after the settle window, but the
+                // binary-less update no longer re-synthesizes the old optimistic
+                // on-state — it honestly resolves currentOn:false, which matches the
+                // existing off-state, so there is no onoff change to reconcile.
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                 }));
-                expect(realtimeListener).toHaveBeenCalledOnce();
-                expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
-                    deviceId: 'dev1',
-                    changes: [expect.objectContaining({
-                        capabilityId: 'onoff',
-                        previousValue: 'off',
-                        nextValue: 'on',
-                    })],
+                expect(realtimeListener).not.toHaveBeenCalledWith(expect.objectContaining({
+                    changes: expect.arrayContaining([
+                        expect.objectContaining({ capabilityId: 'onoff' }),
+                    ]),
                 }));
             } finally {
                 vi.useRealTimers();
@@ -4069,11 +4146,15 @@ describe('DeviceTransport', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
         });
 
-        it('keeps observable onoff devices when snapshot data omits the boolean value without refreshing binary evidence', async () => {
+        it('keeps observable onoff devices when snapshot data omits the boolean value, falls back to currentOn:false and logs the anomaly', async () => {
             await deviceManager.refreshSnapshot();
 
+            // A binary device whose onoff capability carries no value is a
+            // should-never-happen anomaly. The parser no longer fabricates an
+            // optimistic true — it resolves honestly to currentOn:false (and
+            // still emits no timestamped binary evidence).
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                currentOn: false,
                 measuredPowerKw: 1,
                 binaryControlObservation: undefined,
                 lastFreshDataMs: undefined,
@@ -4096,11 +4177,27 @@ describe('DeviceTransport', () => {
                 capabilityId: 'onoff',
                 rawValue: null,
                 rawValueType: 'undefined',
-                fallbackCurrentOn: true,
+                fallbackCurrentOn: false,
             }));
         });
 
         it('updates local state on generic device.update events', async () => {
+            // Seed a real timestamped onoff:true baseline so the injected
+            // onoff:true below is genuinely a no-change (the shared fixture's
+            // value-less onoff would now baseline currentOn:false, making this a
+            // spurious false→true change).
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    class: 'heater',
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-03-20T05:59:00.000Z' },
+                    },
+                },
+            });
             await deviceManager.refreshSnapshot();
             const realtimeListener = vi.fn();
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);

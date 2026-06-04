@@ -5,6 +5,7 @@
  * Internal helpers mirror observation fields directly to keep this move-only split simple.
  */
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './managerRealtimeHandlers';
 import type { DeviceFetchSource } from './managerFetch';
@@ -183,6 +184,7 @@ export function mergeFresherCapabilityObservations(params: {
     nextSnapshot: TargetDeviceSnapshot[];
     devices: HomeyDeviceLike[];
     logger: { debug: (...args: unknown[]) => void };
+    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -190,6 +192,7 @@ export function mergeFresherCapabilityObservations(params: {
         nextSnapshot,
         devices,
         logger,
+        debugStructured,
     } = params;
     const previousById = new Map(previousSnapshot.map((device) => [device.id, device]));
     const devicesById = new Map<string, HomeyDeviceLike>();
@@ -217,6 +220,7 @@ export function mergeFresherCapabilityObservations(params: {
             previous,
             sourceDevice,
             logger,
+            debugStructured,
         });
     }
 }
@@ -374,6 +378,7 @@ function mergeSnapshotObservationsForDevice(params: {
     previous: TargetDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
     logger: { debug: (...args: unknown[]) => void };
+    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -381,6 +386,7 @@ function mergeSnapshotObservationsForDevice(params: {
         previous,
         sourceDevice,
         logger,
+        debugStructured,
     } = params;
     const snapshot = nextSnapshot;
     snapshot.lastLocalWriteMs = Math.max(
@@ -406,6 +412,7 @@ function mergeSnapshotObservationsForDevice(params: {
             sourceDevice,
             nextSnapshot: snapshot,
             logger,
+            debugStructured,
         });
     }
 
@@ -567,6 +574,7 @@ function mergeCapabilityObservation(params: {
     sourceDevice: HomeyDeviceLike;
     nextSnapshot: TargetDeviceSnapshot;
     logger: { debug: (...args: unknown[]) => void };
+    debugStructured?: StructuredDebugEmitter;
 }): void {
     const {
         state,
@@ -576,6 +584,7 @@ function mergeCapabilityObservation(params: {
         sourceDevice,
         nextSnapshot,
         logger,
+        debugStructured,
     } = params;
     const observation = state.capabilityObservations.get(buildCapabilityObservationKey(deviceId, capabilityId));
     if (!observation) return;
@@ -590,15 +599,40 @@ function mergeCapabilityObservation(params: {
     const fetchedHasKnownFreshness = typeof fetchedLastUpdatedMs === 'number'
         && Number.isFinite(fetchedLastUpdatedMs);
     const fetchedIsFreshEnough = fetchedHasKnownFreshness && fetchedLastUpdatedMs >= observation.observedAt;
+    // For the binary control capability, log both sources' observations and the
+    // value the observer consolidates them to (the two-source reconciliation we
+    // want visibility on). `emitBinaryConsolidation` no-ops for non-control capabilities.
+    const fetchedValue = sourceDevice.capabilitiesObj?.[capabilityId]?.value;
+    const consolidationCtx: ConsolidationContext = {
+        debugStructured,
+        nextSnapshot,
+        deviceId,
+        deviceName,
+        capabilityId,
+        fetchedValue,
+        fetchedLastUpdatedMs,
+        observation,
+    };
     if (fetchedIsFreshEnough) {
+        emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'pull_fresher_or_equal');
         clearCapabilityObservationIfMatched(state, deviceId, capabilityId, nextSnapshot);
         return;
     }
-    const shouldPreserveObservation = observation.source === 'device_update'
-        ? !fetchedHasKnownFreshness || fetchedLastUpdatedMs < observation.observedAt
-        : fetchedHasKnownFreshness && fetchedLastUpdatedMs < observation.observedAt;
-    if (!shouldPreserveObservation) return;
-    if (!applyCapabilityObservation(nextSnapshot, capabilityId, observation)) return;
+    const shouldPreserveObservation = shouldPreserveRetainedObservation({
+        source: observation.source,
+        fetchedHasKnownFreshness,
+        fetchedLastUpdatedMs,
+        observedAt: observation.observedAt,
+    });
+    if (!shouldPreserveObservation) {
+        emitBinaryConsolidation(consolidationCtx, fetchedValue, 'pull', 'retained_not_preserved');
+        return;
+    }
+    if (!applyCapabilityObservation(nextSnapshot, capabilityId, observation)) {
+        emitBinaryConsolidation(consolidationCtx, observation.value, 'agree', 'values_match');
+        return;
+    }
+    emitBinaryConsolidation(consolidationCtx, observation.value, 'retained', 'retained_fresher');
     logger.debug(
         `Device snapshot refresh preserved newer ${observation.source} ${capabilityId} `
         + `for ${deviceName} (${deviceId}); `
@@ -607,6 +641,58 @@ function mergeCapabilityObservation(params: {
             ? `, fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}`
             : ', fetched lastUpdated=unknown'),
     );
+}
+
+function shouldPreserveRetainedObservation(params: {
+    source: CapabilityObservationSource;
+    fetchedHasKnownFreshness: boolean;
+    fetchedLastUpdatedMs?: number;
+    observedAt: number;
+}): boolean {
+    const { source, fetchedHasKnownFreshness, fetchedLastUpdatedMs, observedAt } = params;
+    const fetchedIsOlder = fetchedLastUpdatedMs !== undefined && fetchedLastUpdatedMs < observedAt;
+    if (source === 'device_update') {
+        return !fetchedHasKnownFreshness || fetchedIsOlder;
+    }
+    return fetchedHasKnownFreshness && fetchedIsOlder;
+}
+
+type ConsolidationWinner = 'pull' | 'retained' | 'agree';
+
+type ConsolidationContext = {
+    debugStructured?: StructuredDebugEmitter;
+    nextSnapshot: TargetDeviceSnapshot;
+    deviceId: string;
+    deviceName: string;
+    capabilityId: string;
+    fetchedValue: unknown;
+    fetchedLastUpdatedMs?: number;
+    observation: CapabilityObservation;
+};
+
+function emitBinaryConsolidation(
+    ctx: ConsolidationContext,
+    consolidatedValue: unknown,
+    winner: ConsolidationWinner,
+    reason: string,
+): void {
+    if (ctx.capabilityId !== ctx.nextSnapshot.controlCapabilityId) return;
+    ctx.debugStructured?.({
+        event: 'binary_observation_consolidated',
+        deviceId: ctx.deviceId,
+        deviceName: ctx.deviceName,
+        capabilityId: ctx.capabilityId,
+        pull: {
+            value: ctx.fetchedValue ?? null,
+            observedAtMs: ctx.fetchedLastUpdatedMs ?? null,
+        },
+        retained: {
+            value: ctx.observation.value ?? null,
+            observedAtMs: ctx.observation.observedAt,
+            source: ctx.observation.source,
+        },
+        consolidated: { value: consolidatedValue ?? null, winner, reason },
+    });
 }
 
 function deviceSupportsCapability(device: HomeyDeviceLike, capabilityId: string): boolean {

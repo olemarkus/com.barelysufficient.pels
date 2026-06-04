@@ -73,9 +73,12 @@ const buildParseDeps = (logger: Logger): DeviceTransportParseDeps => ({
   resolveLatestLocalWriteMs: () => undefined,
 });
 
-// `absent`        → the real parser yields the OPTIMISTIC `currentOn: true`
-//                   with no trusted binary observation (the bug-reproducing
-//                   device state, determined empirically — see the report).
+// `absent`        → the onoff capability value is missing (a should-never-happen
+//                   anomaly). The real parser honestly resolves `currentOn: false`
+//                   with no trusted binary observation (the bug-reproducing device
+//                   state, determined empirically — see the report). The defensive
+//                   restore still has to drive onoff=true because there is no
+//                   trusted binary observation.
 // `trusted-off`   → a clean trusted-off observation (`currentOn: false` +
 //                   valid binary observation); the bug does NOT reproduce.
 type OnoffVariant =
@@ -222,7 +225,9 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     id: DEVICE_ID,
     name: 'Connected 300',
     deviceClass: 'water_heater',
-    currentOn: true,
+    // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
+    // currentOn:false with no trusted binary observation.
+    currentOn: false,
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
@@ -246,14 +251,14 @@ afterEach(() => { logCapture.restore(); });
 describe('stepped-load restore binary onoff at the SDK boundary', () => {
   it('emits a binary onoff=true write when restoring a Høiax stepped load to low (bug repro)', async () => {
     const logger = createLogger();
-    // The `onoff` capability value is ABSENT, so the real snapshot parser falls
-    // back to an OPTIMISTIC `currentOn: true` with NO trusted binary
-    // observation. The device is already calibrated at step 'low'.
+    // The `onoff` capability value is ABSENT (a should-never-happen anomaly), so
+    // the real snapshot parser honestly resolves `currentOn: false` with NO
+    // trusted binary observation. The device is already calibrated at step 'low'.
     const device = buildHoiaxDevice({ kind: 'absent' });
     const snapshot = parseHoiaxSnapshot({ kind: 'absent' }, logger);
 
     // Pin the real parsed snapshot fields that drive the bug.
-    expect(snapshot.currentOn).toBe(true);
+    expect(snapshot.currentOn).toBe(false);
     expect(snapshot.binaryControlObservation).toBeUndefined();
     expect(snapshot.controlModel).toBe('stepped_load');
     expect(snapshot.controlCapabilityId).toBe('onoff');
@@ -266,11 +271,12 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
     await executor.applyPlanActions(buildRestoreToLowPlan(), 'plan');
 
     // CORRECT behaviour (the deliverable assertion): the binary onoff=true write
-    // must reach the SDK boundary so the device actually turns on. On this buggy
-    // base it is ABSENT, so this assertion FAILS — that failure IS the repro.
+    // must reach the SDK boundary so the device actually turns on. On the buggy
+    // base it was ABSENT, so this assertion FAILED — that failure WAS the repro.
     // (This single cycle mirrors prod's cycle 1: a step-prep write to `low` plus
-    // the binary deferred; the optimistic `currentOn:true` is what wrongly keeps
-    // the binary skipped on the materialized cycles that follow — see the
+    // the binary deferred. Historically the parser's optimistic `currentOn:true`
+    // wrongly kept the binary skipped on the materialized cycles that follow; the
+    // executor now keys off the absent binary observation instead — see the
     // two-cycle prod-fidelity test for the full stuck sequence.)
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'onoff', true);
   });
@@ -299,7 +305,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
 
     // With a trusted-off observation the bug does NOT reproduce: the binary
     // onoff=true write DOES reach the boundary on this same base commit. This
-    // pins the trigger to the unknown/optimistic observation.
+    // pins the trigger to the missing/unknown binary observation.
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'onoff', true);
   });
 });

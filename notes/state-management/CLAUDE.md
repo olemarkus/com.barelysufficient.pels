@@ -31,6 +31,7 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 - Fresh trusted observations must eventually win over local-write assumptions, older snapshots, and fallback estimates.
 - "No confirmation yet" means pending/unknown — **never** treat it as success.
 - Do not infer the `on` state of a device from its power consumption — power is unreliable for binary state attribution.
+- An unobserved binary control resolves `currentOn` to **`false`** (non-optimistic), never a fabricated `true` — `currentOn` stays strictly `boolean` and the unknown signal lives on `binaryControlObservation`. A binary-less `device.update` must **not** synthesize an on-transition (it once did, via the optimistic default — a phantom off→on reconcile / Flow trigger). Do not re-introduce the optimism to "restore" a reconcile event.
 
 ## Rules When Changing Reconcile or Merge Logic
 
