@@ -265,14 +265,12 @@ describe('device overview formatter', () => {
     })).toBe(false);
   });
 
-  it('prefers the latest confirmed reported step when stale reportedStepId lags actualStepId', () => {
+  it('surfaces the confirmed reported step in the usage line', () => {
     const device = {
       controlModel: 'stepped_load' as const,
       currentState: 'on',
       plannedState: 'keep',
-      reportedStepId: 'low',
-      actualStepId: 'max',
-      actualStepSource: 'reported' as const,
+      reportedStepId: 'max',
       targetStepId: 'max',
       planningPowerKw: 3,
       measuredPowerKw: 0,

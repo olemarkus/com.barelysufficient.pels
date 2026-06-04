@@ -2,7 +2,6 @@ import type {
   DeviceControlProfile,
   DeviceControlProfiles,
   DeviceControlModel,
-  SteppedLoadActualStepSource,
   SteppedLoadProfile,
   SteppedLoadStep,
 } from './types.js';
@@ -164,15 +163,4 @@ export const normalizeDeviceControlProfiles = (
     })
     .filter((entry): entry is readonly [string, DeviceControlProfile] => entry !== null);
   return Object.fromEntries(entries);
-};
-
-export const resolveSteppedLoadSelectedStepSource = (params: {
-  actualStepId?: string;
-  actualStepSource?: SteppedLoadActualStepSource;
-  assumedStepId?: string;
-}): SteppedLoadActualStepSource | undefined => {
-  const { actualStepId, actualStepSource, assumedStepId } = params;
-  if (actualStepId) return actualStepSource;
-  if (assumedStepId) return 'assumed';
-  return undefined;
 };

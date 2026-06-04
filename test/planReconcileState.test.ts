@@ -661,18 +661,14 @@ describe('planReconcileState stepped device drift', () => {
         currentState: 'on',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
-        assumedStepId: undefined,
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
         currentOn: false,
+        // Fallback-only live state: no reported step, selectedStepId is the
+        // planning fallback.
         selectedStepId: 'low',
-        actualStepId: undefined,
-        assumedStepId: 'low',
-        actualStepSource: 'assumed',
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
@@ -683,9 +679,6 @@ describe('planReconcileState stepped device drift', () => {
       expect(result.devices[0]).toEqual(expect.objectContaining({
         selectedStepId: 'low',
         reportedStepId: undefined,
-        actualStepId: undefined,
-        assumedStepId: 'low',
-        actualStepSource: 'assumed',
       }));
     });
 
@@ -694,18 +687,12 @@ describe('planReconcileState stepped device drift', () => {
         currentState: 'on',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
-        assumedStepId: undefined,
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
         currentOn: true,
         selectedStepId: 'low',
-        actualStepId: undefined,
-        assumedStepId: 'low',
-        actualStepSource: 'assumed',
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
@@ -722,9 +709,6 @@ describe('planReconcileState stepped device drift', () => {
         currentState: 'on',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
-        assumedStepId: 'low',
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
@@ -737,12 +721,11 @@ describe('planReconcileState stepped device drift', () => {
 
       const result = buildLiveStatePlan(plan, liveDevices);
 
+      // No live step evidence at all → reported cleared, but the previous
+      // effective step is preserved as the fallback.
       expect(result.devices[0]).toEqual(expect.objectContaining({
         selectedStepId: 'low',
         reportedStepId: undefined,
-        actualStepId: undefined,
-        assumedStepId: undefined,
-        actualStepSource: undefined,
       }));
     });
 
@@ -751,8 +734,6 @@ describe('planReconcileState stepped device drift', () => {
         currentState: 'on',
         selectedStepId: 'low',
         reportedStepId: 'low',
-        actualStepId: 'low',
-        actualStepSource: 'reported',
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
@@ -760,8 +741,6 @@ describe('planReconcileState stepped device drift', () => {
         currentOn: true,
         selectedStepId: 'max',
         reportedStepId: 'max',
-        actualStepId: 'max',
-        actualStepSource: 'reported',
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
@@ -772,9 +751,6 @@ describe('planReconcileState stepped device drift', () => {
       expect(result.devices[0]).toEqual(expect.objectContaining({
         selectedStepId: 'max',
         reportedStepId: 'max',
-        actualStepId: 'max',
-        assumedStepId: undefined,
-        actualStepSource: 'reported',
       }));
     });
 

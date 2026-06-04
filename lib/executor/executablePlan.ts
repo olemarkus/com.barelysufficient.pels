@@ -1,6 +1,5 @@
 import type {
   DeviceControlAdapterSnapshot,
-  SteppedLoadActualStepSource,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
@@ -51,11 +50,11 @@ export type ExecutableObservedTargetState = {
 
 export type ExecutableObservedSteppedLoadState = {
   on: boolean | null;
+  // Producer-resolved EFFECTIVE step (reported, or planning fallback when no
+  // report). `reportedStepId` is the real telemetry; when it is absent,
+  // `stepId` is the assumed fallback.
   stepId?: string;
   reportedStepId?: string;
-  actualStepId?: string;
-  actualStepSource?: SteppedLoadActualStepSource;
-  assumedStepId?: string;
   measuredPowerKw?: number;
 };
 

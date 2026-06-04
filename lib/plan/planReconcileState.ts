@@ -39,9 +39,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         stepCommandRetryCount: live.stepCommandRetryCount ?? device.stepCommandRetryCount,
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
         reportedStepId: liveStepState.reportedStepId,
-        actualStepId: liveStepState.actualStepId,
-        assumedStepId: liveStepState.assumedStepId,
-        actualStepSource: liveStepState.actualStepSource,
         currentTemperature: live.currentTemperature,
         powerKw: live.powerKw,
         expectedPowerKw: live.expectedPowerKw,
@@ -66,28 +63,22 @@ function resolveLiveSteppedStepState(
   live: PlanInputDevice,
 ): Pick<
   DevicePlan['devices'][number],
-  'reportedStepId' | 'selectedStepId' | 'actualStepId' | 'assumedStepId' | 'actualStepSource'
+  'reportedStepId' | 'selectedStepId'
 > {
   if ((live.controlModel ?? previous.controlModel) !== 'stepped_load') {
     return {
       reportedStepId: undefined,
       selectedStepId: undefined,
-      actualStepId: undefined,
-      assumedStepId: undefined,
-      actualStepSource: undefined,
     };
   }
   const liveState = normalizeSteppedLoadStepStateFromLegacyFields({
     fields: live,
     selectedStepFallbackIsPlanningAssumption: false,
   });
-  const legacyFields = serializeLegacyStepFields(liveState);
+  const stepFields = serializeLegacyStepFields(liveState);
   return {
-    reportedStepId: legacyFields.reportedStepId,
+    reportedStepId: stepFields.reportedStepId,
     selectedStepId: resolveKnownEffectiveStepId(liveState) ?? live.selectedStepId ?? previous.selectedStepId,
-    actualStepId: legacyFields.actualStepId,
-    assumedStepId: legacyFields.assumedStepId,
-    actualStepSource: legacyFields.actualStepSource,
   };
 }
 
@@ -221,10 +212,7 @@ function hasSteppedEvidenceChanged(
   previousDevice: DevicePlan['devices'][number],
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
-  return previousDevice.reportedStepId !== liveDevice.reportedStepId
-    || previousDevice.actualStepId !== liveDevice.actualStepId
-    || previousDevice.assumedStepId !== liveDevice.assumedStepId
-    || previousDevice.actualStepSource !== liveDevice.actualStepSource;
+  return previousDevice.reportedStepId !== liveDevice.reportedStepId;
 }
 
 function hasRelevantTargetExecutionDrift(

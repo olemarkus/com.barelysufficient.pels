@@ -27,9 +27,6 @@ type StepCapableDevice = Pick<
   | 'reportedStepId'
   | 'selectedStepId'
   | 'desiredStepId'
-  | 'actualStepId'
-  | 'assumedStepId'
-  | 'actualStepSource'
   | 'measuredPowerKw'
   | 'stepPowerCalibration'
 >;
@@ -38,9 +35,6 @@ StepCapableDevice,
 | 'reportedStepId'
 | 'selectedStepId'
 | 'desiredStepId'
-| 'actualStepId'
-| 'assumedStepId'
-| 'actualStepSource'
 >;
 type StepSheddingCapableDevice = Pick<
   PlanInputDevice,
@@ -56,9 +50,6 @@ type StepTransitionCapableDevice = {
   reportedStepId?: string;
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
-  actualStepId?: string;
-  assumedStepId?: string;
-  actualStepSource?: StepCapableDevice['actualStepSource'];
   currentState?: string;
   currentOn?: boolean;
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];

@@ -1,4 +1,4 @@
-import type { SteppedLoadActualStepSource, SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
+import type { SteppedLoadCommandStatus } from '../../packages/contracts/src/types';
 import { normalizeStepId } from '../utils/stepIds';
 
 type StepId = string;
@@ -62,14 +62,19 @@ type NormalizeSteppedLoadStepStateParams = {
   suppressedFlowPreparationPolicy?: SuppressedFlowRestorePreparationPolicy | null;
 };
 
-type LegacyStepFields = {
+/**
+ * The resolved stepped-load step fields a producer materializes onto a
+ * snapshot / plan device. `selectedStepId` is the producer-resolved EFFECTIVE
+ * step (`reportedStepId ?? planning fallback`). The legacy raw-evidence trio
+ * (`actualStepId` / `assumedStepId` / `actualStepSource`) was retired; the
+ * discriminated `NormalizedSteppedLoadStepState` is the only carrier of that
+ * provenance now.
+ */
+type SteppedLoadStepFields = {
   reportedStepId?: string;
   targetStepId?: string;
   desiredStepId?: string;
   selectedStepId?: string;
-  actualStepId?: string;
-  assumedStepId?: string;
-  actualStepSource?: SteppedLoadActualStepSource;
   restorePreparedStepId?: string;
 };
 
@@ -78,9 +83,6 @@ export type LegacySteppedLoadStepFieldsInput = {
   targetStepId?: string | null;
   desiredStepId?: string | null;
   selectedStepId?: string | null;
-  actualStepId?: string | null;
-  assumedStepId?: string | null;
-  actualStepSource?: SteppedLoadActualStepSource | null;
   restorePreparedStepId?: string | null;
 };
 
@@ -93,7 +95,7 @@ export function serializeLegacyStepFieldsFromEvidence(params: {
   targetChangedAtMs?: number;
   targetStatus?: SteppedLoadCommandStatus;
   fallbackStepId?: string;
-}): LegacyStepFields {
+}): SteppedLoadStepFields {
   const state = normalizeSteppedLoadStepState({
     nowMs: params.nowMs,
     reportedStep: params.reportedStepId
@@ -150,15 +152,14 @@ export function normalizeSteppedLoadStepStateFromLegacyFields(params: {
     selectedStepFallbackIsPlanningAssumption = true,
   } = params;
   const nowMs = params.nowMs ?? 0;
-  const reportedStepId = resolveLegacyReportedStepId(fields);
+  const reportedStepId = normalizeStepId(fields.reportedStepId);
   const targetStepId = normalizeStepId(fields.targetStepId) ?? normalizeStepId(fields.desiredStepId);
-  const fallbackStepId = normalizeStepId(fields.assumedStepId)
-    ?? (fields.actualStepSource === 'assumed' ? normalizeStepId(fields.actualStepId) : undefined)
-    ?? (
-      selectedStepFallbackIsPlanningAssumption && !reportedStepId
-        ? normalizeStepId(fields.selectedStepId)
-        : undefined
-    );
+  // When there is no reported step, the producer-resolved `selectedStepId` is
+  // the planning fallback (the lowest active step). It is the only fallback
+  // carrier now that the raw `assumedStepId` evidence field is retired.
+  const fallbackStepId = selectedStepFallbackIsPlanningAssumption && !reportedStepId
+    ? normalizeStepId(fields.selectedStepId)
+    : undefined;
   const restorePreparedStepId = normalizeStepId(fields.restorePreparedStepId);
   const state = normalizeSteppedLoadStepState({
     nowMs,
@@ -210,13 +211,10 @@ export function isReportedStep(state: NormalizedSteppedLoadStepState, stepId: st
   return state.observation.kind === 'reported' && state.observation.stepId === stepId;
 }
 
-export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState): LegacyStepFields {
+export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState): SteppedLoadStepFields {
   const effectiveStepId = resolveEffectiveStepId(state);
   const reportedStepId = state.observation.kind === 'reported' ? state.observation.stepId : undefined;
   const targetStepId = state.intent.kind === 'target' ? state.intent.stepId : undefined;
-  const assumedStepId = state.planningAssumption.kind === 'fallback'
-    ? state.planningAssumption.stepId
-    : undefined;
   const restorePreparedStepId = state.restorePreparation.kind === 'prepared'
     ? state.restorePreparation.stepId
     : undefined;
@@ -225,17 +223,8 @@ export function serializeLegacyStepFields(state: NormalizedSteppedLoadStepState)
     targetStepId,
     desiredStepId: targetStepId,
     selectedStepId: effectiveStepId === 'unknown' ? undefined : effectiveStepId,
-    actualStepId: reportedStepId,
-    assumedStepId,
-    actualStepSource: resolveActualStepSource({ reportedStepId, assumedStepId }),
     restorePreparedStepId,
   };
-}
-
-function resolveLegacyReportedStepId(fields: LegacySteppedLoadStepFieldsInput): string | undefined {
-  const actualStepId = normalizeStepId(fields.actualStepId);
-  if (fields.actualStepSource === 'reported' && actualStepId) return actualStepId;
-  return normalizeStepId(fields.reportedStepId);
 }
 
 function normalizeObservation(
@@ -332,13 +321,4 @@ function isFreshEnough(params: { observedAtMs: number; nowMs: number; maxAgeMs: 
 
 function normalizeTimestamp(value: number | null | undefined, fallbackMs: number): number {
   return Number.isFinite(value) ? Number(value) : fallbackMs;
-}
-
-function resolveActualStepSource(params: {
-  reportedStepId: string | undefined;
-  assumedStepId: string | undefined;
-}): SteppedLoadActualStepSource | undefined {
-  if (params.reportedStepId) return 'reported';
-  if (params.assumedStepId) return 'assumed';
-  return undefined;
 }

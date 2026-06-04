@@ -416,21 +416,19 @@ function isEligiblePowerCalibrationSnapshot(
   controlModel: 'stepped_load';
   steppedLoadProfile: SteppedLoadProfile;
   reportedStepId: string;
-  actualStepId: string;
-  actualStepSource: 'reported';
   measuredPowerKw: number;
   lastFreshDataMs: number;
 } {
   if (snapshot.controlModel !== 'stepped_load') return false;
   if (!snapshot.steppedLoadProfile || !Array.isArray(snapshot.steppedLoadProfile.steps)) return false;
   if (snapshot.steppedLoadProfile.steps.length === 0) return false;
+  // Only sample when there is a *reported* step (real telemetry, not an
+  // assumed-step fallback). The producer only sets `reportedStepId` from a
+  // native/flow report; an assumed fallback never populates it, so a present
+  // `reportedStepId` is exactly the previous `actualStepSource === 'reported'`
+  // gate. Sampling on an assumed step would attribute measured power to a step
+  // the device may never have visited.
   if (typeof snapshot.reportedStepId !== 'string' || snapshot.reportedStepId.length === 0) return false;
-  // Only sample when the actual step is *reported* (real telemetry, not an
-  // assumed-step fallback) and matches the reported step. Sampling on an
-  // assumed step would attribute measured power to a step the device may
-  // never have visited.
-  if (snapshot.actualStepSource !== 'reported') return false;
-  if (snapshot.actualStepId !== snapshot.reportedStepId) return false;
   if (snapshot.stepCommandPending === true) return false;
   if (!isFiniteNumber(snapshot.measuredPowerKw) || snapshot.measuredPowerKw < 0) return false;
   // Require a finite freshness timestamp. Without one, `recordSample`'s

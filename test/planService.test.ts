@@ -381,7 +381,7 @@ describe('PlanService', () => {
     }));
   });
 
-  it('logs the freshest confirmed reported step in overview events', async () => {
+  it('logs the confirmed reported step in overview events', async () => {
     const overviewDebugStructured = vi.fn();
     const { service } = createPlanService({
       planEngine: {
@@ -392,9 +392,7 @@ describe('PlanService', () => {
           plannedState: 'keep',
           measuredPowerKw: 0,
           planningPowerKw: 3,
-          reportedStepId: 'low',
-          actualStepId: 'max',
-          actualStepSource: 'reported',
+          reportedStepId: 'max',
           targetStepId: 'max',
         })),
         computeDynamicSoftLimit: vi.fn(() => 0),

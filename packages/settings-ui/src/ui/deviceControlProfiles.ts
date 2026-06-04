@@ -115,10 +115,7 @@ export const applyLocalDeviceControlProfile = (
     device.controlModel = supportsTemperatureDevice(device) ? 'temperature_target' : 'binary_power';
     delete device.steppedLoadProfile;
     delete device.desiredStepId;
-    delete device.actualStepId;
-    delete device.assumedStepId;
     delete device.selectedStepId;
-    delete device.actualStepSource;
     delete device.planningPowerKw;
     if ((device.expectedPowerSource as string) === 'step-planning') {
       delete device.expectedPowerSource;

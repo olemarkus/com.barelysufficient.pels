@@ -3,7 +3,6 @@ import { serializeLegacyStepFieldsFromEvidence } from '../plan/planSteppedLoadSt
 import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
 import type {
   DeviceControlProfile,
-  SteppedLoadActualStepSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
@@ -25,14 +24,11 @@ type ReportedStepEvidence = {
   observedAtMs?: number;
 };
 
-type LegacyStepFields = {
+type SteppedLoadStepFields = {
   reportedStepId?: string;
   targetStepId?: string;
   desiredStepId?: string;
   selectedStepId?: string;
-  actualStepId?: string;
-  assumedStepId?: string;
-  actualStepSource?: SteppedLoadActualStepSource;
   restorePreparedStepId?: string;
 };
 
@@ -62,7 +58,7 @@ export function buildSteppedLoadSnapshotStepFields(params: {
   flowReportedStep?: StepEvidence;
   targetStep?: TargetStepEvidence;
   fallbackStepId?: string;
-}): LegacyStepFields {
+}): SteppedLoadStepFields {
   const reportedStep = resolveReportedStepEvidence({
     profile: params.profile,
     currentOn: params.currentOn,

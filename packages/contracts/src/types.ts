@@ -13,8 +13,6 @@ export type DeviceControlModel = 'temperature_target' | 'binary_power' | 'steppe
 
 export type SteppedLoadCommandStatus = 'idle' | 'pending' | 'success' | 'stale';
 
-export type SteppedLoadActualStepSource = 'reported' | 'assumed' | 'profile_default';
-
 /**
  * The plan-cycle decision PELS made for a device. `shed` = actively held off
  * by PELS, `keep` = allowed to run, `inactive` = not being managed this cycle
@@ -159,10 +157,11 @@ export type TargetDeviceSnapshot = {
     targetStepId?: string;
     desiredStepId?: string;
     previousStepId?: string;
-    actualStepId?: string;
-    assumedStepId?: string;
+    // Producer-resolved EFFECTIVE step: the reported step, or the planning
+    // fallback (lowest active step) when no report is available. The retired
+    // raw-evidence fields (actualStepId / assumedStepId / actualStepSource)
+    // collapsed into this plus the typed stepped-state adapter.
     selectedStepId?: string;
-    actualStepSource?: SteppedLoadActualStepSource;
     lastDesiredStepChangeAt?: number;
     lastStepCommandIssuedAt?: number;
     stepCommandRetryCount?: number;

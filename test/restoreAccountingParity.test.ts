@@ -23,7 +23,7 @@
  *  - (b) stepped, `selectedStepId` absent and `hasKnownEffectiveStep === false`
  *        (measured-power fallback via path-3 `getRestoreDrawKw`).
  *  - (c) stepped, `selectedStepId` absent but `hasKnownEffectiveStep === true`
- *        (one of `reportedStepId` / `actualStepId` / `assumedStepId` set).
+ *        (`reportedStepId` set, or `selectedStepId` carries the planning fallback).
  *  - (d) temperature device with `currentValue == normalized shedTemperature`
  *        (no-op shed case; restore-side parity unaffected by shed semantics).
  */

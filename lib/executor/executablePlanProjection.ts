@@ -186,9 +186,6 @@ const buildObservedSteppedLoadState = (
     on: snapshot.currentOn,
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
-    actualStepId: snapshot.actualStepId,
-    actualStepSource: snapshot.actualStepSource,
-    assumedStepId: snapshot.assumedStepId,
     measuredPowerKw: snapshot.measuredPowerKw,
   };
 };

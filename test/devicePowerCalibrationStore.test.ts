@@ -31,8 +31,6 @@ const baseDeviceSnapshot = (
   controlModel: 'stepped_load',
   steppedLoadProfile: CONNECTED_300_PROFILE,
   reportedStepId: 'max',
-  actualStepId: 'max',
-  actualStepSource: 'reported',
   measuredPowerKw: 2.75,
   currentOn: true,
   lastFreshDataMs: 0,
@@ -61,9 +59,12 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     expect(store.getSnapshot().devices['hoiax-1'].steps.max.observedKw).toBeCloseTo(2.75);
   });
 
-  it('returns null when reportedStepId does not match actualStepId', () => {
+  it('returns null when there is no reported step (assumed-step fallback only)', () => {
+    // Sampling on an assumed step would attribute measured power to a step the
+    // device may never have visited. The producer only sets `reportedStepId`
+    // from real native/flow telemetry, so its absence is the eligibility gate.
     const store = new PowerCalibrationStore();
-    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ actualStepId: 'medium' }), 0);
+    const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({ reportedStepId: undefined }), 0);
     expect(outcome).toBeNull();
   });
 
@@ -77,7 +78,6 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     const store = new PowerCalibrationStore();
     const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
       reportedStepId: 'off',
-      actualStepId: 'off',
       measuredPowerKw: 0,
     }), 0);
     expect(outcome).toBeNull();
@@ -87,7 +87,6 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
       reportedStepId: 'low',
-      actualStepId: 'low',
       measuredPowerKw: 1.81,
     }), 0);
     expect(outcome?.accepted).toBe(false);
@@ -99,7 +98,6 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
       reportedStepId: 'medium',
-      actualStepId: 'medium',
       measuredPowerKw: 1.25,
     }), 0);
     expect(outcome?.accepted).toBe(false);
@@ -111,7 +109,6 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     const outcome = store.ingestDeviceSnapshot(baseDeviceSnapshot({
       reportedStepId: 'medium',
-      actualStepId: 'medium',
       measuredPowerKw: 1.5,
     }), 0);
     expect(outcome?.accepted).toBe(true);
@@ -127,17 +124,6 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
       currentOn: true,
       measuredPowerKw: 0.05,
     } as unknown as TargetDeviceSnapshot, 0);
-    expect(outcome).toBeNull();
-  });
-
-  it('returns null when actualStepSource is not "reported"', () => {
-    // Sampling on an assumed step would attribute measured power to a step
-    // the device may never have visited.
-    const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
-    const outcome = store.ingestDeviceSnapshot(
-      baseDeviceSnapshot({ actualStepSource: 'assumed' }),
-      0,
-    );
     expect(outcome).toBeNull();
   });
 
