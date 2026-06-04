@@ -82,7 +82,356 @@ describe('PlanBuilder overshoot diagnostics', () => {
       remainingReducibleControlledLoadW: 900,
       activeControlledDevices: 2,
       activePlannedShedDevices: 1,
+      // Cold start: no prior plan baseline to diff against, so no device delta
+      // could be computed and attribution is unavailable.
+      overshootTotalDeltaKw: null,
+      overshootUnattributedDeltaKw: null,
+      overshootAttributionReason: 'no_previous_snapshot',
+      overshootTopControlledContributors: [],
+      overshootTopUncontrolledContributors: [],
     }));
+  });
+
+  it('reports all-below-epsilon attribution when no managed device rose past the epsilon', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: now }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.81,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // First sample sits just over the soft limit but within the deadband, so the
+      // overshoot is only pending (not yet actionable) and no entry is logged.
+      capacityGuard.reportTotalPower(0.83);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'steady-device',
+          name: 'Steady Device',
+          measuredPowerKw: 0.83,
+        }),
+      ]);
+
+      // After the persist window the pending overshoot becomes actionable, but the
+      // device only crept up by 0.01 kW (under the 0.05 kW epsilon), so no contributor
+      // qualifies and the whole rise stays below the epsilon.
+      vi.advanceTimersByTime(21_000);
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.84);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'steady-device',
+          name: 'Steady Device',
+          measuredPowerKw: 0.84,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.01,
+        overshootAttributionReason: 'all_deltas_below_epsilon',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports attribution_inputs_incomplete when a tracked device current power read drops to null', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      state.lastDeviceRestoreMs['flaky-device'] = now - 1_000;
+      recordActivationAttemptStart({
+        state,
+        deviceId: 'flaky-device',
+        source: 'pels_restore',
+        nowTs: now - 1_000,
+      });
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // First build: device reads a real measured value and total sits under the
+      // soft limit, so a prior plan baseline (with a readable device) is recorded
+      // and no overshoot fires.
+      capacityGuard.reportTotalPower(0.5);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'flaky-device',
+          name: 'Flaky Device',
+          measuredPowerKw: 0.5,
+        }),
+      ]);
+
+      // Second build: the whole-home total rises into overshoot, but the managed
+      // device's own power read is now unavailable (no measured/expected/planning
+      // value). It is excluded from the contributor diff, so its real rise lands in
+      // the unattributed delta — which must NOT be blamed on background load.
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'flaky-device',
+          name: 'Flaky Device',
+          currentOn: true,
+          // measuredPowerKw intentionally omitted — the read failed this cycle.
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.3,
+        overshootUnattributedDeltaKw: 0.3,
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports attribution_inputs_incomplete when a managed device has a readable current but missing previous baseline', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // First build: only the anchor device is known. This records a prior plan
+      // baseline (total + tracked devices) but the newcomer below is absent, so it
+      // will have NO previous snapshot to diff against next cycle.
+      capacityGuard.reportTotalPower(0.5);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'anchor',
+          name: 'Anchor',
+          measuredPowerKw: 0.5,
+        }),
+      ]);
+
+      // Second build: a newly discovered managed device appears with a perfectly
+      // readable current power, while the anchor holds steady so the whole-home rise
+      // is the newcomer's load. The newcomer cannot be diffed (no previous snapshot),
+      // so it is dropped from contributors and its rise lands in the unattributed
+      // delta — which must NOT be blamed on background load.
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'anchor',
+          name: 'Anchor',
+          measuredPowerKw: 0.5,
+        }),
+        buildDevice({
+          id: 'newcomer',
+          name: 'Newcomer',
+          measuredPowerKw: 0.3,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.3,
+        overshootUnattributedDeltaKw: 0.3,
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports attribution_inputs_incomplete when the current total is missing but a prior plan baseline exists', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      // A prior plan was already built this lifetime, so this is NOT a cold start.
+      state.lastPlanBuiltAtMs = now - 30_000;
+
+      const structuredLog = { info: vi.fn() };
+      // Fresh guard that never received a finite total: getLastTotalPower() === null,
+      // mimicking a transient/failed whole-home power read.
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        // Stale-but-present timestamp (> 10 min) drives the fail-closed freshness
+        // state, which forces negative headroom and an actionable overshoot even
+        // though the current total is null.
+        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 2.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'some-device',
+          name: 'Some Device',
+          measuredPowerKw: 0.5,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: null,
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports attribution_inputs_incomplete on a fresh sample after a stale-hold previous (previous total null, baseline exists)', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      // Simulate the prior cycle having been a stale-hold / missing-total build:
+      // `rememberPlanSnapshot` recorded a build timestamp (a baseline EXISTS) but the
+      // total was null, so there is no previous total to diff a fresh sample against.
+      state.lastPlanBuiltAtMs = now - 30_000;
+      state.lastPlanTotalKw = null;
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        // Fresh power sample this cycle, so the current total IS a finite number — only
+        // the PREVIOUS total is missing, which is what must drive power_sample_unavailable.
+        getPowerTracker: () => ({ lastTimestamp: now }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // A fresh finite total enters overshoot. Because the previous total is null, the
+      // device delta cannot be computed (totalDeltaKw === null) even though THIS sample
+      // is perfectly readable — a true cold start would have NO baseline at all.
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({
+          id: 'some-device',
+          name: 'Some Device',
+          measuredPowerKw: 0.8,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: null,
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('logs overshoot as exhausted when all shed candidates are already at minimum', async () => {
@@ -415,10 +764,220 @@ describe('PlanBuilder overshoot diagnostics', () => {
       expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
         event: 'overshoot_entered',
         overshootTotalDeltaKw: 0.3,
+        overshootUnattributedDeltaKw: 0.3,
+        overshootAttributionReason: 'background_load_dominant',
         overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
       }));
       expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
         event: 'overshoot_attributed',
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Codex case 1: a newly-discovered controllable device (no previous snapshot) whose
+  // CURRENT power is 0/off cannot have caused the rise, so its undiffability is harmless
+  // and must NOT suppress a genuine background_load_dominant verdict.
+  it('reports background_load_dominant when an undiffable newcomer reads zero current power', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // First build records a baseline with only the steady anchor; the newcomer below
+      // is absent, so it will have NO previous snapshot to diff against next cycle.
+      capacityGuard.reportTotalPower(0.5);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+      ]);
+
+      // Second build: the whole-home total rises to 0.8 (the rise lives in untracked
+      // background load) while the anchor holds steady. A brand-new controllable device
+      // appears, but it reads 0 W (off) — it could not have caused the rise, so its
+      // missing previous snapshot is harmless and the verdict stays background-dominant.
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({
+          id: 'zero-newcomer',
+          name: 'Zero Newcomer',
+          currentOn: false,
+          currentState: 'off',
+          measuredPowerKw: 0,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.3,
+        overshootUnattributedDeltaKw: 0.3,
+        overshootAttributionReason: 'background_load_dominant',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Codex case 2: an undiffable UNCONTROLLED tracked device (current reading above the
+  // epsilon, no previous snapshot) is just as capable of being the real cause, so it
+  // must block a confident background_load_dominant verdict — not be ignored.
+  it('reports attribution_inputs_incomplete when an undiffable uncontrolled device could be the cause', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      // First build records a baseline with only the steady anchor.
+      capacityGuard.reportTotalPower(0.5);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+      ]);
+
+      // Second build: a newly-discovered UNCONTROLLED device appears drawing 0.3 kW (above
+      // the epsilon) with no previous snapshot. It is undiffable, so it is dropped from the
+      // contributor diff and its real rise lands in the unattributed delta. Because an
+      // uncontrolled device can be the real cause, this must NOT be blamed on background
+      // load — it collapses to the honest incomplete reason.
+      structuredLog.info.mockClear();
+      capacityGuard.reportTotalPower(0.8);
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'anchor', name: 'Anchor', measuredPowerKw: 0.5 }),
+        buildDevice({
+          id: 'uncontrolled-newcomer',
+          name: 'Uncontrolled Newcomer',
+          controllable: false,
+          measuredPowerKw: 0.3,
+        }),
+      ]);
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 0.3,
+        overshootUnattributedDeltaKw: 0.3,
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Codex case 3: under stale_fail_closed the CapacityGuard may still hold an old cached
+  // total, so both context.total and the previous total are finite and a numeric (but
+  // STALE) delta is produced. The freshness gate must reject this and report incomplete
+  // rather than classify a confident cause from a stale delta.
+  it('reports attribution_inputs_incomplete when the total delta is computed from a stale cached total', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+      // A prior plan was already built this lifetime with a finite total, so a numeric
+      // delta CAN be computed — this is not a cold start and not a null-total case.
+      state.lastPlanBuiltAtMs = now - 30_000;
+      state.lastPlanTotalKw = 0.5;
+
+      const structuredLog = { info: vi.fn() };
+      // Guard still holds an old cached total (getLastTotalPower stays finite) even
+      // though the sample timestamp is now stale.
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+      capacityGuard.reportTotalPower(0.8);
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        // Stale-but-present timestamp (> 10 min) drives the fail-closed freshness state,
+        // which forces an actionable overshoot off the OLD cached total of 0.8.
+        getPowerTracker: () => ({ lastTimestamp: now - (11 * 60_000) }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 0.7,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      await builder.buildDevicePlanSnapshot([
+        buildDevice({ id: 'some-device', name: 'Some Device', measuredPowerKw: 0.5 }),
+      ]);
+
+      // Even though a finite total delta (0.8 - 0.5 = 0.3) COULD be computed, the sample
+      // is stale (not fresh), so the delta is untrustworthy and the verdict is incomplete
+      // rather than a confident background_load_dominant.
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootAttributionReason: 'attribution_inputs_incomplete',
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [],
+      }));
+      expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootAttributionReason: 'background_load_dominant',
       }));
     } finally {
       vi.useRealTimers();

@@ -876,6 +876,34 @@ type OvershootEntryContributor = {
 
 type ResolvedPowerSource = 'measured' | 'expected' | 'planning' | 'off' | 'unknown';
 
+// Explains why no managed device could be named as the cause of the overshoot.
+// Only set when the contributor arrays are empty (attribution unavailable). Every
+// value here must be PROVABLY true from the diff inputs in scope; the confident
+// causes are gated behind a single completeness assessment so no edge can sneak a
+// confident-but-wrong verdict through. Operators retain the raw
+// `overshootUnattributedDeltaKw` / `overshootAttributionDeltaKw` fields for finer
+// detail.
+//  - no_previous_snapshot: true cold start — there is no prior plan baseline to
+//    diff against (the engine has not built a plan yet this lifetime).
+//  - attribution_inputs_incomplete: the attribution inputs were not complete-and-fresh
+//    this cycle, so no confident cause can be proven. This single honest reason folds
+//    every uncertainty: a missing/stale current whole-home sample (the diff would be
+//    computed off a stale cached total), a missing previous total, OR a tracked device
+//    (controllable or uncontrolled) that plausibly carried the rise — its current read
+//    sits above the attribution epsilon — but could not be diffed (current or previous
+//    power unresolvable). Any of these means the rise could be a device PELS merely
+//    failed to read, so we never blame background load.
+//  - background_load_dominant: the sample was fresh, a prior baseline existed, and every
+//    tracked device that could plausibly have contributed was diffable, yet the rise
+//    lives in unmanaged/background load that PELS does not track per-device.
+//  - all_deltas_below_epsilon: inputs were complete-and-fresh and no managed device rose
+//    above the attribution epsilon (the whole-home rise itself stayed below epsilon).
+type OvershootAttributionReason =
+  | 'no_previous_snapshot'
+  | 'attribution_inputs_incomplete'
+  | 'background_load_dominant'
+  | 'all_deltas_below_epsilon';
+
 type OvershootEntryDiagnostics = {
   totalDeltaKw: number | null;
   contributors: OvershootEntryContributor[];
@@ -885,6 +913,7 @@ type OvershootEntryDiagnostics = {
     overshootTotalDeltaKw: number | null;
     overshootAttributionDeltaKw: number;
     overshootUnattributedDeltaKw: number | null;
+    overshootAttributionReason: OvershootAttributionReason | null;
     overshootTopControlledContributors: OvershootEntryContributor[];
     overshootTopUncontrolledContributors: OvershootEntryContributor[];
   };
@@ -928,6 +957,20 @@ function buildOvershootEntryDiagnostics(params: {
     : null;
   const attributedDeltaKw = roundOvershootKw(contributors.reduce((sum, contributor) => sum + contributor.deltaKw, 0));
   const unattributedDeltaKw = totalDeltaKw === null ? null : roundOvershootKw(totalDeltaKw - attributedDeltaKw);
+  const attributionReason = resolveOvershootAttributionReason({
+    contributors,
+    totalDeltaKw,
+    hasPriorPlanBaseline: previousBuiltAtMs !== null || Object.keys(previousDevicesById).length > 0,
+    // A confident cause may only be emitted when the attribution inputs were both
+    // FRESH and COMPLETE this cycle. Any uncertainty collapses to one honest
+    // `attribution_inputs_incomplete` reason rather than a confident-but-wrong cause.
+    attributionInputsComplete: areAttributionInputsComplete({
+      powerFreshnessState: context.powerFreshnessState,
+      totalDeltaKw,
+      currentDevicesById,
+      previousDevicesById,
+    }),
+  });
 
   return {
     totalDeltaKw,
@@ -940,10 +983,95 @@ function buildOvershootEntryDiagnostics(params: {
       overshootTotalDeltaKw: totalDeltaKw,
       overshootAttributionDeltaKw: attributedDeltaKw,
       overshootUnattributedDeltaKw: unattributedDeltaKw,
+      overshootAttributionReason: attributionReason,
       overshootTopControlledContributors: controlled,
       overshootTopUncontrolledContributors: uncontrolled,
     },
   };
+}
+
+// When at least one managed device crossed the attribution epsilon, the contributor
+// arrays already explain the overshoot, so no reason is emitted (null). Otherwise we
+// classify why attribution is unavailable. A CONFIDENT cause
+// (`background_load_dominant` / `all_deltas_below_epsilon`) is gated on a single
+// completeness assessment; any uncertainty collapses to one honest
+// `attribution_inputs_incomplete` reason. Every emitted value is provably true from
+// the diff inputs in scope.
+function resolveOvershootAttributionReason(params: {
+  contributors: OvershootEntryContributor[];
+  totalDeltaKw: number | null;
+  hasPriorPlanBaseline: boolean;
+  attributionInputsComplete: boolean;
+}): OvershootAttributionReason | null {
+  const {
+    contributors,
+    totalDeltaKw,
+    hasPriorPlanBaseline,
+    attributionInputsComplete,
+  } = params;
+  if (contributors.length > 0) return null;
+  // Reserve `no_previous_snapshot` for a TRUE cold start (no prior plan baseline at
+  // all). It is the only reason emitted when nothing could be diffed for a reason
+  // other than incomplete/stale inputs.
+  if (!hasPriorPlanBaseline) return 'no_previous_snapshot';
+  // A confident cause requires fresh + complete + diffable inputs. Anything short of
+  // that is one honest reason rather than a confident-but-wrong cause.
+  if (!attributionInputsComplete) return 'attribution_inputs_incomplete';
+  // Inputs are complete-and-fresh, so `totalDeltaKw` is a finite, trustworthy number
+  // and the unattributed delta equals the total delta. Classify directly off it.
+  if (totalDeltaKw !== null && totalDeltaKw > OVERSHOOT_DELTA_EPSILON_KW) {
+    return 'background_load_dominant';
+  }
+  return 'all_deltas_below_epsilon';
+}
+
+// The SINGLE completeness gate behind a confident attribution verdict. Returns true
+// only when every confident-cause precondition holds:
+//  (a) the power sample is FRESH — verified via the freshness state, not merely that
+//      totals are finite, so a stale cached total under `stale_fail_closed` (which
+//      forces an actionable overshoot off an old `getLastTotalPower()`) never yields a
+//      confident delta;
+//  (b) a finite, diffable total delta exists (a fresh sample with a missing previous
+//      total cannot be diffed); AND
+//  (c) every tracked device that could PLAUSIBLY have carried the rise — controllable
+//      OR uncontrolled, with a current reading above the attribution epsilon — was
+//      diffable (both current and previous power resolvable).
+// (a)+(b) guard the stale-total / missing-sample cases; (c) guards the undiffable
+// managed-or-uncontrolled device and the zero-current newcomer (whose 0/off current
+// read could not have caused the rise, so its undiffability is harmless).
+function areAttributionInputsComplete(params: {
+  powerFreshnessState: PlanContext['powerFreshnessState'];
+  totalDeltaKw: number | null;
+  currentDevicesById: Record<string, OvershootTrackedPlanDevice>;
+  previousDevicesById: Record<string, OvershootTrackedPlanDevice>;
+}): boolean {
+  const { powerFreshnessState, totalDeltaKw, currentDevicesById, previousDevicesById } = params;
+  if (powerFreshnessState !== 'fresh') return false;
+  if (totalDeltaKw === null) return false;
+  return !hasUndiffablePlausibleContributor(currentDevicesById, previousDevicesById);
+}
+
+// True when at least one tracked device that could PLAUSIBLY have carried the rise was
+// DROPPED from the contributor diff because it could not be diffed — its current read
+// was unresolvable, or its previous-snapshot power was missing/unknown (e.g. a newly
+// discovered device, or a prior stale-hold cycle). A device whose CURRENT reading sits
+// at/below the attribution epsilon (off / ~0 W) cannot have caused a positive rise, so
+// its undiffability is harmless and does not block a confident verdict — this covers
+// the zero-current newcomer. Controllable AND uncontrolled tracked devices count: an
+// undiffable uncontrolled device is just as capable of being the real cause.
+function hasUndiffablePlausibleContributor(
+  currentDevicesById: Record<string, OvershootTrackedPlanDevice>,
+  previousDevicesById: Record<string, OvershootTrackedPlanDevice>,
+): boolean {
+  return Object.values(currentDevicesById).some((device) => {
+    const currentKw = resolveOvershootDevicePower(device).kw;
+    // A device reading at/below the epsilon (off or ~0 W) could not have caused the
+    // rise; its undiffability is harmless. Only an unresolvable OR above-epsilon
+    // current reading makes the device a plausible-but-undiffable contributor.
+    if (currentKw !== null && currentKw <= OVERSHOOT_DELTA_EPSILON_KW) return false;
+    const previousKw = resolveOvershootDevicePower(previousDevicesById[device.id]).kw;
+    return currentKw === null || previousKw === null;
+  });
 }
 
 function buildOvershootContributor(
