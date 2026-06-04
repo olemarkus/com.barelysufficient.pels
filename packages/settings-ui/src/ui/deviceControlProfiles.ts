@@ -6,6 +6,7 @@ import {
 import type {
   DeviceControlModel,
   DeviceTargetPowerConfigs,
+  SteppedLoadDecoration,
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
   TargetDeviceSnapshot,
@@ -19,7 +20,11 @@ import { logSettingsError } from './logging.ts';
 const DEFAULT_MAX_PLANNING_POWER_W = 1500;
 const roundPowerW = (value: number): number => Math.max(0, Math.round(value / 50) * 50);
 
-const resolveEstimatedMaxPlanningPowerW = (device: TargetDeviceSnapshot): number => {
+const resolveEstimatedMaxPlanningPowerW = (
+  // Reads the decoration's `planningPowerKw` when present (the live device list
+  // is the decorated carrier); a plain raw snapshot without it is also valid.
+  device: TargetDeviceSnapshot & Pick<SteppedLoadDecoration, 'planningPowerKw'>,
+): number => {
   const knownKw = [
     device.planningPowerKw,
     device.expectedPowerKw,

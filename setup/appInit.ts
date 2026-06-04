@@ -13,7 +13,7 @@ import { PriceFlowTagPublisher } from '../lib/price/priceFlowTags';
 import { readPriceStore } from '../lib/price/priceStore';
 import { registerFlowCards } from '../flowCards/registerFlowCards';
 import { resolveHomeyEnergyApiFromSdk } from '../lib/utils/homeyEnergy';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowHomeyLike } from '../lib/utils/types';
 import { DeviceDiagnosticsService, type DeviceDiagnosticsRecorder } from '../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../lib/app/appContext';
@@ -332,7 +332,7 @@ function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
   return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
 }
 
-export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
     device.communicationModel,
@@ -380,6 +380,22 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
   });
   return {
     ...device,
+    // The step-command/planning cluster used to ride in on the `...device`
+    // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
+    // decoration carrier (`DecoratedDeviceSnapshot`); copy each field
+    // explicitly so the laundering into `PlanInputDevice` stays visible and
+    // independent of the carrier's shape. Values are byte-identical to the
+    // pre-decomposition spread.
+    selectedStepId: device.selectedStepId,
+    planningPowerKw: device.planningPowerKw,
+    targetStepId: device.targetStepId,
+    desiredStepId: device.desiredStepId,
+    previousStepId: device.previousStepId,
+    lastStepCommandIssuedAt: device.lastStepCommandIssuedAt,
+    stepCommandRetryCount: device.stepCommandRetryCount,
+    nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
+    stepCommandPending: device.stepCommandPending,
+    stepCommandStatus: device.stepCommandStatus,
     hasBinaryControl,
     observationStale: isDeviceObservationStale(device),
     managed: ctx.resolveManagedState(device.id),
@@ -422,7 +438,7 @@ export function toPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
  * only mutation of live ctx/app state; everything else is a pure read, so
  * copying this one field fully isolates the preview.
  */
-export function projectPreviewPlanDevice(ctx: AppContext, device: TargetDeviceSnapshot) {
+export function projectPreviewPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
   const lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {
     ...ctx.lastKnownCommandableByDevice,
   };

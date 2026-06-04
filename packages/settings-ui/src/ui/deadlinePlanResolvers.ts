@@ -5,7 +5,7 @@ import type {
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { DecoratedDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanSpeedMode,
@@ -20,7 +20,7 @@ import { isFiniteNumber } from './deadlinePlanData.ts';
 // the full hour (see `resolveAllocation` in `lib/objectives/deferredObjectives/
 // horizonPlanner.ts`). The Plan inputs card surfaces that committed power so
 // the user can sanity-check "Needs X kWh" against the realistic per-hour cap.
-export const resolveLowestActiveStepKw = (device: TargetDeviceSnapshot): number | null => {
+export const resolveLowestActiveStepKw = (device: DecoratedDeviceSnapshot): number | null => {
   const profile = device.steppedLoadProfile;
   if (profile) {
     const lowestActiveStep = getSteppedLoadLowestActiveStep(profile);
@@ -49,7 +49,7 @@ export type DeadlineProgress = {
 };
 
 export const resolveProgress = (params: {
-  device: TargetDeviceSnapshot;
+  device: DecoratedDeviceSnapshot;
   objective: DeferredObjectiveSettingsEntry;
   profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {

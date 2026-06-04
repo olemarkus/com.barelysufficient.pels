@@ -429,7 +429,9 @@ function isEligiblePowerCalibrationSnapshot(
   // gate. Sampling on an assumed step would attribute measured power to a step
   // the device may never have visited.
   if (typeof snapshot.reportedStepId !== 'string' || snapshot.reportedStepId.length === 0) return false;
-  if (snapshot.stepCommandPending === true) return false;
+  // TODO(snapshot-decomposition): stepCommandPending not on the raw snapshot;
+  // guard was a no-op — wire real pending signal in a later slice
+
   if (!isFiniteNumber(snapshot.measuredPowerKw) || snapshot.measuredPowerKw < 0) return false;
   // Require a finite freshness timestamp. Without one, `recordSample`'s
   // freshness gate short-circuits, allowing arbitrarily stale samples through

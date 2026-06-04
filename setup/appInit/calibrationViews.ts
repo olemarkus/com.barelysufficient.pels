@@ -7,14 +7,14 @@ import {
 import { firstPositiveFinite } from '../../lib/objectives/deferredObjectives/planningSpeed';
 import type { StepPowerCalibrationView } from '../../lib/plan/planTypes';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 
 const BOOST_RECENT_DRAW_WINDOW_MS = 10 * 60 * 1000;
 
 export function buildStepPowerCalibrationView(
   ctx: AppContext,
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
 ): Record<string, StepPowerCalibrationView> | undefined {
   const profile = device.steppedLoadProfile;
   if (profile && Array.isArray(profile.steps) && profile.steps.length > 0) {
@@ -34,8 +34,8 @@ export function buildStepPowerCalibrationView(
 
 function buildSteppedCalibrationView(
   ctx: AppContext,
-  device: TargetDeviceSnapshot,
-  steps: NonNullable<TargetDeviceSnapshot['steppedLoadProfile']>['steps'],
+  device: DecoratedDeviceSnapshot,
+  steps: NonNullable<DecoratedDeviceSnapshot['steppedLoadProfile']>['steps'],
 ): Record<string, StepPowerCalibrationView> | undefined {
   const snapshot = ctx.getPowerCalibrationSnapshot();
   const deviceEntry = snapshot.devices[device.id];
@@ -55,7 +55,7 @@ function buildSteppedCalibrationView(
 
 function buildEvChargerCalibrationView(
   ctx: AppContext,
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
 ): Record<string, StepPowerCalibrationView> | undefined {
   const nameplateKw = firstPositiveFinite([
     device.planningPowerKw,
@@ -79,7 +79,7 @@ function buildEvChargerCalibrationView(
 
 export function resolveHasRecentObservedDrawAtSelectedStep(
   ctx: AppContext,
-  device: TargetDeviceSnapshot,
+  device: DecoratedDeviceSnapshot,
 ): boolean | undefined {
   // Use the observed step (reportedStepId) only. Falling back to
   // `selectedStepId` would convert "no observation yet" into a concrete

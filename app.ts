@@ -24,6 +24,7 @@ import { PlanService } from './lib/plan/planService';
 import { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
 import { buildPlanCapacityStateSummary } from './lib/plan/planLogging';
 import type {
+  DecoratedDeviceSnapshot,
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   TargetDeviceSnapshot,
@@ -1838,11 +1839,11 @@ class PelsApp extends Homey.App {
       this.getStructuredLogger('daily_budget')?.info(dailyBudgetStatus);
     }
   }
-  private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
+  private get latestTargetSnapshot(): DecoratedDeviceSnapshot[] {
     const snapshot = this.deviceManager?.getSnapshot() ?? [];
     return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
   }
-  getUiPickerDevices(): TargetDeviceSnapshot[] {
+  getUiPickerDevices(): DecoratedDeviceSnapshot[] {
     const snapshot = this.deviceManager?.getUiPickerDevices() ?? [];
     return this.deviceControlHelpers.decorateTargetSnapshotList(snapshot);
   }
@@ -1854,7 +1855,7 @@ class PelsApp extends Homey.App {
   // the planner, so offering one would let the widget create a task that never
   // plans or controls anything. `createDeferredObjective` re-applies the same
   // predicate at write time, so listing and validation share one definition.
-  getCreateSmartTaskCandidateDevices(): TargetDeviceSnapshot[] {
+  getCreateSmartTaskCandidateDevices(): DecoratedDeviceSnapshot[] {
     return this.latestTargetSnapshot.filter(isRuntimePlannedDevice);
   }
   // Currently-starved devices for the starvation-rescue widget. Sourced from the

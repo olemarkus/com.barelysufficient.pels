@@ -3,7 +3,12 @@ import type { DeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePl
 import type { DeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
-import type { SettingsUiLogEntry, SteppedLoadProfile, TargetDeviceSnapshot } from './types.js';
+import type {
+  DecoratedDeviceSnapshot,
+  SettingsUiLogEntry,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from './types.js';
 import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
@@ -179,7 +184,11 @@ export type SettingsUiPlanPayload = {
 };
 
 export type SettingsUiDevicesPayload = {
-  devices: TargetDeviceSnapshot[];
+  // Served from the app-layer DECORATED device list (`latestTargetSnapshot`),
+  // so the payload carries the stepped-load step-command/planning decoration
+  // the settings-UI reads (`selectedStepId` / `planningPowerKw` / ...). Typed
+  // as the decoration carrier rather than the raw transport snapshot.
+  devices: DecoratedDeviceSnapshot[];
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {

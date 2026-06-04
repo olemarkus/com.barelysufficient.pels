@@ -1,8 +1,8 @@
 import type {
+  DecoratedDeviceSnapshot,
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   EvBoostSettings,
-  TargetDeviceSnapshot,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
 import {
@@ -34,7 +34,7 @@ export type UiState = {
   capacityPriorities: Record<string, Record<string, number>>;
   activeMode: string;
   editingMode: string;
-  latestDevices: TargetDeviceSnapshot[];
+  latestDevices: DecoratedDeviceSnapshot[];
   modeTargets: Record<string, Record<string, number>>;
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
