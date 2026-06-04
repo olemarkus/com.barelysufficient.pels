@@ -1848,6 +1848,133 @@ describe('DeviceTransport', () => {
                 .toEqual(realtimeEvidence);
         });
 
+        it('keeps the trusted realtime-off observation when a later pull omits onoff (two-source reconcile)', async () => {
+            // 1. Pull with a trusted onoff=true → currentOn:true.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+
+            // 2. Realtime onoff=false → the freshest trusted observation says OFF.
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+
+            // 3. Pull where Homey serves a cached device object that OMITS onoff;
+            //    the parser fabricates the optimistic currentOn:true with no
+            //    trusted binary observation.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            // The consolidated observed truth must remain the trusted realtime
+            // OFF: a fabricated optimistic true from a source that never observed
+            // onoff must not override it, and currentOn must not diverge from the
+            // retained binary evidence.
+            const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(dev1?.binaryControlObservation?.observedValue).toBe(false);
+            expect(dev1?.currentOn).toBe(false);
+        });
+
+        it('keeps a realtime-off observation when a later pull reports onoff=true with no timestamp', async () => {
+            // The morning two-source divergence: a realtime push said OFF, then
+            // Homey serves a cached device object on the next pull whose onoff is
+            // boolean `true` but carries NO lastUpdated. An unstamped read has no
+            // evidence it is newer than the realtime push, so it must not clear
+            // the trusted observation — currentOn must stay reconciled to OFF.
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                        onoff: { value: true, id: 'onoff', lastUpdated: '2026-06-03T06:00:00.000Z' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power', lastUpdated: '2026-06-03T06:05:00.000Z' },
+                        onoff: { value: true, id: 'onoff' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            const heldDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(heldDev1?.currentOn).toBe(false);
+            expect(heldDev1?.binaryControlObservation?.observedValue).toBe(false);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')?.observedValue).toBe(false);
+
+            // The hold is not permanent: a newer trusted observation still
+            // supersedes it. A realtime push (stamped fresh) observing onoff=true
+            // reconciles currentOn back to ON.
+            deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+            const recoveredDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(recoveredDev1?.currentOn).toBe(true);
+            expect(recoveredDev1?.binaryControlObservation?.observedValue).toBe(true);
+        });
+
+        it('honours a timestamp-less device.update push that contradicts prior realtime evidence', async () => {
+            // A device.update is a PUSH: the device actively reporting its state.
+            // Unlike a cached pull, a timestamp-less push stays authoritative, so a
+            // physical toggle delivered as a device.update must still flip currentOn
+            // even when it carries no lastUpdated and contradicts prior evidence.
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Heater',
+                targets: [],
+                deviceClass: 'heater',
+                deviceType: 'onoff',
+                controlCapabilityId: 'onoff',
+                currentOn: false,
+                binaryControlObservation: {
+                    valid: true,
+                    capabilityId: 'onoff',
+                    observedValue: false,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
+                    source: 'realtime_capability',
+                },
+            }]);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+        });
+
         it("clears binary evidence and logs when device.update carries invalid direct onoff='unknown'", async () => {
             const previousEvidence = {
                 valid: true as const,
