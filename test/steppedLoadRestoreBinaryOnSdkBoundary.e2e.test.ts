@@ -126,7 +126,7 @@ const parseHoiaxSnapshot = (onoff: OnoffVariant, logger: Logger): TargetDeviceSn
   return parsed;
 };
 
-// ── The executor harness (mirrors test/planExecutor.test.ts buildExecutor) ───
+// ── The executor harness (mirrors test/integration/planExecutor.test.ts buildExecutor) ───
 const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) => {
   const triggerCards = {
     desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },

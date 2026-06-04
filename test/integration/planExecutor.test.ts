@@ -1,0 +1,3803 @@
+import type Homey from 'homey';
+import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
+import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
+import { createPlanEngineState } from '../../lib/plan/planState';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import {
+  observeNativeSteppedLoadCommandAdapter,
+  setObservedNativeSteppedLoadStep,
+} from '../../lib/device/managerNativeSteppedCommand';
+import { DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
+import { PELS_TARGET_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import type {
+  DevicePlan,
+  DevicePlanDevice,
+  PlanInputDevice,
+} from '../../lib/plan/planTypes';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planReconcileState';
+import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+
+const KEEP_REASON = legacyDeviceReason('keep')!;
+const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
+
+// Trusted binary evidence for an onoff device: in production a genuinely-on (or
+// genuinely-off) device reports a real boolean onoff value, which the snapshot
+// parser turns into `binaryControlObservation`. Tests that model a device as
+// actually on/off must carry it; a snapshot with `currentOn` but no observation
+// represents an UNKNOWN binary state (the prod read-failure case).
+const onoffObservation = (observedValue: boolean): TargetDeviceSnapshot['binaryControlObservation'] => ({
+  valid: true,
+  capabilityId: 'onoff',
+  observedValue,
+  observedCapabilityIds: ['onoff'],
+  observedAtMs: 1_000,
+  source: 'snapshot_refresh',
+});
+
+const buildPlan = (): DevicePlan => ({
+  meta: {
+    totalKw: 1,
+    softLimitKw: 5,
+    headroomKw: 4,
+  },
+  devices: [
+    {
+      id: 'dev-1',
+      name: 'Heater',
+      currentState: 'off',
+      plannedState: 'keep',
+      currentTarget: 21,
+      plannedTarget: 21,
+      controllable: true,
+      reason: KEEP_REASON,
+    },
+  ],
+});
+
+const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => ({
+  meta: {
+    totalKw: 1,
+    softLimitKw: 5,
+    headroomKw: 4,
+  },
+  devices: [
+    {
+      id: 'dev-1',
+      name: 'Heater',
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget,
+      plannedTarget,
+      controllable: true,
+      reason: KEEP_REASON,
+    },
+  ],
+});
+
+const buildExecutor = (
+  state = createPlanEngineState(),
+  snapshot = [
+    {
+      id: 'dev-1',
+      name: 'Heater',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      currentOn: false,
+    },
+  ],
+  overrides: Partial<PlanExecutorDeps> = {},
+) => {
+  const triggerCards = {
+    desired_stepped_load_changed: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_on_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_turn_off_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_start_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+    flow_backed_device_stop_charging_requested: { trigger: vi.fn().mockResolvedValue(true) },
+  } as const;
+  const debugStructured = vi.fn();
+  const deviceManager = withGetSnapshotByDeviceId({
+    getSnapshot: vi.fn().mockReturnValue(snapshot),
+    setCapability: vi.fn().mockResolvedValue(undefined),
+    requestSteppedLoadStep: vi.fn(async (params: {
+      deviceId: string;
+      profile: Parameters<typeof setObservedNativeSteppedLoadStep>[0]['profile'];
+      desiredStepId: string;
+      planningPowerW: number;
+      planningCurrentA: number;
+      previousStepId?: string;
+    }) => {
+      const nativeRequested = await setObservedNativeSteppedLoadStep({
+        owner: deviceManager,
+        deviceId: params.deviceId,
+        profile: params.profile,
+        desiredStepId: params.desiredStepId,
+        setCapability: (capabilityId, value) => deviceManager.setCapability(params.deviceId, capabilityId, value),
+      });
+      if (nativeRequested) return { requested: true, transport: 'native_capability' as const };
+      const triggerPromise = triggerCards.desired_stepped_load_changed.trigger({
+        step_id: params.desiredStepId,
+        planning_power_w: params.planningPowerW,
+        planning_current_a: params.planningCurrentA,
+        previous_step_id: params.previousStepId ?? '',
+      }, {
+        deviceId: params.deviceId,
+      });
+      void Promise.resolve(triggerPromise);
+      return { requested: true, transport: 'flow' as const };
+    }),
+  });
+  const deps: PlanExecutorDeps = {
+    homey: {
+      settings: { set: vi.fn() },
+      flow: {
+        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
+      },
+    } as unknown as Homey.App['homey'],
+    deviceManager: deviceManager as never,
+    getCapacityGuard: () => undefined,
+    getCapacitySettings: () => ({ limitKw: 10, marginKw: 0 }),
+    getCapacityDryRun: () => false,
+    getOperatingMode: () => 'Home',
+    getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
+    markSteppedLoadDesiredStepIssued: vi.fn(),
+    logTargetRetryComparison: vi.fn(),
+    structuredLog: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } as any,
+    debugStructured,
+    log: vi.fn(),
+    logDebug: vi.fn(),
+    error: vi.fn(),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    ...overrides,
+  };
+  return {
+    executor: new PlanExecutor(deps, state),
+    deps,
+    deviceManager,
+    state,
+    desiredSteppedTrigger: triggerCards.desired_stepped_load_changed,
+    flowBackedTurnOnTrigger: triggerCards.flow_backed_device_turn_on_requested,
+    flowBackedTurnOffTrigger: triggerCards.flow_backed_device_turn_off_requested,
+    flowBackedStartChargingTrigger: triggerCards.flow_backed_device_start_charging_requested,
+    flowBackedStopChargingTrigger: triggerCards.flow_backed_device_stop_charging_requested,
+    debugStructured,
+  };
+};
+
+let logCapture: LoggerCapture;
+beforeEach(() => { logCapture = captureLogger(); });
+afterEach(() => { logCapture.restore(); });
+
+describe('PlanExecutor restore logging', () => {
+  it('continues applying later devices when stepped-load projection fails for one device', async () => {
+    const snapshot = [
+      {
+        id: 'bad-step',
+        name: 'Bad stepped load',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await expect(executor.applyPlanActions({
+      meta: {
+        totalKw: 2,
+        softLimitKw: 1,
+        headroomKw: -1,
+      },
+      devices: [
+        {
+          id: 'bad-step',
+          name: 'Bad stepped load',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load',
+          steppedLoadProfile: { model: 'stepped_load' } as never,
+        },
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: CAPACITY_REASON,
+        },
+      ],
+    })).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
+
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      msg: 'Failed to apply action for Bad stepped load; continuing with remaining devices',
+    }));
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+  ] as const)('does not turn off binary devices during restore-admission hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not turn off a pending swap target that is already observed on', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not lower a pending swap target temperature', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 16,
+          controllable: true,
+          shedAction: 'set_temperature',
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not restore a pending swap target even if it has keep intent', async () => {
+    const { executor, deviceManager } = buildExecutor();
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: { code: PLAN_REASON_CODES.swapPending, targetName: null },
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not emit EV restore evaluation logs for controlled EVs already observed on', async () => {
+    const { executor, deviceManager } = buildExecutor(undefined, [{
+      id: 'dev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }]);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: KEEP_REASON,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
+  });
+
+  it('does not emit EV restore evaluation logs for uncontrolled EVs already observed on', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    const { executor, deviceManager } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'EV Charger',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      evChargingState: 'plugged_in_charging',
+    }]);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'EV Charger',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: false,
+          reason: KEEP_REASON,
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', true);
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('evaluating EV restore'))).toBe(true);
+  });
+
+  it('logs restore from shed state when the device has not been restored since the last shed', async () => {
+    const state = createPlanEngineState();
+    state.shedDecidedMs['dev-1'] = Date.now() - 10_000;
+    const { executor, deviceManager } = buildExecutor(state);
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (restored from shed state)',
+    }));
+  });
+
+  it('does not actuate a binary restore while meter settling keeps an off device in keep state', async () => {
+    const { executor, deviceManager } = buildExecutor();
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+          reason: legacyDeviceReason('meter settling (30s remaining)'),
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('requests flow-backed on/off control through the Homey trigger instead of writing the device capability', async () => {
+    const { executor, deviceManager, flowBackedTurnOffTrigger, state } = buildExecutor(
+      createPlanEngineState(),
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+        reason: CAPACITY_REASON,
+      }],
+    });
+
+    expect(flowBackedTurnOffTrigger.trigger).toHaveBeenCalledWith(
+      {},
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'flow_backed_binary_command_requested',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'onoff',
+      desired: false,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.pendingBinaryCommands['dev-1']).toMatchObject({
+      capabilityId: 'onoff',
+      desired: false,
+    });
+  });
+
+  it('records flow-backed restore actuation only after confirmation and keeps pending swap protection until then', async () => {
+    const state = createPlanEngineState();
+    state.shedDecidedMs['dev-1'] = Date.now() - 10_000;
+    state.swapByDevice['dev-1'] = {
+      pendingTarget: true,
+      timestamp: Date.now() - 1_000,
+    };
+    const { executor, deviceManager, flowBackedTurnOnTrigger } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      }],
+    );
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(flowBackedTurnOnTrigger.trigger).toHaveBeenCalledWith(
+      {},
+      { deviceId: 'dev-1' },
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: true,
+      reasonCode: 'shed_state',
+    }));
+    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.activationAttemptByDevice['dev-1']).toMatchObject({
+      startedMs: expect.any(Number),
+      source: 'pels_restore',
+    });
+    expect(state.swapByDevice['dev-1']).toMatchObject({ pendingTarget: true });
+  });
+
+  it('records flow-backed shed actuation only after confirmation', async () => {
+    const state = createPlanEngineState();
+    const { executor } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+        reason: CAPACITY_REASON,
+      }],
+    });
+
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: false,
+      reasonCode: 'shedding',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+  });
+
+  it('does NOT stamp capacity cooldown markers on a confirmed flow-backed lifecycle-release', () => {
+    // Regression for the flow-backed half of the binary lifecycle-release bug: the
+    // marker stamp is deferred to handleConfirmedBinaryCommand, so a pending entry
+    // tagged lifecycleRelease must route through the diagnostic-only recorder and
+    // leave lastInstabilityMs / lastDeviceShedMs untouched (a lifecycle disable is a
+    // planning decision, not capacity pressure).
+    const state = createPlanEngineState();
+    const { executor } = buildExecutor(
+      state,
+      [{
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        flowBacked: true,
+        flowBackedCapabilityIds: ['onoff'],
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      }],
+    );
+    state.pendingBinaryCommands['dev-1'] = {
+      capabilityId: 'onoff',
+      desired: false,
+      startedMs: Date.now(),
+      flowBackedControl: true,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+      lifecycleRelease: true,
+    };
+
+    executor.handleConfirmedBinaryCommand({
+      deviceId: 'dev-1',
+      liveDevice: { id: 'dev-1', name: 'Heater' },
+      pending: state.pendingBinaryCommands['dev-1'],
+      confirmedAtMs: Date.now(),
+    });
+
+    // The confirmation log attributes the event as a lifecycle release, not a shed.
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      desired: false,
+      reasonCode: 'lifecycle_release',
+    }));
+    expect(state.lastInstabilityMs).toBeNull();
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    // The diagnostic / last-controlled bookkeeping still happens via the release recorder.
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+  });
+
+  it('logs neutral restore text when matching the current plan after a later external off', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 20_000;
+    state.lastDeviceRestoreMs['dev-1'] = Date.now() - 5_000;
+    const { executor, deviceManager } = buildExecutor(state);
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (to match current plan)',
+    }));
+  });
+
+  it('does not start a new restore cycle when reconcile turns a device back on', async () => {
+    const state = createPlanEngineState();
+    state.lastRestoreMs = Date.now() - 30_000;
+    state.lastDeviceRestoreMs['dev-1'] = state.lastRestoreMs;
+    const previousLastRestoreMs = state.lastRestoreMs;
+    const previousDeviceRestoreMs = state.lastDeviceRestoreMs['dev-1'];
+    const { executor, deviceManager, state: nextState } = buildExecutor(state);
+
+    await executor.applyPlanActions(buildPlan(), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: 'Capacity: turning on Heater (reconcile after drift)',
+    }));
+    expect(nextState.lastRestoreMs).toBe(previousLastRestoreMs);
+    expect(nextState.lastDeviceRestoreMs['dev-1']).toBe(previousDeviceRestoreMs);
+    expect(nextState.activationAttemptByDevice['dev-1']).toBeUndefined();
+  });
+
+  it('records an activation setback when reconcile has to reapply a fresh restore attempt', async () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+    state.lastRestoreMs = now - 5_000;
+    state.lastDeviceRestoreMs['dev-1'] = now - 5_000;
+    state.activationAttemptByDevice['dev-1'] = {
+      startedMs: now - 5_000,
+      source: 'pels_restore',
+    };
+    const { executor, deviceManager, state: nextState } = buildExecutor(state);
+
+    await executor.applyPlanActions(buildPlan(), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
+      lastSetbackMs: expect.any(Number),
+      penaltyLevel: 1,
+    }));
+  });
+
+  it('closes a plan-mode shed attempt without bumping penalty and emits shed diagnostics', async () => {
+    const state = createPlanEngineState();
+    const now = Date.now();
+    state.activationAttemptByDevice['dev-1'] = {
+      penaltyLevel: 2,
+      startedMs: now - 5_000,
+      source: 'pels_restore',
+    };
+    const deviceDiagnostics = {
+      recordControlEvent: vi.fn(),
+      recordActivationTransition: vi.fn(),
+    };
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'Heater',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+    }], {
+      deviceDiagnostics: deviceDiagnostics as any,
+    });
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [{
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+        reason: CAPACITY_REASON,
+      }],
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(nextState.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({ penaltyLevel: 2 }));
+    expect(deviceDiagnostics.recordControlEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'pels_shed',
+      deviceId: 'dev-1',
+      name: 'Heater',
+    }));
+    expect(deviceDiagnostics.recordActivationTransition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'attempt_closed_by_shed',
+        deviceId: 'dev-1',
+        penaltyLevel: 2,
+        source: 'pels_restore',
+      }),
+      { name: 'Heater' },
+    );
+  });
+
+  it('logs restore from shed temperature as explicit capacity work', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 16, stepId: null }),
+    });
+
+    await executor.applyPlanActions(buildTargetPlan(16, 23));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 16,
+      mode: 'plan',
+      attemptType: 'send',
+      reasonCode: 'restore_from_shed',
+      operatingMode: 'Home',
+    }));
+  });
+});
+
+describe('PlanExecutor pending target commands', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('does not resend the same target command until the retry deadline', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager, state: nextState, deps } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+    const plan = buildTargetPlan();
+
+    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(plan);
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 23,
+      retryCount: 0,
+    });
+
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] - 1);
+    await executor.applyPlanActions(plan);
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(1);
+    await executor.applyPlanActions(plan);
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(2);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 23,
+      retryCount: 1,
+    });
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Target mismatch still present for Heater; observed 18°C via unknown, retrying target_temperature to 23°C' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 18,
+      mode: 'plan',
+      attemptType: 'retry',
+      reasonCode: 'retry_pending_confirmation',
+      operatingMode: 'Home',
+    }));
+    expect(deps.logTargetRetryComparison).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      name: 'Heater',
+      targetCap: 'target_temperature',
+      desired: 23,
+      observedValue: 18,
+      observedSource: undefined,
+      retryCount: 1,
+      skipContext: 'plan',
+    });
+  });
+
+  it('backs off failed target writes and marks the device temporarily unavailable', async () => {
+    const state = createPlanEngineState();
+    const failure = new Error('Device offline');
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+    deviceManager.setCapability.mockRejectedValue(failure);
+    const plan = buildTargetPlan();
+
+    await executor.applyPlanActions(plan);
+    await executor.applyPlanActions(plan);
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 23,
+      retryCount: 0,
+      status: 'temporary_unavailable',
+    });
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater; treating device as temporarily unavailable for 30s before retry' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Failed to set target_temperature for Heater via DeviceTransport' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: skip target_temperature for Heater, device temporarily unavailable for 30s before retry (plan)' }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_failed',
+      reasonCode: 'device_manager_write_failed',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      capabilityId: 'target_temperature',
+      desired: 23,
+      skipContext: 'plan',
+      actuationMode: 'plan',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_skipped',
+      reasonCode: 'temporarily_unavailable',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      desired: 23,
+      skipContext: 'plan',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('logs restore skips when the target snapshot is missing', async () => {
+    const state = createPlanEngineState();
+    state.lastDeviceShedMs['dev-1'] = Date.now() - 10_000;
+    const { executor, deviceManager } = buildExecutor(state, []);
+
+    await executor.applyPlanActions(buildPlan());
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'missing_snapshot',
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('falls back to turn_off shedding when a shed temperature write fails', async () => {
+    const state = createPlanEngineState();
+    const failure = new Error('Device offline');
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+    });
+    deviceManager.setCapability.mockImplementation(async (_deviceId: string, capabilityId: string) => {
+      if (capabilityId === 'target_temperature') throw failure;
+    });
+
+    await executor.applySheddingToDevice('dev-1', 'Heater');
+
+    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(1, 'dev-1', 'target_temperature', 15);
+    expect(deviceManager.setCapability).toHaveBeenNthCalledWith(2, 'dev-1', 'onoff', false);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 15,
+      status: 'temporary_unavailable',
+    });
+  });
+
+  it('does not fall back to turn_off when shed temperature is already applied', async () => {
+    const { executor, deviceManager } = buildExecutor(createPlanEngineState(), [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
+    });
+
+    await expect(executor.applySheddingToDevice('dev-1', 'Heater')).resolves.toBe(false);
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('tags reconcile target updates in the user-visible log', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      },
+    ]);
+
+    await executor.applyPlanActions(buildTargetPlan(), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 18,
+      mode: 'reconcile',
+      attemptType: 'send',
+      reasonCode: 'reconcile',
+      operatingMode: 'Home',
+    }));
+  });
+
+  it('normalizes target writes to the device target step before tracking pending retries', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Connected 300',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 40, unit: '°C', min: 35, max: 75, step: 5 }],
+      },
+    ]);
+
+    await executor.applyPlanActions(buildTargetPlan(40, 46));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 45);
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      capabilityId: 'target_temperature',
+      desired: 45,
+      retryCount: 0,
+    });
+  });
+
+  it('logs shed-temperature target updates as shedding work instead of overshoot', async () => {
+    const state = createPlanEngineState();
+    const { executor, deviceManager } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
+      },
+    ], {
+      getShedBehavior: () => ({ action: 'set_temperature', temperature: 15 }),
+    });
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        {
+          id: 'dev-1',
+          name: 'Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 22,
+          plannedTarget: 15,
+          controllable: true,
+          shedAction: 'set_temperature',
+        },
+      ],
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 15);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 15,
+      previousValue: 22,
+      mode: 'plan',
+      attemptType: 'send',
+      reasonCode: 'shedding',
+    }));
+  });
+
+  it('bypasses pending target retry backoff for reconcile-driven drift correction', async () => {
+    const state = createPlanEngineState();
+    state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 23,
+      startedMs: Date.now() - 5_000,
+      lastAttemptMs: Date.now() - 5_000,
+      retryCount: 0,
+      nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
+      lastObservedValue: 18,
+      lastObservedSource: 'rebuild',
+      lastObservedAtMs: Date.now() - 5_000,
+    };
+    const { executor, deviceManager, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 28, unit: '°C' }],
+      },
+    ]);
+
+    await executor.applyPlanActions(buildTargetPlan(28, 23), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 28,
+      mode: 'reconcile',
+      reasonCode: 'reconcile',
+    }));
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      desired: 23,
+      retryCount: 1,
+    });
+  });
+
+  it('clears a pending target retry when the live snapshot is already confirmed after actuation', async () => {
+    const state = createPlanEngineState();
+    state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 23,
+      startedMs: Date.now() - 5_000,
+      lastAttemptMs: Date.now() - 5_000,
+      retryCount: 0,
+      nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
+      lastObservedValue: 25,
+      lastObservedSource: 'realtime_capability',
+      lastObservedAtMs: Date.now() - 5_000,
+    };
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 25, unit: '°C' }],
+      },
+    ];
+    const syncLivePlanStateAfterTargetActuation = vi.fn(() => {
+      snapshot[0].targets[0].value = 23;
+      return true;
+    });
+    const { executor, deviceManager, state: nextState } = buildExecutor(
+      state,
+      snapshot,
+      { syncLivePlanStateAfterTargetActuation },
+    );
+
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
+    await executor.applyPlanActions(buildTargetPlan(25, 23));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledTimes(1);
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+    expect(syncLivePlanStateAfterTargetActuation).toHaveBeenCalledWith('realtime_capability');
+    expect(nextState.pendingTargetCommands['dev-1']).toBeUndefined();
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('Target mismatch still present for Heater'))).toBe(true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'target_command_applied',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      targetValue: 23,
+      previousValue: 25,
+      mode: 'plan',
+      attemptType: 'retry',
+      reasonCode: 'retry_pending_confirmation',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({ msg: 'Capacity: confirmed target_temperature for Heater at 23°C immediately after actuation' }));
+  });
+
+  it('keeps retry observation metadata aligned with the live snapshot instead of a stale plan currentTarget', async () => {
+    const state = createPlanEngineState();
+    state.pendingTargetCommands['dev-1'] = {
+      capabilityId: 'target_temperature',
+      desired: 23,
+      startedMs: Date.now() - 5_000,
+      lastAttemptMs: Date.now() - 5_000,
+      retryCount: 0,
+      nextRetryAtMs: Date.now() + TARGET_COMMAND_RETRY_DELAYS_MS[0],
+      status: 'waiting_confirmation',
+      lastObservedValue: 27,
+      lastObservedSource: 'realtime_capability',
+      lastObservedAtMs: Date.now() - 5_000,
+    };
+    const { executor, state: nextState } = buildExecutor(state, [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 25, unit: '°C' }],
+      },
+    ]);
+
+    vi.advanceTimersByTime(TARGET_COMMAND_RETRY_DELAYS_MS[0] + 1);
+    await executor.applyPlanActions(buildTargetPlan(18, 23));
+
+    expect(nextState.pendingTargetCommands['dev-1']).toMatchObject({
+      desired: 23,
+      retryCount: 1,
+      lastObservedValue: 25,
+    });
+  });
+});
+
+describe('PlanExecutor stepped loads', () => {
+  const steppedProfile = {
+    model: 'stepped_load' as const,
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  };
+
+  const steppedSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot[] => [{
+    id: 'dev-1',
+    name: 'Tank',
+    controlCapabilityId: 'onoff',
+    canSetControl: true,
+    available: true,
+    currentOn: true,
+    targets: [],
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    ...overrides,
+  }];
+
+  const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => ({
+    meta: {
+      totalKw: 1,
+      softLimitKw: 5,
+      headroomKw: 4,
+    },
+    devices: [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        currentState: 'on',
+        plannedState: 'keep',
+        currentTarget: 68,
+        plannedTarget: 68,
+        controllable: true,
+        reason: KEEP_REASON,
+        controlModel: 'stepped_load',
+        steppedLoadProfile: steppedProfile,
+        selectedStepId: 'low',
+        desiredStepId: 'max',
+        ...overrides,
+      },
+    ],
+  });
+
+  it('triggers desired stepped-load change and records the issued command', async () => {
+    const { executor, deviceManager, desiredSteppedTrigger, state, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot({ binaryControlObservation: onoffObservation(true) }),
+    );
+
+    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 0,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: expect.any(Number),
+      pendingWindowMs: expect.any(Number),
+    });
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      desiredStepId: 'max',
+    }));
+    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  // Regression: prod 2026-06-03 — a Høiax water heater (controlCapabilityId 'onoff')
+  // deferred to its cheap window, the step was written, but the onoff read came back
+  // non-boolean so `binaryControlObservation` was absent and `currentOn` defaulted to
+  // the optimistic `true`. The plan kept the device (assumed on) while the executor
+  // never issued the binary-on, leaving it at 0 kW with status on_track.
+  it('issues a defensive binary-on for a kept stepped load when the onoff observation is unknown', async () => {
+    const { executor, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        currentOn: true,
+        selectedStepId: 'max',
+        reportedStepId: 'max',
+        // binaryControlObservation deliberately absent: no trusted on/off evidence.
+      }),
+    );
+
+    // The defensive binary write is counted as an applied device write so the
+    // post-actuation refresh still runs (step is already at max, so no command).
+    await expect(
+      executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' })),
+    ).resolves.toEqual({ deviceWriteCount: 1, commandRequestCount: 0 });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: true,
+      binaryObservationUnknown: true,
+    }));
+  });
+
+  it('does not re-issue a binary-on for a kept stepped load already observed on', async () => {
+    const { executor, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        currentOn: true,
+        selectedStepId: 'max',
+        reportedStepId: 'max',
+        binaryControlObservation: onoffObservation(true),
+      }),
+    );
+
+    await executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('still restores a kept stepped load observed off (trusted off evidence)', async () => {
+    const { executor, deviceManager } = buildExecutor(
+      undefined,
+      steppedSnapshot({
+        currentOn: false,
+        selectedStepId: 'max',
+        reportedStepId: 'max',
+        binaryControlObservation: onoffObservation(false),
+      }),
+    );
+
+    await executor.applyPlanActions(steppedPlan({ selectedStepId: 'max', desiredStepId: 'max' }));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('passes phase-aware EV charger current for stepped-load flow commands', async () => {
+    const { executor, desiredSteppedTrigger } = buildExecutor();
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 3000 / 230,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+  });
+
+  it('does not emit EV charger current when the EV target-power config is disabled', async () => {
+    const { executor, desiredSteppedTrigger } = buildExecutor();
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      targetPowerConfig: { enabled: false, preset: 'ev_charger_1_phase' },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 0,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+  });
+
+  it('projects target updates after awaited stepped-load work in the same cycle', async () => {
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Tank',
+      controlCapabilityId: 'onoff' as const,
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      binaryControlObservation: onoffObservation(true),
+    }];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+    desiredSteppedTrigger.trigger.mockImplementation(async () => {
+      Object.assign(snapshot[0], {
+        targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+      });
+      return true;
+    });
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      currentTarget: 18,
+      plannedTarget: 23,
+    }))).resolves.toEqual({
+      deviceWriteCount: 1,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+  });
+
+  it('counts native stepped-load commands as command requests without concrete device writes', async () => {
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, [{
+      id: 'dev-1',
+      name: 'Tank',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      currentOn: true,
+      binaryControlObservation: onoffObservation(true),
+    }]);
+    observeNativeSteppedLoadCommandAdapter({
+      owner: deviceManager,
+      deviceId: 'dev-1',
+      device: {
+        id: 'dev-1',
+        name: 'Tank',
+        ownerUri: 'homey:app:no.hoiax',
+        capabilities: ['onoff', 'max_power_3000'],
+        capabilitiesObj: {
+          onoff: { value: true },
+          max_power_3000: { value: '1' },
+        },
+      } as any,
+      clearWhenUnavailable: true,
+    });
+
+    await expect(executor.applyPlanActions(steppedPlan({
+      controlAdapter: {
+        kind: 'capability_adapter',
+        activationAvailable: true,
+        activationRequired: false,
+        activationEnabled: true,
+      },
+    }))).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'max_power_3000', '3');
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      commandTransport: 'native_capability',
+      desiredStepId: 'max',
+    }));
+  });
+
+  it('marks stable keep step-up intent as actuatable while the selected step remains lower', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan())).toBe(true);
+  });
+
+  it('marks stable keep step-down intent as actuatable while the selected step remains higher', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }))).toBe(true);
+  });
+
+  it('marks stable keep step-down intent as actuatable even when restore is not admitted', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(true);
+  });
+
+  it('does not mark off stepped keep step-down intent actuatable during restore hold', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      currentState: 'off',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(false);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable when restore is not admitted', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }))).toBe(false);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable while the same command is pending', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      lastDesiredStepId: 'max',
+      lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }))).toBe(false);
+  });
+
+  it('does not mark stable stepped step-up intent actuatable during retry backoff', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(steppedPlan({
+      lastDesiredStepId: 'max',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: Date.now() + 30_000,
+    }))).toBe(false);
+  });
+
+  const evDeadlinePlan = (overrides: Partial<DevicePlanDevice> = {}): DevicePlan => ({
+    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    devices: [{
+      id: 'ev-1',
+      name: 'EV Charger',
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget: null,
+      controllable: true,
+      reason: KEEP_REASON,
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+      deferredReleaseIntent: 'ev_resume',
+      ...overrides,
+    }],
+  });
+
+  it('marks stable EV deadline resume actuatable while the charger remains paused', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan())).toBe(true);
+  });
+
+  it('marks stable EV deadline pause actuatable while the charger remains charging', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      evChargingState: 'plugged_in_charging',
+      deferredReleaseIntent: 'ev_pause',
+    }))).toBe(true);
+  });
+
+  it('does not mark stable EV deadline actuation while a binary command is pending', () => {
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      binaryCommandPending: true,
+    }))).toBe(false);
+  });
+
+  it('does not wait for stepped-load flow execution before completing apply', async () => {
+    const { executor, desiredSteppedTrigger, state, deps } = buildExecutor(
+      undefined,
+      steppedSnapshot(),
+    );
+    desiredSteppedTrigger.trigger.mockImplementation(() => new Promise<void>(() => {}));
+
+    const outcome = await Promise.race([
+      executor.applyPlanActions(steppedPlan()).then(() => 'resolved'),
+      new Promise<'pending'>((resolve) => {
+        setTimeout(() => resolve('pending'), 0);
+      }),
+    ]);
+
+    expect(outcome).toBe('resolved');
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+      step_id: 'max',
+      planning_power_w: 3000,
+      planning_current_a: 0,
+      previous_step_id: 'low',
+    }, {
+      deviceId: 'dev-1',
+    });
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'low',
+      issuedAtMs: expect.any(Number),
+      pendingWindowMs: expect.any(Number),
+    });
+    expect(state.lastRestoreMs).toEqual(expect.any(Number));
+  });
+
+  it('does not re-trigger a stepped-load command while the same desired step is pending', async () => {
+    const { executor, desiredSteppedTrigger, deps } = buildExecutor();
+
+    await executor.applyPlanActions(steppedPlan({
+      lastDesiredStepId: 'max',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+  });
+
+  it('does not re-trigger a stale stepped-load command before its retry backoff elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+
+    try {
+      const now = Date.now();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
+
+      await executor.applyPlanActions(steppedPlan({
+        lastDesiredStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        lastStepCommandIssuedAt: now - 10_000,
+        stepCommandRetryCount: 0,
+        nextStepCommandRetryAtMs: now + 20_000,
+      }));
+
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+      expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a stale stepped-load command after its retry backoff elapses', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+
+    try {
+      const now = Date.now();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
+
+      await executor.applyPlanActions(steppedPlan({
+        lastDesiredStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        lastStepCommandIssuedAt: now - 40_000,
+        stepCommandRetryCount: 0,
+        nextStepCommandRetryAtMs: now - 1,
+      }));
+
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+        step_id: 'max',
+        planning_power_w: 3000,
+        planning_current_a: 0,
+        previous_step_id: 'low',
+      }, {
+        deviceId: 'dev-1',
+      });
+      expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+        deviceId: 'dev-1',
+        desiredStepId: 'max',
+        previousStepId: 'low',
+        issuedAtMs: expect.any(Number),
+        pendingWindowMs: expect.any(Number),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a stale stepped-load command when current step is unknown but last desired matches', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-12T11:00:00.000Z'));
+
+    try {
+      const now = Date.now();
+      const { executor, desiredSteppedTrigger, deps } = buildExecutor();
+
+      await executor.applyPlanActions(steppedPlan({
+        selectedStepId: undefined,
+        lastDesiredStepId: 'max',
+        stepCommandPending: false,
+        stepCommandStatus: 'stale',
+        lastStepCommandIssuedAt: now - 40_000,
+        stepCommandRetryCount: 0,
+        nextStepCommandRetryAtMs: now - 1,
+      }));
+
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith({
+        step_id: 'max',
+        planning_power_w: 3000,
+        planning_current_a: 0,
+        previous_step_id: 'max',
+      }, {
+        deviceId: 'dev-1',
+      });
+      expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith({
+        deviceId: 'dev-1',
+        desiredStepId: 'max',
+        previousStepId: 'max',
+        issuedAtMs: expect.any(Number),
+        pendingWindowMs: expect.any(Number),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('restores a stepped device to on when it has keep intent but currentOn is false', async () => {
+    const snapshot = steppedSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+    });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      desiredStepId: 'low', // no step change needed
+    }));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_succeeded',
+      msg: expect.stringContaining('turning on Tank'),
+    }));
+  });
+
+  it('does not restore a stepped device when planned state is shed', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    // Raw snapshot has currentOn=false, so setBinaryControl skips both shed-off
+    // and restore — no binary command issued
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not issue a step-UP command for a shed device with a non-zero desiredStepId', async () => {
+    // Regression: applySteppedLoadCommand must never restore a shed device.
+    // Poisoned state: shed device has desiredStepId='low' (stale from an interrupted
+    // step-down sequence) while selectedStepId has already reached 'off'.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // intentionally illegal: shed + upward step target
+    }));
+
+    // Step trigger must not fire — that would be a restore, not a shed
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    // Binary restore must not be issued either
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+  ] as const)('does not issue stepped shed preparation for restore-admission hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('does not issue stepped shed preparation for already-off shed-window hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deps.markSteppedLoadDesiredStepIssued).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('still enforces shed actuation for on stepped devices during hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deps.markSteppedLoadDesiredStepIssued).toHaveBeenCalledWith(expect.objectContaining({
+      deviceId: 'dev-1',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+    }));
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it.each([
+    { code: PLAN_REASON_CODES.cooldownShedding, remainingSec: 30 },
+    { code: PLAN_REASON_CODES.startupStabilization },
+  ] as const)('uses live snapshot to enforce shed actuation during hold reason $code', async (reason) => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+      shedAction: 'turn_off',
+      reason,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('keep-invariant enforcement does not restore a shed stepped device even when desiredStepId is non-zero', async () => {
+    // Regression: applySteppedLoadRestore checks plannedState === 'keep' and must
+    // not fire for a shed device even if desiredStepId points to a non-off step.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const structuredLog = { info: vi.fn(), debug: vi.fn() };
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, { structuredLog });
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // restore-related field; must not trigger invariant restore
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(structuredLog.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'stepped_load_binary_transition_applied' }),
+    );
+  });
+
+  it('does not restore a stepped device when it is already on', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+        binaryControlObservation: onoffObservation(true),
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not actuate stepped restore work while meter settling holds an off keep device', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      targetStepId: 'low',
+      reason: legacyDeviceReason('meter settling (30s remaining)'),
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes turn_off skip reasons when no control path exists', async () => {
+    const noTargetsSnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const noTargetsDebugStructured = vi.fn();
+    const noTargets = buildExecutor(undefined, noTargetsSnapshot, { debugStructured: noTargetsDebugStructured });
+    await noTargets.executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'missing_control_targets',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      hasTargets: false,
+      capabilityId: null,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+
+    const missingCapabilitySnapshot = [
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        available: true,
+        currentOn: true,
+        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
+      },
+    ];
+    const missingCapabilityDebugStructured = vi.fn();
+    const missingCapability = buildExecutor(undefined, missingCapabilitySnapshot, { debugStructured: missingCapabilityDebugStructured });
+    await missingCapability.executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_skipped',
+      reasonCode: 'missing_onoff_capability',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      hasTargets: true,
+      capabilityId: null,
+      logContext: 'capacity',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('issues a pre-restore step for a stepped device at its off-step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low', // step change will be issued
+    }));
+
+    // The step command should be issued to move from off -> low
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // Binary restore waits for explicit reported preparation evidence.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('requests the lowest restore step before turning on a stepped device that is off at a stale higher step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('does not turn a stepped device on when the required pre-restore step command cannot be issued', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
+      homey: {
+        settings: { set: vi.fn() },
+        flow: { getTriggerCard: vi.fn(() => null) },
+      } as unknown as Homey.App['homey'],
+    });
+    deviceManager.requestSteppedLoadStep.mockResolvedValueOnce({ requested: false });
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_command_not_issued',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+    }));
+  });
+
+  it('does not retry binary restore when the required pre-restore step command is still pending', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'low',
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('does not retry binary restore while the required pre-restore step is in retry backoff', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const now = Date.now();
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'max',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'low',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+    }));
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'retry_backoff',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'plan',
+    }));
+  });
+
+  it('sets onoff=false for a shed stepped device at its off-step', async () => {
+    // The plan sees currentState='off' (from decorated snapshot), but the raw
+    // snapshot still has currentOn=true (the onoff capability hasn't been set
+    // to false yet). setBinaryControl operates on raw snapshots, so it sees
+    // the true value and issues the command.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'binary_command_applied',
+      deviceId: 'dev-1',
+      deviceName: 'Tank',
+      desired: false,
+      reasonCode: 'full_shed_to_off',
+    }));
+  });
+
+  it('prepares a turn_off stepped shed at the lowest non-zero step before binary off', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager, state, deps } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      selectedStepId: 'max',
+      desiredStepId: 'off',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      desiredStepId: 'low',
+      plannedDesiredStepId: 'off',
+      commandPurpose: 'step_preparation',
+      stepPreparationPurpose: 'prepare_for_off',
+      effectiveTransition: 'full_shed_to_off',
+      binaryTarget: false,
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: false,
+      effectiveTransition: 'full_shed_to_off',
+      stepPreparationPurpose: 'prepare_for_off',
+      transitionPhase: 'binary_transition',
+    }));
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+      DEVICE_LAST_CONTROLLED_MS,
+      expect.objectContaining({ 'dev-1': expect.any(Number) }),
+    );
+  });
+
+  it('records shed actuation when a stepped device sheds by stepping down while remaining on', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+    }));
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      effectiveTransition: 'step_down_while_on',
+      desiredStepId: 'low',
+      previousStepId: 'max',
+      mode: 'plan',
+    }));
+  });
+
+  it('records restore actuation when a plan-mode restore starts by moving from off-step to low', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deps } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'max',
+    }));
+
+    expect(state.lastDeviceRestoreMs['dev-1']).toEqual(expect.any(Number));
+    expect(state.lastDeviceControlledMs['dev-1']).toEqual(expect.any(Number));
+    expect((deps.homey.settings.set as any)).toHaveBeenCalledWith(
+      DEVICE_LAST_CONTROLLED_MS,
+      expect.objectContaining({ 'dev-1': expect.any(Number) }),
+    );
+    expect(state.activationAttemptByDevice['dev-1']).toEqual(expect.objectContaining({
+      source: 'pels_restore',
+      startedMs: expect.any(Number),
+    }));
+  });
+
+  it('batches last-controlled persistence to one settings write per plan application', async () => {
+    const state = createPlanEngineState();
+    const snapshot = [
+      {
+        id: 'dev-restore',
+        name: 'Restore Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+      {
+        id: 'dev-shed',
+        name: 'Shed Heater',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deps } = buildExecutor(state, snapshot);
+
+    await executor.applyPlanActions({
+      meta: {
+        totalKw: 2,
+        softLimitKw: 5,
+        headroomKw: 3,
+      },
+      devices: [
+        {
+          id: 'dev-restore',
+          name: 'Restore Heater',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+        },
+        {
+          id: 'dev-shed',
+          name: 'Shed Heater',
+          currentState: 'on',
+          plannedState: 'shed',
+          currentTarget: 21,
+          plannedTarget: 21,
+          controllable: true,
+        },
+      ],
+    });
+
+    const settingsCalls = (deps.homey.settings.set as any).mock.calls
+      .filter(([key]: [string]) => key === DEVICE_LAST_CONTROLLED_MS);
+    expect(settingsCalls.length).toBeLessThanOrEqual(1);
+    if (settingsCalls[0]) {
+      expect(settingsCalls[0][1]).toEqual(expect.objectContaining({
+        'dev-restore': expect.any(Number),
+        'dev-shed': expect.any(Number),
+      }));
+    }
+  });
+
+  it('does not set onoff=false for a shed stepped device not at off-step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'shed',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('does not set onoff=false for a keep stepped device at off-step', async () => {
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: true,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    }));
+
+    // setCapability should not be called with false — only step trigger fires
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('skips onoff=false when raw snapshot already shows device off', async () => {
+    // When the raw onoff capability is already false, setBinaryControl detects
+    // the device is already in the desired state and skips the command.
+    const snapshot = [
+      {
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        available: true,
+        currentOn: false,
+      },
+    ];
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      selectedStepId: 'off',
+      desiredStepId: 'off',
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlanExecutor stepped load reconciliation loop', () => {
+  const steppedProfile = {
+    model: 'stepped_load' as const,
+    steps: [
+      { id: 'off', planningPowerW: 0 },
+      { id: 'low', planningPowerW: 1250 },
+      { id: 'max', planningPowerW: 3000 },
+    ],
+  };
+
+  const steppedPlan = (overrides: Partial<DevicePlanDevice> = {}): DevicePlan => ({
+    meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+    devices: [{
+      id: 'dev-1',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'keep',
+      currentTarget: null,
+      controllable: true,
+      reason: KEEP_REASON,
+      controlModel: 'stepped_load',
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      ...overrides,
+    }],
+  });
+
+  const buildLiveDevices = (
+    overrides: Partial<PlanInputDevice> = {},
+  ): PlanInputDevice[] => [{
+    id: 'dev-1',
+    name: 'Tank',
+    targets: [],
+    controlModel: 'stepped_load',
+    steppedLoadProfile: steppedProfile,
+    hasBinaryControl: true,
+    ...overrides,
+  }];
+
+  const buildSnapshot = (overrides: Partial<TargetDeviceSnapshot> = { currentOn: false }): TargetDeviceSnapshot[] => [{
+    id: 'dev-1',
+    name: 'Tank',
+    controlCapabilityId: 'onoff' as const,
+    canSetControl: true,
+    available: true,
+    currentOn: false,
+    targets: [],
+    controlModel: 'stepped_load' as const,
+    steppedLoadProfile: steppedProfile,
+    ...overrides,
+  }];
+
+  it('detects onoff drift and restores a keep device turned off externally', async () => {
+    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
+    const liveDevices = buildLiveDevices({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+    });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+    expect(livePlan.devices[0].currentState).toBe('off');
+
+    const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+    }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('does not restore from stale reported step evidence after live state only has fallback evidence', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'on',
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      desiredStepId: 'low',
+    });
+    const liveDevices = buildLiveDevices({
+      currentOn: false,
+      // Fallback-only live state: no reported step, selectedStepId is the
+      // planning fallback.
+      selectedStepId: 'low',
+    });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
+      reportedStepId: undefined,
+      selectedStepId: 'low',
+    }));
+
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
+      undefined,
+      buildSnapshot({ currentOn: false }),
+    );
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
+  it('detects step drift and re-issues step command for a keep device at off-step', async () => {
+    const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
+    const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'off' });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      deviceId: 'dev-1',
+      previousStepId: 'off',
+      desiredStepId: 'low',
+      plannedDesiredStepId: 'low',
+      commandPurpose: 'step_preparation',
+      stepPreparationPurpose: 'prepare_for_on',
+      effectiveTransition: 'restore_from_off_at_low',
+      binaryTarget: true,
+      mode: 'reconcile',
+    }));
+  });
+
+  it('does not count a stepped-load trigger request as a concrete device write', async () => {
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
+      undefined,
+      buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) }),
+    );
+
+    await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({
+      deviceWriteCount: 0,
+      commandRequestCount: 1,
+    });
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      actuationSuffix: expect.anything(),
+    }));
+  });
+
+  it('does not use the keep invariant to restore a stepped load rejected for headroom', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'off',
+    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+      reason: {
+        code: PLAN_REASON_CODES.insufficientHeadroom,
+        needKw: 1.475,
+        availableKw: 0.93,
+        postReserveMarginKw: -0.79,
+        minimumRequiredPostReserveMarginKw: 0.25,
+        penaltyExtraKw: null,
+        swapReserveKw: null,
+        effectiveAvailableKw: null,
+        swapTargetName: null,
+      },
+    });
+
+    await executor.applyPlanActions(plan, 'plan');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: true,
+    }));
+  });
+
+  it('re-issues step command when keep device has onoff=true but step is at off', async () => {
+    // Raw snapshot has currentOn=true (onoff not violated), but selectedStepId='off'
+    // with desiredStepId='low' — only stepViolated is true.
+    // The decorated snapshot derives currentState='off' from the off-step, which
+    // lets applySteppedLoadRestore enter.
+    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Step command should be issued to move from off -> low
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // setBinaryControl is called with desired=true, but raw snapshot already
+    // has currentOn=true so it detects "already on" and skips the command.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('does not log current_state restore skip when a keep device is already on but needs a higher step', async () => {
+    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'max', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'current_state',
+      deviceId: 'dev-1',
+    }));
+  });
+
+  it('treats a matching in-flight stepped restore as pending instead of no keep violation', async () => {
+    // Genuinely-on device (trusted onoff observation) with a step command in
+    // flight: the step deferral applies and no defensive binary-on is needed.
+    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'max',
+      lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'waiting_for_confirmation',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'waiting_for_confirmation',
+      desiredStepId: 'max',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'no_keep_violation',
+      deviceId: 'dev-1',
+    }));
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('violates keep invariant: step='))).toBe(true);
+  });
+
+  // Regression for the exact prod shape: the step command is awaiting confirmation
+  // (a matching restore attempt exists) AND the onoff observation is unknown. The
+  // step-attempt deferral must NOT suppress the defensive binary-on — otherwise the
+  // device sits at 0 kW for the whole pending window.
+  it('issues a defensive binary-on for an unknown-observation keep load while the step command is pending', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'max',
+      lastStepCommandIssuedAt: Date.now() - 1_000,
+      stepCommandPending: true,
+      stepCommandStatus: 'pending',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_binary_transition_applied',
+      desiredBinaryState: true,
+      binaryObservationUnknown: true,
+    }));
+  });
+
+  it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const now = Date.now();
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      lastDesiredStepId: 'max',
+      stepCommandPending: false,
+      stepCommandStatus: 'stale',
+      nextStepCommandRetryAtMs: now + 30_000,
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_skipped',
+      reasonCode: 'retry_backoff',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'retry_backoff',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'no_keep_violation',
+      deviceId: 'dev-1',
+    }));
+    expect(logCapture.events.every((e) => typeof e.msg !== 'string' || !e.msg.includes('violates keep invariant: step='))).toBe(true);
+  });
+
+  it('keeps snapshot gating before re-issuing a step restore for an off-step keep device', async () => {
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, []);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).not.toHaveBeenCalled();
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'missing_snapshot',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
+  it('issues the pre-restore step and defers binary restore when both onoff and step are violated', async () => {
+    // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
+    // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'off',
+    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'off',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Step command should be issued
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    // Binary restore waits for reported step evidence; the same-cycle step
+    // request is not proof that the load is safe to energize.
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // Both violations should be logged
+    expect(logCapture.events.some((e) => typeof e.msg === 'string' && e.msg.includes('violates keep invariant: onoff='))).toBe(true);
+    expect(logCapture.events.some((e) => typeof e.msg === 'string' && e.msg.includes('violates keep invariant: step=off (off-step)'))).toBe(true);
+  });
+
+  it('re-issues the low-step command and defers binary restore when low is only assumed', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
+  it('does not use selectedStepId alone as restore preparation proof', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'pre_restore_step_required',
+      skipDetailCode: 'pre_restore_step_pending_confirmation',
+      desiredStepId: 'low',
+      deviceId: 'dev-1',
+      actuationMode: 'reconcile',
+    }));
+  });
+
+  it('uses reported step evidence as restore preparation proof', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+    });
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      reportedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('does not pass planner restore holds into stepped executor logging', async () => {
+    const snapshot = buildSnapshot({ currentOn: true });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_command_skipped',
+      reasonCode: 'restore_not_admitted',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      blockedByPlanReasonCode: expect.anything(),
+    }));
+  });
+
+  it('does not apply target updates while a stepped restore is held by planner admission', async () => {
+    const snapshot = buildSnapshot({
+      currentOn: true,
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    await executor.applyPlanActions(steppedPlan({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      currentTarget: 18,
+      plannedTarget: 23,
+      reason: { code: PLAN_REASON_CODES.meterSettling, remainingSec: 30 },
+    }));
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'target_temperature', 23);
+  });
+
+  it('detects step drift and re-issues shed step when external actor raises step', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      releaseShedStepId: 'low',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+    const liveDevices = buildLiveDevices({ currentOn: true, selectedStepId: 'max' });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_command_requested',
+      deviceId: 'dev-1',
+      previousStepId: 'max',
+      desiredStepId: 'low',
+      plannedDesiredStepId: 'low',
+      commandPurpose: 'step_adjustment',
+      stepPreparationPurpose: null,
+      effectiveTransition: 'step_down_while_on',
+      binaryTarget: null,
+      mode: 'reconcile',
+    }));
+  });
+
+  it('preserves effective shed step during telemetry gaps so down-step is not blocked', async () => {
+    const appliedPlan = steppedPlan({
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'set_step',
+      releaseShedStepId: 'low',
+      selectedStepId: 'max',
+      desiredStepId: 'low',
+      reportedStepId: 'max',
+    });
+    const liveDevices = buildLiveDevices({ currentOn: true });
+
+    const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
+    expect(livePlan.devices[0]).toEqual(expect.objectContaining({
+      selectedStepId: 'max',
+      reportedStepId: undefined,
+    }));
+    expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
+
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    await executor.applyPlanActions(livePlan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      reasonCode: 'step_up_blocked',
+    }));
+  });
+
+  it('normalizes a shed-constrained keep restore to the lowest non-zero step before binary restore', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          controllable: true,
+          reason: CAPACITY_REASON,
+        },
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'max',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low', previous_step_id: 'max' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+  });
+
+  it('defers keep-invariant restore when shed devices exist but step preparation is not reported', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          controllable: true,
+          reason: CAPACITY_REASON,
+        },
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'off',
+          plannedState: 'keep',
+          currentTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'low', // at lowestNonZeroStep — allowed
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('defers keep-invariant restore when no devices are shed but step preparation is not reported', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+    const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+  });
+
+  it('does not emit restore_keep_invariant_shed_blocked for a true off restore while devices remain shed', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          currentTarget: null, controllable: true, reason: CAPACITY_REASON,
+        },
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, controllable: true, reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+  });
+
+  it('normalizes stale desired steps to the same lowest restore step while devices remain shed', async () => {
+    // Custom profile with off/low/medium/max so we can test desiredStepId transitions
+    const multiStepProfile = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'medium', planningPowerW: 2000 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const shedDevice = {
+      id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
+      currentTarget: null, controllable: true, reason: CAPACITY_REASON,
+    };
+    const steppedDevice = (desiredStepId: string) => ({
+      id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
+      currentTarget: null, controllable: true, reason: KEEP_REASON,
+      controlModel: 'stepped_load' as const,
+      steppedLoadProfile: multiStepProfile,
+      selectedStepId: 'off',
+      desiredStepId,
+    });
+
+    await executor.applyPlanActions(
+      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('medium')] },
+      'reconcile',
+    );
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+
+    desiredSteppedTrigger.trigger.mockClear();
+    deviceManager.setCapability.mockClear();
+    await executor.applyPlanActions(
+      { meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 }, devices: [shedDevice, steppedDevice('max')] },
+      'reconcile',
+    );
+    expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+      expect.objectContaining({ step_id: 'low' }),
+      expect.objectContaining({ deviceId: 'dev-1' }),
+    );
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+  });
+
+  it('keeps shed-block dedupe state clear across admitted off restores', async () => {
+    const snapshot = buildSnapshot({ currentOn: false });
+    const state = createPlanEngineState();
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const blockedPlan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'shed-1', name: 'Heater', currentState: 'off', plannedState: 'shed',
+          currentTarget: null, controllable: true, reason: CAPACITY_REASON,
+        },
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, controllable: true, reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'max',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+    const admittedPlan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
+          currentTarget: null, controllable: true, reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'off',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+
+    debugStructured.mockClear();
+    deviceManager.setCapability.mockClear();
+    await executor.applyPlanActions(admittedPlan, 'reconcile');
+    expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', false);
+
+    debugStructured.mockClear();
+    await executor.applyPlanActions(blockedPlan, 'reconcile');
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+    }));
+  });
+
+  it('does not block keep restore when a planner-shed stepped device has no executable shed intent', async () => {
+    // Bug regression: when a stepped shed device has shedAction='set_step' but no resolvable
+    // step (no commandStepId, no plannedStepId), its executable steppedLoad intent is null.
+    // The keep-invariant gate must read the executable shed set, not the planner shed set,
+    // so this phantom shed does not block unrelated restores.
+    const snapshot = buildSnapshot({
+      currentOn: false,
+      selectedStepId: 'max',
+      reportedStepId: 'max',
+    });
+    const state = createPlanEngineState();
+    const structuredLog = { info: vi.fn() };
+    const debugStructured = vi.fn();
+    const { executor, deviceManager } = buildExecutor(state, snapshot, {
+      structuredLog: structuredLog as any,
+      debugStructured,
+    });
+
+    const plan: DevicePlan = {
+      meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
+      devices: [
+        {
+          // Underspecified stepped shed: set_step but no resolvable step.
+          // buildExecutableSteppedLoadIntent returns null for this device.
+          id: 'shed-1',
+          name: 'Heater',
+          currentState: 'off',
+          plannedState: 'shed',
+          currentTarget: null,
+          controllable: true,
+          reason: CAPACITY_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          shedAction: 'set_step',
+          selectedStepId: undefined,
+          desiredStepId: undefined,
+        },
+        {
+          // Keep device that drifted off: planner thought it was on at max, snapshot says off.
+          // Step is materialized at 'max' in the snapshot, so the binary restore can proceed.
+          // Projection produces desired.on=true, desired.stepId='max', so the keep-invariant
+          // gate would fire if it consulted the planner shed set rather than the executable
+          // shed set.
+          id: 'dev-1',
+          name: 'Tank',
+          currentState: 'on',
+          plannedState: 'keep',
+          currentTarget: null,
+          controllable: true,
+          reason: KEEP_REASON,
+          controlModel: 'stepped_load' as const,
+          steppedLoadProfile: steppedProfile,
+          selectedStepId: 'max',
+          desiredStepId: 'max',
+        },
+      ],
+    };
+
+    await executor.applyPlanActions(plan, 'reconcile');
+
+    // Restore must NOT be gated by the phantom shed-1.
+    expect(logCapture.events).not.toContainEqual(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      deviceId: 'dev-1',
+    }));
+    expect(structuredLog.info).not.toHaveBeenCalledWith(expect.objectContaining({
+      event: 'restore_keep_invariant_shed_blocked',
+      deviceId: 'dev-1',
+    }));
+    // Binary restore should be issued for dev-1.
+    expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+    // The dropped underspecified shed intent must be surfaced via structured log,
+    // including the actuation mode so plan vs reconcile drops stay distinguishable.
+    expect(logCapture.events).toContainEqual(expect.objectContaining({
+      event: 'stepped_load_shed_intent_dropped',
+      reasonCode: 'underspecified_set_step',
+      actuationMode: 'reconcile',
+      deviceId: 'shed-1',
+    }));
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 3: stepped-load turn_on (keep) actuation semantics
+  // Tests marked it.fails() document desired behavior not yet implemented.
+  // -------------------------------------------------------------------------
+
+  describe('turn_on (keep) actuation semantics (Group 3)', () => {
+    // Test 3.1: device has a non-zero step but onoff is false — only binary on needed,
+    // no step change. The step is already non-zero so it must not be overwritten.
+    it('sends onoff=true without changing step when step is already non-zero', async () => {
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+      });
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        desiredStepId: 'low', // non-zero, matches selected — no step change
+      }));
+
+      // Binary must be restored
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // Step must not be changed — desired already equals selected
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    });
+
+    // Test 3.2: desiredStepId has been pre-normalized to 'low' (lowest non-zero) before
+    // the executor runs. With the correct desiredStepId in place, the executor must issue
+    // the step-up command and wait for reported preparation evidence before binary restore.
+    // Note: this passes because desiredStepId is explicitly set to 'low' here.
+    // The companion planDevices test (it.fails) covers the normalization gap.
+    it('issues step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'off',
+      });
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'low', // pre-normalized to lowest non-zero
+      }));
+
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // Step command from off → low
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+    });
+
+    // Test 3.3: selectedStepId is unknown while binary onoff is false.
+    // Restore must re-enter at the lowest non-zero step rather than trusting a stale
+    // desiredStepId, so the load becomes deterministic again.
+    it('normalizes unknown-step restore to the lowest non-zero step before binary restore', async () => {
+      const snapshot = buildSnapshot({ currentOn: false });
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: undefined as unknown as string, // unknown
+        desiredStepId: 'max', // non-zero intended step
+      }));
+
+      // Step command must normalize to the lowest non-zero step.
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    });
+
+    it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
+      const snapshot = buildSnapshot({
+        currentOn: false,
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+      });
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        reportedStepId: 'low',
+        desiredStepId: 'low',
+      }));
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
+      expect(desiredSteppedTrigger.trigger).not.toHaveBeenCalled();
+    });
+
+    it('still sends the normalization step and waits before binary restore', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: undefined as unknown as string,
+        desiredStepId: 'max',
+      }));
+
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    });
+
+    // Test 3.4 / Regression 5.2 (executor layer): when both desiredStepId and selectedStepId
+    // are the off-step, the executor must still issue a step command to the lowest non-zero
+    // step — it must not leave the device at zero-step after turning binary on.
+    // Current: only binary on is sent because desiredStepId='off'=selectedStepId, so
+    // applySteppedLoadCommand sees no change and skips.
+    it('issues step command to lowest non-zero step when both desiredStepId and selectedStepId are zero-usage', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false,
+        },
+      ];
+      const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
+
+      // Both desiredStepId and selectedStepId are off-step — un-normalized state
+      // that planDevices currently produces for a restored device shed to off-step.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'off',
+        desiredStepId: 'off', // un-normalized: should still trigger step command to 'low'
+      }));
+
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+      // A step command to the lowest non-zero step must also be issued
+      expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
+        expect.objectContaining({ step_id: 'low' }),
+        expect.objectContaining({ deviceId: 'dev-1' }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Group 2 executor + Regression 5.1: stepped-load turn_off actuation
+  // -------------------------------------------------------------------------
+
+  describe('turn_off shed actuation (Group 2 executor / Regression 5.1)', () => {
+    it('uses raw snapshot state for binary shed-off when decorated currentState is stale', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: true,
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      await executor.applyPlanActions({
+        meta: {
+          totalKw: 1,
+          softLimitKw: 5,
+          headroomKw: 4,
+        },
+        devices: [
+          {
+            id: 'dev-1',
+            name: 'Tank',
+            currentState: 'off',
+            plannedState: 'shed',
+            currentTarget: 21,
+            plannedTarget: 21,
+            controllable: true,
+            reason: CAPACITY_REASON,
+          },
+        ],
+      });
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    });
+
+    // Test 2.4: binary is already off; the executor must not re-enable it.
+    it('does not re-enable binary when device is already off at a non-lowest step', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: false, // binary already off
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      // Device is shed with turn_off at a non-off step; binary is already off.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'off',  // off because binary is false
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'low', // not at off-step yet
+        desiredStepId: 'off',  // intended lowest
+      }));
+
+      // Binary must NOT be re-enabled (no onoff=true)
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'onoff', true);
+    });
+
+    // Regression 5.1: turn_off shed must send onoff=false immediately, even before the
+    // step has reached the off-step. Current: applySteppedLoadShedOff only fires once
+    // selectedStepId is already the off-step — binary off is deferred too long.
+    it('sends onoff=false immediately, without waiting to reach off-step (Regression 5.1)', async () => {
+      const snapshot = [
+        {
+          id: 'dev-1',
+          name: 'Tank',
+          controlCapabilityId: 'onoff',
+          canSetControl: true,
+          available: true,
+          currentOn: true, // binary still on
+        },
+      ];
+      const { executor, deviceManager } = buildExecutor(undefined, snapshot);
+
+      // Device is planned to shed with turn_off. It is currently at a non-off step.
+      // The contract says onoff=false must be sent as part of the turn_off action,
+      // not only after the step has already stepped down to the off-step.
+      await executor.applyPlanActions(steppedPlan({
+        currentState: 'on',
+        plannedState: 'shed',
+        shedAction: 'turn_off',
+        selectedStepId: 'low', // NOT at off-step
+        desiredStepId: 'off',  // intended lowest step (per contract)
+      }));
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    });
+  });
+});
