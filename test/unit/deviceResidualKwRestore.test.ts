@@ -23,8 +23,8 @@
  *     fallback directly.
  */
 import { describe, expect, it } from 'vitest';
-import { resolveResidualKwRestore } from '../lib/device/deviceResidualKw';
-import type { SteppedLoadProfile } from '../packages/contracts/src/types';
+import { resolveResidualKwRestore } from '../../lib/device/deviceResidualKw';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',

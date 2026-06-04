@@ -1,20 +1,20 @@
 import {
   DailyBudgetManager,
   buildDefaultProfile,
-} from '../lib/dailyBudget/dailyBudgetManager';
+} from '../../lib/dailyBudget/dailyBudgetManager';
 import {
   getProfileBlendConfidence,
   normalizeWeights,
-} from '../lib/dailyBudget/dailyBudgetMath';
-import { buildPriceFactors } from '../lib/dailyBudget/dailyBudgetPrices';
-import { PRICE_SHAPING_FLEX_SHARE } from '../lib/dailyBudget/dailyBudgetConstants';
+} from '../../lib/dailyBudget/dailyBudgetMath';
+import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
+import { PRICE_SHAPING_FLEX_SHARE } from '../../lib/dailyBudget/dailyBudgetConstants';
 import {
   buildLocalDayBuckets,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
-} from '../lib/utils/dateUtils';
-import { buildDayContext } from '../lib/dailyBudget/dailyBudgetState';
+} from '../../lib/utils/dateUtils';
+import { buildDayContext } from '../../lib/dailyBudget/dailyBudgetState';
 
 const TZ = 'Europe/Oslo';
 

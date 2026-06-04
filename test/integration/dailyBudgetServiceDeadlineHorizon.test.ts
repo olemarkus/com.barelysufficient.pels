@@ -2,17 +2,17 @@
 // spot prices land, the cached snapshot must still expose tomorrow once prices
 // arrive so the deferred-objective `policyHorizon` can reach a next-day deadline
 // (the failure mode that produced "Deadline plan unavailable" in the UI).
-import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
+import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import {
   buildDeferredObjectivePolicyHorizon,
-} from '../lib/objectives/deferredObjectives/policyHorizon';
+} from '../../lib/objectives/deferredObjectives/policyHorizon';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-} from '../lib/utils/settingsKeys';
-import { COMBINED_PRICES_VERSION, type CombinedPricesV2 } from '../lib/price/priceTypes';
+} from '../../lib/utils/settingsKeys';
+import { COMBINED_PRICES_VERSION, type CombinedPricesV2 } from '../../lib/price/priceTypes';
 
 const TZ = 'Europe/Oslo';
 // 2026-05-10 21:00 local (Oslo CEST, UTC+2). Below the 06:00 next-day deadline

@@ -1,7 +1,7 @@
-import { DailyBudgetService } from '../lib/dailyBudget/dailyBudgetService';
-import type { ConfidenceDebug, DailyBudgetDayPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import { DEBUG_LOGGING_TOPICS } from '../lib/utils/settingsKeys';
-import { getPerfSnapshot } from '../lib/utils/perfCounters';
+import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
+import type { ConfidenceDebug, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { DEBUG_LOGGING_TOPICS } from '../../lib/utils/settingsKeys';
+import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 
 const TZ = 'Europe/Oslo';
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();

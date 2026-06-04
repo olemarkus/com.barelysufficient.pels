@@ -4,13 +4,13 @@ import {
   getCachedConfidence,
   resolveConfidence,
   sampleDayIndex,
-} from '../lib/dailyBudget/dailyBudgetConfidence';
-import type { PowerTrackerState } from '../lib/power/tracker';
+} from '../../lib/dailyBudget/dailyBudgetConfidence';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
   buildLocalDayBuckets,
-} from '../lib/utils/dateUtils';
+} from '../../lib/utils/dateUtils';
 
 const TZ = 'Europe/Oslo';
 const HOUR_MS = 60 * 60 * 1000;

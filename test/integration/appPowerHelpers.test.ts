@@ -1,35 +1,35 @@
 const addPerfDurationMock = vi.fn();
 
-vi.mock('../lib/utils/perfCounters', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/utils/perfCounters')>();
+vi.mock('../../lib/utils/perfCounters', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/utils/perfCounters')>();
   return {
     ...actual,
     addPerfDuration: (...args: unknown[]) => addPerfDurationMock(...args),
   };
 });
 
-import CapacityGuard from '../lib/power/capacityGuard';
-import { buildEmptyCapacityStateSummary } from '../lib/power/capacityStateSummary';
-import type { PowerTrackerState } from '../lib/power/tracker';
+import CapacityGuard from '../../lib/power/capacityGuard';
+import { buildEmptyCapacityStateSummary } from '../../lib/power/capacityStateSummary';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 import {
   recordDailyBudgetCap,
   recordPowerSampleForApp,
-} from '../lib/power/sampleIngest';
+} from '../../lib/power/sampleIngest';
 import {
   type PowerSampleRebuildState,
   schedulePlanRebuildFromPowerSample,
-} from '../lib/plan/rebuildScheduler/powerDriven';
-import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
+} from '../../lib/plan/rebuildScheduler/powerDriven';
+import { schedulePlanRebuildFromSignal } from '../../lib/plan/rebuildScheduler/signalDriven';
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
-} from '../lib/device/devicePowerCalibrationStore';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
-import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
-import { getPerfSnapshot } from '../lib/utils/perfCounters';
-import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
-import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
+} from '../../lib/device/devicePowerCalibrationStore';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuildScheduler/shortfallSuppression';
+import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
+import { getPerfSnapshot } from '../../lib/utils/perfCounters';
+import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../../lib/plan/planUsage';
+import { updateObjectiveProfilesFromSnapshot } from '../../lib/objectives/profiles';
 
 const createCapacityGuardMock = (params: {
   limitKw?: number;

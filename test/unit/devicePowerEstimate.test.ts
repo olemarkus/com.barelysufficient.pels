@@ -1,5 +1,5 @@
-import { estimatePower } from '../lib/device/devicePowerEstimate';
-import type { HomeyDeviceLike } from '../lib/utils/types';
+import { estimatePower } from '../../lib/device/devicePowerEstimate';
+import type { HomeyDeviceLike } from '../../lib/utils/types';
 
 const logger = {
   log: vi.fn(),

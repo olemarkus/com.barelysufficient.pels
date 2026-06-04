@@ -15,8 +15,8 @@ import { describe, expect, it } from 'vitest';
 import {
   resolveResidualKwShed,
   type ResidualKwShedSteppedDevice,
-} from '../lib/device/deviceResidualKw';
-import type { SteppedLoadProfile } from '../packages/contracts/src/types';
+} from '../../lib/device/deviceResidualKw';
+import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',

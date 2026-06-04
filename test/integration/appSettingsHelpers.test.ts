@@ -2,14 +2,14 @@ import {
   buildCapacitySettingsSnapshot,
   initSettingsHandlerForApp,
   type CapacitySettingsSnapshot,
-} from '../lib/app/appSettingsHelpers';
-import type { AppContext } from '../lib/app/appContext';
-import { TimerRegistry } from '../lib/app/timerRegistry';
+} from '../../lib/app/appSettingsHelpers';
+import type { AppContext } from '../../lib/app/appContext';
+import { TimerRegistry } from '../../lib/app/timerRegistry';
 import {
   CAPACITY_LIMIT_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
-} from '../lib/utils/settingsKeys';
+} from '../../lib/utils/settingsKeys';
 
 const buildCapacitySnapshot = (
   overrides: Partial<CapacitySettingsSnapshot> = {},

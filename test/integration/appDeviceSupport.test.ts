@@ -3,13 +3,13 @@ import {
   isManagedFilterActive,
   seedMissingModeTargets,
   __resetSeedSkipDedupeForTests,
-} from '../lib/app/appDeviceSupport';
+} from '../../lib/app/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   PRICE_OPTIMIZATION_SETTINGS,
-} from '../lib/utils/settingsKeys';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+} from '../../lib/utils/settingsKeys';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const makeSettings = (initial: Record<string, unknown>) => {
   const store: Record<string, unknown> = { ...initial };
