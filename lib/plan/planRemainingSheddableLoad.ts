@@ -300,7 +300,7 @@ function toRemainingSheddableDeviceFromParts(params: {
   temperatureTarget?: RemainingSheddableTemperatureTarget;
 }): RemainingSheddableDevice {
   const { base, steppedSource, temperatureTarget } = params;
-  if (isSteppedLoadDevice(steppedSource) && steppedSource.steppedLoadProfile) {
+  if (isSteppedLoadDevice(steppedSource)) {
     const steppedFields: RemainingSheddableSteppedFields = {
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedSource.steppedLoadProfile,

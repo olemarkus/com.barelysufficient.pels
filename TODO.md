@@ -103,6 +103,19 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       fields as one nullable bag; discriminate by control kind so the compiler enforces per-variant
       field presence (removes a class of nullable-field bugs). Files: `packages/contracts/src/types.ts`,
       `lib/plan/planTypes.ts`, `lib/plan/planBuilder.ts`, settings UI contract tests.
+      **Slice 1 (control-kind TYPE GUARDS) landed:** added narrowed helper types
+      `SteppedLoadKind` / `SteppedPlanDevice` / `SteppedPlanInputDevice` in `lib/plan/planTypes.ts`
+      and converted `isSteppedLoadDevice` (`lib/plan/planSteppedLoad.ts`) into a real type guard
+      (overloads narrow the two flat plan device types to their `Stepped*` slices, plus a generic
+      overload for `Pick`-typed callers). Migrated the ~11 plan/executor sites that already branch on
+      the stepped discriminant so they read `steppedLoadProfile` without `?.`/null-assert. **No fields
+      were moved off the base types** — the flat types keep every field optional; narrowing happens
+      only at the guard. The field-level variant discrimination that actually forbids cross-kind
+      field reads (temperature ~21 files, stepped ~34, EV ~26) and the `TargetDeviceSnapshot`
+      discrimination (~119 importers) remain as follow-up slices. Temperature/EV kind guards were NOT
+      added in slice 1 — no plan/executor site branches on `controlModel === 'temperature_target'`
+      (or the EV capability) and then reads kind-specific fields un-narrowed, so a guard would be
+      dead code; add those alongside the field-move slices that create real consumers.
 
 ## P2 Product, Observability, and Maintainability
 

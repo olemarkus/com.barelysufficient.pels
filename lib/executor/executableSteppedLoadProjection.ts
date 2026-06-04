@@ -29,7 +29,7 @@ import {
 type PlanDevice = DevicePlan['devices'][number];
 
 export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSteppedLoadIntent | null {
-  if (!isSteppedLoadDevice(dev) || !dev.steppedLoadProfile) return null;
+  if (!isSteppedLoadDevice(dev)) return null;
   if (shouldHoldCurrentState(dev)) return null;
   const planningCurrent = {
     on: resolveEffectiveCurrentOn(dev),

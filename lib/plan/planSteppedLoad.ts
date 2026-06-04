@@ -11,7 +11,13 @@ import {
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
-import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import type {
+  DevicePlanDevice,
+  PlanInputDevice,
+  SteppedLoadKind,
+  SteppedPlanDevice,
+  SteppedPlanInputDevice,
+} from './planTypes';
 import { isObservedOff, isObservedOn } from '../observer/observedState';
 import type { ShedAction } from './planTypes';
 import {
@@ -77,11 +83,23 @@ export type SteppedLoadTransition = {
   transitionPhase: SteppedLoadTransitionPhase;
 };
 
-export const isSteppedLoadDevice = (
+// Kind type-guard: after a positive branch the consumer reads `controlModel` /
+// `steppedLoadProfile` as required (no `?.` / `!`). The predicate
+// (`controlModel === 'stepped_load' && steppedLoadProfile?.model ===
+// 'stepped_load'`) proves exactly that narrowed shape, so the guard is sound.
+// Dedicated overloads narrow the two flat plan device types to their named
+// `Stepped*` slices; the generic overload preserves any other caller's
+// variable type and intersects it with `SteppedLoadKind`.
+export function isSteppedLoadDevice(device: DevicePlanDevice): device is SteppedPlanDevice;
+export function isSteppedLoadDevice(device: PlanInputDevice): device is SteppedPlanInputDevice;
+export function isSteppedLoadDevice<T extends Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>>(
+  device: T,
+): device is T & SteppedLoadKind;
+export function isSteppedLoadDevice(
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
-): boolean => (
-  device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
-);
+): boolean {
+  return device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load';
+}
 
 const getSteppedLoadProfileForDevice = (
   device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
