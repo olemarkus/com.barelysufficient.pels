@@ -170,6 +170,28 @@ module.exports = {
       to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor)/' },
     },
     {
+      name: 'no-actuator-bypass',
+      comment:
+        'PR1b-final close-out: the actuator is now the SOLE device write path — every executor '
+        + 'write site (binary / target / step) routes through the injected `Actuator.apply` '
+        + 'interface. lib/plan/** and lib/executor/** RECEIVE an `Actuator` (injected via deps); they '
+        + 'must NOT reach into the actuator package to build or wire their own write path — i.e. no '
+        + 'value import from lib/actuator/** (notably `createDeviceActuator`, which only setup/** may '
+        + 'call — see setup/appInit/buildDeviceActuator.ts). The legitimate edge is '
+        + '`import type { Actuator }`, which is erased and thus invisible to this cruise, so it stays '
+        + 'allowed automatically. This complements the device-boundary rules (no-plan-to-device, '
+        + 'no-executor-to-device-internals) by closing the actuator-side bypass. HONESTY CAVEAT: '
+        + 'tsPreCompilationDeps is unset, so this catches only VALUE imports (e.g. `createDeviceActuator`); '
+        + 'the type-only `ActuatorTransport`/`DeviceCommand`/`Actuator` edges are erased. And no import '
+        + 'rule can forbid a raw `.setCapability()` CALL — that half is enforced STRUCTURALLY: the '
+        + 'executor transport view is now `PlanExecutorDeviceTransport = DeviceObservation` (write-free), '
+        + 'so the only write path it has is the injected `Actuator`. See '
+        + 'notes/state-management/actuator-write-seam.md.',
+      severity: 'error',
+      from: { path: '^lib/(plan|executor)/' },
+      to: { path: '^lib/actuator/' },
+    },
+    {
       name: 'no-price-to-peer',
       comment: 'Price is a leaf (consumed by plan and dailyBudget); must not depend on other peers.',
       severity: 'error',

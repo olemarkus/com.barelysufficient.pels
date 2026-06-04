@@ -42,9 +42,12 @@ export type PlanExecutorTargetContext = {
   deviceManager: {
     getSnapshot: () => TargetDeviceSnapshot[];
     getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
-    setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   };
-  /** Single write seam; the setpoint write routes through here (PR1b-2). */
+  /**
+   * Single write seam: the setpoint write routes through here
+   * (`actuator.apply({ kind: 'target', ... })`). The target context's
+   * `deviceManager` is read-only — no `setCapability` write surface.
+   */
   actuator: Actuator;
   operatingMode: string;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
