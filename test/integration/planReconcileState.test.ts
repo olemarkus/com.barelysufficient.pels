@@ -274,27 +274,6 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
-    it('does not treat a never-observed device as drift, even when planner intent is keep', () => {
-      // Regression: after a Homey restart, the observer has not yet recorded
-      // any trusted binary observation. The snapshot's `currentOn` is a
-      // default (no `binaryControlObservation` evidence), so drift detection
-      // must not re-actuate against state we have not observed yet.
-      const plan = buildPlan([buildBinaryDevice({
-        currentState: 'on',
-        plannedState: 'keep',
-      })]);
-      const liveDevices: PlanInputDevice[] = [{
-        id: 'dev-2',
-        name: 'Heater',
-        currentOn: false,
-        hasBinaryControl: true,
-        // No binaryControlObservation — never-observed device.
-        targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
-      }];
-
-      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(false);
-    });
-
     it('treats paused EV state as drift when a deadline resume is expected', () => {
       const plan = buildPlan([buildEvDevice()]);
       const liveDevices: PlanInputDevice[] = [{

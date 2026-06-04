@@ -146,12 +146,10 @@ const applyShedReleaseBinaryOff = async (params: {
     }
     return false;
   }
-  // Trusted-evidence idempotency: only fire when observation says the device is currently
-  // 'on'. Treat 'off' as idempotent (already in shed posture) and 'unknown' /
-  // missing-observation as "no trusted observation yet, wait for real evidence" — mirrors
-  // the abandon-grace pattern in planExecutionDrift.ts so a defaulted `currentOn` (after a
-  // Homey restart, before any snapshot refresh) cannot fire a spurious release write
-  // against a never-observed device.
+  // Idempotency: only fire the release when the device is observed 'on'; treat 'off' as
+  // already in shed posture (no-op). Observed binary state is the producer-resolved
+  // `currentOn` (an honest boolean — an unobserved binary control resolves to a
+  // non-optimistic `false`), so there is no separate 'unknown' to grace here.
   if (!observed || observed.observedBinaryState !== 'on') return false;
   return applyBinarySheddingToDevice(deps.buildBinaryExecutorContext(), {
     deviceId: intent.deviceId,

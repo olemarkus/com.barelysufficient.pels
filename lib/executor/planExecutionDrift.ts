@@ -187,11 +187,6 @@ function hasBinaryStateDrift(params: {
   if (!expectedBinaryState) return false;
   if (isPendingBinaryCommandMatchingExpected(pendingBinary, expectedBinaryState)) return false;
   const observedBinaryState = observed.observedBinaryState;
-  // `'unknown'` means no trusted binary observation has been recorded yet
-  // (e.g. after a Homey restart, before any snapshot refresh). Treating a
-  // defaulted `currentOn` as observation truth would re-actuate against
-  // never-observed devices, so skip drift here and wait for real evidence.
-  if (observedBinaryState === 'unknown') return false;
   return observedBinaryState !== expectedBinaryState;
 }
 
@@ -279,7 +274,6 @@ function isObservedBinaryStateForTransition(
   transition: ExecutableSteppedLoadTransition,
   observed: ExecutableObservedDeviceState,
 ): boolean {
-  if (observed.observedBinaryState === 'unknown') return false;
   if (transition.effectiveTransition === 'restore_from_off_at_low') return observed.observedBinaryState === 'off';
   if (transition.effectiveTransition === 'full_shed_to_off') return observed.observedBinaryState === 'on';
   return false;
