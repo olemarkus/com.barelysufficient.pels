@@ -485,6 +485,19 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       honest when permissions came from Flow cards or the Held-back devices lane.
       Files: `widgets/create_smart_task/src/public/render.ts`,
       `widgets/create_smart_task/src/api.ts`, `packages/shared-domain/src/deadlineLabels.ts`.
+      *Design (learned 2026-06-04, PR #1473 closed without merging — branch
+      `feat/create-screen-standing-permissions` preserved):* a first attempt that surfaced standing
+      grants as read-only and suppressed each already-standing toggle, which hit four review rounds of
+      **`at_risk`-mode** edges. Resume by realigning the whole feature on **`always`-strength**,
+      not "a grant exists": (1) suppress a permission's opt-in toggle ONLY when it already stands as
+      `always` (can't be strengthened); (2) show an `at_risk` standing grant's toggle as an *upgrade*
+      affordance (the standing line's ` (if at risk)` suffix differentiates it from the unconditional
+      toggle); (3) gate `limitLowerPriorityDevices` on **effective-`always`** budget — an `at_risk`
+      standing budget must NOT satisfy it (matches the app's keep-limit-only-when-`always` gate);
+      (4) `buildEffectiveRescue` must take the **stronger** mode when standing and requested differ.
+      Already-correct pieces on the branch worth keeping: the producer-side expired/history filter on
+      `getDeviceStandingRescue` (gate on `hasDeferredObjectiveForDevice`), the standing-and-toggles merge
+      into BOTH preview and create candidates, and the route-agnostic `Already allowed:` copy.
 
 - [ ] **Surface the learned thermostat deadband to the owner.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) — the
