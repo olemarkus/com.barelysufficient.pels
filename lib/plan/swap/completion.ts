@@ -12,7 +12,7 @@ export function isSwapTargetComplete(
   if (!isSteppedLoadDevice(device)) return true;
 
   const requestedStepId = resolveRequestedStepId(device, swapState);
-  if (!requestedStepId || !device.steppedLoadProfile) return false;
+  if (!requestedStepId) return false;
 
   const requestedStep = getSteppedLoadStep(device.steppedLoadProfile, requestedStepId);
   // Decide completion from CONFIRMED evidence (reportedStepId), not the planner-effective

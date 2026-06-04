@@ -27,12 +27,11 @@ export function resolveSteppedLoadDirectShedStepId(params: {
   if (!shouldShed || !isSteppedLoadDevice(dev)) return undefined;
   if (shedBehavior.action === 'turn_off') {
     const profile = dev.steppedLoadProfile;
-    if (!profile) return undefined;
     return (getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile))?.id;
   }
   if (shedBehavior.action !== 'set_step') return undefined;
   if (shouldForceLowestActiveStep({ dev, devices, state, shedBehaviorAction: shedBehavior.action })) {
-    return dev.steppedLoadProfile ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id : undefined;
+    return getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)?.id;
   }
   const targetStep = getSteppedLoadShedTargetStep({
     device: dev,

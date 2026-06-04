@@ -75,7 +75,7 @@ export function isSteppedLoadRestoreFromOff(
 }
 
 export function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][number]): boolean {
-  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep' || !dev.steppedLoadProfile) return false;
+  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
   const desiredStepId = resolveSteppedKeepDesiredStepId(dev);
   if (!desiredStepId || !dev.selectedStepId || desiredStepId === dev.selectedStepId) return false;
   if (hasEquivalentSteppedLoadCommandHold(dev, desiredStepId)) return false;

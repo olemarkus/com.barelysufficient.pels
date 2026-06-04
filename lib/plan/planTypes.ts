@@ -47,6 +47,32 @@ export type ShedBehavior = {
   stepId?: string;
 };
 
+/**
+ * Control-kind discriminant slices, slice 1 of the discriminated-types refactor.
+ *
+ * These intersection helpers pin the `controlModel` discriminant AND the
+ * kind-specific fields that are *guaranteed present once the discriminant
+ * holds* to REQUIRED, without changing the flat base types (`PlanInputDevice`
+ * / `DevicePlanDevice` keep every field optional). The narrowing happens only
+ * at the kind type-guards in `lib/plan/planSteppedLoad.ts`; consumers that
+ * branch through a guard then read the kind-specific field without
+ * optional-chaining or a null-assert.
+ *
+ * Field-level variant discrimination (moving fields off the base type so the
+ * compiler forbids reading e.g. `currentTemperature` on a stepped device) is a
+ * later slice and is deliberately NOT done here. `TargetDeviceSnapshot` is also
+ * out of scope for this slice.
+ */
+export type SteppedLoadKind = {
+  controlModel: 'stepped_load';
+  // The stepped guard's predicate (`steppedLoadProfile?.model === 'stepped_load'`)
+  // proves the profile is present, so it is required on the narrowed shape.
+  steppedLoadProfile: SteppedLoadProfile;
+};
+
+export type SteppedPlanDevice = DevicePlanDevice & SteppedLoadKind;
+export type SteppedPlanInputDevice = PlanInputDevice & SteppedLoadKind;
+
 export type DevicePlanDevice = {
   id: string;
   name: string;
