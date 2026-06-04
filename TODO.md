@@ -349,17 +349,13 @@ live-walk screenshots.*
       `packages/settings-ui/src/ui/realtime.ts` drops that key. Add a branch that re-reads the
       setting into `state.deferredObjectiveActivePlans` and re-renders the affected cards.
       Files: `packages/settings-ui/src/ui/realtime.ts`, `packages/settings-ui/src/ui/boot.ts`.
-- [ ] Cold-start catch-up for flow-scheme combined-prices rotation. `startPriceRefresh()`
-      only schedules the next local midnight via `getNextLocalDayStartUtcMs(now)`, so if the
-      app boots after midnight the first rotation is delayed until the following midnight.
-      In flow mode both periodic refresh calls are no-ops, so yesterday's `combined_prices`
-      classification can persist all day. A naive immediate `updateCombinedPrices()` at boot
-      was previously tried and reverted because it broke the
-      "should throttle restoration of set_temperature devices to one per cycle" plan test
-      (the unconditional rebuild fires settings handlers that perturb the test's cooldown
-      state). A conditional catch-up — only when `combined_prices` is from a prior local
-      day — should be safe; verify it does not regress the plan throttle test.
-      Files: `lib/price/priceCoordinator.ts`, `test/integration/plan.test.ts`, plan throttle tests.
+- [ ] Improve overshoot attribution for hard-cap incidents.
+      The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
+      `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
+      arrays. If telemetry is available, surface the main managed/background contributors; if it
+      is not, emit an explicit no-attribution reason so incident logs explain why attribution is
+      unavailable.
+      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
