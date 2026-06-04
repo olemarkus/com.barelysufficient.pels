@@ -35,6 +35,12 @@ const applyTarget = async (
   transport: ActuatorTransport,
   command: Extract<DeviceCommand, { kind: 'target' }>,
 ): Promise<ActuatorOutcome> => {
+  if (command.capabilityId !== undefined) {
+    // Single addressed setpoint: write the capability directly so a failure
+    // propagates to the caller's retry/pending path (don't swallow it).
+    await transport.setCapability(command.deviceId, command.capabilityId, command.value);
+    return { requested: true };
+  }
   await transport.applyDeviceTargets({ [command.deviceId]: command.value }, command.contextInfo);
   return { requested: true };
 };

@@ -385,6 +385,7 @@ export class PlanExecutor {
       this.targetExecutorContext = {
         state: this.state,
         deviceManager: this.deviceManager,
+        actuator: this.deps.actuator,
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
         logTargetRetryComparison: this.deps.logTargetRetryComparison,
@@ -415,8 +416,7 @@ export class PlanExecutor {
         getRestoreLogSource: this.boundGetRestoreLogSource,
         // Route step writes through the single actuator seam; the `{ requested: false }`
         // fallback matches the absent-stepped-surface arm of SteppedLoadStepRequestResult.
-        requestSteppedLoadStep: (params) => this.deps.actuator
-          .apply({ kind: 'step', ...params })
+        requestSteppedLoadStep: (params) => this.deps.actuator.apply({ kind: 'step', ...params })
           .then((outcome) => outcome.steppedResult ?? { requested: false as const }),
         deviceDiagnostics: this.deps.deviceDiagnostics,
       };

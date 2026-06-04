@@ -18,6 +18,7 @@ import type {
 import type { PlanEngineState } from '../plan/planState';
 import type { PlanActuationMode } from './executorTypes';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
+import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
 
 const logger = getLogger('executor/target');
@@ -43,6 +44,8 @@ export type PlanExecutorTargetContext = {
     getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
     setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>;
   };
+  /** Single write seam; the setpoint write routes through here (PR1b-2). */
+  actuator: Actuator;
   operatingMode: string;
   syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
   logTargetRetryComparison?: (params: {
@@ -396,7 +399,7 @@ const executeTargetCommandDispatch = async (
   } = params;
   const nowMs = Date.now();
   try {
-    await ctx.deviceManager.setCapability(deviceId, targetCap, desired);
+    await ctx.actuator.apply({ kind: 'target', deviceId, capabilityId: targetCap, value: desired });
   } catch (error) {
     const failedPending = recordFailedPendingTargetCommandAttempt({
       state: ctx.state,
