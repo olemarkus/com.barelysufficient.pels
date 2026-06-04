@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { buildCombinedPricePayload, pruneCombinedPricesV2 } from '../../../lib/price/priceServiceCombined';
+import {
+  buildCombinedPricePayload,
+  combinedPayloadHasActionablePriceEntries,
+  pruneCombinedPricesV2,
+  shouldCatchUpCombinedPricesRotation,
+} from '../../../lib/price/priceServiceCombined';
 import type { CombinedHourlyPrice, CombinedPricesV2 } from '../../../lib/price/priceTypes';
 
 const TZ = 'Europe/Oslo';
@@ -115,5 +120,108 @@ describe('pruneCombinedPricesV2', () => {
     };
     const pruned = pruneCombinedPricesV2(store, new Date('2026-05-10T12:00:00.000Z'), TZ);
     expect(Object.keys(pruned.days).sort()).toEqual(['2026-05-09', '2026-05-10', '2026-05-11']);
+  });
+});
+
+describe('shouldCatchUpCombinedPricesRotation', () => {
+  test('true when lastFetched is an earlier local day than now', () => {
+    const now = new Date('2026-05-11T06:00:00.000Z'); // 2026-05-11 local
+    const payload = { lastFetched: '2026-05-10T20:00:00.000Z' }; // 2026-05-10 local
+    expect(shouldCatchUpCombinedPricesRotation(payload, now, TZ)).toBe(true);
+  });
+
+  test('false when lastFetched is the same local day as now', () => {
+    const now = new Date('2026-05-11T06:00:00.000Z');
+    // 2026-05-11T03:00Z is 05:00 local — still 2026-05-11.
+    const payload = { lastFetched: '2026-05-11T03:00:00.000Z' };
+    expect(shouldCatchUpCombinedPricesRotation(payload, now, TZ)).toBe(false);
+  });
+
+  test('false at a same-local-day boundary that crosses the UTC day (DST-safe key compare)', () => {
+    // Just after local midnight on 2026-03-29 (CEST spring-forward day, a 23h day).
+    // 2026-03-28T23:30Z is 2026-03-29 00:30 local; both stamps are the same local day.
+    const now = new Date('2026-03-29T01:00:00.000Z'); // 03:00 local (post spring-forward)
+    const payload = { lastFetched: '2026-03-28T23:30:00.000Z' }; // 00:30 local same day
+    expect(shouldCatchUpCombinedPricesRotation(payload, now, TZ)).toBe(false);
+  });
+
+  test('false when lastFetched is a future local day (clock/NTP skew — do not rotate)', () => {
+    const now = new Date('2026-05-11T06:00:00.000Z'); // 2026-05-11 local
+    const payload = { lastFetched: '2026-05-12T20:00:00.000Z' }; // 2026-05-12 local (future)
+    expect(shouldCatchUpCombinedPricesRotation(payload, now, TZ)).toBe(false);
+  });
+
+  test('false for missing payload, missing/non-string lastFetched, and unparseable timestamp', () => {
+    const now = new Date('2026-05-11T06:00:00.000Z');
+    expect(shouldCatchUpCombinedPricesRotation(undefined, now, TZ)).toBe(false);
+    expect(shouldCatchUpCombinedPricesRotation(null, now, TZ)).toBe(false);
+    expect(shouldCatchUpCombinedPricesRotation({}, now, TZ)).toBe(false);
+    expect(shouldCatchUpCombinedPricesRotation({ lastFetched: 123 }, now, TZ)).toBe(false);
+    expect(shouldCatchUpCombinedPricesRotation({ lastFetched: 'not-a-date' }, now, TZ)).toBe(false);
+    expect(shouldCatchUpCombinedPricesRotation([], now, TZ)).toBe(false);
+  });
+});
+
+describe('combinedPayloadHasActionablePriceEntries', () => {
+  const NOW = new Date('2026-05-11T06:00:00.000Z'); // 2026-05-11 local
+  const v2WithDays = (days: Record<string, { hours: Array<{ startsAt: string }> }>): CombinedPricesV2 => ({
+    version: 2,
+    days: days as CombinedPricesV2['days'],
+    avgPrice: 0.5,
+    lowThreshold: 0.3,
+    highThreshold: 0.7,
+    priceScheme: 'flow',
+    priceUnit: 'øre/kWh',
+  });
+  const hour = (iso: string) => ({ startsAt: iso, total: 0.5, isCheap: false, isExpensive: true });
+
+  test('V2: true when today has entries', () => {
+    const payload = v2WithDays({ '2026-05-11': { hours: [hour('2026-05-11T00:00:00.000Z')] } });
+    expect(combinedPayloadHasActionablePriceEntries(payload, NOW, TZ)).toBe(true);
+  });
+
+  test('V2: true when tomorrow has entries', () => {
+    const payload = v2WithDays({ '2026-05-12': { hours: [hour('2026-05-12T00:00:00.000Z')] } });
+    expect(combinedPayloadHasActionablePriceEntries(payload, NOW, TZ)).toBe(true);
+  });
+
+  test('V2: false when only yesterday (out-of-window) has entries', () => {
+    const payload = v2WithDays({ '2026-05-10': { hours: [hour('2026-05-10T22:00:00.000Z')] } });
+    expect(combinedPayloadHasActionablePriceEntries(payload, NOW, TZ)).toBe(false);
+  });
+
+  test('V2: false when days are empty', () => {
+    expect(combinedPayloadHasActionablePriceEntries(v2WithDays({}), NOW, TZ)).toBe(false);
+  });
+
+  test('V1: true when a price entry falls on today/tomorrow', () => {
+    const payload = {
+      prices: [hour('2026-05-11T05:00:00.000Z')],
+      avgPrice: 0.5,
+      lowThreshold: 0.3,
+      highThreshold: 0.7,
+      priceScheme: 'flow' as const,
+      priceUnit: 'øre/kWh',
+    };
+    expect(combinedPayloadHasActionablePriceEntries(payload, NOW, TZ)).toBe(true);
+  });
+
+  test('V1: false when all price entries are out-of-window', () => {
+    const payload = {
+      prices: [hour('2026-05-10T05:00:00.000Z')],
+      avgPrice: 0.5,
+      lowThreshold: 0.3,
+      highThreshold: 0.7,
+      priceScheme: 'flow' as const,
+      priceUnit: 'øre/kWh',
+    };
+    expect(combinedPayloadHasActionablePriceEntries(payload, NOW, TZ)).toBe(false);
+  });
+
+  test('false for non-payload values (missing/empty/invalid read)', () => {
+    expect(combinedPayloadHasActionablePriceEntries(undefined, NOW, TZ)).toBe(false);
+    expect(combinedPayloadHasActionablePriceEntries(null, NOW, TZ)).toBe(false);
+    expect(combinedPayloadHasActionablePriceEntries({}, NOW, TZ)).toBe(false);
+    expect(combinedPayloadHasActionablePriceEntries([], NOW, TZ)).toBe(false);
   });
 });

@@ -2,8 +2,9 @@ import Homey from 'homey';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
-import type { CombinedHourlyPrice } from './priceTypes';
-import { PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
+import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
+import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
+import { COMBINED_PRICES, PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
@@ -140,6 +141,11 @@ export class PriceCoordinator {
       this.refreshSpotPrices().catch(() => {});
       this.refreshGridTariffData().catch(() => {});
     }, refreshIntervalMs);
+    // If the app boots after local midnight, the rotation scheduled below only fires at the
+    // NEXT midnight. In flow mode the periodic refresh is a no-op, so a prior-day combined_prices
+    // payload keeps yesterday's tier classification all day. Catch up once on boot, but only when
+    // the persisted payload is genuinely from an earlier local day (see PriceService).
+    this.catchUpCombinedPricesRotation();
     // Flow-scheme price slots only rotate when an external trigger (push, settings change,
     // UI fetch) calls updateCombinedPrices. Without a midnight nudge, COMBINED_PRICES keeps
     // yesterday's isCheap/isExpensive classification until the next push, so flow-only users
@@ -197,6 +203,48 @@ export class PriceCoordinator {
 
   updateCombinedPrices(): void {
     this.priceService.updateCombinedPrices();
+  }
+
+  /**
+   * Boot catch-up for the flow-scheme midnight rotation. `startPriceRefresh`
+   * only schedules the *next* local midnight, and in flow mode the periodic
+   * refresh is a no-op, so an app that boots after local midnight would keep
+   * the prior day's classification until the following midnight. Rotate once
+   * when the persisted payload is from an earlier local day.
+   *
+   * Conditional by design: an unconditional boot rotation perturbs settings
+   * handlers (it broke the set_temperature throttle plan test); a missing or
+   * same-day payload is left untouched (never clobber persisted state on a
+   * transient/empty read).
+   *
+   * Flow-scheme only: for norway/homey the periodic refresher already rebuilds
+   * combined_prices, and running this before `startup_price_bootstrap` could
+   * misfire on a transient/empty scheme read. For non-flow schemes this no-ops.
+   *
+   * Legacy V1 payloads are skipped: rebuilding here would write a fresh V2 and
+   * bypass the V1→V2 migration in `readPriceStore` (which carries the V1's own
+   * resolved tiers forward). Leaving the V1 payload in place lets the next
+   * `readPriceStore` caller migrate it, and the scheduled midnight rotation
+   * picks up the local-day rollover afterwards.
+   */
+  catchUpCombinedPricesRotation(): void {
+    if (this.priceService.getPriceScheme() !== 'flow') return;
+    const existingPayload = this.deps.homey.settings.get(COMBINED_PRICES) as unknown;
+    // A persisted V1 shape must run through the readPriceStore migration first;
+    // rebuilding it here would clobber that path. Leave it for migration.
+    if (isCombinedPricesV1(existingPayload)) {
+      this.deps.logDebug('Combined prices payload is legacy V1; deferring to V1→V2 migration');
+      return;
+    }
+    const timeZone = this.deps.homey.clock.getTimezone();
+    if (!shouldCatchUpCombinedPricesRotation(existingPayload, new Date(), timeZone)) return;
+    this.deps.logDebug('Combined prices payload predates today, rotating on boot');
+    // Boot must not abort if rotation throws; mirror the midnight timer's guard.
+    try {
+      this.updateCombinedPrices();
+    } catch (error) {
+      this.deps.error('Boot combined-prices catch-up rotation failed', error);
+    }
   }
 
   storeFlowPriceData(kind: 'today' | 'tomorrow', raw: unknown): {

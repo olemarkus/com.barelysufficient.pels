@@ -1,5 +1,7 @@
 import {
   COMBINED_PRICES_VERSION,
+  isCombinedPricesV1,
+  isCombinedPricesV2,
   type CombinedHourlyPrice,
   type CombinedPriceDayEntries,
   type CombinedPriceEntry,
@@ -9,11 +11,103 @@ import {
 } from './priceTypes';
 import { calculateAveragePrice, calculateThresholds, getPriceLevelFlags } from './priceMath';
 import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import { toStableFingerprint } from '../utils/stableFingerprint';
+
+const stripLastFetched = (value: unknown): unknown => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, 'lastFetched')) return record;
+  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'lastFetched'));
+};
+
+/** Stable structural fingerprint of a combined-prices payload, ignoring `lastFetched`. */
+export const toCombinedPayloadFingerprint = (value: unknown): string => (
+  toStableFingerprint(stripLastFetched(value))
+);
+
+export const getCombinedPayloadLastFetched = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const lastFetched = (value as { lastFetched?: unknown }).lastFetched;
+  return typeof lastFetched === 'string' ? lastFetched : null;
+};
 
 export const priceStoreWindowDateKeys = (now: Date, timeZone: string): string[] => {
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   return [shiftDateKey(todayKey, -1), todayKey, shiftDateKey(todayKey, 1)];
 };
+
+/**
+ * Decide whether a boot-time combined-prices rotation is warranted. Returns
+ * true only when the persisted payload's `lastFetched` resolves to an earlier
+ * local day than `now`. A missing payload, missing/non-string `lastFetched`,
+ * or unparseable timestamp returns false so we never rotate (or clobber state)
+ * on a transient/empty SDK read. Comparison is on the tz-aware date *key*, not
+ * raw millisecond deltas, so DST 23/25-hour days do not skew the boundary.
+ */
+export const shouldCatchUpCombinedPricesRotation = (
+  existingPayload: unknown,
+  now: Date,
+  timeZone: string,
+): boolean => {
+  if (!existingPayload || typeof existingPayload !== 'object' || Array.isArray(existingPayload)) {
+    return false;
+  }
+  const lastFetched = (existingPayload as { lastFetched?: unknown }).lastFetched;
+  if (typeof lastFetched !== 'string') return false;
+  const lastFetchedDate = new Date(lastFetched);
+  if (Number.isNaN(lastFetchedDate.getTime())) return false;
+  // Date keys are zero-padded YYYY-MM-DD, so lexical `<` is chronological.
+  // Strictly-earlier only: a future-dated payload (clock/NTP skew) must not rotate.
+  return getDateKeyInTimeZone(lastFetchedDate, timeZone) < getDateKeyInTimeZone(now, timeZone);
+};
+
+/**
+ * True when a persisted `combined_prices` payload carries at least one *actionable*
+ * hourly price entry — i.e. an entry whose local-day key is today or tomorrow.
+ *
+ * Used as a data-safety guard: a missing/transiently-unreadable/invalid raw flow
+ * slot makes the combined rebuild empty, and overwriting the cache with that empty
+ * payload would wipe still-valid prices. We only protect today/tomorrow entries:
+ * yesterday's prices aging out of the cache is normal rotation, not a transient
+ * read, so a cache holding only stale (out-of-window) entries is fair to clear.
+ */
+export const combinedPayloadHasActionablePriceEntries = (
+  value: unknown,
+  now: Date,
+  timeZone: string,
+): boolean => {
+  const todayKey = getDateKeyInTimeZone(now, timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+  if (isCombinedPricesV2(value)) {
+    const today = value.days[todayKey]?.hours ?? [];
+    const tomorrow = value.days[tomorrowKey]?.hours ?? [];
+    return today.length > 0 || tomorrow.length > 0;
+  }
+  if (isCombinedPricesV1(value)) {
+    return value.prices.some((entry) => {
+      const key = getDateKeyInTimeZone(new Date(entry.startsAt), timeZone);
+      return key === todayKey || key === tomorrowKey;
+    });
+  }
+  return false;
+};
+
+/**
+ * True when a freshly-built combined payload has lost the today/tomorrow prices
+ * the existing cache still holds — i.e. the rebuild went empty (or lost the
+ * actionable window) while the cache is still populated. Signals a transient /
+ * missing / invalid raw-slot read; the caller must keep the cache rather than
+ * clobber it. Yesterday-only caches aging out are ignored (normal rotation).
+ */
+export const combinedRebuildLostActionableEntries = (
+  existing: unknown,
+  next: unknown,
+  now: Date,
+  timeZone: string,
+): boolean => (
+  !combinedPayloadHasActionablePriceEntries(next, now, timeZone)
+  && combinedPayloadHasActionablePriceEntries(existing, now, timeZone)
+);
 
 export const pruneCombinedPricesV2 = (
   store: CombinedPricesV2,

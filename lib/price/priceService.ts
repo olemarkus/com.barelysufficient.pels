@@ -39,7 +39,12 @@ import {
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
 import type { FlowPricePayload } from './flowPriceUtils';
-import { buildCombinedPricePayload } from './priceServiceCombined';
+import {
+  buildCombinedPricePayload,
+  combinedRebuildLostActionableEntries,
+  getCombinedPayloadLastFetched,
+  toCombinedPayloadFingerprint,
+} from './priceServiceCombined';
 import {
   getCurrentMonthUsageKwh,
   getHourlyUsageEstimateKwh,
@@ -50,27 +55,11 @@ import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
-import { toStableFingerprint } from '../utils/stableFingerprint';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
   keepCache: 'Keeping cached tariff data (NVE returned empty list)',
   clearStaleFallback: 'Cleared stale fallback (NVE unavailable, no static fallback for current operator)',
   noData: 'NVE unavailable and no static fallback for this operator',
-};
-
-const stripLastFetched = (value: unknown): unknown => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const record = value as Record<string, unknown>;
-  if (!Object.prototype.hasOwnProperty.call(record, 'lastFetched')) return record;
-  return Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'lastFetched'));
-};
-
-const toCombinedPayloadFingerprint = (value: unknown): string => toStableFingerprint(stripLastFetched(value));
-
-const getLastFetchedTimestamp = (value: unknown): string | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const lastFetched = (value as { lastFetched?: unknown }).lastFetched;
-  return typeof lastFetched === 'string' ? lastFetched : null;
 };
 
 export default class PriceService {
@@ -97,7 +86,11 @@ export default class PriceService {
     api.realtime(event, payload).catch((err) => this.errorLog?.('Failed to emit realtime event', event, err));
   }
 
-  private getPriceScheme(): PriceScheme {
+  // Public so the coordinator can gate boot-time work on the active scheme
+  // (e.g. the flow-only combined-prices catch-up) without re-deriving the
+  // PRICE_SCHEME→scheme mapping. Single source of truth for the early-returns
+  // in refreshSpotPrices/getCombinedHourlyPrices.
+  getPriceScheme(): PriceScheme {
     const raw = this.getSettingValue(PRICE_SCHEME);
     if (raw === 'flow' || raw === 'homey') return raw;
     return 'norway';
@@ -278,6 +271,8 @@ export default class PriceService {
   }
 
   updateCombinedPrices(): void {
+    const now = new Date();
+    const timeZone = this.homey.clock.getTimezone();
     const combined = this.getCombinedHourlyPrices();
     const payload = buildCombinedPricePayload({
       combined,
@@ -285,13 +280,23 @@ export default class PriceService {
       priceUnit: this.getPriceUnitLabel(),
       thresholdPercent: this.getNumberSetting('price_threshold_percent', 25),
       minDiffOre: this.getNumberSetting('price_min_diff_ore', 0),
-      now: new Date(),
-      timeZone: this.homey.clock.getTimezone(),
+      now,
+      timeZone,
     });
     const existingPayload = this.getSettingValue(COMBINED_PRICES);
+    // Data safety: never replace still-valid prices with an empty rebuild. A
+    // missing/transiently-unreadable/invalid raw flow slot makes the rebuild
+    // empty; its fingerprint differs from the populated cache, so the set()
+    // below would otherwise clobber good today/tomorrow prices on a transient
+    // read (boot catch-up, midnight rotation, every caller). Keep the cache.
+    if (combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
+      this.logDebug('Combined prices rebuild lost today/tomorrow entries, keeping cache (skipping settings update)');
+      this.emitRealtime('prices_updated', existingPayload);
+      return;
+    }
     if (toCombinedPayloadFingerprint(existingPayload) === toCombinedPayloadFingerprint(payload)) {
-      const nextLastFetched = getLastFetchedTimestamp(payload);
-      const previousLastFetched = getLastFetchedTimestamp(existingPayload);
+      const nextLastFetched = getCombinedPayloadLastFetched(payload);
+      const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
       const unchangedMessage = shouldUpdateLastFetched
         ? 'Combined prices unchanged, updating lastFetched timestamp'
