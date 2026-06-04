@@ -31,6 +31,18 @@ export function getControlCapabilityId(params: {
   return undefined;
 }
 
+/**
+ * Reads the device's observed binary control state ("may it draw power?").
+ *
+ * Returns `undefined` only when there is no trusted boolean to read. At runtime
+ * that means the device simply has no binary control. A device that HAS `onoff`
+ * (or `evcharger_charging`) always reports a value, so the `undefined` return for
+ * a binary device is a *type-level* possibility only — `capabilitiesObj[id].value`
+ * is typed `unknown` and the entry is optional in the Homey SDK types, not a real
+ * "binary device went unobserved" state. Callers must not treat `undefined` as an
+ * observed "off"; the contractual non-optional `currentOn` is synthesized from
+ * this at the parse boundary — see `resolveUnobservedControlFallback`.
+ */
 export function getCurrentOn(params: {
   deviceClassKey: DeviceClassKey;
   capabilityObj: DeviceCapabilityMap;

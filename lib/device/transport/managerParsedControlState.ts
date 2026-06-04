@@ -85,6 +85,44 @@ export function resolveDeviceParsedControlState(params: {
   };
 }
 
+/**
+ * Synthesizes a `currentOn` value for the rare case where {@link getCurrentOn}
+ * could not read a trusted boolean.
+ *
+ * ## Why this exists at all
+ * `currentOn` is contractually a non-optional `boolean`, but the Homey SDK types
+ * do not guarantee a capability value is present — `capabilitiesObj[id].value` is
+ * typed `unknown` and the entry itself is optional. So the parser can be handed a
+ * control capability with no readable boolean **purely as a type-level
+ * possibility**. At runtime a real binary device's `onoff` always carries a
+ * value+timestamp; this branch is a should-never-happen, *types-driven* boundary
+ * case, not a real "device went unobserved" state. That is the only reason we
+ * synthesize.
+ *
+ * ## Why we synthesize here, at the source
+ * Resolving the missing value to a concrete boolean at the parse boundary means
+ * every downstream consumer (planner, executor, shedding, UI) reads a real
+ * `boolean` and never re-handles "missing". The alternative — **throwing** on a
+ * missing value — is equally defensible, but it does not remove the decision: a
+ * caller catching it would still have to synthesize *some* value to keep planning
+ * and executing, just further from the boundary and duplicated per call site. We
+ * centralize that one decision here and log the anomaly at error
+ * (`device_snapshot_control_state_dropped`) so the should-never-happen case is
+ * still visible.
+ *
+ * ## What we synthesize (never an optimistic `true`)
+ * Claiming a device is on without evidence is what let an unobserved load look
+ * already-restored, so the synthesized value is deliberately non-optimistic:
+ * - invalid-payload (wrong-typed value, a different anomaly) → latch previous;
+ * - binary device with a missing value → `false`;
+ * - no control capability but binary last snapshot (transient capability drop on
+ *   a partial update) → latch previous (no phantom on-transition);
+ * - genuinely non-binary (no off-switch, setpoint-controlled) → `true` — it may
+ *   always draw, so it must stay sheddable (a `false` reads as 0-draw).
+ *
+ * @returns the synthesized `currentOn`, or `undefined` when the previous-snapshot
+ *   latch itself has nothing to carry (the caller then coalesces to `false`).
+ */
 function resolveUnobservedControlFallback(params: {
   invalidControlPayload: boolean;
   previousSnapshot?: TargetDeviceSnapshot;
