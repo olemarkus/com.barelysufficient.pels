@@ -5,6 +5,7 @@ import {
 } from '../lib/executor/binaryExecutor';
 import { createPlanEngineState } from '../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
+import { createDeviceActuator } from '../lib/actuator/deviceActuator';
 import type { DeviceObservation } from '../lib/device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { ExecutableReleaseIntent } from '../lib/executor/executablePlan';
@@ -35,13 +36,19 @@ const buildCtx = (snapshot: TargetDeviceSnapshot) => {
     state,
     observation,
     capacityDryRun: false,
+    // Binary writes route through the actuator over a recording `setCapability`,
+    // so the native-path assertions still observe the onoff/evcharger writes.
     buildBinaryControlTransport: () => ({
       observation,
       pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-      setCapability: async (_deviceId: string, capabilityId: string, value: boolean) => {
-        setCapabilityCalls.push({ capabilityId, value });
-        return undefined;
-      },
+      actuator: createDeviceActuator({
+        setCapability: async (_deviceId: string, capabilityId: string, value: unknown) => {
+          setCapabilityCalls.push({ capabilityId, value: value as boolean });
+          return undefined;
+        },
+        applyDeviceTargets: () => Promise.resolve(),
+        triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected in release test')),
+      }),
     }),
     getRestoreLogSource: () => 'current_plan',
     recordShedActuation,

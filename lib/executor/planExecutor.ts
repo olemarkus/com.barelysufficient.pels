@@ -92,7 +92,6 @@ import {
   hasStableUncontrolledRestoreActuation,
   isSteppedLoadRestoreFromOff,
   resolveConfirmedBinaryCommandReasonCode,
-  resolveFlowBackedBinaryTriggerCardId,
   resolveRestoreLogSource,
 } from './planExecutorPredicates';
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
@@ -221,36 +220,8 @@ export class PlanExecutor {
     return {
       observation: this.deviceManager,
       pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-      setCapability: (deviceId: string, capabilityId: string, value: boolean) =>
-        this.deviceManager.setCapability(deviceId, capabilityId, value),
-      triggerFlowBackedBinaryControlRequest: (params: {
-        deviceId: string;
-        name: string;
-        capabilityId: 'onoff' | 'evcharger_charging';
-        desired: boolean;
-        logContext: 'capacity' | 'capacity_control_off';
-        actuationMode: PlanActuationMode;
-      }) => this.triggerFlowBackedBinaryControlRequest(params),
+      actuator: this.deps.actuator,
     };
-  }
-
-  private async triggerFlowBackedBinaryControlRequest(params: {
-    deviceId: string;
-    name: string;
-    capabilityId: 'onoff' | 'evcharger_charging';
-    desired: boolean;
-    logContext: 'capacity' | 'capacity_control_off';
-    actuationMode: PlanActuationMode;
-  }): Promise<void> {
-    const { deviceId, capabilityId, desired } = params;
-    const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
-    const triggerCard = this.deps.homey.flow?.getTriggerCard?.(triggerCardId);
-    if (!triggerCard?.trigger) {
-      throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
-    }
-    await triggerCard.trigger({}, {
-      deviceId,
-    });
   }
 
   private recordShedActuation(deviceId: string, name: string, now: number): void {

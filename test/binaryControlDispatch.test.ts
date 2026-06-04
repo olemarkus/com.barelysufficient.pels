@@ -5,6 +5,8 @@ import {
   decideAndDispatchBinaryControl,
   dispatchBinaryControlDecision,
 } from '../lib/executor/binaryControlDispatch';
+import { createDeviceActuator } from '../lib/actuator/deviceActuator';
+import type { ActuatorTransport } from '../lib/actuator/deviceCommand';
 import { createPendingBinaryCommandStore } from '../lib/observer/pendingBinaryCommands';
 import { withGetSnapshotByDeviceId } from './utils/deviceObservationMock';
 import { captureLogger, type LoggerCapture } from './utils/loggerCapture';
@@ -24,15 +26,32 @@ const buildObservation = (snapshots: { id: string; currentOn?: boolean }[] = [])
     getSnapshot: vi.fn().mockReturnValue(snapshots),
   });
 
+/**
+ * Build a `BinaryControlTransport` whose write seam is a real actuator over the
+ * provided `setCapability` / `triggerFlowBackedBinaryControl` mocks. Binary
+ * dispatch routes through `actuator.apply`, so the underlying-mock assertions
+ * (native → setCapability, flow → trigger-not-setCapability) are identical to
+ * the pre-actuator transport's direct-method assertions.
+ */
 const buildTransport = (
   state: ReturnType<typeof createPlanEngineState>,
-  overrides: Partial<BinaryControlTransport>,
-): BinaryControlTransport => ({
-  observation: buildObservation(),
-  pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-  setCapability: vi.fn(),
-  ...overrides,
-});
+  ports: {
+    setCapability: ActuatorTransport['setCapability'];
+    triggerFlowBackedBinaryControl?: ActuatorTransport['triggerFlowBackedBinaryControl'];
+  },
+): BinaryControlTransport => {
+  const rejectMissingTrigger = () => Promise.reject(new Error('Flow-backed control trigger is unavailable'));
+  const actuator = createDeviceActuator({
+    setCapability: ports.setCapability,
+    applyDeviceTargets: () => Promise.resolve(),
+    triggerFlowBackedBinaryControl: ports.triggerFlowBackedBinaryControl ?? rejectMissingTrigger,
+  });
+  return {
+    observation: buildObservation(),
+    pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
+    actuator,
+  };
+};
 
 describe('decideBinaryControl (plan-side decision producer)', () => {
   it('returns a populated decision without recording pending state (observer owns the writes)', () => {
@@ -168,8 +187,8 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
   it('routes a flow-backed decision through the trigger and skips setCapability', async () => {
     const state = createPlanEngineState();
     const setCapability = vi.fn().mockResolvedValue(undefined);
-    const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
-    const transport = buildTransport(state, { setCapability, triggerFlowBackedBinaryControlRequest });
+    const triggerFlowBackedBinaryControl = vi.fn().mockResolvedValue(undefined);
+    const transport = buildTransport(state, { setCapability, triggerFlowBackedBinaryControl });
 
     const result = await dispatchBinaryControlDecision({
       decision: {
@@ -193,9 +212,12 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
 
     expect(result).toEqual({ ok: true });
     expect(setCapability).not.toHaveBeenCalled();
-    expect(triggerFlowBackedBinaryControlRequest).toHaveBeenCalledWith({
+    expect(triggerFlowBackedBinaryControl).toHaveBeenCalledWith('socket1', 'onoff', false);
+    // The rich-param log line (formerly the trigger-call args) is hoisted to the
+    // success path and read off the decision.
+    expect(logCapture.findEvent('flow_backed_binary_command_requested')).toMatchObject({
       deviceId: 'socket1',
-      name: 'Socket',
+      deviceName: 'Socket',
       capabilityId: 'onoff',
       desired: false,
       logContext: 'capacity',
@@ -242,7 +264,9 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
 
   it('returns dispatch_failed when the flow trigger is missing', async () => {
     const state = createPlanEngineState();
-    const transport = buildTransport(state, { setCapability: vi.fn(), triggerFlowBackedBinaryControlRequest: undefined });
+    // No flow trigger wired: the actuator's flow-backed branch rejects, so the
+    // dispatch fails the same way the old missing-trigger guard did.
+    const transport = buildTransport(state, { setCapability: vi.fn() });
 
     const result = await dispatchBinaryControlDecision({
       decision: {
