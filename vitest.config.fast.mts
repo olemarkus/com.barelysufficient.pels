@@ -33,7 +33,6 @@ export default defineConfig({
       'test/smartTasksWidgetBrowser.test.ts',
       'test/starvationRescueWidgetBrowser.test.ts',
       'test/headroomWidgetBrowser.test.ts',
-      'test/**/*.perf.test.ts',
     ],
     setupFiles: ['test/setup.ts'],
     clearMocks: true,

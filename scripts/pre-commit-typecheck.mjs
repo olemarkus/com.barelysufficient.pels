@@ -23,7 +23,6 @@ if (matches([
   'vitest.config.fast.mts',
   'vitest.config.dom.mts',
   'vitest.config.dom.fast.mts',
-  'vitest.config.perf.mts',
   'vitest-env.d.ts',
 ])) {
   commands.push({ label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] });

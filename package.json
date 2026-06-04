@@ -40,7 +40,6 @@
     "test:unit": "vitest run --config vitest.config.fast.mts && vitest run --config vitest.config.dom.fast.mts",
     "test:unit:ci": "node scripts/test-unit-ci.mjs",
     "test:unit:tz": "node scripts/run-timezone-tests.mjs",
-    "test:perf": "vitest run --config vitest.config.perf.mts",
     "test:integration": "vitest run --config vitest.config.fast.mts test/integration",
     "test:e2e:runtime": "vitest run --config vitest.config.fast.mts test/e2e",
     "ci:checks": "node scripts/ci-checks.mjs",

@@ -182,11 +182,11 @@ The taxonomy was adopted in waves:
    `setMockDrivers`, `MockDevice`) → `integration/`; specs importing exactly one concrete
    production file with no SDK mock → `unit/`; `*E2E`-named → `e2e/`.
 
-~165 flat `test/*.test.ts` specs remain — the ones whose tier needs per-file judgment
+~64 flat `test/*.test.ts` specs remain — the ones whose tier needs per-file judgment
 (multi-subsystem imports without the app harness, SDK-mock-but-no-app, and the
-environment-special `*Browser.test.ts` / `settings-ui.test.ts` / `*.perf.test.ts`, which are
-pinned by explicit include lists in the dom/perf vitest configs and need those lists updated
-when moved). They migrate opportunistically — when you touch a spec, move it into its tier
+environment-special `*Browser.test.ts` / `settings-ui.test.ts`, which are pinned by an explicit
+include list in the dom vitest config and need that list updated when moved). They migrate
+opportunistically — when you touch a spec, move it into its tier
 folder (bumping import depth per the rule above, then `knip` to catch type-only-import depth
 errors) as part of the same change. Tracked in `TODO.md`.
 
