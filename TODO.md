@@ -112,10 +112,10 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
       *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
       imports → `unit/`, `*E2E` → `e2e/`); then careful per-file passes over the
-      `dailyBudget*` / `device*` / `app*` and `deferred*` / `objective*` clusters (read each, unit
-      vs integration by subject), plus device-suite e2e reshapes.
-      ~103 flat specs remain — mostly the `plan*` (38) cluster, which needs a dedicated pass, plus
-      odds-and-ends needing per-file judgment, the
+      `dailyBudget*` / `device*` / `app*`, `deferred*` / `objective*`, and `plan*` clusters (read
+      each, unit vs integration by subject — plan-layer logic biased to integration), plus
+      device-suite e2e reshapes.
+      ~66 flat specs remain — long-tail odds-and-ends needing per-file judgment, the
       `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
       manual path fix to move), and the 7 environment-special `*Browser.test.ts` /
       `settings-ui.test.ts` / `*.perf.test.ts` (jsdom / explicit-include in the dom/perf configs
