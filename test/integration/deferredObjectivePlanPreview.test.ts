@@ -5,20 +5,20 @@ import {
   previewDeferredObjectivePlan,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
-} from '../lib/objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import {
   buildHoursFromHorizonPlan,
   resolveProjectedFinishAtMs,
-} from '../lib/objectives/deferredObjectives/activePlanSchedule';
-import { buildDeferredObjectivePolicyWindowPrices } from '../lib/objectives/deferredObjectives/policyHorizon';
-import type { ActivePlanPersistDeps } from '../lib/objectives/deferredObjectives/activePlanRecorder';
-import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
-import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../lib/dailyBudget/dailyBudgetTypes';
-import type { PowerTrackerState } from '../lib/power/tracker';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
+} from '../../lib/objectives/deferredObjectives/activePlanSchedule';
+import { buildDeferredObjectivePolicyWindowPrices } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredObjectives/settings';
+import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import type {
   DeferredObjectiveActivePlansV1,
-} from '../packages/contracts/src/deferredObjectiveActivePlans';
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);

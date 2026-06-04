@@ -1,6 +1,6 @@
-import { handleDeferredDeadlineReached } from '../setup/appInit/deferredObjectiveLifecycle';
-import { createAppContextMock } from './helpers/appContextTestHelpers';
-import type { AppContext } from '../lib/app/appContext';
+import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
 
 const DEADLINE = 1_000_000;
 const GRACE_MS = 5 * 60 * 1000;

@@ -2,12 +2,12 @@ import {
   createDeferredObjectiveHoursRemainingBus,
   createDeferredObjectiveHoursRemainingTracker,
   type DeferredObjectiveHoursRemainingEvent,
-} from '../lib/objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import {
   HOURS_REMAINING_LATCH_VERSION,
   type PersistedHoursRemainingLatch,
-} from '../lib/objectives/deferredObjectives/hoursRemainingCrossings';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+} from '../../lib/objectives/deferredObjectives/hoursRemainingCrossings';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 
 const HOUR_MS = 60 * 60 * 1000;
 

@@ -1,5 +1,5 @@
-import { DeferredObjectiveDecorationController } from '../lib/objectives/deferredObjectives';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
+import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 const buildDevice = (): PlanInputDevice => ({
   id: 'dev',

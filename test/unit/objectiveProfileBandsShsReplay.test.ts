@@ -1,8 +1,8 @@
 import {
   OBJECTIVE_PROFILE_MIN_BAND_SAMPLES,
   fitBandsFromSamples,
-} from '../lib/objectives/bands';
-import type { ObjectiveProfileSampleObservation } from '../lib/objectives/types';
+} from '../../lib/objectives/bands';
+import type { ObjectiveProfileSampleObservation } from '../../lib/objectives/types';
 
 // Captured 2026-05-23 from a Mill v2 mock driven through two consecutive
 // regimes designed to produce two clearly separated `kwhPerUnit` clusters:

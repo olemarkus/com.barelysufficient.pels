@@ -1,8 +1,8 @@
 // Unit tests for the per-replan revision-log helpers introduced in
 // v2.7.2 PR 5: `revisionReason` (label resolver) and
 // `formatPlanHistoryRevisionEntry` (history-detail row formatter).
-import { revisionReason } from '../packages/shared-domain/src/deadlineLabels';
-import { formatPlanHistoryRevisionEntry } from '../packages/shared-domain/src/deferredPlanHistory';
+import { revisionReason } from '../../packages/shared-domain/src/deadlineLabels';
+import { formatPlanHistoryRevisionEntry } from '../../packages/shared-domain/src/deferredPlanHistory';
 
 describe('revisionReason', () => {
   it('maps prices_revised to "Tomorrow’s prices published"', () => {

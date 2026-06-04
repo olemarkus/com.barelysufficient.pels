@@ -288,8 +288,8 @@ boundary. The fix instead removes the unconditional current-bucket skip in
 current hour is filled cheapest-first like any other hour, so the device stays on and the filled
 hour self-commits for subsequent cycles. The cheapest-first sort still defers an expensive current
 hour behind cheaper future hours, so price-shaped waiting is preserved. Regression:
-`test/deferredObjectiveCommitmentRolloverSimulation.test.ts` plus the `expandCommittedAllocation`
-cases in `test/deferredObjectiveHorizon.test.ts`.
+`test/integration/deferredObjectiveCommitmentRolloverSimulation.test.ts` plus the `expandCommittedAllocation`
+cases in `test/unit/deferredObjectiveHorizon.test.ts`.
 
 ## Update (2026-06-01): the active-plan WRITE moves to the clock; revisions settle once per hour at `:58`
 

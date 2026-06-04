@@ -2,15 +2,15 @@ import {
   buildShedActuationTransport,
   planTerminalEnding,
   resolveTerminalShedCommand,
-} from '../setup/appInit/deferredObjectiveLifecycle';
-import { applyShedBehavior } from '../lib/device/shedBehaviorActuation';
+} from '../../setup/appInit/deferredObjectiveLifecycle';
+import { applyShedBehavior } from '../../lib/device/shedBehaviorActuation';
 import type {
   ShedActuationCommand,
   ShedActuationObservedState,
   ShedActuationTransport,
-} from '../lib/device/shedBehaviorActuation';
-import type { AppContext } from '../lib/app/appContext';
-import type { PlanInputDevice } from '../lib/plan/planTypes';
+} from '../../lib/device/shedBehaviorActuation';
+import type { AppContext } from '../../lib/app/appContext';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 const binaryOff: ShedActuationCommand = { kind: 'binary_off', capabilityId: 'onoff', flowBacked: false };
 const setTemp: ShedActuationCommand = { kind: 'set_temperature', targetValue: 5 };

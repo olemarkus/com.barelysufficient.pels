@@ -2,19 +2,19 @@ import {
   DeferredObjectiveActivePlanRecorder,
   type ActivePlanFlowCardSeed,
   type ActivePlanPersistDeps,
-} from '../lib/objectives/deferredObjectives/activePlanRecorder';
+} from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import {
   normalizeDeferredObjectiveActivePlans,
-} from '../lib/objectives/deferredObjectives/activePlanSettings';
+} from '../../lib/objectives/deferredObjectives/activePlanSettings';
 import type {
   DeferredObjectiveDiagnostic,
   DeferredObjectiveHorizonPlan,
   DeferredObjectivePlannedBucket,
-} from '../lib/objectives/deferredObjectives';
+} from '../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
-} from '../packages/contracts/src/deferredObjectiveActivePlans';
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
 // The recorder settles a replan revision only once per clock hour, at/after the

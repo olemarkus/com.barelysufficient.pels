@@ -67,7 +67,7 @@ describe('DeadlinePlanHistory', () => {
   // Smart-tasks polish PR-7 — muted "why" reason line under the progress/target
   // line on Missed cards so the scanning user sees the cause without tap-through.
   // The full branch matrix of `formatPlanHistoryMissedReason` is pinned in
-  // `test/deferredPlanHistoryPostmortem.test.ts`; this test only confirms the
+  // `test/unit/deferredPlanHistoryPostmortem.test.ts`; this test only confirms the
   // helper's output reaches `.plan-history-card__reason` in the rendered list
   // card and stays hidden on Succeeded / Abandoned rows.
   it('renders the muted reason line on Missed list cards', () => {
@@ -127,7 +127,7 @@ describe('DeadlinePlanHistory', () => {
   it('surfaces the planned-hour coverage line from the helper on the list card', () => {
     // DOM smoke test only — the helper's branch math (partial coverage, N=0 actionable
     // case, singularization, no-plan suppression) is pinned in
-    // `test/deferredPlanHistoryObservedCoverage.test.ts`. This test only confirms the
+    // `test/unit/deferredPlanHistoryObservedCoverage.test.ts`. This test only confirms the
     // helper's output reaches `.plan-history-card__coverage` in the rendered list card,
     // using a representative N=0/M=5 missed run because that case is the rewrite's
     // headline motivation (planner allocated active hours, device never drew power).
@@ -213,7 +213,7 @@ describe('DeadlinePlanHistory', () => {
   // list card mirrors the threshold treatment from the history-detail hero so
   // users scanning past tasks see the same outlier signal at both surfaces.
   // The thresholds (> 5 °C thermal / > 10 % EV) and copy shape ("Overshoot N
-  // unit") are pinned in `test/deferredPlanHistoryPostmortem.test.ts`.
+  // unit") are pinned in `test/unit/deferredPlanHistoryPostmortem.test.ts`.
   it('renders the muted overshoot line on the past-list card when a Succeeded run overshoots > 5 °C', () => {
     const entry = buildEntry({
       outcome: 'met',
