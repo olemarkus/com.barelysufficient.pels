@@ -5,6 +5,7 @@ import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { makeFlowBackedBinaryTrigger } from '../../setup/appInit/buildDeviceActuator';
 import {
   observeNativeSteppedLoadCommandAdapter,
   setObservedNativeSteppedLoadStep,
@@ -132,20 +133,21 @@ const buildExecutor = (
       return { requested: true, transport: 'flow' as const };
     }),
   });
+  const flowMock = {
+    getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
+  } as unknown as Homey.App['homey']['flow'];
   const deps: PlanExecutorDeps = {
     homey: {
       settings: { set: vi.fn() },
-      flow: {
-        getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
-      },
+      flow: flowMock,
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
-    // Route step writes through the actuator over the SAME device-manager stepped
-    // method, so the stepped binding behaves identically to production wiring.
+    // Route writes through the actuator over the SAME device-manager methods + the
+    // shared production flow-trigger factory, so routing matches production wiring.
     actuator: createDeviceActuator({
       setCapability: (deviceId, capabilityId, value) => deviceManager.setCapability(deviceId, capabilityId, value),
       applyDeviceTargets: async () => undefined,
-      triggerFlowBackedBinaryControl: async () => undefined,
+      triggerFlowBackedBinaryControl: makeFlowBackedBinaryTrigger(flowMock),
       requestSteppedLoadStep: (params) => deviceManager.requestSteppedLoadStep(params),
     }),
     getCapacityGuard: () => undefined,

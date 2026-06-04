@@ -160,7 +160,9 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     buildBinaryControlTransport: () => ({
       observation,
       pendingBinaryCommandStore,
-      setCapability: (deviceId, capabilityId, value) => setCapability(deviceId, capabilityId, value),
+      // Binary writes route through the actuator over the same harness
+      // `setCapability`, so `setCapabilityCalls` still observes onoff writes.
+      actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     }),
     getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},
@@ -221,7 +223,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
     buildBinaryControlTransport: () => ({
       observation,
       pendingBinaryCommandStore,
-      setCapability: (deviceId, capabilityId, value) => setCapability(deviceId, capabilityId, value),
+      actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     }),
     getRestoreLogSource: () => 'current_plan',
     recordShedActuation: () => {},

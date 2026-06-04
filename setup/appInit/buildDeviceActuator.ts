@@ -3,6 +3,23 @@ import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceAc
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import { resolveFlowBackedBinaryTriggerCardId } from '../../lib/executor/planExecutorPredicates';
 
+// Single definition of the flow-backed binary trigger so production wiring and
+// tests resolve the SAME trigger card — no hand-copied closure that can drift.
+// Throws when the card is unavailable: a flow-backed binary must never silently
+// no-op (a direct setCapability would, leaving the load on).
+export const makeFlowBackedBinaryTrigger = (
+  flow: AppContext['homey']['flow'],
+) => async (
+  deviceId: string,
+  capabilityId: 'onoff' | 'evcharger_charging',
+  desired: boolean,
+): Promise<void> => {
+  const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
+  const triggerCard = flow?.getTriggerCard?.(triggerCardId);
+  if (!triggerCard?.trigger) throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
+  await triggerCard.trigger({}, { deviceId });
+};
+
 // Compose the device actuator from app wiring: the device-manager writes plus a
 // flow-backed binary control trigger (Homey Flow card) for devices whose binary
 // capability is flow-backed. Transport stays the sole SDK owner; this wraps it as
@@ -24,12 +41,7 @@ export const buildDeviceActuator = (ctx: AppContext): Actuator | null => {
     // `=== undefined` (not truthiness): the type says it's always defined, but tests pass a
     // partial deviceManager without it, so the runtime guard is real.
     ...(requestSteppedLoadStep === undefined ? {} : { requestSteppedLoadStep }),
-    triggerFlowBackedBinaryControl: async (deviceId, capabilityId, desired) => {
-      const triggerCardId = resolveFlowBackedBinaryTriggerCardId(capabilityId, desired);
-      const triggerCard = ctx.homey.flow?.getTriggerCard?.(triggerCardId);
-      if (!triggerCard?.trigger) throw new Error(`Flow trigger ${triggerCardId} is unavailable`);
-      await triggerCard.trigger({}, { deviceId });
-    },
+    triggerFlowBackedBinaryControl: makeFlowBackedBinaryTrigger(ctx.homey.flow),
   };
   return createDeviceActuator(actuatorTransport);
 };

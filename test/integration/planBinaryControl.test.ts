@@ -251,7 +251,7 @@ describe('plan binary control helpers', () => {
 
   it('requests flow-backed binary control through a trigger instead of writing the native capability', async () => {
     const state = createPlanEngineState();
-    const triggerFlowBackedBinaryControlRequest = vi.fn().mockResolvedValue(undefined);
+    const triggerFlowBackedBinaryControl = vi.fn().mockResolvedValue(undefined);
     const log = vi.fn();
     const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
     const deviceManager = withGetSnapshotByDeviceId({
@@ -262,7 +262,7 @@ describe('plan binary control helpers', () => {
     await expect(setBinaryControl({
       state,
       deviceManager: deviceManager as never,
-      triggerFlowBackedBinaryControlRequest,
+      triggerFlowBackedBinaryControl,
       log,
       logDebug: vi.fn(),
       error: vi.fn(),
@@ -284,14 +284,7 @@ describe('plan binary control helpers', () => {
       reason: 'shedding',
     })).resolves.toBe(true);
 
-    expect(triggerFlowBackedBinaryControlRequest).toHaveBeenCalledWith({
-      deviceId: 'socket1',
-      name: 'Socket',
-      capabilityId: 'onoff',
-      desired: false,
-      logContext: 'capacity',
-      actuationMode: 'plan',
-    });
+    expect(triggerFlowBackedBinaryControl).toHaveBeenCalledWith('socket1', 'onoff', false);
     expect(deviceManager.setCapability).not.toHaveBeenCalled();
     expect(logCapture.findEvent('flow_backed_binary_command_requested')).toMatchObject({
       deviceId: 'socket1',

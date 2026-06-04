@@ -14,7 +14,7 @@ import { decideBinaryControl } from '../plan/planBinaryControl';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import { isFlowBackedBinaryControl } from '../plan/planBinaryControlHelpers';
+import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
 
 /**
@@ -45,15 +45,12 @@ export type DispatchBinaryControlResult =
 export type BinaryControlTransport = {
   observation: DeviceObservation;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
-  setCapability: (deviceId: string, capabilityId: string, value: boolean) => Promise<unknown>;
-  triggerFlowBackedBinaryControlRequest?: (params: {
-    deviceId: string;
-    name: string;
-    capabilityId: 'onoff' | 'evcharger_charging';
-    desired: boolean;
-    logContext: BinaryControlLogContext;
-    actuationMode: BinaryControlActuationMode;
-  }) => Promise<void>;
+  /**
+   * The single device write seam. Binary control routes through
+   * `actuator.apply({ kind: 'binary', ... })`; the actuator owns the
+   * flow-vs-native routing on the producer-resolved `flowBacked` flag.
+   */
+  actuator: Actuator;
 };
 
 const logger = getLogger('executor/binary-dispatch');
@@ -156,13 +153,12 @@ function recordPendingForDispatch(params: {
   snapshot?: TargetDeviceSnapshot;
 }): void {
   const { store, decision, snapshot } = params;
-  const flowBackedControl = isFlowBackedBinaryControl(snapshot, decision.capabilityId);
   store.record(decision.deviceId, {
     capabilityId: decision.capabilityId,
     desired: decision.desired,
     startedMs: Date.now(),
     pendingMs: resolveBinaryCommandPendingMs(snapshot?.communicationModel),
-    flowBackedControl,
+    flowBackedControl: decision.flowBackedControl,
     logContext: decision.logContext,
     restoreSource: decision.restoreSource,
     actuationMode: decision.actuationMode,
@@ -176,59 +172,24 @@ async function dispatchBinaryCommand(params: {
   transport: BinaryControlTransport;
 }): Promise<void> {
   const { decision, transport } = params;
+  await transport.actuator.apply({
+    kind: 'binary',
+    deviceId: decision.deviceId,
+    control: decision.capabilityId,
+    desired: decision.desired,
+    flowBacked: decision.flowBackedControl,
+  });
   if (decision.flowBackedControl) {
-    await requestFlowBackedBinaryControl({
-      triggerFlowBackedBinaryControlRequest: transport.triggerFlowBackedBinaryControlRequest,
+    logger.info({
+      event: 'flow_backed_binary_command_requested',
       deviceId: decision.deviceId,
-      name: decision.name,
+      deviceName: decision.name,
       capabilityId: decision.capabilityId,
       desired: decision.desired,
       logContext: decision.logContext,
       actuationMode: decision.actuationMode,
     });
-    return;
   }
-  await transport.setCapability(decision.deviceId, decision.capabilityId, decision.desired);
-}
-
-async function requestFlowBackedBinaryControl(params: {
-  triggerFlowBackedBinaryControlRequest?: BinaryControlTransport['triggerFlowBackedBinaryControlRequest'];
-  deviceId: string;
-  name: string;
-  capabilityId: 'onoff' | 'evcharger_charging';
-  desired: boolean;
-  logContext: BinaryControlLogContext;
-  actuationMode: BinaryControlActuationMode;
-}): Promise<void> {
-  const {
-    triggerFlowBackedBinaryControlRequest,
-    deviceId,
-    name,
-    capabilityId,
-    desired,
-    logContext,
-    actuationMode,
-  } = params;
-  if (!triggerFlowBackedBinaryControlRequest) {
-    throw new Error(`Flow-backed control trigger is unavailable for ${capabilityId}`);
-  }
-  await triggerFlowBackedBinaryControlRequest({
-    deviceId,
-    name,
-    capabilityId,
-    desired,
-    logContext,
-    actuationMode,
-  });
-  logger.info({
-    event: 'flow_backed_binary_command_requested',
-    deviceId,
-    deviceName: name,
-    capabilityId,
-    desired,
-    logContext,
-    actuationMode,
-  });
 }
 
 function emitBinaryCommandSuccess(params: {
