@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import type { ObservedHomePower } from './observedHomePower';
 
 /**
  * Observer-owned typed observation events.
@@ -78,6 +79,13 @@ export type PlanReconcileObservedEvent = {
 export type ObservedStateEmitterDispatcher = {
     observedStateChanged: (event: ObservedStateChangedEvent) => void;
     planReconcile: (event: PlanReconcileObservedEvent) => void;
+    /**
+     * Push the latest whole-home power reading (watts) into observer's
+     * `ObservedHomePower` holder. The *source* is a Homey SDK energy report
+     * read in the device layer; transport resolves the scalar and hands it
+     * here. PR2a of the observer/transport split.
+     */
+    setHomePowerW: (w: number | null) => void;
 };
 
 /**
@@ -105,14 +113,17 @@ export class ObservedStateEmitter {
     }
 
     /**
-     * Build a dispatcher bound to this emitter. Wiring passes the returned
-     * object into `DeviceTransport`'s constructor so transport's translation
-     * pipeline routes through observer's emitter without importing observer.
+     * Build a dispatcher bound to this emitter and the observer-owned
+     * `ObservedHomePower` holder. Wiring passes the returned object into
+     * `DeviceTransport`'s constructor so transport's translation pipeline
+     * routes through observer's emitter — and its home-power reports through
+     * observer's home-power holder — without importing observer.
      */
-    asDispatcher(): ObservedStateEmitterDispatcher {
+    asDispatcher(homePower: ObservedHomePower): ObservedStateEmitterDispatcher {
         return {
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
             planReconcile: (event) => this.emitPlanReconcile(event),
+            setHomePowerW: (w) => homePower.setHomePowerW(w),
         };
     }
 }

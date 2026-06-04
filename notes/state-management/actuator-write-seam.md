@@ -11,8 +11,12 @@ box the original split did not name — the actuator.
 > PR 1b executor migration are **shipped** (stepped #1485, target #1489, binary
 > #1490, and PR1b-final, which removed the executor's dead transport write members
 > and added the `no-actuator-bypass` cruiser rule). The actuator is now the sole
-> device write path. **PR 2 (store→observer) and PR 3 (tighten) remain
-> outstanding.** Train sequence at the end.
+> device write path. **PR 2 split:** **PR2a (the `getHomePowerW` read scalar →
+> observer) is shipped** — `lib/observer/observedHomePower.ts` (`ObservedHomePower`)
+> now owns the whole-home power read; transport pushes it via
+> `observedStateDispatcher.setHomePowerW`. **PR2b (snapshot store → observer) is
+> DEFERRED BY DECISION** (dual-store risk, no behavior change — see PR 2 below).
+> **PR 3 (tighten) remains outstanding.** Train sequence at the end.
 > Read [`CLAUDE.md`](./CLAUDE.md) (device-state invariants) and
 > [`observer-transport-split.md`](./observer-transport-split.md) first — this
 > note assumes the `planned / commanded / observed / pending` vocabulary and
@@ -44,7 +48,7 @@ would rot. The honest mapping:
 | Conceptual box | Physical home | Caveat |
 |---|---|---|
 | transport | `lib/device/**` (esp. `lib/device/transport/`) | `lib/device/` is **not** purely the SDK seam — it also carries the producer seams (`deviceActionProjection`, `deviceResidualKw`), per-device runtime (`managerRuntime`), and today the `shedBehaviorActuation` write leak. |
-| observer | `lib/observer/**` | Clean. (Store currently still on transport — PR 2.) |
+| observer | `lib/observer/**` | Clean. Owns the home-power read scalar (PR2a). The snapshot store stays on transport (PR2b, deferred by decision). |
 | plan | `lib/plan/**` | Clean core, but its **inputs** are separate peers: `power`, `price`, `dailyBudget`, `objectives` feed plan but aren't loop stages — they sit *beside* it as producers (`executor > plan > {power, dailyBudget, price, objectives, observer}`). |
 | executor | `lib/executor/**` | Clean. Loses its write half to the actuator. |
 | **actuator** | `lib/actuator/**` | **New** — the only dir this train creates. |
@@ -62,7 +66,8 @@ Dirs that don't belong to any loop stage:
 - **`lib/planContract/`, `lib/flowApi/`, `lib/diagnostics/`, `lib/logging/`,
   `lib/utils/`** — cross-cutting / infra, orthogonal to the loop.
 - **`lib/app/`** — sunsetting wiring; holds `appSnapshotHelpers`
-  (a snapshot-store reader that PR 2 re-points).
+  (its home-power read was re-pointed to the observer in PR2a; it still reads
+  the snapshot store from transport, which stays put per PR2b's deferral).
 
 **Scope discipline:** this train does **not** re-home the producer seams out of
 `lib/device/`, nor split `lib/objectives/`, nor finish `lib/app/` dissolution.
@@ -369,14 +374,40 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
   `flowBacked` the command already carries is a follow-up, decoupled from the write
   seam.
 
-**PR 2 — move the snapshot store to observer (the read model).**
-- Relocate `latestSnapshot` / `latestSnapshotById` / `getHomePowerW` from
-  `DeviceTransport` to the observer store.
-- Re-point the two external readers: `lib/app/appSnapshotHelpers.ts:387`
-  (`getHomePowerW`) and `lib/plan/snapshotWarmupGate.ts` (`latestSnapshot`).
-- Observer receives `homePowerW` via event/contract (must not statically import
-  `lib/power/**`).
-- This finishes the deferred bullet from `observer-transport-split.md`.
+**PR 2 — move the read model to observer.** Split into PR2a (shipped) and PR2b
+(deferred by decision) once the two halves were found to have very different
+risk profiles.
+
+**PR2a — `getHomePowerW` → observer. *Shipped.***
+- New `lib/observer/observedHomePower.ts` (`ObservedHomePower`) owns the
+  whole-home power scalar. `DeviceTransport` no longer caches `latestHomePowerW`
+  or exposes `getHomePowerW()`; it is removed from the `DeviceObservation`
+  interface too.
+- `updateHomePowerFromReport` pushes the resolved scalar to the observer via a
+  new `setHomePowerW(w)` method on the `observedStateDispatcher` callback bag —
+  the same injection pattern as the event dispatcher and `pendingPredicate`;
+  transport still does not statically import observer.
+- Re-pointed the sole external reader, `lib/app/appSnapshotHelpers.ts`
+  (`recordImplicitHomeyEnergySample`), to a `getHomePowerW` dep wired in `app.ts`
+  to read from the observer (lib/app → observer is an allowed edge). The
+  `homey_energy` poll path is unchanged: `pollHomePowerW()` still returns the
+  resolved scalar directly to `HomeyEnergyPollSource`.
+- **Source correction:** the value originates from a Homey SDK energy report read
+  in the device layer (`managerFetch` → `managerHomeyApi` → `managerEnergy`), not
+  from `lib/power/`. Observer introduces no `lib/power/**` import — the original
+  "via event/contract from `lib/power/`" wording was wrong about the source.
+
+**PR2b — snapshot store → observer. *DEFERRED BY DECISION (not done).***
+- Relocating `latestSnapshot` / `latestSnapshotById` from `DeviceTransport` to
+  the observer would be a **dual-store**: transport keeps the array as a pipeline
+  scratchpad (the parse/merge/realtime pipeline mutates it in place during
+  `refreshSnapshot`), and transport cannot import observer
+  (`no-device-to-peer-except-power`). The move buys **no behavior change** while
+  adding a high snapshot-rollback regression surface (the merge/realtime
+  freshness invariants in `CLAUDE.md`).
+- Not worth doing until the read-side parse/merge pipeline itself relocates out
+  of transport. The external snapshot reader `lib/plan/snapshotWarmupGate.ts`
+  stays on transport for now.
 
 **PR 3 — tighten.**
 - Promote warn-level rules to error; retire transitional allowances.

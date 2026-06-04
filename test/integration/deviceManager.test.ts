@@ -830,8 +830,20 @@ describe('DeviceTransport', () => {
             expect(loggerMock.error).not.toHaveBeenCalled();
         });
 
-        it('stores cumulative home power from live report in getHomePowerW', async () => {
-            await deviceManager.init();
+        it('pushes cumulative home power from live report to the observer dispatcher', async () => {
+            // PR2a of the observer/transport split: transport no longer caches
+            // home power; it pushes the Homey-SDK-sourced scalar to observer via
+            // the injected `observedStateDispatcher.setHomePowerW`.
+            const setHomePowerW = vi.fn();
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+                ...withRealBinarySettle(),
+                observedStateDispatcher: {
+                    observedStateChanged: vi.fn(),
+                    planReconcile: vi.fn(),
+                    setHomePowerW,
+                },
+            });
+            await dispatchingManager.init();
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1', name: 'Heater', class: 'heater',
@@ -846,13 +858,22 @@ describe('DeviceTransport', () => {
                 ],
             });
 
-            await deviceManager.refreshSnapshot();
+            await dispatchingManager.refreshSnapshot();
 
-            expect(deviceManager.getHomePowerW()).toBe(4500);
+            expect(setHomePowerW).toHaveBeenCalledWith(4500);
         });
 
-        it('returns null from getHomePowerW when no cumulative item exists', async () => {
-            await deviceManager.init();
+        it('pushes null home power when no cumulative item exists', async () => {
+            const setHomePowerW = vi.fn();
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+                ...withRealBinarySettle(),
+                observedStateDispatcher: {
+                    observedStateChanged: vi.fn(),
+                    planReconcile: vi.fn(),
+                    setHomePowerW,
+                },
+            });
+            await dispatchingManager.init();
             mockApiGet.mockResolvedValue({
                 dev1: {
                     id: 'dev1', name: 'Heater', class: 'heater',
@@ -864,9 +885,9 @@ describe('DeviceTransport', () => {
                 items: [{ type: 'device', id: 'dev1', values: { W: 500 } }],
             });
 
-            await deviceManager.refreshSnapshot();
+            await dispatchingManager.refreshSnapshot();
 
-            expect(deviceManager.getHomePowerW()).toBeNull();
+            expect(setHomePowerW).toHaveBeenCalledWith(null);
         });
 
         it('includes airtreatment temperature devices in snapshot', async () => {

@@ -2772,7 +2772,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     await initApp(app);
     const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2100);
+    const getHomePowerSpy = vi.spyOn((app as any).observedHomePower, 'getHomePowerW').mockReturnValue(2100);
 
     try {
       await (app as any).refreshTargetDevicesSnapshot({ recordHomeyEnergySample: false });
@@ -2792,7 +2792,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     await initApp(app);
     const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = vi.spyOn((app as any).deviceManager, 'getHomePowerW').mockReturnValue(2600);
+    const getHomePowerSpy = vi.spyOn((app as any).observedHomePower, 'getHomePowerW').mockReturnValue(2600);
 
     try {
       await (app as any).refreshTargetDevicesSnapshot();

@@ -7,6 +7,7 @@ import {
   type ObservedStateEmitterDispatcher,
   type PlanReconcileObservedEvent,
 } from '../lib/observer/observedStateEvents';
+import { ObservedHomePower } from '../lib/observer/observedHomePower';
 import {
   PLAN_LIVE_STATE_OBSERVED_EVENT,
   PLAN_RECONCILE_REALTIME_UPDATE_EVENT,
@@ -40,9 +41,15 @@ const _planReconcileEventParity: _MutuallyAssignable<
   Parameters<TransportObservedStateDispatcher['planReconcile']>[0]
 > = [true, true];
 
+const _setHomePowerWParity: _MutuallyAssignable<
+  Parameters<ObservedStateEmitterDispatcher['setHomePowerW']>[0],
+  Parameters<TransportObservedStateDispatcher['setHomePowerW']>[0]
+> = [true, true];
+
 // Reference the values so the compiler doesn't strip them as unused.
 void _observedStateChangedEventParity;
 void _planReconcileEventParity;
+void _setHomePowerWParity;
 
 describe('ObservedStateEmitter', () => {
   it('preserves the legacy event-name strings for operator/log compatibility', () => {
@@ -67,7 +74,7 @@ describe('ObservedStateEmitter', () => {
 
   it('emits observed-state-changed events through the dispatcher to subscribed listeners', () => {
     const emitter = new ObservedStateEmitter();
-    const dispatcher = emitter.asDispatcher();
+    const dispatcher = emitter.asDispatcher(new ObservedHomePower());
     const listener = vi.fn();
     emitter.onObservedStateChanged(listener);
 
@@ -86,7 +93,7 @@ describe('ObservedStateEmitter', () => {
 
   it('emits plan-reconcile events through the dispatcher to subscribed listeners', () => {
     const emitter = new ObservedStateEmitter();
-    const dispatcher = emitter.asDispatcher();
+    const dispatcher = emitter.asDispatcher(new ObservedHomePower());
     const listener = vi.fn();
     emitter.onPlanReconcile(listener);
 
@@ -140,5 +147,43 @@ describe('ObservedStateEmitter', () => {
 
     expect(observedListener).toHaveBeenCalledTimes(1);
     expect(reconcileListener).not.toHaveBeenCalled();
+  });
+
+  it('routes home-power reports through the dispatcher into the observer holder', () => {
+    // PR2a of the observer/transport split: transport pushes the
+    // Homey-SDK-sourced home-power scalar via the dispatcher; observer's
+    // `ObservedHomePower` holder owns the read.
+    const emitter = new ObservedStateEmitter();
+    const homePower = new ObservedHomePower();
+    const dispatcher = emitter.asDispatcher(homePower);
+
+    expect(homePower.getHomePowerW()).toBeNull();
+
+    dispatcher.setHomePowerW(2400);
+    expect(homePower.getHomePowerW()).toBe(2400);
+
+    dispatcher.setHomePowerW(null);
+    expect(homePower.getHomePowerW()).toBeNull();
+  });
+});
+
+describe('ObservedHomePower', () => {
+  it('returns null before any report is pushed', () => {
+    expect(new ObservedHomePower().getHomePowerW()).toBeNull();
+  });
+
+  it('returns the last pushed reading', () => {
+    const homePower = new ObservedHomePower();
+    homePower.setHomePowerW(1500);
+    expect(homePower.getHomePowerW()).toBe(1500);
+    homePower.setHomePowerW(3200);
+    expect(homePower.getHomePowerW()).toBe(3200);
+  });
+
+  it('can be cleared back to null', () => {
+    const homePower = new ObservedHomePower();
+    homePower.setHomePowerW(800);
+    homePower.setHomePowerW(null);
+    expect(homePower.getHomePowerW()).toBeNull();
   });
 });

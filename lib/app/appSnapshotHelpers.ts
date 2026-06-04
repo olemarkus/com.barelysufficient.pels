@@ -79,6 +79,13 @@ export class AppSnapshotHelpers {
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
     recordPowerSample: (powerW: number) => Promise<void>;
+    /**
+     * Reads the observer-owned whole-home power scalar (PR2a of the
+     * observer/transport split). The value originates from a Homey SDK energy
+     * report in the device layer; transport pushes it to the observer's holder
+     * and this reads it back. Wiring (`lib/app/`) → observer is an allowed edge.
+     */
+    getHomePowerW: () => number | null;
   }) {}
 
   getPostActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
@@ -370,11 +377,10 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(deviceManager, options);
+    await this.recordImplicitHomeyEnergySample(options);
   }
 
   private async recordImplicitHomeyEnergySample(
-    deviceManager: DeviceTransport,
     options: RefreshTargetDevicesSnapshotOptions,
   ): Promise<void> {
     if (
@@ -384,7 +390,7 @@ export class AppSnapshotHelpers {
       return;
     }
 
-    const homePowerW = deviceManager.getHomePowerW();
+    const homePowerW = this.deps.getHomePowerW();
     if (typeof homePowerW === 'number') {
       await this.deps.recordPowerSample(homePowerW);
     }
