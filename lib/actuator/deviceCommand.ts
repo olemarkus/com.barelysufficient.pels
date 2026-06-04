@@ -28,6 +28,12 @@ export type DeviceCommand =
   | {
     kind: 'target';
     deviceId: string;
+    /**
+     * Present → write the single addressed capability via `setCapability`
+     * (propagates failures so the caller's retry/pending path fires). Absent →
+     * batch via `applyDeviceTargets` (swallows errors + refreshes).
+     */
+    capabilityId?: string;
     value: number;
     /** Free-text context tag forwarded to transport for diagnostics. */
     contextInfo?: string;

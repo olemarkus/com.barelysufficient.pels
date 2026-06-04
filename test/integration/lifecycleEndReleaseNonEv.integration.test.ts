@@ -30,6 +30,8 @@
 import { applyShedReleaseIntent } from '../../lib/executor/shedReleaseActuation';
 import { applyBinarySheddingToDevice, type PlanExecutorBinaryContext } from '../../lib/executor/binaryExecutor';
 import type { PlanExecutorTargetContext } from '../../lib/executor/targetExecutor';
+import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   createPendingBinaryCommandStore,
@@ -56,6 +58,18 @@ type SetCapabilityCall = {
   capabilityId: string;
   value: unknown;
 };
+
+// Wrap the harness `setCapability` in an actuator transport so the executor's
+// capability-addressed setpoint write (PR1b-2) routes through the single seam.
+// Only `setCapability` is exercised by the target path; the other surfaces are
+// inert stubs that throw if an unexpected channel is hit.
+const buildActuatorTransport = (
+  setCapability: (deviceId: string, capabilityId: string, value: unknown) => Promise<unknown>,
+): ActuatorTransport => ({
+  setCapability,
+  applyDeviceTargets: () => Promise.reject(new Error('applyDeviceTargets not expected in release test')),
+  triggerFlowBackedBinaryControl: () => Promise.reject(new Error('flow binary not expected in release test')),
+});
 
 const buildBinaryHeaterSnapshot = (): TargetDeviceSnapshot => ({
   id: 'heater-1',
@@ -161,6 +175,9 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
       getSnapshotByDeviceId: (id) => snapshots.get(id),
       setCapability,
     },
+    // The capability-addressed setpoint write routes through the actuator over
+    // the same `setCapability`, so `setCapabilityCalls` still observes it.
+    actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     operatingMode: 'Home',
     recordShedActuation: () => {},
     recordRestoreActuation: () => {},
@@ -219,6 +236,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
       getSnapshotByDeviceId: (id) => snapshots.get(id),
       setCapability,
     },
+    actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     operatingMode: 'Home',
     recordShedActuation: () => {},
     recordRestoreActuation: () => {},

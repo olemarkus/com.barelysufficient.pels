@@ -28,11 +28,33 @@ describe('createDeviceActuator — intent → transport mapping', () => {
     expect(transport.setCapability).not.toHaveBeenCalled();
   });
 
-  it('maps a target command to applyDeviceTargets keyed by deviceId, forwarding context', async () => {
+  it('maps a target command WITHOUT capabilityId to applyDeviceTargets keyed by deviceId, forwarding context', async () => {
     const transport = buildTransport();
     const actuator = createDeviceActuator(transport);
     await actuator.apply({ kind: 'target', deviceId: 'th1', value: 5, contextInfo: 'ctx' });
     expect(transport.applyDeviceTargets).toHaveBeenCalledWith({ th1: 5 }, 'ctx');
+    expect(transport.setCapability).not.toHaveBeenCalled();
+  });
+
+  it('routes a capability-addressed target command to setCapability, not applyDeviceTargets', async () => {
+    const transport = buildTransport();
+    const actuator = createDeviceActuator(transport);
+    const outcome = await actuator.apply({
+      kind: 'target', deviceId: 'd', capabilityId: 'target_temperature', value: 5,
+    });
+    expect(outcome).toEqual({ requested: true });
+    expect(transport.setCapability).toHaveBeenCalledWith('d', 'target_temperature', 5);
+    expect(transport.applyDeviceTargets).not.toHaveBeenCalled();
+  });
+
+  it('propagates a setCapability failure for a capability-addressed target (no swallow)', async () => {
+    const transport = buildTransport({
+      setCapability: vi.fn(async () => { throw new Error('write failed'); }),
+    });
+    const actuator = createDeviceActuator(transport);
+    await expect(actuator.apply({
+      kind: 'target', deviceId: 'd', capabilityId: 'target_temperature', value: 5,
+    })).rejects.toThrow('write failed');
   });
 
   it('passes a step command through and surfaces the stepped result', async () => {
