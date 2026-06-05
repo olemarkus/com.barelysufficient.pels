@@ -94,7 +94,7 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
     getTimeZone: () => ctx.getTimeZone(),
     isDebugEnabled: () => ctx.debugLoggingTopics.has('diagnostics'),
     structuredLog: ctx.getStructuredLogger('diagnostics'),
-    logDebug: (...args: unknown[]) => ctx.logDebug('diagnostics', ...args),
+    debugStructured: ctx.getStructuredDebugEmitter('diagnostics', 'diagnostics'),
     error: (...args: unknown[]) => ctx.error(...args),
   })
 );

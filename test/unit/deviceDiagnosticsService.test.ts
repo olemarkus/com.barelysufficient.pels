@@ -22,7 +22,7 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
       store.set(key, value);
     }),
   };
-  const logDebug = vi.fn();
+  const debugStructured = vi.fn();
   const structuredInfo = vi.fn();
   const error = vi.fn();
   const service = new DeviceDiagnosticsService({
@@ -30,14 +30,14 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
     getTimeZone: () => 'Europe/Oslo',
     isDebugEnabled: () => isDebugEnabled,
     structuredLog: { info: structuredInfo } as never,
-    logDebug,
+    debugStructured,
     error,
   });
   return {
     service,
     store,
     settings,
-    logDebug,
+    debugStructured,
     structuredInfo,
     error,
   };
@@ -270,7 +270,7 @@ describe('DeviceDiagnosticsService', () => {
   });
 
   it('logs tracked-usage reconciliation tags when present', () => {
-    const { service, logDebug } = createDeps();
+    const { service, debugStructured } = createDeps();
     const start = Date.now();
 
     service.recordControlEvent({
@@ -283,13 +283,17 @@ describe('DeviceDiagnosticsService', () => {
       toKw: 0.8,
     });
 
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining(
-      'fromKw=3.200 toKw=0.800 reconciliation=startup',
-    ));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'diagnostics_tracked_usage',
+      direction: 'drop',
+      fromKw: 3.2,
+      toKw: 0.8,
+      reconciliation: 'startup',
+    }));
   });
 
   it('does not backfill observation gaps larger than ten minutes', () => {
-    const { service, logDebug } = createDeps();
+    const { service, debugStructured } = createDeps();
     const start = Date.now();
 
     service.observePlanSample({
@@ -315,7 +319,10 @@ describe('DeviceDiagnosticsService', () => {
 
     expect(service.getUiPayload(start + (12 * 60 * 1000)).diagnosticsByDeviceId['heater-1']?.windows['1d'].unmetDemandMs)
       .toBe(60 * 1000);
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('Diagnostics: gap skipped deviceId=heater-1'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'diagnostics_sample_gap_skipped',
+      deviceId: 'heater-1',
+    }));
   });
 
   it('opens and closes PELS control timers only for PELS shed and restore events', () => {
@@ -355,7 +362,7 @@ describe('DeviceDiagnosticsService', () => {
   });
 
   it('does not let tracked usage drops increment shed counters or touch open shed timers', () => {
-    const { service, logDebug } = createDeps();
+    const { service, debugStructured } = createDeps();
     const shedTs = Date.now();
     const trackedDropTs = shedTs + (90 * 1000);
 
@@ -382,12 +389,14 @@ describe('DeviceDiagnosticsService', () => {
       avgShedToRestoreMs: null,
       avgRestoreToSetbackMs: null,
     });
-    expect(logDebug.mock.calls
-      .map(([message]) => message)
-      .filter((message): message is string => typeof message === 'string' && message.includes('Diagnostics: shed recorded')))
+    expect(debugStructured.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload): payload is Record<string, unknown> => (
+        typeof payload === 'object' && payload !== null && payload.event === 'diagnostics_shed_recorded'
+      )))
       .toHaveLength(1);
-    expect(logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('Diagnostics: tracked usage drop observed deviceId=heater-1'),
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'diagnostics_tracked_usage', direction: 'drop', deviceId: 'heater-1' }),
     );
   });
 
@@ -1230,8 +1239,11 @@ describe('DeviceDiagnosticsService', () => {
       DEVICE_DIAGNOSTICS_STATE_KEY,
       expect.objectContaining({ version: 2 }),
     );
-    expect(versionMismatch.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('Diagnostics: reset persisted payload reason="version mismatch'),
+    expect(versionMismatch.debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'diagnostics_persisted_payload_reset',
+        reason: expect.stringContaining('version mismatch'),
+      }),
     );
 
     const validOldState = {
@@ -1283,7 +1295,9 @@ describe('DeviceDiagnosticsService', () => {
     };
 
     const pruned = createDeps({ initialState: validOldState });
-    expect(pruned.logDebug).toHaveBeenCalledWith(expect.stringContaining('Diagnostics: pruned expired days count=1'));
+    expect(pruned.debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'diagnostics_pruned_expired_days', count: 1 }),
+    );
     const payload = pruned.service.getUiPayload(Date.now());
     expect(payload.diagnosticsByDeviceId['heater-1']?.windows['21d'].unmetDemandMs).toBe(456);
   });
@@ -1295,8 +1309,11 @@ describe('DeviceDiagnosticsService', () => {
       DEVICE_DIAGNOSTICS_STATE_KEY,
       expect.objectContaining({ version: 2, devicesById: {} }),
     );
-    expect(invalid.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('Diagnostics: reset persisted payload reason="invalid persisted payload"'),
+    expect(invalid.debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'diagnostics_persisted_payload_reset',
+        reason: 'invalid persisted payload',
+      }),
     );
   });
 
@@ -1380,7 +1397,7 @@ describe('DeviceDiagnosticsService', () => {
   });
 
   it('skips persisted payload serialization in flush logs when diagnostics debug is disabled', () => {
-    const { service, logDebug } = createDeps({ isDebugEnabled: false });
+    const { service, debugStructured } = createDeps({ isDebugEnabled: false });
     const stringifySpy = vi.spyOn(JSON, 'stringify');
 
     try {
@@ -1393,11 +1410,13 @@ describe('DeviceDiagnosticsService', () => {
       vi.runOnlyPendingTimers();
 
       expect(stringifySpy).not.toHaveBeenCalled();
-      const flushMessage = logDebug.mock.calls
-        .map(([message]) => message)
-        .find((message): message is string => typeof message === 'string' && message.includes('Diagnostics: flushed'));
-      expect(flushMessage).toBeDefined();
-      expect(flushMessage).not.toContain('bytes=');
+      const flushEvent = debugStructured.mock.calls
+        .map(([payload]) => payload)
+        .find((payload): payload is Record<string, unknown> => (
+          typeof payload === 'object' && payload !== null && payload.event === 'diagnostics_flushed'
+        ));
+      expect(flushEvent).toBeDefined();
+      expect(flushEvent).not.toHaveProperty('bytes');
     } finally {
       stringifySpy.mockRestore();
     }

@@ -23,17 +23,18 @@ import {
   countPersistedDevices,
   createEmptyDayAggregate,
   createEmptyPersistedState,
-  formatDeviceRef,
-  formatDurationSeconds,
   getRecentDateKeys,
   sanitizePersistedState,
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('diagnostics/device');
+// Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
+// production always wires `debugStructured`) fallback path.
+const debugFallbackEmit: StructuredDebugEmitter = (payload) => moduleLogger.debug(payload);
 
 export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
 export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
@@ -234,7 +235,7 @@ type DeviceDiagnosticsServiceDeps = {
   getTimeZone: () => string;
   isDebugEnabled?: () => boolean;
   structuredLog?: Pick<PinoLogger, 'info'>;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
 };
 
@@ -439,6 +440,13 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.loadFromSettings();
   }
 
+  // Topic-gated (`diagnostics`) structured debug emit. Mirrors the
+  // `structuredLog ?? moduleLogger` fallback used for info events so events
+  // still surface at debug level when no wired emitter is present (e.g. tests).
+  private emitDebug(payload: Record<string, unknown>): void {
+    (this.deps.debugStructured ?? debugFallbackEmit)(payload);
+  }
+
   observePlanSample(params: {
     observations: DeviceDiagnosticsPlanObservation[];
     nowTs?: number;
@@ -495,49 +503,68 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     switch (transition.kind) {
       case 'attempt_started':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: activation attempt started ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source} penalty=${live.currentPenaltyLevel}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_activation_transition',
+          kind: 'attempt_started',
+          deviceId: transition.deviceId,
+          deviceName: live.name,
+          source: transition.source,
+          penaltyLevel: live.currentPenaltyLevel,
+        });
         break;
       case 'setback_failed':
         this.addCount(transition.deviceId, transition.nowTs, 'failedActivationCount', 1);
         this.addCount(transition.deviceId, transition.nowTs, 'penaltyBumpCount', 1);
         this.updatePenaltyMaxSeen(transition.deviceId, transition.nowTs, transition.penaltyLevel);
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: failed activation ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} `
-          + `penalty=${transition.previousPenaltyLevel}->${transition.penaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_activation_transition',
+          kind: 'setback_failed',
+          deviceId: transition.deviceId,
+          deviceName: live.name,
+          source: transition.source ?? 'unknown',
+          previousPenaltyLevel: transition.previousPenaltyLevel,
+          penaltyLevel: transition.penaltyLevel,
+          elapsedMs: transition.elapsedMs,
+        });
         break;
       case 'attempt_closed_inactive':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: activation attempt closed inactive ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_activation_transition',
+          kind: 'attempt_closed_inactive',
+          deviceId: transition.deviceId,
+          deviceName: live.name,
+          source: transition.source ?? 'unknown',
+          penaltyLevel: transition.penaltyLevel,
+          elapsedMs: transition.elapsedMs,
+        });
         break;
       case 'attempt_closed_by_shed':
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
-        this.deps.logDebug(
-          `Diagnostics: activation attempt closed by shed ${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} penalty=${transition.penaltyLevel} `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_activation_transition',
+          kind: 'attempt_closed_by_shed',
+          deviceId: transition.deviceId,
+          deviceName: live.name,
+          source: transition.source ?? 'unknown',
+          penaltyLevel: transition.penaltyLevel,
+          elapsedMs: transition.elapsedMs,
+        });
         break;
       case 'attempt_closed_by_admission':
         this.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
         live.currentPenaltyLevel = 0;
-        this.deps.logDebug(
-          `Diagnostics: activation attempt closed by admission (penalty released) `
-          + `${formatDeviceRef(transition.deviceId, live.name)} `
-          + `source=${transition.source ?? 'unknown'} `
-          + `penalty=${transition.previousPenaltyLevel}->0 `
-          + `elapsed=${formatDurationSeconds(transition.elapsedMs)}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_activation_transition',
+          kind: 'attempt_closed_by_admission',
+          deviceId: transition.deviceId,
+          deviceName: live.name,
+          source: transition.source ?? 'unknown',
+          previousPenaltyLevel: transition.previousPenaltyLevel,
+          penaltyLevel: 0,
+          elapsedMs: transition.elapsedMs,
+        });
         break;
       default:
         return;
@@ -650,7 +677,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.lastSeenDateKey = getDateKeyInTimeZone(new Date(), this.deps.getTimeZone());
 
     if (sanitized.resetReason) {
-      this.deps.logDebug(`Diagnostics: reset persisted payload reason="${sanitized.resetReason}"`);
+      this.emitDebug({ event: 'diagnostics_persisted_payload_reset', reason: sanitized.resetReason });
       this.dirty = true;
       this.flush('startup_repair', { force: true });
       return;
@@ -661,12 +688,14 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       this.flush('startup_repair', { force: true });
     }
 
-    this.deps.logDebug(
-      `Diagnostics: loaded persisted payload version=${this.persistedState.version} `
-      + `devices=${countPersistedDevices(this.persistedState)} days=${countPersistedDays(this.persistedState)}`,
-    );
+    this.emitDebug({
+      event: 'diagnostics_persisted_payload_loaded',
+      version: this.persistedState.version,
+      devices: countPersistedDevices(this.persistedState),
+      days: countPersistedDays(this.persistedState),
+    });
     if (prunedDayCount > 0) {
-      this.deps.logDebug(`Diagnostics: pruned expired days count=${prunedDayCount}`);
+      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: prunedDayCount });
     }
   }
 
@@ -691,10 +720,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     if (isFiniteNumber(live.lastObservedTs) && live.lastObservation) {
       const gapMs = Math.max(0, nowTs - live.lastObservedTs);
       if (gapMs > DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS) {
-        this.deps.logDebug(
-          `Diagnostics: gap skipped ${formatDeviceRef(observation.deviceId, live.name)} `
-          + `gap=${formatDurationSeconds(gapMs)}`,
-        );
+        this.emitDebug({
+          event: 'diagnostics_sample_gap_skipped',
+          deviceId: observation.deviceId,
+          deviceName: live.name,
+          gapMs,
+        });
         this.handleStarvationGap(observation.deviceId, nowTs);
       } else {
         this.accumulateObservationSpan(observation.deviceId, live.lastObservedTs, nowTs, live.lastObservation);
@@ -775,17 +806,23 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       live.starvation.clearQualifiedStartedAt = undefined;
       live.starvation.starvationCause = null;
       live.starvation.starvationPauseReason = null;
-      this.deps.logDebug(
-        `Diagnostics: starvation pending reset ${formatDeviceRef(deviceId, live.name)} `
-        + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
-      );
+      this.emitDebug({
+        event: 'diagnostics_starvation_pending_reset',
+        deviceId,
+        deviceName: live.name,
+        reason: 'target_changed',
+        atMs: nowTs,
+      });
       return;
     }
     live.starvation.clearQualifiedStartedAt = undefined;
-    this.deps.logDebug(
-      `Diagnostics: starvation thresholds refreshed ${formatDeviceRef(deviceId, live.name)} `
-      + `reason=target_changed at=${new Date(nowTs).toISOString()}`,
-    );
+    this.emitDebug({
+      event: 'diagnostics_starvation_thresholds_refreshed',
+      deviceId,
+      deviceName: live.name,
+      reason: 'target_changed',
+      atMs: nowTs,
+    });
   }
 
   private resetStarvationState(deviceId: string): void {
@@ -834,10 +871,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvationEpisodeStartedAtMs: entryAt,
       starvedDurationMs: accumulatedMs,
     });
-    this.deps.logDebug(
-      `Diagnostics: starvation started ${formatDeviceRef(deviceId, live.name)} `
-      + `cause=${observation.countingCause} at=${new Date(entryAt).toISOString()}`,
-    );
   }
 
   private applyStarvationClearProgress(
@@ -863,10 +896,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       transitionAtMs: clearAt,
       starvedDurationMs: live.starvation.starvedAccumulatedMs,
     });
-    this.deps.logDebug(
-      `Diagnostics: starvation cleared ${formatDeviceRef(deviceId, live.name)} `
-      + `at=${new Date(clearAt).toISOString()}`,
-    );
     this.resetStarvationState(deviceId);
   }
 
@@ -886,10 +915,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         transitionAtMs: startTs,
         starvedDurationMs: live.starvation.starvedAccumulatedMs,
       });
-      this.deps.logDebug(
-        `Diagnostics: starvation resumed ${formatDeviceRef(deviceId, live.name)} `
-        + `cause=${observation.countingCause} at=${new Date(startTs).toISOString()}`,
-      );
     }
     live.starvation.clearQualifiedStartedAt = undefined;
     if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
@@ -917,10 +942,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         transitionAtMs: nowTs,
         starvedDurationMs: live.starvation.starvedAccumulatedMs,
       });
-      this.deps.logDebug(
-        `Diagnostics: starvation paused ${formatDeviceRef(deviceId, live.name)} `
-        + `reason=${pauseReason} at=${new Date(nowTs).toISOString()}`,
-      );
     }
     live.starvation.clearQualifiedStartedAt = undefined;
     live.starvation.starvationLastResumedAt = undefined;
@@ -953,10 +974,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       starvedDurationMs: starvation.starvedAccumulatedMs,
       wasStarved: starvation.isStarved,
     });
-    this.deps.logDebug(
-      `Diagnostics: starvation hard-reset ${formatDeviceRef(deviceId, live.name)} `
-      + `reason=${reasonCode} at=${new Date(nowTs).toISOString()}`,
-    );
     this.resetStarvationState(deviceId);
   }
 
@@ -1015,19 +1032,24 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       nextUnmet,
     } = transition;
     if (!previousUnmet && nextUnmet) {
-      this.deps.logDebug(
-        `Diagnostics: unmet demand started ${formatDeviceRef(deviceId, name)} `
-        + `desired="${next.desiredStateSummary}" applied="${next.appliedStateSummary}" `
-        + `cause=${next.blockCause}`,
-      );
+      this.emitDebug({
+        event: 'diagnostics_unmet_demand_started',
+        deviceId,
+        deviceName: name,
+        desired: next.desiredStateSummary,
+        applied: next.appliedStateSummary,
+        cause: next.blockCause,
+      });
       return;
     }
     if (!previousUnmet || nextUnmet) return;
-    this.deps.logDebug(
-      `Diagnostics: unmet demand ended ${formatDeviceRef(deviceId, name)} `
-      + `desired="${previous?.desiredStateSummary ?? 'unknown'}" `
-      + `applied="${previous?.appliedStateSummary ?? 'unknown'}"`,
-    );
+    this.emitDebug({
+      event: 'diagnostics_unmet_demand_ended',
+      deviceId,
+      deviceName: name,
+      desired: previous?.desiredStateSummary ?? 'unknown',
+      applied: previous?.appliedStateSummary ?? 'unknown',
+    });
   }
 
   private logBlockCauseChange(transition: {
@@ -1049,11 +1071,15 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const previousCause = previousUnmet ? previous?.blockCause : 'not_blocked';
     const nextCause = nextUnmet ? next.blockCause : 'not_blocked';
     if (!(previousUnmet || nextUnmet) || previousCause === nextCause) return;
-    this.deps.logDebug(
-      `Diagnostics: block cause changed ${formatDeviceRef(deviceId, name)} `
-      + `desired="${next.desiredStateSummary}" applied="${next.appliedStateSummary}" `
-      + `cause=${previousCause ?? 'not_blocked'}->${nextCause}`,
-    );
+    this.emitDebug({
+      event: 'diagnostics_block_cause_changed',
+      deviceId,
+      deviceName: name,
+      desired: next.desiredStateSummary,
+      applied: next.appliedStateSummary,
+      previousCause: previousCause ?? 'not_blocked',
+      nextCause,
+    });
   }
 
   private recordPelsShedEvent(deviceId: string, nowTs: number): void {
@@ -1063,13 +1089,15 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       const durationMs = Math.max(0, nowTs - live.openRestoreTs);
       this.addRestoreToSetback(deviceId, nowTs, durationMs);
       live.openRestoreTs = undefined;
-      this.deps.logDebug(
-        `Diagnostics: restore-to-setback completed ${formatDeviceRef(deviceId, live.name)} `
-        + `duration=${formatDurationSeconds(durationMs)}`,
-      );
+      this.emitDebug({
+        event: 'diagnostics_restore_to_setback_completed',
+        deviceId,
+        deviceName: live.name,
+        durationMs,
+      });
     }
     live.openShedTs = nowTs;
-    this.deps.logDebug(`Diagnostics: shed recorded ${formatDeviceRef(deviceId, live.name)}`);
+    this.emitDebug({ event: 'diagnostics_shed_recorded', deviceId, deviceName: live.name });
   }
 
   private recordPelsRestoreEvent(deviceId: string, nowTs: number): void {
@@ -1079,13 +1107,15 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       const durationMs = Math.max(0, nowTs - live.openShedTs);
       this.addShedToRestore(deviceId, nowTs, durationMs);
       live.openShedTs = undefined;
-      this.deps.logDebug(
-        `Diagnostics: shed-to-restore completed ${formatDeviceRef(deviceId, live.name)} `
-        + `duration=${formatDurationSeconds(durationMs)}`,
-      );
+      this.emitDebug({
+        event: 'diagnostics_shed_to_restore_completed',
+        deviceId,
+        deviceName: live.name,
+        durationMs,
+      });
     }
     live.openRestoreTs = nowTs;
-    this.deps.logDebug(`Diagnostics: restore recorded ${formatDeviceRef(deviceId, live.name)}`);
+    this.emitDebug({ event: 'diagnostics_restore_recorded', deviceId, deviceName: live.name });
   }
 
   private logTrackedUsageEvent(
@@ -1093,11 +1123,15 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     event: Extract<DeviceDiagnosticsControlEvent, { kind: 'tracked_usage_rise' | 'tracked_usage_drop' }>,
     deviceName: string,
   ): void {
-    this.deps.logDebug(
-      `Diagnostics: tracked usage ${direction} observed ${formatDeviceRef(event.deviceId, deviceName)} `
-      + `fromKw=${event.fromKw.toFixed(3)} toKw=${event.toKw.toFixed(3)}`
-      + (event.reconciliation ? ` reconciliation=${event.reconciliation}` : ''),
-    );
+    this.emitDebug({
+      event: 'diagnostics_tracked_usage',
+      direction,
+      deviceId: event.deviceId,
+      deviceName,
+      fromKw: event.fromKw,
+      toKw: event.toKw,
+      ...(event.reconciliation ? { reconciliation: event.reconciliation } : {}),
+    });
   }
 
   private addDurationByDay(
@@ -1248,7 +1282,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.flush('day_rollover', { force: true });
     const pruned = this.pruneExpiredDays(nowTs);
     if (pruned > 0) {
-      this.deps.logDebug(`Diagnostics: pruned expired days count=${pruned}`);
+      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: pruned });
     }
     this.lastSeenDateKey = currentDateKey;
   }
@@ -1275,7 +1309,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   private logSkippedFlush(nowTs: number, detail: string): void {
     if (nowTs - this.lastSkippedFlushLogMs < DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS) return;
     this.lastSkippedFlushLogMs = nowTs;
-    this.deps.logDebug(`Diagnostics: skipped flush detail="${detail}"`);
+    this.emitDebug({ event: 'diagnostics_flush_skipped', detail });
   }
 
   private flush(reason: 'startup_repair' | 'throttle' | 'day_rollover' | 'shutdown', options: {
@@ -1298,14 +1332,17 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       this.dirty = false;
       const dirtyDeviceCount = this.dirtyDeviceIds.size;
       const dayCount = countPersistedDays(this.persistedState);
-      const bytesSuffix = this.isDiagnosticsDebugEnabled()
-        ? ` bytes=${Buffer.byteLength(JSON.stringify(this.persistedState), 'utf8')}`
-        : '';
+      const bytes = this.isDiagnosticsDebugEnabled()
+        ? Buffer.byteLength(JSON.stringify(this.persistedState), 'utf8')
+        : undefined;
       this.dirtyDeviceIds.clear();
-      this.deps.logDebug(
-        `Diagnostics: flushed reason=${reason} dirtyDevices=${dirtyDeviceCount} `
-        + `days=${dayCount}${bytesSuffix}`,
-      );
+      this.emitDebug({
+        event: 'diagnostics_flushed',
+        reason,
+        dirtyDevices: dirtyDeviceCount,
+        days: dayCount,
+        ...(bytes === undefined ? {} : { bytes }),
+      });
     } catch (error) {
       this.deps.error('Failed to persist device diagnostics state', error as Error);
     }
