@@ -9,6 +9,7 @@ import {
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  formatCheapestHoursCaption,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanUnavailableReason,
@@ -92,6 +93,7 @@ const buildTimeline = (params: {
   progressUnit: '°C' | '%';
   deadlineAtMs: number;
   costDisplay: CostDisplay;
+  priceUnitLabel: string;
 }): DeadlinePlanPayload['timeline'] => {
   let projectedProgress = params.progressStart;
   const progressFloor = Math.min(
@@ -109,40 +111,50 @@ const buildTimeline = (params: {
   const progressCeilingLabel = params.progressUnit === '°C'
     ? formatTemperature(params.progressTarget)
     : `${Math.round(params.progressTarget)}%`;
+  const hours = params.hours.map((hour) => {
+    const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
+    if (currentKwh > 0) {
+      projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
+    }
+    const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
+    const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
+    return {
+      time: formatHourLabel(hour.startsAtMs),
+      price: formatPrice(displayPrice),
+      priceValue: displayPrice,
+      tone: resolvePriceTone(hour),
+      planned: currentKwh > 0,
+      changed: hourChanged,
+      revisionReason: hourChanged ? params.latestRevisionReason : null,
+      usage: {
+        backgroundKwh: Math.max(0, hour.plannedOtherKWh),
+        originalDeviceKwh: originalKwh,
+        deviceKwh: currentKwh,
+        actualDeviceKwh: resolveActualDeviceKwh({
+          bootstrap: params.bootstrap,
+          deviceId: params.deviceId,
+          startsAtMs: hour.startsAtMs,
+        }),
+      },
+      progress: projectedProgress,
+    };
+  });
   return {
     ariaLabel: `Smart task schedule for ${formatDisplayDeviceName(params.device.name)}`,
     progressFloor: Math.min(normalizedProgressFloor, params.progressTarget - 1),
     progressCeilingValue: params.progressTarget,
     progressCeilingLabel,
     deadlineLabel: formatDeadlineShort(params.deadlineAtMs),
-    hours: params.hours.map((hour) => {
-      const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
-      const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
-      if (currentKwh > 0) {
-        projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
-      }
-      const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
-      const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
-      return {
-        time: formatHourLabel(hour.startsAtMs),
-        price: formatPrice(displayPrice),
-        priceValue: displayPrice,
-        tone: resolvePriceTone(hour),
-        planned: currentKwh > 0,
-        changed: hourChanged,
-        revisionReason: hourChanged ? params.latestRevisionReason : null,
-        usage: {
-          backgroundKwh: Math.max(0, hour.plannedOtherKWh),
-          originalDeviceKwh: originalKwh,
-          deviceKwh: currentKwh,
-          actualDeviceKwh: resolveActualDeviceKwh({
-            bootstrap: params.bootstrap,
-            deviceId: params.deviceId,
-            startsAtMs: hour.startsAtMs,
-          }),
-        },
-        progress: projectedProgress,
-      };
+    hours,
+    // Trust caption read from the same already-scaled per-hour display prices
+    // (øre→kr handled upstream by the CostDisplay divisor) the chart renders;
+    // the baseline pool is every hour in the window. Averaging + phrasing live
+    // in shared-domain so this stays a thin projection.
+    cheapestHoursCaption: formatCheapestHoursCaption({
+      plannedPrices: hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
+      allPrices: hours.map((hour) => hour.priceValue),
+      unitLabel: params.priceUnitLabel,
     }),
   };
 };
@@ -533,6 +545,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       progressUnit: progress.unit,
       deadlineAtMs,
       costDisplay: input.costDisplay,
+      priceUnitLabel: input.priceUnitLabel,
     }),
     planInputs: buildPlanInputs({
       labels,

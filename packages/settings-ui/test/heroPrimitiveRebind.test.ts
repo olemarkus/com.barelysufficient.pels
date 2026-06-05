@@ -257,6 +257,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     progressCeilingLabel: '65 °C',
     deadlineLabel: 'By 06:30',
     hours: [],
+    cheapestHoursCaption: null,
   },
   planInputs: {
     perUnitRateLabel: null,

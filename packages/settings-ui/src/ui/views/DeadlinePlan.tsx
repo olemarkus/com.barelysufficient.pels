@@ -137,6 +137,13 @@ export type DeadlinePlanPayload = {
     progressCeilingLabel: string;
     deadlineLabel: string;
     hours: DeadlinePlanHour[];
+    // "Picked N of M hours · avg P vs window avg Q kr/kWh" trust
+    // caption rendered under the chart. Resolved producer-side from the
+    // per-hour `priceValue` + `planned` flag via `formatCheapestHoursCaption`
+    // so the view never re-derives the averages or branches on price unit.
+    // Null when the summary can't be stated honestly (no planned hours, a
+    // single-hour window, or a missing price unit).
+    cheapestHoursCaption: string | null;
   };
   planInputs: {
     perUnitRateLabel: string | null;
@@ -834,6 +841,9 @@ const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
       <h2 class="plan-card__title" id="deadline-horizon-title">Price horizon</h2>
     </div>
     <HorizonChart payload={payload} />
+    {payload.timeline.cheapestHoursCaption && (
+      <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
+    )}
   </section>
 );
 

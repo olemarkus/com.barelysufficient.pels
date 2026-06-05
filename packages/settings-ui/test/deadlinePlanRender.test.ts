@@ -201,6 +201,7 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     progressCeilingLabel: '22 °C',
     deadlineLabel: 'Mon 18',
     hours: [],
+    cheapestHoursCaption: null,
   },
   planInputs: {
     perUnitRateLabel: null,
@@ -250,6 +251,29 @@ describe('DeadlinePlan live-hero recourse button', () => {
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
     expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
+  });
+});
+
+describe('DeadlinePlan cheapest-hours caption', () => {
+  it('renders the producer-resolved caption under the horizon chart', () => {
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
+    payload.timeline.cheapestHoursCaption =
+      'Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh';
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    const caption = mount.querySelector('.deadline-horizon-caption');
+    expect(caption).not.toBeNull();
+    expect(caption?.textContent).toBe(
+      'Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh',
+    );
+  });
+
+  it('suppresses the caption slot when the producer returns null', () => {
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
+    payload.timeline.cheapestHoursCaption = null;
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    expect(mount.querySelector('.deadline-horizon-caption')).toBeNull();
   });
 });
 
