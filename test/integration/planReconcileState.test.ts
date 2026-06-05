@@ -279,7 +279,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
         name: 'EV Charger',
-        currentOn: true,
+        currentOn: false,
         hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',

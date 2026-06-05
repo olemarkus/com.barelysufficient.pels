@@ -12,6 +12,7 @@ import {
   allowsSteppedLoadKeepInvariantRestore,
   isRestoreAdmissionHoldReason,
 } from '../planContract/planDecisionSemantics';
+import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { resolveBinaryShedReasonCode } from './lifecycleReleaseRecording';
 
 export function resolveConfirmedBinaryCommandReasonCode(
@@ -59,10 +60,12 @@ export function resolveRestoreLogSource(
 export function hasStableEvDeadlineActuation(dev: DevicePlan['devices'][number]): boolean {
   if (dev.binaryCommandPending === true) return false;
   if (dev.deferredReleaseIntent === 'ev_resume') {
-    return dev.evChargingState === 'plugged_in_paused';
+    // Paused = off-but-commandable, the only state a resume acts on.
+    return !dev.currentOn && isCommandableNow(dev);
   }
   if (dev.deferredReleaseIntent === 'ev_pause') {
-    return dev.evChargingState === 'plugged_in_charging';
+    // Charging = on (the consolidated binary truth).
+    return dev.currentOn;
   }
   return false;
 }

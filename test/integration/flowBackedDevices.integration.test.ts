@@ -248,7 +248,7 @@ describe('Flow-backed device support', () => {
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       measuredPowerKw: 0,
     }));

@@ -121,6 +121,7 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+
 - [ ] **Verify early-satisfaction doesn't leave stale committed hours on the active plan.** When a
       stalled/near-target smart task is reported satisfied mid-plan, `maybeWriteReplanRevision` merges
       the now-empty live schedule via `mergeHoursPreservingCommitment`, whose `live.length === 0` branch
