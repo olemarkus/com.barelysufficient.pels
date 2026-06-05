@@ -236,6 +236,15 @@ Priority order (first matching condition wins):
 
 1. No data: `Power readings have dropped. Devices stay limited until data returns.`
 2. Above hard cap: `Over the hard cap right now. Easing devices off.`
+   When the managed shed cascade is exhausted (no controllable managed device
+   is still running to ease off) and the remaining breach is attributed to a
+   device with Power-limit control turned off, the copy stops promising
+   mitigation PELS has finished and names the user's recourse instead:
+   `Managed devices are already eased off. The remaining draw is from a device
+   that has Power-limit control turned off. Turn its Power-limit control back
+   on so PELS can ease it off.` The recourse pluralises when several
+   control-off devices breach; the hard cap is never offered as a remedy (it is
+   physical — see `notes/ui-terminology.md` § "Hard cap is physical").
 3. Simulation mode would act: `2 devices would be limited if simulation mode were off.`
 4. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
    The safe-pace clause is dropped when the value is unavailable

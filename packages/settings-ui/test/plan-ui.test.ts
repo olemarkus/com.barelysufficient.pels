@@ -226,6 +226,156 @@ describe('Redesign plan UI', () => {
       expect(document.querySelector('.pels-meter-segments__seg--managed[data-limiting]')).not.toBeNull();
     });
 
+    it('tells the honest story over the cap when the managed cascade is exhausted and a control-off device breaches', async () => {
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.6,
+          softLimitKw: 4.5,
+          headroomKw: -1.1,
+          hardCapLimitKw: 5,
+          hardCapHeadroomKw: -0.6,
+          controlledKw: 2.4,
+          uncontrolledKw: 3.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          // Every controllable managed device is already held — no running
+          // managed device left for PELS to ease off.
+          { id: 'dev-held', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+          // The remaining breach is a device with Power-limit control off, which
+          // PELS cannot touch (controllable === false → Manual chip).
+          {
+            id: 'dev-uncontrolled',
+            name: 'Sauna',
+            currentState: 'on',
+            controllable: false,
+            measuredPowerKw: 2.9,
+            reason: 'capacity control off',
+          },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe(
+          'Managed devices are already eased off. The remaining draw is from '
+          + 'a device that has Power-limit control turned off. '
+          + 'Turn its Power-limit control back on so PELS can ease it off.',
+        );
+    });
+
+    it('keeps the default over-cap copy when the only control-off device is parked at 0 W', async () => {
+      // A control-off device drawing nothing is not the source of the breach, so
+      // the honest "remaining draw is from it" copy must not fire on it.
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.6,
+          softLimitKw: 4.5,
+          headroomKw: -1.1,
+          hardCapLimitKw: 5,
+          hardCapHeadroomKw: -0.6,
+          controlledKw: 2.4,
+          uncontrolledKw: 3.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          { id: 'dev-held', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+          {
+            id: 'dev-uncontrolled-off',
+            name: 'Sauna',
+            currentState: 'off',
+            controllable: false,
+            measuredPowerKw: 0,
+            reason: 'capacity control off',
+          },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Over the hard cap right now. Easing devices off.');
+    });
+
+    it('keeps the default over-cap copy while a managed device is mid-shed but still drawing', async () => {
+      // A controllable device selected for shedding (plannedState 'shed' → marked
+      // 'held') that is still physically drawing means the cascade is NOT done —
+      // PELS is mid-shed. The honest "already eased off" copy must not fire yet.
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.6,
+          softLimitKw: 4.5,
+          headroomKw: -1.1,
+          hardCapLimitKw: 5,
+          hardCapHeadroomKw: -0.6,
+          controlledKw: 2.4,
+          uncontrolledKw: 3.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          // Selected for shedding but the element hasn't settled — still drawing.
+          {
+            id: 'dev-shedding',
+            name: 'Heater',
+            currentState: 'on',
+            plannedState: 'shed',
+            stateKind: 'held',
+            measuredPowerKw: 1.2,
+          },
+          {
+            id: 'dev-uncontrolled',
+            name: 'Sauna',
+            currentState: 'on',
+            controllable: false,
+            measuredPowerKw: 2.9,
+            reason: 'capacity control off',
+          },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Over the hard cap right now. Easing devices off.');
+    });
+
+    it('keeps the default over-cap copy for a pending shed that is on-like with no power measurement', async () => {
+      // No per-device power in the snapshot: a controllable device selected for
+      // shedding that is still `currentState: 'on'` must count as not-yet-settled
+      // (fall back to on-like state when measurement is absent), so the honest
+      // "already eased off" copy must not fire while the shed is in flight.
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: 5.6,
+          softLimitKw: 4.5,
+          headroomKw: -1.1,
+          hardCapLimitKw: 5,
+          hardCapHeadroomKw: -0.6,
+          controlledKw: 2.4,
+          uncontrolledKw: 3.2,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          // plannedState shed + on, but no measuredPowerKw → on-like fallback.
+          { id: 'dev-shedding', name: 'Heater', currentState: 'on', plannedState: 'shed', stateKind: 'held' },
+          {
+            id: 'dev-uncontrolled',
+            name: 'Sauna',
+            currentState: 'on',
+            controllable: false,
+            measuredPowerKw: 2.9,
+            reason: 'capacity control off',
+          },
+        ],
+      });
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Over the hard cap right now. Easing devices off.');
+    });
+
     it('writes the actively-limiting decision sentence when one device is held below safe pace', async () => {
       await renderPlanSnapshot({
         meta: {

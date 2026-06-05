@@ -207,6 +207,50 @@ describe('buildDecisionSentence', () => {
     })).text).toBe('Over the hard cap right now. Easing devices off.');
   });
 
+  it('keeps the "easing off" copy over the cap while a managed device can still be shed', () => {
+    // A controllable managed device is still running, so the cascade is not
+    // exhausted even though a control-off device is also breaching.
+    expect(buildDecisionSentence(baseline({
+      overHardLimit: true,
+      limitedCount: 1,
+      capacityControlOffCount: 1,
+      sheddableManagedRunningCount: 1,
+    })).text).toBe('Over the hard cap right now. Easing devices off.');
+  });
+
+  it('keeps the "easing off" copy over the cap when no control-off device is breaching', () => {
+    expect(buildDecisionSentence(baseline({
+      overHardLimit: true,
+      capacityControlOffCount: 0,
+      sheddableManagedRunningCount: 0,
+    })).text).toBe('Over the hard cap right now. Easing devices off.');
+  });
+
+  it('tells the honest story when the managed cascade is exhausted and a control-off device breaches', () => {
+    expect(buildDecisionSentence(baseline({
+      overHardLimit: true,
+      capacityControlOffCount: 1,
+      sheddableManagedRunningCount: 0,
+    }))).toEqual({
+      text: 'Managed devices are already eased off. The remaining draw is from '
+        + 'a device that has Power-limit control turned off. '
+        + 'Turn its Power-limit control back on so PELS can ease it off.',
+      positive: false,
+    });
+  });
+
+  it('pluralises the control-off recourse when several devices are uncontrolled', () => {
+    expect(buildDecisionSentence(baseline({
+      overHardLimit: true,
+      capacityControlOffCount: 2,
+      sheddableManagedRunningCount: 0,
+    })).text).toBe(
+      'Managed devices are already eased off. The remaining draw is from '
+      + '2 devices that have Power-limit control turned off. '
+      + 'Turn their Power-limit control back on so PELS can ease them off.',
+    );
+  });
+
   it('uses hypothetical voice in simulation mode', () => {
     expect(buildDecisionSentence(baseline({
       dryRun: true,

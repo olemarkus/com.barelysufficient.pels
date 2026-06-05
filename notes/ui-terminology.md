@@ -85,6 +85,24 @@ Above safe pace · limiting 2 devices · projected slightly over budget
 Above hard cap of 5.0 kW · limiting 2 devices now
 ```
 
+The hero's decision sentence (the named-subject conclusion at the bottom of the
+card — ladder in [`notes/overview-hero-spec.md`](overview-hero-spec.md)
+§ "Decision sentence") differentiates the above-hard-cap case so it never
+overpromises mitigation. The default reads `Over the hard cap right now. Easing
+devices off.`, but when the managed shed cascade is exhausted (no controllable
+managed device left running to ease off) and the remaining breach comes from a
+device with **Power-limit control** turned off, the copy switches to the honest
+variant: `Managed devices are already eased off. The remaining draw is from a
+device that has Power-limit control turned off. Turn its Power-limit control
+back on so PELS can ease it off.` It names the actual control (never an invented
+feature name) and the user's real recourse — turning that device's Power-limit
+control back on, **not** raising the hard cap (which is physical; see § "Hard
+cap is physical"). **`eased off`** / **`ease off`** is the sanctioned verb for
+the hard-cap shed cascade in this decision sentence (it pairs with the default
+`Easing devices off.`); reuse it here rather than reaching for a synonym, and
+keep the chip/secondary-text language (`Limited`, `Turned off by PELS`) for the
+per-device surfaces below.
+
 ## Device state chips (Overview)
 
 | Chip | Used when |
