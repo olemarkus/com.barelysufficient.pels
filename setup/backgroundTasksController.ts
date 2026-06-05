@@ -86,7 +86,7 @@ export class BackgroundTasksController {
       getTimeZone: () => this.deps.getTimeZone(),
       getCombinedHourlyPrices: () => this.deps.getCombinedHourlyPrices(),
       getTriggerCard: (id) => this.deps.homey.flow.getTriggerCard(id),
-      logDebug: (message) => this.deps.logDebug('price', message),
+      debugStructured: this.deps.getStructuredDebugEmitter('price', 'price'),
       error: (message, error) => this.deps.error(message, error),
     });
   }
