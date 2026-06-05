@@ -516,7 +516,7 @@ class PelsApp extends Homey.App {
     timers: this.timers,
     pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
     recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
-    logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+    debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     error: (...args) => this.error(...args),
   });
   private readonly deviceControlHelpers = new AppDeviceControlHelpers({
@@ -1727,7 +1727,7 @@ class PelsApp extends Homey.App {
   private prunePowerTrackerHistory(): void {
     this.powerTracker = prunePowerTrackerHistoryForApp({
       powerTracker: this.powerTracker,
-      logDebug: (msg) => this.logDebug('perf', msg),
+      debugStructured: this.getStructuredDebugEmitter('perf', 'perf'),
       error: (msg, err) => this.error(msg, err),
       // Pass Homey timezone so dailyTotals are keyed by the local calendar day
       // (matches the UI's bucket-derived keys; see TODO `power-tracker-tz-fix`).

@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import type { TimerRegistry } from '../../app/timerRegistry';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 
@@ -23,7 +24,7 @@ export class HomeyEnergyPollSource {
     timers: TimerRegistry;
     pollHomePower: () => Promise<number | null | undefined>;
     recordPowerSample: (powerW: number) => Promise<void>;
-    logDebug: (topic: 'devices', ...args: unknown[]) => void;
+    debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
   }) {}
 
@@ -56,11 +57,11 @@ export class HomeyEnergyPollSource {
   async pollNow(): Promise<void> {
     const homePowerW = await this.deps.pollHomePower();
     if (typeof homePowerW === 'number') {
-      this.deps.logDebug('devices', `Homey Energy poll: ${homePowerW}W`);
+      this.deps.debugStructured({ event: 'homey_energy_poll', homePowerW });
       await this.deps.recordPowerSample(homePowerW);
       return;
     }
 
-    this.deps.logDebug('devices', 'Homey Energy poll: no cumulative power reading available');
+    this.deps.debugStructured({ event: 'homey_energy_poll_no_reading' });
   }
 }
