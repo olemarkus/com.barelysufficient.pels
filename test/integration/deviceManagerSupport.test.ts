@@ -72,17 +72,20 @@ describe('device manager support helpers', () => {
 
     expect(getControlCapabilityId({ deviceClassKey: 'evcharger', capabilities: ['onoff', 'evcharger_charging'] })).toBe('evcharger_charging');
     expect(getControlCapabilityId({ deviceClassKey: 'socket', capabilities: ['onoff'] })).toBe('onoff');
-    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, controlCapabilityId: 'evcharger_charging' })).toBe(true);
+    expect(getCurrentOn({ deviceClassKey: 'evcharger', capabilityObj, controlCapabilityId: 'evcharger_charging' })).toBe(false);
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: { evcharger_charging_state: { value: 'plugged_in_paused' } },
       controlCapabilityId: 'evcharger_charging',
-    })).toBe(true);
+    })).toBe(false);
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: { evcharger_charging_state: { value: 'plugged_in_charging' } },
       controlCapabilityId: 'evcharger_charging',
     })).toBe(true);
+    // State-authoritative: the charge-state string wins over the raw
+    // `evcharger_charging` boolean. A paused charger is off (held off —
+    // commandable, but not on) even if the boolean still reads `true`.
     expect(getCurrentOn({
       deviceClassKey: 'evcharger',
       capabilityObj: {
@@ -90,7 +93,7 @@ describe('device manager support helpers', () => {
         evcharger_charging_state: { value: 'plugged_in_paused' },
       },
       controlCapabilityId: 'evcharger_charging',
-    })).toBe(true);
+    })).toBe(false);
     expect(getCurrentOn({
       deviceClassKey: 'socket',
       capabilityObj: { onoff: { value: true } },

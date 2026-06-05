@@ -1013,7 +1013,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: true,
+                currentOn: false,
                 canSetControl: true,
                 evChargingState: 'plugged_in_paused',
             }));
@@ -2606,7 +2606,10 @@ describe('DeviceTransport', () => {
                 };
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expectedStateEvidence);
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    // State-authoritative: paused state wins over the lingering
+                    // raw `evcharger_charging: true` boolean — currentOn is off,
+                    // matching the state-derived settle evidence (observedValue:false).
+                    currentOn: false,
                     evCharging: true,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: expectedStateEvidence,
@@ -3416,7 +3419,7 @@ describe('DeviceTransport', () => {
 
                     expect(realtimeListener).not.toHaveBeenCalled();
                     expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                        currentOn: true,
+                        currentOn: false,
                         evCharging: false,
                         evChargingState: 'plugged_in_paused',
                         binaryControlObservation: expect.objectContaining({
@@ -4321,7 +4324,7 @@ describe('DeviceTransport', () => {
                 });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                     evChargingState: 'plugged_in_paused',
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
@@ -4332,7 +4335,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('keeps paused EV device.update payloads on even when evcharger_charging is false', async () => {
+        it('turns paused EV device.update payloads off and reconciles when evcharger_charging is false', async () => {
             const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
             });
             await evDeviceManager.init();
@@ -4366,9 +4369,17 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'ev1',
+                changes: [expect.objectContaining({
+                    capabilityId: 'evcharger_charging',
+                    previousValue: 'on',
+                    nextValue: 'off',
+                })],
+            }));
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                currentOn: false,
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
             }));
@@ -4429,7 +4440,7 @@ describe('DeviceTransport', () => {
                     capabilities: ['evcharger_charging', 'evcharger_charging_state', 'measure_power'],
                     capabilitiesObj: {
                         evcharger_charging: { id: 'evcharger_charging', setable: true },
-                        evcharger_charging_state: { value: 'plugged_in_charging', id: 'evcharger_charging_state' },
+                        evcharger_charging_state: { value: 'plugged_in', id: 'evcharger_charging_state' },
                         measure_power: { value: 0, id: 'measure_power' },
                     },
                 },
@@ -4443,7 +4454,7 @@ describe('DeviceTransport', () => {
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                currentOn: false,
                 evChargingState: 'plugged_in_paused',
             }));
 
@@ -4662,7 +4673,15 @@ describe('DeviceTransport', () => {
 
             evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_charging');
 
-            expect(realtimeListener).not.toHaveBeenCalled();
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                deviceId: 'ev1',
+                changes: [expect.objectContaining({
+                    capabilityId: 'evcharger_charging',
+                    previousValue: 'off',
+                    nextValue: 'on',
+                })],
+            }));
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 currentOn: true,
                 evCharging: false,
@@ -4734,7 +4753,7 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot();
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                     evChargingState: 'plugged_in_paused',
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
@@ -5741,7 +5760,7 @@ describe('DeviceTransport', () => {
                 });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                     evChargingState: 'plugged_in_paused',
                 }));
                 expect(evDeviceManager.getSnapshot()[0].binaryControlObservation).toBeUndefined();
@@ -5799,7 +5818,7 @@ describe('DeviceTransport', () => {
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    currentOn: false,
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                 }));
@@ -5859,7 +5878,9 @@ describe('DeviceTransport', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
             expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                // Paused = off (state-authoritative), even though the proprietary
+                // charging signal lingered before the charge_mode update.
+                currentOn: false,
                 evChargingState: 'plugged_in_paused',
             }));
 

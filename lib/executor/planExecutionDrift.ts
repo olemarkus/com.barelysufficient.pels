@@ -1,4 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
+import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
   ExecutableDeviceIntent,
@@ -158,11 +159,12 @@ function hasExecutableEvExecutionDrift(
   if (isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, intent.kind === 'ev_resume' ? 'on' : 'off')) {
     return false;
   }
-  const chargingState = observed.snapshot.evChargingState;
   if (intent.kind === 'ev_resume') {
-    return chargingState === 'plugged_in_paused';
+    // Resume drift: still off-but-commandable (paused) — transition not yet seen.
+    return !observed.currentOn && isCommandableNow(observed.snapshot);
   }
-  return chargingState === 'plugged_in_charging';
+  // Pause drift: still on (charging) — transition not yet seen.
+  return observed.currentOn;
 }
 
 function hasExecutableSteppedLoadExecutionDrift(

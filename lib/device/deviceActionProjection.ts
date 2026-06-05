@@ -34,6 +34,19 @@ import {
   EV_COMMANDABLE_NOW_REASONS,
   formatUnknownEvChargingStateReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
+import { isEvDevice, type CommandableNowResolveInput } from '../../packages/shared-domain/src/commandableNow';
+// Commandability resolution lives in shared-domain so the executor can import it
+// without crossing the no-executor-to-device-internals boundary. Re-exported
+// here for the planner/producer call sites that already import from this module.
+export {
+  resolveCommandableNow,
+  isCommandableNow,
+  getCommandableNowReason,
+} from '../../packages/shared-domain/src/commandableNow';
+export type {
+  CommandableNowResolveInput,
+  CommandableNowResolution,
+} from '../../packages/shared-domain/src/commandableNow';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadOffStep,
@@ -47,25 +60,6 @@ import {
 
 export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
-/**
- * Producer-internal EV-device predicate. A device is treated as "EV" if EITHER
- * its `deviceClass` is `'evcharger'` OR its resolved binary control capability
- * is `'evcharger_charging'`. The union is intentional: real EV devices set both
- * fields, so this collapses what used to be two slightly different gates inside
- * this file (`resolveEvBoostActive` historically read `deviceClass`; the
- * commandability/restore-block helpers read `controlCapabilityId`) into a
- * single source of truth.
- *
- * Returns `false` when both fields are missing.
- *
- * Kept private to this producer module: consumers in `lib/plan/restore/**`
- * receive `TargetDeviceSnapshot` and resolve EV semantics through different
- * helpers — they don't share the `PlanInputDevice` shape this predicate is
- * shaped for.
- */
-const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: string }): boolean => (
-  dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
-);
 
 export type BinaryControlPlan = {
   capabilityId: 'onoff' | 'evcharger_charging';
@@ -214,97 +208,9 @@ function resolveBinaryCapabilityId(
 // bit instead of branching on raw evChargingState / controlCapabilityId /
 // deviceClass / boost-threshold math.
 //
-// Pure helpers: state-dependent inputs (previous boost, abandon-grace window)
-// are passed in explicitly. No closure over runtime singletons.
+// Pure helpers: state-dependent inputs (previous boost) are passed in
+// explicitly. No closure over runtime singletons.
 // =============================================================================
-
-/**
- * Grace window during which a missing/empty SDK read is allowed to fall back
- * to the previously observed commandableNow. Tuned to comfortably exceed the
- * typical Homey snapshot-refresh cadence (a couple of poll cycles); shorter
- * than the deferred-objective ABANDON_GRACE_MS because commandability is a
- * per-cycle decision rather than a multi-hour planning bet.
- *
- * Pattern source: `lib/objectives/deferredObjectives/planHistory.ts` —
- * `ABANDON_GRACE_MS`. See `feedback_homey_sdk_unreliable.md` — never drop
- * persisted state on a single missing read.
- */
-export const COMMANDABLE_NOW_GRACE_MS = 5 * 60 * 1000;
-
-export type CommandableNowResolveInput = {
-  deviceClass?: string;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
-  evChargingState?: string;
-  available?: boolean;
-};
-
-export type CommandableNowGraceEntry = {
-  commandableNow: boolean;
-  observedAtMs: number;
-};
-
-export type CommandableNowResolution = {
-  commandableNow: boolean;
-  reason: string | null;
-};
-
-/**
- * Resolve whether the device is commandable in this cycle.
- *
- * Returns:
- *   - `commandableNow: false` with a reason string when the device is
- *     physically blocked (EV unplugged / discharging, unavailable, etc.).
- *   - `commandableNow: true` with `reason: null` when the device accepts
- *     commands.
- *
- * Abandon-grace semantics: if the current SDK read is uncertain (no EV state
- * available on an EV charger, no controlCapabilityId yet, but we previously
- * observed a stable commandable answer within the grace window), the prior
- * observation wins. This protects against single-cycle SDK hiccups where
- * polling returns an empty payload — see `feedback_homey_sdk_unreliable.md`.
- *
- * `previousObservation` carries the most recent producer-resolved answer for
- * this device (managed in AppContext alongside `lastKnownPowerKw`). `nowMs`
- * is injected so the helper stays pure and unit-testable.
- *
- * First-cycle contract (pessimistic-on-first-cycle, load-bearing once
- * executors consume the bit via `canTurnOnDevice` etc.): a never-seen EV
- * device whose `evChargingState === undefined` and has no entry in
- * `lastKnownCommandableByDevice` resolves to
- * `{ commandableNow: false, reason: 'charger state unknown' }`. The
- * abandon-grace window applies only *after* a confident observation has
- * been recorded — new devices have no grace. This is intentional: without
- * trusted evidence that the device is responsive, the executor must not
- * actuate. A confident plug-state read on a subsequent cycle flips the bit
- * to its real value and seeds the grace window for future uncertain reads.
- */
-export function resolveCommandableNow(params: {
-  dev: CommandableNowResolveInput;
-  previousObservation?: CommandableNowGraceEntry;
-  nowMs: number;
-}): CommandableNowResolution {
-  const { dev, previousObservation, nowMs } = params;
-
-  const evBlock = resolveEvCommandableBlock(dev);
-  if (evBlock !== null) {
-    // Only uncertain reads (no `evChargingState` from the SDK this cycle)
-    // are eligible for the abandon-grace fallback. A confident negative
-    // (plugged_out / discharging / explicit unknown state) is reported
-    // as-is. Likewise, `available === false` is a confident SDK answer —
-    // not a missing read — so it bypasses grace entirely.
-    if (evBlock.uncertain) {
-      const recent = isWithinGrace(previousObservation, nowMs);
-      if (recent) return { commandableNow: recent.commandableNow, reason: null };
-    }
-    return { commandableNow: false, reason: evBlock.reason };
-  }
-
-  if (dev.available === false) {
-    return { commandableNow: false, reason: 'device unavailable' };
-  }
-
-  return { commandableNow: true, reason: null };
-}
 
 /**
  * Resolve aggregate boost activation: true if either temperature-boost or
@@ -322,34 +228,6 @@ export function resolveBoostActive(params: {
   return params.temperatureBoostActive === true || params.evBoostActive === true;
 }
 
-// -----------------------------------------------------------------------------
-// Dual-read consumer helpers (transitional bridge — removed in chunk 6).
-//
-// While `commandableNow` rolls out, planner consumers should prefer the
-// producer-resolved bit when present and fall back to local resolution when
-// undefined. Tests that build PlanInputDevice shapes manually keep working
-// unchanged via the fallback path; chunk 6 removes the fallback once tests
-// migrate.
-// -----------------------------------------------------------------------------
-
-type CommandableNowConsumerInput = CommandableNowResolveInput & {
-  commandableNow?: boolean;
-  commandableNowReason?: string | null;
-};
-
-export function isCommandableNow(dev: CommandableNowConsumerInput, nowMs: number = Date.now()): boolean {
-  if (dev.commandableNow !== undefined) return dev.commandableNow;
-  return resolveCommandableNow({ dev, nowMs }).commandableNow;
-}
-
-/** @public — intentionally retained (was in check-dead-code parked list). */
-export function getCommandableNowReason(
-  dev: CommandableNowConsumerInput,
-  nowMs: number = Date.now(),
-): string | null {
-  if (dev.commandableNow !== undefined) return dev.commandableNowReason ?? null;
-  return resolveCommandableNow({ dev, nowMs }).reason;
-}
 
 /**
  * Dual-read consumer helper for the aggregate boost flag. Prefers the
@@ -434,51 +312,6 @@ export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolea
     isEvDevice(dev)
     && (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging')
   );
-}
-
-// -----------------------------------------------------------------------------
-// Internal helpers
-// -----------------------------------------------------------------------------
-
-type EvCommandableBlock = { reason: string; uncertain: boolean };
-
-function resolveEvCommandableBlock(dev: CommandableNowResolveInput): EvCommandableBlock | null {
-  // Routed through the shared `isEvDevice` union predicate so this helper and
-  // `resolveEvBoostActive` / `getEvRestoreBlockReason` / `isEvPhysicallyUnplugged`
-  // all agree on what counts as an EV device. Real EV devices set both
-  // `deviceClass === 'evcharger'` and `controlCapabilityId === 'evcharger_charging'`,
-  // so this is a no-op for the device shapes the producer sees in practice.
-  if (!isEvDevice(dev)) return null;
-
-  switch (dev.evChargingState) {
-    case 'plugged_out':
-      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_out, uncertain: false };
-    case 'plugged_in_discharging':
-      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging, uncertain: false };
-    case 'plugged_in':
-      return { reason: EV_COMMANDABLE_NOW_REASONS.plugged_in, uncertain: false };
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case undefined:
-      // No EV state read this cycle — uncertain. Caller may apply the
-      // abandon-grace window.
-      return { reason: EV_COMMANDABLE_NOW_REASONS.state_unknown, uncertain: true };
-    default:
-      return {
-        reason: formatUnknownEvChargingStateReason(dev.evChargingState),
-        uncertain: false,
-      };
-  }
-}
-
-function isWithinGrace(
-  observation: CommandableNowGraceEntry | undefined,
-  nowMs: number,
-): CommandableNowGraceEntry | null {
-  if (!observation) return null;
-  if (nowMs - observation.observedAtMs > COMMANDABLE_NOW_GRACE_MS) return null;
-  return observation;
 }
 
 // ---------------------------------------------------------------------------

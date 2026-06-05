@@ -66,11 +66,18 @@ export function resolveEvCurrentOn(params: {
   evchargerCharging: unknown;
 }): boolean {
   const { evChargingState, evchargerCharging } = params;
+  // The charge-state string is authoritative (Homey requires both EV
+  // capabilities on a charger). `currentOn` = "free to draw": only
+  // `plugged_in_charging` is on; a paused charger is held off — commandable,
+  // but NOT on, exactly like a binary device with onoff=false. The raw
+  // `evcharger_charging` boolean is consulted only as a fallback when the state
+  // string is absent (a transient pull gap), so a boolean lingering `true`
+  // during a pause cannot contradict the state.
+  if (evChargingState !== undefined) {
+    return evChargingState === 'plugged_in_charging';
+  }
   if (evchargerCharging === true) {
     return true;
-  }
-  if (evChargingState !== undefined) {
-    return evChargingState === 'plugged_in_charging' || evChargingState === 'plugged_in_paused';
   }
   if (evchargerCharging === false) {
     return false;
@@ -83,10 +90,13 @@ export function resolveEvCurrentOnObservation(params: {
   evchargerCharging: unknown;
 }): boolean | undefined {
   const { evChargingState, evchargerCharging } = params;
-  if (evchargerCharging === true) return true;
+  // State-authoritative (see resolveEvCurrentOn): the charge-state string wins
+  // when present; the raw boolean is only a transient state-missing fallback,
+  // and `undefined` defers to the previous-snapshot synthesis upstream.
   if (evChargingState !== undefined) {
     return resolveEvCurrentOn({ evChargingState, evchargerCharging });
   }
+  if (evchargerCharging === true) return true;
   if (evchargerCharging === false) return false;
   return undefined;
 }

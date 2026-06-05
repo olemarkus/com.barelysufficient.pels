@@ -117,7 +117,7 @@ describe('native EV wiring shim', () => {
       }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -220,7 +220,7 @@ describe('native EV wiring shim', () => {
       }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       powerCapable: true,
     }));
@@ -254,7 +254,7 @@ describe('native EV wiring shim', () => {
         activationEnabled: true,
       }),
       controlWriteCapabilityId: 'charging_button',
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -288,7 +288,7 @@ describe('native EV wiring shim', () => {
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -467,7 +467,7 @@ describe('native EV wiring shim', () => {
     expect(parsed).toEqual(expect.objectContaining({
       controlCapabilityId: 'evcharger_charging',
       controlWriteCapabilityId: 'charging_button',
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
@@ -495,7 +495,7 @@ describe('native EV wiring shim', () => {
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
