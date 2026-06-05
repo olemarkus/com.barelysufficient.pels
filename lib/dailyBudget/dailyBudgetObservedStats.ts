@@ -387,7 +387,7 @@ export function ensureObservedHourlyStats(params: {
   powerTracker: PowerTrackerState;
   timeZone: string;
   nowMs: number;
-}): { nextState: DailyBudgetState; changed: boolean; logMessage?: string } {
+}): { nextState: DailyBudgetState; changed: boolean; logEvent?: Record<string, unknown> } {
   const {
     state,
     powerTracker,
@@ -466,8 +466,8 @@ export function ensureObservedHourlyStats(params: {
   return {
     nextState: update.nextState,
     changed: update.changed,
-    logMessage: update.changed
-      ? `Daily budget: ${actionLabel} observed stats (window buckets ${windowBucketCount})`
+    logEvent: update.changed
+      ? { event: 'daily_budget_observed_stats_updated', action: actionLabel, windowBucketCount }
       : undefined,
   };
 }

@@ -43,8 +43,13 @@ import {
   resolveConfidence,
 } from './dailyBudgetConfidence';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
+import { getLogger } from '../logging/logger';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
+const moduleLogger = getLogger('daily_budget');
+// Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
+// production always wires `debugStructured`) fallback path.
+const debugFallbackEmit = (payload: Record<string, unknown>): void => moduleLogger.debug(payload);
 
 export class DailyBudgetManager {
   private state: DailyBudgetState = {};
@@ -54,6 +59,12 @@ export class DailyBudgetManager {
   private confidenceCache: ConfidenceCache = createConfidenceCache();
 
   constructor(private deps: DailyBudgetManagerDeps) { }
+
+  // Topic-gated (`daily_budget`) structured debug for lifecycle events. Falls
+  // back to the module logger at debug level when no emitter is wired (tests).
+  private emitDebug(payload: Record<string, unknown>): void {
+    (this.deps.debugStructured ?? debugFallbackEmit)(payload);
+  }
   loadState(raw: unknown): void { if (isDailyBudgetState(raw)) this.state = { ...raw }; }
   exportState(): DailyBudgetState {
     const state = { ...this.state };
@@ -192,7 +203,7 @@ export class DailyBudgetManager {
       defaultProfile: DEFAULT_PROFILE,
       nowMs: context.nowMs,
     });
-    if (result.logMessage) this.deps.logDebug(result.logMessage);
+    if (result.logEvent) this.emitDebug(result.logEvent);
     if (result.shouldMarkDirty) this.markDirty('rollover');
     this.state = result.nextState;
   }
@@ -214,7 +225,7 @@ export class DailyBudgetManager {
     }
     this.state.frozen = false;
     this.markDirty('manual');
-    this.deps.logDebug('Daily budget: recompute requested, clearing frozen plan state');
+    this.emitDebug({ event: 'daily_budget_recompute_requested', reason: 'clearing_frozen_plan' });
   }
 
   private preparePlanState(params: {
@@ -237,7 +248,7 @@ export class DailyBudgetManager {
     if (enabled && planState.existingPlan && !this.state.frozen && planState.deviationExisting > 0) {
       this.state.frozen = true;
       this.markDirty('frozen');
-      this.deps.logDebug(`Daily budget: freeze plan (deviation ${planState.deviationExisting.toFixed(2)} kWh)`);
+      this.emitDebug({ event: 'daily_budget_plan_frozen', deviationKWh: planState.deviationExisting });
     }
     return planState;
   }
@@ -410,14 +421,14 @@ export class DailyBudgetManager {
     if (result.changed) {
       this.state = result.nextState;
       this.markDirty('observed_stats');
-      if (result.logMessage) this.deps.logDebug(result.logMessage);
+      if (result.logEvent) this.emitDebug(result.logEvent);
     }
   }
 
   private maybeFreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
     if (!enabled || deviationKWh <= 0 || this.state.frozen) return;
     this.state.frozen = true; this.markDirty('frozen');
-    this.deps.logDebug(`Daily budget: freeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
+    this.emitDebug({ event: 'daily_budget_plan_frozen', deviationKWh });
   }
 
   private maybeUnfreezeFromDeviation(enabled: boolean, deviationKWh: number): void {
@@ -425,7 +436,7 @@ export class DailyBudgetManager {
     this.state.frozen = false;
     this.state.lastPlanBucketStartUtcMs = null;
     this.markDirty('frozen');
-    this.deps.logDebug(`Daily budget: unfreeze plan (deviation ${deviationKWh.toFixed(2)} kWh)`);
+    this.emitDebug({ event: 'daily_budget_plan_unfrozen', deviationKWh });
   }
 
   private consumePersistReason(): DailyBudgetStatePersistReason | null {
