@@ -368,6 +368,146 @@ describe('registerFlowCards', () => {
     }));
   });
 
+  it('emits a clamp-deviation warn when a stepped load reports below its commanded step', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'low',
+    })).resolves.toBe(true);
+
+    expect(structuredWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'stepped_load_report_clamp_detected',
+      deviceId: 'dev-1',
+      deviceName: 'Wallbox',
+      commandedStepId: 'max',
+      reportedStepId: 'low',
+      expectedW: 3000,
+      reportedW: 1250,
+      deltaW: 1750,
+      reasonCode: 'stepped_load_clamp',
+    }));
+  });
+
+  it('does not emit a clamp warn for a within-margin shortfall', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'near-max', planningPowerW: 2950 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    // 2950 W is 50 W below the commanded 3000 W step — within the ceiling margin.
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'near-max',
+    })).resolves.toBe(true);
+
+    const clampWarns = structuredWarn.mock.calls.filter(([payload]) => (
+      (payload as { event?: string })?.event === 'stepped_load_report_clamp_detected'
+    ));
+    expect(clampWarns).toHaveLength(0);
+  });
+
+  it('does not emit a clamp warn while a step command is still pending', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          stepCommandPending: true,
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 1250 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'low',
+    })).resolves.toBe(true);
+
+    const clampWarns = structuredWarn.mock.calls.filter(([payload]) => (
+      (payload as { event?: string })?.event === 'stepped_load_report_clamp_detected'
+    ));
+    expect(clampWarns).toHaveLength(0);
+  });
+
+  it('does not emit a clamp warn when the report matches the commanded step', async () => {
+    const { deps, actionListeners, structuredWarn } = buildDeps({
+      getSnapshot: vi.fn().mockResolvedValue([
+        {
+          id: 'dev-1',
+          name: 'Wallbox',
+          controlModel: 'stepped_load',
+          desiredStepId: 'max',
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'max', planningPowerW: 3000 },
+            ],
+          },
+        },
+      ]),
+    });
+
+    registerFlowCards(deps);
+
+    await expect(actionListeners.report_stepped_load_actual_step({
+      device: 'dev-1',
+      step: 'max',
+    })).resolves.toBe(true);
+
+    const clampWarns = structuredWarn.mock.calls.filter(([payload]) => (
+      (payload as { event?: string })?.event === 'stepped_load_report_clamp_detected'
+    ));
+    expect(clampWarns).toHaveLength(0);
+  });
+
   it('reports EV charger battery level', async () => {
     const { deps, actionListeners, structuredInfo } = buildDeps({
       getSnapshot: vi.fn()

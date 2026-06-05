@@ -1,22 +1,24 @@
-import { createIdleClassifier, type IdleClassifierDeviceInput } from '../lib/observer/idleClassifier';
+import { createIdleClassifier, type IdleClassifierDeviceInput } from '../../lib/observer/idleClassifier';
 import {
   CAPPED_IDLE_MIN_WINDOW_MS,
   IDLE_HOLD_MIN_DURATION_MS,
   IDLE_UNRESPONSIVE_MIN_DURATION_MS,
-} from '../lib/observer/idleDetector';
+} from '../../lib/observer/idleDetector';
 
-type MockLogger = {
-  info: (payload: Record<string, unknown>) => void;
+type MockSink = {
+  emit: (payload: Record<string, unknown>) => void;
   events: Array<Record<string, unknown>>;
 };
 
-const createMockLogger = (): MockLogger => {
+const createSink = (): MockSink => {
   const events: Array<Record<string, unknown>> = [];
   return {
     events,
-    info: (payload) => events.push(payload),
+    emit: (payload) => events.push(payload),
   };
 };
+
+const eventNames = (sink: MockSink): string[] => sink.events.map((event) => String(event.event));
 
 const heaterAt = (
   overrides: Partial<IdleClassifierDeviceInput> = {},
@@ -35,23 +37,26 @@ const heaterAt = (
 });
 
 describe('createIdleClassifier', () => {
-  it('emits a started event on first transition into near_target_idle', () => {
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+  // near_target_idle is the benign duty-cycle classification: it must NOT reach
+  // the ungated info sink (which feeds the no-debug diagnostics report) — it
+  // routes to the topic-gated debug emitter instead.
+  it('routes near_target_idle transitions to the debug emitter, not the info sink', () => {
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
     classifier.classifyAll([heaterAt()], t0);
     classifier.classifyAll([heaterAt()], t0 + IDLE_HOLD_MIN_DURATION_MS);
-    const started = logger.events.find(
-      (event) => event.event === 'device_near_target_idle_started',
-    );
-    expect(started).toBeDefined();
-    expect(started?.deviceId).toBe('heater-1');
+
+    expect(eventNames(debug)).toContain('device_near_target_idle_started');
+    expect(eventNames(info)).not.toContain('device_near_target_idle_started');
     expect(classifier.getClassification('heater-1')).toBe('near_target_idle');
   });
 
-  it('emits a cleared event when the device resumes', () => {
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+  it('routes a near_target_idle cleared transition to the debug emitter', () => {
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
     classifier.classifyAll([heaterAt()], t0);
     classifier.classifyAll([heaterAt()], t0 + IDLE_HOLD_MIN_DURATION_MS);
@@ -59,32 +64,38 @@ describe('createIdleClassifier', () => {
       [heaterAt({ measuredPowerKw: 1.2 })],
       t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000,
     );
-    const cleared = logger.events.find(
-      (event) => event.event === 'device_near_target_idle_cleared',
-    );
-    expect(cleared).toBeDefined();
+
+    expect(eventNames(debug)).toContain('device_near_target_idle_cleared');
+    expect(eventNames(info)).not.toContain('device_near_target_idle_cleared');
     expect(classifier.getClassification('heater-1')).toBeUndefined();
   });
 
   it('does not emit on a stable active device', () => {
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     classifier.classifyAll([heaterAt({ measuredPowerKw: 1.0 })], 1_000_000);
     classifier.classifyAll([heaterAt({ measuredPowerKw: 1.0 })], 2_000_000);
-    expect(logger.events).toHaveLength(0);
+    expect(info.events).toHaveLength(0);
+    expect(debug.events).toHaveLength(0);
   });
 
-  it('reports unresponsive after the longer window when far from setpoint', () => {
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+  // unresponsive and capped_idle are the surprising states a no-debug report
+  // must keep — they stay on the ungated info sink with a reasonCode.
+  it('reports unresponsive on the info sink after the longer window when far from setpoint', () => {
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
     const cold = heaterAt({ currentTemperature: 55 });
     classifier.classifyAll([cold], t0);
     classifier.classifyAll([cold], t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS);
     expect(classifier.getClassification('heater-1')).toBe('unresponsive');
-    expect(
-      logger.events.some((event) => event.event === 'device_unresponsive_started'),
-    ).toBe(true);
+    expect(info.events).toContainEqual(expect.objectContaining({
+      event: 'device_unresponsive_started',
+      reasonCode: 'unresponsive',
+    }));
+    expect(eventNames(debug)).not.toContain('device_unresponsive_started');
   });
 
   it('does not classify a PELS-shed device', () => {
@@ -104,25 +115,25 @@ describe('createIdleClassifier', () => {
   // gate must read from `plannedState`, which reflects the actual decision
   // for this cycle.
   it('classifies a keep-planned heater near setpoint even though shed behaviour is configured', () => {
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
     const keepingHeater = heaterAt({ plannedState: 'keep' });
     classifier.classifyAll([keepingHeater], t0);
     classifier.classifyAll([keepingHeater], t0 + IDLE_HOLD_MIN_DURATION_MS);
     expect(classifier.getClassification('heater-1')).toBe('near_target_idle');
-    expect(
-      logger.events.some((event) => event.event === 'device_near_target_idle_started'),
-    ).toBe(true);
+    expect(eventNames(debug)).toContain('device_near_target_idle_started');
   });
 
-  it('emits a capped_idle started event when the device cycles at its own cap', () => {
+  it('emits a capped_idle started event on the info sink when the device cycles at its own cap', () => {
     // Connected 300 worked example: tank parks at 58 °C (7 °C below the
     // 65 °C target) with power cycling around the device's own
     // hysteresis. The classifier should fire a started event the cycle
     // the full 20-min window is covered.
-    const logger = createMockLogger();
-    const classifier = createIdleClassifier({ structuredLog: logger as never });
+    const info = createSink();
+    const debug = createSink();
+    const classifier = createIdleClassifier({ structuredLog: { info: info.emit } as never, debugStructured: debug.emit });
     const t0 = 1_000_000;
     const cappedAt58 = heaterAt({ currentTemperature: 58 });
     let cursor = t0;
@@ -140,8 +151,9 @@ describe('createIdleClassifier', () => {
       cursor,
     );
     expect(classifier.getClassification('heater-1')).toBe('capped_idle');
-    expect(
-      logger.events.some((event) => event.event === 'device_capped_idle_started'),
-    ).toBe(true);
+    expect(info.events).toContainEqual(expect.objectContaining({
+      event: 'device_capped_idle_started',
+      reasonCode: 'capped_idle',
+    }));
   });
 });

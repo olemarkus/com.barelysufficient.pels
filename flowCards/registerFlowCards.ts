@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- Flow card registration stays centralized in this module. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/power/capacityGuard';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
@@ -22,6 +22,8 @@ import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
+import { emitGated } from '../lib/logging/deviationGate';
+import type { LogDedupeEntry } from '../lib/logging/logDedupe';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import {
@@ -75,6 +77,11 @@ const STEPPED_LOAD_POWER_CEILING_MARGIN_RATIO = 0.05;
 const STEPPED_LOAD_POWER_CEILING_MARGIN_MAX_W = 150;
 const EV_CHARGER_NOMINAL_VOLTAGE = 230;
 const EV_SOC_CARD_ID = 'report_evcharger_battery_level';
+// Per-device dedupe for the clamp-deviation warn: a stuck clamp emits once + a
+// slow heartbeat instead of one line per inbound report. Bounded by device
+// count; `shouldEmitOnChange` prunes idle entries (default 10 min window).
+const STEPPED_LOAD_CLAMP_HEARTBEAT_MS = 10 * 60 * 1000;
+const steppedLoadClampDedupe = new Map<string, LogDedupeEntry>();
 
 export type FlowCardDeps = {
   homey: FlowHomeyLike;
@@ -91,7 +98,11 @@ export type FlowCardDeps = {
   getCapacityGuard: () => CapacityGuard | undefined;
   getHeadroom: () => number | null;
   setCapacityLimit: (kw: number) => void;
-  getSnapshot: () => Promise<TargetDeviceSnapshot[]>;
+  // Decorated: the runtime snapshot carries the app-layer step-command
+  // decoration (`desiredStepId` / `targetStepId`) that the clamp-deviation
+  // check reads. The runtime already returns decorated objects; the type just
+  // stops narrowing them away.
+  getSnapshot: () => Promise<DecoratedDeviceSnapshot[]>;
   refreshSnapshot: (options?: { emitFlowBackedRefresh?: boolean }) => Promise<void>;
   getHomeyDevicesForFlow: () => Promise<HomeyDeviceLike[]>;
   reportFlowBackedCapability: (params: {
@@ -394,6 +405,9 @@ async function handleSteppedLoadReportResult(params: {
       parsedPowerW,
       outcome: 'unchanged',
     });
+    await emitSteppedLoadClampDeviationLog({
+      deps, sourceCardId: source, deviceId, reportedStepId: resolvedStepId, parsedPowerW, now: deps.getNow().getTime(),
+    });
     return;
   }
   await deps.refreshSnapshot();
@@ -406,6 +420,9 @@ async function handleSteppedLoadReportResult(params: {
     resolvedStepId,
     parsedPowerW,
     outcome: 'accepted',
+  });
+  await emitSteppedLoadClampDeviationLog({
+    deps, sourceCardId: source, deviceId, reportedStepId: resolvedStepId, parsedPowerW, now: deps.getNow().getTime(),
   });
 }
 
@@ -693,6 +710,81 @@ function formatFlowValueForLog(value: unknown): string | number | null {
   if (typeof value === 'string' || typeof value === 'number') return value;
   if (value === null || value === undefined) return null;
   return String(value);
+}
+
+/**
+ * Deviation-gated diagnostic: when a stepped load reports materially less power
+ * than the step PELS is holding it at, the device is clamping (e.g. an EV
+ * charger limited below its commanded current). The routine accepted/unchanged
+ * report is already logged at info; this adds ONE self-contained warn that joins
+ * the *commanded* step to the *reported* power so the clamp is diagnosable from a
+ * no-debug 100-line report without a reproduce round-trip.
+ *
+ * A downward shortfall beyond the configured ceiling margin is the signal;
+ * upward reports and within-margin wobble route to nothing extra.
+ */
+async function emitSteppedLoadClampDeviationLog(params: {
+  deps: FlowCardDeps;
+  sourceCardId: string;
+  deviceId: string;
+  reportedStepId: string;
+  parsedPowerW?: number;
+  now: number;
+}): Promise<void> {
+  const {
+    deps, sourceCardId, deviceId, reportedStepId, parsedPowerW, now,
+  } = params;
+  // Best-effort diagnostic: a failure here (e.g. a transient snapshot read)
+  // must never turn an accepted report into a rejected one.
+  let snapshot: DecoratedDeviceSnapshot[];
+  try {
+    snapshot = await deps.getSnapshot();
+  } catch {
+    return;
+  }
+  const device = snapshot.find((entry) => entry.id === deviceId);
+  if (!device) return;
+  // A still-pending step command means the device may simply be mid-ramp toward
+  // the commanded step — a lower report is expected, not a clamp. Only judge a
+  // settled command.
+  if (device.stepCommandPending === true) return;
+  const commandedStepId = device.desiredStepId ?? device.targetStepId;
+  if (!commandedStepId || commandedStepId === reportedStepId) return;
+  const steps = device.steppedLoadProfile?.steps ?? [];
+  const commandedStep = steps.find((step) => step.id === commandedStepId);
+  if (!commandedStep) return;
+  const reportedStep = steps.find((step) => step.id === reportedStepId);
+  const reportedW = parsedPowerW
+    ?? (reportedStep ? Math.round(reportedStep.planningPowerW) : undefined);
+  if (reportedW === undefined) return;
+  const expectedW = Math.round(commandedStep.planningPowerW);
+  const deltaW = expectedW - Math.round(reportedW);
+  if (deltaW <= getSteppedLoadPowerCeilingMarginW(expectedW)) return;
+
+  emitGated({
+    logger: deps.getStructuredLogger('devices'),
+    debugEmitter: () => {},
+    event: 'stepped_load_report_clamp_detected',
+    surprise: { level: 'warn', reasonCode: 'stepped_load_clamp' },
+    dedupe: {
+      state: steppedLoadClampDedupe,
+      key: deviceId,
+      now,
+      repeatAfterMs: STEPPED_LOAD_CLAMP_HEARTBEAT_MS,
+    },
+    fields: {
+      component: 'devices',
+      sourceCardId,
+      deviceId,
+      deviceName: device.name,
+      capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+      commandedStepId,
+      reportedStepId,
+      expectedW,
+      reportedW: Math.round(reportedW),
+      deltaW,
+    },
+  });
 }
 function registerFlowPriceCards(deps: FlowCardDeps): void {
   const setTodayCard = deps.homey.flow.getActionCard('set_external_prices_today');
