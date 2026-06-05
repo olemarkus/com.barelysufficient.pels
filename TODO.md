@@ -121,6 +121,21 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
+      The settings-UI `coerceDeferredObjectiveActivePlans`
+      (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
+      runtime `normalizeDeferredObjectiveActivePlans`
+      (`lib/objectives/deferredObjectives/activePlanSettings.ts`): it hard-codes `version: 1`, skips
+      the version check, and does no per-device `isActivePlan` filtering. Benign today (every consumer
+      optional-chains each leaf, so a malformed entry degrades to "no state line"), but on a future
+      `DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION` bump the runtime normaliser would reject the old blob
+      while the UI guard forces `version: 1` onto a v2-shaped payload and renders stale/foreign fields.
+      Fix per the resolution-in-producer rule: extract one browser-safe `coerce`/`normalize` into
+      `packages/shared-domain/src/` (precedent: `temperatureBoost.ts` already exports value normalisers
+      there) and delegate the top-level shape/version check from BOTH `activePlanSettings.ts` and the
+      settings-UI module — single source of truth, `settings-ui ↛ lib` boundary intact. **Trigger:
+      do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
+      on PR #1517, 2026-06-05.
 
 - [ ] **Verify early-satisfaction doesn't leave stale committed hours on the active plan.** When a
       stalled/near-target smart task is reported satisfied mid-plan, `maybeWriteReplanRevision` merges
@@ -352,19 +367,6 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [ ] Refresh `state.deferredObjectiveActivePlans` on plan revision events. Today the field
-      is populated once during `loadBootstrapData` in `packages/settings-ui/src/ui/boot.ts`
-      and never updates from runtime emissions. `EvDeadlineStateLine` reads the field every
-      render (component lives in `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`), so
-      later replans, session changes (e.g. unplug mid-schedule), and updated start/finish hours
-      are not reflected on Overview device cards until the user reloads the page. Surfaced by
-      Codex on PR #793 review.
-      Simpler fix than originally proposed (no new contract/stream needed): the recorder already
-      persists revised plans via `homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, …)`,
-      which fires a `settings.set` realtime event the UI already listens for — but the handler in
-      `packages/settings-ui/src/ui/realtime.ts` drops that key. Add a branch that re-reads the
-      setting into `state.deferredObjectiveActivePlans` and re-renders the affected cards.
-      Files: `packages/settings-ui/src/ui/realtime.ts`, `packages/settings-ui/src/ui/boot.ts`.
 - [ ] Improve overshoot attribution for hard-cap incidents.
       The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
       `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
