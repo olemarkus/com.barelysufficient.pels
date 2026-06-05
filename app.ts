@@ -1821,7 +1821,7 @@ class PelsApp extends Homey.App {
     }
     this.notifyOperatingModeChanged(resolved);
   }
-  private async getFlowSnapshot(): Promise<TargetDeviceSnapshot[]> {
+  private async getFlowSnapshot(): Promise<DecoratedDeviceSnapshot[]> {
     if (!this.latestTargetSnapshot || this.latestTargetSnapshot.length === 0) {
       await this.refreshTargetDevicesSnapshot();
     }

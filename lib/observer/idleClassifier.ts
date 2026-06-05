@@ -20,7 +20,8 @@ import {
   type IdleDetectorState,
 } from './idleDetector';
 import { isFiniteNumber } from '../utils/appTypeGuards';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 
@@ -49,6 +50,7 @@ export type IdleClassifier = {
 
 export type IdleClassifierDeps = {
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 const toDetectorInput = (
@@ -87,26 +89,46 @@ const isReportableClassification = (
   value === 'near_target_idle' || value === 'unresponsive' || value === 'capped_idle'
 );
 
+/**
+ * `near_target_idle` is the benign duty-cycle classification (device at its
+ * setpoint, drawing ~0) — routine, so it stays on the topic-gated debug tier
+ * and never floods the 100-line diagnostics report. `unresponsive` (commanded
+ * on but not reacting) and `capped_idle` (held below target by the cap) are the
+ * surprising states a default report must keep.
+ */
+const surpriseFor = (classification: ReportableClassification): DeviationSurprise => (
+  classification === 'near_target_idle'
+    ? null
+    : { level: 'info', reasonCode: classification }
+);
+
 const emitTransitionLog = (params: {
   device: IdleClassifierDeviceInput;
   result: IdleDetectorResult;
   logger?: PinoLogger;
+  debugLog: StructuredDebugEmitter;
 }): void => {
-  const { device, result, logger } = params;
-  if (!logger) return;
+  const {
+    device, result, logger, debugLog,
+  } = params;
   const { classification, previousClassification, idleDurationMs, temperatureGapC } = result;
 
   if (classification === previousClassification) return;
 
   if (isReportableClassification(previousClassification)) {
-    logger.info({
-      component: 'observer',
+    emitGated({
+      logger,
+      debugEmitter: debugLog,
       event: CLEARED_EVENT[previousClassification],
-      deviceId: device.id,
-      deviceName: device.name,
-      idleDurationMs,
-      temperatureGapC,
-      newClassification: classification,
+      surprise: surpriseFor(previousClassification),
+      fields: {
+        component: 'observer',
+        deviceId: device.id,
+        deviceName: device.name,
+        idleDurationMs,
+        temperatureGapC,
+        newClassification: classification,
+      },
     });
   }
 
@@ -116,17 +138,22 @@ const emitTransitionLog = (params: {
       currentTemperatureC: device.currentTemperature,
       targetTemperatureC: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
     });
-    logger.info({
-      component: 'observer',
+    emitGated({
+      logger,
+      debugEmitter: debugLog,
       event: STARTED_EVENT[classification],
-      deviceId: device.id,
-      deviceName: device.name,
-      idleDurationMs,
-      temperatureGapC,
-      measuredPowerKw: device.measuredPowerKw,
-      currentTemperatureC: device.currentTemperature,
-      targetTemperatureC: device.currentTarget ?? undefined,
-      detail: copy.detail,
+      surprise: surpriseFor(classification),
+      fields: {
+        component: 'observer',
+        deviceId: device.id,
+        deviceName: device.name,
+        idleDurationMs,
+        temperatureGapC,
+        measuredPowerKw: device.measuredPowerKw,
+        currentTemperatureC: device.currentTemperature,
+        targetTemperatureC: device.currentTarget ?? undefined,
+        detail: copy.detail,
+      },
     });
   }
 };
@@ -134,6 +161,7 @@ const emitTransitionLog = (params: {
 export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassifier {
   const state: IdleDetectorState = new Map();
   const lastResultById = new Map<string, IdleDetectorResult>();
+  const debugLog: StructuredDebugEmitter = deps.debugStructured ?? (() => {});
 
   const classifyAll = (
     devices: readonly IdleClassifierDeviceInput[],
@@ -143,7 +171,7 @@ export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassif
     lastResultById.clear();
     for (const device of devices) {
       const result = classifyIdleState(toDetectorInput(device, now), state);
-      emitTransitionLog({ device, result, logger: deps.structuredLog });
+      emitTransitionLog({ device, result, logger: deps.structuredLog, debugLog });
       lastResultById.set(device.id, result);
     }
   };

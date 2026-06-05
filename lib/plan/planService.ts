@@ -171,7 +171,10 @@ export class PlanService {
   private lastTickedPlanRef: DevicePlan | null = null;
 
   constructor(private deps: PlanServiceDeps) {
-    this.idleClassifier = createIdleClassifier({ structuredLog: deps.loggers?.structuredLog });
+    this.idleClassifier = createIdleClassifier({
+      structuredLog: deps.loggers?.structuredLog,
+      debugStructured: deps.loggers?.debugStructured,
+    });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
       getCombinedPrices: deps.getCombinedPrices,
