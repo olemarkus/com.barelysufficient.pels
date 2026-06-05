@@ -138,7 +138,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getProfiles: () => deviceControlProfiles,
     getDeviceSnapshots: () => latestTargetSnapshot,
     getStructuredLogger: () => undefined,
-    logDebug: vi.fn(),
+    debugStructured: vi.fn(),
   });
 
   const context: AppContext = {
