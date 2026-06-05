@@ -5,10 +5,10 @@ import {
   type RealtimeDeviceReconcileEvent,
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
-import { hasPlanExecutionDriftForDevice } from '../executor/planExecutionDrift';
-import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
+import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import { getLogger } from '../lib/logging/logger';
 
 const moduleLogger = getLogger('app/realtime-reconcile-runtime');
 

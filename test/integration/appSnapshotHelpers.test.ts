@@ -1,5 +1,5 @@
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
-import { disableUnsupportedDevices } from '../../lib/app/appDeviceSupport';
+import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
 import { STALE_DEVICE_OBSERVATION_MS } from '../../lib/observer/observationFreshness';
 import {

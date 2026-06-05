@@ -1,16 +1,16 @@
 import type Homey from 'homey';
-import type { ShedBehavior } from '../plan/planTypes';
+import type { ShedBehavior } from '../lib/plan/planTypes';
 import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   EvBoostSettings,
   TemperatureBoostSettings,
-} from '../../packages/contracts/src/types';
+} from '../packages/contracts/src/types';
 import {
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
-} from '../utils/capacityHelpers';
-import { createSettingsHandler } from '../utils/settingsHandlers';
+} from '../lib/utils/capacityHelpers';
+import { createSettingsHandler } from '../lib/utils/settingsHandlers';
 import {
   isDeviceControlProfiles,
   isBooleanMap,
@@ -21,8 +21,8 @@ import {
   isStringMap,
   normalizeEvBoostSettings,
   normalizeTemperatureBoostSettings,
-} from '../utils/appTypeGuards';
-import { normalizeDeviceTargetPowerConfigs } from '../utils/targetPowerConfig';
+} from '../lib/utils/appTypeGuards';
+import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
@@ -39,10 +39,10 @@ import {
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
-} from '../utils/settingsKeys';
-import type { PriceCoordinator } from '../price/priceCoordinator';
-import type { SettingsHandler } from '../utils/settingsHandlers';
-import type { AppContext } from './appContext';
+} from '../lib/utils/settingsKeys';
+import type { PriceCoordinator } from '../lib/price/priceCoordinator';
+import type { SettingsHandler } from '../lib/utils/settingsHandlers';
+import type { AppContext } from '../lib/app/appContext';
 
 export type CapacitySettingsSnapshot = {
   capacitySettings: { limitKw: number; marginKw: number };

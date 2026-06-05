@@ -1,7 +1,7 @@
-import { incPerfCounters } from '../utils/perfCounters';
-import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { normalizeError } from '../utils/errorUtils';
-import type { AppContext } from './appContext';
+import { incPerfCounters } from '../lib/utils/perfCounters';
+import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
+import { normalizeError } from '../lib/utils/errorUtils';
+import type { AppContext } from '../lib/app/appContext';
 
 function requirePriceCoordinator(ctx: AppContext) {
   if (!ctx.priceCoordinator) {

@@ -1,5 +1,5 @@
 import type Homey from 'homey';
-import { runBootMigrations } from '../../lib/app/appBootMigrations';
+import { runBootMigrations } from '../../setup/appBootMigrations';
 import { MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
 
 const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';

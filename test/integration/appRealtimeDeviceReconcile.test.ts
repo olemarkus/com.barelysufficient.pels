@@ -2,8 +2,8 @@ import {
   createRealtimeDeviceReconcileState,
   flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
-} from '../../lib/app/appRealtimeDeviceReconcile';
-import { shouldQueueRealtimeDeviceReconcile } from '../../lib/app/appRealtimeDeviceReconcileRuntime';
+} from '../../setup/appRealtimeDeviceReconcile';
+import { shouldQueueRealtimeDeviceReconcile } from '../../setup/appRealtimeDeviceReconcileRuntime';
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 

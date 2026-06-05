@@ -1,7 +1,7 @@
-import { resolveCurrentPriceFromCombined } from '../price/priceLowestFlowEvaluator';
-import type { CombinedHourlyPrice } from '../price/priceTypes';
-import { getHourStartInTimeZone } from '../utils/dateUtils';
-import { normalizeError } from '../utils/errorUtils';
+import { resolveCurrentPriceFromCombined } from '../lib/price/priceLowestFlowEvaluator';
+import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
+import { getHourStartInTimeZone } from '../lib/utils/dateUtils';
+import { normalizeError } from '../lib/utils/errorUtils';
 
 type LowestPriceTriggerCardId = 'price_lowest_before' | 'price_lowest_today';
 

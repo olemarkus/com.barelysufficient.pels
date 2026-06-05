@@ -1,19 +1,19 @@
 import type Homey from 'homey';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { isBooleanMap, isModeDeviceTargets } from '../utils/appTypeGuards';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { isBooleanMap, isModeDeviceTargets } from '../lib/utils/appTypeGuards';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   PRICE_OPTIMIZATION_SETTINGS,
-} from '../utils/settingsKeys';
-import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../utils/airtreatmentConstants';
+} from '../lib/utils/settingsKeys';
+import { AIRTREATMENT_SHED_FLOOR_C, NON_ONOFF_TEMPERATURE_SHED_FLOOR_C } from '../lib/utils/airtreatmentConstants';
 import {
   computeDefaultAirtreatmentShedTemperature,
   normalizeShedTemperature,
-} from '../utils/airtreatmentShedTemperature';
-import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
+} from '../lib/utils/airtreatmentShedTemperature';
+import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../lib/utils/targetCapabilities';
 
 type StructuredEventEmitter = (event: Record<string, unknown>) => void;
 

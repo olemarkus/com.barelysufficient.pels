@@ -3,7 +3,7 @@ import type { Logger as PinoLogger } from 'pino';
 import { startPerfLogger } from '../lib/diagnostics/perfLogging';
 import { startResourceWarningListeners as startResourceWarnings } from '../lib/diagnostics/resourceWarnings';
 import { installHeapSnapshotHandler } from '../lib/diagnostics/heapSnapshotHandler';
-import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from '../lib/app/appPriceLowestTrigger';
+import { startPriceLowestTriggerChecker as startPriceLowestTriggers } from './appPriceLowestTrigger';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
@@ -28,7 +28,7 @@ export type BackgroundTasksControllerDeps = {
  * no domain value any other module queries — if it were deleted, `PelsApp`
  * would regrow four `stop*?: () => void` fields, not domain knowledge. The
  * four tasks themselves live with their respective concerns
- * (`lib/diagnostics/**`, `lib/app/appPriceLowestTrigger`); this class is
+ * (`lib/diagnostics/**`, `setup/appPriceLowestTrigger`); this class is
  * the wiring that hands them their app-shaped deps (price coordinator,
  * debug-topic strings, structured-debug emitter) and aggregates teardown.
  *

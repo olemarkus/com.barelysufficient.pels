@@ -1,5 +1,5 @@
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
-import { startAppServices } from '../lib/app/appLifecycleHelpers';
+import { startAppServices } from '../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../lib/app/timerRegistry';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 

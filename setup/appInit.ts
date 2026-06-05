@@ -35,7 +35,7 @@ import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './appInit/calibrationViews';
-import { isRuntimePlannedDevice } from '../lib/app/appDeviceSupport';
+import { isRuntimePlannedDevice } from './appDeviceSupport';
 
 export {
   buildDeferredObjectiveDeviceWriteDeps,

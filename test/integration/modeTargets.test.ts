@@ -6,7 +6,7 @@ import {
 } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 
-vi.mock('../../lib/app/appLifecycleHelpers', () => ({
+vi.mock('../../setup/appLifecycleHelpers', () => ({
   runStartupStep: async (_label: string, work: () => unknown | Promise<unknown>) => work(),
   startAppServices: async (ctx: any) => {
     ctx.loadPowerTracker();

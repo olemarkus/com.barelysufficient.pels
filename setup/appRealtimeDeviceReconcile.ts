@@ -1,6 +1,6 @@
-import type { RealtimeDeviceReconcileChange } from '../device/managerRuntime';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
+import type { RealtimeDeviceReconcileChange } from '../lib/device/managerRuntime';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import { getLogger } from '../lib/logging/logger';
 
 const moduleLogger = getLogger('app/realtime-reconcile');
 

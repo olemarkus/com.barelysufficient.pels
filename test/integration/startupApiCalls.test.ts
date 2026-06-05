@@ -50,7 +50,7 @@ describe('startup API calls', () => {
   });
 
   // The startup bootstrap snapshot runs with { fast: true, recordHomeyEnergySample: false }
-  // (lib/app/appLifecycleHelpers.ts), so it must not hit the Homey Energy live report — that
+  // (setup/appLifecycleHelpers.ts), so it must not hit the Homey Energy live report — that
   // poll belongs to the periodic source, not the boot path. Guards against a regression where
   // startup pays the live-fetch cost (the behavioural half of the deleted perf reproduction).
   it('does not fetch the Homey Energy live report during the startup bootstrap snapshot', async () => {

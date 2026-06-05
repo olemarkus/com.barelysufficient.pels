@@ -1,4 +1,4 @@
-import { runStartupStep, startAppServices } from '../lib/app/appLifecycleHelpers';
+import { runStartupStep, startAppServices } from '../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../lib/app/timerRegistry';
 import { createAppContextMock } from './helpers/appContextTestHelpers';
 

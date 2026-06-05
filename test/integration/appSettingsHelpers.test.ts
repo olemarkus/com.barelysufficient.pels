@@ -2,7 +2,7 @@ import {
   buildCapacitySettingsSnapshot,
   initSettingsHandlerForApp,
   type CapacitySettingsSnapshot,
-} from '../../lib/app/appSettingsHelpers';
+} from '../../setup/appSettingsHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
 import {
