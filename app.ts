@@ -1197,6 +1197,7 @@ class PelsApp extends Homey.App {
       getCapacitySettings: () => this.capacitySettings,
       requestPriceRefetch: () => this.priceCoordinator?.updateCombinedPrices(),
       structuredLog: this.structuredLogger?.child({ component: 'daily_budget' }),
+      debugStructured: this.getStructuredDebugEmitter('daily_budget', 'daily_budget'),
     });
     this.dailyBudgetService.loadSettings();
     this.dailyBudgetService.loadState();

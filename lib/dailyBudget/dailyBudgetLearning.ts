@@ -76,7 +76,7 @@ export function hasUnreliableOverlap(params: {
   });
 }
 
-type LearningSkipResult = { nextState: DailyBudgetState; shouldMarkDirty: boolean; logMessage?: string };
+type LearningSkipResult = { nextState: DailyBudgetState; shouldMarkDirty: boolean; logEvent?: Record<string, unknown> };
 
 type LearningWindow = {
   bucketStartUtcMs: number[];
@@ -117,7 +117,7 @@ const resolveLearningWindow = (params: {
     return {
       nextState: resetLearningPlanState(state),
       shouldMarkDirty: true,
-      logMessage: `Daily budget: skip learning for ${previousDateKey} (incomplete data)`,
+      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'incomplete_data' },
     };
   }
   const { bucketStartUtcMs } = buildLocalDayBuckets({
@@ -151,7 +151,7 @@ const resolveLearningTotals = (params: {
     return {
       nextState: resetLearningPlanState(state),
       shouldMarkDirty: true,
-      logMessage: `Daily budget: skip learning for ${previousDateKey} (missing totals)`,
+      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'missing_totals' },
     };
   }
   const totalUncontrolledKWh = sumArray(bucketUsage.bucketUsageUncontrolled);
@@ -161,7 +161,7 @@ const resolveLearningTotals = (params: {
     return {
       nextState: resetLearningPlanState(state),
       shouldMarkDirty: true,
-      logMessage: `Daily budget: skip learning for ${previousDateKey} (0 kWh)`,
+      logEvent: { event: 'daily_budget_learning_skipped', dateKey: previousDateKey, reason: 'zero_kwh' },
     };
   }
   return {
@@ -324,7 +324,7 @@ export function finalizePreviousDayLearning(params: {
   previousDayStartUtcMs: number | null;
   defaultProfile: number[];
   nowMs?: number;
-}): { nextState: DailyBudgetState; shouldMarkDirty: boolean; logMessage?: string } {
+}): { nextState: DailyBudgetState; shouldMarkDirty: boolean; logEvent?: Record<string, unknown> } {
   const {
     state,
     timeZone,
@@ -405,8 +405,13 @@ export function finalizePreviousDayLearning(params: {
   return {
     nextState,
     shouldMarkDirty: true,
-    logMessage: `Daily budget: finalized ${previousDateKey} `
-      + `(${totalKWh.toFixed(2)} kWh ${usageKindLabel}, window buckets ${windowBucketCount})`,
+    logEvent: {
+      event: 'daily_budget_learning_finalized',
+      dateKey: previousDateKey,
+      totalKWh,
+      usageKind: usageKindLabel,
+      windowBucketCount,
+    },
   };
 }
 

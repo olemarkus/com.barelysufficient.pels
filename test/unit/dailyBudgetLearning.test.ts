@@ -254,7 +254,7 @@ describe('daily budget learning utilities', () => {
     });
 
     expect(result.shouldMarkDirty).toBe(true);
-    expect(result.logMessage).toContain('missing totals');
+    expect(result.logEvent).toMatchObject({ event: 'daily_budget_learning_skipped', reason: 'missing_totals' });
     expect(result.nextState.frozen).toBe(false);
     expect(result.nextState.lastPlanBucketStartUtcMs).toBeNull();
     expect(result.nextState.plannedKWh).toEqual([]);
@@ -294,7 +294,7 @@ describe('daily budget learning utilities', () => {
     });
 
     expect(result.shouldMarkDirty).toBe(true);
-    expect(result.logMessage).toContain('0 kWh');
+    expect(result.logEvent).toMatchObject({ event: 'daily_budget_learning_skipped', reason: 'zero_kwh' });
     expect(result.nextState.frozen).toBe(false);
     expect(result.nextState.lastPlanBucketStartUtcMs).toBeNull();
     expect(result.nextState.plannedKWh).toEqual([]);
@@ -333,7 +333,7 @@ describe('daily budget learning utilities', () => {
     });
 
     expect(result.shouldMarkDirty).toBe(true);
-    expect(result.logMessage).toContain('incomplete data');
+    expect(result.logEvent).toMatchObject({ event: 'daily_budget_learning_skipped', reason: 'incomplete_data' });
     expect(result.nextState.frozen).toBe(false);
     expect(result.nextState.lastPlanBucketStartUtcMs).toBeNull();
     expect(result.nextState.plannedKWh).toEqual([]);
