@@ -264,6 +264,16 @@ export type DecisionSentenceInput = {
   // this bucket and no smart-task waiting is in play, frame the hold as
   // budget pacing instead of generic capacity defense.
   dailyBudgetLimitedCount?: number;
+  // Count of devices actually drawing power (not parked at 0 W) with Power-limit
+  // control turned off (reason code `capacityControlOff`, `controllable ===
+  // false`). PELS cannot ease these off, so when one is the source of the breach
+  // the decision sentence names the user's recourse instead of promising action.
+  capacityControlOffCount?: number;
+  // Count of controllable managed devices still running (`stateKind ===
+  // 'active'`) that PELS could yet ease off. When this is zero while above the
+  // hard cap, the managed shed cascade is exhausted — the only remaining draw
+  // is whatever PELS cannot touch.
+  sheddableManagedRunningCount?: number;
 };
 
 export type DecisionSentenceResult = {
@@ -311,6 +321,36 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
   return { text: `Holding back ${devicesText}${safePaceText}.`, positive: false };
 };
 
+// Resolve the above-hard-cap decision sentence (rule 2 of
+// `buildDecisionSentence`). When the managed shed cascade is exhausted (no
+// controllable managed device left running to ease off) and the remaining
+// breach is attributed to a device with Power-limit control turned off, PELS
+// has finished mitigating: claiming it is still "easing devices off"
+// overpromises action it cannot take. This is the producer-resolved flag — the
+// honest story names the real control and the user's recourse (the hard cap is
+// physical and is never offered as a remedy). Extracted so the rule ladder
+// stays under the SonarJS / ESLint cognitive-complexity cap.
+const resolveOverHardCapDecisionSentence = (
+  input: DecisionSentenceInput,
+): DecisionSentenceResult => {
+  const capacityControlOffCount = input.capacityControlOffCount ?? 0;
+  const sheddableManagedRunningCount = input.sheddableManagedRunningCount ?? 0;
+  const managedCascadeExhausted = capacityControlOffCount > 0 && sheddableManagedRunningCount === 0;
+  if (!managedCascadeExhausted) {
+    return { text: 'Over the hard cap right now. Easing devices off.', positive: false };
+  }
+  const offDevices = capacityControlOffCount === 1
+    ? 'a device that has Power-limit control turned off'
+    : `${capacityControlOffCount} devices that have Power-limit control turned off`;
+  const recourse = capacityControlOffCount === 1
+    ? 'Turn its Power-limit control back on so PELS can ease it off.'
+    : 'Turn their Power-limit control back on so PELS can ease them off.';
+  return {
+    text: `Managed devices are already eased off. The remaining draw is from ${offDevices}. ${recourse}`,
+    positive: false,
+  };
+};
+
 export const buildDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
@@ -323,12 +363,7 @@ export const buildDecisionSentence = (
   }
 
   // 2. Above hard cap.
-  if (input.overHardLimit) {
-    return {
-      text: 'Over the hard cap right now. Easing devices off.',
-      positive: false,
-    };
-  }
+  if (input.overHardLimit) return resolveOverHardCapDecisionSentence(input);
 
   // 3. Simulation mode would act.
   if (input.dryRun && input.limitedCount > 0) {

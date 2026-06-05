@@ -262,31 +262,6 @@ PRs. Items below are later polish.*
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
 
-- [ ] **Hero subtitle "Easing devices off" is misleading when the shed cascade is exhausted.**
-      Live snapshot (2026-05-25, Marie Michelets Homey Pro): Power now 5.6 kW, hard cap
-      5.0 kW, hero says *"Over the hard cap right now. Easing devices off."* — but every
-      controllable managed device is already in `cooldown_shedding` / `Limited by the
-      hard cap`, and the 0.6 kW breach comes from Connected 300 at Max (2.87 kW) which
-      PELS cannot touch because the device has `capacity_control_off`. The copy
-      overpromises active mitigation that PELS has actually finished doing; the user is
-      left thinking "PELS is handling it" while in reality the breach is structural
-      until the opt-out device drops out on its own. Differentiate the hero subtext when
-      `remainingSheddableLoad` for managed devices is ≤ 0 AND the breach attribution is
-      a capacity-control-off device. (Example copy must be reworded to project voice — no
-      em-dash diagnostic shape, named-subject not first-person PELS, and name the real toggle
-      per `feedback_remedy_copy_names_real_toggle`; do not ship the literal example above.)
-      The condition is detectable at the call site: device `reason.code ===`
-      `PLAN_REASON_CODES.capacityControlOff` (PlanHero.tsx already counts devices by
-      `reason.code` for other codes — e.g. `deferredObjectiveAvoidCount` /
-      `dailyBudgetLimitedCount` — so this follows the established pattern)
-      plus no remaining sheddable managed load. Files:
-      `packages/shared-domain/src/planHeroSummary.ts` (rule 2 of `buildDecisionSentence`,
-      string at ~L328 — resolve a producer flag, don't branch in the view),
-      `packages/settings-ui/src/ui/views/PlanHero.tsx`,
-      `packages/shared-domain/src/planStateLabels.ts`,
-      `notes/ui-terminology.md` (add the new subtitle variant). Source:
-      v2.9.1 RC release-review walk, 2026-05-25.
-
 *Session P2 deferrals from batch 21 reviews (2026-05-24).*
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
