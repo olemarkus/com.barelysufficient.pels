@@ -2,6 +2,7 @@ import {
   TARGET_COMMAND_RETRY_DELAYS_MS,
   TARGET_WAITING_LOG_REPEAT_MS,
 } from './planConstants';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import type { PendingTargetCommandState, PlanEngineState } from './planState';
 import type {
   DevicePlan,
@@ -120,9 +121,9 @@ export function recordFailedPendingTargetCommandAttempt(params: {
 export function prunePendingTargetCommandsForPlan(params: {
   state: PlanEngineState;
   plan: DevicePlan;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
-  const { state, plan, logDebug } = params;
+  const { state, plan, debugStructured } = params;
   const planById = new Map(plan.devices.map((device) => [device.id, device]));
   let changed = false;
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
@@ -136,10 +137,14 @@ export function prunePendingTargetCommandsForPlan(params: {
     if (shouldKeep) continue;
     delete state.pendingTargetCommands[deviceId];
     changed = true;
-    logDebug(
-      `Capacity: cleared pending ${pending.capabilityId} for ${device ? device.name : `device ${deviceId}`}, `
-      + `current plan no longer wants ${pending.desired}°C`,
-    );
+    debugStructured?.({
+      event: 'pending_target_command_cleared',
+      reason: 'plan_no_longer_wants',
+      deviceId,
+      deviceName: device?.name,
+      capabilityId: pending.capabilityId,
+      desired: pending.desired,
+    });
   }
   return changed;
 }
@@ -149,14 +154,14 @@ export function syncPendingTargetCommands(params: {
   liveDevices: PlanInputDevice[];
   source: PendingTargetObservationSource;
   log?: (message: string) => void;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     state,
     liveDevices,
     source,
     log,
-    logDebug,
+    debugStructured,
   } = params;
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
   let changed = false;
@@ -169,7 +174,7 @@ export function syncPendingTargetCommands(params: {
         deviceId,
         pending,
         source,
-        logDebug,
+        debugStructured,
       })) {
         changed = true;
       }
@@ -184,18 +189,19 @@ export function syncPendingTargetCommands(params: {
       observedValue,
       source,
       name: liveDevice.name,
-      logDebug,
+      debugStructured,
     })) {
       changed = true;
       continue;
     }
 
     if (handleTemporaryUnavailablePendingTargetObservation({
+      deviceId,
       pending,
       observedValue,
       source,
       name: liveDevice.name,
-      logDebug,
+      debugStructured,
     })) {
       changed = true;
       continue;
@@ -217,12 +223,13 @@ export function syncPendingTargetCommands(params: {
 
     changed = true;
     updatePendingTargetWaitingObservation({
+      deviceId,
       pending,
       observedValue,
       source,
       name: liveDevice.name,
       log,
-      logDebug,
+      debugStructured,
     });
   }
 
@@ -283,16 +290,19 @@ function clearPendingTargetCommandForMissingDevice(params: {
   deviceId: string;
   pending: PendingTargetCommandState;
   source: PendingTargetObservationSource;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
-  const { state, deviceId, pending, source, logDebug } = params;
+  const { state, deviceId, pending, source, debugStructured } = params;
   const shouldClearMissingPending = source === 'snapshot_refresh' || source === 'rebuild';
   if (!shouldClearMissingPending) return false;
   delete state.pendingTargetCommands[deviceId];
-  logDebug(
-    `Capacity: cleared pending ${pending.capabilityId} for ${deviceId}, `
-    + `device missing from live state during ${source}`,
-  );
+  debugStructured?.({
+    event: 'pending_target_command_cleared',
+    reason: 'device_missing',
+    deviceId,
+    capabilityId: pending.capabilityId,
+    source,
+  });
   return true;
 }
 
@@ -325,7 +335,7 @@ function handleConfirmedPendingTargetObservation(params: {
   observedValue: unknown;
   source: PendingTargetObservationSource;
   name: string;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     state,
@@ -334,30 +344,36 @@ function handleConfirmedPendingTargetObservation(params: {
     observedValue,
     source,
     name,
-    logDebug,
+    debugStructured,
   } = params;
   if (!Object.is(observedValue, pending.desired)) return false;
   delete state.pendingTargetCommands[deviceId];
-  logDebug(
-    `Capacity: confirmed ${pending.capabilityId} for ${name} `
-    + `at ${pending.desired}°C via ${source}`,
-  );
+  debugStructured?.({
+    event: 'pending_target_command_confirmed',
+    deviceId,
+    deviceName: name,
+    capabilityId: pending.capabilityId,
+    desired: pending.desired,
+    source,
+  });
   return true;
 }
 
 function handleTemporaryUnavailablePendingTargetObservation(params: {
+  deviceId: string;
   pending: PendingTargetCommandState;
   observedValue: unknown;
   source: PendingTargetObservationSource;
   name: string;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
+    deviceId,
     pending,
     observedValue,
     source,
     name,
-    logDebug,
+    debugStructured,
   } = params;
   if (pending.status !== 'temporary_unavailable') return false;
   if (
@@ -370,39 +386,50 @@ function handleTemporaryUnavailablePendingTargetObservation(params: {
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = Date.now();
   const remainingSec = Math.max(1, Math.ceil((pending.nextRetryAtMs - Date.now()) / 1000));
-  logDebug(
-    `Capacity: ${pending.capabilityId} for ${name} is temporarily unavailable; `
-    + `observed ${formatObservedTarget(observedValue)} via ${source}, retry in ${remainingSec}s`,
-  );
+  debugStructured?.({
+    event: 'pending_target_command_unavailable',
+    deviceId,
+    deviceName: name,
+    capabilityId: pending.capabilityId,
+    observed: formatObservedTarget(observedValue),
+    source,
+    retryInSec: remainingSec,
+  });
   return true;
 }
 
 function updatePendingTargetWaitingObservation(params: {
+  deviceId: string;
   pending: PendingTargetCommandState;
   observedValue: unknown;
   source: PendingTargetObservationSource;
   name: string;
   log?: (message: string) => void;
-  logDebug: (message: string) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): void {
   const {
+    deviceId,
     pending,
     observedValue,
     source,
     name,
     log,
-    logDebug,
+    debugStructured,
   } = params;
   const previousObservedValue = pending.lastObservedValue;
   const previousObservedSource = pending.lastObservedSource;
   pending.lastObservedValue = observedValue;
   pending.lastObservedSource = source;
   pending.lastObservedAtMs = Date.now();
-  logDebug(
-    `Capacity: waiting for ${pending.capabilityId} confirmation for ${name}; `
-    + `observed ${formatObservedTarget(observedValue)} via ${source}, `
-    + `expected ${pending.desired}°C`,
-  );
+  debugStructured?.({
+    event: 'pending_target_command_waiting',
+    deviceId,
+    deviceName: name,
+    capabilityId: pending.capabilityId,
+    observed: formatObservedTarget(observedValue),
+    source,
+    expected: pending.desired,
+  });
   const waitingLog = buildPendingConfirmationLogMessage({
     name,
     capabilityId: pending.capabilityId,

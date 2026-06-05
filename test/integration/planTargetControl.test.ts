@@ -45,14 +45,14 @@ describe('syncPendingTargetCommands', () => {
       status: 'waiting_confirmation',
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
       source: 'realtime_capability',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
@@ -76,14 +76,14 @@ describe('syncPendingTargetCommands', () => {
       lastObservedAtMs: Date.now() - 1_000,
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
       source: 'realtime_capability',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
@@ -107,14 +107,14 @@ describe('syncPendingTargetCommands', () => {
       lastObservedAtMs: Date.now() - 1_000,
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
       source: 'snapshot_refresh',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
@@ -141,14 +141,14 @@ describe('syncPendingTargetCommands', () => {
         lastWaitingLogAtMs: nowMs - TARGET_WAITING_LOG_REPEAT_MS - 1,
       };
       const log = vi.fn();
-      const logDebug = vi.fn();
+      const debugStructured = vi.fn();
 
       const changed = syncPendingTargetCommands({
         state,
         liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
         source: 'snapshot_refresh',
         log,
-        logDebug,
+        debugStructured,
       });
 
       expect(changed).toBe(false);
@@ -181,7 +181,7 @@ describe('syncPendingTargetCommands', () => {
       status: 'waiting_confirmation',
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
@@ -191,7 +191,7 @@ describe('syncPendingTargetCommands', () => {
       ],
       source: 'realtime_capability',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
@@ -218,22 +218,26 @@ describe('syncPendingTargetCommands', () => {
       status: 'waiting_confirmation',
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [],
       source: 'snapshot_refresh',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
     expect(log).not.toHaveBeenCalled();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: cleared pending target_temperature for dev-1, device missing from live state during snapshot_refresh',
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'pending_target_command_cleared',
+      reason: 'device_missing',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      source: 'snapshot_refresh',
+    }));
   });
 
   it('keeps a pending target command when the device is only missing from a realtime pass', () => {
@@ -248,14 +252,14 @@ describe('syncPendingTargetCommands', () => {
       status: 'waiting_confirmation',
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [],
       source: 'realtime_capability',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(false);
@@ -263,7 +267,7 @@ describe('syncPendingTargetCommands', () => {
       desired: 23,
     });
     expect(log).not.toHaveBeenCalled();
-    expect(logDebug).not.toHaveBeenCalled();
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
   it('does not emit confirmation waiting logs for temporarily unavailable targets', () => {
@@ -281,21 +285,21 @@ describe('syncPendingTargetCommands', () => {
       lastObservedAtMs: Date.now() - 1_000,
     };
     const log = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = syncPendingTargetCommands({
       state,
       liveDevices: [buildLiveDevice('dev-1', 'Heater', 27)],
       source: 'snapshot_refresh',
       log,
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
     expect(log).not.toHaveBeenCalled();
-    expect(logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('temporarily unavailable'),
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'pending_target_command_unavailable',
+    }));
   });
 });
 
@@ -314,7 +318,7 @@ describe('prunePendingTargetCommandsForPlan', () => {
       lastObservedSource: 'realtime_capability',
       lastObservedAtMs: Date.now() - 1_000,
     };
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     const changed = prunePendingTargetCommandsForPlan({
       state,
@@ -326,14 +330,17 @@ describe('prunePendingTargetCommandsForPlan', () => {
         },
         devices: [buildPlanDevice('dev-1', 'Heater', 25, 18)],
       },
-      logDebug,
+      debugStructured,
     });
 
     expect(changed).toBe(true);
     expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith(
-      'Capacity: cleared pending target_temperature for Heater, current plan no longer wants 23°C',
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'pending_target_command_cleared',
+      reason: 'plan_no_longer_wants',
+      deviceName: 'Heater',
+      desired: 23,
+    }));
   });
 });
 
