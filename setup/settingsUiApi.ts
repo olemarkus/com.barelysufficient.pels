@@ -3,19 +3,19 @@ import type {
   DailyBudgetModelPreviewResponse,
   DailyBudgetModelSettings,
   DailyBudgetUiPayload,
-} from '../../packages/contracts/src/dailyBudgetTypes';
+} from '../packages/contracts/src/dailyBudgetTypes';
 import type {
   DeferredObjectiveActivePlansV1,
-} from '../../packages/contracts/src/deferredObjectiveActivePlans';
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanPreviewCandidate,
   DeferredObjectivePlanPreviewEstimate,
-} from '../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
-import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../utils/settingsUiBootstrapKeys';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../utils/settingsKeys';
-import { readAllObjectives } from '../objectives/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveSettingsV1 } from '../objectives/deferredObjectives/settings';
+} from '../packages/contracts/src/deferredObjectivePlanPreview';
+import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
+import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
+import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
@@ -27,8 +27,8 @@ import type {
   SettingsUiPowerPayload,
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
-} from '../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+} from '../packages/contracts/src/settingsUiApi';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import {
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,

@@ -4,20 +4,20 @@ import type Homey from 'homey';
 import type {
   DeviceCalibration,
   PowerCalibrationSnapshot,
-} from '../../packages/contracts/src/powerCalibration';
+} from '../packages/contracts/src/powerCalibration';
 import type {
   DeviceDebugObservedSource,
   DeviceDebugObservedSources,
   DeviceTransport,
-} from '../device/deviceTransport';
-import { formatDeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { DEVICES_API_PATH, getRawDevices } from '../device/transport/managerHomeyApi';
-import type { DevicePlan, StepPowerCalibrationView } from '../plan/planTypes';
-import type { HomeyDeviceLike } from '../utils/types';
-import { isHomeyDeviceLike } from '../utils/types';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { normalizeError } from '../utils/errorUtils';
-import { safeJsonStringify, sanitizeLogValue } from '../utils/logUtils';
+} from '../lib/device/deviceTransport';
+import { formatDeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
+import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
+import type { DevicePlan, StepPowerCalibrationView } from '../lib/plan/planTypes';
+import type { HomeyDeviceLike } from '../lib/utils/types';
+import { isHomeyDeviceLike } from '../lib/utils/types';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { normalizeError } from '../lib/utils/errorUtils';
+import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
 
 type UnknownRecord = Record<string, unknown>;
 

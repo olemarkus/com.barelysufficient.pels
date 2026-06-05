@@ -1,11 +1,11 @@
 import type Homey from 'homey';
-import type { PowerTrackerState } from '../power/tracker';
+import type { PowerTrackerState } from '../lib/power/tracker';
 import type {
   SettingsUiPlanDevice,
   SettingsUiPlanSnapshot,
-} from '../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { getHourBucketKey } from '../utils/dateUtils';
+} from '../packages/contracts/src/settingsUiApi';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { getHourBucketKey } from '../lib/utils/dateUtils';
 
 // Sentinel prefix the settings UI matches to detect the PELS boot/restart
 // window and keep the panel in a bounded loading/retry state instead of

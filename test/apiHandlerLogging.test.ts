@@ -5,7 +5,7 @@
 // guarantees both: log on the server, rethrow so the client sees the real
 // failure.
 
-vi.mock('../lib/app/settingsUiApi', () => ({
+vi.mock('../setup/settingsUiApi', () => ({
   buildSettingsUiBootstrap: vi.fn(),
   getSettingsUiDevicesPayload: vi.fn(),
   getSettingsUiPlanPayload: vi.fn(),
@@ -23,13 +23,13 @@ vi.mock('../lib/app/settingsUiApi', () => ({
   logSettingsUiMessage: vi.fn(),
 }));
 
-vi.mock('../lib/app/appDebugHelpers', () => ({
+vi.mock('../setup/appDebugHelpers', () => ({
   getHomeyDevicesForDebugFromApp: vi.fn(),
   logHomeyDeviceForDebugFromApp: vi.fn(),
 }));
 
 import api from '../api';
-import * as stubs from '../lib/app/settingsUiApi';
+import * as stubs from '../setup/settingsUiApi';
 
 type AppMock = { error: ReturnType<typeof vi.fn> };
 type HomeyMock = { app: AppMock };

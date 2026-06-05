@@ -3,7 +3,7 @@ import {
   isManagedFilterActive,
   seedMissingModeTargets,
   __resetSeedSkipDedupeForTests,
-} from '../../lib/app/appDeviceSupport';
+} from '../../setup/appDeviceSupport';
 import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,

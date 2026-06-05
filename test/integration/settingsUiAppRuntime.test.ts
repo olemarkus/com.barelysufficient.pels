@@ -4,7 +4,7 @@ import {
   getLatestDevicesForUiFromApp,
   refreshSettingsUiDevicesForApp,
   resetSettingsUiPowerStatsForApp,
-} from '../../lib/app/settingsUiAppRuntime';
+} from '../../setup/settingsUiAppRuntime';
 import { SETTINGS_UI_APP_NOT_READY_ERROR_PREFIX } from '../../packages/contracts/src/settingsUiApi';
 import { getHourBucketKey } from '../../lib/utils/dateUtils';
 

@@ -131,20 +131,20 @@ import {
   type DeferredObjectiveStatusBus,
 } from './lib/objectives/deferredObjectives';
 import { buildDebugLoggingTopics } from './lib/utils/debugLoggingSettings';
-import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './lib/app/appSettingsHelpers';
+import { initSettingsHandlerForApp, loadCapacitySettingsFromHomey } from './setup/appSettingsHelpers';
 import {
   disableUnsupportedDevices as disableUnsupportedDevicesHelper,
   seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
   isRuntimePlannedDevice,
-} from './lib/app/appDeviceSupport';
-import { runStartupStep, startAppServices } from './lib/app/appLifecycleHelpers';
+} from './setup/appDeviceSupport';
+import { runStartupStep, startAppServices } from './setup/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
-import { migrateManagedDevices as migrateManagedDevicesHelper } from './lib/app/appManagedDeviceMigration';
-import { runBootMigrations as runBootMigrationsHelper } from './lib/app/appBootMigrations';
-import * as realtimeReconcile from './lib/app/appRealtimeDeviceReconcile';
+import { migrateManagedDevices as migrateManagedDevicesHelper } from './setup/appManagedDeviceMigration';
+import { runBootMigrations as runBootMigrationsHelper } from './setup/appBootMigrations';
+import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
 import {
   createRootLogger,
   setRootLogger,
@@ -153,12 +153,12 @@ import {
 } from './lib/logging/logger';
 import { createHomeyDestination } from './lib/logging/homeyDestination';
 import { normalizeError } from './lib/utils/errorUtils';
-import { scheduleAppRealtimeDeviceReconcile } from './lib/app/appRealtimeDeviceReconcileRuntime';
-import { logHomeyDeviceComparisonForDebugFromApp } from './lib/app/appDebugHelpers';
+import { scheduleAppRealtimeDeviceReconcile } from './setup/appRealtimeDeviceReconcileRuntime';
+import { logHomeyDeviceComparisonForDebugFromApp } from './setup/appDebugHelpers';
 import {
   emitSettingsUiDevicesUpdatedForApp,
   emitSettingsUiPowerUpdatedForApp,
-} from './lib/app/settingsUiAppRuntime';
+} from './setup/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type {

@@ -146,7 +146,7 @@ store, because:
    **Reader repointing was deliberately scoped to one seam** — `lib/observer/observationFreshness.ts`
    now narrows its input to `Pick<ObservedDeviceState, 'lastFreshDataMs' | 'lastLocalWriteMs'>`.
    The other named seams were inspected and intentionally deferred: `isRuntimePlannedDevice`
-   (`lib/app/appDeviceSupport.ts`) is already structurally narrower than `DeviceDescriptor`
+   (`setup/appDeviceSupport.ts`) is already structurally narrower than `DeviceDescriptor`
    (takes `{ managed? }`); the executor projection readers
    (`lib/executor/executablePlanProjection.ts`) read ACROSS both surfaces (`controlModel` +
    observed fields) so they can't narrow to `ObservedDeviceState` until stage 5; settings-UI
@@ -192,7 +192,7 @@ store, because:
 7. **Seal `getSnapshot()` inside transport** once no external caller remains; cruiser-
    enforce. External pullers to clear first: `app.ts` (×5), `setup/flowConflictProbe`,
    `lib/executor/{binaryExecutor,binaryControlDispatch,targetExecutor,planExecutor}`,
-   `lib/app/appDebugHelpers`, and the plan-layer `DeviceObservation` consumers.
+   `setup/appDebugHelpers`, and the plan-layer `DeviceObservation` consumers.
 
 ## Invariants the implementation + tests must preserve
 

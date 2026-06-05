@@ -1,6 +1,6 @@
 import type Homey from 'homey';
-import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, PRICE_OPTIMIZATION_SETTINGS } from '../utils/settingsKeys';
-import { isBooleanMap } from '../utils/appTypeGuards';
+import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, PRICE_OPTIMIZATION_SETTINGS } from '../lib/utils/settingsKeys';
+import { isBooleanMap } from '../lib/utils/appTypeGuards';
 
 type MigrateManagedDevicesParams = {
   homey: Homey.App['homey'];

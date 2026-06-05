@@ -14,7 +14,7 @@ import {
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
-import { isManagedFilterActive } from '../../lib/app/appDeviceSupport';
+import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
     mockHomeyInstance,
 } from '../mocks/homey';

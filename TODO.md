@@ -239,20 +239,24 @@ title colour were fixed in the same change; items below are the deferred remaind
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Migrate the remaining `lib/app/**` inhabitants to `setup/`.**
+- [ ] **Migrate the last pinned `lib/app/**` inhabitants out of `lib/app/`.**
       `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
-      as the long-term inhabitant. The `appInit` surface (`appInit.ts` +
-      `appInit/**`) has been relocated to `setup/appInit/` — that move
-      proved `no-lib-to-setup` is NOT a blocker (the arrow stays
-      `setup -> lib`; nothing in `lib/**` imports the moved wiring, only
-      `app.ts` did). The still-pending inhabitants are the other wiring
-      helpers (`appDebugHelpers.ts`, `appSnapshotHelpers.ts`,
-      `appSettingsHelpers.ts`, `appDeviceSupport.ts`,
-      `appDeviceControl*.ts`, `appRealtimeDeviceReconcile*.ts`,
-      `appLifecycleHelpers.ts`, `settingsUiApi*.ts`, etc.). Each follows
-      the same pattern: confirm only entry-layer code imports it, then
-      `git mv` to `setup/` and rewrite import depths. `appContext.ts`
-      stays in `lib/app/`.
+      as the long-term inhabitant. The leaf wiring helpers that only
+      entry-layer code imported (`appBootMigrations`, `appDebugHelpers`,
+      `appDeviceSupport`, `appLifecycleHelpers`, `appManagedDeviceMigration`,
+      `appPriceLowestTrigger`, `appRealtimeDeviceReconcile*`,
+      `appSettingsHelpers`, `settingsUiApi*`) have been relocated to
+      `setup/`. The still-pinned inhabitants cannot move yet because
+      `appContext.ts` (which STAYS) imports them, and a domain module
+      imports one — moving any would create a forbidden `lib -> setup`
+      edge: `appDeviceControlHelpers.ts` + `appDeviceControlFeedback.ts` +
+      `appDeviceControlSteppedState.ts` (the control chain pulled in by
+      `appContext`), `appSnapshotHelpers.ts` (imported by `appContext`),
+      and `timerRegistry.ts` (imported by `appContext` AND by the domain
+      module `lib/power/sources/homeyEnergyPoll.ts`). Unpinning these
+      requires first severing `appContext`'s value imports of them (and
+      relocating `TimerRegistry` to a neutral home the power layer can
+      reach without going through `lib/app/`).
 
 *v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
 release-review pass, 2026-05-26 — the original entry committed as
@@ -354,10 +358,13 @@ live-walk screenshots.*
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to split/trim `setup/appInit.ts` (still ~499 LOC, over the `setup/`
-      one-purpose-per-file convention), move `resolveHasBinaryControl` to a better long-term home if
-      it stays shared, and keep trimming any delegates that no longer buy readability or testability.
-      Files: `app.ts`, `setup/appInit.ts`, `lib/app/**`.
+      remaining cleanup is to split/trim `setup/appInit.ts` (still ~440 LOC, over the `setup/`
+      one-purpose-per-file convention) into focused sub-files under `setup/appInit/`, and keep
+      trimming any delegates that no longer buy readability or testability. (`resolveHasBinaryControl`
+      no longer exists as a shared symbol — that part is already handled.) Deferred from the
+      `lib/app/** -> setup/` migration PR because the appInit decomposition is a non-mechanical
+      restructure, independent of the relocations.
+      Files: `app.ts`, `setup/appInit.ts`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -475,7 +482,7 @@ visitors (`notes/personas.md` #4–6).*
       *Validate first:* only act if users actually report confusion; then route live remaining
       through a non-persisted live snapshot (current diagnostic's `energyNeededKWh` in the UI
       bootstrap payload), never per-cycle persistence.
-      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`, `lib/app/settingsUiApi.ts`,
+      Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`, `setup/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`, `.../deadlinePlanResolvers.ts`.
 - [ ] **Make the live → completed → history transition happen in place.**
       *Persona:* curious tinkerer (#3) watching a plan run, becoming the failure-investigation

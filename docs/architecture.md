@@ -114,7 +114,7 @@ Realtime device events (capability updates, full device updates from Homey) cros
 1. **Translation** — `lib/device/` (`DeviceTransport` + `lib/device/transport/managerRealtimeHandlers.ts`) parses the raw Homey payload, runs the admit-or-suppress flow-vs-binary rule and pending-binary-command echo suppression, and produces normalized `observed-state-changed` / `plan-reconcile-observed` events.
 2. **Observer fan-out** — `lib/observer/observedStateEvents.ts` owns the typed-event emitter (`ObservedStateEmitter`). Transport routes each event through a dispatcher callback bag (`observedStateDispatcher`) injected at construction time by wiring, so `lib/device/` → `lib/observer/` stays free of static imports (the `no-device-to-peer-except-power` cruiser rule holds).
 3. **Drift verdict** — `lib/executor/planExecutionDrift.ts` compares the observed state against the executor-facing plan intent (`ExecutableDeviceIntent` vs `ExecutableObservedDeviceState`). Observer and transport never see plan intent.
-4. **Reapply trigger** — `lib/app/appRealtimeDeviceReconcileRuntime.ts` subscribes to the observer-owned emitter, consults the executor's drift predicate, and (when drift is real) enqueues a planner rebuild via `planRebuildScheduler.request(...)`.
+4. **Reapply trigger** — `setup/appRealtimeDeviceReconcileRuntime.ts` subscribes to the observer-owned emitter, consults the executor's drift predicate, and (when drift is real) enqueues a planner rebuild via `planRebuildScheduler.request(...)`.
 
 See `notes/state-management/observer-transport-split.md` for the layering rationale and the six-step split-train history.
 

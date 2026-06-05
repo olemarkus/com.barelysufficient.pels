@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import type { DailyBudgetModelPreviewResponse, DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
 import type { HomeyDeviceLike } from './lib/utils/types';
-import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './lib/app/appDebugHelpers';
+import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './setup/appDebugHelpers';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeferredObjectivePlanHistoryPayload,
@@ -19,7 +19,7 @@ import {
   refreshSettingsUiPrices,
   recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
-} from './lib/app/settingsUiApi';
+} from './setup/settingsUiApi';
 
 type ApiContext = {
   homey: Homey.App['homey'];

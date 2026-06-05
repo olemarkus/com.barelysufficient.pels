@@ -6,7 +6,7 @@ import {
   logHomeyDeviceComparisonForDebugFromApp,
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
-} from '../../lib/app/appDebugHelpers';
+} from '../../setup/appDebugHelpers';
 import { resetRestClient, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
