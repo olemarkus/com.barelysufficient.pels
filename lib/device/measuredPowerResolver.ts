@@ -112,7 +112,12 @@ export class DeviceMeasuredPowerResolver {
       this.deps.lastPositiveMeasuredPowerKw[deviceId] = { kw: measuredPowerKw, ts: now };
       return { measuredPowerKw, observedAtMs };
     }
-    this.deps.logger.debug(`Power estimate: ignoring low reading for ${deviceLabel}: ${watts} W`);
+    this.deps.logger.debug({
+      event: 'power_estimate_low_reading_ignored',
+      deviceId,
+      deviceLabel,
+      watts,
+    });
     return { observedAtMs };
   }
 
@@ -140,9 +145,13 @@ export class DeviceMeasuredPowerResolver {
       return { observedAtMs };
     }
     if (meterPowerKwh < previous.kwh) {
-      this.deps.logger.debug(
-        `Power estimate: meter reset for ${deviceLabel} (prev ${previous.kwh}, now ${meterPowerKwh})`,
-      );
+      this.deps.logger.debug({
+        event: 'power_estimate_meter_reset',
+        deviceId,
+        deviceLabel,
+        previousKwh: previous.kwh,
+        meterPowerKwh,
+      });
       return { observedAtMs };
     }
 
@@ -162,9 +171,12 @@ export class DeviceMeasuredPowerResolver {
 
     const measuredW = measuredPowerKw * 1000;
     if (measuredW < this.deps.minSignificantPowerW) {
-      this.deps.logger.debug(
-        `Power estimate: ignoring low meter delta for ${deviceLabel}: ${measuredW.toFixed(1)} W`,
-      );
+      this.deps.logger.debug({
+        event: 'power_estimate_low_meter_delta_ignored',
+        deviceId,
+        deviceLabel,
+        measuredW,
+      });
       return { observedAtMs };
     }
 

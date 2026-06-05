@@ -1764,7 +1764,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 reasonCode: 'sdk_api_missing',
                 realtimeListenerAttached: false,
             });
-            this.logger.debug('Homey SDK API unavailable, skipping init');
+            this.logger.debug({ event: 'sdk_api_unavailable_skipping_init' });
             return;
         }
 
@@ -2108,7 +2108,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 
     async applyDeviceTargets(targets: Record<string, number>, contextInfo = ''): Promise<void> {
         if (!this.sdkReady) {
-            this.logger.debug('SDK API not available, cannot apply device targets');
+            this.logger.debug({ event: 'sdk_api_unavailable_apply_targets_skipped' });
             return;
         }
         for (const device of this.latestSnapshot) {

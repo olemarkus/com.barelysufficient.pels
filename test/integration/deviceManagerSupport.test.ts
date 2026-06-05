@@ -161,11 +161,11 @@ describe('device manager support helpers', () => {
     logEvSnapshotChanges({ logger, previousSnapshot, nextSnapshot });
     logEvSnapshotChanges({ logger, previousSnapshot: nextSnapshot, nextSnapshot: [nextSnapshot[0]] });
 
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('EV command requested'));
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('EV command accepted'));
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('EV snapshot changed EV 1'));
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('EV snapshot discovered EV 2'));
-    expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('EV snapshot removed EV 2'));
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_command_requested' }));
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_command_accepted' }));
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_changed', deviceName: 'EV 1' }));
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_discovered', deviceName: 'EV 2' }));
+    expect(logger.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'ev_snapshot_removed', deviceName: 'EV 2' }));
   });
 
   it('resolves device parse capabilities and power capability lookup', () => {
@@ -416,7 +416,7 @@ describe('device manager support helpers', () => {
     expect(result.fetchSource).toBe('raw_manager_devices');
     expect(result.devices).toHaveLength(3);
     expect(logger.debug).toHaveBeenCalledWith(
-      expect.stringContaining('falling back to full device fetch'),
+      expect.objectContaining({ event: 'targeted_fetch_fallback_to_full' }),
     );
   });
 });
