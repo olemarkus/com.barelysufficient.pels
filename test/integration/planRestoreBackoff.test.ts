@@ -280,7 +280,7 @@ describe('restore cooldown backoff', () => {
           name: 'Connected 300',
           priority: 90,
           currentState: 'on',
-          hasBinaryControl: false,
+          controlCapabilityId: undefined,
           selectedStepId: 'low',
           desiredStepId: 'low',
           measuredPowerKw: 1.25,
@@ -3196,7 +3196,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         selectedStepId: 'low',
         desiredStepId: 'low',
         measuredPowerKw: 0,
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         shedAction: 'set_step',
       })],
     ]);

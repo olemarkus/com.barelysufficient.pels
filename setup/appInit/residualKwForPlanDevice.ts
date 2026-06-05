@@ -48,10 +48,10 @@ export type ResidualKwForPlanDeviceShedBehavior = {
 
 export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot;
-  hasBinaryControl: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
-  const { device, hasBinaryControl, shedBehavior } = params;
+  const { device, controlCapabilityId, shedBehavior } = params;
   const observationStale = isDeviceObservationStale(device);
   const currentDrawKw = getCurrentDrawKw({
     ...device,
@@ -61,12 +61,12 @@ export function buildResidualKwForPlanDevice(params: {
     device: {
       currentDrawKw,
       temperatureTarget: toResidualTemperatureTarget(device),
-      steppedLoad: toResidualSteppedLoad(device, hasBinaryControl),
+      steppedLoad: toResidualSteppedLoad(device, controlCapabilityId),
     },
     shedBehavior: toResidualShedBehavior(shedBehavior),
   });
   const restore = resolveResidualKwRestore({
-    steppedLoad: toRestoreSteppedLoad(device, hasBinaryControl, observationStale),
+    steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId, observationStale),
     restoreFallback: getRestoreDrawKw(device),
   });
   return { shed, restore };
@@ -74,7 +74,7 @@ export function buildResidualKwForPlanDevice(params: {
 
 function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
-  hasBinaryControl: boolean,
+  controlCapabilityId: 'onoff' | 'evcharger_charging' | undefined,
   observationStale: boolean,
 ): ResidualKwRestoreSteppedDevice | undefined {
   if (
@@ -90,7 +90,7 @@ function toRestoreSteppedLoad(
   // resolved boolean into the producer.
   const currentState = resolveObservedCurrentState({
     currentOn: device.currentOn,
-    hasBinaryControl,
+    controlCapabilityId,
     observationStale,
     controlModel: device.controlModel,
     steppedLoadProfile: device.steppedLoadProfile,
@@ -119,7 +119,7 @@ function toResidualShedBehavior(
 
 function toResidualSteppedLoad(
   device: DecoratedDeviceSnapshot,
-  hasBinaryControl: boolean,
+  controlCapabilityId: 'onoff' | 'evcharger_charging' | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
   if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
     || device.steppedLoadProfile.model !== 'stepped_load') {
@@ -135,7 +135,7 @@ function toResidualSteppedLoad(
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep,
     measuredPowerKw: device.measuredPowerKw,
-    hasBinaryControl,
+    controlCapabilityId,
   };
 }
 

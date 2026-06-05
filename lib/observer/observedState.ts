@@ -19,7 +19,7 @@ import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/cont
 
 export type ObservedCurrentStateInput = {
   currentOn: boolean;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   observationStale?: boolean;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
@@ -32,11 +32,11 @@ export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
 
 type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
-  'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'hasBinaryControl'
+  'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
 > & { currentOn: boolean };
 
-const hasBinaryCapability = (device: Pick<CurrentStateInput, 'hasBinaryControl'>): boolean => (
-  device.hasBinaryControl !== false
+const hasBinaryCapability = (device: Pick<CurrentStateInput, 'controlCapabilityId'>): boolean => (
+  device.controlCapabilityId !== undefined
 );
 
 const hasSteppedCapability = (
@@ -111,7 +111,7 @@ export function resolveObservedCurrentState(
       steppedLoadProfile: device.steppedLoadProfile,
       selectedStepId: device.selectedStepId,
       currentOn: device.currentOn,
-      hasBinaryControl: device.hasBinaryControl,
+      controlCapabilityId: device.controlCapabilityId,
     });
     if (steppedState !== 'unknown') return steppedState;
   }

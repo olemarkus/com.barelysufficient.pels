@@ -28,6 +28,7 @@ const makeDevice = (
     plannedState: overrides.plannedState ?? 'keep',
     currentTarget: overrides.currentTarget ?? null,
     plannedTarget: overrides.plannedTarget ?? null,
+    controlCapabilityId: 'onoff',
     ...overrides,
     reason,
   };
@@ -187,7 +188,7 @@ describe('plan restore device helpers', () => {
         id: 'no-binary-step',
         priority: 7,
         currentState: 'on',
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
