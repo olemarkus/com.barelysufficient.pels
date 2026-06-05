@@ -383,17 +383,22 @@ export class AppDeviceControlHelpers {
   reportSteppedLoadActualStep(deviceId: string, stepId: string): ReportSteppedLoadActualStepResult {
     const snapshot = this.deps.getDeviceSnapshots().find((device) => device.id === deviceId);
     const deviceName = snapshot ? snapshot.name.trim() : `device ${deviceId}`;
+    // Per notes/logging/README.md: structured events keep `deviceId` for identity and
+    // only carry `deviceName` when actually known (never an id-derived placeholder).
+    const knownDeviceName = snapshot ? snapshot.name.trim() : undefined;
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
       delete this.runtimeState.steppedLoadReportedByDeviceId[deviceId];
       this.deps.debugStructured({
-        event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceName,
+        event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceId, deviceName: knownDeviceName,
       });
       return 'unchanged';
     }
     const storedProfiles = this.deps.getProfiles();
     const profile = this.resolveSteppedLoadFeedbackProfile(deviceId, snapshot, storedProfiles);
     if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
-      this.deps.debugStructured({ event: 'stepped_load_feedback_ignored', reason: 'invalid_step', deviceName, stepId });
+      this.deps.debugStructured({
+        event: 'stepped_load_feedback_ignored', reason: 'invalid_step', deviceId, deviceName: knownDeviceName, stepId,
+      });
       return 'invalid';
     }
     if (shouldSuppressSteppedLoadFlowReport({
@@ -402,7 +407,11 @@ export class AppDeviceControlHelpers {
       stepId,
     })) {
       this.deps.debugStructured({
-        event: 'stepped_load_feedback_ignored', reason: 'non_off_step_while_off', deviceName, stepId,
+        event: 'stepped_load_feedback_ignored',
+        reason: 'non_off_step_while_off',
+        deviceId,
+        deviceName: knownDeviceName,
+        stepId,
       });
       return 'unchanged';
     }
@@ -438,7 +447,9 @@ export class AppDeviceControlHelpers {
       });
     }
     if (changed === 'unchanged') {
-      this.deps.debugStructured({ event: 'stepped_load_feedback_unchanged', deviceName, stepId });
+      this.deps.debugStructured({
+        event: 'stepped_load_feedback_unchanged', deviceId, deviceName: knownDeviceName, stepId,
+      });
       return changed;
     }
 
