@@ -111,7 +111,7 @@ function planShedding(
       state,
       deps,
     });
-    deps.logDebug('Plan: skipping additional shedding until a new power measurement arrives');
+    deps.debugStructured?.({ event: 'plan_shed_skipped_awaiting_measurement' });
     return emptySheddingResult({}, buildOvershootStats({
       needed,
       eligibleCandidateCount: summary.eligibleCandidateCount,
@@ -121,7 +121,7 @@ function planShedding(
     }));
   }
   if (measurementDecision.escalatedSameSample) {
-    deps.logDebug('Plan: escalating overshoot despite unchanged power measurement');
+    deps.debugStructured?.({ event: 'plan_shed_escalating_unchanged_measurement' });
   }
   const candidateSummary = buildSheddingCandidates({
     devices: context.devices,
@@ -144,7 +144,7 @@ function planShedding(
     candidates,
     needed,
     reason: resolveShedReason(hourlyBudgetExhausted ? 'daily' : context.softLimitSource),
-    logDebug: deps.logDebug,
+    debugStructured: deps.debugStructured,
     shedAllCandidates: hourlyBudgetExhausted,
   });
 

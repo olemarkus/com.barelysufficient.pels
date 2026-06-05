@@ -315,7 +315,7 @@ export class PlanBuilder {
         getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         log: (...args: unknown[]) => this.deps.log(...args),
-        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+        debugStructured: this.deps.debugStructured,
         structuredLog: this.deps.structuredLog,
       }, overshootDecision.actionable),
     );

@@ -104,7 +104,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       overshootDecision.actionable,
     );
@@ -160,7 +160,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       overshootDecision.actionable,
     );
@@ -207,7 +207,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       overshootDecision.actionable,
     );
@@ -264,7 +264,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       false,
     );
@@ -335,7 +335,7 @@ describe('buildSheddingPlan', () => {
           { 'dev-nonrecent': 100, 'dev-recent': 100, 'dev-at-temp': 80 }[deviceId] ?? 100
         ),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -395,7 +395,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-high' ? 1 : 3),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -450,7 +450,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-restore' ? 100 : 50),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -499,7 +499,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -553,7 +553,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       true,
     );
@@ -621,7 +621,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 55, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -698,7 +698,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -779,7 +779,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -837,7 +837,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 18, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -901,7 +901,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -968,7 +968,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1034,7 +1034,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1102,7 +1102,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 20 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1172,7 +1172,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1241,7 +1241,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1310,7 +1310,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1380,7 +1380,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1450,7 +1450,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1518,7 +1518,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1575,7 +1575,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1637,7 +1637,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1708,7 +1708,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1781,7 +1781,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1855,7 +1855,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1929,7 +1929,7 @@ describe('buildSheddingPlan', () => {
         ),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -1998,7 +1998,7 @@ describe('buildSheddingPlan', () => {
         // Binary device has higher priority (10 > 1) so would normally shed first
         getPriorityForDevice: (deviceId: string) => (deviceId === 'heater' ? 1 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2077,7 +2077,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 10,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2139,7 +2139,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'bath' ? 10 : 5),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2210,7 +2210,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'connected-300' ? 10 : 5),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2263,7 +2263,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2300,7 +2300,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2349,7 +2349,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2404,7 +2404,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2453,7 +2453,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2523,7 +2523,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: 'low' }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2576,7 +2576,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2636,7 +2636,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2690,7 +2690,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2743,7 +2743,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2803,7 +2803,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2863,7 +2863,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2924,7 +2924,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 1,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -2966,7 +2966,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3003,7 +3003,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3076,7 +3076,7 @@ describe('buildSheddingPlan', () => {
         return 10;
       },
       log: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     };
 
     // Shared state across cycles — carries forward lastShedPlanMeasurementTs.
@@ -3197,7 +3197,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3222,7 +3222,7 @@ describe('buildSheddingPlan', () => {
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getPriorityForDevice: () => 100,
       log: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     };
 
     const context = buildContext({
@@ -3282,9 +3282,7 @@ describe('buildSheddingPlan', () => {
       allShedCandidatesExhausted: false,
       controlRecoverable: true,
     });
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      'Plan: skipping additional shedding until a new power measurement arrives',
-    );
+    expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('does not escalate same-sample overshoot before the escalation interval elapses', async () => {
@@ -3292,7 +3290,7 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 10_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(true),
       setSheddingActive: vi.fn().mockResolvedValue(undefined),
@@ -3327,7 +3325,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug,
+        debugStructured,
       },
     );
 
@@ -3342,7 +3340,7 @@ describe('buildSheddingPlan', () => {
       allShedCandidatesExhausted: false,
       controlRecoverable: true,
     });
-    expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('does not count ineligible off devices as blocked reducible load', async () => {
@@ -3382,7 +3380,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3451,7 +3449,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId) => (deviceId === 'second' ? 200 : 100),
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       false,
     );
@@ -3523,7 +3521,7 @@ describe('buildSheddingPlan', () => {
           : { action: 'set_step', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       false,
     );
@@ -3582,7 +3580,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_step', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
       false,
     );
@@ -3634,7 +3632,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'set_temperature', temperature: 15, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
         structuredLog: structuredLog as any,
       },
     );
@@ -3694,7 +3692,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
         structuredLog: structuredLog as any,
       },
     );
@@ -3709,7 +3707,7 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(true),
       setSheddingActive: vi.fn().mockResolvedValue(undefined),
@@ -3744,13 +3742,13 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug,
+        debugStructured,
       },
     );
 
     expect(result.shedSet.size).toBe(0);
     expect(result.updates.lastOvershootEscalationMs).toBeUndefined();
-    expect(logDebug).toHaveBeenCalledWith('Plan: skipping additional shedding until a new power measurement arrives');
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_skipped_awaiting_measurement' }));
   });
 
   it('does escalate same-sample shedding after the interval when capacity is breached under a tighter daily limit', async () => {
@@ -3758,7 +3756,7 @@ describe('buildSheddingPlan', () => {
     state.overshootStartedMs = Date.now() - 31_000;
     state.lastShedPlanMeasurementTs = 500;
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(true),
       setSheddingActive: vi.fn().mockResolvedValue(undefined),
@@ -3793,13 +3791,13 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug,
+        debugStructured,
       },
     );
 
     expect(result.shedSet.has('dev-cap')).toBe(true);
     expect(result.updates.lastOvershootEscalationMs).toBe(Date.now());
-    expect(logDebug).toHaveBeenCalledWith('Plan: escalating overshoot despite unchanged power measurement');
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'plan_shed_escalating_unchanged_measurement' }));
   });
 
   it('keeps shedding active until headroom clears the restore margin plus hysteresis', async () => {
@@ -3829,7 +3827,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3868,7 +3866,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3906,7 +3904,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 
@@ -3941,7 +3939,7 @@ describe('buildSheddingPlan', () => {
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       },
     );
 

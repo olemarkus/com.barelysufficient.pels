@@ -1,4 +1,5 @@
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { PlanContext } from '../planContext';
 import type { ShedCandidate } from './types';
 
@@ -6,7 +7,7 @@ export function selectShedDevices(params: {
   candidates: ShedCandidate[];
   needed: number;
   reason: DeviceReason;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
   shedAllCandidates?: boolean;
 }): {
   shedSet: Set<string>;
@@ -16,7 +17,7 @@ export function selectShedDevices(params: {
     candidates,
     needed,
     reason,
-    logDebug,
+    debugStructured,
     shedAllCandidates = false,
   } = params;
   const shedSet = new Set<string>();
@@ -27,7 +28,7 @@ export function selectShedDevices(params: {
     if (nextCandidate.effectivePower <= 0) continue;
     shedSet.add(nextCandidate.id);
     shedReasons.set(nextCandidate.id, reason);
-    logSelectedCandidate(nextCandidate, logDebug);
+    logSelectedCandidate(nextCandidate, debugStructured);
     if (shouldStopAfterCandidate({ candidate: nextCandidate, shedAllCandidates })) break;
     if (nextCandidate.unconfirmedRelief) continue;
     remaining -= nextCandidate.effectivePower;
@@ -39,19 +40,27 @@ function shouldStopSelection(params: { shedAllCandidates: boolean; remaining: nu
   return !params.shedAllCandidates && params.remaining <= 0;
 }
 
-function logSelectedCandidate(candidate: ShedCandidate, logDebug: (...args: unknown[]) => void): void {
+function logSelectedCandidate(candidate: ShedCandidate, debugStructured?: StructuredDebugEmitter): void {
+  if (!debugStructured) return;
   if (candidate.kind === 'stepped') {
-    logDebug(
-      `Plan: stepping down ${candidate.name} ${candidate.fromStepId} -> ${candidate.toStepId} `
-      + `(~${candidate.effectivePower.toFixed(2)}kW relief)`,
-    );
+    debugStructured({
+      event: 'plan_shed_step_down',
+      deviceId: candidate.id,
+      deviceName: candidate.name,
+      fromStepId: candidate.fromStepId,
+      toStepId: candidate.toStepId,
+      reliefKw: candidate.effectivePower,
+    });
     return;
   }
   if (candidate.kind === 'temperature') {
-    logDebug(
-      `Plan: setting shed temperature ${candidate.name} -> ${candidate.shedTemperature} `
-      + `(~${candidate.effectivePower.toFixed(2)}kW relief)`,
-    );
+    debugStructured({
+      event: 'plan_shed_set_temperature',
+      deviceId: candidate.id,
+      deviceName: candidate.name,
+      shedTemperature: candidate.shedTemperature,
+      reliefKw: candidate.effectivePower,
+    });
   }
 }
 

@@ -132,7 +132,7 @@ function addCandidatePower(params: {
   needed: number;
   deps: Pick<
     SheddingDeps,
-    'getPriorityForDevice' | 'getShedBehavior' | 'logDebug' | 'pendingBinaryCommandStore'
+    'getPriorityForDevice' | 'getShedBehavior' | 'debugStructured' | 'pendingBinaryCommandStore'
   >;
 }): ShedCandidate | null {
   const {
@@ -149,7 +149,7 @@ function addCandidatePower(params: {
     state,
     nowTs,
     needed,
-    logDebug: deps.logDebug,
+    debugStructured: deps.debugStructured,
   });
   if (isSteppedLoadDevice(device)) {
     return buildSteppedCandidate({

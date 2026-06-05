@@ -1,5 +1,5 @@
 import type CapacityGuard from '../../power/capacityGuard';
-import type { Logger as PinoLogger } from '../../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import {
@@ -63,14 +63,14 @@ export function resolveRecentRestoreState(params: {
   state: PlanEngineState;
   nowTs: number;
   needed: number;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     device,
     state,
     nowTs,
     needed,
-    logDebug,
+    debugStructured,
   } = params;
   const lastRestore = state.lastDeviceRestoreMs[device.id];
   if (!lastRestore) return false;
@@ -78,11 +78,13 @@ export function resolveRecentRestoreState(params: {
   const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
   if (recentlyRestored && !overshootSevere) {
-    logDebug(
-      `Plan: deprioritizing ${device.name} for shedding `
-      + `(recently restored ${Math.round(sinceRestoreMs / 1000)}s ago, `
-      + `overshoot ${needed.toFixed(2)}kW)`,
-    );
+    debugStructured?.({
+      event: 'plan_shed_deprioritized_recent_restore',
+      deviceId: device.id,
+      deviceName: device.name,
+      sinceRestoreSec: Math.round(sinceRestoreMs / 1000),
+      overshootKw: needed,
+    });
     return true;
   }
   return false;
