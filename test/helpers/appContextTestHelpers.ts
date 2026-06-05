@@ -182,6 +182,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
+    getObservedState: vi.fn(() => undefined),
     getCommunicationModel: vi.fn(() => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),

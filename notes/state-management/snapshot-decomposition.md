@@ -169,8 +169,15 @@ store, because:
      *function* lives in `lib/device/observedStateProjection.ts` — runtime functions can't
      live in `packages/contracts/src/**` (deploy-excluded source; runtime may only
      `import type` from it, enforced by `test/runtimePackaging.test.ts`).
-   - **4b — TODO:** route real readers onto the projection (wiring-side observed reads
-     first). **Before any reader is wired**, address the in-process-restart hazard: the
+   - **4b — IN PROGRESS:** route real readers onto the projection (wiring-side observed
+     reads first). **First reader wired:** `toPlanDevice` (`setup/appInit.ts`) now resolves
+     `observationStale` from `ctx.getObservedState(id)` (the projection's maintained truth)
+     instead of the snapshot's freshness fields, falling back to the snapshot only for the
+     boot window before the first observation lands (identical values there). The test seam
+     `DeviceTransport.setSnapshotForTests` now mirrors the production refresh funnel
+     (`setSnapshot` + `dispatchObservedStateRefresh`) so the whole suite exercises the
+     projection-fed reader rather than the fallback. All three prereqs below were paid first.
+     **Before any reader is wired**, address the in-process-restart hazard: the
      projection shares the `PelsApp` lifecycle today, but the `set deviceManager` AppContext
      seam could swap transport in-process and reset its seq counter while the long-lived
      projection holds high seqs → it would silently drop post-swap deltas. Tie the

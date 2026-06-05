@@ -137,20 +137,19 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
       on PR #1517, 2026-06-05.
 
-- [ ] **Snapshot decomposition stage-4b prerequisites (before wiring any reader onto the
-      `ObservedDeviceState` projection).** Three items, all detailed in
-      `notes/state-management/snapshot-decomposition.md` (step 4b): (1) in-process-restart seq-epoch
-      hazard — `set deviceManager` can swap transport and reset its seq counter while the long-lived
-      projection holds high seqs, silently dropping post-swap deltas; tie the drop-guard to a transport
-      epoch or co-recreate the projection with the transport. (2) `getObservedState`/`getAllObservedStates`
-      return the stored value by reference — return a copy/freeze before a consumer can mutate it.
-      (3) The device-update path enriches `observed` from `latestSnapshotById` *before*
-      `syncRealtimeDeviceUpdateSnapshot` commits the parsed snapshot, so the projection lags one
-      device-update-only change until the next capability event/refresh (Codex P2 on PR-4a); harmless
-      while shadow-only, but move the enrichment after the sync (mind the `preservePreviousSnapshot`
-      invalid-binary-payload edge — enrich from the committed, not the parsed, snapshot). Source: PR-4a
-      review (codex), 2026-06-05. Files: `lib/observer/observedDeviceStateProjection.ts`,
-      `lib/device/deviceTransport.ts`, `app.ts`.
+- [ ] **Retire the `observed ?? device` boot-window fallback in `toPlanDevice` once freshness leaves
+      the descriptor surface.** Stage 4b wired the first projection reader: `toPlanDevice`
+      (`setup/appInit.ts`) resolves `observationStale` from `ctx.getObservedState(id)`, falling back to
+      the snapshot only until the first observation lands. The fallback is correct *today* solely because
+      `TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState` so the snapshot still physically
+      carries `lastFreshDataMs`/`lastLocalWriteMs`. Once a later stage strips those freshness fields off
+      the descriptor surface, the `?? device` arm reads `undefined` and silently flips `unknown` → non-stale.
+      Remove the fallback (or re-point it) in lockstep with that strip, so the "identical anyway" boot-window
+      assumption doesn't outlive its invariant. Persona: contributor; hypothesis: a stale fallback that
+      reads a removed field is a silent correctness trap for the next stage. Source: pels-layering-guardian
+      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit.ts`, `packages/contracts/src/types.ts`.
+      (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
+      device-update-lag dispatch — shipped with the stage-4b reader PR.)
 
 - [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the

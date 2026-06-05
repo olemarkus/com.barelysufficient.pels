@@ -196,6 +196,37 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('applies the observed-state projection before syncLivePlanState reads it', async () => {
+    // Regression (stage 4b): listeners fire in registration order, and
+    // syncLivePlanState reads the projection (via toPlanDevice's observationStale).
+    // The projection-apply listener must run first so the live-plan pass triggered
+    // by an event sees that event's freshly-merged observed value, not the prior one.
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    const app = createApp();
+    await initApp(app);
+    await waitForSnapshot();
+
+    const appAny = app as any;
+    const freshMs = Date.parse('2026-03-21T12:00:00Z');
+    let freshnessSeenBySync: number | undefined;
+    vi.spyOn(appAny.planService, 'syncLivePlanState').mockImplementation(() => {
+      freshnessSeenBySync = appAny.observedDeviceStateProjection
+        .getObservedState('dev-1')?.lastFreshDataMs;
+      return false;
+    });
+
+    appAny.observedStateEmitter.emitObservedStateChanged({
+      source: 'realtime_capability',
+      deviceId: 'dev-1',
+      observationSeq: 1_000_000,
+      observedAtMs: freshMs,
+      observed: { id: 'dev-1', name: 'Heater', targets: [], lastFreshDataMs: freshMs },
+    });
+
+    expect(freshnessSeenBySync).toBe(freshMs);
+  });
+
   it('does not persist target snapshot when devices refresh', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
@@ -3599,6 +3630,91 @@ describe('periodic snapshot refresh scheduling', () => {
       lastFreshDataMs: nextReportedAt,
       lastUpdated: nextReportedAt,
     }));
+  });
+
+  it('pushes same-value flow-backed freshness advances into the observer projection', async () => {
+    // Regression: a steady (no value change) flow-backed report advances the
+    // snapshot's lastFreshDataMs in place. It must also dispatch an observed-state
+    // delta, or the projection-fed observationStale reader (stage 4b) would mark
+    // the device stale until the next value change/full refresh.
+    const app = createApp();
+    const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
+    const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
+    const snapshot = [{
+      id: 'dev-1',
+      name: 'Relay',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['onoff'],
+      lastFreshDataMs: initialReportedAt,
+      lastUpdated: initialReportedAt,
+    }];
+    const dispatchObservedStateForDevice = vi.fn();
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
+      getSnapshot: () => snapshot,
+      dispatchObservedStateForDevice,
+    });
+    (app as any).flowReportedCapabilities = {
+      'dev-1': {
+        onoff: { value: true, reportedAt: initialReportedAt, source: 'flow' },
+      },
+    };
+
+    (app as any).reportFlowBackedCapability({
+      deviceId: 'dev-1',
+      capabilityId: 'onoff',
+      value: true,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(dispatchObservedStateForDevice).toHaveBeenCalledWith('dev-1', 'onoff');
+  });
+
+  it('does not dispatch (or re-trigger an EV-SoC rebuild) for an already-fresh EV SoC heartbeat', async () => {
+    // Regression: the EV-SoC freshness branch must NOT dispatch the SoC capability
+    // into the projection — doing so would re-advertise measure_battery and trip
+    // shouldRebuildPlanForRealtimeEvSocObservation into the very plan rebuild that
+    // shouldRebuildPlanForFlowEvSocReport deliberately skips for a fresh heartbeat.
+    const app = createApp();
+    const initialReportedAt = Date.now();
+    const nextReportedAt = initialReportedAt + 60_000;
+    const snapshot = [{
+      id: 'ev-1',
+      name: 'Garage Charger',
+      deviceClass: 'evcharger',
+      flowBacked: true,
+      flowBackedCapabilityIds: ['measure_battery'],
+      targets: [],
+      stateOfCharge: {
+        percent: 80,
+        observedAtMs: initialReportedAt,
+        status: 'fresh',
+        source: 'flow',
+      },
+    }];
+    const dispatchObservedStateForDevice = vi.fn();
+    (app as any).evBoostSettings = { 'ev-1': { enabled: true, boostBelowPercent: 40 } };
+    (app as any).deviceManager = withGetSnapshotByDeviceId({
+      getSnapshot: () => snapshot,
+      dispatchObservedStateForDevice,
+    });
+    (app as any).flowReportedCapabilities = {
+      'ev-1': {
+        measure_battery: { value: 80, reportedAt: initialReportedAt, source: 'flow' },
+      },
+    };
+    const rebuildSpy = vi.spyOn((app as any).planRebuildScheduler, 'request');
+
+    (app as any).reportFlowBackedCapability({
+      deviceId: 'ev-1',
+      capabilityId: 'measure_battery',
+      value: 80,
+      reportedAt: nextReportedAt,
+    });
+
+    expect(dispatchObservedStateForDevice).not.toHaveBeenCalled();
+    expect(rebuildSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'realtime_ev_soc' }),
+    );
   });
 
   it('treats resumable-only flow heartbeats as freshness updates', async () => {

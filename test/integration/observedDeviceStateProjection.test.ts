@@ -181,6 +181,40 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
+    it('reflects a device.update immediately, with no trailing refresh (no one-cycle lag)', async () => {
+        // Regression for the PR-4a Codex P2: the device.update path used to emit
+        // the observed-state event BEFORE syncRealtimeDeviceUpdateSnapshot
+        // committed, so the projection lagged one device.update until the next
+        // refresh re-seeded it. With the emission deferred past the commit, the
+        // post-update value is visible without any trailing refresh.
+        const h = await buildHarness();
+        mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
+        await h.transport.refreshSnapshot();
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
+
+        h.transport.injectDeviceUpdateForTest(onoffDevice('dev1', true, '2026-03-20T06:05:00.000Z'));
+
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+        assertShadowEquality(h);
+        h.transport.destroy();
+    });
+
+    it('setSnapshotForTests feeds the projection (test seam mirrors the production refresh funnel)', async () => {
+        // The test seam must populate the projection exactly as the production
+        // refresh path does, so any reader routed onto the projection (stage 4b)
+        // is exercised by specs that seed state via setSnapshotForTests rather
+        // than silently falling back to the snapshot.
+        const h = await buildHarness();
+        expect(h.projection.getObservedState('dev1')).toBeUndefined();
+
+        h.transport.setSnapshotForTests([
+            { id: 'dev1', name: 'dev1', targets: [], binaryControl: { on: true } },
+        ] as unknown as Parameters<typeof h.transport.setSnapshotForTests>[0]);
+
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+        h.transport.destroy();
+    });
+
     it('realtime delta survives between two refreshes', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
@@ -304,6 +338,20 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         const p = new ObservedDeviceStateProjection();
         p.applyDelta({ source: 'device_update', deviceId: 'dev1' });
         expect(p.getObservedState('dev1')).toBeUndefined();
+    });
+
+    it('freezes the stored value so a reader cannot mutate the projection by reference', () => {
+        const p = new ObservedDeviceStateProjection();
+        p.applyDelta(delta(1, true));
+        const stored = p.getObservedState('dev1')!;
+        expect(Object.isFrozen(stored)).toBe(true);
+        expect(Object.isFrozen(stored.targets)).toBe(true);
+        expect(Object.isFrozen(stored.binaryControl)).toBe(true);
+        expect(() => { (stored as { name: string }).name = 'mutated'; }).toThrow();
+        // Nested observation bag must be frozen too — getters return the stored
+        // object by reference, so a shallow freeze would leave this mutable.
+        expect(() => { stored.binaryControl!.on = false; }).toThrow();
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
     });
 
     it('replay-out-of-order: 1,3,2 settles on seq 3 and a later seq-2 replay is dropped', () => {
