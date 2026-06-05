@@ -430,18 +430,6 @@ live-walk screenshots.*
       fixed by the keep-invariant gate; the remaining work is internal-only refactor.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
-- [ ] Add a "Picked the N cheapest hours of next M (avg P kr/kWh vs Q baseline)" caption under
-      the live deadline-plan chart. The chart today is honest — price bars are tone-coded,
-      planned hours stack on the same x-axis — but a skeptical user can't tell at a glance
-      whether PELS actually picked the cheapest available hours. The data is already in
-      `payload.timeline.hours` (`priceValue` + `planned` flag); the math is trivial. Live-Homey
-      walk found this is the second-most-asked product question on the live page after cost.
-      Why P2: trust signal for the skeptical EV-commuter persona; not blocking but
-      meaningfully closes the "is PELS doing what it says?" question.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts` (new label string),
-      live-plan chart caption tests.
 
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):

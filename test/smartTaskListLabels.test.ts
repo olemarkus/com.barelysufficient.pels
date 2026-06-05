@@ -1,5 +1,6 @@
 import {
   deadlineLabels,
+  formatCheapestHoursCaption,
   formatConfidenceChipLabel,
   formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
@@ -105,6 +106,38 @@ describe('formatEnergyEstimateKWh', () => {
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8.02, energyExpectedKWh: 8.01 })).toBe('8.0 kWh');
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8, energyExpectedKWh: 8 })).toBe('8.0 kWh');
     expect(formatEnergyEstimateKWh({ energyPlannedKWh: 8 })).toBe('8.0 kWh');
+  });
+});
+
+describe('formatCheapestHoursCaption', () => {
+  it('averages the picked + window prices and states the count and avg-vs-baseline', () => {
+    // 2 planned hours at 0.10 + 0.20 → avg 0.15; window of 4 hours at
+    // 0.10 + 0.20 + 0.80 + 0.90 → avg 0.50. The picked average is well below
+    // the window average, which is the whole point of the caption.
+    expect(formatCheapestHoursCaption({
+      plannedPrices: [0.1, 0.2],
+      allPrices: [0.1, 0.2, 0.8, 0.9],
+      unitLabel: 'kr/kWh',
+    })).toBe('Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh');
+  });
+
+  it('suppresses the caption when there are no planned hours or only one hour in the window', () => {
+    expect(formatCheapestHoursCaption({
+      plannedPrices: [],
+      allPrices: [0.1, 0.2, 0.8, 0.9],
+      unitLabel: 'kr/kWh',
+    })).toBeNull();
+    expect(formatCheapestHoursCaption({
+      plannedPrices: [0.1],
+      allPrices: [0.1],
+      unitLabel: 'kr/kWh',
+    })).toBeNull();
+  });
+
+  it('suppresses the caption when the price unit is missing or the neutral placeholder', () => {
+    const base = { plannedPrices: [0.1, 0.2], allPrices: [0.1, 0.2, 0.8, 0.9] };
+    expect(formatCheapestHoursCaption({ ...base, unitLabel: '' })).toBeNull();
+    expect(formatCheapestHoursCaption({ ...base, unitLabel: 'Price' })).toBeNull();
   });
 });
 

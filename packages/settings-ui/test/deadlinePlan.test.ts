@@ -275,6 +275,13 @@ describe('deadline plan page payload', () => {
     // Prices are normalized to the same kr/kWh display the Budget chart uses,
     // so a raw 10 øre/kWh value shows as 0.10 kr/kWh here.
     expect(payload.timeline.hours.some((hour) => hour.planned && hour.price === '0.10')).toBe(true);
+    // Trust caption: one cheap hour was picked out of the 6-hour window. Window
+    // average = (100+101+102+103+104+10)/6 øre = 86.67 øre → 0.87 kr/kWh; the
+    // picked hour is the lone 0.10 kr/kWh cheap one. Confirms the producer reads
+    // the already-scaled display price (øre→kr) and the window-wide baseline.
+    expect(payload.timeline.cheapestHoursCaption).toBe(
+      'Picked 1 of 6 hours · avg 0.10 vs window avg 0.87 kr/kWh',
+    );
   });
 
   it('uses the learned objective sample when live temperature is missing', () => {
@@ -4199,6 +4206,7 @@ describe('buildChartOption original-series suppression', () => {
             progress: 40,
           };
         }),
+        cheapestHoursCaption: null,
       },
       planInputs: {
         perUnitRateLabel: null,

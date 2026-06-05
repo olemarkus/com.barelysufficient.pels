@@ -5793,6 +5793,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   height: 240px;
 }
 
+/* Trust caption under the live horizon chart: "Picked the N cheapest of M
+ * hours · avg P kr/kWh vs Q kr/kWh window average". Sits between the chart and
+ * the card edge with a small gap so it reads as a footnote to the bars above. */
+.deadline-horizon-caption {
+  margin-top: var(--spacing-2);
+}
+
 /* ─── Per-hour bar strip (v2.7.3) ────────────────────────────────────────────
  *
  * Postmortem strip rendered below the trajectory chart. Reads as "when did
