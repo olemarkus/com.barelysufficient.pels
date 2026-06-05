@@ -527,7 +527,7 @@ class PelsApp extends Homey.App {
     getDeviceSnapshots: () => this.deviceManager?.getSnapshot() ?? [],
     getLatestPlanSnapshot: () => this.planService?.getLatestPlanSnapshot() ?? null,
     getStructuredLogger: (component) => this.getStructuredLogger(component),
-    logDebug: (topic, ...args) => this.logDebug(topic, ...args),
+    debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
   });
   private readonly ctx = this.createAppContext(this);
   private static readonly EXPECTED_OVERRIDE_EQUALS_EPSILON_KW = 0.000001;

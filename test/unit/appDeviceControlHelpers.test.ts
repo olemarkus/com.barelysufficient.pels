@@ -551,7 +551,7 @@ describe('appDeviceControlHelpers', () => {
         }],
       } as never),
       getStructuredLogger: () => structuredLogger as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -597,7 +597,7 @@ describe('appDeviceControlHelpers', () => {
       })],
       getLatestPlanSnapshot: () => ({ devices: [] } as never),
       getStructuredLogger: () => structuredLogger as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -616,7 +616,7 @@ describe('appDeviceControlHelpers', () => {
         steppedLoadProfile: steppedProfiles['dev-1'],
       })],
       getStructuredLogger: () => undefined,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBe(steppedProfiles['dev-1']);
@@ -635,7 +635,7 @@ describe('appDeviceControlHelpers', () => {
         suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
       })],
       getStructuredLogger: () => undefined,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.getSteppedLoadProfile('dev-1')).toBeNull();
@@ -658,7 +658,7 @@ describe('appDeviceControlHelpers', () => {
         }],
       } as never),
       getStructuredLogger: () => structuredLogger as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
@@ -692,7 +692,7 @@ describe('appDeviceControlHelpers', () => {
         }],
       } as never),
       getStructuredLogger: () => structuredLogger as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -747,7 +747,7 @@ describe('appDeviceControlHelpers', () => {
         }],
       } as never),
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
@@ -774,7 +774,7 @@ describe('appDeviceControlHelpers', () => {
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     helpers.markSteppedLoadDesiredStepIssued({
@@ -801,7 +801,7 @@ describe('appDeviceControlHelpers', () => {
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'missing')).toBe('invalid');
