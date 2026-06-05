@@ -20,14 +20,16 @@
  * Consumers downstream of the Observer must not re-derive freshness; they read
  * the flat enum/boolean values this module produces.
  */
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
+
 export const STALE_DEVICE_OBSERVATION_MS = 40 * 60 * 1000;
 
 export type DeviceObservationFreshness = 'fresh' | 'stale' | 'unknown';
 
-type DeviceObservationLike = {
-  lastFreshDataMs?: number;
-  lastLocalWriteMs?: number;
-};
+// The freshness timestamps this module reasons about are the observed surface of
+// the device snapshot, so the input narrows to that canonical type rather than a
+// hand-rolled shape (see notes/state-management/snapshot-decomposition.md).
+type DeviceObservationLike = Pick<ObservedDeviceState, 'lastFreshDataMs' | 'lastLocalWriteMs'>;
 
 export function getLatestDeviceObservationMs(device: DeviceObservationLike): number | undefined {
   if (typeof device.lastFreshDataMs === 'number' && device.lastFreshDataMs > 0) {
