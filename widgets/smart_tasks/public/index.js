@@ -647,21 +647,7 @@
     ]
   };
 
-  // packages/shared-domain/src/deferredPlanHistoryChartData.ts
-  var HOUR_MS = 60 * 60 * 1e3;
-
-  // packages/shared-domain/src/utils/dateUtils.ts
-  var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
-
-  // packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
-  var HOUR_MS2 = 60 * 60 * 1e3;
-
-  // packages/shared-domain/src/deferredPlanHistory.ts
-  var MINUTE_MS = 60 * 1e3;
-  var HOUR_MS3 = 60 * MINUTE_MS;
-
-  // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
-  var ENDED_WINDOW_MS = 24 * 60 * 60 * 1e3;
+  // widgets/smart_tasks/src/smartTasksWidgetConstants.ts
   var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 
   // widgets/smart_tasks/src/public/trajectoryChart.ts

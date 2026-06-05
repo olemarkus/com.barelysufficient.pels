@@ -8,7 +8,7 @@ import {
   headroomPriceChipLabel,
   type HeadroomWidgetLimitState,
 } from '../../../../packages/shared-domain/src/headroomWidgetCopy';
-import { EMPTY_SUBTITLE_DEFAULT } from '../headroomWidgetPayload';
+import { EMPTY_SUBTITLE_DEFAULT } from '../headroomWidgetConstants';
 import type {
   HeadroomWidgetPayload,
   HeadroomWidgetPriceLevel,

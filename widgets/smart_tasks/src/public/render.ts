@@ -4,7 +4,7 @@ import {
   SMART_TASK_WIDGET_LOADING,
   SMART_TASK_WIDGET_TARGET_NOUN,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
-import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetPayload';
+import { EMPTY_SUBTITLE_DEFAULT } from '../smartTasksWidgetConstants';
 import type {
   SmartTasksWidgetEmptyPayload,
   SmartTasksWidgetEndedRow,

@@ -1,7 +1,5 @@
-import {
-  HEADROOM_WIDGET_COPY,
-  type HeadroomWidgetLimitState,
-} from '../../../packages/shared-domain/src/headroomWidgetCopy';
+import type { HeadroomWidgetLimitState } from '../../../packages/shared-domain/src/headroomWidgetCopy';
+import { EMPTY_SUBTITLE_DEFAULT } from './headroomWidgetConstants';
 import type {
   HeadroomWidgetEmptyPayload,
   HeadroomWidgetPayload,
@@ -11,7 +9,9 @@ import type {
 
 const STALE_AFTER_MS = 90 * 1000;
 const NEAR_PACE_RATIO = 0.85;
-export const EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
+// Re-exported from the browser-safe constants module so existing consumers
+// and tests keep a stable import surface off the builder.
+export { EMPTY_SUBTITLE_DEFAULT };
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
