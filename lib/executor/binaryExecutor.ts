@@ -5,6 +5,7 @@
  * `lib/plan/planBinaryControl.ts`.
  */
 import type { DeviceObservation } from '../device/deviceObservation';
+import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 import {
@@ -242,11 +243,14 @@ export const applyDeferredEvCommand = async (
   if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
 
   if (intent.kind === 'ev_pause') {
-    if (snapshot.evChargingState !== 'plugged_in_charging') return false;
-    // Lifecycle-end EV pause (smart task satisfied/idle), not a capacity shed: lifecycleRelease
-    // routes through the diagnostic-only recorder and (by default) bypasses the capacity precheck
-    // / pendingSheds path so it does not stamp the cooldown markers. The evChargingState check
-    // above is the EV-axis trusted-evidence gate, mirroring applyShedReleaseBinaryOff's gate.
+    // A paused EV is just a binary device with onoff=false; pause only one that
+    // is currently on (charging). `currentOn` is the consolidated binary truth.
+    // Lifecycle-end EV pause (smart task satisfied/idle), not a capacity shed:
+    // lifecycleRelease routes through the diagnostic-only recorder and (by
+    // default) bypasses the capacity precheck / pendingSheds path so it does not
+    // stamp the cooldown markers. The currentOn check is the trusted-evidence
+    // gate, mirroring applyShedReleaseBinaryOff's gate.
+    if (!snapshot.currentOn) return false;
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
@@ -254,7 +258,10 @@ export const applyDeferredEvCommand = async (
     });
   }
 
-  if (snapshot.evChargingState !== 'plugged_in_paused') return false;
+  // Resume only an off-but-commandable charger — i.e. paused. Reads the binary
+  // truth (`currentOn`) + producer-resolved commandability, not the plug-state
+  // string.
+  if (snapshot.currentOn || !isCommandableNow(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,
