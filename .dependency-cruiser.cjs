@@ -80,17 +80,54 @@ module.exports = {
         + '*WidgetPayload.ts builders may bridge to lib helpers (e.g. '
         + 'create_smart_task/src/api.ts imports lib/objectives/deferredObjectives; '
         + 'plan_budget/src/planPriceWidgetPayload.ts imports lib/dailyBudget types). '
-        + 'Known gap: this catches only DIRECT public->runtime edges, not the '
-        + 'transitive public/** -> *WidgetPayload.ts -> lib path. Today the '
-        + 'payload->lib edges are type-only (erased at build), so nothing bundles; '
-        + 'closing the transitive hole needs browser-safe constants split out of the '
-        + 'node builders + a public-can\'t-import-node-entry rule. Tracked in TODO.md.',
+        + 'This catches only DIRECT public->runtime edges. The transitive '
+        + 'public/** -> *WidgetPayload.ts -> lib path is closed separately by the '
+        + 'no-public-to-node-entry rule below (which forbids public/** from importing '
+        + 'the lib-bridging node entries at all), so a future VALUE import in a node '
+        + 'builder can never reach the WebView bundle.',
       severity: 'error',
       from: {
         path: '^widgets/[^/]+/src/',
         pathNot: '^widgets/[^/]+/src/(api\\.ts|[^/]*WidgetPayload\\.ts)$',
       },
       to: { path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/)' },
+    },
+    {
+      name: 'no-public-to-node-entry',
+      comment: 'The public/** WebView bundle must not import a widget\'s node entries '
+        + '(api.ts, *WidgetPayload.ts). Those are the only widget files allowed to '
+        + 'bridge to the app runtime (lib/, etc.), so a VALUE import of one into the '
+        + 'browser bundle would transitively pull runtime code into the WebView while '
+        + 'the no-widget-to-runtime-except-node-entries rule (which only sees DIRECT '
+        + 'public->runtime edges) stays green. Browser-safe constants and types the '
+        + 'public bundle needs live in sibling modules (*WidgetConstants.ts, '
+        + '*WidgetTypes.ts) the node entries also import — never the other way round. '
+        + 'NB: tsPreCompilationDeps is unset, so this catches VALUE imports (the ones '
+        + 'that actually bundle); type-only public->node-entry edges are erased and '
+        + 'harmless.',
+      severity: 'error',
+      from: { path: '^widgets/[^/]+/src/public/' },
+      to: { path: '^widgets/[^/]+/src/(api\\.ts|[^/]*WidgetPayload\\.ts)$' },
+    },
+    {
+      name: 'no-public-reaches-runtime',
+      comment: 'Belt-and-suspenders transitive closure for the WebView bundle. The '
+        + 'two rules above forbid the DIRECT public->runtime and public->node-entry '
+        + 'edges, but a longer sibling chain could still smuggle runtime code into the '
+        + 'browser bundle — e.g. public/** -> *WidgetConstants.ts -> *WidgetPayload.ts '
+        + '-> lib: a constants module value-importing a node builder is caught by '
+        + 'neither direct rule (the constants->builder hop targets a sibling widget '
+        + 'file, and the builder->lib hop is the sanctioned node-entry exception). '
+        + 'This rule forbids public/** from REACHING the app runtime by ANY '
+        + 'value-import path, so no future intermediate hop can reopen the hole while '
+        + 'arch:check stays green. tsPreCompilationDeps is unset, so reachability '
+        + 'follows the value imports that actually bundle; type-only edges are erased.',
+      severity: 'error',
+      from: { path: '^widgets/[^/]+/src/public/' },
+      to: {
+        path: '^(app\\.ts|flowCards/|drivers/|lib/|setup/)',
+        reachable: true,
+      },
     },
     {
       name: 'shared-packages-no-runtime',

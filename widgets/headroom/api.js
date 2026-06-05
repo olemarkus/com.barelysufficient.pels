@@ -41,10 +41,12 @@ var HEADROOM_WIDGET_COPY = {
   loadErrorSubtitle: "Unable to load"
 };
 
+// widgets/headroom/src/headroomWidgetConstants.ts
+var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
+
 // widgets/headroom/src/headroomWidgetPayload.ts
 var STALE_AFTER_MS = 90 * 1e3;
 var NEAR_PACE_RATIO = 0.85;
-var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
 var isFiniteNumber = (value) => typeof value === "number" && Number.isFinite(value);
 var resolvePriceLevel = (value) => {
   if (value === "cheap") return "cheap";

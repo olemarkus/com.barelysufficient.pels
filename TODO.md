@@ -442,23 +442,6 @@ live-walk screenshots.*
       `packages/settings-ui/src/ui/deadlinePlan.ts`,
       `packages/shared-domain/src/deadlineLabels.ts` (new label string),
       live-plan chart caption tests.
-- [ ] **Close the transitive widget WebView import hole.** The
-      `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
-      `widgets/*/src/public/** -> lib|app|setup|...` edges, not the transitive
-      `public/** -> *WidgetPayload.ts -> lib` path (the `*WidgetPayload.ts` node
-      builders are allowlisted to import lib, and `public/render.ts` imports them
-      for constants/types). Accuracy note (2026-06-04): the specific
-      `public -> *WidgetPayload -> lib` chain is NOT wired today — the only payload
-      builder importing lib (`plan_budget/src/planPriceWidgetPayload.ts`, type-only) is
-      not reachable from any `public/**` file; the builders public DOES value-import
-      (headroom, smart_tasks) touch only shared-domain/contracts. The hole is one edit
-      away, not already traversed: the rule structurally PERMITS a builder to both import
-      lib and be value-imported by public, so a future VALUE import would silently ship
-      runtime code into the browser bundle while `arch:check` stays green. Fix:
-      split the browser-safe constants/types into a shared browser-safe module,
-      then add a rule forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`.
-      (Tracked by the `no-widget-to-runtime-except-node-entries` comment in
-      `.dependency-cruiser.cjs`.) Source: codex review of PR #1286, 2026-05-29.
 
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
