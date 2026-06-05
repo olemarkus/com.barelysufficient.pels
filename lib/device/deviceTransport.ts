@@ -6,6 +6,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import { projectObservedState } from './observedStateProjection';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getDeviceId } from './transport/managerHelpers';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -50,7 +51,9 @@ import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from '
 import {
   didMeasurePowerBecomeSignificantlyPositive,
   handleRealtimeDeviceUpdate,
+  type ObservationCursor,
   type ObservedDeviceStateEvent,
+  type ObservedDeviceStateRefreshEvent,
   type PlanRealtimeUpdateEvent,
 } from './transport/managerRealtimeHandlers';
 import type { DeviceFetchSource } from './transport/managerFetch';
@@ -127,6 +130,10 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_MS = 5 * 60 * 1000;
 const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = 3;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
+// Fallback event-name for the full-refresh batch when no dispatcher is injected
+// (legacy direct-`DeviceTransport` tests). Mirrors observer's
+// `OBSERVED_STATE_REFRESH_EVENT`. Stage 4a of the snapshot decomposition.
+const PLAN_LIVE_STATE_OBSERVED_REFRESH_EVENT = 'plan_live_state_observed_refresh';
 export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './transport/managerObservation';
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
@@ -240,6 +247,7 @@ export type DeviceTransportBinarySettleOps = {
  */
 export type TransportObservedStateDispatcher = {
     observedStateChanged: (event: ObservedDeviceStateEvent) => void;
+    observedStateRefresh: (event: ObservedDeviceStateRefreshEvent) => void;
     planReconcile: (event: PlanRealtimeUpdateEvent) => void;
     /**
      * Push the whole-home power scalar resolved from a Homey SDK energy report
@@ -842,12 +850,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         });
     }
 
-    private nextObservationCursor(deviceId: string): Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'> {
+    private nextObservationCursor(deviceId: string, nowMs: number = Date.now()): ObservationCursor {
         const observationSeq = (this.observationSeqByDeviceId.get(deviceId) ?? 0) + 1;
         this.observationSeqByDeviceId.set(deviceId, observationSeq);
         return {
             observationSeq,
-            observedAtMs: Date.now(),
+            observedAtMs: nowMs,
         };
     }
 
@@ -1188,6 +1196,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const { snapshot, previousSnapshot, rawWasEmpty, nowMs } = params;
         if (this.shouldDeferEmptySnapshotCommit(snapshot, previousSnapshot, rawWasEmpty, nowMs)) return false;
         this.setSnapshot(snapshot);
+        // After setSnapshot so latestSnapshotById is current. The grace-deferred
+        // path returns above (before setSnapshot), so the abandon-grace invariant
+        // — no refresh event on a deferred empty read — holds by construction.
+        this.dispatchObservedStateRefresh(snapshot);
         this.liveFeed?.updateTrackedDevices(snapshot.map((d) => d.id));
         this.fireSnapshotMutatedForRefresh(snapshot, previousSnapshot);
         return true;
@@ -2324,11 +2336,50 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      * construction time (notes/state-management/observer-transport-split.md).
      */
     private dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void {
+        // Attach the decided observed value once, at the single dispatch funnel,
+        // rather than at each of the 4 call sites. The observer projection
+        // records this merged value; it never re-runs the fresher-wins merge.
+        // Stage 4a of the snapshot decomposition.
+        const snapshot = this.latestSnapshotById.get(event.deviceId);
+        const enriched: ObservedDeviceStateEvent = snapshot
+            ? { ...event, observed: projectObservedState(snapshot) }
+            : event;
         if (this.observedStateDispatcher) {
-            this.observedStateDispatcher.observedStateChanged(event);
+            this.observedStateDispatcher.observedStateChanged(enriched);
             return;
         }
-        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, event);
+        this.emit(PLAN_LIVE_STATE_OBSERVED_EVENT, enriched);
+    }
+
+    /**
+     * Fan-out of the full-refresh batch. Built from the just-committed snapshot:
+     * each device gets a FRESH per-device cursor (so the refresh supersedes any
+     * in-flight per-capability delta) and the decided observed value. Mirrors
+     * `dispatchObservedStateChanged`'s dispatcher-or-fallback shape. Fired from
+     * `commitRefreshedSnapshot` only after `setSnapshot`, so the grace-deferred
+     * path (commit returns false before `setSnapshot`) never fires it.
+     * Stage 4a of the snapshot decomposition.
+     */
+    private dispatchObservedStateRefresh(snapshot: TargetDeviceSnapshot[]): void {
+        // One timestamp for the whole batch: every entry in a single refresh
+        // shares the same observedAtMs so the projection's defensive
+        // timestamp-fallback ordering can't reorder devices within one commit.
+        const nowMs = Date.now();
+        const event: ObservedDeviceStateRefreshEvent = {
+            entries: snapshot.map((device) => {
+                const cursor = this.nextObservationCursor(device.id, nowMs);
+                return {
+                    observationSeq: cursor.observationSeq,
+                    observedAtMs: cursor.observedAtMs,
+                    observed: projectObservedState(device),
+                };
+            }),
+        };
+        if (this.observedStateDispatcher) {
+            this.observedStateDispatcher.observedStateRefresh(event);
+            return;
+        }
+        this.emit(PLAN_LIVE_STATE_OBSERVED_REFRESH_EVENT, event);
     }
 
     /**

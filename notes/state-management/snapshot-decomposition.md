@@ -10,10 +10,11 @@ god-struct, and seal the raw snapshot inside transport.**
 > cull (PR-1), step-command/planning cluster re-home onto `SteppedLoadDecoration`
 > (PR-2, #1502), `temperatureBoost`/`evBoost` removed from `TargetDeviceSnapshot`
 > (PR-3), `DeviceDescriptor` + `ObservedDeviceState` read interfaces with
-> `TargetDeviceSnapshot` re-expressed as their intersection (PR-4, stage 3).
-> Next substantive slice is **stage 4** — move `ObservedDeviceState` onto the
-> observer, fed by the dispatcher push (highest-risk slice; gate on sequenced
-> idempotent apply + replay-out-of-order regression test). Read
+> `TargetDeviceSnapshot` re-expressed as their intersection (PR-4, stage 3), and
+> the observer-owned `ObservedDeviceState` projection stood up + shadow-verified
+> with **zero consumer switch** (PR-4a, stage 4a — split out of stage 4). Next is
+> **stage 4b / 5** — route real readers (wiring-side first, then plan/executor)
+> onto the projection. Read
 > [`observer-transport-split.md`](./observer-transport-split.md) +
 > [`CLAUDE.md`](./CLAUDE.md) first.
 
@@ -153,7 +154,37 @@ store, because:
    the line here kept PR-4 to two files with the intersection alias doing the structural work.
 4. **Move `ObservedDeviceState` onto the observer**, fed by the dispatcher push
    (gate: sequenced apply + replay test). Transport keeps `latestSnapshot` as the
-   parse/merge scratchpad + descriptor source. *(highest-risk slice)*
+   parse/merge scratchpad + descriptor source. *(highest-risk slice — split 4a/4b)*
+   - **4a — DONE (PR-4a):** stood up `lib/observer/observedDeviceStateProjection.ts`
+     fed by the dispatcher push, with **zero consumer switch** (shadow-verified only).
+     The events now carry the *decided* `ObservedDeviceState` value (enriched once at
+     transport's `dispatchObservedStateChanged` funnel), and a new full-refresh batch
+     event fires from `commitRefreshedSnapshot` after `setSnapshot` (so the abandon-grace
+     deferral never emits it). Apply is sequenced (per-device `observationSeq` primary,
+     `observedAtMs` defensive fallback) + idempotent + prunes vanished devices. Shared
+     refresh-event types + `projectObservedState` live in `packages/contracts`. Gate met:
+     replay-out-of-order + dedup + cold-start + interleave/no-rollback + abandon-grace +
+     prune + targets-aliasing + shadow-equality tests, all via the Homey SDK boundary.
+     Shared refresh-event *types* live in `packages/contracts`; the `projectObservedState`
+     *function* lives in `lib/device/observedStateProjection.ts` — runtime functions can't
+     live in `packages/contracts/src/**` (deploy-excluded source; runtime may only
+     `import type` from it, enforced by `test/runtimePackaging.test.ts`).
+   - **4b — TODO:** route real readers onto the projection (wiring-side observed reads
+     first). **Before any reader is wired**, address the in-process-restart hazard: the
+     projection shares the `PelsApp` lifecycle today, but the `set deviceManager` AppContext
+     seam could swap transport in-process and reset its seq counter while the long-lived
+     projection holds high seqs → it would silently drop post-swap deltas. Tie the
+     drop-guard to a transport epoch (or co-recreate the projection with the transport).
+     Also: `getObservedState`/`getAllObservedStates` return the stored value **by
+     reference** — a consumer that mutates it would corrupt the projection; return a copy
+     (or freeze) when the first reader is wired. **Third:** the device-update path enriches
+     the observed value from `latestSnapshotById` *before* `syncRealtimeDeviceUpdateSnapshot`
+     commits the freshly-parsed snapshot, so the projection lags one device-update-only
+     change until the next capability event or full refresh re-seeds it (Codex P2 on PR-4a).
+     Harmless while shadow-only (refresh self-heals), but a reader must see the committed
+     value: move the device-update enrichment to *after* the sync (mind the
+     `preservePreviousSnapshot` invalid-binary-payload edge — enrich from the committed,
+     not the parsed, snapshot). Plan/executor reads convert in stage 5.
 5. **Convert plan + executor reads** from `DeviceObservation` → observer's
    `ObservedDeviceState`.
 6. **Convert `toPlanDevice` to `(descriptor, observed)`**; replace `...device` spread

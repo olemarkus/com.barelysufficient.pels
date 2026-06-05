@@ -132,6 +132,21 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       Source: codex on PR #1495, 2026-06-04.
       Files: `lib/objectives/deferredObjectives/**` (`maybeWriteReplanRevision`, `mergeHoursPreservingCommitment`).
 
+- [ ] **Snapshot decomposition stage-4b prerequisites (before wiring any reader onto the
+      `ObservedDeviceState` projection).** Three items, all detailed in
+      `notes/state-management/snapshot-decomposition.md` (step 4b): (1) in-process-restart seq-epoch
+      hazard — `set deviceManager` can swap transport and reset its seq counter while the long-lived
+      projection holds high seqs, silently dropping post-swap deltas; tie the drop-guard to a transport
+      epoch or co-recreate the projection with the transport. (2) `getObservedState`/`getAllObservedStates`
+      return the stored value by reference — return a copy/freeze before a consumer can mutate it.
+      (3) The device-update path enriches `observed` from `latestSnapshotById` *before*
+      `syncRealtimeDeviceUpdateSnapshot` commits the parsed snapshot, so the projection lags one
+      device-update-only change until the next capability event/refresh (Codex P2 on PR-4a); harmless
+      while shadow-only, but move the enrichment after the sync (mind the `preservePreviousSnapshot`
+      invalid-binary-payload edge — enrich from the committed, not the parsed, snapshot). Source: PR-4a
+      review (codex), 2026-06-05. Files: `lib/observer/observedDeviceStateProjection.ts`,
+      `lib/device/deviceTransport.ts`, `app.ts`.
+
 - [ ] **Stop recording a synthesized `currentOn` as trusted binary evidence** (part of the
       binaryControlObservation/observed-state consolidation — see `project_binary_observation_removal`).
       `recordSnapshotControlObservation` records `snapshot.currentOn`, which on the unobserved-control

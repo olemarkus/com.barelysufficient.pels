@@ -1,4 +1,5 @@
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { ObservedDeviceStateRefreshPayload } from '../../../packages/contracts/src/observedDeviceState';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { resolveEvChargingStateBinaryEvidence } from '../managerControl';
 import type { RecentLocalCapabilityWrites } from './managerRealtimeSupport';
@@ -25,9 +26,30 @@ export type ObservedDeviceStateEvent = {
   capabilityId?: string;
   observedCapabilityIds?: string[];
   measurePowerBecameSignificantlyPositive?: boolean;
+  // The decided observed value transport's fresher-wins merge produced for this
+  // device, attached once at the dispatch funnel (`dispatchObservedStateChanged`)
+  // so the observer projection records the merged value rather than re-merging.
+  // Stage 4a of the snapshot decomposition.
+  observed?: ObservedDeviceState;
 };
 
 export type DeviceObservationCursor = Pick<ObservedDeviceStateEvent, 'observationSeq' | 'observedAtMs'>;
+
+/**
+ * Batch full-refresh event. One entry per device in the committed snapshot,
+ * carrying a fresh per-device cursor (so it supersedes in-flight deltas) and
+ * the decided observed value. Aliases the shared contracts payload so the
+ * device-side type and the observer-side `ObservedStateRefreshEvent` can't
+ * drift — neither layer imports the other; both reference contracts.
+ */
+export type ObservedDeviceStateRefreshEvent = ObservedDeviceStateRefreshPayload;
+
+/**
+ * Non-optional per-device observation cursor. `nextObservationCursor` always
+ * resolves both fields; this type makes that an enforced invariant rather than
+ * an `as number` assertion at the refresh-dispatch site.
+ */
+export type ObservationCursor = { observationSeq: number; observedAtMs: number };
 
 export type DeviceUpdateProcessedDebugEvent = {
   event: 'device_update_processed';

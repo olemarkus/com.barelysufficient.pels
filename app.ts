@@ -8,6 +8,7 @@ import {
   type PlanReconcileObservedEvent,
 } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
+import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
 import { PlanEngine } from './lib/plan/planEngine';
 import {
   clearAllPendingBinarySettleWindows,
@@ -400,6 +401,12 @@ class PelsApp extends Homey.App {
   // split). Transport pushes the Homey-SDK-sourced reading here via the
   // dispatcher; wiring reads it back through `getHomePowerW()`.
   private observedHomePower: ObservedHomePower = new ObservedHomePower();
+  // Observer-owned maintained projection of `ObservedDeviceState`, fed by the
+  // dispatcher push (per-capability deltas + full-refresh batches). Stage 4a of
+  // the snapshot decomposition: stood up + shadow-verified only — NO existing
+  // reader is routed through it yet (zero behaviour change). Same lifecycle as
+  // the device manager / emitter (recreated together on a transport restart).
+  private observedDeviceStateProjection: ObservedDeviceStateProjection = new ObservedDeviceStateProjection();
   private planEngine!: PlanEngine;
   private planService!: PlanService;
   // Created in `onInit` (after the structured logger is wired) and released
@@ -1290,6 +1297,15 @@ class PelsApp extends Homey.App {
         };
       }
       void this.planService?.syncLivePlanState(event.source);
+    });
+    // Stage 4a: feed the shadow projection from the same emitter as a peer
+    // subscriber. The projection only records the decided value transport
+    // already merged; no existing reader consumes it yet.
+    this.observedStateEmitter.onObservedStateChanged((event) => {
+      this.observedDeviceStateProjection.applyDelta(event);
+    });
+    this.observedStateEmitter.onObservedStateRefresh((event) => {
+      this.observedDeviceStateProjection.applyRefresh(event);
     });
   }
 
