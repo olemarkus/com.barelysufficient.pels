@@ -44,6 +44,7 @@ import type {
 import { normalizePlanMeta } from './planStatusHelpers';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
 import { createIdleClassifier, type IdleClassifier } from '../observer/idleClassifier';
+import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
   buildLiveStatePlan,
@@ -132,6 +133,13 @@ export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
   getPlanDevices: () => PlanInputDevice[];
+  // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
+  // exposed on `PlanInputDevice`; the settle reads it off the device snapshot directly.
+  // PRODUCTION MUST PROVIDE THIS (the raw device snapshot) — when omitted it falls back
+  // to `getPlanDevices`, which carries no `binaryControlObservation`, so the settle would
+  // never confirm. The fallback exists only so tests that don't exercise the settle can
+  // omit it.
+  getSettleDevices?: () => PendingBinaryLiveDevice[];
   getCapacityDryRun: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
@@ -187,6 +195,13 @@ export class PlanService {
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
     return this.deps.planEngine.buildDevicePlanSnapshot(devices);
+  }
+
+  // Devices for the binary settle: the observer-internal `binaryControlObservation`
+  // evidence lives on the device snapshot, not the plan-facing `PlanInputDevice`, so the
+  // settle reads its own source. Falls back to `getPlanDevices` only for tests (see deps).
+  private settleDevices(): PendingBinaryLiveDevice[] {
+    return (this.deps.getSettleDevices ?? this.deps.getPlanDevices)();
   }
 
   /**
@@ -301,7 +316,7 @@ export class PlanService {
       ? this.deps.planEngine.syncPendingTargetCommands(liveDevices, source)
       : false;
     const pendingBinaryChanged = hasPendingBinaryCommands
-      ? this.deps.planEngine.syncPendingBinaryCommands(liveDevices, source)
+      ? this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), source)
       : false;
     const pendingChanged = pendingTargetChanged || pendingBinaryChanged;
     if (!this.latestPlanSnapshot) {
@@ -726,7 +741,7 @@ export class PlanService {
   private async buildPlanForRebuild(reason: string): Promise<{ plan: DevicePlan; buildMs: number }> {
     const liveDevices = this.deps.getPlanDevices();
     this.deps.planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
-    this.deps.planEngine.syncPendingBinaryCommands(liveDevices, 'rebuild');
+    this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), 'rebuild');
     const buildStart = Date.now();
     this.currentBuildReason = reason;
     if (this.deps.planEngine.state) {

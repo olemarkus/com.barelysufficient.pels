@@ -26,6 +26,7 @@ import {
   createPendingBinaryCommandStore,
   syncPendingBinaryCommands,
   type PendingBinaryCommandStore,
+  type PendingBinaryLiveDevice,
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
@@ -199,7 +200,7 @@ export class PlanEngine {
   }
 
   public syncPendingBinaryCommands(
-    devices: PlanInputDevice[],
+    devices: PendingBinaryLiveDevice[],
     source: PendingTargetObservationSource,
   ): boolean {
     return syncPendingBinaryCommands({

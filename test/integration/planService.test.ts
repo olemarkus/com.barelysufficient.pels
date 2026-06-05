@@ -65,6 +65,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
     } as any,
     getPlanDevices: () => [],
+    getSettleDevices: () => [],
     getCapacityDryRun: () => false,
     isCurrentHourCheap: () => false,
     isCurrentHourExpensive: () => false,
@@ -2512,6 +2513,10 @@ describe('PlanService', () => {
         decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
       } as any,
       getPlanDevices,
+      // Settle reads its own source in production (the device snapshot); provide one here
+      // (a separate fn, same devices) so the binary-settle fallback does not double-count
+      // the `getPlanDevices` spy.
+      getSettleDevices: () => firstLiveDevices,
       getCapacityDryRun: () => true,
       isCurrentHourCheap: () => false,
       isCurrentHourExpensive: () => false,

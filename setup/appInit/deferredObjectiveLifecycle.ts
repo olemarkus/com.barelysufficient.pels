@@ -23,6 +23,7 @@ import {
   getSteppedLoadOffStep,
   getSteppedLoadStep,
 } from '../../lib/utils/deviceControlProfiles';
+import { isDeviceObservationTrusted } from '../../lib/utils/observationTrust';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import {
@@ -88,7 +89,7 @@ export const resolveTerminalShedCommand = (
       targetValue: normalizeTargetCapabilityValue({ target: primaryTarget, value: behavior.temperature }),
     };
   }
-  const capabilityId = device.controlCapabilityId ?? device.binaryControlObservation?.capabilityId;
+  const capabilityId = device.controlCapabilityId;
   if (capabilityId) {
     return { kind: 'binary_off', capabilityId, flowBacked: flowBackedCapabilityIds.includes(capabilityId) };
   }
@@ -147,14 +148,24 @@ const resolveEvBinaryState = (evChargingState: string | undefined): 'on' | 'off'
   return 'unknown';
 };
 
-const resolveBinaryState = (
-  observation: PlanInputDevice['binaryControlObservation'],
-): 'on' | 'off' | 'unknown' => {
-  if (!observation) return 'unknown';
-  return observation.observedValue ? 'on' : 'off';
+// The trust gate is ASYMMETRIC, mirroring the authoritative-zero-power read in
+// `lib/observer/observedPower.ts` (`currentOn === false && !stale` ⇒ 0 draw):
+//   - `currentOn === true`  → `'on'`: maintained on-evidence is on-evidence even
+//     when stale (the observer keeps consolidated state across skipped capability
+//     updates), so the terminal release must still issue the off write — a
+//     stale-on device must not be abandoned.
+//   - `currentOn === false` + trusted → `'off'`: an authoritative settled off.
+//   - `currentOn === false` + UNtrusted → `'unknown'`: a post-restart / cold-start
+//     read synthesizes a non-optimistic `currentOn === false` with no real
+//     evidence; collapsing that to `'off'` would let the release disarm a device
+//     that may still be on, so emit `'unknown'` and let `planTerminalEnding` keep
+//     the task ARMED until a trusted state arrives or the disarm grace elapses.
+const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' | 'unknown' => {
+  if (device.currentOn) return 'on';
+  return isDeviceObservationTrusted(device) ? 'off' : 'unknown';
 };
 
-const readTerminalObserved = (
+export const readTerminalObserved = (
   device: PlanInputDevice,
   objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
 ): ShedActuationObservedState => {
@@ -167,7 +178,7 @@ const readTerminalObserved = (
   // the command resolver refuses to emit a `set_temperature` command without one.
   const primaryTarget = getPrimaryTargetCapability(device.targets);
   return {
-    binaryState: resolveBinaryState(device.binaryControlObservation),
+    binaryState: resolveTerminalBinaryState(device),
     targetValue: typeof primaryTarget?.value === 'number' ? primaryTarget.value : null,
     stepId: resolveTrustedStepId(device),
   };
