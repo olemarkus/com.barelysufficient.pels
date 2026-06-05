@@ -10,6 +10,10 @@ export type DailyBudgetManagerDeps = {
   logDebug: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   structuredDebug?: (payload: Record<string, unknown>) => void;
+  // Topic-gated (`daily_budget`) structured debug for discrete lifecycle events
+  // (freeze/unfreeze/recompute/learning). Distinct from `structuredDebug`, which
+  // is gated on confidence-bootstrap only.
+  debugStructured?: import('../logging/logger').StructuredDebugEmitter;
 };
 
 export type ExistingPlanState = {

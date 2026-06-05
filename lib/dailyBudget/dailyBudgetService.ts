@@ -50,7 +50,7 @@ import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { normalizeDebugLoggingTopics } from '../../packages/shared-domain/src/utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 
@@ -67,6 +67,7 @@ type DailyBudgetServiceDeps = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   requestPriceRefetch: () => void;
   structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
 };
 
 type BudgetLogState = {
@@ -120,6 +121,7 @@ export class DailyBudgetService {
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
+      debugStructured: this.deps.debugStructured,
     });
   }
 
@@ -157,6 +159,7 @@ export class DailyBudgetService {
       logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
+      debugStructured: this.deps.debugStructured,
     });
     manager.loadState(this.manager.exportState());
     return manager;
