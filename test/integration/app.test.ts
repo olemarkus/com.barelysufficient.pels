@@ -2811,7 +2811,8 @@ describe('periodic snapshot refresh scheduling', () => {
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {
     const app = createApp();
     const refreshSpy = vi.spyOn((app as any).snapshotHelpers, 'refreshTargetDevicesSnapshot').mockResolvedValue(undefined);
-    const logDebugSpy = vi.spyOn(app as any, 'logDebug').mockImplementation(() => undefined);
+    const debugEmit = vi.fn();
+    vi.spyOn(app as any, 'getStructuredDebugEmitter').mockReturnValue(debugEmit);
 
     (app as any).snapshotHelpers.schedulePostActuationRefresh();
     const firstTimer = (app as any).snapshotHelpers.getPostActuationRefreshTimer();
@@ -2819,7 +2820,10 @@ describe('periodic snapshot refresh scheduling', () => {
 
     expect((app as any).snapshotHelpers.getPostActuationRefreshTimer()).toBe(firstTimer);
     expect(refreshSpy).not.toHaveBeenCalled();
-    expect(logDebugSpy).toHaveBeenCalledWith('plan', 'Post-actuation snapshot refresh already scheduled');
+    expect(debugEmit).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'post_actuation_refresh_skipped',
+      reason: 'already_scheduled',
+    }));
   });
 
   it('clears post-actuation timer state on stop so it can be armed again', () => {
