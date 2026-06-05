@@ -367,13 +367,6 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [ ] Improve overshoot attribution for hard-cap incidents.
-      The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
-      `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
-      arrays. If telemetry is available, surface the main managed/background contributors; if it
-      is not, emit an explicit no-attribution reason so incident logs explain why attribution is
-      unavailable.
-      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
@@ -447,21 +440,6 @@ app-wiring; rule flipped to `error`), **PR-E #1338 (clock-driven terminal device
 disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1b
 dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
 **PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
-
-- [ ] P2: annotate partial overshoot attribution. `overshootAttributionReason` (added with the
-      no-attribution reason fix) is only emitted when the contributor arrays are empty. When one
-      managed device crosses the epsilon but a large background remainder dominates the breach
-      (e.g. a named contributor explaining only a fraction of `overshootUnattributedDeltaKw`), the
-      log carries no signal that attribution is mostly unexplained — the operator must compare
-      `overshootUnattributedDeltaKw` against `overshootAttributionDeltaKw` by hand. Consider a
-      partial-attribution flag/reason for that case. A related precision gap (same field, same
-      remedy): when several tracked devices each rise ≤ `OVERSHOOT_DELTA_EPSILON_KW`, every per-device
-      diff is dropped so contributors are empty even though complete+fresh inputs prove the rise is in
-      managed devices; with their summed rise above the breach the field reports `background_load_dominant`
-      rather than a managed-sub-epsilon signal. Both are precision nuances on a non-load-bearing log
-      field (operators still have the raw delta fields); refine only if they prove misleading in practice.
-      Source: self-review + codex on `fix/overshoot-no-attribution-reason`, 2026-06-04.
-      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 
 ## P3 Future and Exploratory Work
 
