@@ -5,7 +5,7 @@ import {
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
 import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { DevicePlan } from '../plan/planTypes';
 import type {
   DecoratedDeviceSnapshot,
@@ -345,7 +345,7 @@ export class AppDeviceControlHelpers {
     getDeviceSnapshots: () => TargetDeviceSnapshot[];
     getLatestPlanSnapshot?: () => DevicePlan | null;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
-    logDebug: (topic: 'devices', ...args: unknown[]) => void;
+    debugStructured: StructuredDebugEmitter;
   }) {}
 
   getSteppedLoadProfile(deviceId: string): SteppedLoadProfile | null {
@@ -385,13 +385,15 @@ export class AppDeviceControlHelpers {
     const deviceName = snapshot ? snapshot.name.trim() : `device ${deviceId}`;
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
       delete this.runtimeState.steppedLoadReportedByDeviceId[deviceId];
-      this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: native wiring is enabled`);
+      this.deps.debugStructured({
+        event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceName,
+      });
       return 'unchanged';
     }
     const storedProfiles = this.deps.getProfiles();
     const profile = this.resolveSteppedLoadFeedbackProfile(deviceId, snapshot, storedProfiles);
     if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
-      this.deps.logDebug('devices', `Stepped load feedback ignored for ${deviceName}: invalid step '${stepId}'`);
+      this.deps.debugStructured({ event: 'stepped_load_feedback_ignored', reason: 'invalid_step', deviceName, stepId });
       return 'invalid';
     }
     if (shouldSuppressSteppedLoadFlowReport({
@@ -399,10 +401,9 @@ export class AppDeviceControlHelpers {
       currentOn: snapshot?.currentOn,
       stepId,
     })) {
-      this.deps.logDebug(
-        'devices',
-        `Stepped load feedback ignored for ${deviceName}: non-off step '${stepId}' while device is off`,
-      );
+      this.deps.debugStructured({
+        event: 'stepped_load_feedback_ignored', reason: 'non_off_step_while_off', deviceName, stepId,
+      });
       return 'unchanged';
     }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
@@ -437,7 +438,7 @@ export class AppDeviceControlHelpers {
       });
     }
     if (changed === 'unchanged') {
-      this.deps.logDebug('devices', `Stepped load feedback unchanged for ${deviceName}: ${stepId}`);
+      this.deps.debugStructured({ event: 'stepped_load_feedback_unchanged', deviceName, stepId });
       return changed;
     }
 

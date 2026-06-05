@@ -697,7 +697,7 @@ describe('native stepped-load wiring', () => {
       getProfiles: () => ({ 'hoiax-1': steppedProfile }),
       getDeviceSnapshots: () => snapshots,
       getStructuredLogger: () => undefined,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(helpers.reportSteppedLoadActualStep('hoiax-1', 'max')).toBe('changed');
@@ -753,7 +753,7 @@ describe('native stepped-load wiring', () => {
       getProfiles: () => ({ 'hoiax-1': configuredProfile }),
       getDeviceSnapshots: () => [nativeSnapshot],
       getStructuredLogger: () => undefined,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     const [decorated] = helpers.decorateTargetSnapshotList([nativeSnapshot]);
@@ -774,7 +774,7 @@ describe('native stepped-load wiring', () => {
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,
       buildBinaryControlTransport: () => ({}),
@@ -851,7 +851,7 @@ describe('native stepped-load wiring', () => {
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,
       buildBinaryControlTransport: () => ({}),
@@ -935,7 +935,7 @@ describe('native stepped-load wiring', () => {
     const structuredLog = { info: vi.fn(), error: vi.fn() };
     const ctx = {
       state: {},
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
       error: vi.fn(),
       structuredLog,
       buildBinaryControlTransport: () => ({}),
