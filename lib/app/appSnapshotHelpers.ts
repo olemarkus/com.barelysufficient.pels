@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import type { DeviceTransport } from '../device/deviceTransport';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
 import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';
 import {
@@ -69,7 +69,7 @@ export class AppSnapshotHelpers {
     resolveManagedState: (deviceId: string) => boolean;
     isCapacityControlEnabled: (deviceId: string) => boolean;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
-    logDebug: (topic: 'devices' | 'plan', ...args: unknown[]) => void;
+    getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
@@ -147,14 +147,20 @@ export class AppSnapshotHelpers {
         // assigned the loop promise — await it so callers (e.g.
         // `/ui_refresh_devices`) see the post-refresh in-memory snapshot
         // instead of returning while the refresh is still running. (TODO 728.)
-        this.deps.logDebug('devices', 'Snapshot refresh already in progress, awaiting in-flight refresh');
+        this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+          event: 'snapshot_refresh_coalesced',
+          mode: 'awaiting_in_flight',
+        });
         await this.snapshotRefreshInFlight;
         return;
       }
       // Synchronous re-entry window (the outer call has not yielded yet, so
       // the loop promise is not visible). Keep the legacy queue-and-return
       // behavior to avoid awaiting a promise the caller is itself producing.
-      this.deps.logDebug('devices', 'Snapshot refresh already in progress, queued another refresh');
+      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+        event: 'snapshot_refresh_coalesced',
+        mode: 'queued',
+      });
       return;
     }
 
@@ -203,10 +209,11 @@ export class AppSnapshotHelpers {
     this.pruneStaleRefreshLogBackoff(snapshot, nowMs);
     if (staleDevices.length === 0) return;
 
-    this.deps.logDebug(
-      'devices',
-      `Refreshing target devices snapshot because ${staleDevices.length}/${snapshot.length} managed devices are stale`,
-    );
+    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+      event: 'stale_observation_refresh_triggered',
+      staleDevices: staleDevices.length,
+      managedDevices: snapshot.length,
+    });
     const staleDeviceIds = new Set(staleDevices.map((device) => device.id));
     await this.refreshTargetDevicesSnapshot({ targeted: true });
 
@@ -309,28 +316,32 @@ export class AppSnapshotHelpers {
       return;
     }
 
-    this.deps.logDebug(
-      'devices',
-      `Pending target confirmation older than ${Math.round(TARGET_CONFIRMATION_STUCK_POLL_MS / 1000)}s; `
-      + 'polling device state',
-    );
+    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+      event: 'stuck_target_confirmation_poll',
+      thresholdMs: TARGET_CONFIRMATION_STUCK_POLL_MS,
+    });
     await this.refreshTargetDevicesSnapshot({ targeted: true });
   }
 
   schedulePostActuationRefresh(): void {
     if (this.postActuationRefreshTimer) {
-      this.deps.logDebug('plan', 'Post-actuation snapshot refresh already scheduled');
+      this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+        event: 'post_actuation_refresh_skipped',
+        reason: 'already_scheduled',
+      });
       return;
     }
 
-    this.deps.logDebug(
-      'plan',
-      `Scheduling post-actuation snapshot refresh in ${Math.round(POST_ACTUATION_REFRESH_DELAY_MS / 1000)} s`,
-    );
+    this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+      event: 'post_actuation_refresh_scheduled',
+      delayMs: POST_ACTUATION_REFRESH_DELAY_MS,
+    });
     this.postActuationRefreshTimer = this.deps.timers.registerTimeout('postActuationRefresh', setTimeout(async () => {
       this.postActuationRefreshTimer = undefined;
       this.deps.timers.clear('postActuationRefresh');
-      this.deps.logDebug('plan', 'Running post-actuation targeted snapshot refresh');
+      this.deps.getStructuredDebugEmitter('snapshot', 'plan')({
+        event: 'post_actuation_refresh_running',
+      });
       try {
         await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
       } catch (error) {
@@ -346,7 +357,9 @@ export class AppSnapshotHelpers {
     if (options.emitFlowBackedRefresh !== false) {
       await this.deps.emitFlowBackedRefreshRequests(this.deps.getFlowReportedDeviceIds());
     }
-    this.deps.logDebug('devices', 'Refreshing target devices snapshot');
+    this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+      event: 'target_snapshot_refresh_started',
+    });
     await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
