@@ -1,6 +1,7 @@
 import {
   buildShedActuator,
   planTerminalEnding,
+  readTerminalObserved,
   resolveTerminalShedCommand,
 } from '../../setup/appInit/deferredObjectiveLifecycle';
 import {
@@ -88,6 +89,48 @@ describe('planTerminalEnding (gated terminal-ending decision — the P1 fix)', (
   });
 });
 
+describe('readTerminalObserved — binary trust gate (self-heal regression)', () => {
+  const binaryDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
+    id: 'b1',
+    name: 'Water heater',
+    currentOn: false,
+    targets: [],
+    ...overrides,
+  } as PlanInputDevice);
+
+  it('reports off when the device is trusted-off', () => {
+    expect(readTerminalObserved(binaryDevice({ currentOn: false }), 'temperature').binaryState)
+      .toBe('off');
+  });
+
+  it('reports on when the device is observed on', () => {
+    expect(readTerminalObserved(binaryDevice({ currentOn: true }), 'temperature').binaryState)
+      .toBe('on');
+  });
+
+  it('reports unknown — NOT off — when currentOn is false but the observation is stale', () => {
+    // Regression: a post-restart / cold-start read synthesizes a non-optimistic
+    // `currentOn === false` with no real evidence. Collapsing that straight to
+    // `'off'` made the terminal release disarm a device that may still be on.
+    // The trust gate must keep it `'unknown'` so `planTerminalEnding` re-fires
+    // until settled or the disarm grace elapses.
+    expect(readTerminalObserved(binaryDevice({ currentOn: false, observationStale: true }), 'temperature').binaryState)
+      .toBe('unknown');
+  });
+
+  it('reports on — NOT unknown — when currentOn is true even though the observation is stale', () => {
+    // Asymmetric gate (mirrors observedPower currentOn===false && !stale): a
+    // maintained `currentOn === true` is real on-evidence even when the binary
+    // capability has not refreshed within the freshness window (the observer
+    // keeps consolidated state across skipped updates). A stable-on device whose
+    // smart task ends must STILL get the off write — mapping it to `'unknown'`
+    // would let `applyBinaryOffShed` refuse the write and the task disarm after
+    // grace without ever turning the device off.
+    expect(readTerminalObserved(binaryDevice({ currentOn: true, observationStale: true }), 'temperature').binaryState)
+      .toBe('on');
+  });
+});
+
 describe('resolveTerminalShedCommand — set_temperature setpoint normalization', () => {
   const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({
     id: 't1',
@@ -151,26 +194,6 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
   it('falls back to binary_off via controlCapabilityId when set_temperature has no present target', () => {
     const command = resolveTerminalShedCommand(
       deviceWithoutTarget(),
-      'temperature',
-      { action: 'set_temperature', temperature: 5 },
-      [],
-    );
-    expect(command).toEqual({ kind: 'binary_off', capabilityId: 'onoff', flowBacked: false });
-  });
-
-  it('falls back to binary_off via binaryControlObservation when controlCapabilityId is absent', () => {
-    const command = resolveTerminalShedCommand(
-      deviceWithoutTarget({
-        controlCapabilityId: undefined,
-        binaryControlObservation: {
-          valid: true,
-          capabilityId: 'onoff',
-          observedValue: true,
-          observedCapabilityIds: ['onoff'],
-          observedAtMs: 0,
-          source: 'snapshot_refresh',
-        },
-      }),
       'temperature',
       { action: 'set_temperature', temperature: 5 },
       [],

@@ -197,6 +197,11 @@ export function createPlanService(ctx: AppContext): PlanService {
         // `managed: false` device can never be offered/persisted but unplanned.
         .filter(isRuntimePlannedDevice);
     },
+    // The binary settle reads the observer-internal `binaryControlObservation`
+    // straight off the device snapshot — it is not (and must not be) on the
+    // plan-facing `PlanInputDevice`. Pending commands only exist for commanded
+    // devices, so the unfiltered snapshot is a harmless superset.
+    getSettleDevices: () => ctx.latestTargetSnapshot,
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),

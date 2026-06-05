@@ -1,5 +1,4 @@
 import type {
-  BinaryControlObservation,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
@@ -143,7 +142,6 @@ export type PlanInputDevice = {
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
   binaryCommandPendingDesired?: boolean;
-  binaryControlObservation?: BinaryControlObservation;
   /**
    * Per-step calibrated power view, populated at plan-build time from the
    * persisted power-calibration store. When a `(deviceId, stepId)` pair has
