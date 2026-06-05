@@ -9,8 +9,11 @@ god-struct, and seal the raw snapshot inside transport.**
 > Status: **design + in progress.** Shipped so far: `lastDesiredStepChangeAt`
 > cull (PR-1), step-command/planning cluster re-home onto `SteppedLoadDecoration`
 > (PR-2, #1502), `temperatureBoost`/`evBoost` removed from `TargetDeviceSnapshot`
-> (PR-3). Next substantive slice is stage 3 (`DeviceDescriptor` +
-> `ObservedDeviceState` read interfaces). Read
+> (PR-3), `DeviceDescriptor` + `ObservedDeviceState` read interfaces with
+> `TargetDeviceSnapshot` re-expressed as their intersection (PR-4, stage 3).
+> Next substantive slice is **stage 4** — move `ObservedDeviceState` onto the
+> observer, fed by the dispatcher push (highest-risk slice; gate on sequenced
+> idempotent apply + replay-out-of-order regression test). Read
 > [`observer-transport-split.md`](./observer-transport-split.md) +
 > [`CLAUDE.md`](./CLAUDE.md) first.
 
@@ -133,10 +136,21 @@ store, because:
 2. **Remove the DEAD-SNAP cluster** from `TargetDeviceSnapshot` (neutralize the 3
    always-undefined snap reads behavior-preservingly; flag the 2 latent guards).
    ~20% struct shrink, no behavior change.
-3. **Introduce `DeviceDescriptor` + `ObservedDeviceState` read interfaces**;
-   `DeviceTransport` implements both (it already produces all fields). Repoint UI/
-   native-wiring/`isRuntimePlannedDevice` → descriptor; observer/executor readers →
-   observed. `DeviceObservation` stays as a transitional union.
+3. **Introduce `DeviceDescriptor` + `ObservedDeviceState` read interfaces** — DONE (PR-4).
+   Both defined in `packages/contracts/src/types.ts`; `TargetDeviceSnapshot` is now their
+   intersection (`DeviceDescriptor & ObservedDeviceState`), so the god-struct can't drift
+   from the partition — adding a field forces a descriptor-vs-observation decision. `id`/`name`
+   live on both as the join key. Transport keeps producing the full snapshot; `DeviceObservation`
+   / `getSnapshot()` unchanged (still the transitional read seam).
+   **Reader repointing was deliberately scoped to one seam** — `lib/observer/observationFreshness.ts`
+   now narrows its input to `Pick<ObservedDeviceState, 'lastFreshDataMs' | 'lastLocalWriteMs'>`.
+   The other named seams were inspected and intentionally deferred: `isRuntimePlannedDevice`
+   (`lib/app/appDeviceSupport.ts`) is already structurally narrower than `DeviceDescriptor`
+   (takes `{ managed? }`); the executor projection readers
+   (`lib/executor/executablePlanProjection.ts`) read ACROSS both surfaces (`controlModel` +
+   observed fields) so they can't narrow to `ObservedDeviceState` until stage 5; settings-UI
+   consumes `DecoratedDeviceSnapshot` wholesale (descriptor + observed) and narrows later. Drawing
+   the line here kept PR-4 to two files with the intersection alias doing the structural work.
 4. **Move `ObservedDeviceState` onto the observer**, fed by the dispatcher push
    (gate: sequenced apply + replay test). Transport keeps `latestSnapshot` as the
    parse/merge scratchpad + descriptor source. *(highest-risk slice)*
