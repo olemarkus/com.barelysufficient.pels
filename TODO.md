@@ -206,15 +206,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
       list consistent. Source: Codex review of PR #1476.
 
-- [ ] **Render-gate seed misses the two genuinely-new pixel paths shipped this range.** The
-      populated `Cost ≈ X kr · Y kWh delivered` past-list meta line and the "Revised trajectory"
-      overlay / re-anchored staircase ship in v2.11.0..HEAD but the standing gate
-      (`packages/settings-ui/tests/e2e/smart-tasks-surface-screenshots.spec.ts`) seeds neither
-      (`revisionCount: 1`, no `totalCost`). Add one seed with `revisionCount: 2` + a mid-window
-      `revisedAtMs` and one with `totalCost`/`delivered` populated, and extend the spec to
-      navigate into the history-detail surface (currently list-only). Source: `pels-m3-critic` +
-      `pels-ux-fit`, v2.11.0..HEAD release-review.
-
 - [ ] Persist price-display provenance on smart-task history entries so archived cost survives a
       price-scheme/currency change. `DeferredObjectivePlanHistoryEntry` stores `totalCost` /
       `deliveredKWh` but NOT the scheme/unit/divisor it was recorded with, and the archive
