@@ -2,6 +2,7 @@ import { resolveCurrentPriceFromCombined } from '../lib/price/priceLowestFlowEva
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import { getHourStartInTimeZone } from '../lib/utils/dateUtils';
 import { normalizeError } from '../lib/utils/errorUtils';
+import type { StructuredDebugEmitter } from '../lib/logging/logger';
 
 type LowestPriceTriggerCardId = 'price_lowest_before' | 'price_lowest_today';
 
@@ -14,7 +15,7 @@ export type PriceLowestTriggerCheckerDeps = {
   getTimeZone: () => string;
   getCombinedHourlyPrices: () => CombinedHourlyPrice[];
   getTriggerCard: (id: LowestPriceTriggerCardId) => LowestPriceTriggerCard;
-  logDebug: (message: string) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (message: string, error: Error) => void;
 };
 
@@ -40,7 +41,7 @@ const triggerLowestPriceCards = async (params: {
   });
   const currentPrice = currentPriceResult.currentPrice;
   if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice)) {
-    deps.logDebug(`Skipping lowest-price hourly trigger at ${hourKey}: ${currentPriceResult.reason}`);
+    deps.debugStructured({ event: 'price_lowest_trigger_skipped', hourKey, reason: currentPriceResult.reason });
     return;
   }
 
@@ -55,9 +56,7 @@ const triggerLowestPriceCards = async (params: {
     deps.getTriggerCard('price_lowest_today'),
   ];
   await Promise.all(triggerCards.map((card) => card.trigger?.(tokens, state)));
-  deps.logDebug(
-    `Triggered lowest-price flow cards for ${hourKey} (current_price=${currentPrice.toFixed(6)})`,
-  );
+  deps.debugStructured({ event: 'price_lowest_trigger_fired', hourKey, currentPrice });
 };
 
 export const startPriceLowestTriggerChecker = (deps: PriceLowestTriggerCheckerDeps): (() => void) => {

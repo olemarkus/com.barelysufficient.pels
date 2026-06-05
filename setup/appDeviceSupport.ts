@@ -226,7 +226,7 @@ function logUnsupportedChanges(params: {
   managedChanged: boolean;
   controllableChanged: boolean;
   priceChanged: boolean;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredEventEmitter;
 }): void {
   const {
     unsupported,
@@ -234,24 +234,30 @@ function logUnsupportedChanges(params: {
     managedChanged,
     controllableChanged,
     priceChanged,
-    logDebug,
+    debugStructured,
   } = params;
   if (managedChanged || controllableChanged || priceChanged) {
-    const names = unsupported.map((device) => device.name).join(', ');
-    logDebug(`Disabled unsupported PELS controls: ${names}`);
+    debugStructured({
+      event: 'unsupported_controls_disabled',
+      deviceIds: unsupported.map((device) => device.id),
+      deviceNames: unsupported.map((device) => device.name),
+    });
   }
   if (changedPriceOnly.length > 0) {
-    const names = changedPriceOnly.map((device) => device.name).join(', ');
-    logDebug(`Price-only support enabled (capacity disabled) for no-power temperature devices: ${names}`);
+    debugStructured({
+      event: 'price_only_support_enabled',
+      deviceIds: changedPriceOnly.map((device) => device.id),
+      deviceNames: changedPriceOnly.map((device) => device.name),
+    });
   }
 }
 
 export function disableUnsupportedDevices(params: {
   snapshot: TargetDeviceSnapshot[];
   settings: Homey.App['homey']['settings'];
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredEventEmitter;
 }): void {
-  const { snapshot, settings, logDebug } = params;
+  const { snapshot, settings, debugStructured } = params;
   const {
     unsupported,
     unsupportedIds,
@@ -303,12 +309,11 @@ export function disableUnsupportedDevices(params: {
       managedChanged,
       controllableChanged,
       priceChanged,
-      logDebug,
+      debugStructured,
     });
   }
   if (shedBehaviorUpdated > 0) {
-    const suffix = shedBehaviorUpdated === 1 ? '' : 's';
-    logDebug(`Enforced temperature shedding for ${shedBehaviorUpdated} non-onoff temperature device${suffix}`);
+    debugStructured({ event: 'temperature_shedding_enforced', deviceCount: shedBehaviorUpdated });
   }
 }
 
@@ -453,9 +458,9 @@ export function seedMissingModeTargets(params: {
   snapshot: TargetDeviceSnapshot[];
   settings: Homey.App['homey']['settings'];
   structuredLog?: StructuredEventEmitter;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredEventEmitter;
 }): void {
-  const { snapshot, settings, structuredLog, logDebug } = params;
+  const { snapshot, settings, structuredLog, debugStructured } = params;
   const existing = parseModeDeviceTargets(settings.get('mode_device_targets') as unknown);
   // No modes configured at all → nothing to seed against. A fresh install
   // with no operating mode is handled by the first UI write rather than
@@ -490,6 +495,10 @@ export function seedMissingModeTargets(params: {
       source: 'device_setpoint',
     });
   });
-  const names = plans.map((entry) => entry.device.name).join(', ');
-  logDebug(`Seeded mode targets for ${plans.length} device${plans.length === 1 ? '' : 's'}: ${names}`);
+  debugStructured({
+    event: 'mode_targets_seeded',
+    deviceCount: plans.length,
+    deviceIds: plans.map((entry) => entry.device.id),
+    deviceNames: plans.map((entry) => entry.device.name),
+  });
 }
