@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events';
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
+import type { ObservedDeviceStateRefreshPayload } from '../../packages/contracts/src/observedDeviceState';
 import type { ObservedHomePower } from './observedHomePower';
 
 /**
@@ -36,6 +38,15 @@ export const OBSERVED_STATE_CHANGED_EVENT = 'plan_live_state_observed';
 export const PLAN_RECONCILE_OBSERVED_EVENT = 'plan_reconcile_realtime_update';
 
 /**
+ * Emitted once per full snapshot refresh (the batch counterpart to the
+ * per-capability `OBSERVED_STATE_CHANGED_EVENT`). Carries the decided observed
+ * value for every device in the committed snapshot so the observer projection
+ * can seed at cold-start and prune vanished devices. Stage 4a of the snapshot
+ * decomposition (`notes/state-management/snapshot-decomposition.md`).
+ */
+export const OBSERVED_STATE_REFRESH_EVENT = 'plan_live_state_observed_refresh';
+
+/**
  * Structural shape of a single capability change. Mirrors transport's
  * `RealtimeDeviceReconcileChange` without importing across the
  * `lib/observer/` ↔ `lib/device/` boundary; both shapes are kept compatible
@@ -55,7 +66,19 @@ export type ObservedStateChangedEvent = {
     capabilityId?: string;
     observedCapabilityIds?: string[];
     measurePowerBecameSignificantlyPositive?: boolean;
+    // The decided observed value transport's fresher-wins merge produced for
+    // this device (Stage 4a). The projection records it; existing reapply/SoC
+    // listeners ignore it.
+    observed?: ObservedDeviceState;
 };
+
+/**
+ * Batch payload for a full snapshot refresh. Aliases the shared contracts
+ * payload so this observer-side type and transport's
+ * `ObservedDeviceStateRefreshEvent` share one definition — neither layer
+ * imports the other; both reference contracts.
+ */
+export type ObservedStateRefreshEvent = ObservedDeviceStateRefreshPayload;
 
 export type PlanReconcileObservedEvent = {
     deviceId: string;
@@ -78,6 +101,7 @@ export type PlanReconcileObservedEvent = {
  */
 export type ObservedStateEmitterDispatcher = {
     observedStateChanged: (event: ObservedStateChangedEvent) => void;
+    observedStateRefresh: (event: ObservedStateRefreshEvent) => void;
     planReconcile: (event: PlanReconcileObservedEvent) => void;
     /**
      * Push the latest whole-home power reading (watts) into observer's
@@ -100,12 +124,20 @@ export class ObservedStateEmitter {
         this.emitter.emit(OBSERVED_STATE_CHANGED_EVENT, event);
     }
 
+    emitObservedStateRefresh(event: ObservedStateRefreshEvent): void {
+        this.emitter.emit(OBSERVED_STATE_REFRESH_EVENT, event);
+    }
+
     emitPlanReconcile(event: PlanReconcileObservedEvent): void {
         this.emitter.emit(PLAN_RECONCILE_OBSERVED_EVENT, event);
     }
 
     onObservedStateChanged(listener: (event: ObservedStateChangedEvent) => void): void {
         this.emitter.on(OBSERVED_STATE_CHANGED_EVENT, listener);
+    }
+
+    onObservedStateRefresh(listener: (event: ObservedStateRefreshEvent) => void): void {
+        this.emitter.on(OBSERVED_STATE_REFRESH_EVENT, listener);
     }
 
     onPlanReconcile(listener: (event: PlanReconcileObservedEvent) => void): void {
@@ -122,6 +154,7 @@ export class ObservedStateEmitter {
     asDispatcher(homePower: ObservedHomePower): ObservedStateEmitterDispatcher {
         return {
             observedStateChanged: (event) => this.emitObservedStateChanged(event),
+            observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             planReconcile: (event) => this.emitPlanReconcile(event),
             setHomePowerW: (w) => homePower.setHomePowerW(w),
         };

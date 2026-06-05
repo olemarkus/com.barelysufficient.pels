@@ -839,6 +839,7 @@ describe('DeviceTransport', () => {
                 ...withRealBinarySettle(),
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
+                    observedStateRefresh: vi.fn(),
                     planReconcile: vi.fn(),
                     setHomePowerW,
                 },
@@ -869,6 +870,7 @@ describe('DeviceTransport', () => {
                 ...withRealBinarySettle(),
                 observedStateDispatcher: {
                     observedStateChanged: vi.fn(),
+                    observedStateRefresh: vi.fn(),
                     planReconcile: vi.fn(),
                     setHomePowerW,
                 },
@@ -2751,7 +2753,7 @@ describe('DeviceTransport', () => {
             }));
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
-                observationSeq: 1,
+                observationSeq: 2,
                 observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{
@@ -3466,7 +3468,7 @@ describe('DeviceTransport', () => {
                     expect(driftEvent).toEqual(expect.objectContaining({
                         deviceId: 'ev1',
                         capabilityId: 'evcharger_charging',
-                        observationSeq: 1,
+                        observationSeq: 2,
                         changes: [expect.objectContaining({
                             capabilityId: 'evcharger_charging',
                             previousValue: 'on',
@@ -3684,7 +3686,7 @@ describe('DeviceTransport', () => {
             }));
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
-                observationSeq: 1,
+                observationSeq: 2,
                 observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{
@@ -4118,7 +4120,7 @@ describe('DeviceTransport', () => {
             }));
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
-                observationSeq: 1,
+                observationSeq: 2,
                 observedAtMs: expect.any(Number),
                 name: 'Heater',
                 changes: [{

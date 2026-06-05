@@ -1097,13 +1097,13 @@ describe('native stepped-load wiring', () => {
       expect(liveStateObserved).toHaveBeenCalledWith(expect.objectContaining({
         source: 'realtime_capability',
         deviceId: 'hoiax-1',
-        observationSeq: 1,
+        observationSeq: 2,
         observedAtMs: expect.any(Number),
         capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       }));
       expect(realtimeReconcile).toHaveBeenCalledWith(expect.objectContaining({
         deviceId: 'hoiax-1',
-        observationSeq: 1,
+        observationSeq: 2,
         observedAtMs: expect.any(Number),
         name: 'Connected 300',
         changes: [{
