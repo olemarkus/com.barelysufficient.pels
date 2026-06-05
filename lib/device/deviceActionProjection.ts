@@ -319,7 +319,7 @@ export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolea
 // refactor).
 //
 // Today the planner branches on raw `shedBehavior.action` + device-shape
-// fields (`hasBinaryControl`, `isSteppedLoadDevice`, primary target presence)
+// fields (`controlCapabilityId`, `isSteppedLoadDevice`, primary target presence)
 // inside `lib/plan/planDevices.ts:resolveShedAction` to materialise the
 // `{ shedAction, shedTemperature, releaseShedStepId }` triple on each
 // `DevicePlanDevice`. Chunk 5 lifts the *device-capability* half of that
@@ -365,7 +365,7 @@ export type ShedIntentBehaviorInput = {
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
   controllable: boolean;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   primaryTarget?: TargetCapabilitySnapshot | null;
@@ -395,7 +395,7 @@ const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | nul
 };
 
 export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionIntent => {
-  const { shedBehavior, controllable, hasBinaryControl, primaryTarget } = input;
+  const { shedBehavior, controllable, controlCapabilityId, primaryTarget } = input;
   // set_temperature requires both a primary target capability (so the executor has a write
   // surface and a normalised setpoint) AND `controllable === true` for this cycle. Cap-off
   // devices configured for set_temperature collapse to the binary fallback below; the planner
@@ -418,7 +418,7 @@ export const resolveShedIntent = (input: ShedIntentResolveInput): ShedActionInte
     if (controllable && shedBehavior.action === 'set_step') {
       return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
-    if (hasBinaryControl === false) {
+    if (controlCapabilityId === undefined) {
       return { kind: 'set_step', targetStepId: resolveSetStepTargetStepId(input) };
     }
   }

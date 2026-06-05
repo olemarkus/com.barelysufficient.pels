@@ -7,7 +7,7 @@ type UsageDevice = {
   budgetExempt?: boolean;
   currentOn?: boolean;
   currentState?: string;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   plannedState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;

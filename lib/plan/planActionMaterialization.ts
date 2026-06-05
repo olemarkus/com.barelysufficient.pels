@@ -30,7 +30,7 @@ import type { ShedAction } from './planTypes';
  *
  * The materialisation is intentionally narrow: it does not consult device
  * shape, settings, or capabilities directly — only the typed intent and the
- * `shouldShed` gate (plus `hasBinaryControl` for the stepped-shed fallback).
+ * `shouldShed` gate (plus `controlCapabilityId` for the stepped-shed fallback).
  * Anything else stays at the producer or the consumer's upstream branches.
  */
 

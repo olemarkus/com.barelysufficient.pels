@@ -361,7 +361,7 @@ function buildPreparedSteppedBinaryOffCandidate(params: {
   } = params;
   if (
     shedAction !== 'turn_off'
-    || device.hasBinaryControl === false
+    || device.controlCapabilityId === undefined
     || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {

@@ -151,7 +151,7 @@ function resolveCurrentStateFromPlanInput(
 ): string {
   return resolveObservedCurrentState({
     currentOn: liveDevice.currentOn,
-    hasBinaryControl: liveDevice.hasBinaryControl,
+    controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
     controlModel: previousDevice.controlModel,
     steppedLoadProfile: previousDevice.steppedLoadProfile,

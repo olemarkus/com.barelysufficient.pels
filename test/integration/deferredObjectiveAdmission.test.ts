@@ -107,7 +107,7 @@ const buildDevice = (params: {
   name: 'Water Heater',
   controllable: false, // capacity-based control toggle is OFF for this scenario
   controlModel: 'stepped_load',
-  hasBinaryControl: true,
+  controlCapabilityId: 'onoff',
   steppedLoadProfile: {
     model: 'stepped_load',
     steps: [
@@ -202,7 +202,7 @@ const buildContender = (params: {
   id: CONTENDER_ID,
   name: 'Contender',
   controllable: params.controllable ?? true,
-  hasBinaryControl: true,
+  controlCapabilityId: 'onoff',
   currentOn: params.currentOn,
   measuredPowerKw: params.currentOn ? 1.5 : 0,
   expectedPowerKw: 1.5,

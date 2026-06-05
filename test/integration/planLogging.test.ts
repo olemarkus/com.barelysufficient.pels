@@ -255,7 +255,7 @@ describe('plan logging helpers', () => {
           selectedStepId: 'Low',
           desiredStepId: 'Low',
           targetStepId: 'Low',
-          hasBinaryControl: true,
+          controlCapabilityId: 'onoff',
           measuredPowerKw: 1.193,
           expectedPowerKw: 1.25,
           shedAction: 'turn_off',

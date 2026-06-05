@@ -97,7 +97,7 @@ describe('planExecutablePlan', () => {
       name: 'Target only',
       currentState: 'not_applicable',
       plannedState: 'keep',
-      hasBinaryControl: false,
+      controlCapabilityId: undefined,
       currentTarget: 19,
       plannedTarget: 21,
     });

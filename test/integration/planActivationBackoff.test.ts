@@ -4,6 +4,7 @@ describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {
     expect(isActivationObservationActiveNow({
       currentOn: true,
+      controlCapabilityId: 'onoff',
     })).toBe(true);
   });
 

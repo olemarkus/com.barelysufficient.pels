@@ -433,7 +433,6 @@ function buildBasePlanDevice(params: {
     lastStepCommandIssuedAt: dev.lastStepCommandIssuedAt,
     stepCommandRetryCount: dev.stepCommandRetryCount,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
-    hasBinaryControl: dev.hasBinaryControl,
     priority,
     powerKw: dev.powerKw,
     expectedPowerKw: resolveExpectedPowerKw(dev, currentState, plannedState, effectiveDesiredStepId),
@@ -520,7 +519,7 @@ function resolveShedAction(params: {
   const intent = resolveShedIntent({
     shedBehavior,
     controllable,
-    hasBinaryControl: dev.hasBinaryControl,
+    controlCapabilityId: dev.controlCapabilityId,
     controlModel: dev.controlModel,
     steppedLoadProfile: dev.steppedLoadProfile,
     primaryTarget: getPrimaryTargetCapability(dev.targets),

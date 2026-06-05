@@ -111,7 +111,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => ({
   name: 'Water Heater',
   controllable: true, // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',
-  hasBinaryControl: true,
+  controlCapabilityId: 'onoff',
   steppedLoadProfile: {
     model: 'stepped_load',
     steps: [

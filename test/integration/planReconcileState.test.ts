@@ -43,6 +43,7 @@ const buildBinaryDevice = (
   currentTarget: 21,
   plannedTarget: 21,
   controllable: true,
+  controlCapabilityId: 'onoff',
   ...overrides,
 });
 
@@ -119,7 +120,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
@@ -131,7 +132,7 @@ describe('planReconcileState stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
       })]);
@@ -139,7 +140,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
@@ -150,7 +151,7 @@ describe('planReconcileState stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
       })]);
@@ -158,7 +159,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       }];
 
@@ -173,7 +174,7 @@ describe('planReconcileState stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
@@ -187,7 +188,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         observationStale: true,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       }];
@@ -199,7 +200,7 @@ describe('planReconcileState stepped device drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',
         plannedState: 'keep',
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         currentTarget: 21,
         plannedTarget: 21,
         pendingTargetCommand: {
@@ -213,7 +214,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: false,
+        controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       }];
 
@@ -229,7 +230,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -247,7 +248,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         binaryCommandPending: true,
         binaryCommandPendingDesired: false,
@@ -266,7 +267,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
@@ -280,7 +281,6 @@ describe('planReconcileState stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         currentOn: false,
-        hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         targets: [],
@@ -295,7 +295,6 @@ describe('planReconcileState stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         currentOn: true,
-        hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryCommandPending: true,
@@ -315,7 +314,6 @@ describe('planReconcileState stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         currentOn: true,
-        hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         targets: [],
@@ -333,7 +331,6 @@ describe('planReconcileState stepped device drift', () => {
         id: 'ev-1',
         name: 'EV Charger',
         currentOn: true,
-        hasBinaryControl: true,
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         binaryCommandPending: true,
@@ -354,7 +351,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         controllable: false,
       }];
@@ -376,7 +373,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         observationStale: true,
         // Stale observation still counts as evidence — `binaryControlObservation`
         // is present, just old.
@@ -608,7 +605,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
 
@@ -623,6 +620,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-1',
         name: 'Tank',
         currentOn: false,
+        controlCapabilityId: 'onoff',
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -756,7 +754,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         observationStale: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
@@ -776,7 +774,7 @@ describe('planReconcileState stepped device drift', () => {
         id: 'dev-2',
         name: 'Heater',
         currentOn: false,
-        hasBinaryControl: true,
+        controlCapabilityId: 'onoff',
         binaryCommandPending: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];

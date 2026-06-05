@@ -83,7 +83,7 @@ export type ResidualKwShedSteppedDevice = {
    */
   hasKnownEffectiveStep: boolean;
   measuredPowerKw?: number;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
 };
 
 export type ResidualKwShedDeviceInput = {
@@ -239,7 +239,7 @@ function canFinishSteppedTurnOffWithBinaryResidual(params: {
   const { steppedLoad, shedAction, targetStep } = params;
   if (
     shedAction !== 'turn_off'
-    || steppedLoad.hasBinaryControl === false
+    || steppedLoad.controlCapabilityId === undefined
     || !steppedLoad.selectedStepId
     || targetStep?.id !== steppedLoad.selectedStepId
   ) {
