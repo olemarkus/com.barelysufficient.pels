@@ -192,7 +192,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
   it.each([
     ['plugged_in_charging', true],
-    ['plugged_in_paused', true],
+    ['plugged_in_paused', false],
     ['plugged_in', false],
     ['plugged_out', false],
     ['plugged_in_discharging', false],
@@ -231,7 +231,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     let snapshot = await refreshSnapshot(app);
     let entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       powerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
@@ -247,7 +247,8 @@ describe('EV charger integration', { retry: 2 }, () => {
     evPlan = getPlanEntry(plan, charger.idValue);
 
     expect(evPlan.plannedState).not.toBe('shed');
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
+    // The restore actively resumes the now-off (paused) charger via evcharger_charging only.
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false', 'evcharger_charging:true']);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'onoff')).toBe(false);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'target_charger_current')).toBe(false);
     expect(charger.commandLog.some((entry) => entry.capabilityId === 'target_circuit_current')).toBe(false);
@@ -256,7 +257,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
       currentOn: true,
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in_charging',
       controlCapabilityId: 'evcharger_charging',
     }));
   });
@@ -346,7 +347,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -397,7 +398,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     const snapshot = await refreshSnapshot(app);
     expect(getSnapshotEntry(snapshot, charger.idValue)).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -427,7 +428,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -470,7 +471,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expectDeferredReleaseIntent(evPlan, undefined);
   });
 
-  it('skips planned EV deadline resume when power is stale-fail-closed', async () => {
+  it('skips a planned EV deadline resume while stale-fail-closed and through the post-fail-closed restore cooldown', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
@@ -493,10 +494,20 @@ describe('EV charger integration', { retry: 2 }, () => {
     await appState.planService.rebuildPlanFromCache('ev_deadline_power_fresh_test');
     await flushPromises();
 
-    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+    // A paused EV is a binary device that is OFF, so the stale-fail-closed cycle
+    // shed it (synthetic headroom -1 sheds controllable devices). On the cycle
+    // power returns, the device is held by the normal restore cooldown — exactly
+    // like any binary device after fail-closed shedding (see
+    // planPowerFreshness "allows fail-closed shedding and clears once a fresh
+    // sample returns", which likewise does not restore on the recovery cycle).
+    // So the deferred resume is not issued yet; it is gated by the restore
+    // cooldown, not the EV path. (Previously this asserted an immediate resume,
+    // which only held because a paused EV wrongly read as on and so was never
+    // shed.)
+    expect(charger.getCommandSequence()).toEqual([]);
   });
 
-  it('keeps non-deadline paused charger behavior unchanged when power is unknown', async () => {
+  it('restores a non-deadline paused (off) charger when headroom allows', async () => {
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_paused');
     const app = await createEvApp(charger);
@@ -507,14 +518,15 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).not.toBe('inactive');
-    expect(charger.getCommandSequence()).toEqual([]);
+    // A paused charger is off; with ample headroom the planner restores it.
+    expect(evPlan.plannedState).toBe('keep');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
 
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
       currentOn: true,
-      evChargingState: 'plugged_in_paused',
+      evChargingState: 'plugged_in_charging',
     }));
   });
 
@@ -539,7 +551,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
   });
 
-  it('does not swap out lower-priority load for a paused charger that is already allowed on', async () => {
+  it('swaps out a lower-priority load to restore a paused (off) higher-priority charger under tight headroom', async () => {
     const heater = new MockDevice(
       'heater-low',
       'Garage Heater',
@@ -564,10 +576,15 @@ describe('EV charger integration', { retry: 2 }, () => {
     const heaterPlan = getPlanEntry(plan, heater.idValue);
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(heaterPlan.plannedState).toBe('keep');
-    expect(evPlan.plannedState).not.toBe('shed');
+    // The paused charger is now an off, higher-priority restore candidate. Under
+    // tight headroom the planner sheds the lower-priority heater (swap-out) to
+    // make room for the charger, which waits as the pending swap target.
+    expect(heaterPlan.plannedState).toBe('shed');
+    expect(heaterPlan.reason?.code).toBe('swapped_out');
+    expect(evPlan.plannedState).toBe('shed');
+    expect(evPlan.reason?.code).toBe('swap_pending');
     expect(charger.getCommandSequence()).toEqual([]);
-    expect(heater.getSetCapabilityValue('onoff')).toBe(true);
+    expect(heater.getSetCapabilityValue('onoff')).toBe(false);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
     const snapshot = await refreshSnapshot(app);
@@ -575,10 +592,10 @@ describe('EV charger integration', { retry: 2 }, () => {
     const chargerEntry = getSnapshotEntry(snapshot, charger.idValue);
 
     expect(heaterEntry).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
     }));
     expect(chargerEntry).toEqual(expect.objectContaining({
-      currentOn: true,
+      currentOn: false,
       evChargingState: 'plugged_in_paused',
       expectedPowerSource: 'load-setting',
     }));

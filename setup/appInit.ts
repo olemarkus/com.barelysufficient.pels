@@ -2,7 +2,6 @@ import { isDeviceObservationStale } from '../lib/observer/observationFreshness';
 import {
   resolveCanSetControl,
   resolveCommandableNow,
-  type CommandableNowGraceEntry,
 } from '../lib/device/deviceActionProjection';
 import { buildResidualKwForPlanDevice } from './appInit/residualKwForPlanDevice';
 import { buildDeviceActuator } from './appInit/buildDeviceActuator';
@@ -347,8 +346,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     ctx,
     device,
   );
-  const nowMs = ctx.getNow().getTime();
-  const previousObservation = ctx.lastKnownCommandableByDevice[device.id];
   const commandable = resolveCommandableNow({
     dev: {
       deviceClass: device.deviceClass,
@@ -356,19 +353,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
       evChargingState: device.evChargingState,
       available: device.available,
     },
-    previousObservation,
-    nowMs,
   });
-  // Write the resolved bit back as the next cycle's grace-window observation
-  // (only on a confident answer — uncertain reads inherited from the previous
-  // observation already passed through, so writing them would extend the
-  // grace window indefinitely).
-  if (!isUncertainCommandableRead(device)) {
-    recordCommandableObservation(ctx.lastKnownCommandableByDevice, device.id, {
-      commandableNow: commandable.commandableNow,
-      observedAtMs: nowMs,
-    });
-  }
   const hasBinaryControl = resolveHasBinaryControl(device);
   const canSetControlResolved = resolveCanSetControl({
     controlCapabilityId: device.controlCapabilityId,
@@ -422,72 +407,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
 }
 
 /**
- * Project a snapshot device for the STRICTLY READ-ONLY plan-preview path.
- *
- * `toPlanDevice` is not a pure projection: on a confident commandable read it
- * calls `recordCommandableObservation` to re-anchor the device's abandon-grace
- * timestamp in `ctx.lastKnownCommandableByDevice`, so the next live plan cycle
- * keeps the grace window alive. A preview must NOT do that — a user opening a
- * preview repeatedly under flaky SDK reads would otherwise keep a
- * no-longer-commandable device's grace window alive across plan cycles,
- * violating the "never let abandon-grace go effectively infinite" invariant.
- *
- * Isolation: run `toPlanDevice` against a context whose
- * `lastKnownCommandableByDevice` getter returns a SHALLOW COPY of the live
- * record. Existing grace observations are still READ (so `commandableNow`
- * resolves identically to the live cycle — preview fidelity is preserved), but
- * the producer's write lands on the throwaway copy and is discarded. An audit
- * of `toPlanDevice` and its callees (`buildStepPowerCalibrationView`,
- * `resolveHasRecentObservedDrawAtSelectedStep`, `buildResidualKwForPlanDevice`,
- * `getPendingBinaryCommandForDevice`) found this grace-window write to be its
- * only mutation of live ctx/app state; everything else is a pure read, so
- * copying this one field fully isolates the preview.
- */
-export function projectPreviewPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
-  const lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {
-    ...ctx.lastKnownCommandableByDevice,
-  };
-  const previewCtx: AppContext = Object.create(ctx, {
-    lastKnownCommandableByDevice: {
-      get: () => lastKnownCommandableByDevice,
-      enumerable: true,
-    },
-  }) as AppContext;
-  return toPlanDevice(previewCtx, device);
-}
-
-
-/**
- * An EV snapshot with no `evChargingState` is "uncertain" — the SDK didn't
- * return a state this poll. We don't extend the grace window in that case
- * because the resolver already chose to fall back to the previous
- * observation; rewriting the observation here would re-anchor the grace
- * timestamp every cycle and make the window effectively infinite.
- *
- * EV detection mirrors `resolveCommandableNow`'s gate
- * (`controlCapabilityId === 'evcharger_charging'`).
- */
-function isUncertainCommandableRead(device: TargetDeviceSnapshot): boolean {
-  return device.controlCapabilityId === 'evcharger_charging' && device.evChargingState === undefined;
-}
-
-/**
- * Record the resolved commandable observation for `deviceId` into the
- * AppContext-owned grace-window record. Mirrors how `managerRuntime`
- * writes through to `state.lastKnownPowerKw`: the record itself is the
- * mutable store, this helper just isolates the assignment so the call
- * site at `toPlanDevice` doesn't trip `no-param-reassign` on `ctx`.
- */
-function recordCommandableObservation(
-  record: Record<string, CommandableNowGraceEntry>,
-  deviceId: string,
-  entry: CommandableNowGraceEntry,
-): void {
-  // eslint-disable-next-line functional/immutable-data, no-param-reassign
-  record[deviceId] = entry;
-}
-
-/**
  * Drop entries from `map` whose keys aren't present in `presentIds`. Used to
  * keep producer-side per-device caches bounded: without eviction, removing a
  * device from Homey at runtime would leak the entry forever. Practical
@@ -513,10 +432,8 @@ function evictMissingFromRecord<V>(
 
 /**
  * Per-plan-cycle sweep: evict orphan entries from the producer-owned
- * per-device caches (`lastKnownCommandableByDevice`,
- * `lastKnownPowerKw`) whose device IDs are no longer present in the
- * latest snapshot. Pass the *full* snapshot here — not a filtered view —
- * otherwise active devices would lose their grace-window observations.
+ * `lastKnownPowerKw` cache whose device IDs are no longer present in the
+ * latest snapshot. Pass the *full* snapshot here — not a filtered view.
  *
  * Source: chunk-2 producer review flagged unbounded growth on device
  * deletion; this sweep closes that gap without changing any in-cycle
@@ -527,6 +444,5 @@ export function evictMissingDeviceCacheEntries(
   snapshot: ReadonlyArray<TargetDeviceSnapshot>,
 ): void {
   const presentIds = new Set<string>(snapshot.map((device) => device.id));
-  evictMissingFromRecord(ctx.lastKnownCommandableByDevice, presentIds);
   evictMissingFromRecord(ctx.lastKnownPowerKw, presentIds);
 }

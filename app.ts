@@ -38,7 +38,6 @@ import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
-import type { CommandableNowGraceEntry } from './lib/device/deviceActionProjection';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
@@ -108,7 +107,6 @@ import {
   createPriceFlowTagPublisher,
   evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
-  projectPreviewPlanDevice,
   registerAppFlowCards,
   toPlanDevice,
 } from './setup/appInit';
@@ -419,7 +417,6 @@ class PelsApp extends Homey.App {
   private snapshotWarmupGate?: SnapshotWarmupGate;
   private defaultComputeDynamicSoftLimit?: () => number;
   private lastKnownPowerKw: Record<string, number> = {};
-  private lastKnownCommandableByDevice: Record<string, CommandableNowGraceEntry> = {};
   private expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
   private overheadToken?: Homey.FlowToken;
   private lastPositiveMeasuredPowerKw: Record<string, { kw: number; ts: number }> = {};
@@ -893,7 +890,6 @@ class PelsApp extends Homey.App {
       get defaultComputeDynamicSoftLimit() { return app.defaultComputeDynamicSoftLimit; },
       set defaultComputeDynamicSoftLimit(value) { appRef.defaultComputeDynamicSoftLimit = value; },
       get lastKnownPowerKw() { return app.lastKnownPowerKw; },
-      get lastKnownCommandableByDevice() { return app.lastKnownCommandableByDevice; },
       get expectedPowerKwOverrides() { return app.expectedPowerKwOverrides; },
       get lastPositiveMeasuredPowerKw() { return app.lastPositiveMeasuredPowerKw; },
       get lastNotifiedOperatingMode() { return app.lastNotifiedOperatingMode; },
@@ -2059,11 +2055,8 @@ class PelsApp extends Homey.App {
   // faithful — see `previewDeferredObjectivePlan`.
   //
   // STRICTLY READ-ONLY: this never mutates live planner state. The candidate
-  // device is projected through `projectPreviewPlanDevice`, which runs
-  // `toPlanDevice` against a preview-scoped context whose commandable
-  // grace-window record is a throwaway shallow copy, so the projection's
-  // `recordCommandableObservation` write cannot re-anchor the live
-  // abandon-grace timestamps.
+  // device is projected through `toPlanDevice`, a pure read projection with no
+  // live-state mutation.
   //
   // NOT A GUARANTEE — and specifically OPTIMISTIC about headroom: the
   // projection assumes the candidate has the price bucket's reserved headroom
@@ -2093,12 +2086,11 @@ class PelsApp extends Homey.App {
       deviceId,
       candidate: gatedCandidate,
       // Convert through the same `toPlanDevice` producer the plan cycle uses so
-      // the projected steps/power match the live planner — but via
-      // `projectPreviewPlanDevice`, which isolates the producer's grace-window
-      // write onto a throwaway copy so the preview stays read-only. Undefined
-      // when the device is in neither snapshot → projection comes back
-      // `unavailable`.
-      device: snapshotDevice ? projectPreviewPlanDevice(this.ctx, snapshotDevice) : undefined,
+      // the projected steps/power match the live planner. `toPlanDevice` is a
+      // pure read projection (no live-state mutation), so the preview is
+      // read-only by construction. Undefined when the device is in neither
+      // snapshot → projection comes back `unavailable`.
+      device: snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined,
       powerTracker: this.powerTracker,
       dailyBudgetSnapshot: this.dailyBudgetService?.getSnapshot() ?? null,
       priceOptimizationEnabled: this.priceOptimizationEnabled,

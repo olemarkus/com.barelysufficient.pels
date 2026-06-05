@@ -97,14 +97,14 @@ export class PlanEngine {
   private executor: PlanExecutor;
   private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
   private readonly logFn: (...args: unknown[]) => void;
-  private readonly logDebugFn: (...args: unknown[]) => void;
+  private readonly debugStructuredFn?: StructuredDebugEmitter;
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
     this.pendingBinaryCommandStore = createPendingBinaryCommandStore(this.state.pendingBinaryCommands);
     this.deviceDiagnostics = deps.deviceDiagnostics;
     this.logFn = deps.log;
-    this.logDebugFn = deps.logDebug;
+    this.debugStructuredFn = deps.debugStructured;
 
     const builderDeps: PlanBuilderDeps = {
       homey: deps.homey,
@@ -187,7 +187,7 @@ export class PlanEngine {
       liveDevices: devices,
       source,
       log: (message) => this.logFn(message),
-      logDebug: (message) => this.logDebugFn(message),
+      debugStructured: this.debugStructuredFn,
     });
   }
 
@@ -195,7 +195,7 @@ export class PlanEngine {
     return prunePendingTargetCommandsForPlan({
       state: this.state,
       plan,
-      logDebug: (message) => this.logDebugFn(message),
+      debugStructured: this.debugStructuredFn,
     });
   }
 
