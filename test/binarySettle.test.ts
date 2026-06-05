@@ -13,7 +13,7 @@ function buildSettleSnapshot(overrides: Partial<TargetDeviceSnapshot> = {}): Tar
     name: 'Test Device',
     controlCapabilityId: 'onoff',
     canSetControl: true,
-    currentOn: false,
+    binaryControl: { on: false },
     ...overrides,
   } as TargetDeviceSnapshot;
 }
@@ -209,7 +209,7 @@ describe('observer binarySettle timeout finalization', () => {
           clearLocalCapabilityWrite: vi.fn(),
           isLiveFeedHealthy: () => true,
           shouldTrackRealtimeDevice: () => true,
-          getSnapshotById: () => buildSettleSnapshot({ currentOn: false, name: 'EV Charger' }),
+          getSnapshotById: () => buildSettleSnapshot({ binaryControl: { on: false }, name: 'EV Charger' }),
           emitPlanReconcile,
         },
         deviceId: 'dev-1',
@@ -261,7 +261,7 @@ describe('observer binarySettle timeout finalization', () => {
           // arrived after the settle window expired, but the device did the
           // right thing. No drift to reconcile, but the timeout log fires for
           // operator visibility.
-          getSnapshotById: () => buildSettleSnapshot({ currentOn: true }),
+          getSnapshotById: () => buildSettleSnapshot({ binaryControl: { on: true } }),
           emitPlanReconcile,
         },
         deviceId: 'dev-1',
@@ -301,7 +301,7 @@ describe('observer binarySettle timeout finalization', () => {
           // timeout. Don't emit timeout diagnostics for devices PELS no
           // longer manages.
           shouldTrackRealtimeDevice: () => false,
-          getSnapshotById: () => buildSettleSnapshot({ currentOn: false }),
+          getSnapshotById: () => buildSettleSnapshot({ binaryControl: { on: false } }),
           emitPlanReconcile,
         },
         deviceId: 'dev-1',

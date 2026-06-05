@@ -149,7 +149,7 @@ export function buildExecutableObservedDeviceState(
     name: snapshot.name,
     snapshot,
     available: typeof snapshot.available === 'boolean' ? snapshot.available : null,
-    currentOn: snapshot.currentOn,
+    binaryControl: snapshot.binaryControl,
     observedBinaryState: resolveObservedBinaryStateFromSnapshot(snapshot),
     target: buildObservedTargetState(snapshot),
     steppedLoad: buildObservedSteppedLoadState(snapshot),
@@ -166,7 +166,7 @@ export function buildExecutableObservedDeviceState(
  */
 export const resolveObservedBinaryStateFromSnapshot = (
   snapshot: TargetDeviceSnapshot,
-): 'on' | 'off' => (snapshot.currentOn ? 'on' : 'off');
+): 'on' | 'off' => ((snapshot.binaryControl?.on ?? true) ? 'on' : 'off');
 
 const buildObservedTargetState = (snapshot: TargetDeviceSnapshot): ExecutableObservedTargetState | null => {
   const primaryTarget = snapshot.targets?.[0];
@@ -188,7 +188,7 @@ const buildObservedSteppedLoadState = (
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {
-    on: snapshot.currentOn,
+    on: snapshot.binaryControl?.on ?? true,
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
     measuredPowerKw: snapshot.measuredPowerKw,

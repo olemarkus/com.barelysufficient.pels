@@ -735,25 +735,27 @@ function applyControlCapabilityObservation(
 ): boolean {
     const snapshot = nextSnapshot;
     if (typeof observation.value !== 'boolean') return false;
-    const previousCurrentOn = snapshot.currentOn;
+    const previousCurrentOn = snapshot.binaryControl?.on;
     const previousEvCharging = snapshot.evCharging;
     if (snapshot.controlCapabilityId === 'evcharger_charging') {
         snapshot.evCharging = observation.value;
-        snapshot.currentOn = resolveEvCurrentOn({
-            evChargingState: snapshot.evChargingState,
-            evchargerCharging: snapshot.evCharging,
-        });
+        snapshot.binaryControl = {
+            on: resolveEvCurrentOn({
+                evChargingState: snapshot.evChargingState,
+                evchargerCharging: snapshot.evCharging,
+            }),
+        };
     } else {
-        snapshot.currentOn = observation.value;
+        snapshot.binaryControl = { on: observation.value };
     }
     if (
-        previousCurrentOn === snapshot.currentOn
+        previousCurrentOn === snapshot.binaryControl?.on
         && snapshot.controlCapabilityId !== 'evcharger_charging'
     ) {
         return false;
     }
     if (
-        previousCurrentOn === snapshot.currentOn
+        previousCurrentOn === snapshot.binaryControl?.on
         && snapshot.controlCapabilityId === 'evcharger_charging'
         && previousEvCharging === snapshot.evCharging
     ) {
@@ -775,10 +777,12 @@ function applyEvChargingStateObservation(
     const snapshot = nextSnapshot;
     if (typeof observation.value !== 'string' || snapshot.evChargingState === observation.value) return false;
     snapshot.evChargingState = observation.value;
-    snapshot.currentOn = resolveEvCurrentOn({
-        evChargingState: snapshot.evChargingState,
-        evchargerCharging: snapshot.evCharging,
-    });
+    snapshot.binaryControl = {
+        on: resolveEvCurrentOn({
+            evChargingState: snapshot.evChargingState,
+            evchargerCharging: snapshot.evCharging,
+        }),
+    };
     const binaryEvidence = resolveEvChargingStateBinaryEvidence(observation.value);
     if (binaryEvidence !== undefined && observation.source !== 'local_write') {
         snapshot.binaryControlObservation = {
@@ -932,7 +936,7 @@ function matchesCurrentControlObservation(
 ): boolean {
     const currentControlValue = snapshot.controlCapabilityId === 'evcharger_charging'
         ? snapshot.evCharging
-        : snapshot.currentOn;
+        : snapshot.binaryControl?.on;
     return currentControlValue === observationValue;
 }
 
@@ -952,7 +956,7 @@ function recordSnapshotControlObservation(
     }
     const controlValue = snapshot.controlCapabilityId === 'evcharger_charging'
         ? snapshot.evCharging
-        : snapshot.currentOn;
+        : snapshot.binaryControl?.on;
     if (typeof controlValue !== 'boolean') {
         return false;
     }

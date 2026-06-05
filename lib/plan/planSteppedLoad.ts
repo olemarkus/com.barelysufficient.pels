@@ -57,7 +57,7 @@ type StepTransitionCapableDevice = {
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
   currentState?: string;
-  currentOn?: boolean;
+  binaryControl?: { on: boolean };
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
   plannedState?: string;
   shedAction?: ShedAction;

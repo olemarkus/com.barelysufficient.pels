@@ -415,7 +415,7 @@ function buildBasePlanDevice(params: {
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
-    currentOn: dev.currentOn,
+    binaryControl: dev.binaryControl,
     currentState,
     plannedState,
     currentTarget,

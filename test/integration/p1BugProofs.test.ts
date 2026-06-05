@@ -167,7 +167,7 @@ describe('P1 bug proofs', () => {
           id: 'shed',
           name: 'Shed',
           targets: [],
-          currentOn: true,
+          binaryControl: { on: true },
           controllable: true,
           controlCapabilityId: 'onoff',
           measuredPowerKw: 0,
@@ -177,7 +177,7 @@ describe('P1 bug proofs', () => {
           id: 'stale',
           name: 'Stale',
           targets: [],
-          currentOn: true,
+          binaryControl: { on: true },
           controllable: true,
           controlCapabilityId: 'onoff',
           observationStale: true,
@@ -240,7 +240,7 @@ describe('P1 bug proofs', () => {
       name: 'Tank',
       selectedStepId: 'off',
       currentState: 'off',
-      currentOn: false,
+      binaryControl: { on: false },
       expectedPowerKw: 1.25,
       measuredPowerKw: undefined,
     });
@@ -293,7 +293,7 @@ describe('P1 bug proofs', () => {
       controlCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
     }]);
 
     await executor.applyPlanActions({

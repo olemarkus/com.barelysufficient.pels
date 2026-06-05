@@ -30,10 +30,11 @@ export type ExecutableObservedDeviceState = {
   name: string;
   snapshot: TargetDeviceSnapshot;
   available: boolean | null;
-  currentOn: boolean;
+  // Present iff binary control; absence is the old fabricated `currentOn: true`.
+  binaryControl?: { on: boolean };
   /**
    * Binary observed state for drift comparison, resolved from the
-   * producer-resolved `currentOn` (an honest boolean — an unobserved binary
+   * producer-resolved binary state (an honest boolean — an unobserved binary
    * control resolves to a non-optimistic `false`). The executor actuates against
    * the observed value; freshness/abandon-grace is the producer's concern.
    */

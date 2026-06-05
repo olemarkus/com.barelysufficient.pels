@@ -24,7 +24,7 @@ export function resolveParsedControlState(params: {
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
   currentOn?: boolean;
 }): {
-  currentOn?: boolean;
+  resolvedOn?: boolean;
   canSetControl: boolean | undefined;
 } {
   const {
@@ -41,7 +41,7 @@ export function resolveParsedControlState(params: {
     currentOn,
   } = params;
   return {
-    currentOn: resolveSnapshotCurrentOn({
+    resolvedOn: resolveSnapshotCurrentOn({
       debugStructured,
       deviceId,
       deviceName,

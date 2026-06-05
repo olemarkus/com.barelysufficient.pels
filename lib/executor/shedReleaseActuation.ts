@@ -194,7 +194,8 @@ const buildShedReleaseSteppedAction = (params: {
     targetPowerConfig: steppedLoadIntent.targetPowerConfig,
     shedAction: 'set_step',
     current: {
-      on: observed?.steppedLoad?.on ?? observed?.currentOn ?? steppedLoadIntent.planningCurrentOn,
+      on: observed?.steppedLoad?.on
+        ?? (observed ? (observed.binaryControl?.on ?? true) : steppedLoadIntent.planningCurrentOn),
       stepId: currentStepId,
       stepForShed: currentStep
         ? { stepId: currentStep.id, planningPowerW: currentStep.planningPowerW }

@@ -76,7 +76,7 @@ export function getRestoreNeed(
     deviceId: dev.id,
     observation: {
       available: dev.available,
-      currentOn: dev.currentOn,
+      binaryControl: dev.binaryControl,
       currentState: dev.currentState,
       measuredPowerKw: dev.measuredPowerKw,
     },

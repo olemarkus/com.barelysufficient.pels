@@ -5,7 +5,7 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
-  currentOn?: boolean;
+  binaryControl?: { on: boolean };
   currentState?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   plannedState?: string;

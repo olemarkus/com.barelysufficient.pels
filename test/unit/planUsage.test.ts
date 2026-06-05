@@ -81,7 +81,7 @@ describe('plan usage budget exemption helpers', () => {
       devices: [
         {
           currentState: 'not_applicable',
-          currentOn: false,
+          binaryControl: { on: false },
           expectedPowerKw: 1.25,
           controllable: true,
         },
@@ -102,7 +102,7 @@ describe('plan usage budget exemption helpers', () => {
       devices: [
         {
           controllable: true,
-          currentOn: true,
+          binaryControl: { on: true },
           plannedState: 'keep',
           measuredPowerKw: 0,
           expectedPowerKw: 2,

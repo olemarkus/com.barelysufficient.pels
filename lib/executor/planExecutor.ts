@@ -720,7 +720,7 @@ export class PlanExecutor {
               if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
               continue;
             }
-            const onoffViolated = snapshot?.currentOn === false;
+            const onoffViolated = snapshot?.binaryControl?.on === false;
             const preRestoreStepIssued = onoffViolated
               ? await this.applySteppedLoadCommand(
                 steppedAction,

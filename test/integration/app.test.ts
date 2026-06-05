@@ -1482,7 +1482,7 @@ describe('MyApp initialization', () => {
     expect(reconcileSpy).not.toHaveBeenCalled();
     expect((app as any).latestTargetSnapshot.find((device: { id: string }) => device.id === 'dev-1')).toMatchObject({
       currentTemperature: 23,
-      currentOn: true,
+      binaryControl: { on: true },
     });
   });
 
@@ -1713,7 +1713,7 @@ describe('MyApp initialization', () => {
         id: 'dev-1',
         name: 'Heater',
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
-        currentOn: true,
+        binaryControl: { on: true },
         controllable: true,
         powerKw: 1,
       },
@@ -2963,7 +2963,7 @@ describe('periodic snapshot refresh scheduling', () => {
             activationEnabled: true,
           },
           managed: false,
-          currentOn: false,
+          binaryControl: { on: false },
           powerCapable: true,
           available: true,
         },
@@ -3031,7 +3031,7 @@ describe('periodic snapshot refresh scheduling', () => {
             activationEnabled: false,
           },
           managed: true,
-          currentOn: true,
+          binaryControl: { on: true },
           powerCapable: true,
           available: true,
         },
@@ -3101,7 +3101,7 @@ describe('periodic snapshot refresh scheduling', () => {
             activationEnabled: true,
           },
           managed: true,
-          currentOn: false,
+          binaryControl: { on: false },
           powerCapable: true,
           available: true,
         },

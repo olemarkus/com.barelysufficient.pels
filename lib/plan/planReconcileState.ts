@@ -150,7 +150,7 @@ function resolveCurrentStateFromPlanInput(
   liveDevice: PlanInputDevice,
 ): string {
   return resolveObservedCurrentState({
-    currentOn: liveDevice.currentOn,
+    binaryControl: liveDevice.binaryControl,
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
     controlModel: previousDevice.controlModel,

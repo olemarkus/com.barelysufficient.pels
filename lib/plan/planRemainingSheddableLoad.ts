@@ -37,7 +37,7 @@ type RemainingSheddableResidualFields = {
 type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable: boolean;
-  currentOn: boolean;
+  binaryControl?: { on: boolean };
   currentState?: string;
   budgetExempt: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
@@ -110,7 +110,7 @@ export type RemainingSheddableLoadParams = {
 type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable?: boolean;
-  currentOn: boolean;
+  binaryControl?: { on: boolean };
   currentState?: string;
   budgetExempt?: boolean;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
@@ -281,7 +281,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
   return {
     id: device.id,
     controllable: device.controllable !== false,
-    currentOn: device.currentOn,
+    binaryControl: device.binaryControl,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
     controlCapabilityId: device.controlCapabilityId,

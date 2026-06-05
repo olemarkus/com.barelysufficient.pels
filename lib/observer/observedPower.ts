@@ -28,13 +28,13 @@ export type ObservedPowerInput = {
 };
 
 export type ObservedStateInput = {
-  currentOn?: boolean;
+  binaryControl?: { on: boolean };
   observationStale?: boolean;
 };
 
 export type ActivelyDrawingInput = {
   available?: boolean;
-  currentOn?: boolean;
+  binaryControl?: { on: boolean };
   measuredPowerKw?: number;
 };
 
@@ -101,7 +101,7 @@ export function getCurrentDrawKw(
 ): number {
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
-  if (device.currentOn === false && device.observationStale !== true) return 0;
+  if (device.binaryControl?.on === false && device.observationStale !== true) return 0;
   return resolveConfiguredOrFallbackKw(device);
 }
 
@@ -137,7 +137,7 @@ export function getRestoreDrawKw(
  */
 export function isActivelyDrawing(observation: ActivelyDrawingInput): boolean {
   if (observation.available === false) return false;
-  if (observation.currentOn === true) return true;
+  if (observation.binaryControl?.on === true) return true;
   return isFiniteNumber(observation.measuredPowerKw)
     && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
 }

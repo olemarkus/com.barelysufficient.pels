@@ -14,7 +14,7 @@ const buildEvDevice = (overrides: Partial<PlanInputDevice> & { id: string }): Pl
   targets: [],
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
-  currentOn: true,
+  binaryControl: { on: true },
   ...overrides,
 });
 

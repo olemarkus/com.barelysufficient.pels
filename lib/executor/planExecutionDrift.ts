@@ -161,10 +161,10 @@ function hasExecutableEvExecutionDrift(
   }
   if (intent.kind === 'ev_resume') {
     // Resume drift: still off-but-commandable (paused) — transition not yet seen.
-    return !observed.currentOn && isCommandableNow(observed.snapshot);
+    return observed.binaryControl?.on === false && isCommandableNow(observed.snapshot);
   }
   // Pause drift: still on (charging) — transition not yet seen.
-  return observed.currentOn;
+  return observed.binaryControl?.on ?? true;
 }
 
 function hasExecutableSteppedLoadExecutionDrift(

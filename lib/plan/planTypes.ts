@@ -78,7 +78,8 @@ export type DevicePlanDevice = {
   name: string;
   deviceClass?: string;
   // Transitional snapshot field only. Planner truth must come from currentState.
-  currentOn: boolean;
+  // Present iff binary control; absence is the old fabricated `currentOn: true`.
+  binaryControl?: { on: boolean };
   currentState: string;
   plannedState: PlannedDeviceState;
   currentTarget: number | null;

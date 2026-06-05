@@ -225,7 +225,7 @@ function finalizePendingBinarySettleWindow(
     desired: pending.desired,
   });
 
-  const observed = snapshot.currentOn;
+  const observed = snapshot.binaryControl?.on;
   if (observed === pending.desired) return;
 
   const changes = typeof observed === 'boolean'

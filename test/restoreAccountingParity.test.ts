@@ -92,7 +92,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceA = buildPlanDevice({
     id: 'A-ev',
     name: 'EV',
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     controlCapabilityId: 'evcharger_charging',
     // No measured / expected / planning kW — exercises the EV fallback path.
@@ -100,7 +100,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceB = buildPlanDevice({
     id: 'B-heater',
     name: 'Heater',
-    currentOn: true,
+    binaryControl: { on: true },
     currentState: 'on',
     measuredPowerKw: 2.4,
     planningPowerKw: 2,
@@ -108,7 +108,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceC = buildPlanDevice({
     id: 'C-stepped-on',
     name: 'Stepped on',
-    currentOn: true,
+    binaryControl: { on: true },
     currentState: 'on',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
@@ -118,7 +118,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceD = buildPlanDevice({
     id: 'D-stepped-off',
     name: 'Stepped off',
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
@@ -138,7 +138,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceE = buildPlanDevice({
     id: 'E-stepped-lowest-no-binary',
     name: 'Stepped lowest no-binary',
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     controlModel: 'stepped_load',
     steppedLoadProfile: zeroPowerSteppedProfile,
@@ -155,7 +155,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceF = buildPlanDevice({
     id: 'F-stepped-step-absent-unknown',
     name: 'Stepped unknown step',
-    currentOn: true,
+    binaryControl: { on: true },
     currentState: 'on',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
@@ -171,7 +171,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceG = buildPlanDevice({
     id: 'G-stepped-reported',
     name: 'Stepped reported only',
-    currentOn: true,
+    binaryControl: { on: true },
     currentState: 'on',
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
@@ -186,7 +186,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   const deviceH = buildPlanDevice({
     id: 'H-temperature-noop-shed',
     name: 'Thermostat at shed setpoint',
-    currentOn: true,
+    binaryControl: { on: true },
     currentState: 'on',
     measuredPowerKw: 1.8,
     expectedPowerKw: 1.8,

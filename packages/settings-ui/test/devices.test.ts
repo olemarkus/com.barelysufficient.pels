@@ -40,7 +40,7 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevic
   name: 'Test Device',
   targets: [],
   deviceType: 'temperature',
-  currentOn: true,
+  binaryControl: { on: true },
   ...overrides,
 });
 

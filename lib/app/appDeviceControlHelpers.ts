@@ -28,6 +28,7 @@ import {
   shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
 import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
+import { resolveBinaryOn } from '../utils/binaryControl';
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 export type SteppedLoadDesiredRuntimeState = {
   capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
@@ -153,7 +154,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
     nowMs,
-    currentOn: snapshot.currentOn,
+    binaryOn: snapshot.binaryControl?.on ?? true,
     nativeSteppedControlEnabled,
     nativeReportedStep: { stepId: nativeReportedStepId, observedAtMs: snapshot.lastUpdated },
     flowReportedStep: {
@@ -180,7 +181,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
     desiredStepId: stepFields.desiredStepId,
     previousStepId: currentDesired?.previousStepId,
     planningPowerKw,
-    currentOn: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }),
+    binaryControl: { on: resolveSteppedLoadCurrentOn({ snapshot, profile, selectedStepId }) },
     lastStepCommandIssuedAt: currentDesired?.lastIssuedAtMs,
     stepCommandRetryCount: currentDesired?.retryCount,
     nextStepCommandRetryAtMs: currentDesired?.nextRetryAtMs,
@@ -401,9 +402,10 @@ export class AppDeviceControlHelpers {
       });
       return 'invalid';
     }
+    const snapshotBinaryOn = snapshot ? resolveBinaryOn(snapshot) : undefined;
     if (shouldSuppressSteppedLoadFlowReport({
       profile,
-      currentOn: snapshot?.currentOn,
+      binaryOn: snapshotBinaryOn,
       stepId,
     })) {
       this.deps.debugStructured({

@@ -105,7 +105,7 @@ describe('Heatpump device integration', () => {
         expect(entry).toBeDefined();
         expect(entry?.deviceType).toBe('temperature');
         expect(entry?.deviceClass).toBe('heatpump');
-        expect(entry?.currentOn).toBe(true);
+        expect(entry?.binaryControl?.on).toBe(true);
         expect(entry?.powerKw).toBeCloseTo(2.0, 2);
     });
 

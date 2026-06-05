@@ -60,7 +60,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => ({
   id: DEVICE_ID,
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
-  currentOn: false,
+  binaryControl: { on: false },
   controllable: false, // cap-off: the deferred objective is the only reason PELS drives it
   deviceType: 'temperature',
   controlModel: 'stepped_load',

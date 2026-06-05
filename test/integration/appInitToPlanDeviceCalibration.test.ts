@@ -56,7 +56,7 @@ const buildDeviceSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): Tar
   targets: [],
   controlModel: 'stepped_load',
   steppedLoadProfile: HOIAX_PROFILE,
-  currentOn: true,
+  binaryControl: { on: true },
   ...overrides,
 }) as TargetDeviceSnapshot;
 

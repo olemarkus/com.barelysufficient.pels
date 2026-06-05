@@ -61,7 +61,7 @@ const resolveObservedHeadroomDeviceKw = (
   if (device.available === false) return 0;
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
-  if (device.currentOn === false) return 0;
+  if (device.binaryControl?.on === false) return 0;
   return getHighestKnownPowerKw(device)?.kw ?? 0;
 };
 

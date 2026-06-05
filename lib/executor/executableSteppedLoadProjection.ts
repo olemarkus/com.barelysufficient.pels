@@ -107,7 +107,8 @@ const buildCurrentState = (
   const observed = observedDevice?.steppedLoad;
   const stepId = observed?.stepId ?? intent.planningCurrentStepId;
   return {
-    on: observed?.on ?? observedDevice?.currentOn ?? intent.planningCurrentOn,
+    on: observed?.on
+      ?? (observedDevice ? (observedDevice.binaryControl?.on ?? true) : intent.planningCurrentOn),
     stepId,
     stepForShed: resolveObservedStepForShed(intent, observed, stepId),
     stepIsOffStep: stepId

@@ -120,7 +120,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => ({
     ],
   },
   selectedStepId: 'low',
-  currentOn: true,
+  binaryControl: { on: true },
   currentTemperature: 50,
   lastFreshDataMs: nowMs,
   observationStale: false,

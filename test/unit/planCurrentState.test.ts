@@ -26,13 +26,13 @@ describe('planCurrentState', () => {
 
   it('returns unknown for stale binary observations instead of collapsing to off', () => {
     expect(resolveObservedCurrentState({
-      currentOn: false,
+      binaryControl: { on: false },
       controlCapabilityId: 'onoff',
       observationStale: true,
     })).toBe('unknown');
 
     expect(resolveEffectiveCurrentOn({
-      currentOn: false,
+      binaryControl: { on: false },
       controlCapabilityId: 'onoff',
       observationStale: true,
     })).toBeNull();
@@ -40,7 +40,7 @@ describe('planCurrentState', () => {
 
   it('maps target-only devices to not_applicable and an unknown on/off state', () => {
     expect(resolveObservedCurrentState({
-      currentOn: true,
+      binaryControl: { on: true },
       controlCapabilityId: undefined,
     })).toBe('not_applicable');
 
@@ -56,7 +56,7 @@ describe('planCurrentState', () => {
 
     expect(resolveEffectiveCurrentState({
       currentState: 'not_applicable',
-      currentOn: false,
+      binaryControl: { on: false },
     })).toEqual({
       currentState: 'not_applicable',
       isOn: false,
@@ -68,7 +68,7 @@ describe('planCurrentState', () => {
 
   it('uses stepped observed state as the canonical source for stepped devices', () => {
     expect(resolveObservedCurrentState({
-      currentOn: true,
+      binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
@@ -89,7 +89,7 @@ describe('planCurrentState', () => {
     });
 
     expect(resolveObservedCurrentState({
-      currentOn: true,
+      binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'off',

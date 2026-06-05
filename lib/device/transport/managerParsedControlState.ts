@@ -12,7 +12,8 @@ import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 const moduleLogger = getLogger('device/parsed-control-state');
 
 export type ParsedControlStateResult = {
-  currentOn?: boolean;
+  resolvedOn?: boolean;
+  binaryControl?: { on: boolean };
   canSetControl: boolean | undefined;
   observedCurrentOn?: boolean;
   hasTrustedControlState: boolean;
@@ -86,11 +87,39 @@ export function resolveDeviceParsedControlState(params: {
     });
   }
   return {
-    currentOn: parsedControlState.currentOn,
+    resolvedOn: parsedControlState.resolvedOn,
+    binaryControl: resolveBinaryControl({
+      currentOn: parsedControlState.resolvedOn,
+      controlCapabilityId,
+      previousSnapshot,
+    }),
     canSetControl: parsedControlState.canSetControl,
     observedCurrentOn,
     hasTrustedControlState: resolvedCurrentOn.trusted,
   };
+}
+
+/**
+ * Resolves the nested `binaryControl` for the parsed snapshot. Present IFF the
+ * device has binary control now, OR (transient capability-drop case) it was
+ * binary on the previous snapshot — in which case the prior `.on` is latched.
+ * Genuinely-non-binary devices get `undefined` (the old fabricated `currentOn:
+ * true` is dropped; consumers treat absence as "may always draw").
+ */
+function resolveBinaryControl(params: {
+  currentOn?: boolean;
+  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  previousSnapshot?: TargetDeviceSnapshot;
+}): { on: boolean } | undefined {
+  const { currentOn, controlCapabilityId, previousSnapshot } = params;
+  const isBinary = controlCapabilityId !== undefined || previousSnapshot?.controlCapabilityId !== undefined;
+  if (!isBinary) return undefined;
+  // Latch the prior `.on` in the transient capability-drop case: `currentOn`
+  // already carries the latched value via `resolvedOn`, but if that resolves
+  // `undefined` (e.g. an inconsistent previous snapshot) fall back to the
+  // previous `binaryControl.on` directly so a trusted on-state is never lost on
+  // a missing read (only a genuine cold start coalesces to `false`).
+  return { on: currentOn ?? previousSnapshot?.binaryControl?.on ?? false };
 }
 
 /**
@@ -167,7 +196,7 @@ function resolveUnobservedControlFallback(params: {
       controlCapabilityId: previousSnapshot.controlCapabilityId,
     });
     return {
-      currentOn: previousTrusted ?? previousSnapshot.currentOn,
+      currentOn: previousTrusted ?? previousSnapshot.binaryControl?.on,
       trusted: previousTrusted !== undefined,
     };
   }
@@ -185,8 +214,9 @@ function resolvePreviousTrustedCurrentOn(params: {
   if (previousSnapshot.controlCapabilityId !== controlCapabilityId) return undefined;
   const previousObservation = previousSnapshot.binaryControlObservation;
   if (previousObservation?.capabilityId !== controlCapabilityId) return undefined;
-  if (previousSnapshot.currentOn !== previousObservation.observedValue) return undefined;
-  return previousSnapshot.currentOn;
+  const previousOn = previousSnapshot.binaryControl?.on;
+  if (previousOn !== previousObservation.observedValue) return undefined;
+  return previousOn;
 }
 
 function resolvePreviousCurrentOn(params: {
@@ -196,7 +226,7 @@ function resolvePreviousCurrentOn(params: {
   const { previousSnapshot, controlCapabilityId } = params;
   if (!previousSnapshot) return undefined;
   if (previousSnapshot.controlCapabilityId !== controlCapabilityId) return undefined;
-  return previousSnapshot.currentOn;
+  return previousSnapshot.binaryControl?.on;
 }
 
 function hasInvalidControlPayload(params: {

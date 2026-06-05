@@ -280,7 +280,7 @@ describe('chip primitive: every surface walks the canonical `.plan-chip`', () =>
       name: 'Unavailable Device',
       targets: [],
       deviceType: 'temperature',
-      currentOn: true,
+      binaryControl: { on: true },
       available: false,
     } as unknown as Parameters<typeof renderDevices>[0][number]];
     importedState.budgetExemptMap = {};

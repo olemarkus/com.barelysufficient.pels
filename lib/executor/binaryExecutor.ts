@@ -103,7 +103,7 @@ export const applyBinaryRestore = async (
     });
     return false;
   }
-  if (snapshot.currentOn !== false) return false;
+  if ((snapshot.binaryControl?.on ?? true) !== false) return false;
   if (snapshot.deviceClass === 'evcharger') {
     logger.debug({
       event: 'ev_restore_evaluating',
@@ -148,7 +148,7 @@ export const applyUncontrolledBinaryRestore = async (
     });
     return false;
   }
-  if (entry.currentOn !== false) return false;
+  if ((entry.binaryControl?.on ?? true) !== false) return false;
   if (entry.deviceClass === 'evcharger') {
     logger.debug({
       event: 'ev_restore_evaluating',
@@ -250,7 +250,7 @@ export const applyDeferredEvCommand = async (
     // default) bypasses the capacity precheck / pendingSheds path so it does not
     // stamp the cooldown markers. The currentOn check is the trusted-evidence
     // gate, mirroring applyShedReleaseBinaryOff's gate.
-    if (!snapshot.currentOn) return false;
+    if (snapshot.binaryControl?.on === false) return false;
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
@@ -261,7 +261,7 @@ export const applyDeferredEvCommand = async (
   // Resume only an off-but-commandable charger — i.e. paused. Reads the binary
   // truth (`currentOn`) + producer-resolved commandability, not the plug-state
   // string.
-  if (snapshot.currentOn || !isCommandableNow(snapshot)) return false;
+  if ((snapshot.binaryControl?.on ?? true) || !isCommandableNow(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,

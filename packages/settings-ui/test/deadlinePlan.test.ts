@@ -209,7 +209,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -290,7 +290,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -348,7 +348,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -405,7 +405,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -463,7 +463,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -555,7 +555,7 @@ describe('deadline plan page payload', () => {
       const device: DecoratedDeviceSnapshot = {
         id: 'heater',
         name: 'Connected 300',
-        currentOn: false,
+        binaryControl: { on: false },
         currentTemperature: 18,
         planningPowerKw: 2,
         ...(priority !== undefined ? { priority } : {}),
@@ -585,7 +585,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -653,7 +653,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -720,7 +720,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -777,7 +777,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       // Stepped profile; the lowest non-zero step is 1.5 kW. resolveUsefulPowerKw
       // (used elsewhere) would return the highest step — we deliberately want the lowest.
@@ -842,7 +842,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 1.3,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -899,7 +899,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -966,7 +966,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1031,7 +1031,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 40, // far from target 65 with only 2 h horizon
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1139,7 +1139,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1222,7 +1222,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1303,7 +1303,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1379,7 +1379,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1464,7 +1464,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -1544,7 +1544,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 21,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1593,7 +1593,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -1651,7 +1651,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -1708,7 +1708,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1763,7 +1763,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1821,7 +1821,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 23, // > target 22
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1884,7 +1884,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       // Intentionally no currentTemperature — mirrors the live failure mode.
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -1939,7 +1939,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -2000,7 +2000,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2077,7 +2077,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2161,7 +2161,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2264,7 +2264,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2371,7 +2371,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2456,7 +2456,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2550,7 +2550,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2637,7 +2637,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -2719,7 +2719,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 21,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -2798,7 +2798,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -2855,7 +2855,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -2912,7 +2912,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -2973,7 +2973,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3035,7 +3035,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3100,7 +3100,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 21.999,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3162,7 +3162,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3252,7 +3252,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3339,7 +3339,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       stateOfCharge: { percent: 40, status: 'fresh' },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
@@ -3419,7 +3419,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];
@@ -3482,7 +3482,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Bathroom heater',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3541,7 +3541,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3600,7 +3600,7 @@ describe('deadline plan page payload', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
@@ -3809,7 +3809,7 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       currentTemperature: 18,
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -4339,7 +4339,7 @@ describe('cost + delivered-so-far hero lines', () => {
   const buildHeaterDevice = (currentTemperature: number): DecoratedDeviceSnapshot[] => ([{
     id: 'heater',
     name: 'Connected 300',
-    currentOn: false,
+    binaryControl: { on: false },
     currentTemperature,
     planningPowerKw: 2,
     targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 80, step: 0.5 }],
@@ -4945,7 +4945,7 @@ describe('pending hero producer wiring', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'heater',
       name: 'Connected 300',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 2,
       targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
     }];
@@ -5002,7 +5002,7 @@ describe('pending hero producer wiring', () => {
     const devices: DecoratedDeviceSnapshot[] = [{
       id: 'ev',
       name: 'Garage EV',
-      currentOn: false,
+      binaryControl: { on: false },
       planningPowerKw: 7,
       targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
     }];

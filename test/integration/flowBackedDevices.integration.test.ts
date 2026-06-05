@@ -134,7 +134,7 @@ describe('Flow-backed device support', () => {
     expect(entry).toEqual(expect.objectContaining({
       id: 'binary-1',
       flowBacked: true,
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 1.2,
       controlCapabilityId: 'onoff',
       canSetControl: true,
@@ -163,7 +163,7 @@ describe('Flow-backed device support', () => {
 
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
       id: 'binary-1',
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 0.85,
     }));
     expect(getSnapshot().find((device) => device.id === 'binary-1')?.flowBacked).toBeUndefined();
@@ -221,7 +221,7 @@ describe('Flow-backed device support', () => {
     expect(entry).toEqual(expect.objectContaining({
       id: 'ev-1',
       flowBacked: true,
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       measuredPowerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
@@ -248,7 +248,7 @@ describe('Flow-backed device support', () => {
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       measuredPowerKw: 0,
     }));
@@ -273,7 +273,7 @@ describe('Flow-backed device support', () => {
 
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in',
       measuredPowerKw: 0,
     }));
@@ -312,7 +312,7 @@ describe('Flow-backed device support', () => {
     expect(getSnapshot().find((device) => device.id === 'ev-1')).toEqual(expect.objectContaining({
       id: 'ev-1',
       flowBacked: true,
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       measuredPowerKw: 7.2,
     }));
@@ -335,7 +335,7 @@ describe('Flow-backed device support', () => {
 
     let entry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 1.2,
     }));
 
@@ -343,7 +343,7 @@ describe('Flow-backed device support', () => {
 
     entry = getSnapshot().find((device) => device.id === 'binary-1');
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       measuredPowerKw: 1.2,
     }));
   });
@@ -367,7 +367,7 @@ describe('Flow-backed device support', () => {
 
     expect(getSnapshot().find((device) => device.id === 'binary-1')).toEqual(expect.objectContaining({
       id: 'binary-1',
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 0.2,
     }));
     expect(getSnapshot().find((device) => device.id === 'binary-1')?.flowBacked).toBeUndefined();

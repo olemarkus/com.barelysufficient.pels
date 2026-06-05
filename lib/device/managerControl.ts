@@ -1,4 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { resolveBinaryOn } from '../utils/binaryControl';
 import type { Logger } from '../utils/types';
 
 export type DeviceCapabilityValue = {
@@ -265,8 +266,10 @@ function buildEvSnapshotChangeLines(
   nextEv: TargetDeviceSnapshot,
 ): string[] {
   const changes: string[] = [];
-  if (previousEv.currentOn !== nextEv.currentOn) {
-    changes.push(`currentOn ${String(previousEv.currentOn)} -> ${String(nextEv.currentOn)}`);
+  const previousOn = resolveBinaryOn(previousEv);
+  const nextOn = resolveBinaryOn(nextEv);
+  if (previousOn !== nextOn) {
+    changes.push(`currentOn ${String(previousOn)} -> ${String(nextOn)}`);
   }
   if (previousEv.evChargingState !== nextEv.evChargingState) {
     changes.push(`evState ${previousEv.evChargingState ?? 'unknown'} -> ${nextEv.evChargingState ?? 'unknown'}`);
@@ -290,7 +293,7 @@ function buildEvSnapshotChangeLines(
 
 function formatEvSnapshotDiscovery(snapshot: TargetDeviceSnapshot): string {
   return [
-    `currentOn=${String(snapshot.currentOn)}`,
+    `currentOn=${String(resolveBinaryOn(snapshot))}`,
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
     `available=${snapshot.available !== false}`,
     `powerKw=${snapshot.powerKw ?? snapshot.measuredPowerKw ?? 'unknown'}`,
@@ -303,7 +306,7 @@ function formatEvSnapshotDetails(
   includePower: boolean,
 ): string {
   const details = [
-    `currentOn=${String(snapshot?.currentOn)}`,
+    `currentOn=${String(snapshot ? resolveBinaryOn(snapshot) : true)}`,
     `evState=${snapshot?.evChargingState ?? 'unknown'}`,
   ];
   if (includePower) {

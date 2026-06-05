@@ -75,7 +75,7 @@ type PelsTargetSnapshotSummary = {
   steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
   suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
   targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
-  currentOn: boolean;
+  binaryControl?: { on: boolean };
   currentTemperature?: number;
   targets: Array<{ id: string; value?: unknown; unit: string }>;
   powerKw?: number;
@@ -308,7 +308,7 @@ const buildPelsSnapshotComparisonSource = (
   const target = Array.isArray(snapshot.targets) ? snapshot.targets[0] : null;
   const powerW = resolveComparisonPowerW(snapshot);
   return {
-    sourceState: snapshot.currentOn ? 'on' : 'off',
+    sourceState: (snapshot.binaryControl?.on ?? true) ? 'on' : 'off',
     ...(target ? { target: target.value } : {}),
     ...(powerW !== null ? { powerW } : {}),
     ...(asTimestampString(snapshot.lastUpdated) ? { lastSeenAt: asTimestampString(snapshot.lastUpdated) } : {}),
@@ -435,7 +435,7 @@ const compactPelsTargetSnapshot = (
     steppedLoadProfile: snapshot.steppedLoadProfile,
     suggestedSteppedLoadProfile: snapshot.suggestedSteppedLoadProfile,
     targetPowerConfig: snapshot.targetPowerConfig,
-    currentOn: snapshot.currentOn,
+    binaryControl: snapshot.binaryControl,
     currentTemperature: snapshot.currentTemperature,
     targets: snapshot.targets,
     powerKw: snapshot.powerKw,

@@ -10,7 +10,7 @@ const buildLiveDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDev
   id: 'dev-1',
   name: 'Heater',
   targets: [],
-  currentOn: false,
+  binaryControl: { on: false },
   controlCapabilityId: 'onoff',
   controllable: true,
   expectedPowerKw: 1.8,
@@ -26,7 +26,7 @@ const buildPlan = (overrides: Partial<DevicePlan['devices'][number]> = {}): Devi
   devices: [{
     id: 'dev-1',
     name: 'Heater',
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,

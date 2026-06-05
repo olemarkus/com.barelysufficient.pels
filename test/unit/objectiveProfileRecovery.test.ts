@@ -23,7 +23,7 @@ const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): Targe
   name: 'Water heater',
   targets: [],
   deviceType: 'temperature',
-  currentOn: true,
+  binaryControl: { on: true },
   currentTemperature: 50,
   lastFreshDataMs: startMs,
   measuredPowerKw: 2,
@@ -35,7 +35,7 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSn
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',
-  currentOn: true,
+  binaryControl: { on: true },
   measuredPowerKw: 7,
   stateOfCharge: {
     percent: 40,

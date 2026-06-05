@@ -9,7 +9,7 @@ describe('buildPlanInputDevice', () => {
       id: 'dev-1',
       name: 'dev-1',
       targets: [],
-      currentOn: true,
+      binaryControl: { on: true },
     });
   });
 
@@ -17,12 +17,12 @@ describe('buildPlanInputDevice', () => {
     const device = buildPlanInputDevice({
       id: 'dev-2',
       name: 'Living room heater',
-      currentOn: false,
+      binaryControl: { on: false },
     });
 
     expect(device.id).toBe('dev-2');
     expect(device.name).toBe('Living room heater');
-    expect(device.currentOn).toBe(false);
+    expect(device.binaryControl?.on).toBe(false);
     expect(device.targets).toEqual([]);
   });
 

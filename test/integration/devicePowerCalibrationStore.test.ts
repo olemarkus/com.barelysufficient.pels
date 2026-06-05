@@ -32,7 +32,7 @@ const baseDeviceSnapshot = (
   steppedLoadProfile: CONNECTED_300_PROFILE,
   reportedStepId: 'max',
   measuredPowerKw: 2.75,
-  currentOn: true,
+  binaryControl: { on: true },
   lastFreshDataMs: 0,
   ...overrides,
 }) as TargetDeviceSnapshot;
@@ -121,7 +121,7 @@ describe('PowerCalibrationStore.ingestDeviceSnapshot', () => {
       id: 'binary-1',
       name: 'Lamp',
       targets: [],
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 0.05,
     } as unknown as TargetDeviceSnapshot, 0);
     expect(outcome).toBeNull();
