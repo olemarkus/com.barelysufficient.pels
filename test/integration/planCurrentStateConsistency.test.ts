@@ -11,7 +11,7 @@ const buildLiveDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDev
   name: 'Heater',
   targets: [],
   currentOn: false,
-  hasBinaryControl: true,
+  controlCapabilityId: 'onoff',
   controllable: true,
   expectedPowerKw: 1.8,
   ...overrides,

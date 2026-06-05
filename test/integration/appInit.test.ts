@@ -98,7 +98,7 @@ describe('app init plan service wiring', () => {
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
 
-  it('derives binary control from legacy snapshot capabilities when controlCapabilityId is missing', () => {
+  it('passes the transport-resolved controlCapabilityId through to plan devices', () => {
     const service = createPlanService(createAppContextMock({
       planEngine: {} as AppContext['planEngine'],
       latestTargetSnapshot: [
@@ -106,11 +106,14 @@ describe('app init plan service wiring', () => {
           id: 'socket-1',
           name: 'Socket',
           capabilities: ['onoff'],
+          controlCapabilityId: 'onoff',
         },
         {
           id: 'ev-1',
           name: 'EV',
+          deviceClass: 'evcharger',
           capabilities: ['evcharger_charging', 'evcharger_charging_state'],
+          controlCapabilityId: 'evcharger_charging',
         },
         {
           id: 'temp-1',
@@ -126,14 +129,15 @@ describe('app init plan service wiring', () => {
     }));
 
     const planDevices = (service as unknown as {
-      deps: { getPlanDevices: () => Array<{ id: string; hasBinaryControl?: boolean }> };
+      deps: { getPlanDevices: () => Array<{ id: string; controlCapabilityId?: 'onoff' | 'evcharger_charging' }> };
     }).deps.getPlanDevices();
 
     expect(planDevices).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'socket-1', hasBinaryControl: true }),
-      expect.objectContaining({ id: 'ev-1', hasBinaryControl: true }),
-      expect.objectContaining({ id: 'temp-1', hasBinaryControl: false }),
+      expect.objectContaining({ id: 'socket-1', controlCapabilityId: 'onoff' }),
+      expect.objectContaining({ id: 'ev-1', controlCapabilityId: 'evcharger_charging' }),
     ]));
+    const tempDevice = planDevices.find((d) => d.id === 'temp-1');
+    expect(tempDevice?.controlCapabilityId).toBeUndefined();
   });
 
   it('fails fast when plan engine wiring is missing', () => {

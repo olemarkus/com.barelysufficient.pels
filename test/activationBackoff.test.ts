@@ -308,7 +308,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000 + 5_000,
-      observation: { currentOn: false, available: true },
+      observation: { currentOn: false, available: true, controlCapabilityId: 'onoff' },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
@@ -609,7 +609,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + 20_000,
-      observation: { currentOn: false, available: true },
+      observation: { currentOn: false, available: true, controlCapabilityId: 'onoff' },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);

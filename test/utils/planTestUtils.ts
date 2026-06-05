@@ -24,6 +24,7 @@ DevicePlanDevice => {
     currentState: 'on',
     plannedState: 'keep',
     currentTarget: null,
+    controlCapabilityId: 'onoff',
     reason: legacyDeviceReason('keep')!,
     ...rest,
     ...(reason !== undefined
@@ -38,6 +39,7 @@ export const buildPlanInputDevice = (overrides: Partial<PlanInputDevice> = {}): 
   targets: [],
   currentOn: true,
   controllable: true,
+  controlCapabilityId: 'onoff',
   ...overrides,
 });
 
@@ -67,7 +69,7 @@ export const steppedInputDevice = (overrides: Partial<PlanInputDevice> = {}): Pl
     steppedLoadProfile: profile,
     selectedStepId,
     planningPowerKw: defaultPlanningKw,
-    hasBinaryControl: true,
+    controlCapabilityId: 'onoff',
     targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
     ...overrides,
   });

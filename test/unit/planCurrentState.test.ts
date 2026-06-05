@@ -27,13 +27,13 @@ describe('planCurrentState', () => {
   it('returns unknown for stale binary observations instead of collapsing to off', () => {
     expect(resolveObservedCurrentState({
       currentOn: false,
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       observationStale: true,
     })).toBe('unknown');
 
     expect(resolveEffectiveCurrentOn({
       currentOn: false,
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       observationStale: true,
     })).toBeNull();
   });
@@ -41,7 +41,7 @@ describe('planCurrentState', () => {
   it('maps target-only devices to not_applicable and an unknown on/off state', () => {
     expect(resolveObservedCurrentState({
       currentOn: true,
-      hasBinaryControl: false,
+      controlCapabilityId: undefined,
     })).toBe('not_applicable');
 
     expect(resolveEffectiveCurrentState({
@@ -72,7 +72,7 @@ describe('planCurrentState', () => {
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
     })).toBe('on');
 
     expect(resolveEffectiveCurrentState({
@@ -93,7 +93,7 @@ describe('planCurrentState', () => {
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'off',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
     })).toBe('off');
 
     expect(resolveEffectiveCurrentState({

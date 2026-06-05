@@ -17,7 +17,7 @@
  *
  * Edge-case coverage closes TODO §"Before chunk 6 — expand restore-accounting
  * cascade-parity test coverage." (2026-05-27):
- *  - (a) stepped, `hasBinaryControl: false`, already at lowest active step
+ *  - (a) stepped, `controlCapabilityId: undefined`, already at lowest active step
  *        (path-2 → path-3 fall-through with `restoreStep.planningPowerW === 0`
  *        when the profile lowest-active step has no positive planning kW).
  *  - (b) stepped, `selectedStepId` absent and `hasKnownEffectiveStep === false`
@@ -129,7 +129,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   // Edge-case fixtures added 2026-05-27 to harden cascade-parity coverage
   // before chunk 6 removes the legacy fallback.
   //
-  // (a) Stepped device, `hasBinaryControl: false`, already at lowest active
+  // (a) Stepped device, `controlCapabilityId: undefined`, already at lowest active
   //     step. Profile has every step at planningPowerW = 0, so
   //     `getSteppedLoadRestoreStep` returns a zero-power step which fails the
   //     `> 0` guard. Both legacy and producer fall through to path-3
@@ -143,7 +143,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     controlModel: 'stepped_load',
     steppedLoadProfile: zeroPowerSteppedProfile,
     selectedStepId: 'low',
-    hasBinaryControl: false,
+    controlCapabilityId: undefined,
     planningPowerKw: 0,
   });
   // (b) Stepped device with `selectedStepId` absent and
