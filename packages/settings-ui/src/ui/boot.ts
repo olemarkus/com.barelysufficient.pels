@@ -78,6 +78,7 @@ import {
   loadTemperatureBoostSettings,
 } from './deviceDetail/index.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import { coerceDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
   initAdvancedDeviceCleanupHandlers,
@@ -257,8 +258,13 @@ const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
     updateBudgetPower(bootstrap.power?.status ?? null);
     primeApiCache(SETTINGS_UI_PRICES_PATH, bootstrap.prices);
     // Persist active plans so device cards can read EV schedule state without
-    // re-fetching the full bootstrap on every render cycle.
-    state.deferredObjectiveActivePlans = bootstrap.deferredObjectiveActivePlans ?? null;
+    // re-fetching the full bootstrap on every render cycle. Realtime replans
+    // refresh this same state via `reloadDeferredObjectiveActivePlans` on the
+    // `deferred_objective_active_plans` settings event; both paths funnel
+    // through the shared shape guard so the seed and the re-read can't drift.
+    state.deferredObjectiveActivePlans = coerceDeferredObjectiveActivePlans(
+      bootstrap.deferredObjectiveActivePlans,
+    );
     return bootstrap;
   } catch {
     return null;
