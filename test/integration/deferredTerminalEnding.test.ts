@@ -93,18 +93,18 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
   const binaryDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
     id: 'b1',
     name: 'Water heater',
-    currentOn: false,
+    binaryControl: { on: false },
     targets: [],
     ...overrides,
   } as PlanInputDevice);
 
   it('reports off when the device is trusted-off', () => {
-    expect(readTerminalObserved(binaryDevice({ currentOn: false }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false } }), 'temperature').binaryState)
       .toBe('off');
   });
 
   it('reports on when the device is observed on', () => {
-    expect(readTerminalObserved(binaryDevice({ currentOn: true }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true } }), 'temperature').binaryState)
       .toBe('on');
   });
 
@@ -114,7 +114,7 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
     // `'off'` made the terminal release disarm a device that may still be on.
     // The trust gate must keep it `'unknown'` so `planTerminalEnding` re-fires
     // until settled or the disarm grace elapses.
-    expect(readTerminalObserved(binaryDevice({ currentOn: false, observationStale: true }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, observationStale: true }), 'temperature').binaryState)
       .toBe('unknown');
   });
 
@@ -126,7 +126,7 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
     // smart task ends must STILL get the off write — mapping it to `'unknown'`
     // would let `applyBinaryOffShed` refuse the write and the task disarm after
     // grace without ever turning the device off.
-    expect(readTerminalObserved(binaryDevice({ currentOn: true, observationStale: true }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true }, observationStale: true }), 'temperature').binaryState)
       .toBe('on');
   });
 });
@@ -135,7 +135,7 @@ describe('resolveTerminalShedCommand — set_temperature setpoint normalization'
   const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({
     id: 't1',
     name: 'Thermostat',
-    currentOn: true,
+    binaryControl: { on: true },
     targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5, value: 21, ...overrides }],
   } as PlanInputDevice);
 
@@ -185,7 +185,7 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
   ): PlanInputDevice => ({
     id: 'd1',
     name: 'Panel heater',
-    currentOn: true,
+    binaryControl: { on: true },
     targets: [],
     controlCapabilityId: 'onoff',
     ...overrides,

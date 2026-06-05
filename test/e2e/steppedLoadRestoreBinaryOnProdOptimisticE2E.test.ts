@@ -6,7 +6,7 @@
  * This models the EXACT verified-from-logs prod failure sequence. The
  * load-bearing condition: the `onoff` capability value is ABSENT in the mock
  * Homey device (a should-never-happen anomaly). The REAL parseDevice now
- * honestly resolves `snapshot.currentOn === false` with NO trusted binary
+ * honestly resolves `snapshot.binaryControl?.on === false` with NO trusted binary
  * observation (`binaryControlObservation === undefined`, observed binary state
  * 'unknown'). The missing binary observation is the prod trigger: historically
  * the parser fabricated an optimistic `currentOn:true`, and before the fix the
@@ -260,7 +260,7 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
     // Honest false — mirrors the parsed snapshot's currentOn:false (the onoff
     // readback is absent, so there is no trusted binary observation; the
     // defensive turn-on keys off the 'unknown' observation, not currentOn).
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
@@ -307,7 +307,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     // Pin the prod-observed parsed state (the missing-onoff anomaly is the
     // trigger): currentOn honest false, NO trusted binary observation (observed
     // state 'unknown'), native step at max.
-    expect(cycle1Snapshot.currentOn).toBe(false);
+    expect(cycle1Snapshot.binaryControl?.on).toBe(false);
     expect(cycle1Snapshot.binaryControlObservation).toBeUndefined();
     expect(cycle1Snapshot.controlModel).toBe('stepped_load');
     expect(cycle1Snapshot.controlCapabilityId).toBe('onoff');
@@ -338,7 +338,7 @@ describe('stepped-load restore binary onoff — prod-EXACT missing-onoff multi-c
     });
     // The materialized-low, still-missing-onoff prod state (currentOn honest
     // false, binary observation still absent).
-    expect(cycle2Snapshot.currentOn).toBe(false);
+    expect(cycle2Snapshot.binaryControl?.on).toBe(false);
     expect(cycle2Snapshot.binaryControlObservation).toBeUndefined();
     expect(cycle2Snapshot.reportedStepId).toBe('low');
     snapshotHolder.current = cycle2Snapshot;

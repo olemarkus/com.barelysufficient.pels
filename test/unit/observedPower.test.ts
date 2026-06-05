@@ -54,18 +54,18 @@ describe('getRestoreDrawKw', () => {
 
 describe('getCurrentDrawKw', () => {
   it('returns the measured value when present, including zero', () => {
-    expect(getCurrentDrawKw({ measuredPowerKw: 0.42, currentOn: true })).toBe(0.42);
-    expect(getCurrentDrawKw({ measuredPowerKw: 0, currentOn: true })).toBe(0);
+    expect(getCurrentDrawKw({ measuredPowerKw: 0.42, binaryControl: { on: true } })).toBe(0.42);
+    expect(getCurrentDrawKw({ measuredPowerKw: 0, binaryControl: { on: true } })).toBe(0);
   });
 
   it('returns 0 for an explicitly observed-off device — shedding gives no immediate relief', () => {
-    expect(getCurrentDrawKw({ currentOn: false })).toBe(0);
-    expect(getCurrentDrawKw({ currentOn: false, expectedPowerKw: 2 })).toBe(0);
+    expect(getCurrentDrawKw({ binaryControl: { on: false } })).toBe(0);
+    expect(getCurrentDrawKw({ binaryControl: { on: false }, expectedPowerKw: 2 })).toBe(0);
   });
 
   it('falls back to the configured restore draw for an observed-on device with no measurement', () => {
-    expect(getCurrentDrawKw({ currentOn: true, expectedPowerKw: 2 })).toBe(2);
-    expect(getCurrentDrawKw({ currentOn: true })).toBe(1); // generic fallback
+    expect(getCurrentDrawKw({ binaryControl: { on: true }, expectedPowerKw: 2 })).toBe(2);
+    expect(getCurrentDrawKw({ binaryControl: { on: true } })).toBe(1); // generic fallback
   });
 
   it('treats unknown state as conservatively active — uses restore draw as the estimate', () => {
@@ -82,12 +82,12 @@ describe('getCurrentDrawKw', () => {
     // device out — the device may still be drawing and shedding it could
     // still relieve load.
     expect(getCurrentDrawKw({
-      currentOn: false,
+      binaryControl: { on: false },
       observationStale: true,
       expectedPowerKw: 2,
     })).toBe(2);
     expect(getCurrentDrawKw({
-      currentOn: false,
+      binaryControl: { on: false },
       observationStale: false,
       expectedPowerKw: 2,
     })).toBe(0);
@@ -113,7 +113,7 @@ describe('getHighestKnownPowerKw', () => {
 
 describe('isActivelyDrawing', () => {
   it('is true when currentOn is true', () => {
-    expect(isActivelyDrawing({ currentOn: true })).toBe(true);
+    expect(isActivelyDrawing({ binaryControl: { on: true } })).toBe(true);
   });
 
   it('is true when measured power is above the activation threshold', () => {
@@ -126,7 +126,7 @@ describe('isActivelyDrawing', () => {
   });
 
   it('is false when available is explicitly false', () => {
-    expect(isActivelyDrawing({ available: false, currentOn: true, measuredPowerKw: 5 })).toBe(false);
+    expect(isActivelyDrawing({ available: false, binaryControl: { on: true }, measuredPowerKw: 5 })).toBe(false);
   });
 
   it('is false when nothing is observed', () => {

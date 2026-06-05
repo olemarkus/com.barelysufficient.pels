@@ -45,7 +45,7 @@ const buildSteppedAction = (device: DevicePlanDevice) => buildExecutableSteppedL
   buildExecutableObservedDeviceState({
     id: device.id,
     name: device.name,
-    currentOn: device.currentOn,
+    binaryControl: device.binaryControl,
     targets: [],
     controlModel: device.controlModel,
     steppedLoadProfile: device.steppedLoadProfile,
@@ -678,7 +678,7 @@ describe('native stepped-load wiring', () => {
       id: 'hoiax-1',
       name: 'Connected 300',
       targets: [],
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 1.75,
     } satisfies TargetDeviceSnapshot;
     const nativeSnapshot = {
@@ -738,7 +738,7 @@ describe('native stepped-load wiring', () => {
       id: 'hoiax-1',
       name: 'Connected 300',
       targets: [],
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 1.75,
       reportedStepId: 'medium',
       controlAdapter: {
@@ -788,7 +788,7 @@ describe('native stepped-load wiring', () => {
     const action = buildSteppedAction({
       id: 'hoiax-1',
       name: 'Connected 300',
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
@@ -865,7 +865,7 @@ describe('native stepped-load wiring', () => {
     const action = buildSteppedAction({
       id: 'synthetic-target-power-1',
       name: 'Configured charger',
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
@@ -949,7 +949,7 @@ describe('native stepped-load wiring', () => {
     const action = buildSteppedAction({
       id: 'zaptec-go-1',
       name: 'Zaptec Go',
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       plannedState: 'shed',
       currentTarget: null,
@@ -1144,7 +1144,7 @@ describe('native stepped-load wiring', () => {
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
       name: 'Flow backed charger',
-      currentOn: true,
+      binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
@@ -1253,7 +1253,7 @@ describe('native stepped-load wiring', () => {
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
       name: 'Flow backed charger',
-      currentOn: true,
+      binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     } as TargetDeviceSnapshot]);
@@ -1411,7 +1411,7 @@ describe('native stepped-load wiring', () => {
 
       await deviceManager.refreshSnapshot({ includeLivePower: false });
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-        currentOn: false,
+        binaryControl: { on: false },
         reportedStepId: 'off',
       }));
 
@@ -1420,7 +1420,7 @@ describe('native stepped-load wiring', () => {
       deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'onoff', true);
 
       expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-        currentOn: true,
+        binaryControl: { on: true },
       }));
       expect(deviceManager.getSnapshot()[0]).not.toHaveProperty('reportedStepId');
       expect(realtimeReconcile).toHaveBeenCalledWith(expect.objectContaining({

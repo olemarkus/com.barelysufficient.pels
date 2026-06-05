@@ -3,14 +3,14 @@ import { isActivationObservationActiveNow } from '../../lib/plan/admission';
 describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {
     expect(isActivationObservationActiveNow({
-      currentOn: true,
+      binaryControl: { on: true },
       controlCapabilityId: 'onoff',
     })).toBe(true);
   });
 
   it('is true when measured power is above the activation threshold', () => {
     expect(isActivationObservationActiveNow({
-      currentOn: false,
+      binaryControl: { on: false },
       measuredPowerKw: 0.5,
     })).toBe(true);
   });
@@ -18,7 +18,7 @@ describe('isActivationObservationActiveNow', () => {
   it('is false when the device is reported unavailable', () => {
     expect(isActivationObservationActiveNow({
       available: false,
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 5,
     })).toBe(false);
   });
@@ -28,7 +28,7 @@ describe('isActivationObservationActiveNow', () => {
     // for stepped-load devices whose selected step is the off step. The previous
     // refactor briefly let this case report active without consulting measured power.
     expect(isActivationObservationActiveNow({
-      currentOn: true,
+      binaryControl: { on: true },
       measuredPowerKw: 0,
       controlModel: 'stepped_load',
       steppedLoadProfile: {

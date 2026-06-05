@@ -12,7 +12,7 @@
  *     target write at shed-temperature for the thermostat).
  *   - The mock device's observed state updates to reflect the new posture.
  *   - Second plan cycle in the satisfied state → executor does NOT re-fire
- *     (binary path: `snapshot.currentOn === false` short-circuits;
+ *     (binary path: `snapshot.binaryControl?.on === false` short-circuits;
  *     temperature path: `observed.target.observedValue === shedTemperature`
  *     short-circuits).
  *
@@ -78,7 +78,7 @@ const buildBinaryHeaterSnapshot = (): TargetDeviceSnapshot => ({
   controlCapabilityId: 'onoff',
   deviceClass: 'socket',
   deviceType: 'onoff',
-  currentOn: true,
+  binaryControl: { on: true },
   powerCapable: true,
   managed: true,
   controllable: false, // cap-off — required for shed_release admission
@@ -93,7 +93,7 @@ const buildThermostatSnapshot = (): TargetDeviceSnapshot => ({
   controlCapabilityId: 'onoff',
   deviceClass: 'heater',
   deviceType: 'temperature',
-  currentOn: true,
+  binaryControl: { on: true },
   powerCapable: true,
   managed: true,
   controllable: false,
@@ -141,7 +141,7 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
     const snap = snapshots.get(deviceId);
     if (snap) {
       if (capabilityId === 'onoff') {
-        snapshots.set(deviceId, { ...snap, currentOn: value === true } as TargetDeviceSnapshot);
+        snapshots.set(deviceId, { ...snap, binaryControl: { on: value === true } } as TargetDeviceSnapshot);
       } else if (capabilityId === 'target_temperature' && typeof value === 'number') {
         const nextTargets = (snap.targets ?? []).map((t) => (
           t.id === 'target_temperature' ? { ...t, value } : t
@@ -270,8 +270,8 @@ const buildObserved = (
   name,
   snapshot,
   available: true,
-  currentOn: snapshot.currentOn,
-  observedBinaryState: snapshot.currentOn ? 'on' : 'off',
+  binaryControl: snapshot.binaryControl,
+  observedBinaryState: (snapshot.binaryControl?.on ?? true) ? 'on' : 'off',
   target: null,
   steppedLoad: null,
   ...overrides,
@@ -329,11 +329,11 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       // reflects the off device — the dispatch path's `snapshot.currentOn ===
       // false` short-circuit must skip the write.
       const refreshedSnapshot = harness.observation.getSnapshotByDeviceId(heater.id)!;
-      expect(refreshedSnapshot.currentOn).toBe(false);
+      expect(refreshedSnapshot.binaryControl?.on).toBe(false);
 
       const secondResult = await applyShedReleaseIntent({
         intent,
-        observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { currentOn: false, observedBinaryState: 'off' }),
+        observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryState: 'off' }),
         snapshot: refreshedSnapshot,
         mode: 'plan',
         deps,
@@ -364,9 +364,9 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       // Force the snapshot back to `currentOn: true` so the executor's
       // already-off gate does NOT short-circuit; we want to verify the
       // throttle, not the already-off path.
-      const racedSnap = { ...heater, currentOn: true } as TargetDeviceSnapshot;
+      const racedSnap = { ...heater, binaryControl: { on: true } } as TargetDeviceSnapshot;
       const intent = buildIntent(heater.id, heater.name);
-      const observed = buildObserved(heater.id, heater.name, racedSnap, { currentOn: true });
+      const observed = buildObserved(heater.id, heater.name, racedSnap, { binaryControl: { on: true } });
       const deps = buildDeps({
         shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
         binaryCtx: harness.binaryCtx,

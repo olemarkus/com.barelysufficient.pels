@@ -23,7 +23,7 @@ const buildEvSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetD
   targets: [],
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
-  currentOn: false,
+  binaryControl: { on: false },
   ...overrides,
 }) as TargetDeviceSnapshot;
 

@@ -6,7 +6,7 @@ const buildDevice = (
   id: 'device-1',
   name: 'Device',
   targets: [],
-  currentOn: true,
+  binaryControl: { on: true },
   capabilities: ['measure_power', 'onoff'],
   ...overrides,
 });

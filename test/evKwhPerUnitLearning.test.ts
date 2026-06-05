@@ -28,7 +28,7 @@ const evDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSn
   name: 'Charger',
   targets: [],
   deviceClass: 'evcharger',
-  currentOn: true,
+  binaryControl: { on: true },
   measuredPowerKw: 7,
   stateOfCharge: {
     percent: 40,

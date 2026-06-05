@@ -61,11 +61,11 @@ export function hasStableEvDeadlineActuation(dev: DevicePlan['devices'][number])
   if (dev.binaryCommandPending === true) return false;
   if (dev.deferredReleaseIntent === 'ev_resume') {
     // Paused = off-but-commandable, the only state a resume acts on.
-    return !dev.currentOn && isCommandableNow(dev);
+    return dev.binaryControl?.on === false && isCommandableNow(dev);
   }
   if (dev.deferredReleaseIntent === 'ev_pause') {
     // Charging = on (the consolidated binary truth).
-    return dev.currentOn;
+    return dev.binaryControl?.on ?? true;
   }
   return false;
 }

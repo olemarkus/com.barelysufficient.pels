@@ -107,7 +107,7 @@ describe('plan diagnostics observations', () => {
         deviceType: 'onoff',
         targets: [],
         controlCapabilityId: 'onoff',
-        currentOn: false,
+        binaryControl: { on: false },
         controllable: true,
         available: true,
       },
@@ -143,7 +143,7 @@ describe('plan diagnostics observations', () => {
         deviceType: 'onoff',
         targets: [],
         controlCapabilityId: 'onoff',
-        currentOn: false,
+        binaryControl: { on: false },
         controllable: true,
         available: true,
       },
@@ -205,7 +205,7 @@ describe('plan diagnostics observations', () => {
         targets: [],
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
-        currentOn: false,
+        binaryControl: { on: false },
         controllable: true,
         available: true,
       },
@@ -246,7 +246,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
       },
       planDevice: {
@@ -289,7 +289,7 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 18,
-      currentOn: true,
+      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
     };
     const basePlanDevice: DevicePlanDevice = {
@@ -330,7 +330,7 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 16,
-      currentOn: true,
+      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
     };
     const basePlanDevice: DevicePlanDevice = {
@@ -385,7 +385,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -424,7 +424,7 @@ describe('plan diagnostics observations', () => {
         available: true,
         observationStale: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -460,7 +460,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -497,7 +497,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: false,
+        binaryControl: { on: false },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -534,7 +534,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -562,7 +562,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -598,7 +598,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: false,
+        binaryControl: { on: false },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {
@@ -632,7 +632,7 @@ describe('plan diagnostics observations', () => {
         controllable: true,
         available: true,
         currentTemperature: 18,
-        currentOn: false,
+        binaryControl: { on: false },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
       },
       planDevice: {

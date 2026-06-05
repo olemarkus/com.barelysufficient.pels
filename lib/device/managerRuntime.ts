@@ -1,4 +1,5 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
+import { resolveBinaryOn } from '../utils/binaryControl';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
@@ -216,12 +217,14 @@ function applyBinaryControlObservation(params: {
   const { parsed, observation } = params;
   if (observation.capabilityId === 'evcharger_charging') {
     parsed.evCharging = observation.observedValue;
-    parsed.currentOn = resolveEvCurrentOn({
-      evChargingState: parsed.evChargingState,
-      evchargerCharging: parsed.evCharging,
-    });
+    parsed.binaryControl = {
+      on: resolveEvCurrentOn({
+        evChargingState: parsed.evChargingState,
+        evchargerCharging: parsed.evCharging,
+      }),
+    };
   } else {
-    parsed.currentOn = observation.observedValue;
+    parsed.binaryControl = { on: observation.observedValue };
   }
   parsed.binaryControlObservation = {
     ...observation,
@@ -245,12 +248,14 @@ function applyExplicitBinaryObservation(params: {
   } = params;
   if (controlCapabilityId === 'evcharger_charging') {
     parsed.evCharging = value;
-    parsed.currentOn = resolveEvCurrentOn({
-      evChargingState: parsed.evChargingState,
-      evchargerCharging: parsed.evCharging,
-    });
+    parsed.binaryControl = {
+      on: resolveEvCurrentOn({
+        evChargingState: parsed.evChargingState,
+        evchargerCharging: parsed.evCharging,
+      }),
+    };
   } else {
-    parsed.currentOn = value;
+    parsed.binaryControl = { on: value };
   }
   if (controlCapabilityId !== undefined) {
     parsed.binaryControlObservation = {
@@ -321,10 +326,12 @@ function preserveRecentLocalBinaryState(params: {
     capabilityId,
   });
   if (!localWrite || typeof localWrite.value !== 'boolean') return;
-  if (typeof parsed.currentOn !== 'boolean') return;
-  if (parsed.currentOn === localWrite.value) return;
-  if (previous.currentOn !== localWrite.value) return;
-  parsed.currentOn = previous.currentOn;
+  const parsedBinary = parsed.binaryControl;
+  if (parsedBinary === undefined) return;
+  if (parsedBinary.on === localWrite.value) return;
+  const previousOn = resolveBinaryOn(previous);
+  if (previousOn !== localWrite.value) return;
+  parsed.binaryControl = { on: previousOn };
   if (capabilityId === 'evcharger_charging') {
     parsed.evCharging = previous.evCharging;
   }
@@ -338,11 +345,13 @@ function getPlanReconcileRealtimeChanges(
   if (!previous) return [];
 
   const changes: RealtimeDeviceReconcileChange[] = [];
-  if (options.binaryValueExplicitlyObserved && previous.currentOn !== next.currentOn) {
+  const previousOn = resolveBinaryOn(previous);
+  const nextOn = resolveBinaryOn(next);
+  if (options.binaryValueExplicitlyObserved && previousOn !== nextOn) {
     changes.push({
       capabilityId: next.controlCapabilityId ?? previous.controlCapabilityId ?? 'onoff',
-      previousValue: formatBinaryState(previous.currentOn),
-      nextValue: formatBinaryState(next.currentOn),
+      previousValue: formatBinaryState(previousOn),
+      nextValue: formatBinaryState(nextOn),
     });
   }
 

@@ -323,12 +323,12 @@ describe('planSteppedLoad', () => {
 
   it('resolves current state from binary onoff or stepped profile', () => {
     expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'low' }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: false, selectedStepId: 'low' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ currentOn: true, selectedStepId: 'off' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: false }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, currentOn: true }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: true }, selectedStepId: 'low' }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: false }, selectedStepId: 'low' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: true }, selectedStepId: 'off' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: false } }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
   });
 
   it('uses planning power for restore math and measured power for immediate shed relief', () => {

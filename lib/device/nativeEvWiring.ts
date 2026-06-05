@@ -170,7 +170,7 @@ export function applyNativeEvWiringOverlay(params: {
 export function normalizeNativeEvCapabilityUpdate(params: {
   snapshot: Pick<
     TargetDeviceSnapshot,
-    'controlAdapter' | 'currentOn' | 'evChargingState'
+    'controlAdapter' | 'binaryControl' | 'evChargingState'
   >;
   capabilityId: string;
   value: unknown;

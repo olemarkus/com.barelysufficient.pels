@@ -27,8 +27,8 @@ export function projectObservedState(snapshot: TargetDeviceSnapshot): ObservedDe
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),
-        currentOn: snapshot.currentOn,
     };
+    if (snapshot.binaryControl !== undefined) projected.binaryControl = { on: snapshot.binaryControl.on };
     if (snapshot.evCharging !== undefined) projected.evCharging = snapshot.evCharging;
     if (snapshot.evChargingState !== undefined) projected.evChargingState = snapshot.evChargingState;
     if (snapshot.stateOfCharge !== undefined) projected.stateOfCharge = { ...snapshot.stateOfCharge };

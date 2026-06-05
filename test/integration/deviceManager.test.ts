@@ -241,7 +241,7 @@ describe('DeviceTransport', () => {
                 managed: true,
                 budgetExempt: true,
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -331,7 +331,7 @@ describe('DeviceTransport', () => {
             expect(parsed).toEqual(expect.objectContaining({
                 id: 'thermo-invalid-date',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: undefined,
             }));
         });
@@ -688,7 +688,10 @@ describe('DeviceTransport', () => {
             const light = findSnapshotDevice(snapshot, 'dev2');
             expect(heater?.deviceType).toBe('temperature');
             expect(heater?.powerKw).toBe(1);
-            expect(heater?.currentOn).toBe(true);
+            // Heater exposes `onoff` only in capabilitiesObj, not the capabilities
+            // list, so it is not a binary-controlled device: `binaryControl` is
+            // absent (the old fabricated `currentOn: true`).
+            expect(heater?.binaryControl).toBeUndefined();
             expect(light?.deviceType).toBe('onoff');
             expect(light?.targets).toEqual([]);
         });
@@ -916,11 +919,11 @@ describe('DeviceTransport', () => {
             expect(snapshot[0].deviceClass).toBe('airtreatment');
             expect(snapshot[0].deviceType).toBe('temperature');
             expect(snapshot[0].powerCapable).toBe(true);
-            // Non-binary device (no onoff/control capability): currentOn stays
-            // `true` — it has no off-switch and may always draw (setpoint-
-            // controlled), so it must remain sheddable. Only a BINARY device with
-            // a missing onoff value resolves to the non-optimistic `false`.
-            expect(snapshot[0].currentOn).toBe(true);
+            // Non-binary device (no onoff/control capability): it has no binary
+            // control, so `binaryControl` is absent. Consumers treat absence as
+            // the old fabricated `currentOn: true` — it has no off-switch and may
+            // always draw (setpoint-controlled), so it stays sheddable.
+            expect(snapshot[0].binaryControl).toBeUndefined();
             expect(snapshot[0].canSetControl).toBeUndefined();
         });
 
@@ -948,7 +951,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: true,
+                binaryControl: { on: true },
                 canSetControl: true,
             }));
         });
@@ -1014,7 +1017,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: false,
+                binaryControl: { on: false },
                 canSetControl: true,
                 evChargingState: 'plugged_in_paused',
             }));
@@ -1042,7 +1045,7 @@ describe('DeviceTransport', () => {
 
             const snapshot = evDeviceManager.getSnapshot();
             expect(snapshot[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 evChargingState: 'plugged_in_charging',
             }));
         });
@@ -1794,7 +1797,7 @@ describe('DeviceTransport', () => {
                 shouldReconcilePlan: true,
                 snapshot: expect.objectContaining({
                     id: 'dev1',
-                    currentOn: false,
+                    binaryControl: { on: false },
                     measuredPowerKw: 0.5,
                 }),
                 changes: [{
@@ -1821,7 +1824,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: previousEvidence,
             }]);
 
@@ -1849,7 +1852,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 controlCapabilityId: 'onoff',
-                currentOn: true,
+                binaryControl: { on: true },
             }]);
 
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
@@ -1859,7 +1862,7 @@ describe('DeviceTransport', () => {
                 capabilityId: 'onoff',
                 observedValue: false,
             }));
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -1872,7 +1875,7 @@ describe('DeviceTransport', () => {
                 },
             });
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -1886,7 +1889,7 @@ describe('DeviceTransport', () => {
                 },
             });
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(realtimeEvidence);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
                 .toEqual(realtimeEvidence);
         });
@@ -1907,7 +1910,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 controlCapabilityId: 'onoff',
-                currentOn: true,
+                binaryControl: { on: true },
                 binaryControlObservation: trustedOnEvidence,
             }]);
 
@@ -1927,7 +1930,7 @@ describe('DeviceTransport', () => {
             });
 
             const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(snapshotDevice?.currentOn).toBe(true);
+            expect(snapshotDevice?.binaryControl?.on).toBe(true);
             expect(snapshotDevice?.binaryControlObservation).toEqual(trustedOnEvidence);
             expect(realtimeListener).toHaveBeenCalledOnce();
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
@@ -1950,11 +1953,11 @@ describe('DeviceTransport', () => {
                 },
             });
             await deviceManager.refreshSnapshot();
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
 
             // 2. Realtime onoff=false → the freshest trusted observation says OFF.
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             // 3. Pull where Homey serves a cached device object that OMITS onoff;
             //    the parser now honestly resolves currentOn:false (no value) with
@@ -1975,7 +1978,7 @@ describe('DeviceTransport', () => {
             // diverge from the retained binary evidence.
             const dev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(dev1?.binaryControlObservation?.observedValue).toBe(false);
-            expect(dev1?.currentOn).toBe(false);
+            expect(dev1?.binaryControl?.on).toBe(false);
         });
 
         it('logs the binary observation consolidated from pull + retained realtime sources', async () => {
@@ -2037,7 +2040,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot();
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
 
             mockApiGet.mockResolvedValue({
                 dev1: {
@@ -2052,7 +2055,7 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
 
             const heldDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(heldDev1?.currentOn).toBe(false);
+            expect(heldDev1?.binaryControl?.on).toBe(false);
             expect(heldDev1?.binaryControlObservation?.observedValue).toBe(false);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')?.observedValue).toBe(false);
 
@@ -2062,7 +2065,7 @@ describe('DeviceTransport', () => {
             deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
 
             const recoveredDev1 = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
-            expect(recoveredDev1?.currentOn).toBe(true);
+            expect(recoveredDev1?.binaryControl?.on).toBe(true);
             expect(recoveredDev1?.binaryControlObservation?.observedValue).toBe(true);
         });
 
@@ -2078,7 +2081,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -2102,7 +2105,7 @@ describe('DeviceTransport', () => {
 
             const pushedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(pushedDevice).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 binaryControlObservation: expect.objectContaining({
                     source: 'device_update',
                     observedValue: true,
@@ -2124,7 +2127,7 @@ describe('DeviceTransport', () => {
 
             const omittedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(omittedDevice).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 available: true,
                 binaryControlObservation: expect.objectContaining({
                     source: 'device_update',
@@ -2187,7 +2190,7 @@ describe('DeviceTransport', () => {
             });
             await deviceManager.refreshSnapshot();
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
         });
 
         it("clears binary evidence and logs when device.update carries invalid direct onoff='unknown'", async () => {
@@ -2206,7 +2209,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: previousEvidence,
             }]);
 
@@ -2221,7 +2224,7 @@ describe('DeviceTransport', () => {
             });
 
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(false);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(false);
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
             expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'binary_settle_evidence_cleared',
@@ -2250,7 +2253,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'thermostat',
                 deviceType: 'temperature',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 measuredPowerKw: 0.1,
                 binaryControlObservation: previousEvidence,
             }]);
@@ -2286,7 +2289,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
             }]);
 
             deviceManager.injectDeviceUpdateForTest({
@@ -2319,7 +2322,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -2341,7 +2344,7 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
                 .toEqual(expect.objectContaining({
@@ -2366,7 +2369,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: true,
+                binaryControl: { on: true },
                 binaryControlObservation: newerEvidence,
             }]);
 
@@ -2388,7 +2391,7 @@ describe('DeviceTransport', () => {
             const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
             expect(snapshotDevice?.binaryControlObservation).toEqual(newerEvidence);
-            expect(snapshotDevice?.currentOn).toBe(true);
+            expect(snapshotDevice?.binaryControl?.on).toBe(true);
         });
 
         it('keeps currentOn aligned with newer cached evidence when snapshot refresh carries stale binary evidence', async () => {
@@ -2407,7 +2410,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: true,
+                binaryControl: { on: true },
                 binaryControlObservation: newerEvidence,
             }]);
             mockApiGet.mockResolvedValue({
@@ -2432,7 +2435,7 @@ describe('DeviceTransport', () => {
             const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toEqual(newerEvidence);
             expect(snapshotDevice?.binaryControlObservation).toEqual(newerEvidence);
-            expect(snapshotDevice?.currentOn).toBe(true);
+            expect(snapshotDevice?.binaryControl?.on).toBe(true);
         });
 
         it('does not reattach cached evidence when snapshot refresh has a contradictory timestamp-less boolean', async () => {
@@ -2443,7 +2446,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -2468,7 +2471,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.refreshSnapshot();
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControl?.on).toBe(true);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
         });
@@ -2481,7 +2484,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -2511,7 +2514,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'heater',
                 deviceType: 'onoff',
                 controlCapabilityId: 'onoff',
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: {
                     valid: true,
                     capabilityId: 'onoff',
@@ -2546,7 +2549,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: true,
+                binaryControl: { on: true },
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: previousEvidence,
@@ -2601,7 +2604,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: true,
+                binaryControl: { on: true },
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: newerEvidence,
@@ -2657,7 +2660,7 @@ describe('DeviceTransport', () => {
                 deviceClass: 'evcharger',
                 deviceType: 'onoff',
                 controlCapabilityId: 'evcharger_charging',
-                currentOn: false,
+                binaryControl: { on: false },
                 evCharging: false,
                 binaryControlObservation: previousRawEvidence,
             }]);
@@ -2695,7 +2698,7 @@ describe('DeviceTransport', () => {
                 source: 'snapshot_refresh',
             };
             expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 evChargingState: 'plugged_in_charging',
                 binaryControlObservation: expectedStateEvidence,
             }));
@@ -2725,7 +2728,7 @@ describe('DeviceTransport', () => {
                     deviceClass: 'evcharger',
                     deviceType: 'onoff',
                     controlCapabilityId: 'evcharger_charging',
-                    currentOn: true,
+                    binaryControl: { on: true },
                     evCharging: true,
                     binaryControlObservation: previousRawEvidence,
                 }]);
@@ -2746,7 +2749,7 @@ describe('DeviceTransport', () => {
                     // State-authoritative: paused state wins over the lingering
                     // raw `evcharger_charging: true` boolean — currentOn is off,
                     // matching the state-derived settle evidence (observedValue:false).
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evCharging: true,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: expectedStateEvidence,
@@ -2764,7 +2767,7 @@ describe('DeviceTransport', () => {
 
                 expect(evDeviceManager.getBinarySettleEvidenceByDeviceId('ev1')).toEqual(expectedStateEvidence);
                 expect(findSnapshotDevice(evDeviceManager.getSnapshot(), 'ev1')).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evCharging: false,
                     binaryControlObservation: expectedStateEvidence,
                 }));
@@ -2796,7 +2799,7 @@ describe('DeviceTransport', () => {
                     deviceClass: 'evcharger',
                     deviceType: 'onoff',
                     controlCapabilityId: 'evcharger_charging',
-                    currentOn: true,
+                    binaryControl: { on: true },
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: previousEvidence,
@@ -2889,7 +2892,7 @@ describe('DeviceTransport', () => {
             });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
             expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                 deviceId: 'dev1',
@@ -2952,7 +2955,7 @@ describe('DeviceTransport', () => {
             });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
             expect(realtimeListener).not.toHaveBeenCalled();
         });
@@ -2994,7 +2997,7 @@ describe('DeviceTransport', () => {
             });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
             expect(realtimeListener).not.toHaveBeenCalled();
 
@@ -3051,7 +3054,7 @@ describe('DeviceTransport', () => {
                 observedAtMs: driftEvent.observedAtMs,
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
         });
 
@@ -3075,7 +3078,7 @@ describe('DeviceTransport', () => {
             const currentOnAtReconcile: unknown[] = [];
             const liveStateListener = vi.fn();
             const realtimeListener = vi.fn(() => {
-                currentOnAtReconcile.push(deviceManager.getSnapshot()[0]?.currentOn);
+                currentOnAtReconcile.push(deviceManager.getSnapshot()[0]?.binaryControl?.on);
             });
             deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, liveStateListener);
             deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
@@ -3099,7 +3102,7 @@ describe('DeviceTransport', () => {
             }));
             expect(currentOnAtReconcile).toEqual([true]);
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
         });
 
@@ -3127,7 +3130,7 @@ describe('DeviceTransport', () => {
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
         });
 
@@ -3154,7 +3157,7 @@ describe('DeviceTransport', () => {
                 deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
 
                 await vi.advanceTimersByTimeAsync(5000);
                 expect(realtimeListener).not.toHaveBeenCalled();
@@ -3183,7 +3186,7 @@ describe('DeviceTransport', () => {
                     ],
                 }));
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 21 })],
                 }));
             } finally {
@@ -3223,7 +3226,7 @@ describe('DeviceTransport', () => {
                 },
             });
             expect(realtimeListener).not.toHaveBeenCalled();
-            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
 
             // Second update fights back — settle window is gone, treated as normal drift
             deviceManager.injectDeviceUpdateForTest({
@@ -3242,7 +3245,7 @@ describe('DeviceTransport', () => {
                 deviceId: 'dev1',
                 changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
             }));
-            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: true } }));
         });
 
         it('first contradictory device.update triggers drift; subsequent observations are normal', async () => {
@@ -3283,7 +3286,7 @@ describe('DeviceTransport', () => {
                 changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
         });
 
@@ -3380,7 +3383,7 @@ describe('DeviceTransport', () => {
 
                 await deviceManager.setCapability('dev1', 'onoff', false);
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                 }));
 
                 await vi.advanceTimersByTimeAsync(5000);
@@ -3400,7 +3403,7 @@ describe('DeviceTransport', () => {
                 // on-state — it honestly resolves currentOn:false, which matches the
                 // existing off-state, so there is no onoff change to reconcile.
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                 }));
                 expect(realtimeListener).not.toHaveBeenCalledWith(expect.objectContaining({
                     changes: expect.arrayContaining([
@@ -3444,7 +3447,7 @@ describe('DeviceTransport', () => {
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
             });
 
             it('pending off write + capability event on => drift immediately', async () => {
@@ -3461,7 +3464,7 @@ describe('DeviceTransport', () => {
                     deviceId: 'dev1',
                     changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
                 }));
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: true } }));
             });
 
             it('pending off write + device.update with off => settles immediately', async () => {
@@ -3474,7 +3477,7 @@ describe('DeviceTransport', () => {
                 deviceManager.injectDeviceUpdateForTest(heaterOffDevice());
 
                 expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
             });
 
             it('pending off write + device.update with on => drift immediately', async () => {
@@ -3491,7 +3494,7 @@ describe('DeviceTransport', () => {
                     deviceId: 'dev1',
                     changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
                 }));
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: true } }));
             });
 
             it('pending on write + capability event on => settles immediately', async () => {
@@ -3504,7 +3507,7 @@ describe('DeviceTransport', () => {
                 deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', true);
 
                 expect(realtimeListener).not.toHaveBeenCalled();
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: true }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: true } }));
             });
 
             it('pending on write + capability event off => drift immediately', async () => {
@@ -3521,7 +3524,7 @@ describe('DeviceTransport', () => {
                     deviceId: 'dev1',
                     changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'on', nextValue: 'off' })],
                 }));
-                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
             });
 
             it('does not settle or mutate pending EV resume from raw capability event while state is paused', async () => {
@@ -3556,7 +3559,7 @@ describe('DeviceTransport', () => {
 
                     expect(realtimeListener).not.toHaveBeenCalled();
                     expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                        currentOn: false,
+                        binaryControl: { on: false },
                         evCharging: false,
                         evChargingState: 'plugged_in_paused',
                         binaryControlObservation: expect.objectContaining({
@@ -3624,7 +3627,7 @@ describe('DeviceTransport', () => {
                         observedAtMs: driftEvent.observedAtMs,
                     }));
                     expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                        currentOn: false,
+                        binaryControl: { on: false },
                         evChargingState: 'plugged_out',
                     }));
 
@@ -3649,7 +3652,7 @@ describe('DeviceTransport', () => {
 
                     // snapshot.currentOn=false matches desired=false => no reconcile at timeout
                     expect(realtimeListener).not.toHaveBeenCalled();
-                    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ currentOn: false }));
+                    expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ binaryControl: { on: false } }));
                 } finally {
                     vi.useRealTimers();
                 }
@@ -3673,13 +3676,13 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
 
             await deviceManager.setCapability('dev1', 'onoff', true);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
             expect(deviceManager.getDebugObservedSources('dev1')?.localWrites.onoff).toEqual(expect.objectContaining({
                 path: 'local_write',
@@ -3688,7 +3691,7 @@ describe('DeviceTransport', () => {
                 preservedLocalState: false,
                 snapshot: expect.objectContaining({
                     id: 'dev1',
-                    currentOn: false,
+                    binaryControl: { on: false },
                 }),
             }));
         });
@@ -3784,7 +3787,7 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', true);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
         });
 
@@ -3810,7 +3813,7 @@ describe('DeviceTransport', () => {
             await deviceManager.setCapability('dev1', 'onoff', false);
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
                 binaryControlObservation: expect.objectContaining({
                     observedValue: true,
                 }),
@@ -3832,7 +3835,7 @@ describe('DeviceTransport', () => {
 
             const snapshotDevice = deviceManager.getSnapshot()[0];
             expect(snapshotDevice).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 available: false,
                 binaryControlObservation: expect.objectContaining({
                     observedValue: true,
@@ -4352,7 +4355,7 @@ describe('DeviceTransport', () => {
             // optimistic true — it resolves honestly to currentOn:false (and
             // still emits no timestamped binary evidence).
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
                 measuredPowerKw: 1,
                 binaryControlObservation: undefined,
                 available: false,
@@ -4414,7 +4417,7 @@ describe('DeviceTransport', () => {
             });
 
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 measuredPowerKw: 2.865,
                 powerKw: 2.865,
             }));
@@ -4516,7 +4519,7 @@ describe('DeviceTransport', () => {
                 });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evChargingState: 'plugged_in_paused',
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
@@ -4571,7 +4574,7 @@ describe('DeviceTransport', () => {
                 })],
             }));
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
             }));
@@ -4613,7 +4616,7 @@ describe('DeviceTransport', () => {
                 })],
             }));
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
                 evChargingState: 'plugged_out',
             }));
 
@@ -4646,7 +4649,7 @@ describe('DeviceTransport', () => {
 
             expect(realtimeListener).not.toHaveBeenCalled();
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
                 evChargingState: 'plugged_in_paused',
             }));
 
@@ -4830,7 +4833,7 @@ describe('DeviceTransport', () => {
                 id: 'sensor1',
                 name: 'Battery Sensor',
                 deviceClass: 'sensor',
-                currentOn: true,
+                binaryControl: { on: true },
                 targets: [],
                 powerCapable: false,
                 capabilities: ['measure_battery'],
@@ -4875,7 +4878,7 @@ describe('DeviceTransport', () => {
                 })],
             }));
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 evCharging: false,
                 evChargingState: 'plugged_in_charging',
             }));
@@ -4945,7 +4948,7 @@ describe('DeviceTransport', () => {
                 await evDeviceManager.refreshSnapshot();
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evChargingState: 'plugged_in_paused',
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
@@ -5691,7 +5694,7 @@ describe('DeviceTransport', () => {
 
             await deviceManager.setCapability('dev1', 'onoff', false);
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: false,
+                binaryControl: { on: false },
             }));
 
             // Device fights back — settle window resolves as drift immediately
@@ -5712,7 +5715,7 @@ describe('DeviceTransport', () => {
                 changes: [expect.objectContaining({ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' })],
             }));
             expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
             }));
         });
 
@@ -5753,7 +5756,7 @@ describe('DeviceTransport', () => {
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                 }));
             } finally {
                 vi.useRealTimers();
@@ -5798,7 +5801,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.setCapability('ev1', 'evcharger_charging', false);
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     controlCapabilityId: 'evcharger_charging',
                     controlWriteCapabilityId: 'charging_button',
                 }));
@@ -5828,7 +5831,7 @@ describe('DeviceTransport', () => {
 
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    binaryControl: { on: true },
                     evCharging: false,
                     evChargingState: 'plugged_in_charging',
                 }));
@@ -5883,7 +5886,7 @@ describe('DeviceTransport', () => {
                 });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: true,
+                    binaryControl: { on: true },
                     evChargingState: 'plugged_in_charging',
                     binaryControlObservation: {
                         valid: true,
@@ -5952,7 +5955,7 @@ describe('DeviceTransport', () => {
                 });
 
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evChargingState: 'plugged_in_paused',
                 }));
                 expect(evDeviceManager.getSnapshot()[0].binaryControlObservation).toBeUndefined();
@@ -6010,7 +6013,7 @@ describe('DeviceTransport', () => {
                 expect(realtimeListener).not.toHaveBeenCalled();
                 expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(0);
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    currentOn: false,
+                    binaryControl: { on: false },
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                 }));
@@ -6061,7 +6064,7 @@ describe('DeviceTransport', () => {
             expect(realtimeListener).not.toHaveBeenCalled();
             expect((evDeviceManager as any).binarySettleState.pendingBinarySettleWindows.size).toBe(1);
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                currentOn: true,
+                binaryControl: { on: true },
                 evChargingState: 'plugged_in_charging',
             }));
 
@@ -6072,7 +6075,7 @@ describe('DeviceTransport', () => {
             expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                 // Paused = off (state-authoritative), even though the proprietary
                 // charging signal lingered before the charge_mode update.
-                currentOn: false,
+                binaryControl: { on: false },
                 evChargingState: 'plugged_in_paused',
             }));
 
@@ -6201,7 +6204,7 @@ describe('DeviceTransport', () => {
                         expect.objectContaining({ capabilityId: 'onoff' }),
                     ]),
                 }));
-                expect(deviceManager.getSnapshot().find((d) => d.id === 'dev1')?.currentOn).toBe(false);
+                expect(deviceManager.getSnapshot().find((d) => d.id === 'dev1')?.binaryControl?.on).toBe(false);
             });
 
             it('triggers reconcile when target_temperature is changed externally via capability event', async () => {
@@ -6381,7 +6384,7 @@ describe('DeviceTransport', () => {
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'onoff', false);
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.currentOn).toBe(false);
+                    expect(snapshot.binaryControl?.on).toBe(false);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
                     expect(liveStateListener).toHaveBeenCalledOnce();
                     expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
@@ -6614,7 +6617,7 @@ describe('DeviceTransport', () => {
 
                     // Local onoff write
                     await deviceManager.setCapability('dev1', 'onoff', false);
-                    expect(deviceManager.getSnapshot()[0].currentOn).toBe(false);
+                    expect(deviceManager.getSnapshot()[0].binaryControl?.on).toBe(false);
                     expect(deviceManager.getSnapshot()[0].lastLocalWriteMs).toBe(
                         new Date('2026-04-01T12:01:00.000Z').getTime(),
                     );
@@ -6937,7 +6940,7 @@ describe('DeviceTransport', () => {
                     });
                     await deviceManager.refreshSnapshot();
                     const freshnessAfterFirstRefresh = deviceManager.getSnapshot()[0].lastFreshDataMs;
-                    expect(deviceManager.getSnapshot()[0].currentOn).toBe(true);
+                    expect(deviceManager.getSnapshot()[0].binaryControl?.on).toBe(true);
 
                     vi.setSystemTime(new Date('2026-04-01T12:10:00.000Z'));
                     mockApiGet.mockResolvedValue({
@@ -6954,7 +6957,7 @@ describe('DeviceTransport', () => {
                     await deviceManager.refreshSnapshot({ targetedRefresh: true });
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.currentOn).toBe(true);
+                    expect(snapshot.binaryControl?.on).toBe(true);
                     expect(snapshot.lastFreshDataMs).toBe(freshnessAfterFirstRefresh);
                     expect(snapshot.lastFreshDataMs).not.toBe(new Date('2026-04-01T12:10:00.000Z').getTime());
                     expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
@@ -7011,7 +7014,7 @@ describe('DeviceTransport', () => {
                     });
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.currentOn).toBe(false);
+                    expect(snapshot.binaryControl?.on).toBe(false);
                     expect(snapshot.measuredPowerKw).toBe(0.5);
                     expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
                     expect(snapshot.binaryControlObservation).toBeUndefined();
@@ -7136,7 +7139,7 @@ describe('DeviceTransport', () => {
                     name: 'Zaptec',
                     deviceClass: 'evcharger',
                     capabilities: ['evcharger_charging'],
-                    currentOn: true,
+                    binaryControl: { on: true },
                     controlCapabilityId: 'evcharger_charging',
                     targets: [],
                     powerCapable: false,

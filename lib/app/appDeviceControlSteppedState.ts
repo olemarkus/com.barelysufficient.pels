@@ -44,7 +44,7 @@ export const resolveSteppedLoadCurrentOn = (params: {
   selectedStepId?: string;
 }): boolean => {
   const { snapshot, profile, selectedStepId } = params;
-  if (snapshot.currentOn === false) return false;
+  if (snapshot.binaryControl?.on === false) return false;
   if (!selectedStepId) return true;
   return !isSteppedLoadOffStep(profile, selectedStepId);
 };
@@ -52,7 +52,7 @@ export const resolveSteppedLoadCurrentOn = (params: {
 export function buildSteppedLoadSnapshotStepFields(params: {
   profile: SteppedLoadProfile;
   nowMs: number;
-  currentOn?: boolean;
+  binaryOn?: boolean;
   nativeSteppedControlEnabled: boolean;
   nativeReportedStep?: StepEvidence;
   flowReportedStep?: StepEvidence;
@@ -61,7 +61,7 @@ export function buildSteppedLoadSnapshotStepFields(params: {
 }): SteppedLoadStepFields {
   const reportedStep = resolveReportedStepEvidence({
     profile: params.profile,
-    currentOn: params.currentOn,
+    binaryOn: params.binaryOn,
     nativeSteppedControlEnabled: params.nativeSteppedControlEnabled,
     nativeReportedStep: params.nativeReportedStep,
     flowReportedStep: params.flowReportedStep,
@@ -82,7 +82,7 @@ export function buildSteppedLoadSnapshotStepFields(params: {
 
 function resolveReportedStepEvidence(params: {
   profile: SteppedLoadProfile;
-  currentOn?: boolean;
+  binaryOn?: boolean;
   nativeSteppedControlEnabled: boolean;
   nativeReportedStep?: StepEvidence;
   flowReportedStep?: StepEvidence;
@@ -98,7 +98,7 @@ function resolveReportedStepEvidence(params: {
   return {
     stepId: shouldSuppressFlowReport({
       profile: params.profile,
-      currentOn: params.currentOn,
+      binaryOn: params.binaryOn,
       stepId: flowStepId,
     })
       ? undefined
@@ -110,7 +110,7 @@ function resolveReportedStepEvidence(params: {
 
 function shouldSuppressFlowReport(params: {
   profile: SteppedLoadProfile;
-  currentOn?: boolean;
+  binaryOn?: boolean;
   stepId?: string;
 }): boolean {
   return shouldSuppressSteppedLoadFlowReport(params);
@@ -118,11 +118,11 @@ function shouldSuppressFlowReport(params: {
 
 export function shouldSuppressSteppedLoadFlowReport(params: {
   profile?: DeviceControlProfile;
-  currentOn?: boolean;
+  binaryOn?: boolean;
   stepId?: string;
 }): boolean {
   if (params.profile?.model !== 'stepped_load') return false;
   if (!params.stepId) return false;
-  if (params.currentOn !== false) return false;
+  if (params.binaryOn !== false) return false;
   return !isSteppedLoadOffStep(params.profile, params.stepId);
 }

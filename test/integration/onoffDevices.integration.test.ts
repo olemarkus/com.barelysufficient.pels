@@ -94,7 +94,7 @@ describe('On/off device integration', () => {
     expect(entry?.deviceType).toBe('onoff');
     expect(entry?.deviceClass).toBe('socket');
     expect(entry?.targets?.length ?? 0).toBe(0);
-    expect(entry?.currentOn).toBe(true);
+    expect(entry?.binaryControl?.on).toBe(true);
     expect(entry?.powerKw).toBeCloseTo(1.2, 2);
   });
 

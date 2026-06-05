@@ -1127,7 +1127,7 @@ function trackPlanDeviceForOvershoot(
     controllable: device.controllable,
     plannedState: device.plannedState,
     currentState: device.currentState,
-    currentOn: device.currentOn,
+    binaryControl: device.binaryControl,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
@@ -1199,7 +1199,7 @@ function attachDeferredReleaseIntents(
 function resolveOvershootDevicePower(
   device: Pick<
     OvershootTrackedPlanDevice,
-    'currentState' | 'currentOn' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
+    'currentState' | 'binaryControl' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
   > | undefined,
 ): { kw: number | null; source: ResolvedPowerSource } {
   if (!device) return { kw: null, source: 'unknown' };

@@ -103,7 +103,9 @@ export type PlanInputDevice = {
     };
   };
   // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
-  currentOn: boolean;
+  // Present IFF the device has binary control (`controlCapabilityId` set); `.on` is the observed binary
+  // state. Absence is equivalent to the old fabricated `currentOn: true` for non-binary devices.
+  binaryControl?: { on: boolean };
   currentState?: string;
   evChargingState?: string;
   powerKw?: number;

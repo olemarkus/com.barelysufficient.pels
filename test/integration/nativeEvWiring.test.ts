@@ -117,7 +117,7 @@ describe('native EV wiring shim', () => {
       }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -220,7 +220,7 @@ describe('native EV wiring shim', () => {
       }),
       controlWriteCapabilityId: 'charging_button',
       controlObservationCapabilityId: 'evcharger_charging',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       powerCapable: true,
     }));
@@ -254,7 +254,7 @@ describe('native EV wiring shim', () => {
         activationEnabled: true,
       }),
       controlWriteCapabilityId: 'charging_button',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -288,7 +288,7 @@ describe('native EV wiring shim', () => {
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       canSetControl: true,
     }));
@@ -402,7 +402,7 @@ describe('native EV wiring shim', () => {
       },
       controlWriteCapabilityId: undefined,
       controlObservationCapabilityId: undefined,
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       canSetControl: false,
     }));
@@ -442,7 +442,7 @@ describe('native EV wiring shim', () => {
     })]);
 
     expect(parsed).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
@@ -467,7 +467,7 @@ describe('native EV wiring shim', () => {
     expect(parsed).toEqual(expect.objectContaining({
       controlCapabilityId: 'evcharger_charging',
       controlWriteCapabilityId: 'charging_button',
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
@@ -495,7 +495,7 @@ describe('native EV wiring shim', () => {
         kind: 'capability_adapter',
         activationEnabled: true,
       }),
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
     expect(parsed.flowBackedCapabilityIds).toBeUndefined();
@@ -648,7 +648,7 @@ describe('native EV wiring shim', () => {
           activationRequired: true,
           activationEnabled: true,
         },
-        currentOn: false,
+        binaryControl: { on: false },
         evChargingState: 'plugged_in_paused',
       },
       capabilityId: 'charging_button',
@@ -661,7 +661,7 @@ describe('native EV wiring shim', () => {
           activationRequired: true,
           activationEnabled: true,
         },
-        currentOn: false,
+        binaryControl: { on: false },
         evChargingState: 'plugged_in_paused',
       },
       capabilityId: 'charge_mode',
@@ -691,7 +691,7 @@ describe('native EV wiring shim', () => {
           activationRequired: true,
           activationEnabled: true,
         },
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
       },
       capabilityId: 'alarm_generic.car_connected',
@@ -712,7 +712,7 @@ describe('native EV wiring shim', () => {
           activationRequired: true,
           activationEnabled: true,
         },
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
       },
       capabilityId: 'alarm_generic.car_connected',

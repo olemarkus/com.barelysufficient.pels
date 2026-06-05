@@ -70,12 +70,12 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
 };
 
 const devices: TargetDeviceSnapshot[] = [
-  { id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false, currentTemperature: 18.4 },
+  { id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, currentTemperature: 18.4 },
   {
     id: 'dev_b',
     name: 'EV charger',
     targets: [],
-    currentOn: false,
+    binaryControl: { on: false },
     stateOfCharge: { percent: 45, status: 'fresh' },
   },
 ];
@@ -292,7 +292,7 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: buildActivePlans([buildPlan({})]),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       // Device exists but has no currentTemperature reading.
-      devices: [{ id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false }],
+      devices: [{ id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false } }],
       nowMs: T0,
     });
     expect(cards[0].currentValueLine).toBeNull();
@@ -432,8 +432,8 @@ describe('resolveDeadlinesListCards', () => {
       activePlans: { version: 1, plansByDeviceId },
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices: [
-        { id: 'dev_a', name: 'Living-room heater', targets: [], currentOn: false },
-        { id: 'dev_other', name: 'Other device', targets: [], currentOn: false },
+        { id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false } },
+        { id: 'dev_other', name: 'Other device', targets: [], binaryControl: { on: false } },
       ],
       nowMs: T0,
     });

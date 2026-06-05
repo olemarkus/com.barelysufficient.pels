@@ -89,7 +89,7 @@ export const shouldSkipShedding = (params: {
     snapshotState,
   } = params;
   const isUnavailable = snapshotState?.available === false;
-  const isAlreadyOff = snapshotState?.currentOn === false;
+  const isAlreadyOff = snapshotState?.binaryControl?.on === false;
   if (snapshotState?.deviceClass === 'evcharger') {
     const evSnapshot = formatEvSnapshot(snapshotState);
     logger.debug({

@@ -62,7 +62,7 @@ const onoffSnapshot: TargetDeviceSnapshot = {
   controlCapabilityId: 'onoff',
   capabilities: ['onoff'],
   canSetControl: true,
-  currentOn: true,
+  binaryControl: { on: true },
   available: true,
 } as unknown as TargetDeviceSnapshot;
 
@@ -71,7 +71,7 @@ const evSnapshot: TargetDeviceSnapshot = {
   controlCapabilityId: 'evcharger_charging',
   capabilities: ['evcharger_charging'],
   canSetControl: true,
-  currentOn: true,
+  binaryControl: { on: true },
   available: true,
   deviceClass: 'evcharger',
   evChargingState: 'plugged_in_charging',

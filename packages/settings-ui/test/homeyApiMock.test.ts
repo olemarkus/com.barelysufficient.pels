@@ -103,8 +103,8 @@ describe('homeyApiMock', () => {
       const homey = createHomeyMock({
         uiState: {
           devices: [
-            { id: 'dev-1', name: 'Heater', targets: [], currentOn: true },
-            { id: 'dev-2', name: 'EV', targets: [], currentOn: false },
+            { id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
+            { id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
           ],
         },
       });
@@ -113,8 +113,8 @@ describe('homeyApiMock', () => {
 
       expect(result).toEqual({
         devices: [
-          { id: 'dev-1', name: 'Heater', targets: [], currentOn: true },
-          { id: 'dev-2', name: 'EV', targets: [], currentOn: false },
+          { id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } },
+          { id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
         ],
       });
     });
@@ -122,13 +122,13 @@ describe('homeyApiMock', () => {
     it('returns the same explicit array shape from /ui_refresh_devices', async () => {
       const homey = createHomeyMock({
         uiState: {
-          devices: [{ id: 'dev-1', name: 'Heater', targets: [], currentOn: true }],
+          devices: [{ id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
         },
       });
 
       await expect(callHomeyApi(homey, 'POST', SETTINGS_UI_REFRESH_DEVICES_PATH))
         .resolves.toEqual({
-          devices: [{ id: 'dev-1', name: 'Heater', targets: [], currentOn: true }],
+          devices: [{ id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
         });
     });
 
@@ -136,7 +136,7 @@ describe('homeyApiMock', () => {
       const homey = createHomeyMock({
         settings: {
           target_devices_snapshot: [
-            { id: 'legacy-1', name: 'Legacy', targets: [], currentOn: true },
+            { id: 'legacy-1', name: 'Legacy', targets: [], binaryControl: { on: true } },
           ],
         },
       });
@@ -144,7 +144,7 @@ describe('homeyApiMock', () => {
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
         .resolves.toEqual({
           devices: [
-            { id: 'legacy-1', name: 'Legacy', targets: [], currentOn: true },
+            { id: 'legacy-1', name: 'Legacy', targets: [], binaryControl: { on: true } },
           ],
         });
     });
@@ -153,12 +153,12 @@ describe('homeyApiMock', () => {
       const homey = createHomeyMock({
         settings: {
           target_devices_snapshot: [
-            { id: 'should-be-ignored', name: 'Legacy', targets: [], currentOn: true },
+            { id: 'should-be-ignored', name: 'Legacy', targets: [], binaryControl: { on: true } },
           ],
         },
         uiState: {
           devices: [
-            { id: 'served', name: 'Live', targets: [], currentOn: false },
+            { id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ],
         },
       });
@@ -166,7 +166,7 @@ describe('homeyApiMock', () => {
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
         .resolves.toEqual({
           devices: [
-            { id: 'served', name: 'Live', targets: [], currentOn: false },
+            { id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ],
         });
     });

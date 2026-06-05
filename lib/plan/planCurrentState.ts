@@ -66,16 +66,21 @@ function buildBinaryResolvedCurrentState(params: {
 
 function buildNotApplicableResolvedCurrentState(params: {
   currentState: 'not_applicable';
-  currentOn?: boolean;
+  binaryControl?: { on: boolean };
   pendingInfluence: PlannerPendingInfluence;
 }): ResolvedCurrentState {
-  const { currentState, currentOn, pendingInfluence } = params;
-  if (typeof currentOn === 'boolean') {
+  const { currentState, binaryControl, pendingInfluence } = params;
+  // Binary devices carry an observed `binaryControl`; resolve their on/off. A
+  // device with no binary control (target-only / non-binary) carries no
+  // `binaryControl`, mirroring the old absent-`currentOn` target branch.
+  if (binaryControl !== undefined) {
     return {
       currentState,
-      isOn: currentOn,
+      isOn: binaryControl.on,
       source: 'binary',
-      reasonCode: currentOn ? 'observed_binary_on_not_applicable' : 'observed_binary_off_not_applicable',
+      reasonCode: binaryControl.on
+        ? 'observed_binary_on_not_applicable'
+        : 'observed_binary_off_not_applicable',
       pendingInfluence,
     };
   }
@@ -103,7 +108,7 @@ export function resolveEffectiveCurrentState(
   if (currentState === 'not_applicable') {
     return buildNotApplicableResolvedCurrentState({
       currentState,
-      currentOn: device.currentOn,
+      binaryControl: device.binaryControl,
       pendingInfluence,
     });
   }

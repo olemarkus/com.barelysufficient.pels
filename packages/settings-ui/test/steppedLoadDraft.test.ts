@@ -23,7 +23,7 @@ const buildSteppedDevice = (
 ): TargetDeviceSnapshot => ({
   id,
   name: `Stepped Device ${id}`,
-  currentOn: true,
+  binaryControl: { on: true },
   targets: [],
   // `controlModel: 'stepped_load'` makes getEffectiveControlModel resolve to
   // stepped_load without needing state.deviceControlProfiles wired up.

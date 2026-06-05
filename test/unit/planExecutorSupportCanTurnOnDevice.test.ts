@@ -14,7 +14,7 @@ const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
   id: 'd1',
   name: 'Device',
   targets: [],
-  currentOn: false,
+  binaryControl: { on: false },
   ...overrides,
 }) as TargetDeviceSnapshot;
 

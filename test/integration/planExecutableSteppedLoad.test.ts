@@ -14,7 +14,7 @@ const buildObservedState = (
 ) => buildExecutableObservedDeviceState({
   id: device.id,
   name: device.name,
-  currentOn: device.currentOn ?? device.currentState === 'on',
+  binaryControl: { on: device.binaryControl?.on ?? device.currentState === 'on' },
   targets: [],
   controlModel: device.controlModel,
   steppedLoadProfile: device.steppedLoadProfile,

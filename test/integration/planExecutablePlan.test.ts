@@ -73,7 +73,7 @@ describe('planExecutablePlan', () => {
     const observed = buildExecutableObservedDeviceState({
       id: 'thermostat-1',
       name: 'Thermostat',
-      currentOn: true,
+      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 16 }],
     });
 
@@ -232,7 +232,7 @@ describe('planExecutablePlan', () => {
     const observed = buildExecutableObservedDeviceState({
       id: 'thermostat-1',
       name: 'Thermostat',
-      currentOn: true,
+      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18 }],
     });
 

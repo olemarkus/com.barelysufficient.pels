@@ -177,7 +177,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([buildPlanInputDevice({
         id: 'dev-1',
         name: 'Heater',
-        currentOn: true,
+        binaryControl: { on: true },
         controllable: true,
         expectedPowerKw: 1.2,
       })]),
@@ -227,7 +227,7 @@ describe('buildInitialPlanDevices', () => {
       selectedStepId: 'max',
       desiredStepId: 'max',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0.5,
@@ -275,7 +275,7 @@ describe('buildInitialPlanDevices', () => {
       selectedStepId: 'max',
       desiredStepId: 'max',
       targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0.5,
@@ -325,7 +325,7 @@ describe('buildInitialPlanDevices', () => {
       selectedStepId: 'max',
       desiredStepId: 'mid',
       stepCommandPending: true,
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
@@ -369,7 +369,7 @@ describe('buildInitialPlanDevices', () => {
         ],
       },
       selectedStepId: 'max',
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
@@ -377,7 +377,7 @@ describe('buildInitialPlanDevices', () => {
     const recoveringDevice = buildPlanInputDevice({
       id: 'gang',
       name: 'Hall thermostat',
-      currentOn: false,
+      binaryControl: { on: false },
       controllable: true,
       measuredPowerKw: 0,
     });
@@ -418,7 +418,7 @@ describe('buildInitialPlanDevices', () => {
       },
       selectedStepId: undefined,
       desiredStepId: undefined,
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       measuredPowerKw: 3,
     };
@@ -462,7 +462,7 @@ describe('buildInitialPlanDevices', () => {
       selectedStepId: 'max',
       desiredStepId: 'low',
       stepCommandPending: false,
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
@@ -495,7 +495,7 @@ describe('buildInitialPlanDevices', () => {
       name: 'Water Heater',
       selectedStepId: 'low',
       desiredStepId: 'max',
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
       expectedPowerKw: 1.25,
       measuredPowerKw: 1.19,
@@ -525,7 +525,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: false });
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: false } });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -582,7 +582,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when no pending binary command exists', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: true });
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
@@ -605,7 +605,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when pending command is a shed (desired=false)', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', currentOn: true });
+    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -638,7 +638,7 @@ describe('buildInitialPlanDevices', () => {
     const device = buildPlanInputDevice({
       id: 'dev-1',
       name: 'Heater',
-      currentOn: false,
+      binaryControl: { on: false },
       controlCapabilityId: 'onoff',
       observationStale: true,
     });
@@ -669,7 +669,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       selectedStepId: 'max',
-      currentOn: false, // OFF at binary level
+      binaryControl: { on: false }, // OFF at binary level
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0,
@@ -709,7 +709,7 @@ describe('buildInitialPlanDevices', () => {
     const device = buildPlanInputDevice({
       id: 'dev-1',
       name: 'Hall Heater',
-      currentOn: false,
+      binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 1,
       measuredPowerKw: 0,
@@ -742,7 +742,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Water Heater',
       selectedStepId: 'max',
-      currentOn: false,
+      binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0,
@@ -779,7 +779,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Tank Heater',
       selectedStepId: 'off',
-      currentOn: false,
+      binaryControl: { on: false },
       controllable: true,
       expectedPowerKw: 0,
       measuredPowerKw: 0,
@@ -817,7 +817,7 @@ describe('buildInitialPlanDevices', () => {
       name: 'EV Charger',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
-      currentOn: true, // stale: device still looks 'on' in the snapshot
+      binaryControl: { on: true }, // stale: device still looks 'on' in the snapshot
       controllable: true,
     });
 
@@ -853,7 +853,7 @@ describe('buildInitialPlanDevices', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',
       expectedPowerSource: 'default',
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
     });
 
@@ -884,7 +884,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'charger-1',
       name: 'EV Charger',
       controlCapabilityId: 'evcharger_charging',
-      currentOn: true,
+      binaryControl: { on: true },
       controllable: true,
     });
 
@@ -934,7 +934,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'max',
-      currentOn: true,
+      binaryControl: { on: true },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -956,7 +956,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       id: 'dev-1',
       controlCapabilityId: undefined,
       selectedStepId: 'max',
-      currentOn: true,
+      binaryControl: { on: true },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -980,7 +980,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'medium',
-      currentOn: true,
+      binaryControl: { on: true },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1003,7 +1003,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'max',
-      currentOn: true,
+      binaryControl: { on: true },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1028,7 +1028,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'off',
-      currentOn: false,
+      binaryControl: { on: false },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1055,7 +1055,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'off',
-      currentOn: false,
+      binaryControl: { on: false },
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -1076,7 +1076,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const device = steppedInputDevice({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
-      currentOn: true,
+      binaryControl: { on: true },
       selectedStepId: 'low',
       desiredStepId: 'max',
       stepCommandPending: true,
@@ -1105,7 +1105,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       controlCapabilityId: 'onoff',
       selectedStepId: undefined,
       desiredStepId: 'max',
-      currentOn: false,
+      binaryControl: { on: false },
       expectedPowerKw: 3,
     });
 
@@ -1127,7 +1127,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     const device = steppedInputDevice({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: undefined,
       desiredStepId: undefined,
       steppedLoadProfile: {
@@ -1290,7 +1290,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
     });
 
     it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
-      const device = tempInputDevice({ currentOn: true, deadlineFloorTargetC: 60 });
+      const device = tempInputDevice({ binaryControl: { on: true }, deadlineFloorTargetC: 60 });
       const [planDevice] = buildInitialPlanDevices({
         context: { ...buildContext([device]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
@@ -1845,14 +1845,14 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       name: 'Water heater',
       selectedStepId: 'medium',
       desiredStepId: 'medium',
-      currentOn: true,
+      binaryControl: { on: true },
       ...overrides,
     });
 
     const buildBinary = (id: string) => buildPlanInputDevice({
       id,
       name: id,
-      currentOn: true,
+      binaryControl: { on: true },
     });
 
     it('clamps a stepped keep device to lowest non-zero step when another device is shed', () => {
@@ -1893,7 +1893,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         name: 'phantom',
         selectedStepId: 'low',
         desiredStepId: 'low',
-        currentOn: true,
+        binaryControl: { on: true },
       });
 
       const [stepped] = buildInitialPlanDevices({

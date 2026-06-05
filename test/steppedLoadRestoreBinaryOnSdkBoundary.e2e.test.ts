@@ -227,7 +227,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     deviceClass: 'water_heater',
     // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
     // currentOn:false with no trusted binary observation.
-    currentOn: false,
+    binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
@@ -258,7 +258,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
     const snapshot = parseHoiaxSnapshot({ kind: 'absent' }, logger);
 
     // Pin the real parsed snapshot fields that drive the bug.
-    expect(snapshot.currentOn).toBe(false);
+    expect(snapshot.binaryControl?.on).toBe(false);
     expect(snapshot.binaryControlObservation).toBeUndefined();
     expect(snapshot.controlModel).toBe('stepped_load');
     expect(snapshot.controlCapabilityId).toBe('onoff');
@@ -289,7 +289,7 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
 
     // Pin the real parsed snapshot fields: the ONLY difference from the repro is
     // the trusted-off binary observation (currentOn:false + binary obs present).
-    expect(snapshot.currentOn).toBe(false);
+    expect(snapshot.binaryControl?.on).toBe(false);
     expect(snapshot.binaryControlObservation).toEqual(expect.objectContaining({
       valid: true,
       capabilityId: 'onoff',

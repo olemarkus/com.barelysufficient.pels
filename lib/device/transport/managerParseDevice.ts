@@ -193,9 +193,9 @@ export function parseDevice(params: {
         logDebug: (...args: unknown[]) => logger.debug(...args),
     });
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
-    const evCharging = getEvCharging(capabilityObj);
-    const evChargingState = getEvChargingState(capabilityObj);
-    const { currentOn, canSetControl, observedCurrentOn, hasTrustedControlState } = resolveDeviceParsedControlState({
+    const evCharging = getEvCharging(capabilityObj), evChargingState = getEvChargingState(capabilityObj);
+    const { resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState }
+        = resolveDeviceParsedControlState({
         logger,
         debugStructured: deps.debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
@@ -209,7 +209,7 @@ export function parseDevice(params: {
         previousSnapshot,
         suppressDropLog: purpose === 'ui_picker',
     });
-    if (shouldDropAfterControlState({ purpose, decision: managedDecision, currentOn })) return null;
+    if (shouldDropAfterControlState({ purpose, decision: managedDecision, currentOn: resolvedOn })) return null;
     const available = resolveAvail(controlCapabilityId, hasTrustedControlState, steppedLoadProfile, effectiveDevice);
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
@@ -232,7 +232,7 @@ export function parseDevice(params: {
         controlCapabilityId,
         powerEstimate,
         powerCapable,
-        currentOn: currentOn ?? false,
+        binaryControl,
         evCharging,
         evChargingState,
         stateOfCharge: resolveParsedSoc(
@@ -311,7 +311,7 @@ function buildParsedDeviceSnapshot(params: {
     controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
     powerEstimate: ReturnType<typeof estimatePower>;
     powerCapable: boolean;
-    currentOn: boolean;
+    binaryControl: TargetDeviceSnapshot['binaryControl'];
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: TargetDeviceSnapshot['evChargingState'];
     stateOfCharge: TargetDeviceSnapshot['stateOfCharge'];
@@ -344,7 +344,7 @@ function buildParsedDeviceSnapshot(params: {
         controlCapabilityId,
         powerEstimate,
         powerCapable,
-        currentOn,
+        binaryControl,
         evCharging,
         evChargingState,
         stateOfCharge,
@@ -385,7 +385,7 @@ function buildParsedDeviceSnapshot(params: {
         expectedPowerSource: powerEstimate.expectedPowerSource,
         loadKw: powerEstimate.loadKw,
         powerCapable,
-        currentOn,
+        binaryControl,
         evCharging,
         evChargingState,
         stateOfCharge,
