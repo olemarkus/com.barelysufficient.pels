@@ -40,7 +40,7 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingShe
   currentOn: boolean;
   currentState?: string;
   budgetExempt: boolean;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   observationStale?: boolean;
 };
 
@@ -113,7 +113,7 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   currentOn: boolean;
   currentState?: string;
   budgetExempt?: boolean;
-  hasBinaryControl?: boolean;
+  controlCapabilityId?: 'onoff' | 'evcharger_charging';
   observationStale?: boolean;
 };
 
@@ -207,7 +207,7 @@ function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedStep
     selectedStepId: device.selectedStepId,
     hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
     measuredPowerKw: device.measuredPowerKw,
-    hasBinaryControl: device.hasBinaryControl,
+    controlCapabilityId: device.controlCapabilityId,
   };
 }
 
@@ -284,7 +284,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
-    hasBinaryControl: device.hasBinaryControl,
+    controlCapabilityId: device.controlCapabilityId,
     observationStale: device.observationStale,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
@@ -405,7 +405,7 @@ function canFinishSteppedTurnOffWithBinary(params: {
   const { device, shedAction, targetStep } = params;
   if (
     shedAction !== 'turn_off'
-    || device.hasBinaryControl === false
+    || device.controlCapabilityId === undefined
     || !device.selectedStepId
     || targetStep?.id !== device.selectedStepId
   ) {

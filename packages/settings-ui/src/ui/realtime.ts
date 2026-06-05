@@ -13,6 +13,7 @@ import {
   CAPACITY_MARGIN_KW,
   COMBINED_PRICES,
   BUDGET_EXEMPT_DEVICES,
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
   DEFERRED_OBJECTIVES_SETTINGS,
   PER_DEVICE_OBJECTIVE_KEY_PREFIX,
   DEVICE_CONTROL_PROFILES,
@@ -70,6 +71,7 @@ import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
@@ -294,17 +296,36 @@ const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
   runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
 };
 
+// The active-plans recorder persists every replan / session change / updated
+// start-finish hour via `settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)`.
+// Without draining that key here, `state.deferredObjectiveActivePlans` stays
+// frozen at its bootstrap value and the Overview device cards' EV state line
+// (`EvDeadlineStateLine`) shows the pre-revision schedule until the user reloads
+// the WebView. Re-read the fresh setting into state and repaint the overview.
+// Fires for BOTH `settings.set` (revision) and `settings.unset` (task ended →
+// recorder drops the plan).
+const reloadActivePlansIfActivePlansKey = (key: string, context: string): void => {
+  if (key !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) return;
+  runLoggedTask(
+    reloadDeferredObjectiveActivePlans(),
+    'Failed to reload deferred objective active plans',
+    context,
+  );
+};
+
 const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
+  reloadActivePlansIfActivePlansKey(key, 'settings.unset');
 };
 
 const createSettingsSetHandler = () => (key: string) => {
   invalidateSettingCache(key);
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
+  reloadActivePlansIfActivePlansKey(key, 'settings.set');
 
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');

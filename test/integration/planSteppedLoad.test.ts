@@ -361,7 +361,7 @@ describe('planSteppedLoad', () => {
       toStepId: 'low',
     })).toBeCloseTo(1.25, 6);
     expect(resolveSteppedLoadImmediateReliefKw({
-      device: steppedInputDevice({ selectedStepId: 'low', measuredPowerKw: 0.5, hasBinaryControl: false }),
+      device: steppedInputDevice({ selectedStepId: 'low', measuredPowerKw: 0.5, controlCapabilityId: undefined }),
       toStepId: 'off',
     })).toBeCloseTo(0.5, 6);
     expect(resolveSteppedLoadImmediateReliefKw({

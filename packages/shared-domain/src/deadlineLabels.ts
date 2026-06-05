@@ -1808,6 +1808,64 @@ export const formatEnergyEstimateKWh = (params: {
   return `${lowText}–${highText} kWh`; // en-dash
 };
 
+// ─── "Cheapest hours" chart caption ─────────────────────────────────────────
+
+// Caption rendered under the live deadline-plan horizon chart answering the
+// skeptical EV-commuter's second-most-asked question (after cost): "is PELS
+// actually picking cheaper hours?" The chart already tone-codes the price bars,
+// but a single sentence states the result plainly.
+//
+// Wording deliberately avoids the bare "cheapest" superlative: the allocator
+// fills cheapest-first but a committed current hour or a capacity/budget
+// constraint can keep a non-cheapest hour in the live set (see
+// `lib/objectives/deferredObjectives/bucketAllocation.ts`), so "picked the N
+// cheapest" would overclaim optimality the planner doesn't guarantee. Instead
+// the caption states the count and lets the avg-vs-baseline numbers prove the
+// chosen hours are cheaper than the window — the factual, always-true signal.
+//
+// Baseline (`allPrices` average) is the average price across **all** hours in
+// the window — i.e. the hours PELS could have chosen from. That's the most
+// defensible comparison: it answers "vs picking hours blindly across the whole
+// window", which is exactly the alternative the user is suspicious of. The
+// caption labels it before the value ("vs window avg Q kr/kWh") so the number
+// it compares against is never ambiguous and the unit is stated once.
+//
+// `unitLabel` is the already-scaled price unit (e.g. `kr/kWh`); the caller
+// passes the per-hour display prices already scaled øre→kr via the CostDisplay
+// divisor, so this helper only averages + phrases pre-scaled values and never
+// re-divides. `plannedPrices` are the display prices of the picked hours;
+// `allPrices` are every hour's display price in the window (the baseline pool).
+//
+// The averaging lives here (not at the caller) so the producer stays a thin
+// projection and the trust-caption arithmetic is unit-tested in one place.
+//
+// Returns `null` when the caption can't be stated honestly — no planned hours,
+// fewer than two hours in the window (no real "picking" happened), or a missing
+// price unit (Flow / Homey scheme without one). The caller suppresses the line
+// rather than render a degenerate "Picked 0 of 1 hours" summary.
+const averagePrice = (values: readonly number[]): number => (
+  values.length === 0 ? Number.NaN : values.reduce((sum, value) => sum + value, 0) / values.length
+);
+
+export const formatCheapestHoursCaption = (params: {
+  plannedPrices: readonly number[];
+  allPrices: readonly number[];
+  unitLabel: string;
+}): string | null => {
+  const unit = params.unitLabel.trim();
+  if (unit.length === 0 || unit === 'Price') return null;
+  const plannedHourCount = params.plannedPrices.length;
+  const totalHourCount = params.allPrices.length;
+  if (plannedHourCount <= 0 || totalHourCount < 2) return null;
+  const plannedAverage = averagePrice(params.plannedPrices);
+  const baseline = averagePrice(params.allPrices);
+  if (!Number.isFinite(plannedAverage) || !Number.isFinite(baseline)) return null;
+  return (
+    `Picked ${plannedHourCount} of ${totalHourCount} hours`
+    + ` · avg ${plannedAverage.toFixed(2)} vs window avg ${baseline.toFixed(2)} ${unit}`
+  );
+};
+
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
 
 // `≈` (U+2248) signals "approximate" — the in-flight cost is a planned figure

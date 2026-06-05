@@ -29,12 +29,12 @@ import {
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
   SMART_TASK_WIDGET_EMPTY_HINT,
-  SMART_TASK_WIDGET_EMPTY_SUBTITLE,
   SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX,
   SMART_TASK_WIDGET_STATUS_LABELS,
   SMART_TASK_WIDGET_TARGET_NOUN,
   type SmartTaskListStatusId,
 } from '../../../packages/shared-domain/src/deadlineLabels';
+import { EMPTY_SUBTITLE_DEFAULT } from './smartTasksWidgetConstants';
 import type {
   SmartTasksWidgetEmptyPayload,
   SmartTasksWidgetEndedRow,
@@ -49,10 +49,9 @@ export const ROW_CAP = 3;
 export const ENDED_ROW_CAP = 5;
 // A task counts as "recently ended" when it finalized within this window.
 export const ENDED_WINDOW_MS = 24 * 60 * 60 * 1000;
-// Re-export under the widget-local name so existing consumers/tests keep a
-// stable import surface; the string itself is sourced from shared-domain so
-// runtime logging and the widget render identical copy.
-export const EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
+// Re-exported from the browser-safe constants module so existing consumers
+// and tests keep a stable import surface off the builder.
+export { EMPTY_SUBTITLE_DEFAULT };
 
 const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   cannot_meet: 0,

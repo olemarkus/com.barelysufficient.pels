@@ -68,8 +68,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Overwrite snapshot manually for the test logic within App
         (app as any).targetDevices = [
-            { id: 'dev-A', name: 'Heater A', controllable: true, currentOn: true, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 0.5, powerKw: 3.0 },
-            { id: 'dev-B', name: 'Heater B', controllable: true, currentOn: true, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 2.5, powerKw: 3.0 },
+            { id: 'dev-A', name: 'Heater A', controllable: true, controlCapabilityId: 'onoff', currentOn: true, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 0.5, powerKw: 3.0 },
+            { id: 'dev-B', name: 'Heater B', controllable: true, controlCapabilityId: 'onoff', currentOn: true, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 2.5, powerKw: 3.0 },
         ];
 
         // Force negative headroom to trigger shedding
@@ -116,8 +116,8 @@ describe('Shed vs Restore Logic', () => {
 
         // Device C: Expected 5kW, Measured 0kW (Maybe checking in but idle?)
         (app as any).targetDevices = [
-            { id: 'dev-C', name: 'Heater C', controllable: true, currentOn: true, priority: 50, expectedPowerKw: 5.0, measuredPowerKw: 0.0, powerKw: 5.0 },
-            { id: 'dev-D', name: 'Heater D', controllable: true, currentOn: true, priority: 50, expectedPowerKw: 1.0, measuredPowerKw: 0.5, powerKw: 1.0 },
+            { id: 'dev-C', name: 'Heater C', controllable: true, controlCapabilityId: 'onoff', currentOn: true, priority: 50, expectedPowerKw: 5.0, measuredPowerKw: 0.0, powerKw: 5.0 },
+            { id: 'dev-D', name: 'Heater D', controllable: true, controlCapabilityId: 'onoff', currentOn: true, priority: 50, expectedPowerKw: 1.0, measuredPowerKw: 0.5, powerKw: 1.0 },
         ];
 
         const mockGuard = {
@@ -154,7 +154,7 @@ describe('Shed vs Restore Logic', () => {
 
         // Device E: Expected 3.0kW, Measured 0.0kW (Currently OFF)
         (app as any).targetDevices = [
-            { id: 'dev-E', name: 'Heater E', controllable: true, currentOn: false, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 0.0, powerKw: 3.0 },
+            { id: 'dev-E', name: 'Heater E', controllable: true, controlCapabilityId: 'onoff', currentOn: false, priority: 50, expectedPowerKw: 3.0, measuredPowerKw: 0.0, powerKw: 3.0 },
         ];
         // Headroom 2.0kW. Restore Margin 0.2, Hysteresis = Max(0.2, 0.2*2) = 0.4.
         // Need: expected(3.0) + hysteresis(0.4) = 3.4kW.

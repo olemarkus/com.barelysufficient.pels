@@ -639,7 +639,7 @@ describe('buildInitialPlanDevices', () => {
       id: 'dev-1',
       name: 'Heater',
       currentOn: false,
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       observationStale: true,
     });
 
@@ -932,7 +932,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
   it('turn_off is a valid shed action for a stepped device with onoff', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: 'max',
       currentOn: true,
     });
@@ -954,7 +954,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
   it('turn_off must not be selected as shed action for a stepped device without binary control', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: false,
+      controlCapabilityId: undefined,
       selectedStepId: 'max',
       currentOn: true,
     });
@@ -978,7 +978,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed sets desiredStepId to the lowest step, not the current medium step', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: 'medium',
       currentOn: true,
     });
@@ -1001,7 +1001,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed targets the zero-usage off step when starting from max step', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: 'max',
       currentOn: true,
     });
@@ -1026,7 +1026,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   it('turn_off shed keeps desiredStepId=off when device is already at the lowest step', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: 'off',
       currentOn: false,
     });
@@ -1053,7 +1053,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('restore (keep) normalizes off-step desiredStepId to lowest non-zero step', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: 'off',
       currentOn: false,
     });
@@ -1075,7 +1075,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('preserves runtime stepped restore intent for keep devices while confirmation is still pending', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       currentOn: true,
       selectedStepId: 'low',
       desiredStepId: 'max',
@@ -1102,7 +1102,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('restore (keep) normalizes unknown-step off devices to lowest non-zero step and expected load', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       selectedStepId: undefined,
       desiredStepId: 'max',
       currentOn: false,
@@ -1126,7 +1126,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   it('leaves stepped restore intent unchanged when no positive restore step exists', () => {
     const device = steppedInputDevice({
       id: 'dev-1',
-      hasBinaryControl: true,
+      controlCapabilityId: 'onoff',
       currentOn: false,
       selectedStepId: undefined,
       desiredStepId: undefined,

@@ -998,11 +998,13 @@ var formatPlanHistoryMissedReason = (entry) => {
   return "Didn't reach the target before the deadline.";
 };
 
+// widgets/smart_tasks/src/smartTasksWidgetConstants.ts
+var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
+
 // widgets/smart_tasks/src/smartTasksWidgetPayload.ts
 var ROW_CAP = 3;
 var ENDED_ROW_CAP = 5;
 var ENDED_WINDOW_MS = 24 * 60 * 60 * 1e3;
-var EMPTY_SUBTITLE_DEFAULT = SMART_TASK_WIDGET_EMPTY_SUBTITLE;
 var STATUS_TIER = {
   cannot_meet: 0,
   at_risk: 1,

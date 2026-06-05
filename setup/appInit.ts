@@ -330,12 +330,6 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
   });
 }
 
-function resolveHasBinaryControl(device: TargetDeviceSnapshot): boolean {
-  if (typeof device.controlCapabilityId === 'string') return true;
-  if (!Array.isArray(device.capabilities)) return false;
-  return device.capabilities.some((capabilityId) => capabilityId === 'onoff' || capabilityId === 'evcharger_charging');
-}
-
 export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
@@ -354,7 +348,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
       available: device.available,
     },
   });
-  const hasBinaryControl = resolveHasBinaryControl(device);
   const canSetControlResolved = resolveCanSetControl({
     controlCapabilityId: device.controlCapabilityId,
     capabilities: device.capabilities,
@@ -365,7 +358,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
   const controllable = ctx.isCapacityControlEnabled(device.id);
   const residualKw = buildResidualKwForPlanDevice({
     device,
-    hasBinaryControl,
+    controlCapabilityId: device.controlCapabilityId,
     shedBehavior,
   });
   return {
@@ -386,7 +379,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
-    hasBinaryControl,
     observationStale: isDeviceObservationStale(device),
     managed: ctx.resolveManagedState(device.id),
     controllable,

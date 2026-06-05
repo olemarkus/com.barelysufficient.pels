@@ -169,6 +169,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           currentOn: true,
           controllable: true,
+          controlCapabilityId: 'onoff',
           measuredPowerKw: 0,
           binaryCommandPending: true,
         },
@@ -178,6 +179,7 @@ describe('P1 bug proofs', () => {
           targets: [],
           currentOn: true,
           controllable: true,
+          controlCapabilityId: 'onoff',
           observationStale: true,
         },
       ],
@@ -308,6 +310,7 @@ describe('P1 bug proofs', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        controlCapabilityId: 'onoff',
         reason: buildPlanDevice({ reason: 'shed due to capacity' }).reason,
       }],
     });

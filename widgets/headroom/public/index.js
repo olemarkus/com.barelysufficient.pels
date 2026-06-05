@@ -161,8 +161,7 @@
   var isPreviewLimitState = (state) => state !== null && Object.prototype.hasOwnProperty.call(PREVIEW_HEADROOM_PAYLOADS, state);
   var resolveHeadroomPreviewPayload = (state) => isPreviewLimitState(state) ? PREVIEW_HEADROOM_PAYLOADS[state] : PREVIEW_HEADROOM_PAYLOAD;
 
-  // widgets/headroom/src/headroomWidgetPayload.ts
-  var STALE_AFTER_MS = 90 * 1e3;
+  // widgets/headroom/src/headroomWidgetConstants.ts
   var EMPTY_SUBTITLE_DEFAULT = HEADROOM_WIDGET_COPY.noDataSubtitle;
 
   // widgets/headroom/src/public/render.ts

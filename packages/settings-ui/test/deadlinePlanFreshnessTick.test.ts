@@ -47,6 +47,7 @@ const buildPlanInputsPayloadWithFreshnessRow = (params: {
     progressCeilingLabel: '60%',
     deadlineLabel: 'Mon 06',
     hours: [],
+    cheapestHoursCaption: null,
   },
   planInputs: {
     perUnitRateLabel: null,

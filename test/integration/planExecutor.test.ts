@@ -55,6 +55,7 @@ const buildPlan = (): DevicePlan => ({
       currentTarget: 21,
       plannedTarget: 21,
       controllable: true,
+      controlCapabilityId: 'onoff',
       reason: KEEP_REASON,
     },
   ],
@@ -75,6 +76,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
       currentTarget,
       plannedTarget,
       controllable: true,
+      controlCapabilityId: 'onoff',
       reason: KEEP_REASON,
     },
   ],
@@ -231,6 +233,7 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: 21,
           plannedTarget: 21,
           controllable: true,
+          controlCapabilityId: 'onoff',
           reason: CAPACITY_REASON,
         },
       ],
@@ -524,6 +527,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        controlCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       }],
     });
@@ -636,6 +640,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        controlCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       }],
     });
@@ -801,6 +806,7 @@ describe('PlanExecutor restore logging', () => {
         currentTarget: 21,
         plannedTarget: 21,
         controllable: true,
+        controlCapabilityId: 'onoff',
         reason: CAPACITY_REASON,
       }],
     });
@@ -1498,6 +1504,7 @@ describe('PlanExecutor stepped loads', () => {
         id: 'dev-1',
         name: 'Tank',
         ownerUri: 'homey:app:no.hoiax',
+        controlCapabilityId: 'onoff',
         capabilities: ['onoff', 'max_power_3000'],
         capabilitiesObj: {
           onoff: { value: true },
@@ -2616,7 +2623,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     targets: [],
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
-    hasBinaryControl: true,
+    controlCapabilityId: 'onoff',
     ...overrides,
   }];
 
@@ -3698,6 +3705,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
             currentTarget: 21,
             plannedTarget: 21,
             controllable: true,
+            controlCapabilityId: 'onoff',
             reason: CAPACITY_REASON,
           },
         ],

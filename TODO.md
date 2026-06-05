@@ -121,6 +121,21 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
+      The settings-UI `coerceDeferredObjectiveActivePlans`
+      (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
+      runtime `normalizeDeferredObjectiveActivePlans`
+      (`lib/objectives/deferredObjectives/activePlanSettings.ts`): it hard-codes `version: 1`, skips
+      the version check, and does no per-device `isActivePlan` filtering. Benign today (every consumer
+      optional-chains each leaf, so a malformed entry degrades to "no state line"), but on a future
+      `DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION` bump the runtime normaliser would reject the old blob
+      while the UI guard forces `version: 1` onto a v2-shaped payload and renders stale/foreign fields.
+      Fix per the resolution-in-producer rule: extract one browser-safe `coerce`/`normalize` into
+      `packages/shared-domain/src/` (precedent: `temperatureBoost.ts` already exports value normalisers
+      there) and delegate the top-level shape/version check from BOTH `activePlanSettings.ts` and the
+      settings-UI module — single source of truth, `settings-ui ↛ lib` boundary intact. **Trigger:
+      do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
+      on PR #1517, 2026-06-05.
 
 - [ ] **Verify early-satisfaction doesn't leave stale committed hours on the active plan.** When a
       stalled/near-target smart task is reported satisfied mid-plan, `maybeWriteReplanRevision` merges
@@ -343,26 +358,6 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [ ] Refresh `state.deferredObjectiveActivePlans` on plan revision events. Today the field
-      is populated once during `loadBootstrapData` in `packages/settings-ui/src/ui/boot.ts`
-      and never updates from runtime emissions. `EvDeadlineStateLine` reads the field every
-      render (component lives in `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx`), so
-      later replans, session changes (e.g. unplug mid-schedule), and updated start/finish hours
-      are not reflected on Overview device cards until the user reloads the page. Surfaced by
-      Codex on PR #793 review.
-      Simpler fix than originally proposed (no new contract/stream needed): the recorder already
-      persists revised plans via `homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, …)`,
-      which fires a `settings.set` realtime event the UI already listens for — but the handler in
-      `packages/settings-ui/src/ui/realtime.ts` drops that key. Add a branch that re-reads the
-      setting into `state.deferredObjectiveActivePlans` and re-renders the affected cards.
-      Files: `packages/settings-ui/src/ui/realtime.ts`, `packages/settings-ui/src/ui/boot.ts`.
-- [ ] Improve overshoot attribution for hard-cap incidents.
-      The 2026-05-13 log sample included a hard-cap breach with `totalKw: 5.655`,
-      `hardCapHeadroomKw: -0.655`, `overshootUnattributedDeltaKw: 3.77`, and empty contributor
-      arrays. If telemetry is available, surface the main managed/background contributors; if it
-      is not, emit an explicit no-attribution reason so incident logs explain why attribution is
-      unavailable.
-      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 - [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
@@ -419,35 +414,6 @@ live-walk screenshots.*
       fixed by the keep-invariant gate; the remaining work is internal-only refactor.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
       `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
-- [ ] Add a "Picked the N cheapest hours of next M (avg P kr/kWh vs Q baseline)" caption under
-      the live deadline-plan chart. The chart today is honest — price bars are tone-coded,
-      planned hours stack on the same x-axis — but a skeptical user can't tell at a glance
-      whether PELS actually picked the cheapest available hours. The data is already in
-      `payload.timeline.hours` (`priceValue` + `planned` flag); the math is trivial. Live-Homey
-      walk found this is the second-most-asked product question on the live page after cost.
-      Why P2: trust signal for the skeptical EV-commuter persona; not blocking but
-      meaningfully closes the "is PELS doing what it says?" question.
-      Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
-      `packages/settings-ui/src/ui/deadlinePlan.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts` (new label string),
-      live-plan chart caption tests.
-- [ ] **Close the transitive widget WebView import hole.** The
-      `no-widget-to-runtime-except-node-entries` arch rule catches only DIRECT
-      `widgets/*/src/public/** -> lib|app|setup|...` edges, not the transitive
-      `public/** -> *WidgetPayload.ts -> lib` path (the `*WidgetPayload.ts` node
-      builders are allowlisted to import lib, and `public/render.ts` imports them
-      for constants/types). Accuracy note (2026-06-04): the specific
-      `public -> *WidgetPayload -> lib` chain is NOT wired today — the only payload
-      builder importing lib (`plan_budget/src/planPriceWidgetPayload.ts`, type-only) is
-      not reachable from any `public/**` file; the builders public DOES value-import
-      (headroom, smart_tasks) touch only shared-domain/contracts. The hole is one edit
-      away, not already traversed: the rule structurally PERMITS a builder to both import
-      lib and be value-imported by public, so a future VALUE import would silently ship
-      runtime code into the browser bundle while `arch:check` stays green. Fix:
-      split the browser-safe constants/types into a shared browser-safe module,
-      then add a rule forbidding `widgets/*/src/public/** -> (api.ts|*WidgetPayload.ts)`.
-      (Tracked by the `no-widget-to-runtime-except-node-entries` comment in
-      `.dependency-cruiser.cjs`.) Source: codex review of PR #1286, 2026-05-29.
 
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
@@ -465,21 +431,6 @@ app-wiring; rule flipped to `error`), **PR-E #1338 (clock-driven terminal device
 disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1b
 dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
 **PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
-
-- [ ] P2: annotate partial overshoot attribution. `overshootAttributionReason` (added with the
-      no-attribution reason fix) is only emitted when the contributor arrays are empty. When one
-      managed device crosses the epsilon but a large background remainder dominates the breach
-      (e.g. a named contributor explaining only a fraction of `overshootUnattributedDeltaKw`), the
-      log carries no signal that attribution is mostly unexplained — the operator must compare
-      `overshootUnattributedDeltaKw` against `overshootAttributionDeltaKw` by hand. Consider a
-      partial-attribution flag/reason for that case. A related precision gap (same field, same
-      remedy): when several tracked devices each rise ≤ `OVERSHOOT_DELTA_EPSILON_KW`, every per-device
-      diff is dropped so contributors are empty even though complete+fresh inputs prove the rise is in
-      managed devices; with their summed rise above the breach the field reports `background_load_dominant`
-      rather than a managed-sub-epsilon signal. Both are precision nuances on a non-load-bearing log
-      field (operators still have the raw delta fields); refine only if they prove misleading in practice.
-      Source: self-review + codex on `fix/overshoot-no-attribution-reason`, 2026-06-04.
-      Files: `lib/plan/planBuilder.ts`, overshoot attribution tests.
 
 ## P3 Future and Exploratory Work
 

@@ -80,7 +80,7 @@ export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial
     plannedState: 'shed',
     desiredStepId: offStepId,
     targetStepId: offStepId,
-    shedAction: dev.shedAction ?? (dev.hasBinaryControl === false ? 'set_step' : 'turn_off'),
+    shedAction: dev.shedAction ?? (dev.controlCapabilityId === undefined ? 'set_step' : 'turn_off'),
   };
 }
 

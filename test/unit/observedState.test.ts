@@ -8,22 +8,22 @@ import { steppedProfile } from '../utils/planTestUtils';
 
 describe('isObservedOff / isObservedOn — binary-only devices', () => {
   it('reports off iff fresh and binary says off', () => {
-    expect(isObservedOff({ currentOn: false })).toBe(true);
-    expect(isObservedOff({ currentOn: true })).toBe(false);
-    expect(isObservedOn({ currentOn: false })).toBe(false);
-    expect(isObservedOn({ currentOn: true })).toBe(true);
+    expect(isObservedOff({ currentOn: false, controlCapabilityId: 'onoff' })).toBe(true);
+    expect(isObservedOff({ currentOn: true, controlCapabilityId: 'onoff' })).toBe(false);
+    expect(isObservedOn({ currentOn: false, controlCapabilityId: 'onoff' })).toBe(false);
+    expect(isObservedOn({ currentOn: true, controlCapabilityId: 'onoff' })).toBe(true);
   });
 
   it('treats stale observations as neither confirmed off nor on', () => {
-    expect(isObservedOff({ currentOn: false, observationStale: true })).toBe(false);
-    expect(isObservedOn({ currentOn: true, observationStale: true })).toBe(false);
+    expect(isObservedOff({ currentOn: false, controlCapabilityId: 'onoff', observationStale: true })).toBe(false);
+    expect(isObservedOn({ currentOn: true, controlCapabilityId: 'onoff', observationStale: true })).toBe(false);
   });
 });
 
 describe('isObservedOff / isObservedOn — stepped + binary devices', () => {
   const stepInput = (overrides: Record<string, unknown>) => ({
     currentOn: true,
-    hasBinaryControl: true,
+    controlCapabilityId: 'onoff',
     controlModel: 'stepped_load' as const,
     steppedLoadProfile: steppedProfile,
     ...overrides,
@@ -55,7 +55,7 @@ describe('isObservedOff / isObservedOn — step-only devices (no binary capabili
     // Step-only devices have no onoff capability; the defaulted currentOn=false
     // must not be inferred as authoritative — only the step state matters.
     currentOn: false,
-    hasBinaryControl: false,
+    controlCapabilityId: undefined,
     controlModel: 'stepped_load' as const,
     steppedLoadProfile: steppedProfile,
     ...overrides,
@@ -76,9 +76,9 @@ describe('isObservedOff / isObservedOn — step-only devices (no binary capabili
 
 describe('isObservedOff / isObservedOn — devices with no controllable capability', () => {
   it('returns false for both helpers — planner makes no binary intent for such devices', () => {
-    expect(isObservedOff({ currentOn: false, hasBinaryControl: false })).toBe(false);
-    expect(isObservedOn({ currentOn: false, hasBinaryControl: false })).toBe(false);
-    expect(isObservedOn({ currentOn: true, hasBinaryControl: false })).toBe(false);
+    expect(isObservedOff({ currentOn: false, controlCapabilityId: undefined })).toBe(false);
+    expect(isObservedOn({ currentOn: false, controlCapabilityId: undefined })).toBe(false);
+    expect(isObservedOn({ currentOn: true, controlCapabilityId: undefined })).toBe(false);
   });
 });
 
@@ -96,6 +96,7 @@ describe('resolveObservedCurrentState — string projection stays consistent', (
   it('returns "unknown" for stale observations with binary control', () => {
     expect(resolveObservedCurrentState({
       currentOn: false,
+      controlCapabilityId: 'onoff',
       observationStale: true,
     })).toBe('unknown');
   });
@@ -104,14 +105,14 @@ describe('resolveObservedCurrentState — string projection stays consistent', (
     expect(resolveObservedCurrentState({
       currentOn: false,
       observationStale: true,
-      hasBinaryControl: false,
+      controlCapabilityId: undefined,
     })).toBe('not_applicable');
   });
 
   it('resolves a step-only device from its step state, not its defaulted binary', () => {
     expect(resolveObservedSteppedLoadCurrentState({
       currentOn: false,
-      hasBinaryControl: false,
+      controlCapabilityId: undefined,
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'medium',
