@@ -1063,6 +1063,85 @@ describe('PlanBuilder overshoot diagnostics', () => {
     }
   });
 
+  // The 2026-05-13 incident left contributor arrays empty even though tracked
+  // background load carried the rise. An uncontrolled (controllable: false)
+  // tracked device whose measured draw climbs above the attribution epsilon must
+  // surface in `overshootTopUncontrolledContributors`, so the incident log names
+  // the non-managed device that caused the breach rather than only reporting an
+  // unattributed delta.
+  it('surfaces a rising uncontrolled tracked device as an uncontrolled contributor', async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createPlanEngineState();
+      const now = new Date('2026-04-15T11:04:01.000Z').getTime();
+      vi.setSystemTime(now);
+
+      const structuredLog = { info: vi.fn() };
+      const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
+
+      const builder = new PlanBuilder({
+        homey: { settings: { set: vi.fn() } } as never,
+        getCapacityGuard: () => capacityGuard,
+        getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
+        getOperatingMode: () => 'Home',
+        getModeDeviceTargets: () => ({}),
+        getPriceOptimizationEnabled: () => false,
+        getPriceOptimizationSettings: () => ({}),
+        isCurrentHourCheap: () => false,
+        isCurrentHourExpensive: () => false,
+        getPowerTracker: () => ({ lastTimestamp: Date.now() }),
+        getDailyBudgetSnapshot: () => null,
+        getPriorityForDevice: () => 100,
+        getDynamicSoftLimitOverride: () => 1.0,
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
+        structuredLog: structuredLog as any,
+        log: vi.fn(),
+        logDebug: vi.fn(),
+        pendingBinaryCommandStore: emptyPendingStore,
+      }, state);
+
+      const buildDevices = (managedKw: number, backgroundKw: number): PlanInputDevice[] => [
+        buildDevice({
+          id: 'managed',
+          name: 'Managed Heater',
+          measuredPowerKw: managedKw,
+        }),
+        buildDevice({
+          id: 'background',
+          name: 'Background Load',
+          controllable: false,
+          measuredPowerKw: backgroundKw,
+        }),
+      ];
+
+      capacityGuard.reportTotalPower(0.6);
+      await builder.buildDevicePlanSnapshot(buildDevices(0.3, 0.3));
+
+      structuredLog.info.mockClear();
+      // The uncontrolled device climbs 0.3 -> 1.5 kW (+1.2) while the managed
+      // device holds, so the rise is owned by tracked background load.
+      capacityGuard.reportTotalPower(1.8);
+      await builder.buildDevicePlanSnapshot(buildDevices(0.3, 1.5));
+
+      expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'overshoot_entered',
+        overshootTotalDeltaKw: 1.2,
+        overshootAttributionReason: null,
+        overshootTopControlledContributors: [],
+        overshootTopUncontrolledContributors: [
+          expect.objectContaining({
+            deviceId: 'background',
+            deviceName: 'Background Load',
+            controllable: false,
+            deltaKw: 1.2,
+          }),
+        ],
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('attributes a delayed overshoot within the attribution window even after the device has shown initial load', async () => {
     vi.useFakeTimers();
     try {
