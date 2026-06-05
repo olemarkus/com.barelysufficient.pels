@@ -131,7 +131,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     timers,
     pollHomePower: async () => null,
     recordPowerSample: vi.fn(async () => undefined),
-    logDebug: vi.fn(),
+    debugStructured: vi.fn(),
     error: vi.fn(),
   });
   const deviceControlHelpers = deviceControlHelpersOverride ?? new AppDeviceControlHelpers({

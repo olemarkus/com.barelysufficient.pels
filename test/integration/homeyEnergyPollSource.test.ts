@@ -22,7 +22,7 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       pollHomePower,
       recordPowerSample,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 
@@ -54,7 +54,7 @@ describe('HomeyEnergyPollSource', () => {
       timers: new TimerRegistry(),
       pollHomePower,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
       error: vi.fn(),
     });
 

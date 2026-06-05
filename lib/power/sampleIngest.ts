@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './tracker';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -171,7 +172,7 @@ export function persistPowerTrackerStateForApp(params: {
 
 export function prunePowerTrackerHistoryForApp(params: {
   powerTracker: PowerTrackerState;
-  logDebug: (msg: string) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (msg: string, err: Error) => void;
   // Optional Homey timezone — when present, dailyTotals/hourlyAverages are aggregated
   // by the Homey-local calendar day instead of UTC. Fix for TODO
@@ -179,8 +180,8 @@ export function prunePowerTrackerHistoryForApp(params: {
   // day for samples that straddled the UTC/local midnight boundary.
   timeZone?: string;
 }): PowerTrackerState {
-  const { powerTracker, logDebug, error, timeZone } = params;
-  logDebug('Pruning power tracker history');
+  const { powerTracker, debugStructured, error, timeZone } = params;
+  debugStructured({ event: 'power_tracker_history_pruned' });
   const pruneStart = Date.now();
   try {
     const pruned = aggregateAndPruneHistory(powerTracker, { timeZone });
