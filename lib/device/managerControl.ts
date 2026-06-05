@@ -169,11 +169,14 @@ export function logEvCapabilityRequest(params: {
     value,
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
-  logger.debug(
-    `EV command requested for `
-    + `${snapshotBefore ? snapshotBefore.name : `device ${deviceId}`}: ${capabilityId}=${String(value)} `
-    + `(${formatEvSnapshotDetails(snapshotBefore, true)})`,
-  );
+  logger.debug({
+    event: 'ev_command_requested',
+    deviceId,
+    deviceName: snapshotBefore?.name,
+    capabilityId,
+    value: String(value),
+    detail: formatEvSnapshotDetails(snapshotBefore, true),
+  });
 }
 
 export function logEvCapabilityAccepted(params: {
@@ -191,11 +194,14 @@ export function logEvCapabilityAccepted(params: {
     value,
   } = params;
   if (capabilityId !== 'evcharger_charging') return;
-  logger.debug(
-    `EV command accepted for `
-    + `${snapshotAfter ? snapshotAfter.name : `device ${deviceId}`}: ${capabilityId}=${String(value)} `
-    + `(${formatEvSnapshotDetails(snapshotAfter, false)})`,
-  );
+  logger.debug({
+    event: 'ev_command_accepted',
+    deviceId,
+    deviceName: snapshotAfter?.name,
+    capabilityId,
+    value: String(value),
+    detail: formatEvSnapshotDetails(snapshotAfter, false),
+  });
 }
 
 export function logEvSnapshotChanges(params: {
@@ -210,19 +216,29 @@ export function logEvSnapshotChanges(params: {
   for (const [deviceId, nextEv] of nextEvById.entries()) {
     const previousEv = previousEvById.get(deviceId);
     if (!previousEv) {
-      logger.debug(`EV snapshot discovered ${nextEv.name}: ${formatEvSnapshotDiscovery(nextEv)}`);
+      logger.debug({
+        event: 'ev_snapshot_discovered',
+        deviceId,
+        deviceName: nextEv.name,
+        detail: formatEvSnapshotDiscovery(nextEv),
+      });
       continue;
     }
 
     const changes = buildEvSnapshotChangeLines(previousEv, nextEv);
     if (changes.length > 0) {
-      logger.debug(`EV snapshot changed ${nextEv.name}: ${changes.join(', ')}`);
+      logger.debug({
+        event: 'ev_snapshot_changed',
+        deviceId,
+        deviceName: nextEv.name,
+        changes,
+      });
     }
   }
 
   for (const [deviceId, previousEv] of previousEvById.entries()) {
     if (nextEvById.has(deviceId)) continue;
-    logger.debug(`EV snapshot removed ${previousEv.name} (${deviceId})`);
+    logger.debug({ event: 'ev_snapshot_removed', deviceId, deviceName: previousEv.name });
   }
 }
 

@@ -168,7 +168,7 @@ describe('DeviceTransport', () => {
             deviceManager = new DeviceTransport(homeyMock, loggerMock);
             await deviceManager.init();
             expect(loggerMock.log).not.toHaveBeenCalledWith(expect.stringContaining('initialized'));
-            expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('skipping init'));
+            expect(loggerMock.debug).toHaveBeenCalledWith(expect.objectContaining({ event: 'sdk_api_unavailable_skipping_init' }));
             expect(loggerMock.structuredLog.info).toHaveBeenCalledTimes(1);
             expect(loggerMock.structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
                 component: 'devices',
@@ -4072,9 +4072,12 @@ describe('DeviceTransport', () => {
                     measuredPowerKw: 2.865,
                     lastFreshDataMs: new Date('2026-03-20T06:00:01.000Z').getTime(),
                 }));
-                expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining(
-                    'Device snapshot refresh preserved newer device_update measure_power for Heater (dev1)',
-                ));
+                expect(loggerMock.debug).toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'snapshot_refresh_preserved_newer',
+                    source: 'device_update',
+                    capabilityId: 'measure_power',
+                    deviceId: 'dev1',
+                }));
             } finally {
                 vi.useRealTimers();
             }
@@ -5445,9 +5448,11 @@ describe('DeviceTransport', () => {
                 expect(evDeviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
                     evChargingState: 'plugged_in_paused',
                 }));
-                expect(loggerMock.debug).not.toHaveBeenCalledWith(expect.stringContaining(
-                    'preserved newer device_update evcharger_charging_state for Zaptec (ev1)',
-                ));
+                expect(loggerMock.debug).not.toHaveBeenCalledWith(expect.objectContaining({
+                    event: 'snapshot_refresh_preserved_newer',
+                    capabilityId: 'evcharger_charging_state',
+                    deviceId: 'ev1',
+                }));
 
                 evDeviceManager.destroy();
             } finally {

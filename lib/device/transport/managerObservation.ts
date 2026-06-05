@@ -633,14 +633,17 @@ function mergeCapabilityObservation(params: {
         return;
     }
     emitBinaryConsolidation(consolidationCtx, observation.value, 'retained', 'retained_fresher');
-    logger.debug(
-        `Device snapshot refresh preserved newer ${observation.source} ${capabilityId} `
-        + `for ${deviceName} (${deviceId}); `
-        + `observedAt=${new Date(observation.observedAt).toISOString()}`
-        + (typeof fetchedLastUpdatedMs === 'number' && Number.isFinite(fetchedLastUpdatedMs)
-            ? `, fetched lastUpdated=${new Date(fetchedLastUpdatedMs).toISOString()}`
-            : ', fetched lastUpdated=unknown'),
-    );
+    logger.debug({
+        event: 'snapshot_refresh_preserved_newer',
+        deviceId,
+        deviceName,
+        source: observation.source,
+        capabilityId,
+        observedAtMs: observation.observedAt,
+        fetchedLastUpdatedMs: typeof fetchedLastUpdatedMs === 'number' && Number.isFinite(fetchedLastUpdatedMs)
+            ? fetchedLastUpdatedMs
+            : null,
+    });
 }
 
 function shouldPreserveRetainedObservation(params: {
