@@ -30,7 +30,6 @@ import {
   type ResidualKwShedSteppedDevice,
   type ResidualKwShedTemperatureTarget,
 } from '../../lib/device/deviceResidualKw';
-import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
 import { resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
@@ -50,9 +49,13 @@ export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
+  // Resolved once by the caller (`toPlanDevice`) from the observer projection so
+  // every freshness consumer in a single plan-device build shares one source of
+  // truth — the residual-power credit and the device's `observationStale` flag
+  // can't disagree within the same pass.
+  observationStale: boolean;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
-  const { device, controlCapabilityId, shedBehavior } = params;
-  const observationStale = isDeviceObservationStale(device);
+  const { device, controlCapabilityId, shedBehavior, observationStale } = params;
   const currentDrawKw = getCurrentDrawKw({
     ...device,
     observationStale,

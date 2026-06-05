@@ -11,6 +11,29 @@ type ProjectionEntry = {
 };
 
 /**
+ * Freeze the decided value before it is stored so a reader cannot mutate the
+ * projection's truth by reference. Getters hand back the stored object directly,
+ * so the freeze must reach every reachable sub-object a consumer could mutate:
+ * the record, its `targets` array + each target entry, and the nested observation
+ * bags (`binaryControl`, `stateOfCharge`, `binaryControlObservation` and its
+ * `observedCapabilityIds` array). `projectObservedState` already builds the value
+ * fresh per event with spread-copied bags, so freezing them here is safe (it
+ * aliases no producer state) and closes the last by-reference mutation vector —
+ * e.g. `getObservedState(id).binaryControl.on = false`. Idempotent and cheap.
+ */
+function freezeObserved(value: ObservedDeviceState): ObservedDeviceState {
+    for (const target of value.targets) Object.freeze(target);
+    Object.freeze(value.targets);
+    if (value.binaryControl) Object.freeze(value.binaryControl);
+    if (value.stateOfCharge) Object.freeze(value.stateOfCharge);
+    if (value.binaryControlObservation) {
+        Object.freeze(value.binaryControlObservation.observedCapabilityIds);
+        Object.freeze(value.binaryControlObservation);
+    }
+    return Object.freeze(value);
+}
+
+/**
  * Observer-owned maintained projection of `ObservedDeviceState`, keyed by
  * deviceId, fed purely by the dispatcher PUSH from transport. Stage 4a of the
  * snapshot decomposition (`notes/state-management/snapshot-decomposition.md`).
@@ -23,9 +46,11 @@ type ProjectionEntry = {
  * No `lib/device/` import: the projection consumes only contracts types and the
  * observer-local event types, keeping the `no-observer-to-peer` boundary intact.
  *
- * Lifecycle: constructed alongside the device manager + emitter and recreated
- * with them on a transport restart — never stored anywhere that outlives a
- * transport restart.
+ * Lifecycle: co-created with the transport in `initDeviceManager` (once today —
+ * there is no in-process restart path yet) so the projection's per-device seq
+ * guard shares the transport's `observationSeq` epoch. Must not be stored
+ * anywhere that would outlive a transport rebuild, or a fresh transport's early
+ * deltas (lower seqs) would be dropped.
  */
 export class ObservedDeviceStateProjection {
     private byId: Map<string, ProjectionEntry> = new Map();
@@ -55,6 +80,11 @@ export class ObservedDeviceStateProjection {
         }
     }
 
+    /**
+     * Returns the maintained observed truth for a device, or `undefined` when
+     * none has been recorded. The value is frozen (see {@link apply}) so a
+     * consumer cannot mutate the projection's stored state by reference.
+     */
     getObservedState(deviceId: string): ObservedDeviceState | undefined {
         return this.byId.get(deviceId)?.value;
     }
@@ -78,7 +108,7 @@ export class ObservedDeviceStateProjection {
     private apply(value: ObservedDeviceState, seq: number | undefined, observedAtMs: number | undefined): void {
         const prev = this.byId.get(value.id);
         if (prev && this.shouldDrop(prev, seq, observedAtMs)) return;
-        this.byId.set(value.id, { value, seq, observedAtMs });
+        this.byId.set(value.id, { value: freezeObserved(value), seq, observedAtMs });
     }
 
     private shouldDrop(prev: ProjectionEntry, seq: number | undefined, observedAtMs: number | undefined): boolean {
