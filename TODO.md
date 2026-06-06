@@ -182,21 +182,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
       list consistent. Source: Codex review of PR #1476.
 
-*2026-06-03 review-findings investigation (pels-copy-and-terminology / pels-m3-critic).
-The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
-title colour were fixed in the same change; items below are the deferred remainder.*
-
-- [ ] **Dedup the one starvation literal shared with shared-domain.** The string
-      `"Waiting for available power"` is hardcoded in `STARVATION_REASON_LABELS`
-      (`packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` ~L109-156) AND owned by
-      `planStarvation.ts`'s `formatStarvationReason` (`packages/shared-domain/`), so the two can
-      drift. Point the diagnostics map at the shared-domain string for that one label. (Scoped
-      down from a broader "hoist the whole ~20-entry map" framing: the original log/UI-parity
-      rationale does NOT hold — grep-confirmed no runtime/logging path consumes these labels, and
-      most of the diagnostics map has no shared-domain sibling and no log consumer, so a full hoist
-      would be a no-payoff base-class trap.) Source: pels-copy-and-terminology, 2026-06-03;
-      rescoped 2026-06-04 merit pass.
-
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
@@ -379,6 +364,17 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
+      *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
+      *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
+      same phrase the new `STARVATION_WAITING_FOR_POWER_COPY` constant owns (differs only by a trailing
+      period), so the two can silently diverge from the overview/row-subtext wording.
+      *Why it's needed:* completing the same-file dedup removes the last in-file copy of this literal.
+      Deferred from the dedup PR because `capacityNote` is bundled into the `starvation_rescue` widget,
+      so the change regenerates `widgets/starvation_rescue/*` — a build-artifact churn out of scope for a
+      string-sourcing chore. Fix: `` capacityNote: `${STARVATION_WAITING_FOR_POWER_COPY}.` `` and commit
+      the regenerated widget bundles. Source: pels-copy-and-terminology on PR #1535, 2026-06-06.
 
 - [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects

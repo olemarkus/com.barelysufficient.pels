@@ -2,6 +2,7 @@
 "use strict";
 (() => {
   // packages/shared-domain/src/planStarvation.ts
+  var STARVATION_WAITING_FOR_POWER_COPY = "Waiting for available power";
   var STARVATION_RESCUE_WIDGET_COPY = {
     // List header — names what the widget SHOWS (the devices PELS is holding back
     // via the daily budget), not an action the user takes. Shown only when at
@@ -97,7 +98,7 @@
       const degrees = formatTargetDegrees(intendedNormalTargetC);
       return degrees ? `Held below ${degrees} by today\u2019s budget` : "Held by today\u2019s budget";
     }
-    return "Waiting for available power";
+    return STARVATION_WAITING_FOR_POWER_COPY;
   };
   var resolveStarvationRowNote = (cause, hasSmartTask = false) => {
     if (cause === "budget") return hasSmartTask ? STARVATION_RESCUE_WIDGET_COPY.smartTaskNote : null;
