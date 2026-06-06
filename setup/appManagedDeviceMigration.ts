@@ -1,10 +1,12 @@
 import type Homey from 'homey';
 import { CONTROLLABLE_DEVICES, MANAGED_DEVICES, PRICE_OPTIMIZATION_SETTINGS } from '../lib/utils/settingsKeys';
 import { isBooleanMap } from '../lib/utils/appTypeGuards';
+import { getLogger } from '../lib/logging/logger';
+
+const migrationLogger = getLogger('startup/managed-device-migration');
 
 type MigrateManagedDevicesParams = {
   homey: Homey.App['homey'];
-  log: (message: string) => void;
 };
 
 const buildTrueMap = (deviceIds: Iterable<string>): Record<string, boolean> => (
@@ -12,7 +14,7 @@ const buildTrueMap = (deviceIds: Iterable<string>): Record<string, boolean> => (
 );
 
 export const migrateManagedDevices = (params: MigrateManagedDevicesParams): void => {
-  const { homey, log } = params;
+  const { homey } = params;
   const managedRaw = homey.settings.get(MANAGED_DEVICES) as unknown;
   const controllableRaw = homey.settings.get(CONTROLLABLE_DEVICES) as unknown;
   const priceRaw = homey.settings.get(PRICE_OPTIMIZATION_SETTINGS) as unknown;
@@ -67,6 +69,6 @@ export const migrateManagedDevices = (params: MigrateManagedDevicesParams): void
     homey.settings.set(CONTROLLABLE_DEVICES, nextControllable);
   }
   if (managedChanged || controllableChanged) {
-    log('Migrated managed device settings to explicit managed devices.');
+    migrationLogger.info({ event: 'managed_devices_migrated' });
   }
 };

@@ -519,7 +519,6 @@ export default class PriceService {
     const results = await fetchHomeyEnergyResults({
       energyApi,
       info,
-      log: this.sinks.log,
       errorLog: this.sinks.errorLog,
     });
     if (!results) return;
@@ -527,7 +526,6 @@ export default class PriceService {
     logHomeyEnergyPayloadStatus({
       info,
       results,
-      log: this.sinks.log,
       debugStructured: this.sinks.debugStructured,
       errorLog: this.sinks.errorLog,
     });

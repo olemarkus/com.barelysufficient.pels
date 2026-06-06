@@ -4,6 +4,9 @@ import { resolveSmapsSummary } from '../diagnostics/smapsRollup';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from '../utils/runtimeTrace';
+import { getLogger } from '../logging/logger';
+
+const resourceWarningLogger = getLogger('perf/resource-warnings');
 
 type HomeyEmitter = {
   on?: (event: string, listener: (payload: unknown) => void) => void;
@@ -13,7 +16,6 @@ type HomeyEmitter = {
 
 type StartResourceWarningListenersParams = {
   homey: Homey.App['homey'];
-  log: (message: string) => void;
   error: (...args: unknown[]) => void;
 };
 
@@ -146,14 +148,14 @@ const createWarnLogger = (
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
 ): (() => void) | undefined => {
-  const { homey, log, error } = params;
+  const { homey, error } = params;
   const emitter = homey as unknown as HomeyEmitter;
   if (typeof emitter.on !== 'function') return undefined;
 
   const cpuwarn = createWarnLogger('cpuwarn', error);
   const memwarn = createWarnLogger('memwarn', error);
   const unload = (): void => {
-    log('[perf] homey unload event');
+    resourceWarningLogger.info({ event: 'homey_unload' });
   };
 
   emitter.on('cpuwarn', cpuwarn);

@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import { runBootMigrations } from '../../setup/appBootMigrations';
 import { MANAGED_DEVICES } from '../../lib/utils/settingsKeys';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';
 const ORPHAN_EV_SUPPORT_KEY = 'experimental_ev_support_enabled';
@@ -37,30 +38,38 @@ const createHomey = (initial: Record<string, unknown> = {}): MutableHomey => {
 };
 
 describe('runBootMigrations', () => {
+  let capture: LoggerCapture;
+
+  beforeEach(() => {
+    capture = captureLogger();
+  });
+
+  afterEach(() => {
+    capture.restore();
+  });
+
   it('unsets the orphan EV support key and writes the marker on first run', () => {
-    const log = vi.fn();
     const env = createHomey({
       [ORPHAN_EV_SUPPORT_KEY]: true,
     });
 
-    runBootMigrations({ homey: env.homey, log });
+    runBootMigrations({ homey: env.homey });
 
     expect(env.unsetCalls).toEqual([ORPHAN_EV_SUPPORT_KEY]);
     expect(env.store.has(ORPHAN_EV_SUPPORT_KEY)).toBe(false);
     expect(env.store.get(EV_SETTING_CLEANUP_MARKER)).toBe(true);
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(capture.findEvents('boot_migration_applied')).toHaveLength(1);
   });
 
   it('is a no-op on subsequent runs once the marker is set', () => {
-    const log = vi.fn();
     const env = createHomey({
       [ORPHAN_EV_SUPPORT_KEY]: true,
     });
 
-    runBootMigrations({ homey: env.homey, log });
+    runBootMigrations({ homey: env.homey });
     env.unsetCalls.length = 0;
     env.setCalls.length = 0;
-    log.mockClear();
+    capture.events.length = 0;
 
     // Simulate a stale write of the orphan key happening between boots
     // (e.g. user re-imports settings backup). Migration must remain a no-op
@@ -68,32 +77,30 @@ describe('runBootMigrations', () => {
     // cleaned once.
     env.store.set(ORPHAN_EV_SUPPORT_KEY, true);
 
-    runBootMigrations({ homey: env.homey, log });
+    runBootMigrations({ homey: env.homey });
 
     expect(env.unsetCalls).toEqual([]);
     expect(env.setCalls).toEqual([]);
-    expect(log).not.toHaveBeenCalled();
+    expect(capture.findEvent('boot_migration_applied')).toBeUndefined();
   });
 
   it('still writes the marker on fresh installs where the orphan key was never set', () => {
-    const log = vi.fn();
     const env = createHomey();
 
-    runBootMigrations({ homey: env.homey, log });
+    runBootMigrations({ homey: env.homey });
 
     expect(env.unsetCalls).toEqual([ORPHAN_EV_SUPPORT_KEY]);
     expect(env.store.get(EV_SETTING_CLEANUP_MARKER)).toBe(true);
   });
 
   it('does not touch managed_devices', () => {
-    const log = vi.fn();
     const managedBefore = { 'device-a': true, 'device-b': false };
     const env = createHomey({
       [ORPHAN_EV_SUPPORT_KEY]: true,
       [MANAGED_DEVICES]: managedBefore,
     });
 
-    runBootMigrations({ homey: env.homey, log });
+    runBootMigrations({ homey: env.homey });
 
     expect(env.unsetCalls).not.toContain(MANAGED_DEVICES);
     expect(env.setCalls.find((call) => call.key === MANAGED_DEVICES)).toBeUndefined();
