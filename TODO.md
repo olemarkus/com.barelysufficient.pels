@@ -137,17 +137,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
       on PR #1517, 2026-06-05.
 
-- [ ] **Verify early-satisfaction doesn't leave stale committed hours on the active plan.** When a
-      stalled/near-target smart task is reported satisfied mid-plan, `maybeWriteReplanRevision` merges
-      the now-empty live schedule via `mergeHoursPreservingCommitment`, whose `live.length === 0` branch
-      preserves ALL previously-committed hours. Internal to `lib/objectives` (NOT a daily-budget concern —
-      the budget producer never reads committed hours, so the earlier "release hours to the budget shaper"
-      framing was wrong and was cut). Open question: should those preserved hours be released so the
-      satisfied task's own re-plan/hysteresis reads don't treat it as still-committed? Confirm impact
-      (likely benign — the device draws ~0 W once satisfied); fix only if a concrete effect is found.
-      Source: codex on PR #1495, 2026-06-04.
-      Files: `lib/objectives/deferredObjectives/**` (`maybeWriteReplanRevision`, `mergeHoursPreservingCommitment`).
-
 - [ ] **Snapshot decomposition stage-4b prerequisites (before wiring any reader onto the
       `ObservedDeviceState` projection).** Three items, all detailed in
       `notes/state-management/snapshot-decomposition.md` (step 4b): (1) in-process-restart seq-epoch

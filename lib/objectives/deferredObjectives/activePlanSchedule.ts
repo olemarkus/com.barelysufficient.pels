@@ -293,7 +293,16 @@ export const mergeHoursPreservingCommitment = (
 ): DeferredObjectiveActivePlanHourV1[] => {
   if (committed.length === 0) return [...live];
   // With no live plan there is nothing to adopt — preserve the commitment
-  // (no-shrink invariant).
+  // (no-shrink invariant). An EARLY-SATISFIED task hits this branch every
+  // cycle: once the target is reached `energyNeededKWh` is 0, the horizon
+  // allocator emits no positive buckets, and `buildHoursFromHorizonPlan`
+  // returns `[]`, so the merge preserves the full committed schedule. This is
+  // intentional and benign — the executor acts on the LIVE plan + device state
+  // (a satisfied device is at target, so nothing charges), never on these
+  // persisted committed hours, and the lifecycle controller ends the task
+  // shortly after satisfaction. The preserved hours are the run's historical
+  // plan, not a standing commitment to keep charging. (Verified, no concrete
+  // effect found — do not re-flag as "stale committed hours".)
   if (live.length === 0) return [...committed];
 
   const currentHourStart = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
