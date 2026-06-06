@@ -1,9 +1,11 @@
 import type Homey from 'homey';
 import { migrateBlobToPerKeyIfNeeded } from '../lib/objectives/deferredObjectives';
+import { getLogger } from '../lib/logging/logger';
+
+const migrationLogger = getLogger('startup/boot-migrations');
 
 type BootMigrationsParams = {
   homey: Homey.App['homey'];
-  log: (message: string) => void;
 };
 
 const EV_SETTING_CLEANUP_MARKER = 'boot_migrations_v1_ev_setting_cleanup_done';
@@ -34,12 +36,12 @@ const BOOT_MIGRATIONS: ReadonlyArray<BootMigration> = [
 ];
 
 export const runBootMigrations = (params: BootMigrationsParams): void => {
-  const { homey, log } = params;
+  const { homey } = params;
   for (const migration of BOOT_MIGRATIONS) {
     if (homey.settings.get(migration.marker) === true) continue;
     migration.run(homey);
     homey.settings.set(migration.marker, true);
-    log(`Boot migration applied: ${migration.describe}`);
+    migrationLogger.info({ event: 'boot_migration_applied', migration: migration.describe });
   }
   // Deferred-objective blob → per-device-key migration. Runs separately from
   // BOOT_MIGRATIONS because it owns its own marker + abandon-grace logic (an

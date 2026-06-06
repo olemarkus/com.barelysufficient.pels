@@ -1,4 +1,3 @@
-import type { Mock } from 'vitest';
 import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import {
@@ -10,6 +9,7 @@ import {
 import { resetRestClient, setRestClient } from '../../lib/device/transport/managerHomeyApi';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 const buildDeviceManager = (params: {
   devices?: HomeyDeviceLike[];
@@ -28,19 +28,21 @@ const buildDeviceManager = (params: {
   }) as unknown as DeviceTransport;
 };
 
-const findLogPayload = (logger: Mock, message: string): unknown => {
-  const call = logger.mock.calls.find(([entry]) => entry === message);
-  return call ? call[1] : undefined;
-};
-
-const parseDumpPayload = (logger: Mock): Record<string, any> => {
-  const dumpPayload = findLogPayload(logger, 'Homey device dump') as { payload?: string } | undefined;
-  expect(dumpPayload?.payload).toBeDefined();
-  return JSON.parse(dumpPayload?.payload ?? '{}');
+const parseDumpPayload = (capture: LoggerCapture): Record<string, any> => {
+  const dumpEvent = capture.findEvent('homey_device_dump') as { payload?: string } | undefined;
+  expect(dumpEvent?.payload).toBeDefined();
+  return JSON.parse(dumpEvent?.payload ?? '{}');
 };
 
 describe('appDebugHelpers', () => {
+  let capture: LoggerCapture;
+
+  beforeEach(() => {
+    capture = captureLogger();
+  });
+
   afterEach(() => {
+    capture.restore();
     resetRestClient();
   });
 
@@ -71,7 +73,6 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = vi.fn();
     const error = vi.fn();
     setRestClient({
       get: vi.fn().mockResolvedValue([
@@ -95,15 +96,14 @@ describe('appDebugHelpers', () => {
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
-      log,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(capture.findEvents('homey_device_dump')).toHaveLength(1);
 
-    const dumpPayload = parseDumpPayload(log);
+    const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
       source: 'listEntry',
@@ -150,21 +150,19 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = vi.fn();
     const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
-      log,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(capture.findEvents('homey_device_dump')).toHaveLength(1);
 
-    const dumpPayload = parseDumpPayload(log);
+    const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
       source: 'listEntry',
@@ -191,20 +189,18 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = vi.fn();
     const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
-      log,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
 
-    const dumpPayload = parseDumpPayload(log);
+    const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
       source: 'listEntry',
@@ -227,20 +223,18 @@ describe('appDebugHelpers', () => {
     const deviceManager = buildDeviceManager({
       devices: [device],
     });
-    const log = vi.fn();
     const error = vi.fn();
 
     const ok = await logHomeyDeviceForDebug({
       deviceId: 'dev-1',
       deviceManager,
-      log,
       error,
     });
 
     expect(ok).toBe(true);
     expect(error).not.toHaveBeenCalled();
 
-    const dumpPayload = parseDumpPayload(log);
+    const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.homey.summary).toEqual(expect.objectContaining({
       available: true,
       source: 'listEntry',
@@ -378,7 +372,6 @@ describe('appDebugHelpers', () => {
         }),
       },
       error: vi.fn(),
-      log: vi.fn(),
     };
 
     const ok = await logHomeyDeviceForDebugFromApp({
@@ -389,7 +382,7 @@ describe('appDebugHelpers', () => {
     expect(ok).toBe(true);
     expect(app.error).not.toHaveBeenCalled();
 
-    const dumpPayload = parseDumpPayload(app.log as Mock);
+    const dumpPayload = parseDumpPayload(capture);
     expect(dumpPayload.pels).toEqual(expect.objectContaining({
       present: true,
       targetSnapshot: expect.objectContaining({
@@ -530,7 +523,6 @@ describe('appDebugHelpers', () => {
           }],
         }),
       },
-      log: vi.fn(),
       error: vi.fn(),
     };
     setRestClient({
@@ -559,7 +551,7 @@ describe('appDebugHelpers', () => {
     });
 
     expect(ok).toBe(true);
-    const comparisonPayload = findLogPayload(app.log as Mock, 'Homey/Pels device state comparison') as { payload?: string } | undefined;
+    const comparisonPayload = capture.findEvent('homey_pels_device_state_comparison') as { payload?: string } | undefined;
     expect(comparisonPayload?.payload).toBeDefined();
     expect(JSON.parse(comparisonPayload?.payload ?? '{}')).toEqual({
       reason: 'target_retry:plan:target_temperature',

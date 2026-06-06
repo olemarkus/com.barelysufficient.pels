@@ -4,7 +4,9 @@ import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnerg
 import { normalizeError } from '../utils/errorUtils';
 import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
 import { getFlowPricePayload } from './flowPriceUtils';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger, type StructuredDebugEmitter } from '../logging/logger';
+
+const priceLogger = getLogger('price');
 
 export type HomeyEnergyFetchResult = Awaited<ReturnType<typeof fetchHomeyEnergyPricesForDate>>;
 
@@ -58,10 +60,9 @@ export const shouldUseHomeyEnergyCache = (params: {
 export const fetchHomeyEnergyResults = async (params: {
   energyApi: HomeyEnergyApi;
   info: HomeyEnergyDateInfo;
-  log: (...args: unknown[]) => void;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<HomeyEnergyResults | null> => {
-  const { energyApi, info, log, errorLog } = params;
+  const { energyApi, info, errorLog } = params;
   const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([
     fetchHomeyEnergyPricesForDate({
       api: energyApi,
@@ -79,7 +80,7 @@ export const fetchHomeyEnergyResults = async (params: {
     if (errorLog) {
       errorLog(`Homey prices: Failed to fetch price data for ${dateKey}`, details);
     } else {
-      log(`Homey prices: Failed to fetch price data for ${dateKey}`, details);
+      priceLogger.warn({ event: 'homey_prices_fetch_failed', date: dateKey, ...details });
     }
   };
   if (todayOutcome.status === 'rejected') logFailure(info.todayKey, todayOutcome.reason);
@@ -96,11 +97,10 @@ export const fetchHomeyEnergyResults = async (params: {
 export const logHomeyEnergyPayloadStatus = (params: {
   info: HomeyEnergyDateInfo;
   results: HomeyEnergyResults;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): void => {
-  const { info, results, log, debugStructured, errorLog } = params;
+  const { info, results, debugStructured, errorLog } = params;
   if (!results.todayResult.payload) {
     const details = {
       date: info.todayKey,
@@ -110,7 +110,7 @@ export const logHomeyEnergyPayloadStatus = (params: {
     if (errorLog) {
       errorLog('Homey prices: Missing today price data', details);
     } else {
-      log('Homey prices: Missing today price data', details);
+      priceLogger.warn({ event: 'homey_prices_missing_today', ...details });
     }
   }
   if (!results.tomorrowResult.payload) {
@@ -125,7 +125,7 @@ export const logHomeyEnergyPayloadStatus = (params: {
     } else if (errorLog) {
       errorLog('Homey prices: Missing tomorrow price data after 13:00', details);
     } else {
-      log('Homey prices: Missing tomorrow price data after 13:00', details);
+      priceLogger.warn({ event: 'homey_prices_missing_tomorrow', ...details });
     }
   }
 };

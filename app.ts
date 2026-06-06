@@ -1578,7 +1578,6 @@ class PelsApp extends Homey.App {
   private updateDebugLoggingEnabled(logChange = false): void {
     this.debugLoggingTopics = buildDebugLoggingTopics({
       settings: this.homey.settings,
-      log: (...args: unknown[]) => this.log(...args),
       logChange,
     });
   }
@@ -1623,9 +1622,8 @@ class PelsApp extends Homey.App {
     });
   }
   private runStartupSettingsMigrations(): void {
-    const log = this.log.bind(this);
-    migrateManagedDevicesHelper({ homey: this.homey, log });
-    runBootMigrationsHelper({ homey: this.homey, log });
+    migrateManagedDevicesHelper({ homey: this.homey });
+    runBootMigrationsHelper({ homey: this.homey });
   }
   private areFlowBackedCardsAvailable(): boolean {
     if (typeof this.flowBackedCardsAvailable === 'boolean') {

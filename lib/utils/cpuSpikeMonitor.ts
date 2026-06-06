@@ -1,6 +1,9 @@
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from './planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from './runtimeTrace';
 import { normalizeError } from './errorUtils';
+import { getLogger } from '../logging/logger';
+
+const monitorLogger = getLogger('perf/cpu-spike-monitor');
 
 const MB = 1024 * 1024;
 
@@ -163,7 +166,11 @@ export const startCpuSpikeMonitor = (params: {
     timer.unref();
   }
   if (typeof isEnabled !== 'function' || isEnabled()) {
-    log(`[perf] cpu spike monitor started interval=${effectiveIntervalMs}ms threshold=${cpuThresholdPct}%`);
+    monitorLogger.info({
+      event: 'cpu_spike_monitor_started',
+      intervalMs: effectiveIntervalMs,
+      thresholdPct: cpuThresholdPct,
+    });
   }
 
   return () => {

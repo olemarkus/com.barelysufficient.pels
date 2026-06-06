@@ -57,7 +57,6 @@ export class BackgroundTasksController {
     if (this.stopResourceWarnings) this.stopResourceWarnings();
     this.stopResourceWarnings = startResourceWarnings({
       homey: this.deps.homey,
-      log: (message) => this.deps.log(message),
       error: (...args: unknown[]) => this.deps.error(...args),
     });
   }

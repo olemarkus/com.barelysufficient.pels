@@ -1,11 +1,14 @@
 import type { MockInstance } from 'vitest';
 import { startCpuSpikeMonitor } from '../../lib/utils/cpuSpikeMonitor';
+import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 
 describe('startCpuSpikeMonitor', () => {
   let cpuUsageSpy: MockInstance;
   let hrtimeSpy: MockInstance;
+  let capture: LoggerCapture;
 
   beforeEach(() => {
+    capture = captureLogger();
     vi.useFakeTimers().setSystemTime(new Date('2026-02-28T08:00:00Z'));
     cpuUsageSpy = vi.spyOn(process, 'cpuUsage').mockImplementation((previous?: NodeJS.CpuUsage) => (
       previous ? { user: 0, system: 0 } : { user: 0, system: 0 }
@@ -18,6 +21,7 @@ describe('startCpuSpikeMonitor', () => {
   afterEach(() => {
     cpuUsageSpy.mockRestore();
     hrtimeSpy.mockRestore();
+    capture.restore();
     vi.useRealTimers();
   });
 
@@ -32,7 +36,10 @@ describe('startCpuSpikeMonitor', () => {
       minLogIntervalMs: 0,
     });
 
-    expect(log).toHaveBeenCalledWith('[perf] cpu spike monitor started interval=250ms threshold=0%');
+    expect(capture.findEvent('cpu_spike_monitor_started')).toMatchObject({
+      intervalMs: 250,
+      thresholdPct: 0,
+    });
 
     vi.advanceTimersByTime(250);
     let spikeMessages = log.mock.calls
@@ -63,9 +70,11 @@ describe('startCpuSpikeMonitor', () => {
     });
 
     expect(log).not.toHaveBeenCalled();
+    expect(capture.findEvent('cpu_spike_monitor_started')).toBeUndefined();
 
     vi.advanceTimersByTime(1000);
     expect(log).not.toHaveBeenCalled();
+    expect(capture.findEvent('cpu_spike_monitor_started')).toBeUndefined();
 
     stop();
   });
