@@ -269,21 +269,16 @@ were rolled back before they could land.*
       control behaviour (over-tightening risks under-heating).
       Source: live prod UI walk, 2026-05-22.
 
-- [ ] **Make the postmortem strip honest about unobserved-gap hours** (consolidates three
-      former items: persist-anchors + mark-restart-gap + flow-mode proration).
-      *Support cost:* every Homey restart mid-task (settings change, OOM, deploy) currently drops
-      one hour of delivery from the strip and renders it as a falsely-empty bar that reads "device
-      did nothing" to a user inspecting a run — a predictable confusion scenario.
-      - **Root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` live only on
-        the in-memory `InProgressRecord` (`planHistory.ts`) and aren't written to
-        `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING`, so a restart loses the in-flight hour. The
-        `restarts mid-run drop the in-flight hour anchor` regression test pins this. Persist them
-        alongside the rest of the record. Files: `lib/objectives/deferredObjectives/planHistory.ts`,
-        `packages/contracts/src/deferredObjectiveActivePlans.ts`.
-      - **Cheap mitigation (UI signal), if anchors aren't persisted:** mark restart-straddling
-        hours in `DeadlinePlanHistoryDetail.tsx` (dashed cell + `data unavailable across restart`
-        tooltip) so a measurement gap is distinguishable from a quiet hour. The gap is always the
-        hour the pre-restart opening was anchored in.
+- [ ] **Postmortem strip: prorate multi-hour gaps under `power_source = flow`** (remaining
+      out-of-scope tail of the former "honest about unobserved-gap hours" item).
+      - **DONE — root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` are now
+        persisted onto the active plan (`inFlightHourOpening`/`inFlightKWhPerUnit`) and restored in
+        `startRecord` after a restart, so a Homey restart mid-task no longer drops the in-flight
+        hour or renders it as a falsely-empty "device did nothing" bar. This also makes the cheap
+        dashed-cell UI mitigation (`DeadlinePlanHistoryDetail.tsx`) MOOT — the gap is filled, not
+        merely flagged. Shipped: contract `deferredObjectiveActivePlans.ts` +
+        `activePlanSettings.ts` validator, `planHistory.ts` persist seam, `activePlanRecorder.ts`
+        `applyInProgressAnchors`, `planHistoryInProgressState.ts` restore.
       - **Out of scope (telemetry-blocked):** proper proration of multi-hour gaps under
         `power_source = flow` needs per-hour power telemetry that doesn't exist; the rollover
         detector attributes the whole delta to the opening hour. Documented in

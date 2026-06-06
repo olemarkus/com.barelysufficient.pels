@@ -191,6 +191,88 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     });
   });
 
+  describe('applyInProgressAnchors (postmortem in-flight anchor persistence)', () => {
+    it('writes the anchor onto the matching plan and marks dirty', () => {
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.flushIfDirty();
+
+      recorder.applyInProgressAnchors({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        hourOpening: { hourMs: HOUR_MS, value: 50 },
+        kWhPerUnit: 1.5,
+      });
+      expect(recorder.flushIfDirty()).toBe(true);
+
+      const plan = saved()!.plansByDeviceId.dev;
+      expect(plan.inFlightHourOpening).toEqual({ hourMs: HOUR_MS, value: 50 });
+      expect(plan.inFlightKWhPerUnit).toBe(1.5);
+    });
+
+    it('no-ops when no plan tracks the (deviceId, deadlineAtMs)', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.flushIfDirty();
+
+      // Different deadline → no matching plan → no write, stays clean.
+      recorder.applyInProgressAnchors({
+        deviceId: 'dev',
+        deadlineAtMs: 9 * HOUR_MS,
+        hourOpening: { hourMs: HOUR_MS, value: 50 },
+        kWhPerUnit: 1.5,
+      });
+      expect(recorder.flushIfDirty()).toBe(false);
+      expect(recorder.getPlanForTests('dev')?.inFlightHourOpening).toBeUndefined();
+    });
+
+    it('does not re-dirty when the anchor is unchanged', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.flushIfDirty();
+
+      const anchor = {
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        hourOpening: { hourMs: HOUR_MS, value: 50 },
+        kWhPerUnit: 1.5,
+      };
+      recorder.applyInProgressAnchors(anchor);
+      expect(recorder.flushIfDirty()).toBe(true);
+      // Identical anchor again → no change → stays clean.
+      recorder.applyInProgressAnchors(anchor);
+      expect(recorder.flushIfDirty()).toBe(false);
+    });
+
+    it('clears a previously-persisted anchor when handed null/non-positive values', () => {
+      const { deps } = buildPersistDeps();
+      const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], HOUR_MS);
+      recorder.flushIfDirty();
+
+      recorder.applyInProgressAnchors({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        hourOpening: { hourMs: HOUR_MS, value: 50 },
+        kWhPerUnit: 1.5,
+      });
+      recorder.flushIfDirty();
+      recorder.applyInProgressAnchors({
+        deviceId: 'dev',
+        deadlineAtMs: 6 * HOUR_MS,
+        hourOpening: null,
+        kWhPerUnit: 0,
+      });
+      expect(recorder.flushIfDirty()).toBe(true);
+      const plan = recorder.getPlanForTests('dev');
+      expect(plan?.inFlightHourOpening).toBeUndefined();
+      expect(plan?.inFlightKWhPerUnit).toBeUndefined();
+    });
+  });
+
   it('persists the per-hour unit milestone (cumulative target by end of hour: anchor + ΣkWh ÷ rate)', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -1047,6 +1129,42 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(afterNext?.history?.length).toBe(1);
     expect(afterNext?.history?.[0]?.revision).toBe(4);
     expect(afterNext?.history?.[0]?.reason).toBe('objective_changed');
+  });
+
+  it('drops the in-flight postmortem anchors on an objective_changed revision', () => {
+    // The anchors belong to the prior run. When the objective changes (new
+    // target/deadline) the history recorder finalizes that run and starts a
+    // fresh one; carrying the stale anchor forward would let the new run's
+    // `startRecord` restore an old hour/reading and mis-attribute its first
+    // rollover. Mirror the `history` clear: drop the anchor on objective_changed.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 8 * HOUR_MS })], HOUR_MS);
+    recorder.applyInProgressAnchors({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      hourOpening: { hourMs: HOUR_MS, value: 50 },
+      kWhPerUnit: 1.5,
+    });
+    expect(recorder.getPlanForTests('dev')?.inFlightHourOpening).toEqual({ hourMs: HOUR_MS, value: 50 });
+
+    // Target changes 65 → 70: objective_changed.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 8 * HOUR_MS,
+      targetTemperatureC: 70,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 2.0),
+        makeBucket(3 * HOUR_MS, 2.0),
+        makeBucket(4 * HOUR_MS, 2.0),
+      ]),
+    })], 4 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    const after = recorder.getPlanForTests('dev');
+    expect(after?.latest?.reason).toBe('objective_changed');
+    expect(after?.inFlightHourOpening).toBeUndefined();
+    expect(after?.inFlightKWhPerUnit).toBeUndefined();
   });
 
   // Regression for the rescue-only branch of the replan-reason cascade. Toggling
@@ -3548,6 +3666,63 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         expect(
           normalized.plansByDeviceId.dev?.kwhPerUnitProvenance?.displayConfidence,
         ).toBe('high');
+      });
+
+      it('round-trips the persisted in-flight postmortem anchors', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              inFlightHourOpening: { hourMs: HOUR_MS, value: 50 },
+              inFlightKWhPerUnit: 1.5,
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev?.inFlightHourOpening).toEqual({ hourMs: HOUR_MS, value: 50 });
+        expect(normalized.plansByDeviceId.dev?.inFlightKWhPerUnit).toBe(1.5);
+      });
+
+      it('accepts a legacy plan with no in-flight anchor fields (treated as absent)', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: basePlan({ reason: 'flow_card' }), // no anchor keys
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeDefined();
+        expect(normalized.plansByDeviceId.dev?.inFlightHourOpening).toBeUndefined();
+        expect(normalized.plansByDeviceId.dev?.inFlightKWhPerUnit).toBeUndefined();
+      });
+
+      it('drops a plan whose in-flight anchor carries a non-finite reading (tamper guard)', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              inFlightHourOpening: { hourMs: HOUR_MS, value: Number.NaN },
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
+      });
+
+      it('drops a plan whose in-flight kWh-per-unit factor is non-positive (tamper guard)', () => {
+        const persisted = {
+          version: 1,
+          plansByDeviceId: {
+            dev: {
+              ...basePlan({ reason: 'flow_card' }),
+              inFlightKWhPerUnit: 0,
+            },
+          },
+        };
+        const normalized = normalizeDeferredObjectiveActivePlans(persisted);
+        expect(normalized.plansByDeviceId.dev).toBeUndefined();
       });
     });
   });

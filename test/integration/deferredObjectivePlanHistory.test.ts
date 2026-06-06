@@ -2056,15 +2056,44 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.deliveredKWh).toBeUndefined();
     });
 
-    it('restarts mid-run drop the in-flight hour anchor (lossy-restart contract)', () => {
-      // Pins the documented behaviour: `currentHourOpening` /
-      // `lastKWhPerUnit` live only in memory. A PELS restart mid-run
-      // re-seeds the opening at the first post-restart reading, so any
-      // delivery between the pre-restart anchor and the first post-restart
-      // observation is lost from the postmortem strip. The contribution
-      // lands on the *post-restart* hour anchor, not the original one.
-      // See `InProgressRecord.currentHourOpening` docstring for the
-      // follow-up plan to persist these fields.
+    // Build a minimal active plan carrying the persisted in-flight anchors so a
+    // post-restart recorder can restore them in `startRecord`. Mirrors the
+    // active-plan recorder's `applyInProgressAnchors` write target.
+    const buildPlansWithAnchors = (params: {
+      deviceId: string;
+      deadlineAtMs: number;
+      inFlightHourOpening?: { hourMs: number; value: number };
+      inFlightKWhPerUnit?: number;
+    }) => ({
+      version: 1 as const,
+      plansByDeviceId: {
+        [params.deviceId]: {
+          deviceId: params.deviceId,
+          deviceName: 'Water Heater',
+          objectiveKind: 'temperature' as const,
+          targetTemperatureC: 65,
+          targetPercent: null,
+          deadlineAtMs: params.deadlineAtMs,
+          startedAtMs: 0,
+          pending: false,
+          objectiveSignature: 'sig',
+          original: null,
+          latest: null,
+          ...(params.inFlightHourOpening ? { inFlightHourOpening: params.inFlightHourOpening } : {}),
+          ...(params.inFlightKWhPerUnit !== undefined
+            ? { inFlightKWhPerUnit: params.inFlightKWhPerUnit }
+            : {}),
+        },
+      },
+    });
+
+    it('restores the persisted in-flight hour anchor across a restart mid-run', () => {
+      // Root-cause fix: `currentHourOpening` / `lastKWhPerUnit` are now persisted
+      // onto the active plan (`inFlightHourOpening` / `inFlightKWhPerUnit`) via
+      // `persistInProgressAnchors`. A restart picking up the in-flight run
+      // restores the pre-restart opening in `startRecord`, so the closing-hour
+      // delta is attributed across the restart boundary rather than blanking the
+      // in-flight hour's postmortem bar.
       const pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }> = {
         [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
         [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal' },
@@ -2072,29 +2101,51 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       const persisted = buildPersistDepsWithPrice(pricesByHourMs);
       const deadlineAtMs = 5 * HOUR_MS;
 
-      // First "PELS process": anchor at 50 °C in hour 1.
-      const recorderA = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      // First "PELS process": anchor at 50 °C in hour 1. Capture the anchor the
+      // recorder threads out — this is what the active-plan recorder would have
+      // persisted onto the active plan.
+      let persistedAnchor: {
+        hourOpening: { hourMs: number; value: number } | null;
+        kWhPerUnit: number | null;
+      } | null = null;
+      const recorderA = new DeferredObjectivePlanHistoryRecorder({
+        ...persisted.deps,
+        persistInProgressAnchors: (anchors) => {
+          persistedAnchor = { hourOpening: anchors.hourOpening, kWhPerUnit: anchors.kWhPerUnit };
+        },
+      });
       recorderA.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
         HOUR_MS + 5 * 60_000,
       );
-      // Process dies here. No flush of in-progress map; persisted entries
-      // (none yet) survive.
+      // The anchor was threaded out: opening at 50 °C in hour 1, factor 1.5.
+      expect(persistedAnchor).not.toBeNull();
+      expect(persistedAnchor!.hourOpening).toEqual({ hourMs: HOUR_MS, value: 50 });
+      expect(persistedAnchor!.kWhPerUnit).toBe(1.5);
+      // Process dies here. Persisted active plan now carries the anchor.
+      const restoredPlans = buildPlansWithAnchors({
+        deviceId: 'dev',
+        deadlineAtMs,
+        inFlightHourOpening: persistedAnchor!.hourOpening ?? undefined,
+        inFlightKWhPerUnit: persistedAnchor!.kWhPerUnit ?? undefined,
+      });
 
-      // Second "PELS process": fresh recorder against the same persistence.
-      // The first reading after restart is 53 °C still inside hour 1.
-      // Without persisted opening, the recorder re-anchors at 53.
+      // Second "PELS process": fresh recorder, fed the restored active plan.
+      // First post-restart reading is 53 °C still inside hour 1; the recorder
+      // restores the opening at 50 (not 53).
       const recorderB = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
       recorderB.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53 })],
         HOUR_MS + 40 * 60_000,
+        restoredPlans,
       );
-      // Cross into hour 2 with 55 °C. Delta from post-restart opening
-      // (53 → 55) attributes 2 °C × 1.5 kWh/°C = 3.0 kWh to hour 1.
-      // The 50 → 53 °C delivered before the restart is lost.
+      // Cross into hour 2 with 55 °C. Delta from the RESTORED opening (50 → 55)
+      // attributes 5 °C × 1.5 kWh/°C = 7.5 kWh to hour 1 — the full delivery,
+      // including the 50 → 53 delivered before the restart.
       recorderB.observe(
         [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
         2 * HOUR_MS + 5 * 60_000,
+        restoredPlans,
       );
       recorderB.observe([], deadlineAtMs);
       recorderB.flushIfDirty();
@@ -2103,7 +2154,51 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.hourlyContributions).toHaveLength(1);
       expect(entry.hourlyContributions![0]).toEqual({
         atMs: HOUR_MS,
-        deliveredKWh: 3.0, // post-restart delta only, not the 50→55 full delta (which would be 7.5)
+        deliveredKWh: 7.5, // full 50→55 delta — the pre-restart 50→53 is no longer lost
+        priceValue: 0.5,
+        tone: 'cheap',
+      });
+      expect(entry.deliveredKWh).toBeCloseTo(7.5);
+    });
+
+    it('degrades to re-anchoring on restart when the active plan carries no anchor (legacy)', () => {
+      // Legacy / cold-start fallback: a persisted plan from before the anchor
+      // field shipped (or a run that never reached a trustworthy reading) omits
+      // `inFlightHourOpening`. The recorder must NOT crash and must fall back to
+      // the pre-existing re-anchor-on-first-post-restart-reading behaviour, so
+      // only the post-restart delta is attributed.
+      const pricesByHourMs: Record<number, { priceValue: number; tone: 'cheap' | 'normal' | 'expensive' }> = {
+        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap' },
+        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal' },
+      };
+      const persisted = buildPersistDepsWithPrice(pricesByHourMs);
+      const deadlineAtMs = 5 * HOUR_MS;
+
+      // Legacy active plan: no anchor fields at all.
+      const legacyPlans = buildPlansWithAnchors({ deviceId: 'dev', deadlineAtMs });
+
+      const recorder = new DeferredObjectivePlanHistoryRecorder(persisted.deps);
+      // First post-restart reading 53 °C in hour 1 — re-anchors here.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53 })],
+        HOUR_MS + 40 * 60_000,
+        legacyPlans,
+      );
+      // Cross into hour 2 with 55 °C: delta from the post-restart re-anchor
+      // (53 → 55) attributes 2 °C × 1.5 = 3.0 kWh to hour 1.
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
+        2 * HOUR_MS + 5 * 60_000,
+        legacyPlans,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = persisted.saved()!.entries[0]!;
+      expect(entry.hourlyContributions).toHaveLength(1);
+      expect(entry.hourlyContributions![0]).toEqual({
+        atMs: HOUR_MS,
+        deliveredKWh: 3.0, // post-restart delta only — legacy plan had no anchor to restore
         priceValue: 0.5,
         tone: 'cheap',
       });
