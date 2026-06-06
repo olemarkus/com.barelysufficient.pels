@@ -24,7 +24,6 @@ import {
 import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
-import type { CostDisplay } from '../dailyBudgetCost.ts';
 import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
@@ -206,11 +205,6 @@ export type DeadlinePlanLoadState =
     status: 'pending';
     pending: DeadlinePlanPendingPayload;
     history?: DeadlinePlanHistoryView;
-    // Display currency for the device-scoped `PriorRunsHistory` cost lines —
-    // resolved from the same price source as the live hero so the past-run rows
-    // scale øre→kr identically. Optional so legacy callers/tests that don't
-    // render history cost can omit it.
-    costDisplay?: CostDisplay;
   }
   | {
     status: 'unavailable';
@@ -230,8 +224,6 @@ export type DeadlinePlanLoadState =
     status: 'ready';
     payload: DeadlinePlanPayload;
     history?: DeadlinePlanHistoryView;
-    // See the `pending` variant — display currency for the past-run cost lines.
-    costDisplay?: CostDisplay;
   }
   | {
     // Detail view for a finalized plan in history. The page lands on the
@@ -1051,13 +1043,8 @@ const PendingHero = ({ pending }: { pending: DeadlinePlanPendingPayload }) => (
 // yet or the device has no recorded entries — we intentionally suppress the
 // "Past tasks" heading in the empty case so a brand-new device with no prior
 // runs doesn't get a cosmetic empty section directly under the pending hero.
-const PriorRunsHistory = ({ history, costDisplay }: {
+const PriorRunsHistory = ({ history }: {
   history: DeadlinePlanHistoryView | undefined;
-  // Display currency for the past-run cost lines + week roll-up. When absent
-  // (legacy callers, or a boot without prices) the cost half is dropped — the
-  // rows still render. Threading unit + divisor keeps the device-scoped surface
-  // scaling øre→kr the same way the Smart-tasks tab list and live hero do.
-  costDisplay?: CostDisplay;
 }) => {
   if (!history || history.entries.length === 0) return null;
   return (
@@ -1066,8 +1053,6 @@ const PriorRunsHistory = ({ history, costDisplay }: {
         status: 'ready',
         entries: history.entries,
         timeZone: history.timeZone,
-        costUnit: costDisplay?.unit ?? '',
-        costDivisor: costDisplay?.divisor ?? 1,
       }}
     />
   );
@@ -1144,7 +1129,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     return (
       <>
         <PendingHero pending={loadState.pending} />
-        <PriorRunsHistory history={loadState.history} costDisplay={loadState.costDisplay} />
+        <PriorRunsHistory history={loadState.history} />
       </>
     );
   }
@@ -1172,7 +1157,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
       <HorizonCard payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
       <RevisionHistoryPanel payload={loadState.payload} />
-      <PriorRunsHistory history={loadState.history} costDisplay={loadState.costDisplay} />
+      <PriorRunsHistory history={loadState.history} />
     </>
   );
 };

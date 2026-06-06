@@ -18,23 +18,11 @@ import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 type DeadlinePlanHistoryProps = {
   entries: DeferredObjectivePlanHistoryEntry[];
   timeZone: string;
-  // Display currency suffix (e.g. `kr`) threaded the same way as `timeZone` so
-  // each row can render the persisted `Cost ≈ X kr · Y kWh delivered` meta line.
-  // An empty / null / omitted value drops the cost half of that line — same
-  // convention as the history-detail surfaces. Typed `| null` because Homey
-  // settings reads can return `null`, which a bare `?:` default would not catch.
-  costUnit?: string | null;
-  // Display-currency divisor (`CostDisplay.divisor`) scaling the raw persisted
-  // minor-unit `totalCost` to the displayed currency before rounding (øre→kr at
-  // 100). Defaults to 1 (no scaling) when omitted.
-  costDivisor?: number;
 };
 
-export const PlanHistoryCard = ({ entry, timeZone, costUnit = '', costDivisor = 1 }: {
+export const PlanHistoryCard = ({ entry, timeZone }: {
   entry: DeferredObjectivePlanHistoryEntry;
   timeZone: string;
-  costUnit?: string | null;
-  costDivisor?: number;
 }) => {
   const tone = getPlanHistoryOutcomeTone(entry.outcome);
   // Whole-row tonal container (PR2 spec §7) — the outcome paints the card
@@ -67,10 +55,10 @@ export const PlanHistoryCard = ({ entry, timeZone, costUnit = '', costDivisor = 
   // on one screen. (The 2-decimal sibling stays reserved for the Missed hero's
   // sparse fallback.) Returns null when neither delivery nor cost was recorded
   // (legacy entries) — the line is then suppressed, never faking a 0 kr / 0 kWh
-  // row.
-  // `costUnit ?? ''` absorbs a `null` from a Homey settings read at the
-  // producer boundary; `costDivisor` scales the raw øre `totalCost` to kr.
-  const costLine = formatPlanHistoryListCostAndDelivered(entry, costUnit ?? '', costDivisor);
+  // row. The producer scales + labels with the entry's RECORDED price display
+  // (legacy entries fall back to the recording-era øre/kr default), so the row
+  // survives a later price-scheme switch — no live unit/divisor is threaded in.
+  const costLine = formatPlanHistoryListCostAndDelivered(entry);
   // Trim trailing/leading whitespace from user-entered Homey device names so
   // the displayed row isn't padded. Empty / whitespace-only names collapse the
   // device line — matches the pre-fix falsy guard on the raw value.
@@ -128,8 +116,6 @@ export const PlanHistoryCard = ({ entry, timeZone, costUnit = '', costDivisor = 
 export const DeadlinePlanHistory = ({
   entries,
   timeZone,
-  costUnit = '',
-  costDivisor = 1,
 }: DeadlinePlanHistoryProps) => {
   if (entries.length === 0) {
     return (
@@ -145,8 +131,6 @@ export const DeadlinePlanHistory = ({
           key={entry.id}
           entry={entry}
           timeZone={timeZone}
-          costUnit={costUnit}
-          costDivisor={costDivisor}
         />
       ))}
     </section>

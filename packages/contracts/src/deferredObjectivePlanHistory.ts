@@ -126,8 +126,9 @@ export type DeferredObjectivePlanHistoryHourlyTone = 'cheap' | 'normal' | 'expen
 // render one bar per hour. Optional — runs that finalize without any
 // hourly delivery contribution (price feed unavailable, legacy v4 entries
 // from before this field shipped) persist without it and the bar strip is
-// suppressed. Added in schema v4 (extension; no version bump because v4 is
-// unreleased — production = v2.7.1).
+// suppressed. Added in schema v4 as an additive optional field (no version
+// bump: v4 already shipped in v2.7.2, but older clients preserve unknown
+// fields on round-trip and absence degrades gracefully).
 export type DeferredObjectivePlanHistoryHourlyContribution = {
   atMs: number;
   deliveredKWh: number;
@@ -145,6 +146,30 @@ export type DeferredObjectivePlanHistoryProgressSample = {
   atMs: number;
   valueC: number | null;
   valuePercent: number | null;
+};
+
+// Price-display provenance captured at record time so the archive can format
+// the persisted `totalCost` in the currency it was accumulated in — NOT the
+// currency that happens to be bootstrapped when the user later opens the
+// archive. `totalCost` is a sum of `priceValue × deliveredKWh` in the price
+// scheme's raw minor unit (øre for the default Norwegian Nordpool scheme), so
+// the archive must scale it by THIS entry's `divisor` (÷100 → kr) and label it
+// with THIS entry's `unit`. Without it a Norway run recorded as 150 øre would
+// render "≈ 150 EUR" after the user switches to a Flow/Homey scheme (divisor 1,
+// different unit) instead of the correct "≈ 2 kr". Mirrors the settings-UI
+// `CostDisplay { unit, divisor }` shape (`dailyBudgetCost.ts`) but is declared
+// here so the contract stays browser-safe and runtime-importable.
+//
+// Optional for back-compat: legacy entries persisted before this field shipped
+// (and entries that finalized without any hourly delivery contribution) load
+// with it absent. Consumers MUST fall back to the recording-era default
+// øre/kr scheme (`{ unit: 'kr', divisor: 100 }`) — every entry that predates
+// this field was recorded under that scheme, so labelling absence as øre/kr is
+// the correct historical assumption (see
+// `DEFAULT_HISTORY_COST_DISPLAY` in `deferredPlanHistoryReceipt.ts`).
+export type DeferredObjectivePlanHistoryCostDisplay = {
+  unit: string;
+  divisor: number;
 };
 
 // Recorded per-revision metadata so the history detail page can render a
@@ -224,10 +249,22 @@ export type DeferredObjectivePlanHistoryEntry = {
   // the field; UI consumers must treat absence as "unknown" rather than 0.
   // Added in schema v4.
   deliveredKWh?: number;
-  // Σ priceValue × deliveredKWh across the run, in the user's display
-  // currency. Same optionality rationale as `deliveredKWh`. Added in
-  // schema v4.
+  // Σ priceValue × deliveredKWh across the run, in the price scheme's raw
+  // minor unit at record time (øre for the default Norwegian scheme). Scale
+  // and label it with `costDisplay` (below), NOT a live display, or it renders
+  // in the wrong currency after a scheme switch. Same optionality rationale as
+  // `deliveredKWh`. Added in schema v4.
   totalCost?: number;
+  // Price-display provenance (`{ unit, divisor }`) the `totalCost` above was
+  // accumulated under. Persisted at finalize time alongside `totalCost` so the
+  // archive formats the figure in its recorded currency rather than the
+  // currently-bootstrapped one. Optional: absent on legacy entries (and entries
+  // with no `totalCost`); consumers fall back to the recording-era øre/kr
+  // default. See `DeferredObjectivePlanHistoryCostDisplay`. Added in schema v4
+  // as an additive optional field (no version bump: v4 already shipped in
+  // v2.7.2, but the normalizer keeps unknown/absent fields whole on round-trip,
+  // so extending it in place is safe for both older and newer clients).
+  costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
   // Chronological list of revisions written by the active-plan recorder for
   // this run, one entry per increment of `plan.latest.revision`. The first
   // revision (`revision === 1`) is not recorded here — its metadata lives on
@@ -239,9 +276,9 @@ export type DeferredObjectivePlanHistoryEntry = {
   // hour the runtime fed a `recordHourlyDelivery` contribution. Optional —
   // legacy v4 entries (from before this field shipped) and runs that never
   // received a contribution persist without it; the postmortem suppresses
-  // the bar strip in that case. Added in schema v4 (extension; no migration
-  // — v4 is unreleased so existing v4 entries simply load with the field
-  // absent). See `DeferredObjectivePlanHistoryHourlyContribution`.
+  // the bar strip in that case. Added in schema v4 as an additive optional
+  // field (no migration: existing v4 entries simply load with the field absent
+  // and degrade gracefully). See `DeferredObjectivePlanHistoryHourlyContribution`.
   hourlyContributions?: DeferredObjectivePlanHistoryHourlyContribution[];
 };
 

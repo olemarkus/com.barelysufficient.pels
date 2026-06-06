@@ -139,16 +139,12 @@ export type BuildHistoryDetailHeroParams = {
   // Heading timestamp pre-formatted by the caller (e.g. `Sat 16 May 16:00`).
   // Kept off the entry so the producer stays free of locale helpers.
   deadlineLine: string;
-  // Cost unit suffix for the secondary line (e.g. `kr`). Empty / null
-  // suppresses the cost half of the secondary line — Flow / Homey schemes
-  // without a unit don't fabricate one.
-  costUnit: string;
 };
 
 export const buildHistoryDetailHero = (
   params: BuildHistoryDetailHeroParams,
 ): DeadlinePlanHistoryHeroPayload => {
-  const { entry, timeZone, deadlineLine, costUnit } = params;
+  const { entry, timeZone, deadlineLine } = params;
   const lead = formatPlanHistoryPostmortem(entry, timeZone);
   const lastPlan = entry.finalPlan ?? entry.originalPlan;
   const dailyBudgetExhausted = typeof lastPlan?.dailyBudgetExhaustedBucketCount === 'number'
@@ -159,7 +155,7 @@ export const buildHistoryDetailHero = (
   };
 
   const chipLabel = getPlanHistoryOutcomeLabel(entry.outcome);
-  const costNarrative = formatPlanHistoryCostNarrative(entry, costUnit);
+  const costNarrative = formatPlanHistoryCostNarrative(entry);
   // Pre-resolve the legacy supporting lines once so the per-outcome blocks
   // can selectively keep them or null them. The producer suppresses the
   // ones that duplicate the new receipt / shortfall / cost-narrative
@@ -231,7 +227,7 @@ export const buildHistoryDetailHero = (
     // CTA lower on 320 px screens. The fallback only fires for sparsely-
     // recorded misses where the chips can't compose.
     const missedSecondary = missedShortfallChip === null && costNarrative === null
-      ? formatPlanHistoryCostAndDelivered(entry, costUnit, ' partial')
+      ? formatPlanHistoryCostAndDelivered(entry, ' partial')
       : null;
     return {
       tone: 'warn',

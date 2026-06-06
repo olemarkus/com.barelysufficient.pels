@@ -1,5 +1,6 @@
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
@@ -168,6 +169,13 @@ export type DeferredObjectivePlanHistoryHourlyDelivery = {
   // even if thresholds shift in a later version. See
   // `DeferredObjectivePlanHistoryHourlyTone`.
   tone: DeferredObjectivePlanHistoryHourlyTone;
+  // Optional price-display provenance (`{ unit, divisor }`) the `priceValue`
+  // is denominated in. Captured once onto the run's record (first-write wins)
+  // so the archive formats the persisted `totalCost` in its recorded currency.
+  // Optional because the internal rollover path sources it from the resolver;
+  // an external aggregator push supplies it here. Absent → the run keeps
+  // whatever display it already captured (or falls back to øre/kr at finalize).
+  costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
 };
 
 export class DeferredObjectivePlanHistoryRecorder {
@@ -393,6 +401,8 @@ export class DeferredObjectivePlanHistoryRecorder {
       ...record,
       deliveredKWh: record.deliveredKWh + contribution.deliveredKWh,
       totalCost: record.totalCost + contribution.priceValue * contribution.deliveredKWh,
+      // First-write wins so an unchanging scheme isn't re-stamped each push.
+      costDisplay: record.costDisplay ?? contribution.costDisplay ?? null,
       hasDeliveryContribution: true,
       hourlyContributions,
     });
@@ -451,6 +461,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       contributions: rollover.contributions,
       nextOpening: rollover.nextOpening,
       kWhPerUnit,
+      costDisplay: rollover.costDisplay,
     });
   }
 
@@ -459,14 +470,18 @@ export class DeferredObjectivePlanHistoryRecorder {
   // aggregator pushes and the internal rollover path agree byte-for-byte
   // on the persisted entry. Always advances `currentHourOpening` and
   // `lastKWhPerUnit` so finalize-time flushing has the right anchor even
-  // when no contribution fired this cycle.
+  // when no contribution fired this cycle. Captures the run's `costDisplay`
+  // provenance the first time a priced contribution supplies one (first-write
+  // wins so an unchanging scheme isn't re-stamped, and a mid-run scheme switch
+  // keeps the currency the bulk of the run was recorded under).
   private foldContributionsIntoRecord(params: {
     record: InProgressRecord;
     contributions: readonly DeferredObjectivePlanHistoryHourlyContribution[];
     nextOpening: HourProgressSnapshot;
     kWhPerUnit: number;
+    costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
   }): InProgressRecord {
-    const { record, contributions, nextOpening, kWhPerUnit } = params;
+    const { record, contributions, nextOpening, kWhPerUnit, costDisplay } = params;
     if (contributions.length === 0) {
       return { ...record, currentHourOpening: nextOpening, lastKWhPerUnit: kWhPerUnit };
     }
@@ -481,6 +496,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       hourlyContributions,
       deliveredKWh,
       totalCost,
+      costDisplay: record.costDisplay ?? costDisplay ?? null,
       hasDeliveryContribution: true,
       currentHourOpening: nextOpening,
       lastKWhPerUnit: kWhPerUnit,
@@ -516,6 +532,7 @@ export class DeferredObjectivePlanHistoryRecorder {
       contributions: [flush.contribution],
       nextOpening: flush.nextOpening,
       kWhPerUnit: record.lastKWhPerUnit!,
+      costDisplay: flush.costDisplay,
     });
   }
 

@@ -1821,6 +1821,33 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       return {
         deps: {
           ...inner.deps,
+          // Default øre/kr display so the captured provenance round-trips; tests
+          // that assert on `costDisplay` use `buildPersistDepsWithDisplay`.
+          resolveHourPrice: (hourStartMs: number) => {
+            const hit = pricesByHourMs[hourStartMs];
+            return hit ? { ...hit, costDisplay: { unit: 'kr', divisor: 100 } } : null;
+          },
+        },
+        saved: inner.saved,
+      };
+    };
+
+    // Variant that lets a test pin the exact `costDisplay` the resolver supplies
+    // so it can assert the recorder persists THAT provenance onto the entry.
+    const buildPersistDepsWithDisplay = (
+      pricesByHourMs: Record<
+        number,
+        {
+          priceValue: number;
+          tone: 'cheap' | 'normal' | 'expensive';
+          costDisplay: { unit: string; divisor: number };
+        }
+      >,
+    ) => {
+      const inner = buildPersistDeps();
+      return {
+        deps: {
+          ...inner.deps,
           resolveHourPrice: (hourStartMs: number) => pricesByHourMs[hourStartMs] ?? null,
         },
         saved: inner.saved,
@@ -1872,6 +1899,81 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
       expect(entry.deliveredKWh).toBeCloseTo(7.5);
       expect(entry.totalCost).toBeCloseTo(3.0 * 0.5 + 4.5 * 0.8);
+    });
+
+    it('persists the resolver-supplied costDisplay onto the finalized entry', () => {
+      // The provenance fix: the recorder captures the price-display scheme the
+      // `totalCost` was accumulated under so the archive can format it in its
+      // recorded currency after a later scheme switch.
+      const { deps, saved } = buildPersistDepsWithDisplay({
+        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap', costDisplay: { unit: 'kr', divisor: 100 } },
+        [2 * HOUR_MS]: { priceValue: 0.8, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } },
+      });
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 5 * HOUR_MS;
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })],
+        2 * HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.totalCost).toBeDefined();
+      expect(entry.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
+    });
+
+    it('captures the first priced hour costDisplay and keeps it across a mid-run scheme switch', () => {
+      // First-write-wins: the run keeps the currency the bulk of it was recorded
+      // under even if the resolver reports a different scheme on a later hour.
+      const { deps, saved } = buildPersistDepsWithDisplay({
+        [HOUR_MS]: { priceValue: 0.5, tone: 'cheap', costDisplay: { unit: 'kr', divisor: 100 } },
+        [2 * HOUR_MS]: { priceValue: 3, tone: 'normal', costDisplay: { unit: 'EUR', divisor: 1 } },
+      });
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 5 * HOUR_MS;
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })],
+        2 * HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
+        3 * HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
+    });
+
+    it('omits costDisplay (legacy fallback) when no priced contribution ever fired', () => {
+      // No resolver entry for any hour → no priced contribution → the entry omits
+      // costDisplay, and the archive falls back to the recording-era øre/kr default.
+      const { deps, saved } = buildPersistDepsWithDisplay({});
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 5 * HOUR_MS;
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })],
+        HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })],
+        2 * HOUR_MS + 5 * 60_000,
+      );
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      expect(entry.costDisplay).toBeUndefined();
     });
 
     it('flushes the still-open hour at finalize so sub-hour runs persist their delivery', () => {

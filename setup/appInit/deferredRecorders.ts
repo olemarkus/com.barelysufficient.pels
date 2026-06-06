@@ -3,6 +3,10 @@ import {
   resolvePostmortemTone,
   type PostmortemTone,
 } from '../../packages/shared-domain/src/postmortemTone';
+import { resolvePlanPriceCostDisplay } from '../../packages/shared-domain/src/planPriceWidgetCopy';
+import type {
+  DeferredObjectivePlanHistoryCostDisplay,
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
@@ -191,7 +195,11 @@ const updateLearnedThermostatDeadbandFromEntry = (
 const resolveHourPriceFromContext = (
   ctx: AppContext,
   hourStartMs: number,
-): { priceValue: number; tone: PostmortemTone } | null => {
+): {
+  priceValue: number;
+  tone: PostmortemTone;
+  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
+} | null => {
   const store = readPriceStore(
     { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
     new Date(),
@@ -202,7 +210,21 @@ const resolveHourPriceFromContext = (
     const entryStart = new Date(entry.startsAt).getTime();
     if (!Number.isFinite(entryStart) || entryStart !== hourStartMs) continue;
     if (!Number.isFinite(entry.total)) return null;
-    return { priceValue: entry.total, tone: resolvePostmortemTone(entry) };
+    // Capture the display the per-hour `total` is denominated in (øre @ divisor
+    // 100 for the default Norwegian scheme; the scheme's own unit @ divisor 1
+    // for Flow/Homey) so the recorder can persist it on the run's history entry
+    // and the archive renders the cost in its RECORDED currency after a later
+    // scheme switch. Single-sourced from the same shared-domain resolver the
+    // widget uses (`resolvePlanPriceCostDisplay`).
+    const { costUnit, costDivisor } = resolvePlanPriceCostDisplay({
+      priceScheme: store.priceScheme,
+      priceUnit: store.priceUnit,
+    });
+    return {
+      priceValue: entry.total,
+      tone: resolvePostmortemTone(entry),
+      costDisplay: { unit: costUnit, divisor: costDivisor },
+    };
   }
   return null;
 };

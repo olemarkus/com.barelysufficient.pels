@@ -134,6 +134,7 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
       ],
       deliveredKWh: 4.2,
       totalCost: 5.1,
+      costDisplay: { unit: 'kr', divisor: 100 },
       revisions: [
         { atMs: HOUR_MS / 2, reasonId: 'prices_revised', hoursAdded: 1, hoursRemoved: 0 },
       ],
@@ -147,7 +148,51 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(round.progressSamples).toEqual(v4Entry.progressSamples);
     expect(round.deliveredKWh).toBeCloseTo(4.2);
     expect(round.totalCost).toBeCloseTo(5.1);
+    expect(round.costDisplay).toEqual({ unit: 'kr', divisor: 100 });
     expect(round.revisions).toEqual(v4Entry.revisions);
+  });
+
+  it('loads a legacy v4 entry that has totalCost but no costDisplay (absent → fallback on read)', () => {
+    const legacy = {
+      ...v3Entry,
+      id: 'v4-no-display',
+      deliveredKWh: 1.5,
+      totalCost: 150,
+    };
+    const result = normalizeDeferredObjectivePlanHistory({ version: 4, entries: [legacy] });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.totalCost).toBeCloseTo(150);
+    // No costDisplay persisted — the archive formatter falls back to øre/kr.
+    expect(result.entries[0]!.costDisplay).toBeUndefined();
+  });
+
+  it('drops an entry whose costDisplay is malformed (non-string unit / zero divisor)', () => {
+    // A zero divisor would divide-by-zero at scale time and a non-string unit
+    // would mislabel the figure; reject both at the persistence boundary so the
+    // archive can trust the recorded display. The dropped entry's siblings load.
+    const goodDisplay = {
+      ...v3Entry,
+      id: 'v4-good-display',
+      totalCost: 5,
+      costDisplay: { unit: 'kr', divisor: 100 },
+    };
+    const zeroDivisor = {
+      ...v3Entry,
+      id: 'v4-zero-divisor',
+      totalCost: 5,
+      costDisplay: { unit: 'kr', divisor: 0 },
+    };
+    const nonStringUnit = {
+      ...v3Entry,
+      id: 'v4-bad-unit',
+      totalCost: 5,
+      costDisplay: { unit: 12, divisor: 1 },
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [goodDisplay, zeroDivisor, nonStringUnit],
+    });
+    expect(result.entries.map((e) => e.id)).toEqual(['v4-good-display']);
   });
 
   it('drops entries with malformed v4 extensions but keeps siblings', () => {

@@ -8,6 +8,7 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
+import { resolveEntryCostDisplay, scaleRawCostToDisplay } from './deferredPlanHistoryReceiptStrings';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
 
@@ -864,11 +865,9 @@ export const formatPlanHistoryPostmortem = (
 // the cost as the partial-delivery cost, not the planned total. Null when
 // neither delivery nor cost was captured (legacy entry, no hourly feed) —
 // better than fabricating "0 kWh delivered" for entries with no record. The
-// approximation glyph matches `formatDeadlineCostMetaLine` from the live
-// hero so cost reads identically across live and past surfaces.
+// approximation glyph matches the live hero so cost reads identically.
 export const formatPlanHistoryCostAndDelivered = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost'>,
-  costUnit: string,
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost' | 'costDisplay'>,
   costSuffix: string,
 ): string | null => {
   const hasDelivery = typeof entry.deliveredKWh === 'number'
@@ -876,13 +875,16 @@ export const formatPlanHistoryCostAndDelivered = (
   const hasCost = typeof entry.totalCost === 'number'
     && Number.isFinite(entry.totalCost);
   if (!hasDelivery && !hasCost) return null;
-  // Total cost is an amount, not a rate: strip any `/kWh` suffix the source
-  // unit carries (Flow/Homey schemes pass their raw rate label through) so the
-  // line reads `Cost ≈ 12.30 kr`, not `Cost ≈ 12.30 kr/kWh`.
-  const trimmedUnit = priceRateLabelToAmountUnit(costUnit.trim());
+  // Scale + label with the entry's RECORDED display (legacy entries fall back to
+  // the recording-era øre/kr default) so a later price-scheme switch can't
+  // misrender the figure — raw øre @ divisor 100 divides to `12.30 kr`. A total
+  // is an amount: strip any `/kWh` suffix so it reads `kr`, not `kr/kWh`.
+  const display = resolveEntryCostDisplay(entry);
+  const trimmedUnit = priceRateLabelToAmountUnit(display.unit.trim());
   const parts: string[] = [];
   if (hasCost && trimmedUnit.length > 0) {
-    parts.push(`Cost ${APPROX_GLYPH} ${entry.totalCost!.toFixed(2)} ${trimmedUnit}${costSuffix}`);
+    const scaledCost = scaleRawCostToDisplay(entry.totalCost!, display.divisor);
+    parts.push(`Cost ${APPROX_GLYPH} ${scaledCost.toFixed(2)} ${trimmedUnit}${costSuffix}`);
   }
   if (hasDelivery) {
     parts.push(`${entry.deliveredKWh!.toFixed(1)} kWh delivered`);
