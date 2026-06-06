@@ -46,6 +46,7 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
     } as never,
     deviceManager: deviceManager as never,
+    getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // This proof never drives a step write; supply an actuator over the device
     // manager's writes so the executor's stepped binding has a seam to call.
     actuator: createDeviceActuator({

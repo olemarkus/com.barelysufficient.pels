@@ -3,7 +3,7 @@ import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 /**
  * The executor's **read-only** view of the device transport: snapshot reads
@@ -90,6 +90,12 @@ import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 export type PlanExecutorDeps = {
   homey: Homey.App['homey'];
   deviceManager: PlanExecutorDeviceTransport;
+  /**
+   * Observer-owned observed-state read (stage 5). The target executor sources
+   * observed capability values from this projection accessor instead of the
+   * transport snapshot; `undefined` until the first observation for a device.
+   */
+  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
   /**
    * The single device write seam. Step writes route through here
    * (`apply({ kind: 'step', ... })`); binary/target write sites migrate onto
@@ -346,7 +352,7 @@ export class PlanExecutor {
     if (!this.targetExecutorContext) {
       this.targetExecutorContext = {
         state: this.state,
-        deviceManager: this.deviceManager,
+        getObservedState: this.deps.getObservedState,
         actuator: this.deps.actuator,
         operatingMode: this.operatingMode,
         syncLivePlanStateAfterTargetActuation: this.deps.syncLivePlanStateAfterTargetActuation,
