@@ -1,6 +1,6 @@
 /**
  * Producer-side wiring for `PlanInputDevice.residualKw` (chunks 3-4 of the
- * planner-detype refactor). `toPlanDevice` in `../appInit.ts` calls
+ * planner-detype refactor). `toPlanDevice` in `./toPlanDevice.ts` calls
  * `buildResidualKwForPlanDevice`, which adapts a `TargetDeviceSnapshot` to
  * the structural input shapes consumed by `resolveResidualKwShed` (chunk 3)
  * and `resolveResidualKwRestore` (chunk 4) in
