@@ -216,6 +216,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
       },
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
+    getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route step writes through the actuator over the SAME device-manager stepped
     // method, preserving the prod restore behavior this e2e asserts.
     actuator: createDeviceActuator({
