@@ -3,6 +3,13 @@ import type {
   SettingsUiPlanDeviceStarvation,
 } from '../../contracts/src/settingsUiApi';
 
+// Canonical capacity-starvation copy: a device held below target because the
+// house lacks available power (the hard cap is physical, not a tuning knob —
+// feedback_hard_cap_is_physical). Single home for this exact wording so the
+// overview, the rescue-widget row subtext, and the device-detail diagnostics
+// map all read identically and cannot drift.
+export const STARVATION_WAITING_FOR_POWER_COPY = 'Waiting for available power';
+
 export type PlanStarvationTone = 'warn' | 'info' | 'muted';
 
 export type PlanStarvationBadgeView = {
@@ -27,7 +34,7 @@ const resolveStarvationMessage = (
 ): string => (
   cause === 'budget'
     ? "Limited to stay within today's budget"
-    : 'Waiting for available power'
+    : STARVATION_WAITING_FOR_POWER_COPY
 );
 
 export const formatStarvationBadge = (
@@ -216,7 +223,7 @@ export const resolveStarvationRowSubtext = (
     const degrees = formatTargetDegrees(intendedNormalTargetC);
     return degrees ? `Held below ${degrees} by today’s budget` : "Held by today’s budget";
   }
-  return 'Waiting for available power';
+  return STARVATION_WAITING_FOR_POWER_COPY;
 };
 
 // The informational note for a row that gets no rescue button: capacity rows,
