@@ -5,13 +5,14 @@ import type { DayContext, PriceData } from './dailyBudgetState';
 import type { DailyBudgetSettings, DailyBudgetState } from './dailyBudgetTypes';
 import { logDailyBudgetPlanDebug } from './dailyBudgetManagerPlan';
 import { getEffectiveProfileData, getProfileSplitSampleCount } from './dailyBudgetProfile';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 const isEnabled = (settings: DailyBudgetSettings): boolean => (
   settings.enabled && settings.dailyBudgetKWh > 0
 );
 
 export function logNextDayPlanDebug(params: {
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   shouldLog: boolean;
   context: DayContext;
   settings: DailyBudgetSettings;
@@ -22,7 +23,7 @@ export function logNextDayPlanDebug(params: {
   defaultProfile: number[];
 }): void {
   const {
-    logDebug,
+    debugStructured,
     shouldLog,
     context,
     settings,
@@ -67,7 +68,7 @@ export function logNextDayPlanDebug(params: {
     priceShapingFlexShare: settings.priceShapingFlexShare,
   });
   logDailyBudgetPlanDebug({
-    logDebug,
+    debugStructured,
     snapshot: preview,
     priceData,
     priceOptimizationEnabled,
@@ -75,7 +76,7 @@ export function logNextDayPlanDebug(params: {
     settings,
     state,
     defaultProfile,
-    label: 'Daily budget: plan debug (next day)',
+    variant: 'next_day',
     planDebug: {
       lockCurrentBucket: false,
       shouldLockCurrent: false,

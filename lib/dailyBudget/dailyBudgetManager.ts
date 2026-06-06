@@ -170,6 +170,7 @@ export class DailyBudgetManager {
     this.maybeUnfreezeFromDeviation(enabled, budgetControlDeviationKWh);
     const snapshot = buildSnapshotAndLogDebug({
       deps: this.deps,
+      debugStructured: (payload) => this.emitDebug(payload),
       state: this.state,
       settings,
       enabled,

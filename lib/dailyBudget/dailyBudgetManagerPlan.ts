@@ -2,6 +2,7 @@ import { computePlanDeviation, type DayContext, type PriceData } from './dailyBu
 import type { ExistingPlanState, RebuildPlanDebug } from './dailyBudgetManagerTypes';
 import { getProfileBlendConfidence } from './dailyBudgetMath';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   OBSERVED_HOURLY_MAX_QUANTILE,
   OBSERVED_HOURLY_MIN_QUANTILE,
@@ -141,7 +142,7 @@ export function shouldRebuildDailyBudgetPlan(params: {
 }
 
 export function logDailyBudgetPlanDebug(params: {
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   snapshot: DailyBudgetDayPayload;
   priceData: PriceData;
   priceOptimizationEnabled: boolean;
@@ -149,12 +150,12 @@ export function logDailyBudgetPlanDebug(params: {
   settings: DailyBudgetSettings;
   state: DailyBudgetState;
   defaultProfile: number[];
-  label?: string;
+  variant?: 'current' | 'next_day';
   planDebug?: RebuildPlanDebug;
   uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): void {
   const {
-    logDebug,
+    debugStructured,
     snapshot,
     priceData,
     priceOptimizationEnabled,
@@ -162,7 +163,7 @@ export function logDailyBudgetPlanDebug(params: {
     settings,
     state,
     defaultProfile,
-    label,
+    variant,
     planDebug,
     uncontrolledReserveDiagnostics,
   } = params;
@@ -185,12 +186,13 @@ export function logDailyBudgetPlanDebug(params: {
     planDebug,
     uncontrolledReserveDiagnostics,
   });
-  logDebug(
-    `Daily budget: profile samples ${profileMeta.sampleCount} total, `
-    + `${profileMeta.splitSampleCount} split, `
-    + `controlled share ${profileMeta.controlledShare.toFixed(2)}`,
-  );
-  logDebug(`${label ?? 'Daily budget: plan debug'} ${JSON.stringify(debugPayload)}`);
+  debugStructured({
+    event: 'daily_budget_profile_samples',
+    sampleCount: profileMeta.sampleCount,
+    splitSampleCount: profileMeta.splitSampleCount,
+    controlledShare: profileMeta.controlledShare,
+  });
+  debugStructured({ ...debugPayload, event: 'daily_budget_plan_debug', variant: variant ?? 'current' });
 }
 
 function buildPlanDebugPayload(params: {
