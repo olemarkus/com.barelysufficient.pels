@@ -187,7 +187,7 @@ const resolveDesiredStepId = (params: {
     plannedTransition,
   } = params;
   const desiredStepId = plannedTransition?.commandStepId ?? plannedStepId;
-  if (dev.plannedState !== 'shed' || !desiredStepId || !dev.steppedLoadProfile) return desiredStepId;
+  if (dev.plannedState !== 'shed' || !desiredStepId || !isSteppedLoadDevice(dev)) return desiredStepId;
 
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
   const currentPowerW = current.stepForShed?.planningPowerW ?? 0;
@@ -225,7 +225,7 @@ const shouldHoldCurrentState = (dev: PlanDevice): boolean => (
 const resolveCurrentStepForShed = (
   dev: PlanDevice,
 ): ExecutableSteppedLoadDevice['current']['stepForShed'] => {
-  if (!dev.steppedLoadProfile) return undefined;
+  if (!isSteppedLoadDevice(dev)) return undefined;
   if (!dev.selectedStepId) return resolveMeasuredCurrentStepForShed(dev);
   const currentStep = getSteppedLoadStep(dev.steppedLoadProfile, dev.selectedStepId);
   return currentStep ? {

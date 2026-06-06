@@ -1,6 +1,7 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
   PlanInputDevice,
+  PlanInputDeviceBase,
   StepPowerCalibrationView,
 } from '../../packages/planner-types/src/planInputDevice';
 import type { PowerFreshnessState } from './planPowerFreshness';
@@ -70,10 +71,77 @@ export type SteppedLoadKind = {
   steppedLoadProfile: SteppedLoadProfile;
 };
 
-export type SteppedPlanDevice = DevicePlanDevice & SteppedLoadKind;
-export type SteppedPlanInputDevice = PlanInputDevice & SteppedLoadKind;
+/**
+ * Non-stepped control-kind discriminant (slice 2 of the discriminated-types
+ * refactor). The discriminant field `steppedLoadProfile` is moved OFF the base
+ * shape and split across the two variants: the stepped variant requires it
+ * (`SteppedLoadKind`), the non-stepped variant omits it. This
+ * makes the compiler reject un-narrowed `device.steppedLoadProfile` reads on a
+ * `DevicePlanDevice` / `PlanInputDevice` union — consumers must pass through the
+ * `isSteppedLoadDevice` guard (or hold an already-narrowed `Stepped*` value)
+ * before touching the profile.
+ *
+ * Only the `steppedLoadProfile` discriminant moves in this slice; the rest of
+ * the stepped cluster (`reportedStepId`, `selectedStepId`, step-command fields,
+ * …) stays optional on the base for follow-up slices.
+ *
+ * The non-stepped variant OMITS `steppedLoadProfile` entirely (rather than
+ * `?: never`) so an un-narrowed read on the union is a hard compile error
+ * (TS2339) — `?: never` would still type the read as `SteppedLoadProfile |
+ * undefined` and silently permit it.
+ */
+export type NonSteppedLoadKind = {
+  controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
+};
 
-export type DevicePlanDevice = {
+export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
+export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
+export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
+
+/**
+ * A "might be stepped" device probe: the stepped discriminant
+ * (`controlModel` + `steppedLoadProfile`) as plain independent optionals. Used
+ * by step helpers that accept a device before it is narrowed through
+ * `isSteppedLoadDevice`, and by `withSteppedDiscriminant` to re-tie the pair.
+ */
+export type SteppedDiscriminantProbe = {
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+};
+
+/**
+ * Rebuild a discriminated plan device from a loose bag whose `controlModel` and
+ * `steppedLoadProfile` are still independent optionals (e.g. the result of a
+ * `{ ...current, ...updates }` merge, or a `...snapshot` spread). Strips both
+ * discriminant fields off the base and re-attaches them as a single
+ * variant-shaped pair (`SteppedLoadKind | NonSteppedLoadKind`), so the result
+ * lands cleanly in one union member.
+ *
+ * Stripping is essential: an object spread can never *remove* a key, so a stale
+ * `steppedLoadProfile` would otherwise survive onto a non-stepped result. The
+ * runtime predicate matches `isSteppedLoadDevice` — a profile is honoured only
+ * when both `controlModel === 'stepped_load'` and the profile's own `model`
+ * agree; anything else resolves to the non-stepped discriminant, which omits
+ * `steppedLoadProfile` entirely.
+ */
+export function withSteppedDiscriminant<TBase extends object>(
+  loose: TBase & SteppedDiscriminantProbe,
+):
+  | (Omit<TBase, keyof SteppedDiscriminantProbe> & SteppedLoadKind)
+  | (Omit<TBase, keyof SteppedDiscriminantProbe> & NonSteppedLoadKind) {
+  const { controlModel, steppedLoadProfile, ...base } = loose;
+  if (controlModel === 'stepped_load' && steppedLoadProfile?.model === 'stepped_load') {
+    return { ...base, controlModel: 'stepped_load', steppedLoadProfile };
+  }
+  return {
+    ...base,
+    controlModel: controlModel === 'stepped_load' ? undefined : controlModel,
+  };
+}
+
+export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
+
+type DevicePlanDeviceBase = {
   id: string;
   name: string;
   deviceClass?: string;
@@ -86,8 +154,6 @@ export type DevicePlanDevice = {
   plannedTarget?: number;
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';
-  controlModel?: DeviceControlModel;
-  steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
   // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
