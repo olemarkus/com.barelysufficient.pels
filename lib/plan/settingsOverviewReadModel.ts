@@ -14,6 +14,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
+import { isEvPlanDevice } from './planEvDevice';
 
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
@@ -69,6 +70,9 @@ export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps = {},
 ): SettingsUiPlanDeviceSnapshot {
+  // EV fields live on the orthogonal `EvKind` cluster (off the base); narrow
+  // once so the snapshot can surface them. Non-EV devices have them undefined.
+  const ev = isEvPlanDevice(device) ? device : null;
   return {
     id: device.id,
     name: device.name,
@@ -81,7 +85,7 @@ export function buildSettingsOverviewDeviceReadModel(
     plannedState: device.plannedState,
     controlModel: device.controlModel,
     controlCapabilityId: device.controlCapabilityId,
-    evChargingState: device.evChargingState,
+    evChargingState: ev?.evChargingState,
     currentTarget: device.currentTarget,
     plannedTarget: device.plannedTarget,
     currentTemperature: device.currentTemperature,
@@ -91,8 +95,8 @@ export function buildSettingsOverviewDeviceReadModel(
     budgetExempt: device.budgetExempt,
     temperatureBoost: device.temperatureBoost,
     temperatureBoostActive: device.temperatureBoostActive,
-    evBoost: device.evBoost,
-    evBoostActive: device.evBoostActive,
+    evBoost: ev?.evBoost,
+    evBoostActive: ev?.evBoostActive,
     observationStale: device.observationStale,
     shedAction: device.shedAction,
     shedTemperature: device.shedTemperature,
