@@ -4,7 +4,11 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
-import type { SteppedLoadDecoration, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  ObservedDeviceState,
+  SteppedLoadDecoration,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableDeviceIntent,
@@ -165,10 +169,14 @@ export function buildExecutableObservedDeviceState(
  * old `binaryControlObservation` "no trusted evidence" signal.
  */
 export const resolveObservedBinaryStateFromSnapshot = (
-  snapshot: TargetDeviceSnapshot,
+  // Stage 5: narrowed to the observed surface — reads only `binaryControl`.
+  snapshot: Pick<ObservedDeviceState, 'binaryControl'>,
 ): 'on' | 'off' => ((snapshot.binaryControl?.on ?? true) ? 'on' : 'off');
 
-const buildObservedTargetState = (snapshot: TargetDeviceSnapshot): ExecutableObservedTargetState | null => {
+// Stage 5: narrowed to the observed surface — reads only `targets`.
+const buildObservedTargetState = (
+  snapshot: Pick<ObservedDeviceState, 'targets'>,
+): ExecutableObservedTargetState | null => {
   const primaryTarget = snapshot.targets?.[0];
   return primaryTarget
     ? {
