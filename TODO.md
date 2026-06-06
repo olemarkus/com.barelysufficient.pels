@@ -322,13 +322,14 @@ live-walk screenshots.*
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to split/trim `setup/appInit.ts` (still ~440 LOC, over the `setup/`
-      one-purpose-per-file convention) into focused sub-files under `setup/appInit/`, and keep
-      trimming any delegates that no longer buy readability or testability. (`resolveHasBinaryControl`
-      no longer exists as a shared symbol — that part is already handled.) Deferred from the
-      `lib/app/** -> setup/` migration PR because the appInit decomposition is a non-mechanical
-      restructure, independent of the relocations.
-      Files: `app.ts`, `setup/appInit.ts`.
+      `setup/appInit.ts` decomposition is now DONE — the former ~440 LOC file is a thin re-export
+      barrel (~19 LOC) over focused `setup/appInit/` sub-files (`contextGuards`, `createPlanEngine`,
+      `createPlanService`, `priceServices`, `registerAppFlowCards`, `toPlanDevice`,
+      `deviceDiagnosticsService`), each one purpose and under the `setup/` ~150 LOC convention.
+      Remaining: keep trimming any wiring delegates (in `app.ts` / the sub-files) that no longer buy
+      readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
+      that part is already handled.)
+      Files: `app.ts`, `setup/appInit/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
