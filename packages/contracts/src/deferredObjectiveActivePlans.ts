@@ -78,6 +78,21 @@ export type DeferredObjectiveActivePlanProgressSampleV1 = {
   valuePercent: number | null;
 };
 
+// Persisted anchor for the postmortem hour-rollover detector's in-flight state.
+// The plan-history recorder keeps the first trustworthy progress reading of the
+// currently-open hour (`hourMs` is the hour-aligned bucket, `value` is the
+// reading in the objective's native unit — °C or %). It is persisted here, on
+// the active plan, so a PELS restart mid-run can restore the opening anchor
+// rather than re-seeding it at the first post-restart reading — which would
+// render the in-flight hour's bar as a falsely-empty "device did nothing" gap in
+// the postmortem strip. See `currentHourOpening` in
+// `lib/objectives/deferredObjectives/planHistoryInProgressState.ts` and the
+// restore in `startRecord`. Added 2026-06-06.
+export type DeferredObjectiveActivePlanInFlightHourOpeningV1 = {
+  hourMs: number;
+  value: number;
+};
+
 export type DeferredObjectiveActivePlanHourV1 = {
   startsAtMs: number;
   plannedKWh: number;
@@ -306,6 +321,26 @@ export type DeferredObjectiveActivePlanV1 = {
   // hours unless the user abandons/replaces the objective. Optional so older
   // persisted plans continue to load as legacy advisory plans.
   commitment?: DeferredObjectiveActivePlanCommitmentV1;
+  // ── Persisted postmortem in-flight anchors ─────────────────────────────────
+  // The plan-history recorder's hour-rollover detector tracks an in-memory
+  // opening anchor (`currentHourOpening`) plus the most recent kWh-per-unit
+  // factor (`lastKWhPerUnit`) so it can attribute delivered energy to the right
+  // hour bucket. Both lived only on the in-memory `InProgressRecord` and were
+  // lost on a PELS restart mid-run — re-anchoring at the first post-restart
+  // reading, which blanked the in-flight hour's bar in the postmortem strip
+  // ("device did nothing"). Persisting them here lets the recorder restore the
+  // anchor across restarts (see `startRecord` in
+  // `planHistoryInProgressState.ts`). Both optional for backward compatibility:
+  // legacy persisted plans (and runs that never reached a trustworthy reading)
+  // omit them, and the recorder degrades to the pre-existing re-anchor-on-first-
+  // -reading behaviour. Written by the plan-history recorder via the active-plan
+  // recorder's `applyInProgressAnchors`, not by the per-cycle replan path.
+  inFlightHourOpening?: DeferredObjectiveActivePlanInFlightHourOpeningV1;
+  // Most recent finite-positive kWh-per-unit factor observed for the run. Paired
+  // with `inFlightHourOpening` so a restored anchor can still convert the
+  // closing-hour delta into delivered kWh. Optional/back-compatible; absent ⇒ no
+  // factor resolved yet (cold start) and the recorder treats it as null.
+  inFlightKWhPerUnit?: number;
   original: DeferredObjectiveActivePlanRevisionV1 | null;
   latest: DeferredObjectiveActivePlanRevisionV1 | null;
   // ── UI-derived live-progress fields (NEVER persisted) ──────────────────────
