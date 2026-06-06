@@ -191,6 +191,11 @@ export type ObservedDeviceState = {
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
     reportedStepId?: string;
+    /**
+     * @deprecated Raw binary evidence is observer-owned transport state. Consumer
+     * code must not read this directly; use observer helpers to resolve observed
+     * on/off/current-draw semantics.
+     */
     binaryControlObservation?: BinaryControlObservation;
     available?: boolean;
     lastFreshDataMs?: number;
