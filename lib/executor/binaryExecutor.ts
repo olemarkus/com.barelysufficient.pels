@@ -1,5 +1,5 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { isCommandableNow, isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 import {
@@ -98,7 +98,7 @@ export const applyBinaryRestore = async (
     return false;
   }
   if ((snapshot.binaryControl?.on ?? true) !== false) return false;
-  if (snapshot.deviceClass === 'evcharger') {
+  if (isEvDevice(snapshot)) {
     logger.debug({
       event: 'ev_restore_evaluating',
       deviceId: intent.deviceId,
@@ -143,7 +143,7 @@ export const applyUncontrolledBinaryRestore = async (
     return false;
   }
   if ((entry.binaryControl?.on ?? true) !== false) return false;
-  if (entry.deviceClass === 'evcharger') {
+  if (isEvDevice(entry)) {
     logger.debug({
       event: 'ev_restore_evaluating',
       deviceId: intent.deviceId,
@@ -552,7 +552,7 @@ const turnOffDevice = async (
   } = params;
   const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
-  if (snapshotEntry?.deviceClass === 'evcharger') {
+  if (snapshotEntry && isEvDevice(snapshotEntry)) {
     logger.debug({
       event: 'ev_shed_preparing',
       deviceName: name,
