@@ -144,6 +144,7 @@ const buildExecutor = (
       flow: flowMock,
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,
+    getObservedState: (id) => deviceManager.getSnapshotByDeviceId(id),
     // Route writes through the actuator over the SAME device-manager methods + the
     // shared production flow-trigger factory, so routing matches production wiring.
     actuator: createDeviceActuator({
