@@ -478,7 +478,10 @@ function preserveBinaryControlObservation(params: {
         if (nextObservation && nextObservation.observedAtMs >= previousObservation.observedAtMs) return;
     }
     if (!nextObservation || nextObservation.observedAtMs < previousObservation.observedAtMs) {
-        snapshot.binaryControlObservation = { ...previousObservation };
+        snapshot.binaryControlObservation = {
+            ...previousObservation,
+            observedCapabilityIds: [...previousObservation.observedCapabilityIds],
+        };
     }
 }
 

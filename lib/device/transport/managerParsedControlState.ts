@@ -15,6 +15,12 @@ export type ParsedControlStateResult = {
   currentOn?: boolean;
   canSetControl: boolean | undefined;
   observedCurrentOn?: boolean;
+  hasTrustedControlState: boolean;
+};
+
+type ResolvedControlFallback = {
+  currentOn?: boolean;
+  trusted: boolean;
 };
 
 export function resolveDeviceParsedControlState(params: {
@@ -53,8 +59,9 @@ export function resolveDeviceParsedControlState(params: {
   const invalidControlPayload = hasInvalidControlPayload({ capabilityObj, controlCapabilityId });
   // `currentOn` ("whether the device may draw power") is strictly `boolean`, so
   // an unobserved control needs a fallback — see `resolveUnobservedControlFallback`.
-  const candidateCurrentOn = observedCurrentOn
-    ?? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, controlCapabilityId });
+  const resolvedCurrentOn: ResolvedControlFallback = observedCurrentOn === undefined
+    ? resolveUnobservedControlFallback({ invalidControlPayload, previousSnapshot, controlCapabilityId })
+    : { currentOn: observedCurrentOn, trusted: true };
   const parsedControlState = resolveParsedControlState({
     debugStructured,
     deviceId,
@@ -66,7 +73,7 @@ export function resolveDeviceParsedControlState(params: {
     evCharging,
     evChargingState,
     flowBackedCapabilityIds,
-    currentOn: candidateCurrentOn,
+    currentOn: resolvedCurrentOn.currentOn,
   });
   if (!suppressDropLog && controlCapabilityId && (observedCurrentOn === undefined || invalidControlPayload)) {
     logDroppedControlState({
@@ -82,6 +89,7 @@ export function resolveDeviceParsedControlState(params: {
     currentOn: parsedControlState.currentOn,
     canSetControl: parsedControlState.canSetControl,
     observedCurrentOn,
+    hasTrustedControlState: resolvedCurrentOn.trusted,
   };
 }
 
@@ -113,37 +121,72 @@ export function resolveDeviceParsedControlState(params: {
  * ## What we synthesize (never an optimistic `true`)
  * Claiming a device is on without evidence is what let an unobserved load look
  * already-restored, so the synthesized value is deliberately non-optimistic:
- * - invalid-payload (wrong-typed value, a different anomaly) → latch previous;
- * - binary device with a missing value → `false`;
+ * - invalid-payload (wrong-typed value, a different anomaly) → latch previous
+ *   when possible, but do not make that fallback commandable unless it came
+ *   from trusted binary evidence;
+ * - binary device with a missing value → latch previous trusted evidence, else
+ *   synthesize untrusted `false`;
  * - no control capability but binary last snapshot (transient capability drop on
  *   a partial update) → latch previous (no phantom on-transition);
  * - genuinely non-binary (no off-switch, setpoint-controlled) → `true` — it may
  *   always draw, so it must stay sheddable (a `false` reads as 0-draw).
  *
- * @returns the synthesized `currentOn`, or `undefined` when the previous-snapshot
- *   latch itself has nothing to carry (the caller then coalesces to `false`).
+ * @returns the synthesized `currentOn` plus whether that value came from trusted
+ *   evidence. Untrusted values are contract fillers only.
  */
 function resolveUnobservedControlFallback(params: {
   invalidControlPayload: boolean;
   previousSnapshot?: TargetDeviceSnapshot;
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-}): boolean | undefined {
+}): ResolvedControlFallback {
   const { invalidControlPayload, previousSnapshot, controlCapabilityId } = params;
   // A wrong-typed value is a different anomaly — latch the previous observation
   // (coupled to device-drop handling).
-  if (invalidControlPayload) return resolvePreviousCurrentOn({ previousSnapshot, controlCapabilityId });
-  // Binary device (control capability present) with a missing value → the
-  // should-never-happen anomaly → non-optimistic `false` (logged at error). We
-  // never fabricate an optimistic `true`: that let an unobserved load look
-  // already-restored.
-  if (controlCapabilityId !== undefined) return false;
+  if (invalidControlPayload) {
+    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, controlCapabilityId });
+    if (previousTrusted !== undefined) return { currentOn: previousTrusted, trusted: true };
+    return {
+      currentOn: resolvePreviousCurrentOn({ previousSnapshot, controlCapabilityId }),
+      trusted: false,
+    };
+  }
+  // Binary device (control capability present) with a missing value → no new
+  // evidence. Preserve prior trusted evidence; otherwise synthesize
+  // non-optimistic `false` as a contract filler only.
+  if (controlCapabilityId !== undefined) {
+    const previousTrusted = resolvePreviousTrustedCurrentOn({ previousSnapshot, controlCapabilityId });
+    if (previousTrusted !== undefined) return { currentOn: previousTrusted, trusted: true };
+    return { currentOn: false, trusted: false };
+  }
   // No control capability NOW. If the device was binary on the previous
   // snapshot, this is a transient capability drop (a partial update) — preserve
   // the prior state rather than synthesising an on-transition.
-  if (previousSnapshot?.controlCapabilityId !== undefined) return previousSnapshot.currentOn;
+  if (previousSnapshot?.controlCapabilityId !== undefined) {
+    const previousTrusted = resolvePreviousTrustedCurrentOn({
+      previousSnapshot,
+      controlCapabilityId: previousSnapshot.controlCapabilityId,
+    });
+    return {
+      currentOn: previousTrusted ?? previousSnapshot.currentOn,
+      trusted: previousTrusted !== undefined,
+    };
+  }
   // Genuinely non-binary (no off-switch, setpoint-controlled) → `true`: it may
   // always draw, so it must stay sheddable (a `false` reads as 0-draw).
-  return true;
+  return { currentOn: true, trusted: true };
+}
+
+function resolvePreviousTrustedCurrentOn(params: {
+  previousSnapshot?: TargetDeviceSnapshot;
+  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+}): boolean | undefined {
+  const { previousSnapshot, controlCapabilityId } = params;
+  if (!previousSnapshot || !controlCapabilityId) return undefined;
+  if (previousSnapshot.controlCapabilityId !== controlCapabilityId) return undefined;
+  const previousObservation = previousSnapshot.binaryControlObservation;
+  if (previousObservation?.capabilityId !== controlCapabilityId) return undefined;
+  if (previousSnapshot.currentOn !== previousObservation.observedValue) return undefined;
+  return previousSnapshot.currentOn;
 }
 
 function resolvePreviousCurrentOn(params: {

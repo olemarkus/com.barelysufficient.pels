@@ -14,6 +14,7 @@ import {
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
+import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
     mockHomeyInstance,
@@ -1890,6 +1891,52 @@ describe('DeviceTransport', () => {
                 .toEqual(realtimeEvidence);
         });
 
+        it('does not infer off when device.update omits onoff after trusted on evidence', async () => {
+            const trustedOnEvidence = {
+                valid: true as const,
+                capabilityId: 'onoff' as const,
+                observedValue: true,
+                observedCapabilityIds: ['onoff'],
+                observedAtMs: new Date('2026-06-03T06:00:00.000Z').getTime(),
+                source: 'realtime_capability' as const,
+            };
+            deviceManager.setSnapshotForTests([{
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+                deviceClass: 'thermostat',
+                deviceType: 'temperature',
+                controlCapabilityId: 'onoff',
+                currentOn: true,
+                binaryControlObservation: trustedOnEvidence,
+            }]);
+
+            const realtimeListener = vi.fn();
+            deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, realtimeListener);
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Hall Thermostat',
+                capabilities: ['onoff', 'measure_temperature', 'target_temperature', 'measure_power'],
+                class: 'thermostat',
+                capabilitiesObj: {
+                    measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
+                    target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
+                    measure_power: { value: 500, id: 'measure_power' },
+                },
+            });
+
+            const snapshotDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(snapshotDevice?.currentOn).toBe(true);
+            expect(snapshotDevice?.binaryControlObservation).toEqual(trustedOnEvidence);
+            expect(realtimeListener).toHaveBeenCalledOnce();
+            expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
+                changes: [
+                    { capabilityId: 'target_temperature', previousValue: '20°C', nextValue: '19°C' },
+                ],
+            }));
+        });
+
         it('keeps the trusted realtime-off observation when a later pull omits onoff (two-source reconcile)', async () => {
             // 1. Pull with a trusted onoff=true → currentOn:true.
             mockApiGet.mockResolvedValue({
@@ -2053,8 +2100,94 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
+            const pushedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(pushedDevice).toEqual(expect.objectContaining({
+                currentOn: true,
+                binaryControlObservation: expect.objectContaining({
+                    source: 'device_update',
+                    observedValue: true,
+                    observedCapabilityIds: ['onoff'],
+                    observedAtMs: expect.any(Number),
+                }),
+            }));
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    measure_power: { value: 600, id: 'measure_power' },
+                },
+            });
+
+            const omittedDevice = findSnapshotDevice(deviceManager.getSnapshot(), 'dev1');
+            expect(omittedDevice).toEqual(expect.objectContaining({
+                currentOn: true,
+                available: true,
+                binaryControlObservation: expect.objectContaining({
+                    source: 'device_update',
+                    observedValue: true,
+                    observedCapabilityIds: ['onoff'],
+                }),
+            }));
+            expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
+        });
+
+        it('records equal timestamp-less device.update binary pushes before stale pulls', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: {
+                            value: 1000,
+                            id: 'measure_power',
+                            lastUpdated: '2026-06-03T06:00:00.000Z',
+                        },
+                        onoff: {
+                            value: true,
+                            id: 'onoff',
+                            lastUpdated: '2026-06-03T06:00:00.000Z',
+                        },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            deviceManager.injectDeviceUpdateForTest({
+                id: 'dev1',
+                name: 'Heater',
+                capabilities: ['onoff', 'measure_power'],
+                class: 'heater',
+                capabilitiesObj: {
+                    onoff: { value: true, id: 'onoff' },
+                    measure_power: { value: 1000, id: 'measure_power' },
+                },
+            });
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: {
+                            value: 1000,
+                            id: 'measure_power',
+                            lastUpdated: '2026-06-03T06:05:00.000Z',
+                        },
+                        onoff: { value: false, id: 'onoff' },
+                    },
+                },
+            });
+            await deviceManager.refreshSnapshot();
+
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
         });
 
         it("clears binary evidence and logs when device.update carries invalid direct onoff='unknown'", async () => {
@@ -2210,7 +2343,11 @@ describe('DeviceTransport', () => {
 
             expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.currentOn).toBe(true);
             expect(deviceManager.getBinarySettleEvidenceByDeviceId('dev1')).toBeUndefined();
-            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation).toBeUndefined();
+            expect(findSnapshotDevice(deviceManager.getSnapshot(), 'dev1')?.binaryControlObservation)
+                .toEqual(expect.objectContaining({
+                    source: 'device_update',
+                    observedValue: true,
+                }));
         });
 
         it('keeps currentOn aligned with newer cached evidence when device.update carries stale binary evidence', async () => {
@@ -3651,6 +3788,59 @@ describe('DeviceTransport', () => {
             }));
         });
 
+        it('does not trust optimistic local off when a later pull omits onoff', async () => {
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                        onoff: {
+                            value: true,
+                            id: 'onoff',
+                            lastUpdated: '2026-06-03T06:00:00.000Z',
+                        },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+            await deviceManager.setCapability('dev1', 'onoff', false);
+
+            expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
+                currentOn: false,
+                binaryControlObservation: expect.objectContaining({
+                    observedValue: true,
+                }),
+            }));
+
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1',
+                    name: 'Heater',
+                    class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: {
+                        measure_power: { value: 1000, id: 'measure_power' },
+                    },
+                },
+            });
+
+            await deviceManager.refreshSnapshot();
+
+            const snapshotDevice = deviceManager.getSnapshot()[0];
+            expect(snapshotDevice).toEqual(expect.objectContaining({
+                currentOn: true,
+                available: false,
+                binaryControlObservation: expect.objectContaining({
+                    observedValue: true,
+                }),
+            }));
+            expect(isCommandableNow(snapshotDevice)).toBe(false);
+        });
+
         it('emits reconcile event when target temperature changes via device.update', async () => {
             mockApiGet.mockResolvedValue({
                 dev1: {
@@ -4165,8 +4355,10 @@ describe('DeviceTransport', () => {
                 currentOn: false,
                 measuredPowerKw: 1,
                 binaryControlObservation: undefined,
+                available: false,
                 lastFreshDataMs: undefined,
             }));
+            expect(isCommandableNow(deviceManager.getSnapshot()[0])).toBe(false);
             expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
                 reasonCode: 'missing_boolean_onoff',

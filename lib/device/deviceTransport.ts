@@ -1552,7 +1552,17 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             this.applyBinarySettleEvidenceToSnapshot(snapshot, existing);
             return;
         }
+        const snapshotObservation = snapshot.binaryControlObservation;
         this.clearBinarySettleEvidence(deviceId);
+        if (
+            incomingSeam === 'push'
+            && snapshotObservation?.capabilityId === capabilityId
+            && snapshotObservation.observedValue === observedValue
+            && snapshotObservation.source === 'device_update'
+        ) {
+            snapshot.binaryControlObservation = snapshotObservation;
+            return;
+        }
         delete snapshot.binaryControlObservation;
     }
 
