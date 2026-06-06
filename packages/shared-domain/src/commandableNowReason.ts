@@ -49,6 +49,37 @@ export const formatUnknownEvChargingStateReason = (state: string): string => (
 );
 
 /**
+ * The EV-state → block-reason switch, GATELESS (the caller applies its own
+ * EV-device gate). Single source of truth for the three byte-identical
+ * EV-block-reason consumers that used to inline this switch:
+ *   - `resolveCommandableNow` (`commandableNow.ts`)
+ *   - `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`, snapshot-shaped)
+ *   - `getEvRestoreStateBlockReason` (`lib/plan/restore/devices.ts`, plan-device-shaped)
+ *
+ * Returns `null` for the commandable states (`plugged_in_paused` /
+ * `plugged_in_charging`), the reason string for the non-commandable ones, and
+ * `state_unknown` for `undefined` (no trusted plug-state — genuine cold start;
+ * transport's consolidated truth would otherwise preserve a real value).
+ */
+export const resolveEvBlockReason = (evChargingState: string | undefined): string | null => {
+  switch (evChargingState) {
+    case 'plugged_in_paused':
+    case 'plugged_in_charging':
+      return null;
+    case 'plugged_in':
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
+    case 'plugged_out':
+      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
+    case 'plugged_in_discharging':
+      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
+    case undefined:
+      return EV_COMMANDABLE_NOW_REASONS.state_unknown;
+    default:
+      return formatUnknownEvChargingStateReason(evChargingState);
+  }
+};
+
+/**
  * EV-boost-context status strings for EV-state cases that block boost
  * activation. Read by the settings-UI boost panel
  * (`packages/settings-ui/src/ui/deviceDetail/evBoost.ts`) — co-located here

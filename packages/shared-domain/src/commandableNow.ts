@@ -8,10 +8,7 @@
  * browser-safe projection of already-resolved observed fields; the reason
  * strings it returns live alongside it in `commandableNowReason.ts`.
  */
-import {
-  EV_COMMANDABLE_NOW_REASONS,
-  formatUnknownEvChargingStateReason,
-} from './commandableNowReason';
+import { resolveEvBlockReason } from './commandableNowReason';
 
 /**
  * EV-device predicate. A device is "EV" if EITHER its `deviceClass` is
@@ -118,23 +115,9 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
 
 function resolveEvCommandableBlock(dev: CommandableNowResolveInput): string | null {
   if (!isEvDevice(dev)) return null;
-
-  switch (dev.evChargingState) {
-    case 'plugged_out':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
-    case 'plugged_in_discharging':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
-    case 'plugged_in':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case undefined:
-      // No trusted plug-state (genuine cold start; transport's consolidated
-      // truth would otherwise preserve a real value). Pessimistic: not
-      // commandable until a confident read arrives.
-      return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-    default:
-      return formatUnknownEvChargingStateReason(dev.evChargingState);
-  }
+  // Gateless EV-state → reason switch lives in commandableNowReason (one source
+  // of truth, shared with the plan/device restore-reason consumers). `undefined`
+  // → state_unknown: no trusted plug-state (genuine cold start; transport's
+  // consolidated truth would otherwise preserve a real value).
+  return resolveEvBlockReason(dev.evChargingState);
 }
