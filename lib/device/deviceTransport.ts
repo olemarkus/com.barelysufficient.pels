@@ -1819,7 +1819,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             || !homeyInstance.platform
             || !homeyInstance.platformVersion
         ) {
-            this.logger.log('Device API unavailable from SDK, running without realtime device updates');
             (this.logger.structuredLog ?? moduleLogger).info({
                 component: 'devices',
                 event: 'device_api_init_skipped',
@@ -2180,7 +2179,14 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             if (!targetCap) continue;
             try {
                 const appliedValue = await this.setCapability(device.id, targetCap, targetValue);
-                this.logger.log(`Set ${targetCap} for ${device.name} to ${String(appliedValue)} (${contextInfo})`);
+                (this.logger.structuredLog ?? moduleLogger).info({
+                    event: 'device_target_applied',
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    capabilityId: targetCap,
+                    appliedValue,
+                    context: contextInfo,
+                });
             } catch (error) {
                 this.logger.error(`Failed to set ${targetCap} for ${device.name}`, error);
             }
@@ -2195,13 +2201,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             const targetCap = device.targets?.[0]?.id;
             if (!targetCap) continue;
             const target = device.targets.find((entry) => entry.id === targetCap);
-            const normalizedValue = typeof targetValue === 'number'
-                ? normalizeTargetCapabilityValue({ target, value: targetValue })
-                : targetValue;
-            this.logger.log(
-                `Dry-run: would set ${targetCap} for ${device.name} `
-                + `to ${normalizedValue}°C (${contextInfo})`,
-            );
+            const normalizedValue = normalizeTargetCapabilityValue({ target, value: targetValue });
+            (this.logger.structuredLog ?? moduleLogger).info({
+                event: 'device_target_preview',
+                deviceId: device.id,
+                deviceName: device.name,
+                capabilityId: targetCap,
+                normalizedValue,
+                context: contextInfo,
+            });
         }
     }
 

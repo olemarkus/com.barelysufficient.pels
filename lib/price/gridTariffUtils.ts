@@ -106,20 +106,22 @@ export const normalizeGridTariffData = (data: Array<Record<string, unknown>>): A
 export const fetchAndNormalizeGridTariff = async (params: {
   date: string;
   settings: GridTariffSettings;
-  log: (...args: unknown[]) => void;
+  structuredInfo: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<Array<Record<string, unknown>> | null> => {
-  const { date, settings, log, errorLog } = params;
+  const { date, settings, structuredInfo, errorLog } = params;
   const url = buildGridTariffUrl({
     date,
     countyCode: settings.countyCode,
     organizationNumber: settings.organizationNumber,
     tariffGroup: settings.tariffGroup,
   });
-  log(
-    `Grid tariff: Fetching NVE tariffs for ${date}, `
-    + `county=${settings.countyCode}, org=${settings.organizationNumber}`,
-  );
+  structuredInfo({
+    event: 'grid_tariff_fetch_started',
+    date,
+    countyCode: settings.countyCode,
+    organizationNumber: settings.organizationNumber,
+  });
   const gridTariffData = await fetchGridTariffData(url, errorLog);
   if (!gridTariffData) return null;
   const normalized = normalizeGridTariffData(gridTariffData);

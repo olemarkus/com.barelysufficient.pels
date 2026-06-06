@@ -146,7 +146,6 @@ describe('startPerfLogger', () => {
 
     expect(startCpuSpikeMonitorMock).toHaveBeenCalledTimes(1);
     expect(startCpuSpikeMonitorMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
-      log: logCpuSpike,
       isEnabled: expect.any(Function),
     }));
 

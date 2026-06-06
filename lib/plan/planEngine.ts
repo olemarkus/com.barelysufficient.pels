@@ -29,8 +29,10 @@ import {
   type PendingBinaryLiveDevice,
 } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
+import { getLogger, type Logger as PinoLogger, type StructuredDebugEmitter } from '../logging/logger';
 import type { Actuator } from '../actuator/deviceActuator';
+
+const moduleLogger = getLogger('plan/engine');
 
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
@@ -97,15 +99,15 @@ export class PlanEngine {
   private builder: PlanBuilder;
   private executor: PlanExecutor;
   private readonly deviceDiagnostics?: DeviceDiagnosticsRecorder;
-  private readonly logFn: (...args: unknown[]) => void;
   private readonly debugStructuredFn?: StructuredDebugEmitter;
+  private readonly structuredLog: PinoLogger;
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
     this.pendingBinaryCommandStore = createPendingBinaryCommandStore(this.state.pendingBinaryCommands);
     this.deviceDiagnostics = deps.deviceDiagnostics;
-    this.logFn = deps.log;
     this.debugStructuredFn = deps.debugStructured;
+    this.structuredLog = deps.structuredLog ?? moduleLogger;
 
     const builderDeps: PlanBuilderDeps = {
       homey: deps.homey,
@@ -188,7 +190,7 @@ export class PlanEngine {
       state: this.state,
       liveDevices: devices,
       source,
-      log: (message) => this.logFn(message),
+      structuredInfo: (payload) => this.structuredLog.info(payload),
       debugStructured: this.debugStructuredFn,
     });
   }
