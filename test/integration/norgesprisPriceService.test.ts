@@ -29,9 +29,7 @@ const buildExpectedNorgesprisAdjustment = (share: number): number => (
 
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
-  () => {},
-  () => {},
-  () => {},
+  { log: () => {}, debugStructured: () => {} },
 );
 
 const setNorwayNorgesprisSettings = (params: {

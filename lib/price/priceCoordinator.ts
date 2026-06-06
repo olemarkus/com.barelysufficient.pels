@@ -50,11 +50,13 @@ export class PriceCoordinator {
   constructor(private deps: PriceCoordinatorDeps) {
     this.priceService = new PriceService(
       deps.homey,
-      deps.log,
-      deps.debugStructured,
-      deps.error,
+      {
+        log: deps.log,
+        debugStructured: deps.debugStructured,
+        errorLog: deps.error,
+        structuredLog: deps.structuredLog,
+      },
       deps.getHomeyEnergyApi,
-      deps.structuredLog,
     );
     if (deps.onCombinedPricesUpdated) {
       this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);

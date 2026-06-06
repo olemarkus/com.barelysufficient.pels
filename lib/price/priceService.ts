@@ -37,7 +37,7 @@ import {
   storeFlowPriceData as storeFlowPriceDataHelper,
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
-import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/logger';
+import type { PriceServiceLoggingSinks } from './priceServiceLoggingSinks';
 import type { FlowPricePayload } from './flowPriceUtils';
 import {
   buildCombinedPricePayload,
@@ -63,14 +63,10 @@ const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | '
 };
 
 export default class PriceService {
-  // eslint-disable-next-line max-params -- SDK handle + 4 logging/data sinks; options-object refactor tracked
   constructor(
     private homey: Homey.App['homey'],
-    private log: (...args: unknown[]) => void,
-    private debugStructured: StructuredDebugEmitter,
-    private errorLog?: (...args: unknown[]) => void,
+    private readonly sinks: PriceServiceLoggingSinks,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
-    private structuredLog?: PinoLogger,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -85,7 +81,7 @@ export default class PriceService {
   private emitRealtime(event: string, payload: unknown): void {
     const api = (this.homey as { api?: { realtime?: (evt: string, data: unknown) => Promise<void> } }).api;
     if (!api?.realtime) return;
-    api.realtime(event, payload).catch((err) => this.errorLog?.('Failed to emit realtime event', event, err));
+    api.realtime(event, payload).catch((err) => this.sinks.errorLog?.('Failed to emit realtime event', event, err));
   }
 
   // Public so the coordinator can gate boot-time work on the active scheme
@@ -128,22 +124,22 @@ export default class PriceService {
       now: today,
     });
     if (cacheDecision.areaChanged) {
-      this.debugStructured({ event: 'spot_price_area_changed', fromArea: cachedArea, toArea: priceArea });
+      this.sinks.debugStructured({ event: 'spot_price_area_changed', fromArea: cachedArea, toArea: priceArea });
     }
     if (cacheDecision.useCache) {
-      this.debugStructured({ event: 'spot_price_cache_used', entryCount: existingPrices?.length ?? 0 });
+      this.sinks.debugStructured({ event: 'spot_price_cache_used', entryCount: existingPrices?.length ?? 0 });
       this.updateCombinedPrices();
       return true;
     }
     if (cacheDecision.shouldFetchTomorrow) {
-      this.debugStructured({ event: 'spot_price_refresh_for_tomorrow' });
+      this.sinks.debugStructured({ event: 'spot_price_refresh_for_tomorrow' });
     }
     return false;
   }
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const scheme = this.getPriceScheme();
     if (scheme === 'flow') {
-      this.debugStructured({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
+      this.sinks.debugStructured({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
       return;
     }
     if (scheme === 'homey') {
@@ -168,35 +164,35 @@ export default class PriceService {
     const todayPrices = await fetchSpotPricesForDate({
       date: today,
       priceArea,
-      log: this.log,
-      debugStructured: this.debugStructured,
-      errorLog: this.errorLog,
+      log: this.sinks.log,
+      debugStructured: this.sinks.debugStructured,
+      errorLog: this.sinks.errorLog,
     });
     const tomorrowPrices = await fetchSpotPricesForDate({
       date: addDays(today, 1),
       priceArea,
-      log: this.log,
-      debugStructured: this.debugStructured,
-      errorLog: this.errorLog,
+      log: this.sinks.log,
+      debugStructured: this.sinks.debugStructured,
+      errorLog: this.sinks.errorLog,
     });
     const allPrices = [...todayPrices, ...tomorrowPrices];
     if (allPrices.length === 0) {
-      this.structuredLog?.info({ event: 'spot_prices_no_data' });
+      this.sinks.structuredLog?.info({ event: 'spot_prices_no_data' });
       return;
     }
     this.homey.settings.set('electricity_prices', allPrices);
     this.homey.settings.set('electricity_prices_area', priceArea);
-    this.structuredLog?.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
+    this.sinks.structuredLog?.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
     this.updateCombinedPrices();
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
     if (this.getPriceScheme() !== 'norway') {
-      this.debugStructured({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
+      this.sinks.debugStructured({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
       return;
     }
     const settings = this.getGridTariffSettings();
     if (!settings.organizationNumber) {
-      this.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
+      this.sinks.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
       return;
     }
     const requestSettings: { countyCode: string; organizationNumber: string; tariffGroup: string } = {
@@ -210,7 +206,7 @@ export default class PriceService {
     const today = getDateKeyInTimeZone(todayDate, timeZone);
     const existingData = this.getSettingValue('nettleie_data') as
       Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-    if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.debugStructured)) {
+    if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.sinks.debugStructured)) {
       this.updateCombinedPrices();
       return;
     }
@@ -219,8 +215,8 @@ export default class PriceService {
       settings: requestSettings,
       todayDate,
       timeZone,
-      log: this.log,
-      errorLog: this.errorLog,
+      log: this.sinks.log,
+      errorLog: this.sinks.errorLog,
     });
     if (data) {
       this.storeGridTariffData(data, logContext);
@@ -258,7 +254,7 @@ export default class PriceService {
       this.homey.settings.set('nettleie_data', []);
       this.updateCombinedPrices();
     }
-    this.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, {
+    this.sinks.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, {
       attempts,
       countyCode: requestSettings.countyCode,
       organizationNumber: requestSettings.organizationNumber,
@@ -268,7 +264,7 @@ export default class PriceService {
 
   private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string): void {
     this.homey.settings.set('nettleie_data', data);
-    this.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
+    this.sinks.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
     this.updateCombinedPrices();
   }
 
@@ -292,7 +288,7 @@ export default class PriceService {
     // below would otherwise clobber good today/tomorrow prices on a transient
     // read (boot catch-up, midnight rotation, every caller). Keep the cache.
     if (combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
-      this.debugStructured({ event: 'combined_prices_rebuild_lost_entries_kept_cache' });
+      this.sinks.debugStructured({ event: 'combined_prices_rebuild_lost_entries_kept_cache' });
       this.emitRealtime('prices_updated', existingPayload);
       return;
     }
@@ -300,7 +296,7 @@ export default class PriceService {
       const nextLastFetched = getCombinedPayloadLastFetched(payload);
       const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
-      this.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
+      this.sinks.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
       if (shouldUpdateLastFetched) this.homey.settings.set(COMBINED_PRICES, payload);
       this.emitRealtime('prices_updated', payload);
       return;
@@ -354,7 +350,7 @@ export default class PriceService {
       tomorrowPayload: getFlowPricePayload(this.getSettingValue(tomorrowSettingKey)),
     });
     purge.changes.forEach((change: FlowSlotChange) => {
-      this.debugStructured({
+      this.sinks.debugStructured({
         event: 'flow_price_slot_rotated', priceSource: label,
         slot: change.slot, action: change.action, from: change.from,
       });
@@ -388,7 +384,7 @@ export default class PriceService {
       timeZone,
       todayPayload,
       tomorrowPayload,
-      debugStructured: this.debugStructured,
+      debugStructured: this.sinks.debugStructured,
       label,
     });
   }
@@ -418,7 +414,7 @@ export default class PriceService {
       kind,
       raw,
       timeZone: this.homey.clock.getTimezone(),
-      debugStructured: this.debugStructured,
+      debugStructured: this.sinks.debugStructured,
       setSetting: (key, value) => this.homey.settings.set(key, value),
       updateCombinedPrices: () => this.updateCombinedPrices(),
     });
@@ -501,12 +497,12 @@ export default class PriceService {
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {
     if (this.getPriceScheme() !== 'homey') {
-      this.debugStructured({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
+      this.sinks.debugStructured({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
       return;
     }
     const energyApi = this.getHomeyEnergyApi?.();
     if (!energyApi) {
-      this.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
+      this.sinks.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
       return;
     }
     const info = buildHomeyEnergyDateInfo(this.homey.clock.getTimezone());
@@ -514,7 +510,7 @@ export default class PriceService {
       info,
       forceRefresh,
       getSettingValue: (key) => this.getSettingValue(key),
-      debugStructured: this.debugStructured,
+      debugStructured: this.sinks.debugStructured,
       updateCombinedPrices: () => this.updateCombinedPrices(),
     })) {
       return;
@@ -523,35 +519,35 @@ export default class PriceService {
     const results = await fetchHomeyEnergyResults({
       energyApi,
       info,
-      log: this.log,
-      errorLog: this.errorLog,
+      log: this.sinks.log,
+      errorLog: this.sinks.errorLog,
     });
     if (!results) return;
 
     logHomeyEnergyPayloadStatus({
       info,
       results,
-      log: this.log,
-      debugStructured: this.debugStructured,
-      errorLog: this.errorLog,
+      log: this.sinks.log,
+      debugStructured: this.sinks.debugStructured,
+      errorLog: this.sinks.errorLog,
     });
 
     await updateHomeyEnergyCurrency({
       energyApi,
       results,
       setSetting: (key, value) => this.homey.settings.set(key, value),
-      debugStructured: this.debugStructured,
-      errorLog: this.errorLog,
+      debugStructured: this.sinks.debugStructured,
+      errorLog: this.sinks.errorLog,
     });
     const stored = storeHomeyEnergyPayloads({
       results,
       setSetting: (key, value) => this.homey.settings.set(key, value),
     });
     if (stored === 0) {
-      this.structuredLog?.info({ event: 'homey_prices_no_data' });
+      this.sinks.structuredLog?.info({ event: 'homey_prices_no_data' });
       return;
     }
-    this.structuredLog?.info({ event: 'homey_prices_stored', dayCount: stored });
+    this.sinks.structuredLog?.info({ event: 'homey_prices_stored', dayCount: stored });
     this.updateCombinedPrices();
   }
 }

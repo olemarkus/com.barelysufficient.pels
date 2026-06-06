@@ -130,15 +130,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       logging PR focused; codex flagged it P2 on #1541 and #1547. Do as one dedicated migration PR
       (watch the `import type` relative-depth trap that only `knip`/`deadcode:check` catches).
       Source: chatgpt-codex on PRs #1541/#1547, 2026-06-06.
-- [ ] **Collapse the `PriceService` ctor's four logging sinks into an options/sinks object.**
-      `PriceService` now takes 6 positional ctor params (Homey SDK handle + `log` + `debugStructured`
-      + `errorLog` + `getHomeyEnergyApi` + `structuredLog`) and carries a justified `max-params`
-      eslint-disable (`lib/price/priceService.ts`). The `log`/`error`/`debugStructured`/`structuredLog`
-      quartet begs for a single injected `LoggingSinks` bundle so the signature stops growing; the
-      `log` param is now only the httpClient SSL-fallback passthrough. Mechanical but touches the
-      coordinator construction + ~several test ctor call sites. Source: pels-layering-guardian on
-      PR #1547, 2026-06-06.
-
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
