@@ -2,6 +2,7 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import type { DevicePlan } from '../plan/planTypes';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import type {
@@ -250,10 +251,10 @@ const buildExecutableReleaseIntent = (
     // 'shed_release'), so reject here as a defensive guard against a misrouted producer.
     // `releaseShedStepId` is producer-resolved (see `resolveShedIntent`); the lifecycle-end
     // release path reads it for the stepped-no-binary case and falls back to binary off otherwise.
-    if (dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging') return null;
+    if (isEvDevice(dev)) return null;
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
-  if (dev.deviceClass !== 'evcharger' && dev.controlCapabilityId !== 'evcharger_charging') return null;
+  if (!isEvDevice(dev)) return null;
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
   if (dev.plannedState !== 'keep') return null;

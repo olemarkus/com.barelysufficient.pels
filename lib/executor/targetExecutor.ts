@@ -1,5 +1,5 @@
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
@@ -35,14 +35,16 @@ type TargetCommandPostActuationState = {
 
 export type PlanExecutorTargetContext = {
   state: PlanEngineState;
-  deviceManager: {
-    getSnapshot: () => TargetDeviceSnapshot[];
-    getSnapshotByDeviceId: (deviceId: string) => TargetDeviceSnapshot | undefined;
-  };
+  /**
+   * Observed-state read seam (stage 5): the target executor reads observed
+   * capability values (`targets`) from the observer projection rather than the
+   * raw transport snapshot. Narrowed to the only field it consumes. `undefined`
+   * before the first observation for the device lands.
+   */
+  getObservedState: (deviceId: string) => Pick<ObservedDeviceState, 'targets'> | undefined;
   /**
    * Single write seam: the setpoint write routes through here
-   * (`actuator.apply({ kind: 'target', ... })`). The target context's
-   * `deviceManager` is read-only — no `setCapability` write surface.
+   * (`actuator.apply({ kind: 'target', ... })`).
    */
   actuator: Actuator;
   operatingMode: string;
@@ -155,8 +157,8 @@ export const trySetShedTemperature = async (
   if (!canSetShedTemp || !targetCap || shedTemp === null) return { handled: false, wrote: false };
   const now = Date.now();
   try {
-    const snapshot = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
-    const observedValue = snapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
+    const observedValue = ctx.getObservedState(deviceId)
+      ?.targets?.find((entry) => entry.id === targetCap)?.value;
     const result = await dispatchTargetCommand(ctx, {
       deviceId,
       name,
@@ -211,10 +213,9 @@ export const dispatchTargetCommand = async (
     skipContext,
     actuationMode,
   } = params;
-  const latestObservedSnapshot = ctx.deviceManager.getSnapshotByDeviceId(deviceId);
-  const target = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap);
+  const target = ctx.getObservedState(deviceId)?.targets?.find((entry) => entry.id === targetCap);
   const desired = normalizeTargetCapabilityValue({ target, value: rawDesired });
-  const latestObservedValue = latestObservedSnapshot?.targets?.find((entry) => entry.id === targetCap)?.value;
+  const latestObservedValue = target?.value;
   const preflightResult = handleTargetCommandPreflight(ctx, {
     deviceId,
     name,
@@ -508,7 +509,7 @@ const getLatestObservedTargetValue = (
   ctx: PlanExecutorTargetContext,
   deviceId: string,
   targetCap: string,
-): unknown => ctx.deviceManager.getSnapshotByDeviceId(deviceId)
+): unknown => ctx.getObservedState(deviceId)
   ?.targets?.find((entry) => entry.id === targetCap)
   ?.value;
 
