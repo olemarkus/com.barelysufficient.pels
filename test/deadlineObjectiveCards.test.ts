@@ -301,7 +301,7 @@ const buildDeps = (overrides: {
     getNow: () => new Date(MOCK_NOW_MS),
     getStructuredLogger: () => undefined,
     log: () => {},
-    logDebug: () => {},
+    debugStructured: () => {},
     error: () => {},
     getDeferredObjectiveActivePlans: () => (
       Object.prototype.hasOwnProperty.call(overrides, 'activePlans')
