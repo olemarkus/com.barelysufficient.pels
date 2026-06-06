@@ -163,19 +163,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       review (codex), 2026-06-05. Files: `lib/observer/observedDeviceStateProjection.ts`,
       `lib/device/deviceTransport.ts`, `app.ts`.
 
-- [ ] **Stop recording a synthesized `currentOn` as trusted binary evidence** (part of the
-      binaryControlObservation/observed-state consolidation — see `project_binary_observation_removal`).
-      `recordSnapshotControlObservation` records `snapshot.currentOn`, which on the unobserved-control
-      anomaly path is a synthesized fallback (not a real observation). It can then be retained as a
-      `device_update`/`realtime_capability` observation and preserved over a later timestamp-less pull,
-      pinning a device on the synthesized value. Fix: thread the trusted `observedCurrentOn` (or
-      `binaryControlObservation` presence) so a fallback is never recorded as trusted evidence.
-      Pre-existing (the old optimistic `?? true` flowed the same path); surfaced by Codex on PR #1494,
-      deferred there to keep that PR scoped to the fallback value. Anomaly-only + logged at error, so
-      no live impact while `onoff` always carries a value.
-      Files: `lib/device/transport/managerObservation.ts` (`recordSnapshotControlObservation`),
-      `lib/device/transport/managerParsedControlState.ts`.
-
 - [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
       *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file

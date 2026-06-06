@@ -150,7 +150,6 @@ export function handleRealtimeDeviceUpdate(params: {
     latestSnapshot,
     device,
     recentLocalCapabilityWrites,
-    hasPendingBinarySettleWindow,
     parseDevice: (nextDevice, nowTs) => parseDevice(nextDevice, nowTs),
   });
   const settleResult = applyPendingBinarySettleToDeviceUpdate({

@@ -3,7 +3,6 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import {
     getCapabilities,
     getDeviceId,
-    getIsAvailable,
     resolveZoneLabel,
 } from './managerHelpers';
 import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
@@ -42,6 +41,7 @@ import {
 import { resolveStateOfChargeSnapshot } from './stateOfCharge';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
+import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
 import {
     resolveManagedFilterDecision,
@@ -195,7 +195,7 @@ export function parseDevice(params: {
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
     const evCharging = getEvCharging(capabilityObj);
     const evChargingState = getEvChargingState(capabilityObj);
-    const { currentOn, canSetControl, observedCurrentOn } = resolveDeviceParsedControlState({
+    const { currentOn, canSetControl, observedCurrentOn, hasTrustedControlState } = resolveDeviceParsedControlState({
         logger,
         debugStructured: deps.debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
         deviceLabel,
@@ -210,7 +210,7 @@ export function parseDevice(params: {
         suppressDropLog: purpose === 'ui_picker',
     });
     if (shouldDropAfterControlState({ purpose, decision: managedDecision, currentOn })) return null;
-    const available = getIsAvailable(effectiveDevice);
+    const available = resolveAvail(controlCapabilityId, hasTrustedControlState, steppedLoadProfile, effectiveDevice);
     const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
     if (shouldSkipFlowBackedCandidate({
         flowAugmentedDeviceType, flowBackedCapabilityIds, capabilities, capabilityObj,

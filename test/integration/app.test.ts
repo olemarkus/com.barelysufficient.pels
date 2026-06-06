@@ -1643,6 +1643,7 @@ describe('MyApp initialization', () => {
 
   it('set_capacity_mode applies device targets when not in dry run', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
@@ -1980,6 +1981,7 @@ describe('MyApp initialization', () => {
 
   it('handles mode rename without losing settings or leaving dangling entries', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    await heater.setCapabilityValue('onoff', true);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
     });
