@@ -37,7 +37,7 @@ import {
   storeFlowPriceData as storeFlowPriceDataHelper,
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
-import type { StructuredDebugEmitter } from '../logging/logger';
+import type { StructuredDebugEmitter, Logger as PinoLogger } from '../logging/logger';
 import type { FlowPricePayload } from './flowPriceUtils';
 import {
   buildCombinedPricePayload,
@@ -63,12 +63,14 @@ const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | '
 };
 
 export default class PriceService {
+  // eslint-disable-next-line max-params -- SDK handle + 4 logging/data sinks; options-object refactor tracked
   constructor(
     private homey: Homey.App['homey'],
     private log: (...args: unknown[]) => void,
     private debugStructured: StructuredDebugEmitter,
     private errorLog?: (...args: unknown[]) => void,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
+    private structuredLog?: PinoLogger,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -179,12 +181,12 @@ export default class PriceService {
     });
     const allPrices = [...todayPrices, ...tomorrowPrices];
     if (allPrices.length === 0) {
-      this.log('Spot prices: No price data available');
+      this.structuredLog?.info({ event: 'spot_prices_no_data' });
       return;
     }
     this.homey.settings.set('electricity_prices', allPrices);
     this.homey.settings.set('electricity_prices_area', priceArea);
-    this.log(`Spot prices: Stored ${allPrices.length} hourly prices for ${priceArea}`);
+    this.structuredLog?.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
     this.updateCombinedPrices();
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
@@ -194,7 +196,7 @@ export default class PriceService {
     }
     const settings = this.getGridTariffSettings();
     if (!settings.organizationNumber) {
-      this.log('Grid tariff: No organization number configured, skipping fetch');
+      this.structuredLog?.info({ event: 'grid_tariff_skipped', reason: 'no_organization_number' });
       return;
     }
     const requestSettings: { countyCode: string; organizationNumber: string; tariffGroup: string } = {
@@ -266,7 +268,7 @@ export default class PriceService {
 
   private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string): void {
     this.homey.settings.set('nettleie_data', data);
-    this.log(`Grid tariff: Stored ${data.length} hourly tariff entries${logContext}`);
+    this.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
     this.updateCombinedPrices();
   }
 
@@ -504,7 +506,7 @@ export default class PriceService {
     }
     const energyApi = this.getHomeyEnergyApi?.();
     if (!energyApi) {
-      this.log('Homey prices: Homey energy API not available');
+      this.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
       return;
     }
     const info = buildHomeyEnergyDateInfo(this.homey.clock.getTimezone());
@@ -546,10 +548,10 @@ export default class PriceService {
       setSetting: (key, value) => this.homey.settings.set(key, value),
     });
     if (stored === 0) {
-      this.log('Homey prices: No price data available');
+      this.structuredLog?.info({ event: 'homey_prices_no_data' });
       return;
     }
-    this.log(`Homey prices: Stored ${stored} day${stored === 1 ? '' : 's'} of price data`);
+    this.structuredLog?.info({ event: 'homey_prices_stored', dayCount: stored });
     this.updateCombinedPrices();
   }
 }

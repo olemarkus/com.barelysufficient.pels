@@ -1,7 +1,3 @@
-/* eslint-disable max-lines --
- * Extracted target-command actuation keeps one cohesive retry/confirmation
- * pipeline after the executor split.
- */
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';

@@ -29,7 +29,6 @@ const makeDeps = (overrides: {
     getThresholdPercent: () => 20,
     getMinDiffOre: () => 5,
     rebuildPlan,
-    log: vi.fn(),
     debugStructured: vi.fn(),
     error: vi.fn(),
     structuredLog,

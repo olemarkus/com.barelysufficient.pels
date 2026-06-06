@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Homey app lifecycle remains centralized in the main app class. */
 import Homey from 'homey';
 import CapacityGuard from './lib/power/capacityGuard';
 import { DeviceTransport } from './lib/device/deviceTransport';

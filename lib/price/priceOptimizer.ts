@@ -28,7 +28,6 @@ export type PriceOptimizerDeps = {
   getThresholdPercent: () => number;
   getMinDiffOre: () => number;
   rebuildPlan: (reason: string) => Promise<void>;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
@@ -55,7 +54,7 @@ export class PriceOptimizer {
 
       const settings = this.deps.getSettings();
       if (!settings || Object.keys(settings).length === 0) {
-        this.deps.log('Price optimization: No devices configured');
+        (this.deps.structuredLog ?? moduleLogger).info({ event: 'price_optimization_no_devices_configured' });
         this.lastMode = null;
         return;
       }
@@ -70,12 +69,6 @@ export class PriceOptimizer {
       const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
       const thresholdPercent = this.deps.getThresholdPercent();
       const minDiffOre = this.deps.getMinDiffOre();
-      const currentPriceStr = currentPrice?.totalPrice?.toFixed(1) ?? 'N/A';
-      this.deps.log(
-        `Price optimization: current=${currentPriceStr} øre, avg=${avgPrice.toFixed(1)} øre, `
-        + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
-        + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
-      );
       const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
       const previousMode = this.lastMode;
       (this.deps.structuredLog ?? moduleLogger).info({
@@ -88,6 +81,8 @@ export class PriceOptimizer {
         currentPriceAvailable: currentPrice != null,
         currentPriceOre: currentPrice?.totalPrice ?? null,
         avgPriceOre: Math.round(avgPrice * 10) / 10,
+        thresholdPercent,
+        minDiffOre,
         isCheap,
         isExpensive,
       });
