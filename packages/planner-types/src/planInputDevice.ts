@@ -21,7 +21,35 @@ import type {
  * `lib/plan/planTypes.ts` re-exports this symbol, so the ~54 existing consumers
  * that import `PlanInputDevice` from there keep working unchanged.
  */
-export type PlanInputDevice = {
+/**
+ * Stepped-control discriminant for the plan-input union (slice 2 of the
+ * discriminated-types refactor). The stepped variant pins
+ * `controlModel: 'stepped_load'` and requires the profile; the non-stepped
+ * variant omits the profile entirely and excludes the stepped control model.
+ * Moving `steppedLoadProfile` off the base makes the compiler reject
+ * un-narrowed `device.steppedLoadProfile` reads — consumers must pass through
+ * `isSteppedLoadDevice` first.
+ *
+ * The runtime guard lives in `lib/plan/planSteppedLoad.ts`; the kind helper
+ * `SteppedLoadKind` in `lib/plan/planTypes.ts` mirrors this stepped shape.
+ */
+type SteppedPlanInputKind = {
+  controlModel: 'stepped_load';
+  steppedLoadProfile: SteppedLoadProfile;
+};
+
+type NonSteppedPlanInputKind = {
+  // Omits `steppedLoadProfile` entirely (not `?: never`) so an un-narrowed read
+  // on the union is a hard compile error rather than a silently-permitted
+  // `SteppedLoadProfile | undefined`.
+  controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
+};
+
+export type PlanInputDevice =
+  | (PlanInputDeviceBase & SteppedPlanInputKind)
+  | (PlanInputDeviceBase & NonSteppedPlanInputKind);
+
+export type PlanInputDeviceBase = {
   id: string;
   name: string;
   targets: TargetCapabilitySnapshot[];
@@ -29,8 +57,6 @@ export type PlanInputDevice = {
   deviceType?: 'temperature' | 'onoff';
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';
-  controlModel?: DeviceControlModel;
-  steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
   // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).

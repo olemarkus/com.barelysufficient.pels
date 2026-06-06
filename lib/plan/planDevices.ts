@@ -1,4 +1,5 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import { withSteppedDiscriminant } from './planTypes';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
@@ -411,7 +412,9 @@ function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  return {
+  // The discriminant is set explicitly here, then re-tied through
+  // `withSteppedDiscriminant` so the built device lands in one union member.
+  return withSteppedDiscriminant({
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
@@ -423,7 +426,7 @@ function buildBasePlanDevice(params: {
     observationStale: dev.observationStale,
     communicationModel: dev.communicationModel,
     controlModel: dev.controlModel,
-    steppedLoadProfile: dev.steppedLoadProfile,
+    steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
     selectedStepId: dev.selectedStepId,
@@ -456,7 +459,7 @@ function buildBasePlanDevice(params: {
     shedTemperature,
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
-  };
+  });
 }
 
 function pickPropagatedPlanFields(
@@ -521,7 +524,7 @@ function resolveShedAction(params: {
     controllable,
     controlCapabilityId: dev.controlCapabilityId,
     controlModel: dev.controlModel,
-    steppedLoadProfile: dev.steppedLoadProfile,
+    steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     primaryTarget: getPrimaryTargetCapability(dev.targets),
   });
   return materializeShedSnapshotFields({
