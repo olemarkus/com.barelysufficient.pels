@@ -40,7 +40,7 @@ const newPublisher = () => new PriceFlowTagPublisher({
   homey: mockHomeyInstance as any,
   requestPriceRefetch: () => {},
   log: () => {},
-  logDebug: () => {},
+  debugStructured: () => {},
   error: () => {},
 });
 
@@ -170,7 +170,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
+      debugStructured: () => {},
       error: () => {},
     });
     await publisher.init();
@@ -196,7 +196,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
+      debugStructured: () => {},
       error: () => {},
     });
     await publisher.init();
@@ -223,7 +223,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
+      debugStructured: () => {},
       error: (...args: unknown[]) => { errors.push(args); },
     });
     await publisher.init();
@@ -250,7 +250,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
+      debugStructured: () => {},
       error: () => {},
     });
     await publisher.init();
@@ -282,7 +282,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
+      debugStructured: () => {},
       error: () => {},
     });
     await publisher.init();

@@ -3,7 +3,7 @@ import { PriceLevel } from './priceLevels';
 import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('price/optimizer');
@@ -29,7 +29,7 @@ export type PriceOptimizerDeps = {
   getMinDiffOre: () => number;
   rebuildPlan: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
 };
@@ -48,7 +48,7 @@ export class PriceOptimizer {
     const rssBefore = safeRss();
     try {
       if (!this.deps.isEnabled()) {
-        this.deps.logDebug('Price optimization: Disabled globally');
+        this.deps.debugStructured({ event: 'price_optimization_disabled_globally' });
         this.lastMode = null;
         return;
       }

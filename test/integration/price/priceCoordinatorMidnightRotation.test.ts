@@ -9,7 +9,7 @@ const createCoordinator = () => new PriceCoordinator({
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   rebuildPlanFromCache: async () => undefined,
   log: () => undefined,
-  logDebug: () => undefined,
+  debugStructured: () => undefined,
   error: () => undefined,
 });
 
@@ -73,7 +73,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
-      logDebug: () => undefined,
+      debugStructured: () => undefined,
       error: errorLog,
     });
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
@@ -252,7 +252,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
-      logDebug: () => undefined,
+      debugStructured: () => undefined,
       error: errorLog,
     });
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');

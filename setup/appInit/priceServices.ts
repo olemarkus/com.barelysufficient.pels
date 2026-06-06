@@ -11,7 +11,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     rebuildPlanFromCache: (reason) => requirePlanService(ctx).rebuildPlanFromCache(reason).then(() => undefined),
     log: (...args: unknown[]) => ctx.log(...args),
-    logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
+    debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),
     structuredLog: ctx.getStructuredLogger('price'),
     onCombinedPricesUpdated: (reason) => {
@@ -27,7 +27,7 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
     homey: ctx.homey,
     requestPriceRefetch: () => ctx.priceCoordinator?.updateCombinedPrices(),
     log: (...args: unknown[]) => ctx.log(...args),
-    logDebug: (...args: unknown[]) => ctx.logDebug('price', ...args),
+    debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
     error: (...args: unknown[]) => ctx.error(...args),
   });
 }
