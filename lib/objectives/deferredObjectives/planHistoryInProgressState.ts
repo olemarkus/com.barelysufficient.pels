@@ -4,6 +4,7 @@ import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryObservedInterval,
@@ -55,6 +56,7 @@ export type InProgressRecord = Omit<
   | 'progressSamples'
   | 'deliveredKWh'
   | 'totalCost'
+  | 'costDisplay'
   | 'revisions'
   | 'hourlyContributions'
   | 'metReason'
@@ -88,10 +90,20 @@ export type InProgressRecord = Omit<
   // `recordHourlyDelivery` contributions; persisted only when at least one
   // contribution was recorded so empty runs stay byte-stable across upgrades.
   deliveredKWh: number;
-  // Σ priceValue × deliveredKWh across the run, in the user's display
-  // currency. Tracked alongside `deliveredKWh` so the persisted ratio
+  // Σ priceValue × deliveredKWh across the run, in the price scheme's raw
+  // minor unit at record time (øre for the default Norwegian scheme).
+  // Tracked alongside `deliveredKWh` so the persisted ratio
   // (cost / delivered) stays internally consistent.
   totalCost: number;
+  // Price-display provenance (`{ unit, divisor }`) the `totalCost` above is
+  // being accumulated under, captured the first time a priced contribution
+  // fires (rollover or finalize flush) from the hour-price resolver's
+  // `costDisplay`. `null` until the first priced contribution. Persisted at
+  // finalize so the archive formats the figure in its recorded currency; a run
+  // that never received a priced contribution finalizes with it null (and the
+  // entry omits the field, falling back to the recording-era øre/kr default).
+  // See `DeferredObjectivePlanHistoryEntry.costDisplay`.
+  costDisplay: DeferredObjectivePlanHistoryCostDisplay | null;
   // Becomes true on the first `recordHourlyDelivery` contribution so
   // `deliveredKWh` and `totalCost` are persisted (as `0` if needed) rather
   // than dropped. Without this flag a run with one zero-priced delivered
@@ -325,6 +337,7 @@ export const startRecord = (
     progressSamples: seedProgressSamples(diag, nowMs),
     deliveredKWh: 0,
     totalCost: 0,
+    costDisplay: null,
     hasDeliveryContribution: false,
     revisions: [],
     hourlyContributions: [],
@@ -676,6 +689,13 @@ export const finalizeRecord = (
     ...(record.hasDeliveryContribution
       ? { deliveredKWh: record.deliveredKWh, totalCost: record.totalCost }
       : {}),
+    // Persist the price-display provenance the `totalCost` was accumulated
+    // under so the archive formats the figure in its recorded currency rather
+    // than whatever scheme is bootstrapped when the user later reads it.
+    // Non-null only when a priced contribution fired, so a delivery-only run
+    // with no resolved price (and every legacy entry) omits the field and the
+    // consumer falls back to the recording-era øre/kr default.
+    ...(record.costDisplay !== null ? { costDisplay: record.costDisplay } : {}),
     // Per-hour contributions are persisted only when at least one was
     // appended — runs that never received a contribution stay byte-stable
     // across upgrades, mirroring the `deliveredKWh` / `totalCost`

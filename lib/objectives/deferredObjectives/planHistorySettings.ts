@@ -22,8 +22,15 @@ import { randomUUID } from 'node:crypto';
 
 // Bumped to 4 in v2.7.2 alongside the smart-task history-detail trio:
 // `progressSamples`, `kwhPerUnitMean` (on revision snapshots), `deliveredKWh`
-// + `totalCost`, and `revisions[]`. All new fields are optional so v3 entries
-// continue to load with the field absent (graceful degrade). New entries are
+// + `totalCost`, `revisions[]`, and (extension, no version bump) the
+// `costDisplay` price-display provenance. v4 is already released (shipped
+// v2.7.2, live in v2.11.x), but no bump is needed for an additive OPTIONAL
+// field: the normalizer keeps each entry whole (filter, not reconstruct), so an
+// older client that predates a field preserves it on a load→save round-trip,
+// and a newer client treats its absence as a graceful fallback. All new fields
+// are optional so v3 entries continue to load with the field absent (graceful
+// degrade); a `costDisplay`-less entry falls back to the recording-era øre/kr
+// default. New entries are
 // written at v4; v3 reads are upgraded in-place by `normalizeV3` without
 // dropping any persisted state — see `feedback_homey_sdk_unreliable` for the
 // "never delete persisted state on a single empty/missing read" invariant.
@@ -174,12 +181,34 @@ const isHourlyContribution = (
     && isHourlyTone(v.tone);
 };
 
-const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
-  if (v.progressSamples !== undefined
-    && (!Array.isArray(v.progressSamples) || !v.progressSamples.every(isProgressSample))) return false;
+// Price-display provenance persisted alongside `totalCost`. A tampered or
+// downgraded payload could smuggle a non-string unit or a non-finite / zero /
+// negative divisor that would mislabel or 100×-misscale the archived figure (a
+// zero divisor would divide-by-zero at scale time). Reject those at the
+// persistence boundary so the archive can trust the recorded display; a dropped
+// `costDisplay` simply falls back to the recording-era øre/kr default on read.
+const isCostDisplay = (value: unknown): boolean => {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.unit === 'string' && isFiniteNumber(v.divisor) && v.divisor > 0;
+};
+
+// Delivery/cost trio (`deliveredKWh`, `totalCost`, `costDisplay`). All optional;
+// each is rejected only when present-but-malformed so a legacy entry (any subset
+// absent) still loads. Split out of `hasValidV4Extensions` to keep that
+// validator under the branch-complexity cap.
+const hasValidCostFields = (v: Record<string, unknown>): boolean => {
   if (v.deliveredKWh !== undefined
     && (!isFiniteNumber(v.deliveredKWh) || v.deliveredKWh < 0)) return false;
   if (v.totalCost !== undefined && !isFiniteNumber(v.totalCost)) return false;
+  if (v.costDisplay !== undefined && !isCostDisplay(v.costDisplay)) return false;
+  return true;
+};
+
+const hasValidV4Extensions = (v: Record<string, unknown>): boolean => {
+  if (v.progressSamples !== undefined
+    && (!Array.isArray(v.progressSamples) || !v.progressSamples.every(isProgressSample))) return false;
+  if (!hasValidCostFields(v)) return false;
   if (v.revisions !== undefined
     && (!Array.isArray(v.revisions) || !v.revisions.every(isRevisionLogEntry))) return false;
   // v4 hourly-contribution strip: drop the whole entry when any contribution

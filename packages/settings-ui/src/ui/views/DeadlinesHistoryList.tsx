@@ -31,19 +31,11 @@ export type DeadlinesHistoryListState =
       status: 'ready';
       entries: DeferredObjectivePlanHistoryEntry[];
       timeZone: string;
-      // Display currency suffix for the weekly section roll-ups and the
-      // per-row cost line (e.g. `kr`). An empty / null / omitted value drops
-      // the cost half cleanly; the section break still renders. Typed
-      // `| null` because Homey settings reads can return `null`, which a bare
-      // `?:` (undefined-only) default would not absorb. v2.7.3.
-      costUnit?: string | null;
-      // Display-currency divisor (`CostDisplay.divisor`) that scales the raw
-      // persisted minor-unit `totalCost` to the displayed currency before
-      // rounding — the default Norwegian scheme stores øre and shows `kr` at
-      // `divisor: 100`. Threaded alongside `costUnit` so both the per-row cost
-      // and the week roll-up agree with the live hero's scaling. Defaults to 1
-      // (no scaling) when omitted.
-      costDivisor?: number;
+      // No live cost display is threaded in: both the per-row cost line and the
+      // week roll-up scale + label each entry with its OWN recorded `costDisplay`
+      // (legacy entries fall back to the recording-era øre/kr default) so an
+      // archived figure survives a later price-scheme/currency switch. See
+      // `resolveEntryCostDisplay` in `deferredPlanHistoryReceiptStrings.ts`.
       // Wall-clock anchor for the relative week-divider phrasing ("This
       // week" / "Last week" / "Week of 12 May"). Optional so legacy callers
       // and tests can default to `Date.now()` — the production renderer
@@ -214,9 +206,7 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
   const weekGroups = groupPlanHistoryByIsoWeek(
     filteredEntries,
     state.timeZone,
-    state.costUnit ?? '',
     state.nowMs ?? Date.now(),
-    state.costDivisor ?? 1,
   );
   return (
     <section class="deadlines-history" aria-labelledby="deadlines-history-title">
@@ -268,8 +258,6 @@ export const DeadlinesHistoryListRoot = ({ state }: { state: DeadlinesHistoryLis
                 key={entry.id}
                 entry={entry}
                 timeZone={state.timeZone}
-                costUnit={state.costUnit ?? ''}
-                costDivisor={state.costDivisor ?? 1}
               />
             ))}
           </div>

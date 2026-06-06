@@ -774,54 +774,59 @@ describe('formatPlanHistoryProgressLine', () => {
 // scaling raw øre is labelled kr and reads ~100× too high. Branch matrix:
 // cost+delivery, cost-only, delivery-only, empty-unit, neither (null), rounding,
 // divisor scaling.
+// All cost surfaces now scale + label from the entry's RECORDED `costDisplay`
+// (legacy entries fall back to the recording-era øre/kr default), so the figure
+// survives a later price-scheme switch and no live unit/divisor is threaded in.
+const ORE_KR = { unit: 'kr', divisor: 100 } as const;
 describe('formatPlanHistoryListCostAndDelivered', () => {
-  it('renders cost in whole kroner joined with delivered kWh (øre scaled by divisor 100)', () => {
+  it('renders cost in whole kroner joined with delivered kWh (øre scaled by recorded divisor 100)', () => {
     expect(
       formatPlanHistoryListCostAndDelivered(
-        { totalCost: 1234, deliveredKWh: 18.2 },
-        'kr',
-        100,
+        { totalCost: 1234, deliveredKWh: 18.2, costDisplay: ORE_KR },
       ),
     ).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
   });
 
-  it('applies the CostDisplay divisor — 150 øre @ divisor 100 reads "≈ 2 kr", not "≈ 150 kr"', () => {
+  it('applies the recorded divisor — 150 øre @ divisor 100 reads "≈ 2 kr", not "≈ 150 kr"', () => {
     // The P1 money bug guard at the producer boundary: 150 øre / 100 = 1.5 →
     // Math.round → 2 kr. Dropping the divisor would render "≈ 150 kr".
     expect(
       formatPlanHistoryListCostAndDelivered(
-        { totalCost: 150, deliveredKWh: 1.5 },
-        'kr',
-        100,
+        { totalCost: 150, deliveredKWh: 1.5, costDisplay: ORE_KR },
       ),
     ).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
+  });
+
+  it('falls back to the recording-era øre/kr default for a legacy entry with no costDisplay', () => {
+    // The core fix: a legacy øre entry (no recorded display) must assume øre/kr,
+    // NOT a live divisor. 150 øre → ≈ 2 kr.
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 150, deliveredKWh: 1.5 },
+      ),
+    ).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
+  });
+
+  it('honours a recorded Flow display (divisor 1) — 12 EUR reads "≈ 12 EUR", never scaled as øre', () => {
+    expect(
+      formatPlanHistoryListCostAndDelivered(
+        { totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'EUR', divisor: 1 } },
+      ),
+    ).toBe('Cost ≈ 12 EUR · 4.0 kWh delivered');
   });
 
   it('rounds to whole kroner (matches the week-divider rounding)', () => {
     expect(
       formatPlanHistoryListCostAndDelivered(
-        { totalCost: 1262, deliveredKWh: 4 },
-        'kr',
-        100,
+        { totalCost: 1262, deliveredKWh: 4, costDisplay: ORE_KR },
       ),
     ).toBe('Cost ≈ 13 kr · 4.0 kWh delivered');
   });
 
-  it('treats an omitted divisor as 1 (already-scaled total, no division)', () => {
+  it('drops the cost clause when the recorded unit is empty but delivery is recorded', () => {
     expect(
       formatPlanHistoryListCostAndDelivered(
-        { totalCost: 12.34, deliveredKWh: 18.2 },
-        'kr',
-      ),
-    ).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
-  });
-
-  it('drops the cost clause when the unit is empty but delivery is recorded', () => {
-    expect(
-      formatPlanHistoryListCostAndDelivered(
-        { totalCost: 1234, deliveredKWh: 18.2 },
-        '',
-        100,
+        { totalCost: 1234, deliveredKWh: 18.2, costDisplay: { unit: '', divisor: 1 } },
       ),
     ).toBe('18.2 kWh delivered');
   });
@@ -830,9 +835,7 @@ describe('formatPlanHistoryListCostAndDelivered', () => {
     // 950 øre / 100 = 9.5 → Math.round → 10 kr.
     expect(
       formatPlanHistoryListCostAndDelivered(
-        { totalCost: 950, deliveredKWh: undefined },
-        'kr',
-        100,
+        { totalCost: 950, deliveredKWh: undefined, costDisplay: ORE_KR },
       ),
     ).toBe('Cost ≈ 10 kr');
   });
@@ -841,30 +844,24 @@ describe('formatPlanHistoryListCostAndDelivered', () => {
     expect(
       formatPlanHistoryListCostAndDelivered(
         { totalCost: undefined, deliveredKWh: undefined },
-        'kr',
-        100,
       ),
     ).toBeNull();
   });
 
-  it('strips a rate-shaped Flow/Homey unit so a TOTAL reads "kr", not "kr/kWh"', () => {
-    // Flow/Homey schemes pass their raw price-RATE label (`kr/kWh`) through as
-    // the cost unit. A total cost is an amount, so the row must drop the `/kWh`
-    // suffix — otherwise it labels an amount as a per-kWh rate.
+  it('strips a rate-shaped recorded unit so a TOTAL reads "kr", not "kr/kWh"', () => {
+    // Flow/Homey schemes record their raw price-RATE label (`kr/kWh`). A total
+    // cost is an amount, so the row must drop the `/kWh` suffix — otherwise it
+    // labels an amount as a per-kWh rate.
     const line = formatPlanHistoryListCostAndDelivered(
-      { totalCost: 12, deliveredKWh: 4 },
-      'kr/kWh',
-      1,
+      { totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'kr/kWh', divisor: 1 } },
     );
     expect(line).toBe('Cost ≈ 12 kr · 4.0 kWh delivered');
     expect(line).not.toContain('kr/kWh');
   });
 
-  it('tolerates whitespace in the rate suffix (" NOK / kWh " → "NOK")', () => {
+  it('tolerates whitespace in the recorded rate suffix (" NOK / kWh " → "NOK")', () => {
     const line = formatPlanHistoryListCostAndDelivered(
-      { totalCost: 9, deliveredKWh: 3 },
-      ' NOK / kWh ',
-      1,
+      { totalCost: 9, deliveredKWh: 3, costDisplay: { unit: ' NOK / kWh ', divisor: 1 } },
     );
     expect(line).toBe('Cost ≈ 9 NOK · 3.0 kWh delivered');
     expect(line).not.toContain('NOK /');
@@ -872,15 +869,20 @@ describe('formatPlanHistoryListCostAndDelivered', () => {
   });
 });
 
-// Row ↔ week-divider agreement: the same RAW øre money must read identically on
-// the per-row cost line and the ISO-week roll-up heading once both apply the
-// CostDisplay divisor. A single entry isolates the scaling: a regression that
-// scales one surface but not the other (the original P1 shape) diverges here.
 describe('formatPlanHistoryCostAndDelivered (hero 2-decimal total)', () => {
-  it('strips a rate-shaped Flow/Homey unit so the TOTAL reads "kr", not "kr/kWh"', () => {
+  it('scales by the recorded divisor — 1230 øre @ divisor 100 reads "≈ 12.30 kr"', () => {
+    // The 2-decimal Missed-hero fallback must also honour the recorded display:
+    // raw øre persisted under divisor 100 must divide to kr, not render raw.
     const line = formatPlanHistoryCostAndDelivered(
-      { totalCost: 12.3, deliveredKWh: 4 },
-      'kr/kWh',
+      { totalCost: 1230, deliveredKWh: 4, costDisplay: ORE_KR },
+      '',
+    );
+    expect(line).toBe('Cost ≈ 12.30 kr · 4.0 kWh delivered');
+  });
+
+  it('strips a rate-shaped recorded unit so the TOTAL reads "kr", not "kr/kWh"', () => {
+    const line = formatPlanHistoryCostAndDelivered(
+      { totalCost: 12.3, deliveredKWh: 4, costDisplay: { unit: 'kr/kWh', divisor: 1 } },
       '',
     );
     expect(line).toBe('Cost ≈ 12.30 kr · 4.0 kWh delivered');
@@ -888,11 +890,18 @@ describe('formatPlanHistoryCostAndDelivered (hero 2-decimal total)', () => {
   });
 });
 
-describe('list-row cost ↔ week-divider roll-up agreement (divisor applied to both)', () => {
+// Row ↔ week-divider agreement: the same RAW øre money must read identically on
+// the per-row cost line and the ISO-week roll-up heading once both scale by the
+// entry's recorded divisor. A single entry isolates the scaling: a regression
+// that scales one surface but not the other (the original P1 shape) diverges.
+describe('list-row cost ↔ week-divider roll-up agreement (recorded display on both)', () => {
   const TZ = 'Europe/Oslo';
   const DEADLINE_MS = Date.UTC(2026, 4, 6, 6, 0, 0);
 
-  const buildCostEntry = (totalCost: number): DeferredObjectivePlanHistoryEntry => ({
+  const buildCostEntry = (
+    totalCost: number,
+    costDisplay?: DeferredObjectivePlanHistoryEntry['costDisplay'],
+  ): DeferredObjectivePlanHistoryEntry => ({
     id: `entry-${totalCost}`,
     originalPlan: null,
     finalPlan: null,
@@ -916,12 +925,13 @@ describe('list-row cost ↔ week-divider roll-up agreement (divisor applied to b
     discoveredFrom: 'observation',
     totalCost,
     deliveredKWh: 1.5,
+    ...(costDisplay ? { costDisplay } : {}),
   });
 
-  it('row "≈ 2 kr" matches the single-entry week-divider "≈ 2 kr" for 150 øre @ divisor 100', () => {
-    const entry = buildCostEntry(150);
-    const rowCost = formatPlanHistoryListCostAndDelivered(entry, 'kr', 100);
-    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, 'kr', DEADLINE_MS, 100);
+  it('row "≈ 2 kr" matches the single-entry week-divider "≈ 2 kr" for 150 øre @ recorded divisor 100', () => {
+    const entry = buildCostEntry(150, ORE_KR);
+    const rowCost = formatPlanHistoryListCostAndDelivered(entry);
+    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, DEADLINE_MS);
     expect(rowCost).toContain('≈ 2 kr');
     expect(group?.heading).toContain('≈ 2 kr');
     // Neither labels raw øre as kr.
@@ -929,12 +939,30 @@ describe('list-row cost ↔ week-divider roll-up agreement (divisor applied to b
     expect(group?.heading).not.toContain('150 kr');
   });
 
-  it('strips a rate-shaped unit from the week-divider roll-up too ("kr/kWh" → "kr")', () => {
-    // Flow/Homey total: divisor 1, raw rate label `kr/kWh`. The heading total is
-    // an amount, so it must read `≈ 12 kr`, never `≈ 12 kr/kWh`.
-    const entry = buildCostEntry(12);
-    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, 'kr/kWh', DEADLINE_MS, 1);
+  it('legacy entry (no recorded display) agrees on the øre/kr fallback for row + roll-up', () => {
+    const entry = buildCostEntry(150);
+    const rowCost = formatPlanHistoryListCostAndDelivered(entry);
+    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, DEADLINE_MS);
+    expect(rowCost).toContain('≈ 2 kr');
+    expect(group?.heading).toContain('≈ 2 kr');
+  });
+
+  it('strips a rate-shaped recorded unit from the week-divider roll-up too ("kr/kWh" → "kr")', () => {
+    // Flow/Homey total: divisor 1, recorded rate label `kr/kWh`. The heading
+    // total is an amount, so it must read `≈ 12 kr`, never `≈ 12 kr/kWh`.
+    const entry = buildCostEntry(12, { unit: 'kr/kWh', divisor: 1 });
+    const [group] = groupPlanHistoryByIsoWeek([entry], TZ, DEADLINE_MS);
     expect(group?.heading).toContain('≈ 12 kr');
     expect(group?.heading).not.toContain('kr/kWh');
+  });
+
+  it('rolls up a mixed-scheme week by scaling each entry with its own recorded divisor', () => {
+    // One øre/÷100 run (150 øre → 2 kr) + one Flow/÷1 run (3 kr → 3 kr) in the
+    // same week. Summing the RAW totals (153) under a single divisor would
+    // mislabel the roll-up; per-entry scaling gives the honest 2 + 3 = 5 kr.
+    const oreEntry = buildCostEntry(150, ORE_KR);
+    const flowEntry = { ...buildCostEntry(3, { unit: 'kr', divisor: 1 }), id: 'entry-flow' };
+    const [group] = groupPlanHistoryByIsoWeek([oreEntry, flowEntry], TZ, DEADLINE_MS);
+    expect(group?.heading).toContain('≈ 5 kr');
   });
 });

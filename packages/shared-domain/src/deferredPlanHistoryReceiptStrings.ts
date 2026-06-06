@@ -15,6 +15,11 @@
 // Output is byte-identical to the previously-inlined literals — this is a
 // structural move, not a copy change.
 
+import type {
+  DeferredObjectivePlanHistoryCostDisplay,
+  DeferredObjectivePlanHistoryEntry,
+} from '../../contracts/src/deferredObjectivePlanHistory';
+
 // Non-breaking space, used between the approx glyph + value + unit so chips
 // never wrap mid-figure ("12 / kr" breaking onto two lines at 320 px).
 // v2.7.3 — `pels-m3-critic` + `pels-ux-fit` finding. (Re-exported alongside
@@ -143,6 +148,28 @@ export const scaleRawCostToDisplay = (rawCost: number, divisor: number): number 
 // the heading producer passes one cost param (mirrors the settings-UI
 // `CostDisplay`, which the shared-domain layer may not import).
 export type WeekCostDisplay = { unit: string; divisor: number };
+
+// Recording-era price-display default for history entries that predate the
+// persisted `costDisplay` field. Every such entry accumulated `totalCost` in
+// the default Norwegian Nordpool scheme — raw øre summed per hour — so labelling
+// absence as `kr` with a `÷100` divisor is the correct historical assumption.
+// Reusing the live (currently-bootstrapped) display would reintroduce the exact
+// scheme-switch bug the provenance field fixes (a legacy øre entry shown under a
+// Flow `divisor: 1`). See `DeferredObjectivePlanHistoryCostDisplay`.
+export const DEFAULT_HISTORY_COST_DISPLAY: DeferredObjectivePlanHistoryCostDisplay = {
+  unit: 'kr',
+  divisor: 100,
+};
+
+// Resolve the price-display provenance to format an entry's persisted
+// `totalCost` with — the entry's recorded `costDisplay` when present, else the
+// recording-era øre/kr default. Centralised so every archive surface (per-row
+// cost line, cost-narrative chip, ISO-week roll-up, detail-hero fallback) scales
+// and labels the same figure identically and survives a later price-scheme or
+// currency switch.
+export const resolveEntryCostDisplay = (
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'costDisplay'>,
+): DeferredObjectivePlanHistoryCostDisplay => entry.costDisplay ?? DEFAULT_HISTORY_COST_DISPLAY;
 
 // Relative week lead labels for the section heading. "This week" / "Last week"
 // anchor on the user's current week; older weeks render as "Week of 12 May"

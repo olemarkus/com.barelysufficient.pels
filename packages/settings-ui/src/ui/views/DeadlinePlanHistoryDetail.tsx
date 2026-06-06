@@ -1128,7 +1128,6 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
     entry,
     timeZone,
     deadlineLine,
-    costUnit,
   });
   // Succeeded heroes default the chart collapsed (`receipt-shape`); the view
   // toggles via `useState`. Missed heroes pass `chartCollapsedByDefault: false`

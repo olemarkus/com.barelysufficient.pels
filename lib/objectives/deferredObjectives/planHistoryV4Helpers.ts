@@ -8,6 +8,7 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
+  DeferredObjectivePlanHistoryCostDisplay,
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryHourlyContribution,
   DeferredObjectivePlanHistoryHourlyTone,
@@ -29,7 +30,18 @@ import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 // `combined_prices`.
 export type HourPriceResolver = (
   hourStartMs: number,
-) => { priceValue: number; tone: DeferredObjectivePlanHistoryHourlyTone } | null;
+) => {
+  priceValue: number;
+  tone: DeferredObjectivePlanHistoryHourlyTone;
+  // Price-display provenance (`{ unit, divisor }`) for the scheme this price
+  // was resolved under. Hour-independent (it's the active scheme, not the
+  // hour's value) but surfaced here so the recorder can capture it onto the
+  // run's record the first time a priced contribution fires — see
+  // `DeferredObjectivePlanHistoryEntry.costDisplay`. The recorder persists it
+  // alongside `totalCost` so the archive formats the figure in its recorded
+  // currency, not whatever scheme is bootstrapped when the user later reads it.
+  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
+} | null;
 
 // Runtime cap on persisted progress samples per entry. The contract module
 // documents a matching constant (intentionally not exported there — runtime
@@ -395,6 +407,12 @@ export const pickKwhPerUnit = (diag: DeferredObjectiveDiagnostic): number | null
 export type HourRolloverResult = {
   contributions: DeferredObjectivePlanHistoryHourlyContribution[];
   nextOpening: HourProgressSnapshot;
+  // Price-display provenance resolved for the contribution(s), when a priced
+  // contribution actually fired. `undefined` when no contribution was emitted
+  // (no transition, non-advancing delta, or no price resolved) so the recorder
+  // only captures a display from a real priced hour. Hour-independent — see
+  // `HourPriceResolver`.
+  costDisplay?: DeferredObjectivePlanHistoryCostDisplay;
 };
 
 // Detect an hour-bucket transition for an in-progress run with trustworthy
@@ -473,6 +491,7 @@ export const detectHourRollover = (params: {
       tone: pricing.tone,
     }],
     nextOpening,
+    costDisplay: pricing.costDisplay,
   };
 };
 
@@ -487,7 +506,10 @@ export const buildFinalHourContribution = (params: {
   finalProgress: number | null;
   kWhPerUnit: number | null;
   resolvePrice?: HourPriceResolver;
-}): DeferredObjectivePlanHistoryHourlyContribution | null => {
+}): {
+  contribution: DeferredObjectivePlanHistoryHourlyContribution;
+  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
+} | null => {
   const { opening, finalProgress, kWhPerUnit, resolvePrice } = params;
   if (opening === null || finalProgress === null || kWhPerUnit === null) return null;
   const deliveredUnits = finalProgress - opening.value;
@@ -496,10 +518,17 @@ export const buildFinalHourContribution = (params: {
   const pricing = resolvePrice(opening.hourMs);
   if (pricing === null) return null;
   return {
-    atMs: opening.hourMs,
-    deliveredKWh: deliveredUnits * kWhPerUnit,
-    priceValue: pricing.priceValue,
-    tone: pricing.tone,
+    contribution: {
+      atMs: opening.hourMs,
+      deliveredKWh: deliveredUnits * kWhPerUnit,
+      priceValue: pricing.priceValue,
+      tone: pricing.tone,
+    },
+    // Surfaced so the recorder captures the run's price-display provenance from
+    // the finalize-time flush — covers a run that completed inside a single
+    // hour and never crossed an hour boundary (so `detectHourRollover` never
+    // fired). See `DeferredObjectivePlanHistoryEntry.costDisplay`.
+    costDisplay: pricing.costDisplay,
   };
 };
 
@@ -519,13 +548,15 @@ export const buildFinalHourFlush = (params: {
 }): {
   contribution: DeferredObjectivePlanHistoryHourlyContribution;
   nextOpening: HourProgressSnapshot;
+  costDisplay: DeferredObjectivePlanHistoryCostDisplay;
 } | null => {
-  const contribution = buildFinalHourContribution(params);
-  if (contribution === null) return null;
+  const built = buildFinalHourContribution(params);
+  if (built === null) return null;
   const { opening, finalProgress } = params;
   return {
-    contribution,
+    contribution: built.contribution,
     nextOpening: { hourMs: opening!.hourMs + ONE_HOUR_MS, value: finalProgress! },
+    costDisplay: built.costDisplay,
   };
 };
 

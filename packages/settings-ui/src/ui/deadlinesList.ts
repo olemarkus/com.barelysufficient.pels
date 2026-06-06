@@ -20,7 +20,6 @@ import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/d
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
-import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
@@ -197,19 +196,14 @@ const fetchPlanHistoryOrNull = async (): Promise<
 let activeDeviceFilter: string | null = null;
 let activeDeviceFilterInitialized = false;
 
-// Display currency `CostDisplay` (unit + divisor) for the past-task cost meta
-// lines (per-row `Cost ≈ X kr · Y kWh delivered` + the ISO-week divider
-// roll-up). Resolved from the bootstrap's `combinedPrices` via the SAME
-// `resolveCostDisplayFromCombinedPrices` the live deadline hero uses
-// (`deadlinePlan.ts`), so the unit AND scaling read identically across the live
-// and past surfaces. The persisted `totalCost` is accumulated in the scheme's
-// minor unit (øre for the default `kr`/100 scheme), so the FULL display — not
-// just `.unit` — must reach the formatters or the rows render ~100× too high.
-// Defaults to the helper's own boot fallback (`{ unit: 'kr', divisor: 100 }`)
-// until the first bootstrap lands — the history surface renders in parallel with
-// (and can resolve before) the bootstrap fetch, so the resolved display is
-// threaded on the bootstrap's re-render rather than gating first paint on it.
-let historyCostDisplay = resolveCostDisplayFromCombinedPrices(null);
+// Past-task cost meta lines (per-row `Cost ≈ X kr · Y kWh delivered` + the
+// ISO-week divider roll-up) no longer thread a LIVE display here: each history
+// entry carries the `costDisplay` (unit + divisor) it was RECORDED under, and
+// the shared-domain formatters scale + label with that recorded display (legacy
+// entries fall back to the recording-era øre/kr default). This keeps an archived
+// figure correct after the user switches price scheme/currency — a Norway run
+// recorded as 150 øre still reads `≈ 2 kr`, not `≈ 150 EUR`. See
+// `resolveEntryCostDisplay` in `deferredPlanHistoryReceiptStrings.ts`.
 
 const ensureDeviceFilterInitialized = (): void => {
   if (activeDeviceFilterInitialized) return;
@@ -257,12 +251,8 @@ const renderHistorySurface = (
     status: 'ready',
     entries,
     timeZone: resolveBrowserTimeZone(),
-    // Display currency unit + divisor for the per-row cost line and the
-    // week-divider roll-up. Resolved at boot from the same price source as the
-    // live hero; see `historyCostDisplay`. The divisor scales the raw øre
-    // `totalCost` to kr so the figure isn't ~100× too high.
-    costUnit: historyCostDisplay.unit,
-    costDivisor: historyCostDisplay.divisor,
+    // No cost unit/divisor threaded in — each entry's recorded `costDisplay`
+    // drives its own row + the week roll-up (see comment above).
     selectedDeviceId: activeDeviceFilter,
     onSelectDevice: handleSelectDevice,
   };
@@ -309,14 +299,7 @@ export const refreshDeadlinesList = async (): Promise<void> => {
   // both the history surface render and the active list's empty-state branch,
   // so a single fetch resolves both (no second round-trip).
   const historyTarget = historySurface;
-  // Cache the latest history payload so a later bootstrap resolution (which
-  // carries the price unit) can re-render the archive with the resolved
-  // currency suffix without a second history round-trip.
-  let latestHistoryPayload: SettingsUiDeferredObjectivePlanHistoryPayload | null = null;
-  let historyPayloadResolved = false;
   void fetchPlanHistoryOrNull().then((payload) => {
-    latestHistoryPayload = payload;
-    historyPayloadResolved = true;
     if (historyTarget) renderHistorySurface(historyTarget, payload);
     // `historyPresent` is the empty-state discriminator: true when at least
     // one finished run exists in the archive. Resolved through the same
@@ -336,31 +319,6 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       callApi<SettingsUiBootstrap>('GET', SETTINGS_UI_BOOTSTRAP_PATH),
       callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH),
     ]);
-    // Resolve the past-task cost display (unit + divisor) from the SAME price
-    // source the live deadline hero uses, then re-paint the archive if its
-    // (parallel) fetch already landed on the boot-default display — Flow/Homey
-    // price schemes carry a non-`kr` suffix and a `divisor: 1` the first history
-    // paint would otherwise miss. The common Norwegian default
-    // (`{ kr, 100 }`) already matches the boot fallback, so this re-render is a
-    // no-op in that case. `prices` is optional-chained so a partial bootstrap
-    // payload falls back to the helper's own `kr` default rather than throwing
-    // and routing the active list into the error branch.
-    const resolvedCostDisplay = resolveCostDisplayFromCombinedPrices(
-      bootstrap.prices?.combinedPrices ?? null,
-    );
-    if (
-      resolvedCostDisplay.unit !== historyCostDisplay.unit
-      || resolvedCostDisplay.divisor !== historyCostDisplay.divisor
-    ) {
-      historyCostDisplay = resolvedCostDisplay;
-      if (
-        historyTarget
-        && historyPayloadResolved
-        && generation === refreshGeneration
-      ) {
-        renderHistorySurface(historyTarget, latestHistoryPayload);
-      }
-    }
     const objectiveSettings = normalizeDeferredObjectiveSettings(
       bootstrap.settings.deferred_objectives,
     );

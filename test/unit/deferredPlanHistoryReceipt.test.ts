@@ -164,41 +164,51 @@ describe('formatPlanHistoryCostNarrative', () => {
     // v2.7.3 — chip uses NBSP between glyph + value + unit so it never
     // wraps mid-figure at 320 px; per-kWh average dropped pending
     // PR12-hourly-contributions per-hour spot prices.
+    // Already-scaled `kr` total recorded at divisor 1 isolates the formatting
+    // (rounding / NBSP / rate-suffix stripping) from the øre→kr scale.
     const line = formatPlanHistoryCostNarrative(
-      buildEntry({ totalCost: 12.37, deliveredKWh: 10 }),
-      'kr',
+      buildEntry({ totalCost: 12.37, deliveredKWh: 10, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
     expect(line).toBe('≈ 12 kr');
     // No per-kWh half — spec deferred until per-hour spot prices land.
     expect(line).not.toContain('kr/kWh');
   });
 
+  it('scales a raw øre total by the recorded divisor 100 (1237 øre → whole kr, not raw øre)', () => {
+    const line = formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 1237, deliveredKWh: 10, costDisplay: { unit: 'kr', divisor: 100 } }),
+    );
+    // 1237 øre / 100 = 12.37 → Math.round → 12 kr. The raw øre must never reach
+    // the chip labelled as kr (the scheme-switch bug this provenance field fixes).
+    expect(line).toContain('12');
+    expect(line).toContain('kr');
+    expect(line).not.toContain('1237');
+  });
+
   it('still renders the chip when delivery is missing', () => {
     const line = formatPlanHistoryCostNarrative(
-      buildEntry({ totalCost: 7, deliveredKWh: undefined }),
-      'kr',
+      buildEntry({ totalCost: 7, deliveredKWh: undefined, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
     expect(line).toBe('≈ 7 kr');
   });
 
-  it('returns null on Abandoned and when the cost unit is empty', () => {
+  it('returns null on Abandoned and when the recorded cost unit is empty', () => {
     expect(formatPlanHistoryCostNarrative(
-      buildEntry({ outcome: 'abandoned', totalCost: 5 }),
-      'kr',
+      buildEntry({ outcome: 'abandoned', totalCost: 5, costDisplay: { unit: 'kr', divisor: 1 } }),
     )).toBeNull();
-    expect(formatPlanHistoryCostNarrative(buildEntry({ totalCost: 5 }), '')).toBeNull();
+    expect(formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 5, costDisplay: { unit: '', divisor: 1 } }),
+    )).toBeNull();
   });
 
-  it('strips a rate-shaped Flow/Homey unit so the TOTAL chip reads "kr", not "kr/kWh"', () => {
+  it('strips a rate-shaped recorded unit so the TOTAL chip reads "kr", not "kr/kWh"', () => {
     // Equals the bare-`kr` chip (same NBSP glyph spacing) — the only difference
     // from the source `kr/kWh` unit must be the dropped `/kWh` rate suffix.
     const rateUnit = formatPlanHistoryCostNarrative(
-      buildEntry({ totalCost: 12, deliveredKWh: 4 }),
-      'kr/kWh',
+      buildEntry({ totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'kr/kWh', divisor: 1 } }),
     );
     const amountUnit = formatPlanHistoryCostNarrative(
-      buildEntry({ totalCost: 12, deliveredKWh: 4 }),
-      'kr',
+      buildEntry({ totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
     expect(rateUnit).toBe(amountUnit);
     expect(rateUnit).not.toContain('kr/kWh');
@@ -249,7 +259,7 @@ describe('groupPlanHistoryByIsoWeek', () => {
       buildEntry({ id: 'd', outcome: 'abandoned', deadlineAtMs: DEADLINE_MS - 3 * HOUR_MS, totalCost: 2 }),
       buildEntry({ id: 'e', outcome: 'replaced', deadlineAtMs: DEADLINE_MS - 4 * HOUR_MS, totalCost: 1 }),
     ];
-    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', 'kr', NOW_MS);
+    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', NOW_MS);
     expect(groups).toHaveLength(1);
     const heading = groups[0]!.heading;
     expect(heading).toContain('2 succeeded');
@@ -263,6 +273,28 @@ describe('groupPlanHistoryByIsoWeek', () => {
     expect(heading.endsWith('.')).toBe(false);
   });
 
+  it('rolls up only the heading currency when a week mixes currencies', () => {
+    // Mid-week currency switch: a kr run (1000 øre = 10 kr) and a EUR run
+    // (5 EUR). The heading must NOT add different currencies into one figure —
+    // it sums only the heading-currency (first finite-cost entry = kr) entries,
+    // so the total is "≈ 10 kr", never 15. The EUR run still shows its own
+    // per-row cost line elsewhere.
+    const entries = [
+      buildEntry({
+        id: 'kr', outcome: 'met', deadlineAtMs: DEADLINE_MS,
+        totalCost: 1000, costDisplay: { unit: 'kr', divisor: 100 },
+      }),
+      buildEntry({
+        id: 'eur', outcome: 'met', deadlineAtMs: DEADLINE_MS - HOUR_MS,
+        totalCost: 5, costDisplay: { unit: 'EUR', divisor: 1 },
+      }),
+    ];
+    const heading = groupPlanHistoryByIsoWeek(entries, 'UTC', NOW_MS)[0]!.heading;
+    expect(heading).toContain('10 kr');
+    expect(heading).not.toContain('15');
+    expect(heading).not.toContain('EUR');
+  });
+
   it('shows missed/abandoned counts even when nothing succeeded that week', () => {
     // Zero succeeded; previous version dropped this week's outcomes entirely
     // and rendered a bare "Week 19" — PR-11 surfaces the misses/abandons.
@@ -270,7 +302,7 @@ describe('groupPlanHistoryByIsoWeek', () => {
       buildEntry({ id: 'a', outcome: 'missed', deadlineAtMs: DEADLINE_MS - 6 * 24 * HOUR_MS, totalCost: 5 }),
       buildEntry({ id: 'b', outcome: 'abandoned', deadlineAtMs: DEADLINE_MS - 7 * 24 * HOUR_MS }),
     ];
-    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', 'kr', NOW_MS);
+    const groups = groupPlanHistoryByIsoWeek(entries, 'UTC', NOW_MS);
     expect(groups).toHaveLength(1);
     const heading = groups[0]!.heading;
     expect(heading).toContain('1 missed');
@@ -282,7 +314,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
     const groups = groupPlanHistoryByIsoWeek(
       [buildEntry({ outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 12 })],
       'UTC',
-      'kr',
       NOW_MS,
     );
     expect(groups[0]!.heading.startsWith('This week')).toBe(true);
@@ -294,7 +325,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
     const groups = groupPlanHistoryByIsoWeek(
       [buildEntry({ outcome: 'met', deadlineAtMs: lastWeekMs })],
       'UTC',
-      '',
       NOW_MS,
     );
     expect(groups[0]!.heading.startsWith('Last week')).toBe(true);
@@ -306,7 +336,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
     const groups = groupPlanHistoryByIsoWeek(
       [buildEntry({ outcome: 'met', deadlineAtMs: olderMs })],
       'UTC',
-      '',
       NOW_MS,
     );
     // "Week of 20 Apr" (en-GB) or "Week of Apr 20" (en-US) — Intl
@@ -317,11 +346,18 @@ describe('groupPlanHistoryByIsoWeek', () => {
     expect(groups[0]!.heading).toMatch(/^Week of (?:20 \w+|\w+ 20)\b/);
   });
 
-  it('drops the cost half cleanly when the unit suffix is empty', () => {
+  it('drops the cost half cleanly when the recorded unit suffix is empty', () => {
+    // Recorded display with an empty unit (Flow/Homey scheme without a usable
+    // `priceUnit`). A non-zero amount must still suppress the heading cost half
+    // rather than render a bare "≈ 12" with no currency.
     const groups = groupPlanHistoryByIsoWeek(
-      [buildEntry({ outcome: 'met', totalCost: 12, deadlineAtMs: DEADLINE_MS })],
+      [buildEntry({
+        outcome: 'met',
+        totalCost: 12,
+        deadlineAtMs: DEADLINE_MS,
+        costDisplay: { unit: '', divisor: 1 },
+      })],
       'UTC',
-      '',
       NOW_MS,
     );
     expect(groups[0]!.heading).toContain('This week');
@@ -329,7 +365,7 @@ describe('groupPlanHistoryByIsoWeek', () => {
   });
 
   it('returns an empty array on empty input', () => {
-    expect(groupPlanHistoryByIsoWeek([], 'UTC', 'kr', NOW_MS)).toEqual([]);
+    expect(groupPlanHistoryByIsoWeek([], 'UTC', NOW_MS)).toEqual([]);
   });
 
   // Regression: in time zones west of UTC, an earlier revision of
@@ -354,7 +390,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
       const groups = groupPlanHistoryByIsoWeek(
         [buildEntry({ outcome: 'met', deadlineAtMs: lastWeekMs })],
         NY_TZ,
-        '',
         NY_NOW_MS,
       );
       expect(groups).toHaveLength(1);
@@ -368,7 +403,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
       const groups = groupPlanHistoryByIsoWeek(
         [buildEntry({ outcome: 'met', deadlineAtMs: twoWeeksBackMs })],
         NY_TZ,
-        '',
         NY_NOW_MS,
       );
       expect(groups).toHaveLength(1);
@@ -402,7 +436,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
       const groups = groupPlanHistoryByIsoWeek(
         [buildEntry({ outcome: 'met', deadlineAtMs: dstWeekEntryMs })],
         OSLO_TZ,
-        '',
         nowMs,
       );
       expect(groups).toHaveLength(1);
@@ -420,7 +453,6 @@ describe('groupPlanHistoryByIsoWeek', () => {
       const groups = groupPlanHistoryByIsoWeek(
         [buildEntry({ outcome: 'met', deadlineAtMs: priorWeekEntryMs })],
         OSLO_TZ,
-        '',
         nowMs,
       );
       expect(groups).toHaveLength(1);
@@ -727,7 +759,6 @@ describe('receipt strings are sourced from the shared strings module', () => {
     const groups = groupPlanHistoryByIsoWeek(
       [buildEntry({ outcome: 'met', deadlineAtMs: DEADLINE_MS, totalCost: 12 })],
       'UTC',
-      '',
       NOW_MS,
     );
     expect(groups[0]!.heading.startsWith(RECEIPT_WEEK_THIS)).toBe(true);

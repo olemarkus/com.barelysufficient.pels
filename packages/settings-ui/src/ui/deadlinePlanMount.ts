@@ -19,7 +19,6 @@ import {
 } from './deadlinePlanHistoryFetch.ts';
 import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
-import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
 import { showUsageReturnLink } from './usageReturnLink.ts';
@@ -255,14 +254,15 @@ const renderActiveMount = (): void => {
     devices: m.lastBoot.devicesPayload.devices,
     prices: m.lastBoot.prices,
   });
-  // Resolve the display currency (unit + divisor) from the SAME price source
-  // the live hero uses, so the device-scoped past-run cost lines scale øre→kr
-  // identically to the Smart-tasks tab list. Threaded into the load state for
-  // `PriorRunsHistory`.
-  const costDisplay = resolveCostDisplayFromCombinedPrices(m.lastBoot.prices.combinedPrices);
+  // No display currency is threaded into the past-run history here: each
+  // recorded entry carries its own `costDisplay` and the shared-domain
+  // formatters scale + label from that (legacy entries fall back to the
+  // recording-era øre/kr default), so the archived figure survives a later
+  // price-scheme/currency switch. The live hero still resolves its own display
+  // inside `resolveRenderInput`.
   renderDeadlinePlan(
     m.surface,
-    resolveDeadlinePlanLoadState(renderInput, m.lastHistory, costDisplay),
+    resolveDeadlinePlanLoadState(renderInput, m.lastHistory),
   );
 };
 

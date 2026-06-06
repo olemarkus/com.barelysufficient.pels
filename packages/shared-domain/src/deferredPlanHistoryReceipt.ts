@@ -79,7 +79,8 @@ import {
   formatReceiptStartFromTemperature,
   formatReceiptWeekCost,
   scaleRawCostToDisplay,
-  type WeekCostDisplay,
+  DEFAULT_HISTORY_COST_DISPLAY,
+  resolveEntryCostDisplay,
   formatReceiptWeekOf,
   formatReceiptWeekProvisionalHeading,
   RECEIPT_DURATION_ZERO,
@@ -418,21 +419,19 @@ export const formatPlanHistoryShortfallChip = (
  * punctuation reads as audit prose when stacked with other chips.
  */
 export const formatPlanHistoryCostNarrative = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'outcome' | 'totalCost' | 'deliveredKWh'>,
-  costUnit: string,
-  // Display-currency divisor (`CostDisplay.divisor`) — `totalCost` is persisted
-  // in the scheme's minor unit, so the raw total is scaled before rounding to
-  // whole display units. Defaults to 1 (no scaling) for callers that pass an
-  // already-scaled total or an empty unit.
-  costDivisor = 1,
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'outcome' | 'totalCost' | 'costDisplay'>,
 ): string | null => {
   if (entry.outcome !== 'met' && entry.outcome !== 'missed') return null;
+  // Format with the display the entry was RECORDED under, not a live one — a
+  // later price-scheme switch must not relabel an archived figure. Legacy
+  // entries fall back to the recording-era øre/kr default.
+  const display = resolveEntryCostDisplay(entry);
   // Total is an amount: drop a `/kWh` rate suffix (Flow/Homey pass `kr/kWh`).
-  const unit = priceRateLabelToAmountUnit(costUnit.trim());
+  const unit = priceRateLabelToAmountUnit(display.unit.trim());
   if (unit.length === 0) return null;
   const { totalCost } = entry;
   if (typeof totalCost !== 'number' || !Number.isFinite(totalCost)) return null;
-  const roundedCost = Math.round(scaleRawCostToDisplay(totalCost, costDivisor));
+  const roundedCost = Math.round(scaleRawCostToDisplay(totalCost, display.divisor));
   return formatReceiptCostNarrative(APPROX_GLYPH, roundedCost, unit);
 };
 
@@ -452,21 +451,19 @@ export const formatPlanHistoryCostNarrative = (
 // every outcome and pairs the cost with the delivered-kWh half. Null when
 // neither cost nor delivery was recorded (legacy entry) — never a 0 kr row.
 export const formatPlanHistoryListCostAndDelivered = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost'>,
-  costUnit: string,
-  // Display-currency divisor (`CostDisplay.divisor`). `totalCost` is persisted
-  // in the scheme's minor unit (øre for the default `kr`/100 scheme), so it is
-  // scaled by the divisor before rounding — without this the row labels raw øre
-  // as kr and reads ~100× too high. Mirrors the live hero's pre-accumulation
-  // divide (`deadlinePlan.ts`). Defaults to 1 for the empty-unit / unscaled case.
-  costDivisor = 1,
+  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost' | 'costDisplay'>,
 ): string | null => {
   const { totalCost, deliveredKWh } = entry;
+  // Scale + label with the entry's RECORDED display so a scheme switch can't
+  // misrender the archived row (raw øre persisted under `divisor: 100` would
+  // read ~100× too high if formatted with a live `divisor: 1`). Legacy entries
+  // fall back to the recording-era øre/kr default.
+  const display = resolveEntryCostDisplay(entry);
   // Total is an amount: drop a `/kWh` rate suffix so the row reads `Cost ≈ N kr`.
-  const unit = priceRateLabelToAmountUnit(costUnit.trim());
+  const unit = priceRateLabelToAmountUnit(display.unit.trim());
   const parts: string[] = [];
   if (typeof totalCost === 'number' && Number.isFinite(totalCost) && unit.length > 0) {
-    const roundedCost = Math.round(scaleRawCostToDisplay(totalCost, costDivisor));
+    const roundedCost = Math.round(scaleRawCostToDisplay(totalCost, display.divisor));
     parts.push(`Cost ${formatReceiptWeekCost(APPROX_GLYPH, roundedCost, unit)}`);
   }
   if (typeof deliveredKWh === 'number' && Number.isFinite(deliveredKWh)) {
@@ -592,14 +589,44 @@ const formatWeekKey = (year: number, week: number): string => (
   `${year}-W${week.toString().padStart(2, '0')}`
 );
 
-const sumEntryCost = (entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>): number => {
+// Sum a week's per-entry `totalCost` into display-currency units for the
+// heading. Each entry's raw total is scaled by ITS OWN recorded divisor before
+// summing (a week can mix divisors within one currency — e.g. an øre/÷100 run
+// and a later Flow `kr`/÷1 run both labelled `kr` — so scaling once by a single
+// divisor would mislabel the mixed total). Critically, only entries recorded in
+// the heading's CURRENCY are summed: a mid-week currency switch (e.g. `kr`→`EUR`)
+// must not add different currencies into one figure under a single label. The
+// minority-currency entries are excluded from the heading total but still render
+// their own correct per-row cost line beneath it. Keeps the roll-up honest and
+// in agreement with the rows.
+const sumEntryDisplayCost = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  headingUnit: string,
+): number => {
   let total = 0;
   for (const entry of entries) {
-    if (typeof entry.totalCost === 'number' && Number.isFinite(entry.totalCost)) {
-      total += entry.totalCost;
-    }
+    if (typeof entry.totalCost !== 'number' || !Number.isFinite(entry.totalCost)) continue;
+    const display = resolveEntryCostDisplay(entry);
+    if (display.unit !== headingUnit) continue;
+    total += scaleRawCostToDisplay(entry.totalCost, display.divisor);
   }
   return total;
+};
+
+// Heading unit for a week group: the recorded unit of the first entry that
+// carries a finite cost (else the recording-era default). Entries in a group
+// share a scheme in practice; on the rare mixed-scheme week the per-row lines
+// still each render their own unit correctly, and the heading picks a single
+// representative label for the rolled-up amount.
+const resolveWeekHeadingUnit = (
+  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+): string => {
+  for (const entry of entries) {
+    if (typeof entry.totalCost === 'number' && Number.isFinite(entry.totalCost)) {
+      return resolveEntryCostDisplay(entry).unit;
+    }
+  }
+  return DEFAULT_HISTORY_COST_DISPLAY.unit;
 };
 
 // Resolves the relative lead label for a week's section heading. The
@@ -673,7 +700,6 @@ const formatWeekHeading = (
   nowMs: number,
   timeZone: string,
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
-  costDisplay: WeekCostDisplay,
 ): string => {
   const lead = formatRelativeWeekLabel(weekStartMs, nowMs, timeZone);
   const counts = countOutcomes(entries);
@@ -687,12 +713,14 @@ const formatWeekHeading = (
   if (counts.missed > 0) outcomeFragments.push(formatReceiptOutcomeMissed(counts.missed));
   if (counts.abandoned > 0) outcomeFragments.push(formatReceiptOutcomeAbandoned(counts.abandoned));
   const parts = [lead, ...outcomeFragments];
-  const unit = costDisplay.unit.trim();
-  // Sum the RAW (minor-unit) per-entry totals, then scale the aggregate once by
-  // the display divisor before rounding — same money scaling the per-row line
-  // and the live hero apply, so the roll-up agrees with the rows beneath it
-  // rather than reading raw øre labelled as kr.
-  const cost = scaleRawCostToDisplay(sumEntryCost(entries), costDisplay.divisor);
+  // Heading total is an amount: drop a `/kWh` rate suffix (Flow/Homey schemes
+  // record `kr/kWh`). Unit comes from the entries' OWN recorded provenance.
+  const headingRawUnit = resolveWeekHeadingUnit(entries);
+  const unit = priceRateLabelToAmountUnit(headingRawUnit.trim());
+  // Sum only entries recorded in the heading currency (scaled by each entry's
+  // own divisor): a mid-week currency switch must not add different currencies
+  // into one labelled figure. Legacy entries fall back to the øre/kr scheme.
+  const cost = sumEntryDisplayCost(entries, headingRawUnit);
   // Nordpool prices can briefly go negative; preserve the sign so a credit
   // week reads as a credit week in the archive heading rather than disappearing.
   if (unit.length > 0 && Math.round(cost) !== 0) {
@@ -710,11 +738,12 @@ const formatWeekHeading = (
  * their input order. Returns an empty array when `entries` is empty so the
  * view can render the existing zero-state.
  *
- * `costUnit` is threaded through to the per-group heading so the rolled-up
- * cost ("≈ 41 kr") reads in the user's display currency. Empty unit drops
- * the cost half of the heading cleanly. `costDivisor` (`CostDisplay.divisor`)
- * scales the raw per-entry minor-unit totals to that currency before rounding,
- * so the roll-up agrees with the per-row cost lines beneath it.
+ * The rolled-up cost ("≈ 41 kr") reads in each entry's RECORDED display
+ * currency — scheme + divisor + unit persisted on the entry at finalize time —
+ * so the heading survives a later price-scheme/currency switch and agrees with
+ * the per-row cost lines beneath it. Legacy entries with no recorded display
+ * fall back to the recording-era øre/kr default. An empty unit drops the cost
+ * half of the heading cleanly.
  *
  * `nowMs` anchors the relative-week phrasing ("This week" / "Last week" /
  * "Week of 12 May"). The view layer threads its real wall-clock time in so
@@ -723,9 +752,7 @@ const formatWeekHeading = (
 export const groupPlanHistoryByIsoWeek = (
   entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
   timeZone: string,
-  costUnit: string,
   nowMs: number,
-  costDivisor = 1,
 ): PlanHistoryWeekGroup[] => {
   const groups: PlanHistoryWeekGroup[] = [];
   const indexByKey = new Map<string, number>();
@@ -750,15 +777,13 @@ export const groupPlanHistoryByIsoWeek = (
   }
   // Second pass — finalise the heading copy now that each group's entries
   // are populated. Keeps the helper O(n) and avoids the temptation to
-  // recompute the heading on every push.
-  // Heading total is an amount: drop a `/kWh` rate suffix (Flow/Homey pass it).
-  const headingUnit = priceRateLabelToAmountUnit(costUnit);
-  const costDisplay: WeekCostDisplay = { unit: headingUnit, divisor: costDivisor };
+  // recompute the heading on every push. The cost roll-up reads each entry's
+  // own recorded display inside `formatWeekHeading`.
   return groups.map((group) => {
     const weekStartMs = computeWeekStart(group.entries[0]!.deadlineAtMs, timeZone);
     const heading = weekStartMs === null
       ? formatReceiptOtherTasksHeading(group.entries.length)
-      : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries, costDisplay);
+      : formatWeekHeading(weekStartMs, nowMs, timeZone, group.entries);
     return { ...group, heading };
   });
 };

@@ -193,18 +193,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
       list consistent. Source: Codex review of PR #1476.
 
-- [ ] Persist price-display provenance on smart-task history entries so archived cost survives a
-      price-scheme/currency change. `DeferredObjectivePlanHistoryEntry` stores `totalCost` /
-      `deliveredKWh` but NOT the scheme/unit/divisor it was recorded with, and the archive
-      (past-task list rows + ISO-week roll-up — both surfaces wired by PR #1417) formats them with
-      the CURRENTLY-bootstrapped `CostDisplay`. Correct for users who never change scheme; but a
-      Norway run recorded as 150 øre later renders ~"150 EUR" instead of "≈ 2 kr" after switching to
-      a Flow/Homey scheme (divisor 1, different unit). Fix: persist the `CostDisplay`
-      (scheme + divisor + unit) on the entry at record time + a migration/fallback for legacy
-      entries (absent → assume the recording-era default øre/kr scheme). Contract + persistence
-      change (part of the deferred plan-device/provenance theme — do deliberately, not as a quick
-      win). Source: codex P2 on PR #1417, 2026-06-01.
-
 *2026-06-03 review-findings investigation (pels-copy-and-terminology / pels-m3-critic).
 The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
 title colour were fixed in the same change; items below are the deferred remainder.*

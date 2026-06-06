@@ -243,41 +243,75 @@ describe('DeadlinePlanHistory', () => {
   // the past-list card as a muted "Cost ≈ X kr · Y kWh delivered" meta line via
   // the list-specific `formatPlanHistoryListCostAndDelivered` producer, which
   // renders WHOLE kroner to match the ISO-week divider roll-up directly above
-  // and the history-detail cost chip. The formatter's full branch matrix
-  // (cost-only, delivery-only, empty-unit) is pinned in
+  // and the history-detail cost chip. The formatter scales + labels with the
+  // entry's RECORDED `costDisplay` (legacy entries fall back to øre/kr), so the
+  // row survives a later price-scheme switch — no live unit/divisor is injected
+  // into the component. The formatter's full branch matrix is pinned in
   // `test/deferredPlanHistory*`; these tests only confirm the line reaches
   // `.plan-history-card__cost` at whole-kr precision when cost is recorded and
-  // stays suppressed when it isn't. The PRODUCTION state-path wiring of
-  // `costUnit` (the bug pels-ux-fit caught) is covered in `deadlinesList.test.ts`
-  // via `renderHistorySurface`, not by injecting `costUnit` into the component.
+  // stays suppressed when it isn't.
   it('renders the cost meta line in whole kroner on a past-list row when totalCost is recorded', () => {
-    // `totalCost` is RAW øre; `costDivisor: 100` is the kr/100 display — 1234 øre
-    // → 12 kr. Whole kroner (12, not 12.34) — same rounding AND the same
-    // plain-space `≈ N kr` spacing the ISO-week divider applies to the same money.
-    const entry = buildEntry({ totalCost: 1234, deliveredKWh: 18.2 });
+    // `totalCost` is RAW øre; the entry's recorded øre/kr display (divisor 100)
+    // scales 1234 øre → 12 kr. Whole kroner (12, not 12.34) — same rounding AND
+    // the same plain-space `≈ N kr` spacing the ISO-week divider applies.
+    const entry = buildEntry({
+      totalCost: 1234,
+      deliveredKWh: 18.2,
+      costDisplay: { unit: 'kr', divisor: 100 },
+    });
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [entry],
       timeZone: 'UTC',
-      costUnit: 'kr',
-      costDivisor: 100,
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
   });
 
-  it('applies the cost divisor — 150 øre @ divisor 100 reads "≈ 2 kr", never raw øre as kr', () => {
+  it('applies the recorded divisor — 150 øre @ divisor 100 reads "≈ 2 kr", never raw øre as kr', () => {
     // The P1 money bug: without the divisor the raw øre is labelled kr and reads
     // ~100× too high. 150 øre / 100 = 1.5 → Math.round → 2 kr.
-    const entry = buildEntry({ totalCost: 150, deliveredKWh: 1.5 });
+    const entry = buildEntry({
+      totalCost: 150,
+      deliveredKWh: 1.5,
+      costDisplay: { unit: 'kr', divisor: 100 },
+    });
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [entry],
       timeZone: 'UTC',
-      costUnit: 'kr',
-      costDivisor: 100,
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
     expect(cost?.textContent).not.toContain('150 kr');
+  });
+
+  it('falls back to the recording-era øre/kr default for a legacy entry without a recorded display', () => {
+    // No `costDisplay` on the entry (recorded before the field shipped). The
+    // formatter must assume øre/kr (divisor 100): 150 øre → ≈ 2 kr. This is the
+    // core fix — a legacy øre entry must NOT render under a live Flow divisor.
+    const entry = buildEntry({ totalCost: 150, deliveredKWh: 1.5 });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, {
+      entries: [entry],
+      timeZone: 'UTC',
+    }));
+    const cost = mount.querySelector('.plan-history-card__cost');
+    expect(cost?.textContent).toBe('Cost ≈ 2 kr · 1.5 kWh delivered');
+  });
+
+  it('renders a recorded Flow display (divisor 1, own unit) verbatim, not scaled as øre', () => {
+    // A Flow/Homey run records its own amount-shaped total at divisor 1. 12 EUR
+    // must read `≈ 12 EUR`, NOT divided by 100 — proves the row honours the
+    // entry's recorded scheme rather than assuming øre.
+    const entry = buildEntry({
+      totalCost: 12,
+      deliveredKWh: 4,
+      costDisplay: { unit: 'EUR', divisor: 1 },
+    });
+    const mount = mountIntoBody(h(DeadlinePlanHistory, {
+      entries: [entry],
+      timeZone: 'UTC',
+    }));
+    const cost = mount.querySelector('.plan-history-card__cost');
+    expect(cost?.textContent).toBe('Cost ≈ 12 EUR · 4.0 kWh delivered');
   });
 
   it('rounds the cost meta line to whole kroner (matches the week-divider rounding)', () => {
@@ -285,12 +319,14 @@ describe('DeadlinePlanHistory', () => {
     // 2-decimal or truncation. The divider above the row uses Math.round on the
     // summed (scaled) cost, so a single-entry week heading would read "≈ 13 kr";
     // the row must agree.
-    const entry = buildEntry({ totalCost: 1262, deliveredKWh: 18.2 });
+    const entry = buildEntry({
+      totalCost: 1262,
+      deliveredKWh: 18.2,
+      costDisplay: { unit: 'kr', divisor: 100 },
+    });
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [entry],
       timeZone: 'UTC',
-      costUnit: 'kr',
-      costDivisor: 100,
     }));
     const cost = mount.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 13 kr · 18.2 kWh delivered');
@@ -302,17 +338,19 @@ describe('DeadlinePlanHistory', () => {
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [buildEntry()],
       timeZone: 'UTC',
-      costUnit: 'kr',
-      costDivisor: 100,
     }));
     expect(mount.querySelector('.plan-history-card__cost')).toBeNull();
   });
 
-  it('drops the cost half of the line when the cost unit is empty but delivery is recorded', () => {
-    // An empty `costUnit` (no resolved price display) must not fabricate a bare
-    // "Cost ≈ 13" with no currency — the formatter drops the cost clause and
-    // keeps the delivered-kWh clause, matching the history-detail convention.
-    const entry = buildEntry({ totalCost: 1234, deliveredKWh: 18.2 });
+  it('drops the cost half of the line when the recorded cost unit is empty but delivery is recorded', () => {
+    // An empty recorded unit (Flow/Homey scheme without a usable `priceUnit`)
+    // must not fabricate a bare "Cost ≈ 13" with no currency — the formatter
+    // drops the cost clause and keeps the delivered-kWh clause.
+    const entry = buildEntry({
+      totalCost: 1234,
+      deliveredKWh: 18.2,
+      costDisplay: { unit: '', divisor: 1 },
+    });
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
       entries: [entry],
       timeZone: 'UTC',

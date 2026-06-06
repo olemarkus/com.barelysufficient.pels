@@ -660,18 +660,16 @@ describe('history device-filter persistence', () => {
   });
 });
 
-// Cost-on-list-rows — REAL state-path regression. pels-ux-fit proved the cost
-// was dead-wired: `renderHistorySurface` builds the `DeadlinesHistoryListState`
-// but never set `costUnit`, so the empty-string default dropped the cost half of
-// every row in production while the component-level tests (which inject
-// `costUnit` straight into the view) stayed green. These tests go through the
-// actual state-builder so a future un-wiring is caught here. The boot-default
-// `CostDisplay` is `{ unit: 'kr', divisor: 100 }` (the Norwegian default
-// `resolveCostDisplayFromCombinedPrices` returns), which is exactly what the
-// production default-price path threads — so the persisted RAW øre `totalCost`
-// must be divided by 100 before it reads as kr. These tests pin BOTH the wiring
-// (cost reaches the row) AND the scaling (the divisor is applied), driving the
-// production state builder so a future un-wiring OR un-scaling regresses here.
+// Cost-on-list-rows — REAL state-path regression, now via per-entry provenance.
+// Cost is no longer threaded as a live `costUnit` on the list state: each row
+// scales + labels from the entry's recorded `costDisplay` (legacy entries — like
+// the ones built here without the field — fall back to the recording-era øre/kr
+// default `{ unit: 'kr', divisor: 100 }`). These entries carry RAW øre `totalCost`
+// and no `costDisplay`, so they exercise the legacy fallback end-to-end through
+// `renderHistorySurface`: the persisted øre must be divided by 100 before it
+// reads as kr. The tests pin BOTH that the cost reaches the row AND that the
+// fallback scaling is applied, so a future regression that drops the entry-display
+// path (or the øre→kr fallback) is caught here.
 describe('history cost meta line (real state path)', () => {
   const { resetDeviceFilterCacheForTests, renderHistorySurface } = testExports;
 
@@ -727,13 +725,13 @@ describe('history cost meta line (real state path)', () => {
     return el;
   };
 
-  it('threads the resolved cost unit into the rendered row (cost is not dead-wired)', () => {
+  it('renders the cost half from the entry display (legacy øre/kr fallback, not dead-wired)', () => {
     const surface = mount();
-    // 1234 øre @ divisor 100 → ≈ 12 kr.
+    // Legacy entry (no recorded display) → øre/kr fallback: 1234 øre / 100 ≈ 12 kr.
     renderHistorySurface(surface, buildCostPayload(1234, 18.2));
     const cost = surface.querySelector('.plan-history-card__cost');
-    // The cost half renders — proving `costUnit` reaches the row from the state
-    // builder, not just when a test injects it into the component.
+    // The cost half renders — proving the entry-display path reaches the row,
+    // not just when a test injects a display into the component.
     expect(cost).not.toBeNull();
     expect(cost?.textContent).toContain('Cost ≈');
     expect(cost?.textContent).toContain('18.2 kWh delivered');
@@ -760,6 +758,21 @@ describe('history cost meta line (real state path)', () => {
     const cost = surface.querySelector('.plan-history-card__cost');
     expect(cost?.textContent).toBe('Cost ≈ 12 kr · 18.2 kWh delivered');
     expect(cost?.textContent).not.toContain('12.34');
+  });
+
+  it('renders an entry recorded under a Flow scheme verbatim, surviving a price-scheme switch', () => {
+    const surface = mount();
+    // The core fix: a run recorded with its own Flow display (12 @ divisor 1, EUR)
+    // must render `≈ 12 EUR`, NOT divided by 100 as if it were øre — even though
+    // the live boot/default would assume øre/kr. No live display is consulted.
+    const entry = { ...buildCostEntry(12, 4), costDisplay: { unit: 'EUR', divisor: 1 } };
+    renderHistorySurface(surface, {
+      version: 1 as const,
+      entriesByDeviceId: { dev_cost: [entry] },
+    });
+    const cost = surface.querySelector('.plan-history-card__cost');
+    expect(cost?.textContent).toBe('Cost ≈ 12 EUR · 4.0 kWh delivered');
+    expect(cost?.textContent).not.toContain('0 EUR');
   });
 
   it('row cost agrees with the week-divider roll-up for the same single-entry data', () => {

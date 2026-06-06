@@ -492,10 +492,14 @@ export default tseslint.config(
     // can't grow new logic under the allowance — the +5 over the original 540
     // is the cost-divisor scaling wiring (the øre→kr fix); its actual scaling
     // helper + `WeekCostDisplay` type live in the sibling strings module, so
-    // only the import + per-producer divisor threading remains here.
+    // only the import + per-producer divisor threading remains here. Bumped to
+    // 555 for cost-display provenance: each cost line now resolves the entry's
+    // RECORDED `CostDisplay` (so a scheme switch can't relabel an archived
+    // figure) and the ISO-week roll-up sums per-entry display cost + resolves a
+    // heading unit for mixed-scheme weeks. Reinforces the split-out target.
     files: ['packages/shared-domain/src/deferredPlanHistoryReceipt.ts'],
     rules: {
-      'max-lines': ['warn', { max: 545, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 555, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -524,10 +528,11 @@ export default tseslint.config(
     // run's shown end at target so a "Succeeded · 64 → 39 °C" row no longer
     // reads as a drop — and again when that resolver took a `metReason` arg to
     // exclude stall-promoted mets (whose below-target plateau is intentional).
+    // Bumped by one to 656 for the cost-display provenance fallback resolver.
     // Still targeting <=500 once the split lands.
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
-      'max-lines': ['warn', { max: 655, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 656, skipBlankLines: true, skipComments: true }],
     },
   },
 );
