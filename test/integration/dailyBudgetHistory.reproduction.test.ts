@@ -8,7 +8,6 @@ describe('daily budget history reproduction', () => {
   it('builds history without crashing', () => {
     const manager = new DailyBudgetManager({
       log: () => undefined,
-      logDebug: () => undefined,
     });
 
     // Use a fixed "now" to keep the test deterministic.

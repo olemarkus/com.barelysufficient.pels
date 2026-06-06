@@ -58,7 +58,6 @@ const moduleLogger = getLogger('dailyBudget/service');
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   error: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
@@ -117,7 +116,6 @@ export class DailyBudgetService {
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
       debugStructured: this.deps.debugStructured,
@@ -155,7 +153,6 @@ export class DailyBudgetService {
   private createManagerClone(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
       debugStructured: this.deps.debugStructured,

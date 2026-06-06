@@ -71,7 +71,6 @@ const buildService = (initialSettings: SettingsStore): {
       clock: { getTimezone: () => TZ },
     } as any,
     log: () => undefined,
-    logDebug: () => undefined,
     error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,

@@ -7,7 +7,6 @@ import type { DailyBudgetStatePersistReason } from './dailyBudgetTypes';
 
 export type DailyBudgetManagerDeps = {
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   structuredDebug?: (payload: Record<string, unknown>) => void;
   // Topic-gated (`daily_budget`) structured debug for discrete lifecycle events

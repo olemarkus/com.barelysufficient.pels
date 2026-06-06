@@ -7,7 +7,7 @@ const TZ = 'Europe/Oslo';
 
 describe('daily budget next-day debug', () => {
   it('logs effective price shaping flex share for next-day plan debug', () => {
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const nowMs = Date.UTC(2024, 0, 15, 11, 0);
     const context = buildDayContext({
       nowMs,
@@ -30,7 +30,7 @@ describe('daily budget next-day debug', () => {
     };
 
     logNextDayPlanDebug({
-      logDebug,
+      debugStructured,
       shouldLog: true,
       context,
       settings,
@@ -40,14 +40,14 @@ describe('daily budget next-day debug', () => {
       defaultProfile: buildDefaultProfile(),
     });
 
-    const debugCall = logDebug.mock.calls.find((call) => (
-      typeof call[0] === 'string'
-      && call[0].startsWith('Daily budget: plan debug (next day) ')
+    const debugCall = debugStructured.mock.calls.find((call) => (
+      typeof call[0] === 'object'
+      && call[0] !== null
+      && call[0].event === 'daily_budget_plan_debug'
+      && call[0].variant === 'next_day'
     ));
     expect(debugCall).toBeDefined();
-    const payload = JSON.parse(
-      (debugCall?.[0] as string).replace('Daily budget: plan debug (next day) ', ''),
-    );
+    const payload = debugCall?.[0] as { meta: { priceSpreadFactor: number; effectivePriceShapingFlexShare: number } };
     expect(typeof payload.meta.priceSpreadFactor).toBe('number');
     expect(typeof payload.meta.effectivePriceShapingFlexShare).toBe('number');
     expect(payload.meta.priceSpreadFactor).toBeGreaterThan(0);
