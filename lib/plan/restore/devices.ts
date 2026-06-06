@@ -8,6 +8,7 @@ import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { isEvPlanDevice } from '../planEvDevice';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -111,7 +112,12 @@ export function getOnDevices(
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (dev.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
+  // `controlCapabilityId === 'evcharger_charging'` already proves this is an EV
+  // device; the guard re-establishes that for the compiler so the charging-state
+  // reads narrow off the EV-omitted base.
+  if (!isEvPlanDevice(dev) || dev.evChargingState === undefined) {
+    return EV_COMMANDABLE_NOW_REASONS.state_unknown;
+  }
 
   switch (dev.evChargingState) {
     case 'plugged_in_paused':

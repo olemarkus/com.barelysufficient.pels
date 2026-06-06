@@ -1829,7 +1829,13 @@ class PelsApp extends Homey.App {
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
     const previousMode = this.operatingMode;
-    if (resolved !== rawMode) this.logDebug('settings', `Mode '${rawMode}' resolved via alias to '${resolved}'`);
+    if (resolved !== rawMode) {
+      this.getStructuredDebugEmitter('settings', 'settings')({
+        event: 'mode_resolved_via_alias',
+        requestedMode: rawMode,
+        resolvedMode: resolved,
+      });
+    }
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     const aliasUsed = rawMode !== resolved ? rawMode : null;
@@ -1837,7 +1843,7 @@ class PelsApp extends Homey.App {
       this.homey.settings.set('mode_alias_used', aliasUsed);
     }
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
-      this.logDebug('settings', `Mode '${resolved}' already active`);
+      this.getStructuredDebugEmitter('settings', 'settings')({ event: 'mode_already_active', mode: resolved });
     }
     this.notifyOperatingModeChanged(resolved);
   }

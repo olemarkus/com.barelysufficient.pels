@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
   formatEvSnapshot,
@@ -56,7 +56,9 @@ export const canTurnOnDevice = (snapshot?: TargetDeviceSnapshot): boolean => {
 };
 
 export const shouldSkipUnavailable = (params: {
-  snapshot: TargetDeviceSnapshot | undefined;
+  // Stage 5: narrowed to the observed surface — this gate reads only the
+  // realtime-merged `available` flag, never descriptor/config fields.
+  snapshot: Pick<ObservedDeviceState, 'available'> | undefined;
   name: string;
   operation: string;
 }): boolean => {
