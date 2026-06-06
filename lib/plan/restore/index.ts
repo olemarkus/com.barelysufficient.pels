@@ -1407,7 +1407,7 @@ function markOffDevicesMeterSettling(params: {
     }
 
     const updates: Partial<DevicePlanDevice> = { plannedState: 'shed', reason };
-    if (dev.steppedLoadProfile) {
+    if (isSteppedLoadDevice(dev)) {
       Object.assign(updates, buildOffSteppedRestoreShedUpdate(dev));
     }
     setDevice(deviceMap, dev.id, updates);

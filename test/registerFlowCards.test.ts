@@ -104,7 +104,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
     getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn })),
     log: vi.fn(),
-    logDebug: vi.fn(),
+    debugStructured: vi.fn(),
     error: vi.fn(),
     ...overrides,
   };
@@ -668,9 +668,10 @@ describe('registerFlowCards', () => {
       percent: 42,
       status: 'unknown',
     }));
-    expect(deps.logDebug).toHaveBeenCalledWith(
-      expect.stringContaining("failed to reload EV charger snapshot for 'ev-1'"),
-    );
+    expect(deps.debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'ev_charger_snapshot_reload_failed',
+      deviceId: 'ev-1',
+    }));
   });
 
   it('accepts a stepped-load actual step report when snapshot lookup fails', async () => {

@@ -10,8 +10,19 @@ import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './calibrationViews';
+import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
-export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
+export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot): PlanInputDevice {
+  // First real reader of the observer-owned observed-state projection (stage 4b).
+  // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
+  // state, so staleness is decided from the projection's maintained truth rather
+  // than the snapshot. Falls back to the snapshot until the first observation for
+  // this device lands (boot window), where the two are identical anyway. The
+  // resolved boolean is threaded into the residual-power credit below so both
+  // freshness consumers in this build share one source.
+  const observed = ctx.getObservedState(device.id);
+  const observationStale = isDeviceObservationStale(observed ?? device);
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
     device.communicationModel,
@@ -41,8 +52,16 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     device,
     controlCapabilityId: device.controlCapabilityId,
     shedBehavior,
+    observationStale,
   });
-  return {
+  // The plan-input device type is a discriminated union on the stepped
+  // discriminant; the `...device` spread decouples `controlModel` from
+  // `steppedLoadProfile`, so the whole literal is rebuilt through
+  // `withSteppedDiscriminant`, which re-ties them as a single variant-shaped
+  // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
+  // optional (out of scope for this slice), so `device.steppedLoadProfile` is
+  // read directly here.
+  return withSteppedDiscriminant({
     ...device,
     // The step-command/planning cluster used to ride in on the `...device`
     // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
@@ -60,7 +79,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
-    observationStale: isDeviceObservationStale(device),
+    observationStale,
     managed: ctx.resolveManagedState(device.id),
     controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),
@@ -76,7 +95,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
-  };
+  });
 }
 
 /**

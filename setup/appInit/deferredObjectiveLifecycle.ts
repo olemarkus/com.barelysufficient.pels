@@ -23,7 +23,6 @@ import {
   getSteppedLoadOffStep,
   getSteppedLoadStep,
 } from '../../lib/utils/deviceControlProfiles';
-import { isDeviceObservationTrusted } from '../../lib/utils/observationTrust';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildDeviceActuator } from './buildDeviceActuator';
 import {
@@ -139,46 +138,20 @@ export const buildShedActuator = (ctx: AppContext): Actuator | null => buildDevi
 // lifecycle cadence — generous against slow snapshot refresh, bounded against drift.
 const TERMINAL_RELEASE_DISARM_GRACE_MS = 5 * 60 * 1000;
 
-// Binary on/off/unknown for the terminal release, resolved uniformly from the
+// Binary on/off for the terminal release, read directly from the
 // producer-resolved `binaryControl.on` bit for EVERY device kind, EV chargers
-// included. `binaryControl.on` is already state-authoritative for EV
-// (`resolveEvCurrentOn`: only `plugged_in_charging` is "on", a paused charger is
-// held off) and a missing/transient charging-state read is handled by the
-// shared producer — it latches prior trusted evidence, or synthesizes an
-// UNtrusted `false` (`managerParsedControlState.resolveUnobservedControlFallback`,
-// "Preserve trusted binary state on missing reads") — so the lifecycle no longer
-// re-derives on/off from the raw `evChargingState` string. EV is now symmetric
-// with binary/setpoint devices on this gate; it cannot carry an EV-specific
-// cold-start regression because the behaviour IS the shared binary contract.
-//
-// The trust gate is ASYMMETRIC, mirroring the authoritative-zero-power read in
-// `lib/observer/observedPower.ts` (`currentOn === false && !stale` ⇒ 0 draw):
-//   - `binaryControl.on === true`  → `'on'`: maintained on-evidence is on-evidence
-//     even when stale (the observer keeps consolidated state across skipped
-//     capability updates), so the terminal release must still issue the off
-//     write — a stale-on device must not be abandoned.
-//   - `binaryControl.on === false` + trusted → `'off'`: an authoritative settled off.
-//   - `binaryControl.on === false` + UNtrusted → `'unknown'`: a post-restart /
-//     cold-start read synthesizes a non-optimistic `false` with no real evidence;
-//     collapsing that to `'off'` would let the release disarm a device that may
-//     still be on, so emit `'unknown'` and let `planTerminalEnding` keep the task
-//     ARMED until a trusted state arrives or the disarm grace elapses.
-const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' | 'unknown' => {
-  if (device.binaryControl?.on ?? true) return 'on';
-  // A `false` from an UNavailable binary device is not authoritative off-evidence:
-  // the producer sets `available = false` precisely when the control read was
-  // missing/invalid and `binaryControl.on` could only be synthesized from an
-  // UNtrusted fallback (`managerParsedAvailability.resolveAvailable`:
-  // `controlCapabilityId && !hasTrustedControlState`). `observationStale` can stay
-  // false here (another capability — power/SoC — is fresh), so without this guard
-  // the synthesized `false` would read as a trusted `'off'` and disarm the release
-  // for a device that may still be on. Treat it as `'unknown'` so the terminal
-  // release keeps retrying under the disarm grace until trusted evidence arrives.
-  // (Closes the gap the old EV gate covered by returning `'unknown'` for an
-  // undefined `evChargingState`; also hardens the shared binary path.)
-  if (device.available === false) return 'unknown';
-  return isDeviceObservationTrusted(device) ? 'off' : 'unknown';
-};
+// included. `binaryControl.on` IS the trusted binary read: the producer latches
+// prior trusted evidence on a missing/transient control read, and when it can
+// only synthesize an untrusted value it surfaces that as `available === false`
+// (`managerParsedAvailability.resolveAvailable`) — a commandability fact handled
+// at the actuation decision in `handleDeferredDeadlineReached`, NOT a state-read
+// concern. So this is a 2-state read with no observation-trust / staleness gate:
+// re-deriving trust here would reinvent the `binaryControlObservation` coupling
+// the producer already owns. (`binaryControl.on === true` for EV iff
+// `plugged_in_charging`, per `resolveEvCurrentOn` — a paused charger is off.)
+const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' => (
+  (device.binaryControl?.on ?? true) ? 'on' : 'off'
+);
 
 export const readTerminalObserved = (
   device: PlanInputDevice,
@@ -275,7 +248,18 @@ export const handleDeferredDeadlineReached = (
     // DON'T disarm immediately, or we'd remove the diagnostic before the device
     // reappears and leave it running. Keep the task enabled and re-check next
     // tick; give up (disarm) only after grace. Same self-healing discipline as
-    // the unknown-observation case.
+    // the unavailable-device gate below.
+    if (graceElapsed) disarm();
+    return;
+  }
+  // Commandability gate: `available === false` means the device cannot be driven
+  // this tick (offline, or the producer could only synthesize an untrusted
+  // control read — `managerParsedAvailability.resolveAvailable`). We can neither
+  // actuate nor trust that an apparent-off is settled, so keep the task enabled
+  // and retry — same self-healing discipline as the absent-device case above —
+  // disarming only after grace. This replaces the old observation-trust
+  // `'unknown'` state read: commandability lives here, not in the binary read.
+  if (device.available === false) {
     if (graceElapsed) disarm();
     return;
   }
