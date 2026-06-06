@@ -1,9 +1,3 @@
-/* eslint-disable max-lines --
- * Binary-control orchestration keeps shed/restore/EV-deferred branches
- * in one file; the file grew past the 500-line floor after PR #1b
- * absorbed the decision-then-dispatch helper that previously lived in
- * `lib/plan/planBinaryControl.ts`.
- */
 import type { DeviceObservation } from '../device/deviceObservation';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';

@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Restore helper decisions and their countdown metadata are kept together. */
 import type { DevicePlanDevice } from '../planTypes';
 import { withSteppedDiscriminant } from '../planTypes';
 import type { RestoreTiming } from './timing';

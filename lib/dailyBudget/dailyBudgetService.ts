@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- daily budget service keeps day/state/forecast in one flow. */
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';

@@ -309,12 +309,42 @@ live-walk screenshots.*
       readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
       that part is already handled.)
       Files: `app.ts`, `setup/appInit/**`.
-- [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
-      as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
-      concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
-      overrides in `eslint.config.mjs` that cite the structural reason.
-      Proposal: `notes/complexity-cleanup/god-file-policy.md`.
-      Files: `eslint.config.mjs`, file-level disables in `app.ts`, `lib/**`.
+- [x] Stop granting blanket `max-lines` exemptions. *(done: all 16 runtime files carrying a
+      file-level `/* eslint-disable max-lines */` blanket pragma — `app.ts`, `flowCards/registerFlowCards.ts`,
+      `setup/appDebugHelpers.ts`, `lib/device/deviceTransport.ts`, `lib/device/transport/managerObservation.ts`,
+      `lib/dailyBudget/dailyBudgetService.ts`, `lib/plan/{planBuilder,planReasons,planService}.ts`,
+      `lib/plan/restore/{index,helpers}.ts`, `lib/executor/{binaryExecutor,targetExecutor,steppedLoadExecutor}.ts`,
+      `lib/objectives/deferredObjectives/{activePlanRecorder,diagnosticsBridge}.ts` — now have a cited
+      per-file `max-lines` override in `eslint.config.mjs` with a concrete ceiling just above current
+      effective size and a structural reason (Bucket B per the policy note). The stale `app.ts` 750
+      override was corrected to its true size (the blanket pragma had been masking ~1885 effective lines).
+      No blanket `max-lines` pragmas remain; `npm run lint --max-warnings=0` is green WITHOUT them.
+      Other-rule file-level pragmas left intact (`managerObservation.ts` `max-params`, `appDebugHelpers.ts`
+      `functional/immutable-data`) and targeted `eslint-disable-next-line` suppressions were out of scope.)
+      Proposal: `notes/complexity-cleanup/god-file-policy.md`. The shrink-to-<=500 follow-ups for the
+      Bucket-A-adjacent files are split out below.
+- [ ] Shrink `lib/dailyBudget/dailyBudgetService.ts` back under the 500-LOC floor (currently ~514
+      effective, capped at 525). It mixes day-rollover, persisted state, and forecast in one flow; the
+      cleanest cut is to extract the forecast computation (or the persisted-state load/save) into a
+      sibling module. Closest Bucket-A candidate from the max-lines-exemption sweep — small enough that
+      a focused extraction lands under 500. Persona: contributor. Files: `lib/dailyBudget/dailyBudgetService.ts`.
+- [ ] Shrink the executor Bucket-B files toward <=500 by splitting their dispatch tables from their
+      decision logic: `lib/executor/binaryExecutor.ts` (~565, split the shed/restore/EV-deferred dispatch
+      table from the decision branches), `lib/executor/targetExecutor.ts` (~550, split the retry/confirmation
+      loop from setpoint-write sequencing). Both are just over the floor; deferred from the max-lines sweep
+      as structural splits rather than risky in-PR shrinks. Persona: contributor.
+      Files: `lib/executor/binaryExecutor.ts`, `lib/executor/targetExecutor.ts`.
+- [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
+      `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2148, peel off a
+      transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1327, swap-flow vs per-device
+      restore gating), `flowCards/registerFlowCards.ts` (~1124, only if registration gains per-card behavior),
+      `lib/plan/planBuilder.ts` (~1063, overshoot/meta builders), `lib/device/transport/managerObservation.ts`
+      (~1005, retained-observation accounting), `lib/plan/planReasons.ts` (~1001, reason-normalization vs hold
+      decisions), `lib/plan/planService.ts` (~781, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
+      (~773), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~743, replay split) and
+      `diagnosticsBridge.ts` (~739, per-concern payload builders), `setup/appDebugHelpers.ts` (~706, comparison
+      serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
+      Files: as listed.
 - [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
       `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
