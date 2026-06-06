@@ -1,5 +1,6 @@
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
+import type { Logger as PinoLogger } from '../lib/logging/logger';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
 type DeviceRef = RawFlowDeviceArg;
@@ -43,9 +44,9 @@ async function assertNoConfiguredLoad(
   }
 }
 
-function resolveDeviceName(snapshot: TargetDeviceSnapshot[], deviceId: string): string {
+function resolveDeviceName(snapshot: TargetDeviceSnapshot[], deviceId: string): string | null {
   const device = snapshot.find((d) => d.id === deviceId);
-  return device ? device.name : `device ${deviceId}`;
+  return device ? device.name : null;
 }
 
 export function registerExpectedPowerCard(
@@ -56,7 +57,7 @@ export function registerExpectedPowerCard(
     setExpectedOverride: (deviceId: string, kw: number) => boolean;
     refreshSnapshot: () => Promise<void>;
     rebuildPlan: () => void;
-    log: (...args: unknown[]) => void;
+    getStructuredLogger: (component: string) => PinoLogger | undefined;
   },
 ): void {
   const card = homey.flow.getActionCard('set_expected_power_usage');
@@ -74,7 +75,12 @@ export function registerExpectedPowerCard(
       return true;
     }
     const deviceName = resolveDeviceName(snapshot, deviceId);
-    deps.log(`Flow: set expected power for ${deviceName} to ${requestedKw.toFixed(3)} kW`);
+    deps.getStructuredLogger('devices')?.info({
+      event: 'flow_expected_power_set',
+      deviceId,
+      deviceName,
+      expectedPowerKw: requestedKw,
+    });
     await deps.refreshSnapshot();
     deps.rebuildPlan();
     return true;

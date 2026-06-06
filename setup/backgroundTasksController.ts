@@ -70,7 +70,6 @@ export class BackgroundTasksController {
   startPerfLogging(): void {
     this.stopPerfLog = startPerfLogger({
       isEnabled: () => this.deps.isDebugTopicEnabled('perf'),
-      log: (...args: unknown[]) => this.deps.logDebug('perf', ...args),
       logStructured: this.deps.getStructuredDebugEmitter('perf', 'perf'),
       error: (...args: unknown[]) => this.deps.error(...args),
       logCpuSpike: (...args: unknown[]) => this.deps.log(...args),

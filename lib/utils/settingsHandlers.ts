@@ -38,11 +38,14 @@ import {
   PRICE_SCHEME,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
+import { getLogger } from '../logging/logger';
 import {
   createDebouncedSyncScheduler,
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
 import { toStableFingerprint } from './stableFingerprint';
+
+const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -67,7 +70,6 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
-  log: (message: string) => void;
   errorLog: (message: string, error: unknown) => void;
 };
 
@@ -418,13 +420,16 @@ const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => 
   const entry = raw as SettingsUiLogEntry;
   if (!entry.level || !entry.message) return;
 
-  const message = formatSettingsUiMessage(entry);
   if (entry.level === 'error') {
-    deps.errorLog(message, new Error(entry.detail || entry.message));
-  } else if (entry.level === 'warn') {
-    deps.log(`Warning: ${message}`);
+    deps.errorLog(formatSettingsUiMessage(entry), new Error(entry.detail || entry.message));
   } else {
-    deps.log(message);
+    settingsLogger[entry.level === 'warn' ? 'warn' : 'info']({
+      event: 'settings_ui_log',
+      level: entry.level,
+      message: entry.message,
+      detail: entry.detail ?? null,
+      context: entry.context ?? null,
+    });
   }
 
   deps.homey.settings.set('settings_ui_log', null);
@@ -458,7 +463,7 @@ async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<
 }
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
-  deps.log('Power source changed, refreshing snapshot');
+  settingsLogger.info({ event: 'power_source_changed' });
   deps.restartHomeyEnergyPoll?.();
   await refreshSnapshotWithLog(deps, 'Failed to refresh after power source change');
   await rebuildPlanFromSettings(deps, 'power_source');
