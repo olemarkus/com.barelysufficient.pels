@@ -170,7 +170,7 @@ export function parseDevice(params: {
         capabilities,
         controlAdapter,
         steppedLoadProfile,
-        logDebug: (...args: unknown[]) => logger.debug(...args),
+        debugStructured: deps.debugStructured,
     });
     if (!capsStatus) return null;
     const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState({
@@ -187,10 +187,8 @@ export function parseDevice(params: {
     });
     const targetCaps = capsStatus.targetCaps;
     const targets = buildTargets({
-        targetCaps,
-        capabilityObj,
-        deviceLabel,
-        logDebug: (...args: unknown[]) => logger.debug(...args),
+        targetCaps, capabilityObj, deviceId, deviceLabel,
+        debugStructured: deps.debugStructured,
     });
     const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
     const evCharging = getEvCharging(capabilityObj), evChargingState = getEvChargingState(capabilityObj);

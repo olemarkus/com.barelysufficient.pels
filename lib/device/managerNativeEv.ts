@@ -4,6 +4,7 @@ import type {
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import {
   augmentCapabilitiesWithFlowReports,
   getFlowEffectiveRequiredCapabilitiesForType,
@@ -421,7 +422,7 @@ export function resolveCandidateCapabilities(params: {
   capabilities: string[];
   controlAdapter?: DeviceControlAdapterSnapshot;
   steppedLoadProfile?: SteppedLoadProfile;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): { targetCaps: string[]; hasPower: boolean } | null {
   const {
     deviceClassKey,
@@ -430,7 +431,7 @@ export function resolveCandidateCapabilities(params: {
     capabilities,
     controlAdapter,
     steppedLoadProfile,
-    logDebug,
+    debugStructured,
   } = params;
   if (deviceClassKey === 'evcharger' && steppedLoadProfile?.model === 'stepped_load') {
     return {
@@ -453,7 +454,7 @@ export function resolveCandidateCapabilities(params: {
     deviceId,
     deviceLabel,
     capabilities,
-    logDebug,
+    debugStructured,
   });
 }
 

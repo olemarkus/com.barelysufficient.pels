@@ -385,9 +385,13 @@ describe('DeviceTransport', () => {
                     step: 0.5,
                 })],
             }));
-            expect(loggerMock.debug).toHaveBeenCalledWith(
-                expect.stringContaining('Skipping malformed target_temperature value for Broken Thermostat (thermo-invalid-target)'),
-            );
+            expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'target_capability_value_malformed',
+                deviceId: 'thermo-invalid-target',
+                deviceName: 'Broken Thermostat (thermo-invalid-target)',
+                capabilityId: 'target_temperature',
+                rawValue: '21',
+            }));
         });
 
         it('skips partial temperature devices that are missing measure_temperature', () => {
@@ -1156,8 +1160,9 @@ describe('DeviceTransport', () => {
         });
 
         it('excludes EV chargers without the official charging capability', async () => {
+            const debugStructured = vi.fn();
             const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
-            });
+            }, undefined, { debugStructured });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
@@ -1175,12 +1180,17 @@ describe('DeviceTransport', () => {
             await evDeviceManager.refreshSnapshot();
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
-            expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging'));
+            expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_skipped_missing_capability',
+                deviceId: 'ev1',
+                missingCapability: 'evcharger_charging',
+            }));
         });
 
         it('excludes EV chargers without the official charging state capability', async () => {
+            const debugStructured = vi.fn();
             const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
-            });
+            }, undefined, { debugStructured });
             await evDeviceManager.init();
             mockApiGet.mockResolvedValue({
                 ev1: {
@@ -1198,7 +1208,11 @@ describe('DeviceTransport', () => {
             await evDeviceManager.refreshSnapshot();
 
             expect(evDeviceManager.getSnapshot()).toHaveLength(0);
-            expect(loggerMock.debug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging_state'));
+            expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+                event: 'device_skipped_missing_capability',
+                deviceId: 'ev1',
+                missingCapability: 'evcharger_charging_state',
+            }));
         });
 
         it('propagates Homey availability state into snapshot entries', async () => {
