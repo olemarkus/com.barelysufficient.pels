@@ -99,12 +99,12 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
   } as PlanInputDevice);
 
   it('reports off when the device is trusted-off', () => {
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false } }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false } })).binaryState)
       .toBe('off');
   });
 
   it('reports on when the device is observed on', () => {
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true } }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true } })).binaryState)
       .toBe('on');
   });
 
@@ -114,7 +114,7 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
     // `'off'` made the terminal release disarm a device that may still be on.
     // The trust gate must keep it `'unknown'` so `planTerminalEnding` re-fires
     // until settled or the disarm grace elapses.
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, observationStale: true }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, observationStale: true })).binaryState)
       .toBe('unknown');
   });
 
@@ -126,8 +126,74 @@ describe('readTerminalObserved — binary trust gate (self-heal regression)', ()
     // smart task ends must STILL get the off write — mapping it to `'unknown'`
     // would let `applyBinaryOffShed` refuse the write and the task disarm after
     // grace without ever turning the device off.
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true }, observationStale: true }), 'temperature').binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true }, observationStale: true })).binaryState)
       .toBe('on');
+  });
+
+  it('reports unknown — NOT off — when the device is unavailable even though not stale', () => {
+    // An untrusted control read makes the producer set `available = false` and
+    // synthesize `binaryControl.on = false`; `observationStale` can stay false
+    // because another capability (power) is fresh. That synthesized `false` is
+    // not authoritative off-evidence, so the gate must hold `'unknown'`.
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, available: false })).binaryState)
+      .toBe('unknown');
+  });
+});
+
+describe('readTerminalObserved — EV charger shares the binary trust gate (de-coupled from raw plug state)', () => {
+  // After the EV de-couple, an EV charger reads the SAME binaryControl.on +
+  // observation-trust gate as a water heater. These assertions are the EV mirror
+  // of the binary trust-gate block above: identical input shape, identical
+  // outputs — proving EV carries no special-case and therefore no EV-specific
+  // cold-start behaviour. binaryControl.on is the producer-resolved EV on/off
+  // (resolveEvCurrentOn: only plugged_in_charging is "on").
+  const evDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
+    id: 'ev1',
+    name: 'EV charger',
+    deviceClass: 'evcharger',
+    controlCapabilityId: 'evcharger_charging',
+    binaryControl: { on: false },
+    targets: [],
+    ...overrides,
+  } as PlanInputDevice);
+
+  it('reports on for a charging EV (binaryControl.on true)', () => {
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: true } })).binaryState).toBe('on');
+  });
+
+  it('reports off for a trusted not-charging EV (binaryControl.on false, fresh)', () => {
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: false } })).binaryState).toBe('off');
+  });
+
+  it('reports unknown for a cold-start EV (binaryControl.on false, observation stale) — waits for evidence', () => {
+    // The de-couple preserves the cold-start guard the old raw-state gate gave:
+    // an untrusted synthesized false stays 'unknown', so the EV terminal release
+    // keeps re-firing via planTerminalEnding instead of disarming a charger that
+    // may still be drawing. Identical to the binary water-heater case above.
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: false }, observationStale: true })).binaryState)
+      .toBe('unknown');
+  });
+
+  it('follows the producer-resolved binaryControl.on, ignoring the raw evChargingState string', () => {
+    // Regression for the de-couple: readTerminalObserved reads the resolved bit
+    // (state-authoritative for EV via resolveEvCurrentOn) and no longer re-derives
+    // on/off from evChargingState. A contradictory raw string must not win.
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: true }, evChargingState: 'plugged_out' })).binaryState)
+      .toBe('on');
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: false }, evChargingState: 'plugged_in_charging' })).binaryState)
+      .toBe('off');
+  });
+
+  it('reports unknown for an unavailable EV with untrusted control evidence (power fresh) — regression guard', () => {
+    // Codex P2: during a partial capability outage the EV's charging-state +
+    // charging reads can be missing/invalid while power stays fresh. The producer
+    // then yields `binaryControl.on = false` + `available = false` with
+    // `observationStale` still false. Without the unavailable guard this maps to a
+    // trusted `'off'` and disarms the ended task without pausing a charger that may
+    // still be drawing — the exact case the old `evChargingState === undefined`
+    // gate held as `'unknown'`. Must stay `'unknown'`.
+    expect(readTerminalObserved(evDevice({ binaryControl: { on: false }, available: false })).binaryState)
+      .toBe('unknown');
   });
 });
 
