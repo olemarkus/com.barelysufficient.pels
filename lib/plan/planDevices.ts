@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import { withSteppedDiscriminant } from './planTypes';
+import { withEvDiscriminant, withSteppedDiscriminant } from './planTypes';
+import { isEvPlanDevice } from './planEvDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
@@ -163,7 +164,10 @@ export function buildInitialPlanDevices(params: {
     });
     baseMs += Date.now() - t1;
     state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
-    state.evBoostActiveByDevice[dev.id] = base.evBoostActive === true;
+    // `evBoostActive` lives on the orthogonal `EvKind` cluster; narrow before
+    // reading. Non-EV devices never have boost active, so the `false` fallback
+    // matches the prior behaviour.
+    state.evBoostActiveByDevice[dev.id] = isEvPlanDevice(base) && base.evBoostActive === true;
     const t2 = Date.now();
     const withOffStateReason = applyOffStateReason({
       planDevice: base,
@@ -343,6 +347,13 @@ function hasKnownPowerFields(dev: PlanInputDevice): boolean {
     || Number.isFinite(dev.powerKw);
 }
 
+// EV charging state lives on the orthogonal `EvKind` cluster (off the plan-input
+// base); narrow before reading so the access stays sound. Non-EV devices never
+// carry it, so the `undefined` fallback matches the prior direct read.
+function resolveEvChargingStateForPlan(dev: PlanInputDevice): string | undefined {
+  return isEvPlanDevice(dev) ? dev.evChargingState : undefined;
+}
+
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
@@ -412,9 +423,15 @@ function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  // The discriminant is set explicitly here, then re-tied through
-  // `withSteppedDiscriminant` so the built device lands in one union member.
-  return withSteppedDiscriminant({
+  // EV charging state only exists on EV devices; `resolveEvChargingStateForPlan`
+  // gates the read on the EV narrowing so it stays sound against the EV-omitted
+  // plan-input base. The value is regrouped onto the orthogonal `EvKind` cluster
+  // below.
+  const evChargingState = resolveEvChargingStateForPlan(dev);
+  // The stepped + EV discriminants are set explicitly in the loose literal, then
+  // re-tied: `withEvDiscriminant` regroups the EV cluster (orthogonal axis) and
+  // `withSteppedDiscriminant` lands the result in one stepped union member.
+  return withSteppedDiscriminant(withEvDiscriminant({
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
@@ -445,7 +462,7 @@ function buildBasePlanDevice(params: {
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
     targetPowerConfig: dev.targetPowerConfig,
-    evChargingState: dev.evChargingState,
+    evChargingState,
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     controllable,
@@ -459,7 +476,7 @@ function buildBasePlanDevice(params: {
     shedTemperature,
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
-  });
+  }));
 }
 
 function pickPropagatedPlanFields(

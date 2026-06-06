@@ -45,6 +45,24 @@ type NonSteppedPlanInputKind = {
   controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
 };
 
+/**
+ * EV field cluster for the plan-input contract (EV-variant slice). EV is
+ * ORTHOGONAL to the stepped axis (an EV charger can also be stepped), so this
+ * is NOT a union member; it is the intersection the `isEvPlanDevice` type-guard
+ * (`lib/plan/planEvDevice.ts`) adds onto whichever stepped variant the device
+ * is. The fields are OMITTED from `PlanInputDeviceBase`, so an un-narrowed read
+ * is a hard compile error; every field is optional because the producer does
+ * not guarantee any of them (snapshot-sourced `evChargingState` is absent on a
+ * genuine EV cold start; `evBoost`/`stateOfCharge` only when configured/
+ * reported). The plan-input side has no `evBoostActive` (resolved only on the
+ * output `DevicePlanDevice`).
+ */
+export type EvPlanInputKind = {
+  evChargingState?: string;
+  evBoost?: EvBoostConfig;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+};
+
 export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
@@ -133,7 +151,9 @@ export type PlanInputDeviceBase = {
   // state. Absence is equivalent to the old fabricated `currentOn: true` for non-binary devices.
   binaryControl?: { on: boolean };
   currentState?: string;
-  evChargingState?: string;
+  // EV fields (`evChargingState`, `evBoost`, `stateOfCharge`) are split off onto
+  // the orthogonal `EvPlanInputKind` cluster; reach them through the
+  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;
@@ -141,7 +161,6 @@ export type PlanInputDeviceBase = {
   measuredPowerKw?: number;
   currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
-  evBoost?: EvBoostConfig;
   // Set by the deferred limit-lower-priority rescue lane (admission) to force boost on while
   // the smart task is in its planned hours; the boost resolvers honour it independent of the
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
@@ -157,7 +176,6 @@ export type PlanInputDeviceBase = {
    * planned hours the field is absent and the override drops out.
    */
   deadlineFloorTargetC?: number;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
   controllable?: boolean;
   managed?: boolean;
   budgetExempt?: boolean;
