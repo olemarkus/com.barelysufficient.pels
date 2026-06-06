@@ -111,7 +111,12 @@ describe('mergeHoursPreservingCommitment', () => {
     ]);
   });
 
-  it('preserves committed hours that the live plan no longer fills (commitment cannot shrink)', () => {
+  it('preserves committed hours when live is empty — incl. the early-satisfied task (commitment cannot shrink)', () => {
+    // An early-satisfied task produces an empty live allocation every cycle
+    // (`energyNeededKWh === 0` → no positive buckets → `buildHoursFromHorizonPlan`
+    // returns `[]`). The merge preserves the committed schedule; this is benign
+    // (the device is at target so nothing charges, and the lifecycle ends the
+    // task shortly) — verified, no concrete stale-commitment effect.
     const merged = mergeHoursPreservingCommitment(
       [
         { startsAtMs: TEN, plannedKWh: 0.65 },
