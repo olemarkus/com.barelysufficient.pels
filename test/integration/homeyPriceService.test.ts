@@ -1,4 +1,5 @@
 import PriceService from '../../lib/price/priceService';
+import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   COMBINED_PRICES,
@@ -13,6 +14,12 @@ import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
 import type { Logger } from '../../lib/logging/logger';
 import type Homey from 'homey';
+
+const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
+  log: () => {},
+  debugStructured: () => {},
+  ...overrides,
+});
 
 const buildIntervals = (startUtcMs: number, values: number[], intervalMinutes: number): HomeyEnergyPriceInterval[] => (
   values.map((value, index) => {
@@ -63,9 +70,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
       () => energyApi,
     );
 
@@ -98,9 +103,7 @@ describe('Homey price service', () => {
     const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      debugStructured,
-      () => {},
+      sinks({ debugStructured }),
       () => energyApi,
     );
 
@@ -117,11 +120,8 @@ describe('Homey price service', () => {
     const structuredLog = { info: vi.fn() };
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => null,
-      structuredLog as unknown as Logger,
     );
 
     await service.refreshSpotPrices(true);
@@ -141,9 +141,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      errorLog,
+      sinks({ errorLog }),
       () => energyApi,
     );
 
@@ -175,11 +173,8 @@ describe('Homey price service', () => {
     const structuredLog = { info: vi.fn() };
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      debugStructured,
-      errorLog,
+      sinks({ debugStructured, errorLog, structuredLog: structuredLog as unknown as Logger }),
       () => energyApi,
-      structuredLog as unknown as Logger,
     );
 
     await service.refreshSpotPrices(true);
@@ -208,11 +203,8 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => energyApi,
-      structuredLog as unknown as Logger,
     );
 
     await service.refreshSpotPrices(true);
@@ -237,9 +229,7 @@ describe('Homey price service', () => {
     const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      debugStructured,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -271,9 +261,7 @@ describe('Homey price service', () => {
     const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      debugStructured,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -316,9 +304,7 @@ describe('Homey price service', () => {
     const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      debugStructured,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -346,9 +332,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -377,9 +361,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
