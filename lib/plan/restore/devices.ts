@@ -1,9 +1,6 @@
 import { getSteppedLoadHighestStep } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import {
-  EV_COMMANDABLE_NOW_REASONS,
-  formatUnknownEvChargingStateReason,
-} from '../../../packages/shared-domain/src/commandableNowReason';
+import { resolveEvBlockReason } from '../../../packages/shared-domain/src/commandableNowReason';
 import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
@@ -113,25 +110,12 @@ export function getOnDevices(
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
   // `controlCapabilityId === 'evcharger_charging'` already proves this is an EV
-  // device; the guard re-establishes that for the compiler so the charging-state
-  // reads narrow off the EV-omitted base.
-  if (!isEvPlanDevice(dev) || dev.evChargingState === undefined) {
-    return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-  }
-
-  switch (dev.evChargingState) {
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case 'plugged_in':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
-    case 'plugged_out':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
-    case 'plugged_in_discharging':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
-    default:
-      return formatUnknownEvChargingStateReason(dev.evChargingState);
-  }
+  // device; `isEvPlanDevice` re-establishes that for the compiler so evChargingState
+  // narrows off the EV-omitted base. The gateless EV-state → reason switch lives in
+  // commandableNowReason (one source of truth, shared with resolveCommandableNow +
+  // the device-projection snapshot gate); a non-narrowed dev (unreachable here)
+  // resolves to state_unknown via `undefined`.
+  return resolveEvBlockReason(isEvPlanDevice(dev) ? dev.evChargingState : undefined);
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
