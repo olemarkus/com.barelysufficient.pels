@@ -10,8 +10,10 @@ import {
   buildStepPowerCalibrationView,
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './calibrationViews';
+import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
-export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
+export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot): PlanInputDevice {
   // First real reader of the observer-owned observed-state projection (stage 4b).
   // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
   // state, so staleness is decided from the projection's maintained truth rather
@@ -52,7 +54,14 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     shedBehavior,
     observationStale,
   });
-  return {
+  // The plan-input device type is a discriminated union on the stepped
+  // discriminant; the `...device` spread decouples `controlModel` from
+  // `steppedLoadProfile`, so the whole literal is rebuilt through
+  // `withSteppedDiscriminant`, which re-ties them as a single variant-shaped
+  // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
+  // optional (out of scope for this slice), so `device.steppedLoadProfile` is
+  // read directly here.
+  return withSteppedDiscriminant({
     ...device,
     // The step-command/planning cluster used to ride in on the `...device`
     // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
@@ -86,7 +95,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     ...(hasRecentObservedDrawAtSelectedStep !== undefined
       ? { hasRecentObservedDrawAtSelectedStep }
       : {}),
-  };
+  });
 }
 
 /**

@@ -260,8 +260,8 @@ function buildSteppedCandidate(params: {
     getShedBehavior,
     pendingBinaryCommandStore,
   } = params;
+  if (!isSteppedLoadDevice(device)) return null;
   const deviceSteppedProfile = device.steppedLoadProfile;
-  if (!deviceSteppedProfile) return null;
   if (isFiniteNumber(device.measuredPowerKw) && device.measuredPowerKw === 0) return null;
   const shedBehavior = getShedBehavior(device.id);
   if (shedBehavior.action === 'set_temperature' && shedBehavior.temperature !== null) {
