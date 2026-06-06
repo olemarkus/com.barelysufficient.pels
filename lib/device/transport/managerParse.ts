@@ -1,4 +1,5 @@
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeviceCapabilityMap } from '../managerControl';
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
@@ -11,31 +12,39 @@ export function resolveDeviceCapabilities(params: {
   deviceId: string;
   deviceLabel: string;
   capabilities: string[];
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): { targetCaps: string[]; hasPower: boolean } | null {
   const {
     deviceClassKey,
     deviceId,
     deviceLabel,
     capabilities,
-    logDebug,
+    debugStructured,
   } = params;
   const hasPower = hasPowerCapability(capabilities);
   const targetCaps = getTargetCaps(capabilities);
   const hasOnOff = capabilities.includes('onoff');
   if (deviceClassKey === 'evcharger') {
     if (!capabilities.includes('evcharger_charging')) {
-      logDebug(
-        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging. `
-        + `Capabilities: ${capabilities.join(', ')}`,
-      );
+      debugStructured?.({
+        event: 'device_skipped_missing_capability',
+        deviceClass: deviceClassKey,
+        deviceId,
+        deviceName: deviceLabel,
+        missingCapability: 'evcharger_charging',
+        capabilities,
+      });
       return null;
     }
     if (!capabilities.includes('evcharger_charging_state')) {
-      logDebug(
-        `Skipping EV charger ${deviceLabel} (${deviceId}), missing evcharger_charging_state. `
-        + `Capabilities: ${capabilities.join(', ')}`,
-      );
+      debugStructured?.({
+        event: 'device_skipped_missing_capability',
+        deviceClass: deviceClassKey,
+        deviceId,
+        deviceName: deviceLabel,
+        missingCapability: 'evcharger_charging_state',
+        capabilities,
+      });
       return null;
     }
     return { targetCaps: [], hasPower };
@@ -70,15 +79,17 @@ export function buildTargets(
   params: {
     targetCaps: string[];
     capabilityObj: DeviceCapabilityMap;
+    deviceId?: string;
     deviceLabel: string;
-    logDebug: (...args: unknown[]) => void;
+    debugStructured?: StructuredDebugEmitter;
   },
 ): TargetDeviceSnapshot['targets'] {
   const {
     targetCaps,
     capabilityObj,
+    deviceId,
     deviceLabel,
-    logDebug,
+    debugStructured,
   } = params;
   return targetCaps.map((capId) => {
     const capability = capabilityObj[capId];
@@ -86,8 +97,9 @@ export function buildTargets(
     const resolvedValue = resolveTargetCapabilityValue({
       value,
       capId,
+      deviceId,
       deviceLabel,
-      logDebug,
+      debugStructured,
     });
     return {
       id: capId,
@@ -114,20 +126,25 @@ function finiteCapabilityNumber<T extends 'min' | 'max' | 'step' | 'excludeMin' 
 function resolveTargetCapabilityValue(params: {
   value: unknown;
   capId: string;
+  deviceId?: string;
   deviceLabel: string;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured?: StructuredDebugEmitter;
 }): number | undefined {
   const {
     value,
     capId,
+    deviceId,
     deviceLabel,
-    logDebug,
+    debugStructured,
   } = params;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  logDebug(
-    `Skipping malformed ${capId} value for ${deviceLabel}; expected finite number but got ${String(value)}. `
-    + 'Keeping capability metadata without a current target value instead.',
-  );
+  debugStructured?.({
+    event: 'target_capability_value_malformed',
+    ...(deviceId !== undefined ? { deviceId } : {}),
+    deviceName: deviceLabel,
+    capabilityId: capId,
+    rawValue: String(value),
+  });
   return undefined;
 }
 

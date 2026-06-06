@@ -61,7 +61,6 @@ describe('device manager support helpers', () => {
   });
 
   it('resolves EV control capability and charging state helpers', () => {
-    const logDebug = vi.fn();
     const capabilityObj = {
       evcharger_charging: { value: false, setable: true },
       evcharger_charging_state: { value: 'plugged_in_paused' },
@@ -108,7 +107,6 @@ describe('device manager support helpers', () => {
       targetCaps: ['target_temperature'],
       capabilityObj,
       deviceLabel: 'Device',
-      logDebug,
     })).toEqual([{
       id: 'target_temperature',
       value: 22,
@@ -118,13 +116,15 @@ describe('device manager support helpers', () => {
       step: 5,
     }]);
 
+    const debugStructured = vi.fn();
     expect(buildTargets({
       targetCaps: ['target_temperature'],
       capabilityObj: {
         target_temperature: { value: 'invalid', units: 'C', min: 35, max: 75, step: 5 },
       },
+      deviceId: 'broken-device',
       deviceLabel: 'Broken Device',
-      logDebug,
+      debugStructured,
     })).toEqual([{
       id: 'target_temperature',
       unit: 'C',
@@ -132,9 +132,13 @@ describe('device manager support helpers', () => {
       max: 75,
       step: 5,
     }]);
-    expect(logDebug).toHaveBeenCalledWith(
-      expect.stringContaining('Skipping malformed target_temperature value for Broken Device'),
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'target_capability_value_malformed',
+      deviceId: 'broken-device',
+      deviceName: 'Broken Device',
+      capabilityId: 'target_temperature',
+      rawValue: 'invalid',
+    }));
   });
 
   it('logs EV command and snapshot changes', () => {
@@ -172,43 +176,48 @@ describe('device manager support helpers', () => {
   });
 
   it('resolves device parse capabilities and power capability lookup', () => {
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'evcharger',
       deviceId: 'ev1',
       deviceLabel: 'EV 1',
       capabilities: ['measure_power'],
-      logDebug,
+      debugStructured,
     })).toBeNull();
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_skipped_missing_capability',
+      deviceId: 'ev1',
+      missingCapability: 'evcharger_charging',
+    }));
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'evcharger',
       deviceId: 'ev2',
       deviceLabel: 'EV 2',
       capabilities: ['evcharger_charging', 'measure_power'],
-      logDebug,
+      debugStructured,
     })).toBeNull();
-    expect(logDebug).toHaveBeenCalledWith(expect.stringContaining('missing evcharger_charging_state'));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_skipped_missing_capability',
+      deviceId: 'ev2',
+      missingCapability: 'evcharger_charging_state',
+    }));
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'heater',
       deviceId: 'heater1',
       deviceLabel: 'Heater',
       capabilities: ['measure_temperature', 'target_temperature', 'measure_power'],
-      logDebug,
     })).toEqual({ targetCaps: ['target_temperature'], hasPower: true });
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'socket',
       deviceId: 'socket1',
       deviceLabel: 'Socket',
       capabilities: ['measure_power', 'onoff'],
-      logDebug,
     })).toEqual({ targetCaps: [], hasPower: true });
     expect(resolveDeviceCapabilities({
       deviceClassKey: 'socket',
       deviceId: 'socket2',
       deviceLabel: 'Socket 2',
       capabilities: ['measure_power.internal', 'onoff'],
-      logDebug,
     })).toEqual({ targetCaps: [], hasPower: false });
     expect(getExactPowerCapabilityValue(
       ['measure_power'],
@@ -442,7 +451,6 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
       deviceId: 'dev-temp',
       deviceLabel: 'Hot Water Tank',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
-      logDebug: vi.fn(),
     });
 
     // Parser accepts the device (returns non-null)
@@ -474,7 +482,6 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
       deviceId: 'dev-temp',
       deviceLabel: 'Hot Water Tank',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
-      logDebug: vi.fn(),
     });
     const actuationGate = getBinaryControlPlan({
       id: 'dev-temp',
