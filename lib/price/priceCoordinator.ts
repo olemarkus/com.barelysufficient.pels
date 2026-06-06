@@ -54,6 +54,7 @@ export class PriceCoordinator {
       deps.debugStructured,
       deps.error,
       deps.getHomeyEnergyApi,
+      deps.structuredLog,
     );
     if (deps.onCombinedPricesUpdated) {
       this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);
@@ -72,7 +73,10 @@ export class PriceCoordinator {
     const enabled = this.deps.homey.settings.get(PRICE_OPTIMIZATION_ENABLED) as unknown;
     this.priceOptimizationEnabled = enabled !== false;
     if (logChange) {
-      this.deps.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+      this.deps.structuredLog?.info({
+        event: 'price_optimization_enabled_changed',
+        enabled: this.priceOptimizationEnabled,
+      });
     }
   }
 
@@ -101,7 +105,6 @@ export class PriceCoordinator {
         this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
         await this.deps.rebuildPlanFromCache(reason);
       },
-      log: (...args: unknown[]) => this.deps.log(...args),
       debugStructured: this.deps.debugStructured,
       error: (...args: unknown[]) => this.deps.error(...args),
       structuredLog: this.deps.structuredLog,
