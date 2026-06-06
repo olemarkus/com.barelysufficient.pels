@@ -121,15 +121,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **Migrate the prose-logging-sweep's touched flat test specs into their tiers.**
-      The prose→structured logging sweep (PRs #1539/#1541/#1545/#1547) edited several flat
-      `test/*.test.ts` specs (`test/registerFlowCards.test.ts`, `test/registerAppFlowCards.test.ts`,
-      `test/deadlineObjectiveCards.test.ts`, `test/priceOptimizer.test.ts`) without relocating them.
-      `test/AGENTS.md` asks any touched flat spec to move into `test/unit/`, `test/integration/`, or
-      `test/e2e/` by tier (with import-depth fixups + `knip`). Deferred during the sweep to keep each
-      logging PR focused; codex flagged it P2 on #1541 and #1547. Do as one dedicated migration PR
-      (watch the `import type` relative-depth trap that only `knip`/`deadcode:check` catches).
-      Source: chatgpt-codex on PRs #1541/#1547, 2026-06-06.
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
