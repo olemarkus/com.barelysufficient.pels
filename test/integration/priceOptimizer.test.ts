@@ -1,6 +1,6 @@
-import { PriceOptimizer } from '../lib/price/priceOptimizer';
-import { PriceLevel } from '../lib/price/priceLevels';
-import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
+import { PriceOptimizer } from '../../lib/price/priceOptimizer';
+import { PriceLevel } from '../../lib/price/priceLevels';
+import type { CombinedHourlyPrice } from '../../lib/price/priceTypes';
 
 const makeHour = (startsAt: string, totalPrice: number): CombinedHourlyPrice => ({
   startsAt,

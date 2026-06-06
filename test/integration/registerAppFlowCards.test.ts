@@ -2,12 +2,12 @@ const { registerFlowCards } = vi.hoisted(() => ({
   registerFlowCards: vi.fn(),
 }));
 
-vi.mock('../flowCards/registerFlowCards', () => ({
+vi.mock('../../flowCards/registerFlowCards', () => ({
   registerFlowCards: registerFlowCards,
 }));
 
-import { registerAppFlowCards } from '../setup/appInit';
-import type { AppContext } from '../lib/app/appContext';
+import { registerAppFlowCards } from '../../setup/appInit';
+import type { AppContext } from '../../lib/app/appContext';
 
 describe('registerAppFlowCards', () => {
   beforeEach(() => {

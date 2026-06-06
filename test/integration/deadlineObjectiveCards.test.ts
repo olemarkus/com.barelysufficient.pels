@@ -1,4 +1,4 @@
-import { registerDeadlineObjectiveCards } from '../flowCards/deadlineObjectiveCards';
+import { registerDeadlineObjectiveCards } from '../../flowCards/deadlineObjectiveCards';
 import {
   clearObjectiveForDevice,
   createDeferredObjectiveEndedBus,
@@ -17,17 +17,17 @@ import {
   type DeferredObjectivePlanRevisionBus,
   type DeferredObjectiveSettingsV1,
   type DeferredObjectiveStatusBus,
-} from '../lib/objectives/deferredObjectives';
-import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../lib/objectives/deferredObjectives/objectiveStore';
-import type { DeferredObjectiveDiagnostic } from '../lib/objectives/deferredObjectives/diagnosticsBridge';
+} from '../../lib/objectives/deferredObjectives';
+import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
   DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanRevisionV1,
-} from '../packages/contracts/src/deferredObjectiveActivePlans';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { FlowCardDeps } from '../flowCards/registerFlowCards';
+} from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
 const MOCK_NOW_MS = Date.UTC(2026, 0, 1, 5, 0, 0);

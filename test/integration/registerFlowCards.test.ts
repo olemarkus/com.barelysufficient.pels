@@ -1,9 +1,9 @@
-import { registerFlowCards, type FlowCardDeps } from '../flowCards/registerFlowCards';
-import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
-import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { createEvTargetPowerConfig } from '../packages/shared-domain/src/evTargetPowerConfig';
-import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { registerFlowCards, type FlowCardDeps } from '../../flowCards/registerFlowCards';
+import type { FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
+import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
+import { DEVICE_TARGET_POWER_CONFIGS } from '../../lib/utils/settingsKeys';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',
