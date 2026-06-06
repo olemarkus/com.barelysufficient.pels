@@ -103,7 +103,6 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getTimeZone: vi.fn(() => 'Europe/Oslo'),
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
     getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn })),
-    log: vi.fn(),
     debugStructured: vi.fn(),
     error: vi.fn(),
     ...overrides,
@@ -230,7 +229,7 @@ describe('registerFlowCards', () => {
       return undefined;
     });
     const settingsSet = vi.fn();
-    const { deps, actionListeners } = buildDeps({
+    const { deps, actionListeners, structuredInfo } = buildDeps({
       homey: {
         flow: {
           getActionCard: (cardId: string) => ({
@@ -261,6 +260,13 @@ describe('registerFlowCards', () => {
     await expect(actionListeners.add_budget_exemption({ device: 'dev-1' })).resolves.toBe(true);
 
     expect(settingsSet).toHaveBeenCalledWith('budget_exempt_devices', { 'dev-1': true });
+    expect(structuredInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_setting_toggled',
+      setting: 'budget_exemption',
+      enabled: true,
+      deviceId: 'dev-1',
+      deviceName: 'Heater',
+    }));
     expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
     expect(deps.refreshSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlan).not.toHaveBeenCalled();

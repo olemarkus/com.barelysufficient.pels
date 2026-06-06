@@ -148,7 +148,6 @@ export type FlowCardDeps = {
   getTimeZone: () => string;
   getNow: () => Date;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
-  log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
 };
@@ -163,7 +162,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
       setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
       refreshSnapshot: () => deps.refreshSnapshot(),
       rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
-      log: (...args: unknown[]) => deps.log(...args),
+      getStructuredLogger: (component: string) => deps.getStructuredLogger(component),
     });
 
     const operatingModeChangedTrigger = homey.flow.getTriggerCard('operating_mode_changed');

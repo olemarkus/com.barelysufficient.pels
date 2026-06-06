@@ -219,8 +219,7 @@ const buildPerfSummary = (delta: PerfDelta): PerfSummary => {
 
 export const startPerfLogger = (params: {
   isEnabled: () => boolean;
-  log: (...args: unknown[]) => void;
-  logStructured?: (payload: Record<string, unknown>) => void;
+  logStructured: (payload: Record<string, unknown>) => void;
   logCpuSpike?: (...args: unknown[]) => void;
   error?: (...args: unknown[]) => void;
   intervalMs?: number;
@@ -274,14 +273,10 @@ export const startPerfLogger = (params: {
         durations: formatDurations(filteredDeltaDurations, true),
       },
     };
-    if (typeof params.logStructured === 'function') {
-      params.logStructured({
-        event: 'perf_counters',
-        ...payload,
-      });
-      return;
-    }
-    params.log(`Perf counters ${JSON.stringify(payload)}`);
+    params.logStructured({
+      ...payload,
+      event: 'perf_counters',
+    });
   };
   logCounters();
   const timer = setInterval(logCounters, intervalMs);

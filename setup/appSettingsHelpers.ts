@@ -281,7 +281,6 @@ export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHa
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
     restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
-    log: (message: string) => ctx.log(message),
     errorLog: (message: string, err: unknown) => ctx.error(message, err as Error),
   });
   const onSettingsSet = async (key: string) => {
