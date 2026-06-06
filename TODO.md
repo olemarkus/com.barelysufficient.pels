@@ -275,15 +275,29 @@ were rolled back before they could land.*
       one hour of delivery from the strip and renders it as a falsely-empty bar that reads "device
       did nothing" to a user inspecting a run — a predictable confusion scenario.
       - **Root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` live only on
-        the in-memory `InProgressRecord` (`planHistory.ts`) and aren't written to
-        `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING`, so a restart loses the in-flight hour. The
-        `restarts mid-run drop the in-flight hour anchor` regression test pins this. Persist them
-        alongside the rest of the record. Files: `lib/objectives/deferredObjectives/planHistory.ts`,
-        `packages/contracts/src/deferredObjectiveActivePlans.ts`.
-      - **Cheap mitigation (UI signal), if anchors aren't persisted:** mark restart-straddling
-        hours in `DeadlinePlanHistoryDetail.tsx` (dashed cell + `data unavailable across restart`
-        tooltip) so a measurement gap is distinguishable from a quiet hour. The gap is always the
-        hour the pre-restart opening was anchored in.
+        the in-memory `InProgressRecord`. **Investigated 2026-06-06: the whole in-progress map is
+        NOT persisted at all** — on restart a fresh `DeferredObjectivePlanHistoryRecorder` rebuilds
+        records via `startRecord(diag, nowMs, plan)` from LIVE diagnostics, re-anchoring
+        `currentHourOpening` at the first post-restart reading (`seedHourOpening`). So there is no
+        existing persisted record to "persist alongside"; the fix needs a NEW persistence path, not
+        an added field on a record that already round-trips. Recommended low-risk design: a new
+        OPTIONAL settings key (e.g. `DEFERRED_OBJECTIVE_INFLIGHT_ANCHORS`) holding `deviceId →
+        { currentHourOpening, lastKWhPerUnit }`; write it best-effort when the recorder goes dirty,
+        read it in `startRecord` on mid-run pickup and seed the anchor from it (falling back to the
+        live reading when absent/empty/malformed — so a transient/missing read degrades to today's
+        lossy behavior, no migration risk), and clear the device's entry on finalize. The
+        `restarts mid-run drop the in-flight hour anchor` regression test currently PINS the lossy
+        behavior — it must be flipped to assert the anchor survives. Files:
+        `lib/objectives/deferredObjectives/planHistoryInProgressState.ts` (record + `startRecord`),
+        `lib/objectives/deferredObjectives/planHistory.ts`, `setup/appInit/deferredRecorders.ts`
+        (write/clear wiring), a new key in `packages/contracts/src/settingsKeys.ts`.
+      - **Cheap mitigation (UI signal):** NOT free — it also needs a persisted signal, because a
+        restart-straddled hour is simply ABSENT from `hourlyContributions` (indistinguishable from a
+        quiet hour) unless the recorder records, at finalize, which hour it picked the run up in
+        mid-flight. So mark restart-straddling hours in `DeadlinePlanHistoryDetail.tsx` (dashed cell
+        + `data unavailable across restart` tooltip) only after persisting a per-entry straddle
+        marker. Given that the marker is most of the work, prefer the root-cause fix above (which
+        eliminates the gap rather than labeling it).
       - **Out of scope (telemetry-blocked):** proper proration of multi-hour gaps under
         `power_source = flow` needs per-hour power telemetry that doesn't exist; the rollover
         detector attributes the whole delta to the opening hour. Documented in
