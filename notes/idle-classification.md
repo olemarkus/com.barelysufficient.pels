@@ -26,7 +26,7 @@ All of these must hold for a device to be eligible for classification:
 - Has a temperature setpoint (`currentTarget` is finite). No setpoint, no
   near-goal signal, so we cannot distinguish "satisfied hold" from "broken".
 - Is **not** an EV charger (`controlCapabilityId !== 'evcharger_charging'`).
-  EV pauses are modelled separately via `ev_pause`.
+  EV pauses are modelled separately via `binary_release`.
 - Observation is fresh (`observationStale !== true`).
 - Observably on (`currentState === 'on'`).
 - PELS is **not** the reason it is off — `shedAction` is undefined. A device

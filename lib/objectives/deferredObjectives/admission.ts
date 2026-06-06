@@ -7,15 +7,15 @@ import { LEARNED_THERMOSTAT_DEADBAND_MAX_C } from '../../utils/learnedThermostat
 export type { DeferredReleaseIntent };
 
 export type DeferredAdmissionDecision =
-  | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' }
+  | { kind: 'inactive'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' }
   | {
       kind: 'planned';
       budgetExempt: boolean;
       engageBoost: boolean;
       expectedStepId: string | null;
-      releaseIntent?: 'ev_resume';
+      releaseIntent?: 'binary_restore';
     }
-  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'ev_pause' | 'shed_release' };
+  | { kind: 'idle'; budgetExempt: boolean; releaseIntent?: 'binary_release' | 'shed_release' };
 
 // `satisfied` falls back to inactive: the goal is met, so the objective should
 // not keep forcing the device on. `cannot_meet` still drives the device — the
@@ -29,12 +29,13 @@ const PLANNABLE_STATUSES = new Set<DeferredObjectiveDiagnostic['status']>([
 ]);
 
 // Once a deferred objective transitions to a terminal status for a cap-off device, PELS must
-// release the device because the objective was the only reason PELS was driving it. EV chargers
-// map to 'ev_pause' (the dedicated EV path); every other device kind maps to 'shed_release',
-// which fires the device's configured shedBehavior (turn_off / set_temperature / set_step)
-// exactly once. The executor's idempotency guards prevent re-actuation on the per-cycle
-// re-emission so the intent is safe to broadcast every cycle while the terminal status holds.
-// Cap-on devices stay on the planner's normal managed lane and never see a release intent.
+// release the device because the objective was the only reason PELS was driving it. Objectives
+// that control their device via a binary signal (EV SoC today) map to 'binary_release' (the
+// dedicated binary path); every other device kind maps to 'shed_release', which fires the
+// device's configured shedBehavior (turn_off / set_temperature / set_step) exactly once. The
+// executor's idempotency guards prevent re-actuation on the per-cycle re-emission so the intent
+// is safe to broadcast every cycle while the terminal status holds. Cap-on devices stay on the
+// planner's normal managed lane and never see a release intent.
 const shouldEmitTerminalRelease = (
   diagnostic: DeferredObjectiveDiagnostic,
   device: PlanInputDevice | undefined,
@@ -45,8 +46,8 @@ const shouldEmitTerminalRelease = (
 
 const resolveReleaseIntentForCapOff = (
   objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
-): 'ev_pause' | 'shed_release' => (
-  objectiveKind === 'ev_soc' ? 'ev_pause' : 'shed_release'
+): 'binary_release' | 'shed_release' => (
+  objectiveKind === 'ev_soc' ? 'binary_release' : 'shed_release'
 );
 
 // A deferred current hour is "released" when the device is idled this cycle rather
@@ -96,16 +97,16 @@ const resolveDecision = (
     // admission path; the clock-driven recorder is insulated, so no revision is
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //
-    // EV chargers (cap-on or cap-off): always pause. Off-peak hours have no capacity
-    // pressure, so the planner's normal shed/restore lane would never command the cap-on
-    // charger off — but the smart task's whole point is not to charge outside planned hours,
-    // so we force ev_pause regardless of cap-on/off.
+    // Binary-controlled objectives (EV SoC today, cap-on or cap-off): always release the binary
+    // control. Off-peak hours have no capacity pressure, so the planner's normal shed/restore
+    // lane would never command the cap-on device off — but the smart task's whole point is not
+    // to run outside planned hours, so we force binary_release regardless of cap-on/off.
     //
-    // Non-EV cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
-    // non-EV stays on the planner's normal lane — emitting shed_release there would race
+    // Non-binary cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
+    // non-binary stays on the planner's normal lane — emitting shed_release there would race
     // the planner's own decisions (it might be deliberately restoring the device).
     if (isEvObjective) {
-      return { kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' };
+      return { kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' };
     }
     if (device?.controllable === false) {
       return { kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' };
@@ -117,7 +118,7 @@ const resolveDecision = (
     budgetExempt,
     engageBoost,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
-    ...(isEvObjective ? { releaseIntent: 'ev_resume' as const } : {}),
+    ...(isEvObjective ? { releaseIntent: 'binary_restore' as const } : {}),
   };
 };
 

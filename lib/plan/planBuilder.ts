@@ -1188,10 +1188,10 @@ function attachDeferredReleaseIntents(
   return planDevices.map((device) => {
     const deferredReleaseIntent = intentByDeviceId[device.id];
     if (!deferredReleaseIntent) return device;
-    // ev_resume is the only intent that drives a positive (turn-on) command, so it requires
-    // a fresh power sample to avoid racing the capacity guard on stale data. ev_pause and
+    // binary_restore is the only intent that drives a positive (turn-on) command, so it requires
+    // a fresh power sample to avoid racing the capacity guard on stale data. binary_release and
     // shed_release are negative commands and remain safe to issue under stale-power.
-    if (deferredReleaseIntent === 'ev_resume' && context.powerFreshnessState !== 'fresh') return device;
+    if (deferredReleaseIntent === 'binary_restore' && context.powerFreshnessState !== 'fresh') return device;
     return { ...device, deferredReleaseIntent };
   });
 }

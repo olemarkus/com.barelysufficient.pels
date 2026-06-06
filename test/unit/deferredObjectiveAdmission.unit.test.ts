@@ -94,7 +94,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       budgetExempt: false,
       engageBoost: false,
       expectedStepId: 'low',
-      releaseIntent: 'ev_resume',
+      releaseIntent: 'binary_restore',
     });
   });
 
@@ -125,7 +125,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 
   it('returns idle when the current bucket is missing entirely', () => {
@@ -147,7 +147,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     expect(decisions.get('dev1')).toEqual({ kind: 'inactive', budgetExempt: false });
   });
 
-  it('emits a terminal ev_pause when an EV objective is satisfied and the device is cap-off', () => {
+  it('emits a terminal binary_release when an EV objective is satisfied and the device is cap-off', () => {
     const diagnostic = buildDiagnostic({
       deviceId: 'ev1',
       objectiveKind: 'ev_soc',
@@ -156,7 +156,7 @@ describe('applyDeferredObjectiveAdmission', () => {
     });
     const device = buildEvDevice({ id: 'ev1', controllable: false });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, releaseIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 
   it('keeps inactive without a pause intent for a satisfied EV when the device is cap-on', () => {
@@ -348,7 +348,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true }),
     });
     const decisions = applyDeferredObjectiveAdmission([diagnostic]);
-    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
+    expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 });
 

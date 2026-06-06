@@ -95,7 +95,7 @@ describe('applyShedReleaseIntent', () => {
   it('returns false for an EV intent (this dispatch is for non-EV release only)', async () => {
     const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
-      intent: { kind: 'ev_pause', deviceId: 'dev-1', name: 'Device 1' },
+      intent: { kind: 'binary_release', deviceId: 'dev-1', name: 'Device 1' },
       steppedLoadIntent: null,
       observed: buildObserved(),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,

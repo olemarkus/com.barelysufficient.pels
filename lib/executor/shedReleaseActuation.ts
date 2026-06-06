@@ -128,8 +128,9 @@ const applyShedReleaseBinaryOff = async (params: {
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
   const { intent, behavior, snapshot, observed, deps } = params;
-  // Defensive: EV chargers must route through the dedicated ev_pause path; the projection
-  // already rejects shed_release for them, but guard at apply time too.
+  // Defensive: binary-controlled deferred objectives route through 'binary_release', not
+  // 'shed_release'; the projection already rejects shed_release for them, but guard at apply
+  // time too.
   if (snapshot?.controlCapabilityId === 'evcharger_charging') return false;
   if (!snapshot?.controlCapabilityId) {
     // No binary handle, and the stepped re-projection above either didn't apply (turn_off

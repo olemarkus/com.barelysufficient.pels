@@ -58,7 +58,7 @@ import {
   type PlanExecutorSteppedContext,
 } from './steppedLoadExecutor';
 import {
-  applyDeferredEvCommand,
+  applyDeferredBinaryCommand,
   applyBinaryRestore,
   applyBinarySheddingToDevice,
   applyUncontrolledBinaryRestore,
@@ -78,7 +78,7 @@ import {
   buildExecutableTargetUpdate,
 } from './executableTargetProjection';
 import {
-  hasStableEvDeadlineActuation,
+  hasStableBinaryReleaseActuation,
   hasStableSteppedLoadStepActuation,
   hasStableUncontrolledRestoreActuation,
   isSteppedLoadRestoreFromOff,
@@ -418,12 +418,12 @@ export class PlanExecutor {
     return applyBinaryRestore(this.buildBinaryExecutorContext(), intent, observed, mode);
   }
 
-  private async applyDeferredEvIntent(
+  private async applyDeferredBinaryIntent(
     intent: ExecutableReleaseIntent | null,
     observed: ExecutableObservedDeviceState | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
-    return applyDeferredEvCommand(this.buildBinaryExecutorContext(), intent, observed, mode);
+    return applyDeferredBinaryCommand(this.buildBinaryExecutorContext(), intent, observed, mode);
   }
 
   private async applyShedReleaseIntent(params: {
@@ -603,7 +603,7 @@ export class PlanExecutor {
   public hasStablePlanActuation(plan: DevicePlan): boolean {
     return plan.devices.some((dev) => (
       hasStableUncontrolledRestoreActuation(dev, this.state)
-      || hasStableEvDeadlineActuation(dev)
+      || hasStableBinaryReleaseActuation(dev)
       || hasStableSteppedLoadStepActuation(dev)
     ));
   }
@@ -695,9 +695,9 @@ export class PlanExecutor {
             // was the only reason PELS was driving this device, and it just transitioned out
             // of plannable status. Fire the device's configured release posture and skip the
             // uncontrolled-restore so we don't immediately re-enable what we just released.
-            if (intent.release?.kind === 'ev_pause') {
+            if (intent.release?.kind === 'binary_release') {
               if (await this.applySteppedLoadCommand(steppedAction, mode, snapshot)) commandRequestCount += 1;
-              if (await this.applyDeferredEvIntent(intent.release, observed, mode)) deviceWriteCount += 1;
+              if (await this.applyDeferredBinaryIntent(intent.release, observed, mode)) deviceWriteCount += 1;
               continue;
             }
             if (intent.release?.kind === 'shed_release') {
@@ -762,7 +762,7 @@ export class PlanExecutor {
             if (await this.applyBinaryShedIntent(intent.binary)) deviceWriteCount += 1;
             continue;
           }
-          if (await this.applyDeferredEvIntent(intent.release, observed, mode)) {
+          if (await this.applyDeferredBinaryIntent(intent.release, observed, mode)) {
             deviceWriteCount += 1;
             continue;
           }

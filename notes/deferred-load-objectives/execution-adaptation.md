@@ -143,7 +143,7 @@ producer-resolved flag + the same per-cycle admission release:
 - The horizon planner combines it with a relative raw-price test to set `priceDeferralEligible`
   (`resolvePriceDeferralEligible`, `horizonPlanner.ts`).
 - The decoration controller's admission reads the flag (`isReleasedCurrentHour`, `admission.ts`)
-  and idles the device this cycle (ev_pause / shed_release / plain idle by device kind),
+  and idles the device this cycle (binary_release / shed_release / plain idle by device kind),
   reusing the existing release posture. No executor change — limiting is "request nothing."
 
 **Why degrees, not kWh (and not the `avoid` band).** The earlier shipped gate decided in energy
@@ -277,7 +277,7 @@ and the per-hour release above retires each expensive hour as it arrives.
   not when current price ≤ 0; flags on a negative later price; not when the current hour carries
   no booked energy.
 - `test/unit/deferredObjectiveAdmission.unit.test.ts` (unchanged): the consumer path still idles /
-  shed_releases / ev_pauses on the flag — the regression guard that the recorder stays insulated
+  shed_releases / binary_releases on the flag — the regression guard that the recorder stays insulated
   and the admission contract is intact.
 
 ## Explicit non-goal — near-target / "safely ahead" release

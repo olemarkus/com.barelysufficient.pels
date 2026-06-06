@@ -231,7 +231,7 @@ export const applyBinarySheddingToDevice = async (
   }
 };
 
-export const applyDeferredEvCommand = async (
+export const applyDeferredBinaryCommand = async (
   ctx: PlanExecutorBinaryContext,
   intent: ExecutableReleaseIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
@@ -240,15 +240,18 @@ export const applyDeferredEvCommand = async (
   if (!intent) return false;
   if (intent.kind === 'shed_release') return false;
   const snapshot = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
-  if (!snapshot || snapshot.controlCapabilityId !== 'evcharger_charging') return false;
+  // Requires a binary control handle (onoff or evcharger_charging). The actuation is
+  // device-agnostic — the dispatched command's capability is derived from the device's
+  // `controlCapabilityId`, never hardcoded — so this accepts any binary control.
+  if (!snapshot || snapshot.controlCapabilityId === undefined) return false;
 
-  if (intent.kind === 'ev_pause') {
-    // A paused EV is just a binary device with onoff=false; pause only one that
-    // is currently on (charging). `currentOn` is the consolidated binary truth.
-    // Lifecycle-end EV pause (smart task satisfied/idle), not a capacity shed:
+  if (intent.kind === 'binary_release') {
+    // A released binary device is just onoff=false; release only one that is
+    // currently on. `binaryControl.on` is the consolidated binary truth.
+    // Lifecycle-end release (smart task satisfied/idle), not a capacity shed:
     // lifecycleRelease routes through the diagnostic-only recorder and (by
     // default) bypasses the capacity precheck / pendingSheds path so it does not
-    // stamp the cooldown markers. The currentOn check is the trusted-evidence
+    // stamp the cooldown markers. The binary-on check is the trusted-evidence
     // gate, mirroring applyShedReleaseBinaryOff's gate.
     if (snapshot.binaryControl?.on === false) return false;
     return applyBinarySheddingToDevice(ctx, {
@@ -258,9 +261,9 @@ export const applyDeferredEvCommand = async (
     });
   }
 
-  // Resume only an off-but-commandable charger — i.e. paused. Reads the binary
-  // truth (`currentOn`) + producer-resolved commandability, not the plug-state
-  // string.
+  // Restore only an off-but-commandable device — i.e. released. Reads the binary
+  // truth (`binaryControl.on`) + producer-resolved commandability, not any
+  // device-specific state string.
   if ((snapshot.binaryControl?.on ?? true) || !isCommandableNow(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,

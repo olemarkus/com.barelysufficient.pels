@@ -1,6 +1,6 @@
 import {
   applyBinarySheddingToDevice,
-  applyDeferredEvCommand,
+  applyDeferredBinaryCommand,
   type PlanExecutorBinaryContext,
 } from '../lib/executor/binaryExecutor';
 import { createPlanEngineState } from '../lib/plan/planState';
@@ -107,10 +107,10 @@ describe('binary lifecycle-disable marker routing (direct paths)', () => {
     expect(h.state.lastDeviceShedMs['dev-1']).toEqual(expect.any(Number));
   });
 
-  it('EV ev_pause (lifecycle-end): records via the release recorder and leaves the markers clean', async () => {
+  it('EV binary_release (lifecycle-end): records via the release recorder and leaves the markers clean', async () => {
     const h = buildCtx(evSnapshot);
-    const intent: ExecutableReleaseIntent = { kind: 'ev_pause', deviceId: 'ev-1', name: 'Charger' };
-    const applied = await applyDeferredEvCommand(h.ctx, intent, undefined, 'plan');
+    const intent: ExecutableReleaseIntent = { kind: 'binary_release', deviceId: 'ev-1', name: 'Charger' };
+    const applied = await applyDeferredBinaryCommand(h.ctx, intent, undefined, 'plan');
     expect(applied).toBe(true);
     expect(h.setCapabilityCalls).toEqual([{ capabilityId: 'evcharger_charging', value: false }]);
     expect(h.recordReleaseShedActuation).toHaveBeenCalledTimes(1);
