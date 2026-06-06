@@ -13,6 +13,23 @@ import {
   MANAGED_DEVICES,
 } from '../lib/utils/settingsKeys';
 
+const { settingsLoggerInfo, settingsLoggerWarn } = vi.hoisted(() => ({
+  settingsLoggerInfo: vi.fn(),
+  settingsLoggerWarn: vi.fn(),
+}));
+
+vi.mock('../lib/logging/logger', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/logging/logger')>();
+  return {
+    ...actual,
+    getLogger: (component: string) => (
+      component === 'settings'
+        ? { info: settingsLoggerInfo, warn: settingsLoggerWarn }
+        : actual.getLogger(component)
+    ),
+  };
+});
+
 const flushMicrotasks = async () => {
   await Promise.resolve();
   await Promise.resolve();
@@ -50,13 +67,17 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
-    log: vi.fn(),
     errorLog: vi.fn(),
     ...overrides,
   };
 };
 
 describe('createSettingsHandler', () => {
+  beforeEach(() => {
+    settingsLoggerInfo.mockClear();
+    settingsLoggerWarn.mockClear();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -196,9 +217,19 @@ describe('createSettingsHandler', () => {
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('Settings UI'), expect.any(Error));
     const loggedError = errorLog.mock.calls[0][1] as Error;
     expect(loggedError.message).toBe('Detail');
-    expect(deps.log).toHaveBeenCalledTimes(2);
-    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Warning:'));
-    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Settings UI'));
+    expect(settingsLoggerWarn).toHaveBeenCalledTimes(1);
+    expect(settingsLoggerWarn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'settings_ui_log',
+      level: 'warn',
+      message: 'Heads up',
+    }));
+    expect(settingsLoggerInfo).toHaveBeenCalledTimes(1);
+    expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'settings_ui_log',
+      level: 'info',
+      message: 'Ok',
+      detail: 'Done',
+    }));
     expect(deps.homey.settings.set).toHaveBeenCalledTimes(3);
     expect(deps.homey.settings.set).toHaveBeenCalledWith('settings_ui_log', null);
   });
@@ -213,7 +244,8 @@ describe('createSettingsHandler', () => {
     await handler('settings_ui_log');
     await handler('settings_ui_log');
 
-    expect(deps.log).not.toHaveBeenCalled();
+    expect(settingsLoggerInfo).not.toHaveBeenCalled();
+    expect(settingsLoggerWarn).not.toHaveBeenCalled();
     expect(deps.errorLog).not.toHaveBeenCalled();
     expect(deps.homey.settings.set).not.toHaveBeenCalled();
   });
@@ -521,7 +553,7 @@ describe('createSettingsHandler', () => {
 
     await handler('power_source');
 
-    expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('Power source changed'));
+    expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'power_source_changed' }));
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');

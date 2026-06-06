@@ -34,29 +34,28 @@ describe('startPerfLogger', () => {
   });
 
   it('logs counters and deltas when enabled', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     incPerfCounter('plan_rebuild_total');
 
     const stop = startPerfLogger({
       isEnabled: () => true,
-      log,
+      logStructured,
       intervalMs: 1000,
     });
 
-    expect(log).toHaveBeenCalledTimes(1);
+    expect(logStructured).toHaveBeenCalledTimes(1);
 
     incPerfCounter('plan_rebuild_total');
     vi.advanceTimersByTime(1000);
 
-    expect(log).toHaveBeenCalledTimes(2);
-    const message = log.mock.calls[1][0] as string;
-    const jsonStart = message.indexOf('{');
-    expect(jsonStart).toBeGreaterThan(-1);
-    const payload = JSON.parse(message.slice(jsonStart)) as {
+    expect(logStructured).toHaveBeenCalledTimes(2);
+    const payload = logStructured.mock.calls[1][0] as {
+      event?: string;
       smaps?: Record<string, number> | null;
       totals?: unknown;
       delta?: { counts?: Record<string, number> };
     };
+    expect(payload.event).toBe('perf_counters');
     expect(payload.smaps).toEqual({
       rssMb: 123,
       pssMb: 111,
@@ -70,14 +69,14 @@ describe('startPerfLogger', () => {
   });
 
   it('emits all non-zero counters in delta', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     incPerfCounter('plan_rebuild_total');
     incPerfCounter('plan_rebuild_skipped_insignificant_total');
     incPerfCounter('plan_rebuild_skipped_non_boundary_delta_total');
 
     const stop = startPerfLogger({
       isEnabled: () => true,
-      log,
+      logStructured,
       intervalMs: 1000,
     });
 
@@ -86,9 +85,7 @@ describe('startPerfLogger', () => {
     incPerfCounter('plan_rebuild_skipped_non_boundary_delta_total');
     vi.advanceTimersByTime(1000);
 
-    const message = log.mock.calls[1][0] as string;
-    const jsonStart = message.indexOf('{');
-    const payload = JSON.parse(message.slice(jsonStart)) as { delta?: { counts?: Record<string, number> } };
+    const payload = logStructured.mock.calls[1][0] as { delta?: { counts?: Record<string, number> } };
     expect(payload.delta?.counts?.plan_rebuild_total).toBe(1);
     expect(payload.delta?.counts?.plan_rebuild_skipped_insignificant_total).toBe(1);
     expect(payload.delta?.counts?.plan_rebuild_skipped_non_boundary_delta_total).toBe(1);
@@ -97,10 +94,10 @@ describe('startPerfLogger', () => {
   });
 
   it('computes rebuildSkipRate against power samples', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     const stop = startPerfLogger({
       isEnabled: () => true,
-      log,
+      logStructured,
       intervalMs: 1000,
     });
 
@@ -109,37 +106,35 @@ describe('startPerfLogger', () => {
     incPerfCounter('plan_rebuild_total', 1);
     vi.advanceTimersByTime(1000);
 
-    const message = log.mock.calls[1][0] as string;
-    const jsonStart = message.indexOf('{');
-    const payload = JSON.parse(message.slice(jsonStart)) as { summary?: { rebuildSkipRate?: number } };
+    const payload = logStructured.mock.calls[1][0] as { summary?: { rebuildSkipRate?: number } };
     expect(payload.summary?.rebuildSkipRate).toBe(0.5);
 
     stop();
   });
 
   it('skips logging when disabled', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     const stop = startPerfLogger({
       isEnabled: () => false,
-      log,
+      logStructured,
       intervalMs: 1000,
     });
 
     vi.advanceTimersByTime(3000);
-    expect(log).not.toHaveBeenCalled();
+    expect(logStructured).not.toHaveBeenCalled();
 
     stop();
   });
 
   it('starts and stops cpu spike monitor when configured', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     const logCpuSpike = vi.fn();
     const stopCpuMonitor = vi.fn();
     startCpuSpikeMonitorMock.mockReturnValueOnce(stopCpuMonitor);
 
     const stop = startPerfLogger({
       isEnabled: () => true,
-      log,
+      logStructured,
       logCpuSpike,
       intervalMs: 1000,
     });
@@ -156,11 +151,11 @@ describe('startPerfLogger', () => {
   });
 
   it('does not start cpu spike monitor when not configured', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
 
     const stop = startPerfLogger({
       isEnabled: () => true,
-      log,
+      logStructured,
       intervalMs: 1000,
     });
 
@@ -170,7 +165,7 @@ describe('startPerfLogger', () => {
   });
 
   it('starts cpu spike monitor only after perf logging becomes enabled', () => {
-    const log = vi.fn();
+    const logStructured = vi.fn();
     const logCpuSpike = vi.fn();
     const stopCpuMonitor = vi.fn();
     let enabled = false;
@@ -178,7 +173,7 @@ describe('startPerfLogger', () => {
 
     const stop = startPerfLogger({
       isEnabled: () => enabled,
-      log,
+      logStructured,
       logCpuSpike,
       intervalMs: 1000,
     });

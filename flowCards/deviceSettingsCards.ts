@@ -11,7 +11,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     enabled: true,
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
-    logPrefix: 'Flow: capacity control',
+    settingKind: 'capacity_control',
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -19,7 +19,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     enabled: false,
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
-    logPrefix: 'Flow: capacity control',
+    settingKind: 'capacity_control',
     deps,
   });
 }
@@ -30,7 +30,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     enabled: true,
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
-    logPrefix: 'Flow: budget exemption',
+    settingKind: 'budget_exemption',
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -38,7 +38,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     enabled: false,
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
-    logPrefix: 'Flow: budget exemption',
+    settingKind: 'budget_exemption',
     deps,
   });
 }
@@ -72,7 +72,7 @@ function registerDeviceBooleanActionCard(params: {
   enabled: boolean;
   settingKey: string;
   label: string;
-  logPrefix: string;
+  settingKind: string;
   deps: FlowCardDeps;
 }): void {
   const { cardId, deps, ...settingParams } = params;
@@ -119,7 +119,7 @@ async function setDeviceBooleanSetting(params: {
   enabled: boolean;
   settingKey: string;
   label: string;
-  logPrefix: string;
+  settingKind: string;
   deps: FlowCardDeps;
 }): Promise<void> {
   const {
@@ -127,20 +127,26 @@ async function setDeviceBooleanSetting(params: {
     enabled,
     settingKey,
     label,
-    logPrefix,
+    settingKind,
     deps,
   } = params;
   if (!deviceId) throw new Error(formatDeviceMustBeProvidedMessage(label));
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);
-  const deviceName = device ? device.name : `device ${deviceId}`;
+  const deviceName = device ? device.name : null;
   const existing = deps.homey.settings.get(settingKey);
   const next = {
     ...getBooleanSettingsRecord(existing),
     [deviceId]: enabled,
   };
   deps.homey.settings.set(settingKey, next);
-  deps.log(`${logPrefix} ${enabled ? 'enabled' : 'disabled'} for ${deviceName}`);
+  deps.getStructuredLogger('devices')?.info({
+    event: 'device_setting_toggled',
+    setting: settingKind,
+    enabled,
+    deviceId,
+    deviceName,
+  });
 }
 
 function getBooleanSettingsRecord(value: unknown): Record<string, boolean> {
