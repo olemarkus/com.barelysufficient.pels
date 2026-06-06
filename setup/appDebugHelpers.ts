@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- debug dump helpers intentionally keep all emitted shapes in one place. */
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
 import type Homey from 'homey';
 import type {

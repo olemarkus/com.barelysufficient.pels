@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Plan building keeps context, overshoot tracking, and meta construction together. */
 import Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';

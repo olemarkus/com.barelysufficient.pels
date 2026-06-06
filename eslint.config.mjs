@@ -425,12 +425,15 @@ export default tseslint.config(
     },
   },
   {
-    // app.ts remains the central lifecycle/service wiring entrypoint while the remaining
-    // delegate, timer, and AppContext cleanup lands. Target: <=500 after complexity-cleanup
-    // Phases 4, 10, and 11 complete.
+    // app.ts is the central Homey app-lifecycle/service-wiring entrypoint: it owns the
+    // app class that constructs and connects every runtime service. The prior blanket
+    // `/* eslint-disable max-lines */` masked the true size; with it removed the file
+    // measures ~1885 effective lines. Bucket B for now with a ceiling just above current.
+    // Target: <=500 once the delegate/timer/AppContext extraction (TODO "Continue thinning
+    // app.ts ...") moves the remaining wiring into `setup/appInit/**`.
     files: ['app.ts'],
     rules: {
-      'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 1900, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -533,6 +536,159 @@ export default tseslint.config(
     files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
     rules: {
       'max-lines': ['warn', { max: 656, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // ---------------------------------------------------------------------------
+  // Documented `max-lines` exceptions migrated out of file-level blanket
+  // `/* eslint-disable max-lines */` pragmas (Bucket B in
+  // `notes/complexity-cleanup/god-file-policy.md`). Each carries the structural
+  // reason it is centralized plus a concrete ceiling just above the file's
+  // current effective size, so the file can't grow new bulk under the
+  // allowance. Files that still want to reach <=500 have a named refactor entry
+  // in TODO.md (persona: contributor).
+  // ---------------------------------------------------------------------------
+  {
+    // Centralized device transport: owns SDK setup, snapshot refresh, realtime
+    // drift reconciliation, binary-settle ops, observedStateDispatcher wiring,
+    // and all device writes in one coordination point. Only split on a clear
+    // subsystem boundary (god-file-policy.md Bucket B). Target: <=500 once a
+    // transport subsystem peels off.
+    files: ['lib/device/deviceTransport.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 2185, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Flat Homey Flow-card registration surface — one big registrar that wires
+    // every trigger/condition/action card. No branching logic to extract; only
+    // split if registration gains deeper per-card behavior (god-file-policy.md).
+    files: ['flowCards/registerFlowCards.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1140, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Binary restore gating + priority-swap flow kept together so the
+    // restore-decision state machine reads top-to-bottom. Target: <=500 once the
+    // swap-flow helpers split from the per-device restore gating.
+    files: ['lib/plan/restore/index.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1340, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Plan builder composes planning context, overshoot tracking, and plan-meta
+    // construction in one cohesive pass over the device set. Target: <=500 once
+    // overshoot tracking and meta construction split into sibling builders.
+    files: ['lib/plan/planBuilder.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1075, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Observation tracking keeps freshness, retained observations, and debug
+    // source state together for one device-observation lifecycle. (Retains its
+    // separate file-level `max-params` exception below for the move-only field
+    // mirroring.) Target: <=500 once retained-observation accounting splits out.
+    files: ['lib/device/transport/managerObservation.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Reason normalization and shed-temperature hold decisions share stateful
+    // helpers here (the hold-cause gating reads several mutually-exclusive
+    // reasons). Target: <=500 once reason normalization splits from the
+    // temperature-hold decision table.
+    files: ['lib/plan/planReasons.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Plan service keeps rebuild/reconcile sequencing in one place so the
+    // intent-queue ordering stays navigable. Target: <=500 once reconcile
+    // sequencing splits from rebuild orchestration.
+    files: ['lib/plan/planService.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 790, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Extracted stepped-load actuation is one cohesive, invariant-heavy
+    // sequencing pipeline (step selection, recent-draw escalation, confirmation)
+    // that must stay local after the executor split. Companion to the
+    // `targetExecutor` / `binaryExecutor` Bucket-B entries.
+    files: ['lib/executor/steppedLoadExecutor.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 785, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Active-plan recorder keeps recording, diagnostics, and replay for one
+    // deferred-objective lifecycle together (they share the recorded-revision
+    // state). Target: <=500 once replay splits from the recorder.
+    files: ['lib/objectives/deferredObjectives/activePlanRecorder.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 755, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Diagnostics bridge keeps one payload-build pipeline per concern, mapping
+    // objective/power state into Settings-UI diagnostics shapes. Target: <=500
+    // once the per-concern payload builders split into sibling modules.
+    files: ['lib/objectives/deferredObjectives/diagnosticsBridge.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Debug-dump helpers intentionally keep every emitted debug-payload shape in
+    // one place so the dump format is reviewable top-to-bottom. (Retains its
+    // file-level `functional/immutable-data` exception for local payload
+    // assembly.) Target: <=500 once the comparison serializer splits out.
+    files: ['setup/appDebugHelpers.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 720, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Restore helper decisions and their countdown/back-off metadata are kept
+    // together so a restore decision and the data it emits read as one unit.
+    // Target: <=500 once countdown-metadata shaping splits from the decisions.
+    files: ['lib/plan/restore/helpers.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 710, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Binary-control orchestration keeps shed / restore / EV-deferred branches in
+    // one file; grew past 500 when actuator-write-seam PR1b absorbed the
+    // decision-then-dispatch helper from `lib/plan/planBinaryControl.ts`.
+    // Target: <=500 once the dispatch table splits from the decision branches.
+    files: ['lib/executor/binaryExecutor.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Extracted target-command actuation is one cohesive retry/confirmation
+    // pipeline (setpoint write, temporarily-unavailable handling, confirmation)
+    // that stays local after the executor split. Companion to the
+    // `steppedLoadExecutor` / `binaryExecutor` Bucket-B entries.
+    files: ['lib/executor/targetExecutor.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // Daily-budget service keeps day rollover, persisted state, and forecast in
+    // one flow (they share the day-bucket clock). Only ~14 effective lines over
+    // the floor — closest Bucket-A shrink candidate; named in TODO.md for a
+    // forecast/state extraction. Capped tightly until then.
+    files: ['lib/dailyBudget/dailyBudgetService.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
     },
   },
 );

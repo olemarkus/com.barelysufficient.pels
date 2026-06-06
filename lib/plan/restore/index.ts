@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
